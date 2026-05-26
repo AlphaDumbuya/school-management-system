@@ -1,0 +1,163 @@
+import { Request, Response, NextFunction } from 'express';
+import { JWTService } from '../services/jwtService';
+import { AppError } from './errorHandler';
+import { logger } from '../utils/logger';
+import { AuthContext, UserRole } from '../types/auth';
+
+// Extend Express Request to include auth context
+declare global {
+  namespace Express {
+    interface Request {
+      auth?: AuthContext;
+    }
+  }
+}
+
+/**
+ * Authentication middleware - verifies JWT token
+ */
+export const authenticate = (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new AppError('Missing or invalid authorization header', 401, 'MISSING_AUTH_HEADER');
+    }
+
+    const token = authHeader.substring(7);
+
+    try {
+      const payload = JWTService.verifyAccessToken(token);
+
+      req.auth = {
+        userId: payload.userId,
+        email: payload.email,
+        role: payload.role,
+        permissions: [], // Will be populated by permission middleware
+      };
+
+      next();
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new AppError(error.message, 401, 'INVALID_TOKEN');
+      }
+      throw new AppError('Invalid token', 401, 'INVALID_TOKEN');
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Authorization middleware - checks if user has required role
+ */
+export const authorize = (...allowedRoles: UserRole[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.auth) {
+        throw new AppError('Authentication required', 401, 'NOT_AUTHENTICATED');
+      }
+
+      if (!allowedRoles.includes(req.auth.role)) {
+        logger.warn(`Unauthorized access attempt by user ${req.auth.userId} with role ${req.auth.role}`);
+        throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+};
+
+/**
+ * Permission middleware - checks if user has required permission
+ */
+export const requirePermission = (permission: string) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.auth) {
+        throw new AppError('Authentication required', 401, 'NOT_AUTHENTICATED');
+      }
+
+      if (!req.auth.permissions.includes(permission)) {
+        logger.warn(`Unauthorized permission access by user ${req.auth.userId} for permission ${permission}`);
+        throw new AppError('Permission denied', 403, 'PERMISSION_DENIED');
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+};
+
+/**
+ * Optional authentication middleware - doesn't fail if no token
+ */
+export const optionalAuth = (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+
+      try {
+        const payload = JWTService.verifyAccessToken(token);
+
+        req.auth = {
+          userId: payload.userId,
+          email: payload.email,
+          role: payload.role,
+          permissions: [],
+        };
+      } catch (error) {
+        // Silently ignore token errors for optional auth
+        logger.debug('Optional auth token verification failed', error);
+      }
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Rate limiting middleware for login attempts
+ */
+const loginAttempts = new Map<string, { count: number; resetTime: number }>();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
+
+export const rateLimitLogin = (req: Request, res: Response, next: NextFunction) => {
+  const identifier = req.body.email || req.ip;
+
+  const attempt = loginAttempts.get(identifier);
+  const now = Date.now();
+
+  if (attempt && now < attempt.resetTime) {
+    if (attempt.count >= MAX_LOGIN_ATTEMPTS) {
+      throw new AppError(
+        `Too many login attempts. Please try again after ${Math.ceil((attempt.resetTime - now) / 1000)} seconds`,
+        429,
+        'TOO_MANY_ATTEMPTS'
+      );
+    }
+    attempt.count++;
+  } else {
+    loginAttempts.set(identifier, {
+      count: 1,
+      resetTime: now + LOGIN_ATTEMPT_WINDOW,
+    });
+  }
+
+  next();
+};
+
+/**
+ * Clear login attempts after successful login
+ */
+export const clearLoginAttempts = (email: string) => {
+  loginAttempts.delete(email);
+};
