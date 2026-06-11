@@ -6,7 +6,8 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, User, LogOut, Settings, Bell } from 'react-icons/fa';
+import { Menu, User, LogOut, Settings } from 'react-icons/fa';
+import { FaBell } from 'react-icons/fa6';
 import useAuth from '@hooks/useAuth';
 import clsx from 'clsx';
 
@@ -63,7 +64,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
               className="text-gray-600 hover:text-gray-900 p-2 rounded-lg hover:bg-gray-100 relative"
               title="Notifications"
             >
-              <Bell className="w-5 h-5" />
+              <FaBell className="w-5 h-5" />
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
             </button>
 
