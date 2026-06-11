@@ -103,13 +103,13 @@ class DashboardService {
     try {
       // Get total students
       const totalStudents = await db('users')
-        .where({ role: 'student', isActive: true })
+        .where({ role: 'student', status: 'active' })
         .count('* as count')
         .first();
 
       // Get total teachers
       const totalTeachers = await db('users')
-        .where({ role: 'teacher', isActive: true })
+        .where({ role: 'teacher', status: 'active' })
         .count('* as count')
         .first();
 
@@ -121,13 +121,12 @@ class DashboardService {
             .orWhere({ role: 'accountant' })
             .orWhere({ role: 'admissionsOfficer' });
         })
-        .where({ isActive: true })
+        .where({ status: 'active' })
         .count('* as count')
         .first();
 
       // Get total classes
       const totalClasses = await db('classes')
-        .where({ isActive: true })
         .count('* as count')
         .first();
 
@@ -147,8 +146,8 @@ class DashboardService {
 
       // Get total collected this month
       const thisMonthCollected = await db('payments')
-        .whereRaw("EXTRACT(YEAR FROM \"createdAt\") = EXTRACT(YEAR FROM NOW())")
-        .whereRaw("EXTRACT(MONTH FROM \"createdAt\") = EXTRACT(MONTH FROM NOW())")
+        .whereRaw("EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM NOW())")
+        .whereRaw("EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM NOW())")
         .sum('amount as total')
         .first();
 
