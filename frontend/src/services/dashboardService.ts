@@ -4,13 +4,46 @@ import { CompleteDashboard } from '@hooks/useDashboard';
 class DashboardService {
   /**
    * Get complete admin dashboard with all data
+   * Falls back to individual endpoint calls if complete endpoint not available
    */
   async getCompleteDashboard(): Promise<CompleteDashboard> {
-    const response = await apiClient.get<CompleteDashboard>('/dashboards/admin/complete');
-    if (response.success && response.data) {
-      return response.data;
+    try {
+      // Try the complete endpoint first
+      const response = await apiClient.get<CompleteDashboard>('/dashboards/admin/complete');
+      if (response.success && response.data) {
+        return response.data;
+      }
+      throw new Error(response.error || 'Failed to load dashboard');
+    } catch (error) {
+      // Fallback to individual endpoint calls
+      console.warn('Complete dashboard endpoint not available, using individual endpoints');
+      const [metrics, alerts, financialSummary, atRiskStudents, systemHealth, academicChart, attendanceChart, feeChart, distributionChart] = await Promise.all([
+        this.getMetrics(),
+        this.getAlerts(),
+        this.getFinancialSummary(),
+        this.getStudentsAtRisk(10),
+        this.getSystemHealth(),
+        this.getAcademicPerformanceChart(),
+        this.getAttendanceTrendChart(),
+        this.getFeeCollectionChart(),
+        this.getStudentDistributionChart(),
+      ]);
+
+      return {
+        metrics,
+        alerts,
+        financialSummary,
+        atRiskStudents,
+        systemHealth,
+        charts: {
+          academicPerformance: academicChart,
+          attendanceTrend: attendanceChart,
+          feeCollection: feeChart,
+          studentDistribution: distributionChart,
+        },
+        timestamp: new Date().toISOString(),
+      };
     }
-    throw new Error(response.error || 'Failed to load dashboard');
   }
 
   /**
