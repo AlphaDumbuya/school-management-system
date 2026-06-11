@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Alert</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        .content {
+            padding: 40px 20px;
+        }
+        .content h2 {
+            color: #fa709a;
+            font-size: 20px;
+            margin-top: 0;
+        }
+        .alert-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+            color: #856404;
+        }
+        .attendance-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+            border-top: 3px solid #fa709a;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fa709a;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: {{attendanceColor}};
+            width: {{attendancePercentage}}%;
+        }
+        .button {
+            display: inline-block;
+            background-color: #fa709a;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .button:hover {
+            background-color: #d44f7a;
+        }
+        .recommendation {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            color: #1565c0;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            border-top: 1px solid #eee;
+        }
+        .footer a {
+            color: #fa709a;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚠️ Attendance Alert</h1>
+        </div>
+        
+        <div class="content">
+            <h2>Hello {{parentName}},</h2>
+            
+            <p>We're writing to alert you about {{studentName}}'s recent attendance.</p>
+            
+            <div class="alert-box">
+                <strong>⚠️ Low Attendance Warning</strong><br>
+                {{studentName}}'s attendance has fallen below the recommended threshold of 80%.
+            </div>
+            
+            <h3 style="color: #fa709a;">📊 Attendance Overview</h3>
+            <div class="attendance-stats">
+                <div class="stat-card">
+                    <div class="stat-value">{{attendancePercentage}}%</div>
+                    <div class="stat-label">Current Attendance</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{daysAbsent}}</div>
+                    <div class="stat-label">Days Absent</div>
+                </div>
+            </div>
+            
+            <div style="margin: 20px 0;">
+                <p style="margin: 5px 0;"><strong>Target:</strong> 80%</p>
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+                <p style="margin: 5px 0; color: #999; font-size: 12px;">{{attendancePercentage}}% reached</p>
+            </div>
+            
+            <div class="recommendation">
+                <strong>💡 Recommendation:</strong> Regular attendance is crucial for academic success. {{studentName}} needs {{daysNeeded}} more days of perfect attendance to reach 80%.
+            </div>
+            
+            <p><strong>Next Steps:</strong></p>
+            <ul>
+                <li>Ensure {{studentName}} attends school regularly</li>
+                <li>Contact the school if there are extenuating circumstances</li>
+                <li>Monitor attendance progress through the portal</li>
+            </ul>
+            
+            <center>
+                <a href="{{portalUrl}}" class="button">View Attendance Details</a>
+            </center>
+        </div>
+        
+        <div class="footer">
+            <p>© 2024 School Management System. All rights reserved.<br>
+            <a href="{{supportUrl}}">Contact Support</a> | <a href="{{privacyUrl}}">Privacy Policy</a></p>
+        </div>
+    </div>
+</body>
+</html>

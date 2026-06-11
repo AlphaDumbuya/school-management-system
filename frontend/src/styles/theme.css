@@ -1,0 +1,286 @@
+/* Theme CSS Variables - Light Mode (Default) */
+:root {
+  /* Primary Colors */
+  --color-primary: #2563EB;
+  --color-secondary: #7C3AED;
+  
+  /* Background Colors */
+  --color-background: #FFFFFF;
+  --color-background-secondary: #F9FAFB;
+  
+  /* Text Colors */
+  --color-text: #111827;
+  --color-text-secondary: #6B7280;
+  
+  /* Border Colors */
+  --color-border: #E5E7EB;
+  --color-border-light: #F3F4F6;
+  
+  /* Semantic Colors */
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-info: #3B82F6;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  
+  /* Transitions */
+  --transition: all 0.2s ease-in-out;
+}
+
+/* Dark Mode */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-primary: #60A5FA;
+    --color-secondary: #A78BFA;
+    --color-background: #111827;
+    --color-background-secondary: #1F2937;
+    --color-text: #F3F4F6;
+    --color-text-secondary: #9CA3AF;
+    --color-border: #374151;
+    --color-border-light: #4B5563;
+    --color-success: #34D399;
+    --color-warning: #FBBF24;
+    --color-error: #F87171;
+    --color-info: #60A5FA;
+    
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* Explicit Dark Theme */
+[data-theme="dark"],
+.dark {
+  --color-primary: #60A5FA;
+  --color-secondary: #A78BFA;
+  --color-background: #111827;
+  --color-background-secondary: #1F2937;
+  --color-text: #F3F4F6;
+  --color-text-secondary: #9CA3AF;
+  --color-border: #374151;
+  --color-border-light: #4B5563;
+  --color-success: #34D399;
+  --color-warning: #FBBF24;
+  --color-error: #F87171;
+  --color-info: #60A5FA;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+}
+
+/* Explicit Light Theme */
+[data-theme="light"] {
+  --color-primary: #2563EB;
+  --color-secondary: #7C3AED;
+  --color-background: #FFFFFF;
+  --color-background-secondary: #F9FAFB;
+  --color-text: #111827;
+  --color-text-secondary: #6B7280;
+  --color-border: #E5E7EB;
+  --color-border-light: #F3F4F6;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-info: #3B82F6;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* Apply theme to common elements */
+html, body {
+  background-color: var(--color-background);
+  color: var(--color-text);
+  transition: var(--transition);
+}
+
+/* Smooth transitions for theme switching */
+* {
+  transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out, border-color 0.3s ease-in-out;
+}
+
+/* Utility classes for theme-aware styling */
+.bg-primary {
+  background-color: var(--color-primary);
+}
+
+.bg-secondary {
+  background-color: var(--color-secondary);
+}
+
+.text-primary {
+  color: var(--color-primary);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.border-theme {
+  border-color: var(--color-border);
+}
+
+.bg-success {
+  background-color: var(--color-success);
+}
+
+.text-success {
+  color: var(--color-success);
+}
+
+.bg-error {
+  background-color: var(--color-error);
+}
+
+.text-error {
+  color: var(--color-error);
+}
+
+.bg-warning {
+  background-color: var(--color-warning);
+}
+
+.text-warning {
+  color: var(--color-warning);
+}
+
+.bg-info {
+  background-color: var(--color-info);
+}
+
+.text-info {
+  color: var(--color-info);
+}
+
+/* Dark mode specific styles */
+@media (prefers-color-scheme: dark) {
+  /* Smooth scrollbar in dark mode */
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--color-background-secondary);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 5px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-secondary);
+  }
+}
+
+/* Input and form elements */
+input, textarea, select {
+  background-color: var(--color-background);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* Dark mode input focus */
+.dark input:focus, .dark textarea:focus, .dark select:focus {
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+}
+
+/* Cards and containers */
+.card {
+  background-color: var(--color-background);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+
+/* Buttons */
+.btn-primary {
+  background-color: var(--color-primary);
+  color: white;
+  transition: var(--transition);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+/* Links */
+a {
+  color: var(--color-primary);
+  transition: var(--transition);
+}
+
+a:hover {
+  opacity: 0.8;
+}
+
+/* Code blocks */
+code {
+  background-color: var(--color-background-secondary);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+/* Tables */
+table {
+  background-color: var(--color-background);
+  color: var(--color-text);
+}
+
+thead {
+  background-color: var(--color-background-secondary);
+  border-color: var(--color-border);
+}
+
+tbody tr {
+  border-color: var(--color-border);
+}
+
+tbody tr:hover {
+  background-color: var(--color-background-secondary);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-background-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-secondary);
+}
+
+/* Selection */
+::selection {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+::-moz-selection {
+  background-color: var(--color-primary);
+  color: white;
+}

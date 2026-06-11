@@ -2,10 +2,11 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { AuthService } from '@services/authService';
 import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
-import { authenticate } from '@middleware/authMiddleware';
+import { authenticate, authorize, rateLimitLogin, clearLoginAttempts } from '@middleware/authMiddleware';
 import { logger } from '@utils/logger';
 import knex from 'knex';
-import knexConfig from '../../../knexfile';
+import knexConfig from '../../knexfile';
+import { UserRole, UserStatus } from '@types/auth';
 
 const router = Router();
 const db = knex(knexConfig.development);
@@ -40,7 +41,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
       password,
       first_name,
       last_name,
-      role: role || 'student',
+      role: role || UserRole.STUDENT,
     });
 
     res.status(201).json({
@@ -62,7 +63,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
  * POST /api/v1/auth/login
  * Authenticate user with email and password
  */
-router.post('/login', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/login', rateLimitLogin, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, password } = req.body;
 
@@ -73,6 +74,9 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
 
     // Authenticate
     const result = await authService.login(email, password);
+
+    // Clear login attempts on successful login
+    clearLoginAttempts(email);
 
     // Set secure cookie for refresh token (optional)
     res.cookie('refreshToken', result.refresh_token, {
@@ -128,15 +132,17 @@ router.post('/refresh', async (req: Request, res: Response, next: NextFunction) 
  */
 router.post('/logout', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // In a production app, you might invalidate the refresh token in the database
-    // For now, we just clear the cookie
+    const userId = (req as any).auth.userId;
+
+    // Delete refresh tokens
+    await authService.logout(userId);
 
     res.clearCookie('refreshToken');
     res.json({
       message: 'Logged out successfully',
     });
 
-    logger.info(`User logged out: ${(req as any).user.email}`);
+    logger.info(`User logged out: ${userId}`);
   } catch (error) {
     next(error);
   }
@@ -152,7 +158,7 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { old_password, new_password } = req.body;
-      const userId = (req as any).user.id;
+      const userId = (req as any).auth.userId;
 
       if (!old_password || !new_password) {
         throw new AppError('Old and new password are required', 400, 'VALIDATION_ERROR');
@@ -172,32 +178,14 @@ router.post(
         );
       }
 
-      // Get user from database
-      const user = await db('users').where('id', userId).first();
-      if (!user) {
-        throw new AppError('User not found', 404, 'NOT_FOUND');
-      }
-
-      // Verify old password
-      const isPasswordValid = await PasswordService.comparePassword(old_password, user.password_hash);
-      if (!isPasswordValid) {
-        throw new AppError('Incorrect old password', 401, 'AUTHENTICATION_ERROR');
-      }
-
-      // Hash new password
-      const newPasswordHash = await PasswordService.hashPassword(new_password);
-
-      // Update password
-      await db('users').where('id', userId).update({
-        password_hash: newPasswordHash,
-        updated_at: new Date(),
-      });
+      // Change password through auth service
+      await authService.changePassword(userId, old_password, new_password);
 
       res.json({
         message: 'Password changed successfully',
       });
 
-      logger.info(`Password changed for user: ${user.email}`);
+      logger.info(`Password changed for user: ${userId}`);
     } catch (error) {
       next(error);
     }
@@ -216,23 +204,58 @@ router.post('/reset-password', async (req: Request, res: Response, next: NextFun
       throw new AppError('Email is required', 400, 'VALIDATION_ERROR');
     }
 
-    // Check if user exists
-    const user = await db('users').where('email', email).first();
-    if (!user) {
-      // Don't reveal if email exists (security best practice)
+    // Request password reset
+    const resetToken = await authService.requestPasswordReset(email);
+
+    // TODO: Send email with reset token via email service
+    // For development, return token in response
+    if (process.env.NODE_ENV !== 'production') {
+      res.json({
+        message: 'Password reset link sent to email',
+        reset_token: resetToken, // Only for development
+      });
+    } else {
       res.json({
         message: 'If an account exists for this email, a password reset link has been sent',
       });
-      return;
     }
 
-    // TODO: Generate reset token and send email
-    // For now, just acknowledge the request
+    logger.info(`Password reset requested for: ${email}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/auth/reset-password/confirm
+ * Confirm password reset with token
+ */
+router.post('/reset-password/confirm', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { reset_token, new_password } = req.body;
+
+    if (!reset_token || !new_password) {
+      throw new AppError('Reset token and new password are required', 400, 'VALIDATION_ERROR');
+    }
+
+    // Validate new password policy
+    const passwordValidation = PasswordService.validatePasswordPolicy(new_password);
+    if (!passwordValidation.valid) {
+      throw new AppError(
+        `Password does not meet requirements: ${passwordValidation.errors.join(', ')}`,
+        400,
+        'VALIDATION_ERROR'
+      );
+    }
+
+    // Reset password
+    await authService.resetPassword(reset_token, new_password);
+
     res.json({
-      message: 'If an account exists for this email, a password reset link has been sent',
+      message: 'Password reset successfully',
     });
 
-    logger.info(`Password reset requested for: ${email}`);
+    logger.info('Password reset completed');
   } catch (error) {
     next(error);
   }
@@ -244,7 +267,7 @@ router.post('/reset-password', async (req: Request, res: Response, next: NextFun
  */
 router.get('/me', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = (req as any).auth.userId;
 
     const user = await db('users')
       .select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'last_login', 'created_at')
@@ -256,6 +279,191 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
     }
 
     res.json(user);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/users
+ * Create a new user (admin only)
+ */
+router.post('/users', authenticate, authorize(UserRole.ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, password, first_name, last_name, role } = req.body;
+    const createdBy = (req as any).auth.userId;
+
+    // Validate input
+    if (!email || !password || !first_name || !last_name || !role) {
+      throw new AppError('Missing required fields: email, password, first_name, last_name, role', 400, 'VALIDATION_ERROR');
+    }
+
+    // Validate role
+    if (!Object.values(UserRole).includes(role)) {
+      throw new AppError(`Invalid role: ${role}`, 400, 'INVALID_ROLE');
+    }
+
+    // Create user
+    const user = await authService.createUser({
+      email,
+      password,
+      first_name,
+      last_name,
+      role,
+      createdBy,
+    });
+
+    res.status(201).json({
+      message: 'User created successfully',
+      user,
+    });
+
+    logger.info(`User created: ${email}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/users
+ * List all users (admin only)
+ */
+router.get('/users', authenticate, authorize(UserRole.ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { role, status, limit = 50, offset = 0 } = req.query;
+
+    const options: any = {
+      limit: Math.min(parseInt(limit as string) || 50, 100),
+      offset: parseInt(offset as string) || 0,
+    };
+
+    if (role && Object.values(UserRole).includes(role as UserRole)) {
+      options.role = role;
+    }
+
+    if (status && Object.values(UserStatus).includes(status as UserStatus)) {
+      options.status = status;
+    }
+
+    const result = await authService.listUsers(options);
+
+    res.json({
+      users: result.users,
+      total: result.total,
+      limit: options.limit,
+      offset: options.offset,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/users/:id
+ * Get user by ID (admin or user themselves)
+ */
+router.get('/users/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const currentUserId = (req as any).auth.userId;
+    const currentUserRole = (req as any).auth.role;
+
+    // Allow users to view their own profile, or admins to view anyone
+    if (id !== currentUserId && currentUserRole !== UserRole.ADMIN) {
+      throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
+    }
+
+    const user = await authService.getUserById(id);
+
+    res.json(user);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/v1/users/:id
+ * Update user (admin or user themselves)
+ */
+router.put('/users/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { first_name, last_name, email, role, status } = req.body;
+    const currentUserId = (req as any).auth.userId;
+    const currentUserRole = (req as any).auth.role;
+
+    // Allow users to update their own profile (except role and status), or admins to update anyone
+    if (id !== currentUserId && currentUserRole !== UserRole.ADMIN) {
+      throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
+    }
+
+    // Non-admins cannot change role or status
+    if (currentUserRole !== UserRole.ADMIN && (role !== undefined || status !== undefined)) {
+      throw new AppError('Only admins can modify role or status', 403, 'INSUFFICIENT_PERMISSIONS');
+    }
+
+    const updatePayload: any = {};
+    if (first_name !== undefined) updatePayload.first_name = first_name;
+    if (last_name !== undefined) updatePayload.last_name = last_name;
+    if (email !== undefined) updatePayload.email = email;
+    if (role !== undefined) updatePayload.role = role;
+    if (status !== undefined) updatePayload.status = status;
+
+    const user = await authService.updateUser(id, updatePayload, currentUserId);
+
+    res.json({
+      message: 'User updated successfully',
+      user,
+    });
+
+    logger.info(`User updated: ${id}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/v1/users/:id
+ * Deactivate user (admin only)
+ */
+router.delete('/users/:id', authenticate, authorize(UserRole.ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const deactivatedBy = (req as any).auth.userId;
+
+    // Prevent admin from deactivating themselves
+    if (id === deactivatedBy) {
+      throw new AppError('Cannot deactivate your own account', 400, 'CANNOT_DEACTIVATE_SELF');
+    }
+
+    await authService.deactivateUser(id, deactivatedBy);
+
+    res.json({
+      message: 'User deactivated successfully',
+    });
+
+    logger.info(`User deactivated: ${id}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/users/:id/reactivate
+ * Reactivate user (admin only)
+ */
+router.post('/users/:id/reactivate', authenticate, authorize(UserRole.ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const reactivatedBy = (req as any).auth.userId;
+
+    await authService.reactivateUser(id, reactivatedBy);
+
+    res.json({
+      message: 'User reactivated successfully',
+    });
+
+    logger.info(`User reactivated: ${id}`);
   } catch (error) {
     next(error);
   }

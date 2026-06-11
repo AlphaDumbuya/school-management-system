@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grade Notification</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        .content {
+            padding: 40px 20px;
+        }
+        .content h2 {
+            color: #f5576c;
+            font-size: 20px;
+            margin-top: 0;
+        }
+        .grades-box {
+            background-color: #ffe0e6;
+            border-left: 4px solid #f5576c;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .grade-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background-color: white;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #f5576c;
+        }
+        .subject-name {
+            font-weight: bold;
+            color: #333;
+        }
+        .grade-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #f5576c;
+        }
+        .grade-status {
+            font-size: 12px;
+            color: #999;
+        }
+        .button {
+            display: inline-block;
+            background-color: #f5576c;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .button:hover {
+            background-color: #d63447;
+        }
+        .performance-note {
+            background-color: #f0f8ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            color: #1565c0;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            border-top: 1px solid #eee;
+        }
+        .footer a {
+            color: #f5576c;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 New Grades Available!</h1>
+        </div>
+        
+        <div class="content">
+            <h2>Hello {{studentName}},</h2>
+            
+            <p>Your grades for {{subject}} have been posted by {{teacherName}}.</p>
+            
+            <div class="grades-box">
+                <h3 style="margin-top: 0; color: #f5576c;">Your Grade</h3>
+                <div class="grade-item">
+                    <div>
+                        <div class="subject-name">{{subject}}</div>
+                        <div class="grade-status">{{academicSession}}</div>
+                    </div>
+                    <div class="grade-value">{{grade}}</div>
+                </div>
+                <div style="padding: 10px 0; border-top: 1px solid #f5576c; margin-top: 10px;">
+                    <p style="margin: 5px 0;"><strong>Class Average:</strong> {{classAverage}}</p>
+                    <p style="margin: 5px 0;"><strong>Highest Score:</strong> {{highestScore}}</p>
+                </div>
+            </div>
+            
+            <div class="performance-note">
+                <strong>📊 Performance Note:</strong> {{performanceNote}}
+            </div>
+            
+            <p>Log in to your student portal to see all your grades and performance analytics.</p>
+            
+            <center>
+                <a href="{{portalUrl}}" class="button">View Full Report</a>
+            </center>
+        </div>
+        
+        <div class="footer">
+            <p>© 2024 School Management System. All rights reserved.<br>
+            <a href="{{supportUrl}}">Support</a> | <a href="{{privacyUrl}}">Privacy Policy</a></p>
+        </div>
+    </div>
+</body>
+</html>

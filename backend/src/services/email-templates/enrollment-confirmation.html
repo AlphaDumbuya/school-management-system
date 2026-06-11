@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enrollment Confirmation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        .content {
+            padding: 40px 20px;
+        }
+        .content h2 {
+            color: #11998e;
+            font-size: 20px;
+            margin-top: 0;
+        }
+        .details-box {
+            background-color: #f0f8f7;
+            border-left: 4px solid #11998e;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        .detail-label {
+            font-weight: bold;
+            color: #11998e;
+        }
+        .button {
+            display: inline-block;
+            background-color: #11998e;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .button:hover {
+            background-color: #0d6f68;
+        }
+        .success-message {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            color: #155724;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            border-top: 1px solid #eee;
+        }
+        .footer a {
+            color: #11998e;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>✅ Enrollment Confirmed!</h1>
+        </div>
+        
+        <div class="content">
+            <h2>Dear {{parentName}},</h2>
+            
+            <p>Congratulations! {{studentName}} has been successfully enrolled in {{schoolName}}.</p>
+            
+            <div class="success-message">
+                <strong>Your enrollment is confirmed!</strong> Your student is ready to begin classes.
+            </div>
+            
+            <h3 style="color: #11998e; margin-top: 30px;">📋 Enrollment Details</h3>
+            <div class="details-box">
+                <div class="detail-row">
+                    <span class="detail-label">Student Name:</span>
+                    <span>{{studentName}}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Class/Level:</span>
+                    <span>{{className}}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Roll Number:</span>
+                    <span>{{rollNumber}}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Academic Session:</span>
+                    <span>{{academicSession}}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Enrollment Date:</span>
+                    <span>{{enrollmentDate}}</span>
+                </div>
+            </div>
+            
+            <p><strong>Next Steps:</strong></p>
+            <ul>
+                <li>Log in to the student portal to view the class schedule</li>
+                <li>Review the school calendar and important dates</li>
+                <li>Complete any outstanding fees or documentation</li>
+            </ul>
+            
+            <center>
+                <a href="{{portalUrl}}" class="button">View Student Portal</a>
+            </center>
+        </div>
+        
+        <div class="footer">
+            <p>© 2024 School Management System. All rights reserved.<br>
+            <a href="{{supportUrl}}">Contact Support</a> | <a href="{{privacyUrl}}">Privacy Policy</a></p>
+        </div>
+    </div>
+</body>
+</html>

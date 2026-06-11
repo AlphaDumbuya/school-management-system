@@ -11,45 +11,66 @@ export class AuthService {
   /**
    * Register new user
    */
-  async register(
-    email: string,
-    password: string,
-    firstName: string,
-    lastName: string,
-    role: UserRole
-  ): Promise<UserResponse> {
+  async register(payload: {
+    email: string;
+    password: string;
+    first_name: string;
+    last_name: string;
+    role: UserRole;
+  }): Promise<{ user: UserResponse; access_token: string; refresh_token: string }> {
     try {
       // Check if user already exists
-      const existingUser = await this.db('users').where({ email }).first();
+      const existingUser = await this.db('users').where({ email: payload.email }).first();
       if (existingUser) {
         throw new AppError('User with this email already exists', 409, 'USER_EXISTS');
       }
 
       // Validate password policy
-      const passwordValidation = PasswordService.validatePasswordPolicy(password);
+      const passwordValidation = PasswordService.validatePasswordPolicy(payload.password);
       if (!passwordValidation.valid) {
         throw new AppError(passwordValidation.errors.join(', '), 400, 'INVALID_PASSWORD');
       }
 
       // Hash password
-      const hashedPassword = await PasswordService.hashPassword(password);
+      const hashedPassword = await PasswordService.hashPassword(payload.password);
 
       // Create user
       const [userId] = await this.db('users').insert({
-        email,
+        email: payload.email,
         password_hash: hashedPassword,
-        first_name: firstName,
-        last_name: lastName,
-        role,
+        first_name: payload.first_name,
+        last_name: payload.last_name,
+        role: payload.role,
         status: UserStatus.ACTIVE,
         created_at: new Date(),
         updated_at: new Date(),
       });
 
-      logger.info(`User registered: ${email} with role ${role}`);
+      logger.info(`User registered: ${payload.email} with role ${payload.role}`);
 
-      // Fetch and return user
-      return this.getUserById(userId);
+      // Generate tokens
+      const user = await this.getUserById(userId);
+      const access_token = JWTService.generateAccessToken({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      });
+
+      const refresh_token = JWTService.generateRefreshToken(user.id);
+
+      // Store refresh token
+      await this.db('refresh_tokens').insert({
+        user_id: user.id,
+        token: refresh_token,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        created_at: new Date(),
+      });
+
+      return {
+        user: this.mapUserToResponse(user),
+        access_token,
+        refresh_token,
+      };
     } catch (error) {
       if (error instanceof AppError) {
         throw error;
@@ -62,7 +83,7 @@ export class AuthService {
   /**
    * Login user
    */
-  async login(email: string, password: string): Promise<AuthResponse> {
+  async login(email: string, password: string): Promise<{ access_token: string; refresh_token: string; user: UserResponse }> {
     try {
       // Find user by email
       const user = await this.db('users').where({ email }).first();
@@ -100,15 +121,15 @@ export class AuthService {
 
       // Update last login
       await this.db('users').where({ id: user.id }).update({
-        last_login_at: new Date(),
+        last_login: new Date(),
         updated_at: new Date(),
       });
 
       logger.info(`User logged in: ${email}`);
 
       return {
-        accessToken,
-        refreshToken,
+        access_token: accessToken,
+        refresh_token: refreshToken,
         user: this.mapUserToResponse(user),
       };
     } catch (error) {
@@ -123,7 +144,7 @@ export class AuthService {
   /**
    * Refresh access token
    */
-  async refreshToken(refreshToken: string): Promise<{ accessToken: string }> {
+  async refreshToken(refreshToken: string): Promise<{ access_token: string }> {
     try {
       // Verify refresh token
       const decoded = JWTService.verifyRefreshToken(refreshToken);
@@ -157,7 +178,7 @@ export class AuthService {
 
       logger.info(`Access token refreshed for user: ${user.email}`);
 
-      return { accessToken };
+      return { access_token: accessToken };
     } catch (error) {
       if (error instanceof AppError) {
         throw error;
@@ -170,12 +191,11 @@ export class AuthService {
   /**
    * Logout user
    */
-  async logout(userId: string, refreshToken: string): Promise<void> {
+  async logout(userId: string): Promise<void> {
     try {
-      // Delete refresh token
+      // Delete all refresh tokens for this user
       await this.db('refresh_tokens').where({
         user_id: userId,
-        token: refreshToken,
       }).del();
 
       logger.info(`User logged out: ${userId}`);
@@ -342,5 +362,294 @@ export class AuthService {
       status: user.status,
       createdAt: user.created_at,
     };
+  }
+
+  /**
+   * Create user (admin function)
+   */
+  async createUser(payload: {
+    email: string;
+    password: string;
+    first_name: string;
+    last_name: string;
+    role: UserRole;
+    createdBy: string;
+  }): Promise<UserResponse> {
+    try {
+      // Check if user already exists
+      const existingUser = await this.db('users').where({ email: payload.email }).first();
+      if (existingUser) {
+        throw new AppError('User with this email already exists', 409, 'USER_EXISTS');
+      }
+
+      // Validate password policy
+      const passwordValidation = PasswordService.validatePasswordPolicy(payload.password);
+      if (!passwordValidation.valid) {
+        throw new AppError(passwordValidation.errors.join(', '), 400, 'INVALID_PASSWORD');
+      }
+
+      // Hash password
+      const hashedPassword = await PasswordService.hashPassword(payload.password);
+
+      // Create user
+      const [userId] = await this.db('users').insert({
+        email: payload.email,
+        password_hash: hashedPassword,
+        first_name: payload.first_name,
+        last_name: payload.last_name,
+        role: payload.role,
+        status: UserStatus.ACTIVE,
+        created_by: payload.createdBy,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+
+      // Log audit
+      await this.logAudit({
+        userId: payload.createdBy,
+        action: 'CREATE_USER',
+        entityType: 'users',
+        entityId: userId,
+        changes: { email: payload.email, role: payload.role },
+      });
+
+      logger.info(`User created: ${payload.email} with role ${payload.role}`);
+
+      const user = await this.getUserById(userId);
+      return this.mapUserToResponse(user);
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      logger.error('Error creating user', error);
+      throw new AppError('Failed to create user', 500, 'USER_CREATION_FAILED');
+    }
+  }
+
+  /**
+   * Update user profile
+   */
+  async updateUser(
+    userId: string,
+    payload: {
+      first_name?: string;
+      last_name?: string;
+      email?: string;
+      role?: UserRole;
+      status?: UserStatus;
+    },
+    updatedBy: string
+  ): Promise<UserResponse> {
+    try {
+      const user = await this.getUserById(userId);
+
+      // Check if email is being changed to an existing email
+      if (payload.email && payload.email !== user.email) {
+        const existingUser = await this.db('users').where({ email: payload.email }).first();
+        if (existingUser) {
+          throw new AppError('Email is already in use', 409, 'EMAIL_IN_USE');
+        }
+      }
+
+      const updates: any = {};
+      const changes: any = {};
+
+      if (payload.first_name !== undefined) {
+        updates.first_name = payload.first_name;
+        changes.first_name = [user.first_name, payload.first_name];
+      }
+      if (payload.last_name !== undefined) {
+        updates.last_name = payload.last_name;
+        changes.last_name = [user.last_name, payload.last_name];
+      }
+      if (payload.email !== undefined) {
+        updates.email = payload.email;
+        changes.email = [user.email, payload.email];
+      }
+      if (payload.role !== undefined) {
+        updates.role = payload.role;
+        changes.role = [user.role, payload.role];
+      }
+      if (payload.status !== undefined) {
+        updates.status = payload.status;
+        changes.status = [user.status, payload.status];
+      }
+
+      updates.updated_at = new Date();
+      updates.updated_by = updatedBy;
+
+      await this.db('users').where({ id: userId }).update(updates);
+
+      // Log audit
+      await this.logAudit({
+        userId: updatedBy,
+        action: 'UPDATE_USER',
+        entityType: 'users',
+        entityId: userId,
+        changes,
+      });
+
+      logger.info(`User updated: ${userId}`);
+
+      const updatedUser = await this.getUserById(userId);
+      return this.mapUserToResponse(updatedUser);
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      logger.error('Error updating user', error);
+      throw new AppError('Failed to update user', 500, 'USER_UPDATE_FAILED');
+    }
+  }
+
+  /**
+   * Deactivate user (soft delete)
+   */
+  async deactivateUser(userId: string, deactivatedBy: string): Promise<void> {
+    try {
+      const user = await this.getUserById(userId);
+
+      if (user.status === UserStatus.INACTIVE) {
+        throw new AppError('User is already inactive', 400, 'USER_ALREADY_INACTIVE');
+      }
+
+      await this.db('users').where({ id: userId }).update({
+        status: UserStatus.INACTIVE,
+        updated_at: new Date(),
+        updated_by: deactivatedBy,
+      });
+
+      // Log audit
+      await this.logAudit({
+        userId: deactivatedBy,
+        action: 'DEACTIVATE_USER',
+        entityType: 'users',
+        entityId: userId,
+        changes: { status: [user.status, UserStatus.INACTIVE] },
+      });
+
+      // Delete refresh tokens
+      await this.db('refresh_tokens').where({ user_id: userId }).del();
+
+      logger.info(`User deactivated: ${userId}`);
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      logger.error('Error deactivating user', error);
+      throw new AppError('Failed to deactivate user', 500, 'USER_DEACTIVATION_FAILED');
+    }
+  }
+
+  /**
+   * Reactivate user
+   */
+  async reactivateUser(userId: string, reactivatedBy: string): Promise<void> {
+    try {
+      const user = await this.getUserById(userId);
+
+      if (user.status === UserStatus.ACTIVE) {
+        throw new AppError('User is already active', 400, 'USER_ALREADY_ACTIVE');
+      }
+
+      await this.db('users').where({ id: userId }).update({
+        status: UserStatus.ACTIVE,
+        updated_at: new Date(),
+        updated_by: reactivatedBy,
+      });
+
+      // Log audit
+      await this.logAudit({
+        userId: reactivatedBy,
+        action: 'REACTIVATE_USER',
+        entityType: 'users',
+        entityId: userId,
+        changes: { status: [user.status, UserStatus.ACTIVE] },
+      });
+
+      logger.info(`User reactivated: ${userId}`);
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      logger.error('Error reactivating user', error);
+      throw new AppError('Failed to reactivate user', 500, 'USER_REACTIVATION_FAILED');
+    }
+  }
+
+  /**
+   * List users with filtering
+   */
+  async listUsers(options: {
+    role?: UserRole;
+    status?: UserStatus;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ users: UserResponse[]; total: number }> {
+    try {
+      let query = this.db('users');
+
+      if (options.role) {
+        query = query.where('role', options.role);
+      }
+
+      if (options.status) {
+        query = query.where('status', options.status);
+      }
+
+      const total = await query.clone().count('* as count').first();
+      const users = await query
+        .orderBy('created_at', 'desc')
+        .limit(options.limit || 50)
+        .offset(options.offset || 0);
+
+      return {
+        users: users.map((u) => this.mapUserToResponse(u)),
+        total: total?.count || 0,
+      };
+    } catch (error) {
+      logger.error('Error listing users', error);
+      throw new AppError('Failed to list users', 500, 'USER_LIST_FAILED');
+    }
+  }
+
+  /**
+   * Get user by email
+   */
+  async getUserByEmail(email: string): Promise<UserResponse | null> {
+    try {
+      const user = await this.db('users').where({ email }).first();
+      if (!user) {
+        return null;
+      }
+      return this.mapUserToResponse(user);
+    } catch (error) {
+      logger.error('Error fetching user by email', error);
+      throw new AppError('Failed to fetch user', 500, 'FETCH_USER_FAILED');
+    }
+  }
+
+  /**
+   * Log audit event
+   */
+  private async logAudit(payload: {
+    userId: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    changes?: any;
+  }): Promise<void> {
+    try {
+      await this.db('audit_logs').insert({
+        user_id: payload.userId,
+        action: payload.action,
+        entity_type: payload.entityType,
+        entity_id: payload.entityId,
+        changes: payload.changes ? JSON.stringify(payload.changes) : null,
+        created_at: new Date(),
+      });
+    } catch (error) {
+      logger.warn('Failed to log audit event', error);
+    }
   }
 }

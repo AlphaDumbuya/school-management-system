@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admission Letter</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .letterhead {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        .letterhead h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .letterhead p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        .content {
+            padding: 40px 20px;
+        }
+        .date {
+            font-size: 14px;
+            color: #999;
+            margin-bottom: 20px;
+        }
+        .salutation {
+            margin: 20px 0;
+        }
+        .salutation h2 {
+            color: #1e3a8a;
+            font-size: 18px;
+            margin: 0;
+        }
+        .body-text {
+            line-height: 1.8;
+            margin: 20px 0;
+            text-align: justify;
+        }
+        .details-box {
+            background-color: #eff6ff;
+            border-left: 4px solid #1e3a8a;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #bfdbfe;
+        }
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        .detail-label {
+            font-weight: bold;
+            color: #1e3a8a;
+        }
+        .congratulations {
+            background-color: #d1fae5;
+            border-left: 4px solid #10b981;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+            color: #065f46;
+            font-weight: bold;
+            text-align: center;
+        }
+        .next-steps {
+            background-color: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+            color: #92400e;
+        }
+        .next-steps h4 {
+            margin-top: 0;
+            color: #b45309;
+        }
+        .button {
+            display: inline-block;
+            background-color: #1e3a8a;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .button:hover {
+            background-color: #1e40af;
+        }
+        .signature {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+        }
+        .signature-name {
+            font-weight: bold;
+            margin-top: 40px;
+        }
+        .signature-title {
+            font-size: 12px;
+            color: #666;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            border-top: 1px solid #eee;
+        }
+        .footer a {
+            color: #1e3a8a;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="letterhead">
+            <h1>{{schoolName}}</h1>
+            <p>{{schoolAddress}}</p>
+            <p>{{schoolPhone}} | {{schoolEmail}}</p>
+        </div>
+        
+        <div class="content">
+            <div class="date">{{letterDate}}</div>
+            
+            <div class="salutation">
+                <h2>Dear {{parentName}},</h2>
+            </div>
+            
+            <div class="congratulations">
+                🎉 CONGRATULATIONS! YOUR SON/DAUGHTER HAS BEEN ADMITTED! 🎉
+            </div>
+            
+            <div class="body-text">
+                <p>We are pleased to inform you that {{studentName}} has been successfully selected for admission to {{schoolName}} for the {{academicSession}} academic session.</p>
+                
+                <p>This is a wonderful achievement and we look forward to welcoming {{studentName}} to our school community. We are confident that {{heshe}} will thrive in our supportive and nurturing environment.</p>
+            </div>
+            
+            <h3 style="color: #1e3a8a;">📋 Admission Details</h3>
+            <div class="details-box">
+                <div class="detail-row">
+                    <span class="detail-label">Student Name:</span>
+                    <span>{{studentName}}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Class/Level:</span>
+                    <span>{{className}}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Academic Session:</span>
+                    <span>{{academicSession}}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Admission Number:</span>
+                    <span>{{admissionNumber}}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">First Day of School:</span>
+                    <span>{{firstDayOfSchool}}</span>
+                </div>
+            </div>
+            
+            <div class="next-steps">
+                <h4>📌 Next Steps:</h4>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>Complete registration and submit required documents</li>
+                    <li>Submit proof of immunization</li>
+                    <li>Pay enrollment fees (details attached)</li>
+                    <li>Attend orientation meeting on {{orientationDate}}</li>
+                    <li>Purchase school supplies and uniform</li>
+                </ul>
+            </div>
+            
+            <p>For any questions or clarifications, please don't hesitate to contact the school office.</p>
+            
+            <center>
+                <a href="{{admissionPackageUrl}}" class="button">Download Admission Package</a>
+            </center>
+            
+            <p style="margin-top: 30px;">We wish {{studentName}} an exciting and successful year ahead at {{schoolName}}!</p>
+            
+            <div class="signature">
+                <p>Yours sincerely,</p>
+                <div style="margin-top: 20px; height: 40px;">
+                    <!-- Signature space -->
+                </div>
+                <div class="signature-name">{{principalName}}</div>
+                <div class="signature-title">Principal</div>
+                <div class="signature-title">{{schoolName}}</div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>© 2024 School Management System. All rights reserved.<br>
+            <a href="{{supportUrl}}">Contact Support</a> | <a href="{{privacyUrl}}">Privacy Policy</a></p>
+        </div>
+    </div>
+</body>
+</html>

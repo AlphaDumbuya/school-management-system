@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sms-config
+  namespace: school-management
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  PORT: "3000"
+  JWT_EXPIRATION: "24h"
+  DATABASE_POOL_MIN: "5"
+  DATABASE_POOL_MAX: "20"
+  REDIS_MAX_RETRIES: "3"
+  API_RATE_LIMIT: "100"
+  API_RATE_LIMIT_WINDOW: "15m"
+  SESSION_TIMEOUT: "30m"
+  MAX_REQUEST_SIZE: "10mb"
+  CORS_ORIGIN: "https://school-management.example.com"
+  ENABLE_METRICS: "true"
+  ENABLE_TRACING: "true"

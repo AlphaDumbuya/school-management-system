@@ -6,8 +6,32 @@ import dotenv from 'dotenv';
 import { logger } from '@utils/logger';
 import { errorHandler } from '@middleware/errorHandler';
 import { requestLogger } from '@middleware/requestLogger';
+import { db } from '@utils/database';
 import authRoutes from '@routes/authRoutes';
 import userRoutes from '@routes/userRoutes';
+import rbacRoutes from '@routes/rbacRoutes';
+import studentRoutes from '@routes/studentRoutes';
+import guardianRoutes from '@routes/guardianRoutes';
+import classRoutes from '@routes/classRoutes';
+import subjectRoutes from '@routes/subjectRoutes';
+import enrollmentRoutes from '@routes/enrollmentRoutes';
+import enrollmentWorkflowRoutes from '@routes/enrollmentWorkflowRoutes';
+import gradeRoutes from '@routes/gradeRoutes';
+import phase5GradeRoutes from '@routes/phase5GradeRoutes';
+import attendanceRoutes from '@routes/attendanceRoutes';
+import phase5AttendanceRoutes from '@routes/phase5AttendanceRoutes';
+import phase6ScheduleRoutes from '@routes/phase6ScheduleRoutes';
+import phase7ReportingRoutes from '@routes/phase7ReportingRoutes';
+import phase8FinancialRoutes from '@routes/phase8FinancialRoutes';
+import phase9NotificationRoutes from '@routes/phase9NotificationRoutes';
+import phase10DashboardRoutes from '@routes/phase10DashboardRoutes';
+import phase12ExportRoutes from '@routes/phase12ExportRoutes';
+import phase18AuditComplianceRoutes from '@routes/phase18AuditComplianceRoutes';
+import phase19IntegrationRoutes from '@routes/phase19IntegrationRoutes';
+import phase20PerformanceRoutes from '@routes/phase20PerformanceRoutes';
+import phase21HelpSupportRoutes from '@routes/phase21HelpSupportRoutes';
+import phase22SerializationRoutes from '@routes/phase22SerializationRoutes';
+import phase25ExternalServicesRoutes from '@routes/phase25ExternalServicesRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -48,6 +72,75 @@ app.use('/api/v1/auth', authRoutes);
 
 // User Management Routes
 app.use('/api/v1/users', userRoutes);
+
+// RBAC Routes
+app.use('/api/v1/roles', rbacRoutes);
+
+// Student Routes
+app.use('/api/v1/students', studentRoutes);
+
+// Guardian Routes
+app.use('/api/v1/guardians', guardianRoutes);
+
+// Class Routes
+app.use('/api/v1/classes', classRoutes);
+
+// Subject Routes
+app.use('/api/v1/subjects', subjectRoutes);
+
+// Enrollment Routes
+app.use('/api/v1/enrollments', enrollmentRoutes);
+
+// Enrollment Workflow Routes (Phase 4)
+app.use('/api/v1', enrollmentWorkflowRoutes);
+
+// Grade Routes (Phase 3 pre-built)
+app.use('/api/v1/grades', gradeRoutes);
+
+// Grade Routes (Phase 5 - Complete Implementation)
+app.use('/api/v1/grades', phase5GradeRoutes);
+
+// Attendance Routes (Phase 3 pre-built)
+app.use('/api/v1/attendance', attendanceRoutes);
+
+// Attendance Routes (Phase 5 - Complete Implementation)
+app.use('/api/v1/attendance', phase5AttendanceRoutes);
+
+// Schedule Routes (Phase 6)
+app.use('/api/v1/schedules', phase6ScheduleRoutes);
+
+// Reporting & Analytics Routes (Phase 7)
+app.use('/api/v1', phase7ReportingRoutes);
+
+// Financial Management Routes (Phase 8)
+app.use('/api/v1', phase8FinancialRoutes);
+
+// Notification System Routes (Phase 9)
+app.use('/api/v1', phase9NotificationRoutes);
+
+// Admin Dashboard Routes (Phase 10)
+app.use('/api/v1', phase10DashboardRoutes);
+
+// Export Routes (Phase 12)
+app.use('/api/v1', phase12ExportRoutes);
+
+// Audit & Compliance Routes (Phase 18)
+phase18AuditComplianceRoutes(app, db);
+
+// Integration Routes (Phase 19)
+phase19IntegrationRoutes(app, db);
+
+// Performance & Mobile Routes (Phase 20)
+phase20PerformanceRoutes(app, db);
+
+// Help & Support Routes (Phase 21)
+phase21HelpSupportRoutes(app, db);
+
+// Data Serialization & Parsing Routes (Phase 22)
+phase22SerializationRoutes(app, db);
+
+// External Services Integration Routes (Phase 25)
+app.use('/api/v1', phase25ExternalServicesRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

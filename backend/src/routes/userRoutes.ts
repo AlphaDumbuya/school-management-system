@@ -4,7 +4,7 @@ import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import knex from 'knex';
-import knexConfig from '../../../knexfile';
+import knexConfig from '../../knexfile';
 
 const router = Router();
 const db = knex(knexConfig.development);
@@ -13,7 +13,7 @@ const db = knex(knexConfig.development);
  * POST /api/v1/users
  * Create a new user (admin only)
  */
-router.post('/', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, authorize('admin'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, first_name, last_name, role, status } = req.body;
     const createdBy = (req as any).user.id;
