@@ -27,7 +27,7 @@ export async function seed(knex: Knex): Promise<void> {
   await knex('users').del();
 
   // Hash password for demo users
-  const hashedPassword = await bcryptjs.hash('Demo@123456', 10);
+  const hashedPassword = await bcryptjs.hash('password123', 10);
 
   // ===== TENANT SETUP =====
   // Create a default tenant first (required for academic_sessions)

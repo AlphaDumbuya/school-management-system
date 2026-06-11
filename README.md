@@ -24,7 +24,7 @@ npm run db:seed     # Populate demo data
 npm run dev         # Start application
 
 # 4. Open http://localhost:3000 (backend) or http://localhost:5173 (frontend) and login:
-# Email: admin@school.com | Password: Demo@123456
+# Email: admin@school.com | Password: password123
 ```
 
 ## 📋 What You Have
@@ -140,7 +140,7 @@ After `npm run dev`:
 
 **Login credentials:**
 - Email: `admin@school.com`
-- Password: `Demo@123456`
+- Password: `password123`
 
 ## 📊 Features Overview
 
