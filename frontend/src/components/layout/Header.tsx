@@ -6,8 +6,8 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, User, Settings } from 'react-icons/fa';
-import { FaBell, FaRightFromBracket, FaChevronRight } from 'react-icons/fa6';
+import { FaBars, FaUser, FaCog } from 'react-icons/fa';
+import { FaBell, FaRightFromBracket } from 'react-icons/fa6';
 import useAuth from '@hooks/useAuth';
 import clsx from 'clsx';
 
@@ -47,7 +47,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
               className="text-gray-600 hover:text-gray-900 p-2 rounded-lg hover:bg-gray-100"
               title="Toggle sidebar"
             >
-              <Menu className="w-6 h-6" />
+              <FaBars className="w-6 h-6" />
             </button>
           )}
           <h1 className="text-xl font-bold text-gray-900">
@@ -108,13 +108,13 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
                     onClick={handleProfile}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
                   >
-                    <User className="w-4 h-4" /> Profile
+                    <FaUser className="w-4 h-4" /> Profile
                   </button>
                   <button
                     onClick={handleSettings}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
                   >
-                    <Settings className="w-4 h-4" /> Settings
+                    <FaCog className="w-4 h-4" /> Settings
                   </button>
                   <div className="border-t border-gray-200 my-1" />
                   <button
