@@ -14,9 +14,9 @@ import {
   DollarSign,
   Clock,
   Settings,
-  LogOut,
   ChevronRight,
 } from 'react-icons/fa';
+import { FaRightFromBracket } from 'react-icons/fa6';
 import useAuth from '@hooks/useAuth';
 import clsx from 'clsx';
 
@@ -164,7 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               onClick={handleLogout}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-900 hover:bg-opacity-20 transition-colors duration-200"
             >
-              <LogOut className="w-5 h-5" />
+              <FaRightFromBracket className="w-5 h-5" />
               <span className="text-sm font-medium">Logout</span>
             </button>
           </div>
