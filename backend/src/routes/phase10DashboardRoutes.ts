@@ -521,4 +521,48 @@ router.get('/dashboards/admissions/overview', authenticate, async (req: Request,
   }
 });
 
+/**
+ * GET /api/v1/dashboards/admin/complete
+ * Get complete admin dashboard with all data
+ * Combines metrics, alerts, financial summary, charts, and system health
+ */
+router.get('/dashboards/admin/complete', authenticate, async (req: Request, res: Response) => {
+  try {
+    // Get all dashboard data in parallel
+    const metrics = await dashboardService.getAdminDashboardMetrics();
+    const alerts = await dashboardService.getDashboardAlerts();
+    const financialSummary = await dashboardService.getFinancialSummary();
+    const atRiskStudents = await dashboardService.getStudentsAtRisk(10);
+    const systemHealth = await dashboardService.getSystemHealth();
+    const academicPerformanceChart = await dashboardService.getAcademicPerformanceChart();
+    const attendanceTrendChart = await dashboardService.getAttendanceTrendChart();
+    const feeCollectionChart = await dashboardService.getFeeCollectionChart();
+    const studentDistributionChart = await dashboardService.getStudentDistributionChart();
+
+    res.json({
+      success: true,
+      data: {
+        metrics,
+        alerts,
+        financialSummary,
+        atRiskStudents,
+        systemHealth,
+        charts: {
+          academicPerformance: academicPerformanceChart,
+          attendanceTrend: attendanceTrendChart,
+          feeCollection: feeCollectionChart,
+          studentDistribution: studentDistributionChart,
+        },
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error(`Error fetching complete dashboard: ${error}`);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch complete dashboard',
+    });
+  }
+});
+
 export default router;

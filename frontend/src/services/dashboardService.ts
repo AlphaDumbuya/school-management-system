@@ -6,8 +6,11 @@ class DashboardService {
    * Get complete admin dashboard with all data
    */
   async getCompleteDashboard(): Promise<CompleteDashboard> {
-    const response = await apiClient.get('/dashboards/admin/complete');
-    return response.data;
+    const response = await apiClient.get<CompleteDashboard>('/dashboards/admin/complete');
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.error || 'Failed to load dashboard');
   }
 
   /**

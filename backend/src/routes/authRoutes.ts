@@ -87,11 +87,14 @@ router.post('/login', rateLimitLogin, async (req: Request, res: Response, next: 
     });
 
     res.json({
-      access_token: result.access_token,
-      refresh_token: result.refresh_token,
-      expires_in: 1800, // 30 minutes
-      token_type: 'Bearer',
-      user: result.user,
+      success: true,
+      data: {
+        accessToken: result.access_token,
+        refreshToken: result.refresh_token,
+        expiresIn: 1800, // 30 minutes
+        tokenType: 'Bearer',
+        user: result.user,
+      },
     });
 
     logger.info(`User logged in: ${email}`);
