@@ -56,35 +56,40 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     setIsLoading(true);
 
     try {
-      // Check if we have stored tokens
+      // Check if we have stored tokens and user data
       const token = authService.getAccessToken();
+      const storedUser = authService.getCurrentUser();
+      
       if (!token) {
         set({ isAuthenticated: false });
         setIsLoading(false);
         return;
       }
 
-      // Fetch current user from server
-      const response = await authService.fetchMe();
-      if (response.success && response.data) {
+      // If we have both token and user, restore the session
+      if (storedUser && token) {
         set({
-          user: response.data,
+          user: storedUser,
           isAuthenticated: true,
           accessToken: token,
           error: null,
         });
-      } else {
-        // Token might be invalid, try to refresh
-        const refreshed = await get().refreshTokens();
-        if (!refreshed) {
-          authService.clearAuthData();
-          set({ isAuthenticated: false, user: null, accessToken: null });
+
+        // Try to refresh user data from server in the background
+        // but don't block if it fails
+        try {
+          const response = await authService.fetchMe();
+          if (response.success && response.data) {
+            set({ user: response.data });
+          }
+        } catch (error) {
+          // User data refresh failed, but keep the session
+          console.warn('Could not refresh user data:', error);
         }
       }
     } catch (error) {
       console.error('Auth initialization error:', error);
-      authService.clearAuthData();
-      set({ isAuthenticated: false, user: null, accessToken: null });
+      // Don't clear auth data on error, just log it
     } finally {
       setIsLoading(false);
     }
