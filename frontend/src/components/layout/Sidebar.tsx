@@ -7,14 +7,14 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  Users,
-  BookOpen,
-  BarChart3,
-  DollarSign,
-  Clock,
-  Settings,
-  ChevronRight,
+  FaHome,
+  FaUsers,
+  FaBook,
+  FaChartBar,
+  FaMoneyBill,
+  FaCalendar,
+  FaCog,
+  FaChevronRight,
 } from 'react-icons/fa';
 import { FaRightFromBracket } from 'react-icons/fa6';
 import useAuth from '@hooks/useAuth';
@@ -36,37 +36,37 @@ interface SidebarProps {
 const navItems: NavItem[] = [
   {
     label: 'Dashboard',
-    icon: <LayoutDashboard className="w-5 h-5" />,
+    icon: <FaHome className="w-5 h-5" />,
     path: '/dashboard',
     roles: ['admin', 'principal', 'teacher', 'student', 'parent', 'guardian', 'accountant', 'admissionsOfficer'],
   },
   {
     label: 'Students',
-    icon: <Users className="w-5 h-5" />,
+    icon: <FaUsers className="w-5 h-5" />,
     path: '/students',
     roles: ['admin', 'principal', 'teacher', 'admissionsOfficer'],
   },
   {
     label: 'Classes',
-    icon: <BookOpen className="w-5 h-5" />,
+    icon: <FaBook className="w-5 h-5" />,
     path: '/classes',
     roles: ['admin', 'principal', 'teacher'],
   },
   {
     label: 'Grades',
-    icon: <BarChart3 className="w-5 h-5" />,
+    icon: <FaChartBar className="w-5 h-5" />,
     path: '/grades',
     roles: ['admin', 'principal', 'teacher', 'student'],
   },
   {
     label: 'Finance',
-    icon: <DollarSign className="w-5 h-5" />,
+    icon: <FaMoneyBill className="w-5 h-5" />,
     path: '/finance',
     roles: ['admin', 'principal', 'accountant'],
   },
   {
     label: 'Attendance',
-    icon: <Clock className="w-5 h-5" />,
+    icon: <FaCalendar className="w-5 h-5" />,
     path: '/attendance',
     roles: ['admin', 'principal', 'teacher', 'student'],
   },
@@ -145,7 +145,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                       {item.badge}
                     </span>
                   )}
-                  {isActive && <ChevronRight className="w-4 h-4" />}
+                  {isActive && <FaChevronRight className="w-4 h-4" />}
                 </button>
               );
             })}
@@ -157,7 +157,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               onClick={() => handleNavigation('/settings')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors duration-200"
             >
-              <Settings className="w-5 h-5" />
+              <FaCog className="w-5 h-5" />
               <span className="text-sm font-medium">Settings</span>
             </button>
             <button
