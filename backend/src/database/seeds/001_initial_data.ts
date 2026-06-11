@@ -29,6 +29,23 @@ export async function seed(knex: Knex): Promise<void> {
   // Hash password for demo users
   const hashedPassword = await bcryptjs.hash('Demo@123456', 10);
 
+  // ===== TENANT SETUP =====
+  // Create a default tenant first (required for academic_sessions)
+  // Check if tenant already exists
+  let tenant = await knex('tenants').where({ slug: 'demo-school' }).first();
+  
+  if (!tenant) {
+    const newTenant = await knex('tenants').insert({
+      name: 'Demo School',
+      slug: 'demo-school',
+      domain: 'demo.school.local',
+      status: 'active',
+    }).returning('*');
+    tenant = newTenant[0];
+  }
+
+  const tenantId = tenant.id;
+
   // ===== RBAC SETUP =====
 
   // Create predefined permissions
@@ -231,12 +248,14 @@ export async function seed(knex: Knex): Promise<void> {
   // Insert academic sessions
   const sessions = await knex('academic_sessions').insert([
     {
+      tenant_id: tenantId,
       name: '2024-2025',
       start_date: '2024-04-01',
       end_date: '2025-03-31',
       is_active: true,
     },
     {
+      tenant_id: tenantId,
       name: '2023-2024',
       start_date: '2023-04-01',
       end_date: '2024-03-31',
@@ -246,6 +265,7 @@ export async function seed(knex: Knex): Promise<void> {
 
   // Insert admin user
   const adminUser = await knex('users').insert({
+    tenant_id: tenantId,
     email: 'admin@school.com',
     password_hash: hashedPassword,
     first_name: 'Admin',
@@ -256,6 +276,7 @@ export async function seed(knex: Knex): Promise<void> {
 
   // Insert principal user
   const principalUser = await knex('users').insert({
+    tenant_id: tenantId,
     email: 'principal@school.com',
     password_hash: hashedPassword,
     first_name: 'Principal',
@@ -267,6 +288,7 @@ export async function seed(knex: Knex): Promise<void> {
   // Insert teacher users
   const teacherUsers = await knex('users').insert([
     {
+      tenant_id: tenantId,
       email: 'teacher1@school.com',
       password_hash: hashedPassword,
       first_name: 'John',
@@ -275,6 +297,7 @@ export async function seed(knex: Knex): Promise<void> {
       status: 'active',
     },
     {
+      tenant_id: tenantId,
       email: 'teacher2@school.com',
       password_hash: hashedPassword,
       first_name: 'Jane',
@@ -287,6 +310,7 @@ export async function seed(knex: Knex): Promise<void> {
   // Insert student users
   const studentUsers = await knex('users').insert([
     {
+      tenant_id: tenantId,
       email: 'student1@school.com',
       password_hash: hashedPassword,
       first_name: 'Alice',
@@ -295,6 +319,7 @@ export async function seed(knex: Knex): Promise<void> {
       status: 'active',
     },
     {
+      tenant_id: tenantId,
       email: 'student2@school.com',
       password_hash: hashedPassword,
       first_name: 'Bob',
@@ -306,6 +331,7 @@ export async function seed(knex: Knex): Promise<void> {
 
   // Insert parent user
   const parentUser = await knex('users').insert({
+    tenant_id: tenantId,
     email: 'parent@school.com',
     password_hash: hashedPassword,
     first_name: 'Parent',
@@ -316,6 +342,7 @@ export async function seed(knex: Knex): Promise<void> {
 
   // Insert accountant user
   const accountantUser = await knex('users').insert({
+    tenant_id: tenantId,
     email: 'accountant@school.com',
     password_hash: hashedPassword,
     first_name: 'Accountant',
@@ -326,6 +353,7 @@ export async function seed(knex: Knex): Promise<void> {
 
   // Insert admissions officer user
   const admissionsUser = await knex('users').insert({
+    tenant_id: tenantId,
     email: 'admissions@school.com',
     password_hash: hashedPassword,
     first_name: 'Admissions',
