@@ -1,8 +1,11 @@
-import { Knex } from 'knex';
+import type { Knex } from 'knex';
 import bcryptjs from 'bcryptjs';
 
 export async function seed(knex: Knex): Promise<void> {
-  // Delete existing entries
+  // Delete existing entries in correct order (foreign keys first)
+  await knex('role_permissions').del();
+  await knex('permissions').del();
+  await knex('roles').del();
   await knex('notifications').del();
   await knex('audit_logs').del();
   await knex('payments').del();
@@ -19,10 +22,211 @@ export async function seed(knex: Knex): Promise<void> {
   await knex('teachers').del();
   await knex('students').del();
   await knex('academic_sessions').del();
+  await knex('refresh_tokens').del();
+  await knex('password_resets').del();
   await knex('users').del();
 
   // Hash password for demo users
   const hashedPassword = await bcryptjs.hash('Demo@123456', 10);
+
+  // ===== RBAC SETUP =====
+
+  // Create predefined permissions
+  const permissions = await knex('permissions').insert([
+    // User management
+    { name: 'user:create', resource: 'users', action: 'create' },
+    { name: 'user:read', resource: 'users', action: 'read' },
+    { name: 'user:update', resource: 'users', action: 'update' },
+    { name: 'user:delete', resource: 'users', action: 'delete' },
+
+    // Student management
+    { name: 'student:create', resource: 'students', action: 'create' },
+    { name: 'student:read', resource: 'students', action: 'read' },
+    { name: 'student:update', resource: 'students', action: 'update' },
+    { name: 'student:delete', resource: 'students', action: 'delete' },
+
+    // Grade management
+    { name: 'grade:create', resource: 'grades', action: 'create' },
+    { name: 'grade:read', resource: 'grades', action: 'read' },
+    { name: 'grade:update', resource: 'grades', action: 'update' },
+    { name: 'grade:delete', resource: 'grades', action: 'delete' },
+
+    // Attendance management
+    { name: 'attendance:create', resource: 'attendance', action: 'create' },
+    { name: 'attendance:read', resource: 'attendance', action: 'read' },
+    { name: 'attendance:update', resource: 'attendance', action: 'update' },
+    { name: 'attendance:delete', resource: 'attendance', action: 'delete' },
+
+    // Class management
+    { name: 'class:create', resource: 'classes', action: 'create' },
+    { name: 'class:read', resource: 'classes', action: 'read' },
+    { name: 'class:update', resource: 'classes', action: 'update' },
+    { name: 'class:delete', resource: 'classes', action: 'delete' },
+
+    // Fee management
+    { name: 'fee:create', resource: 'fees', action: 'create' },
+    { name: 'fee:read', resource: 'fees', action: 'read' },
+    { name: 'fee:update', resource: 'fees', action: 'update' },
+    { name: 'fee:delete', resource: 'fees', action: 'delete' },
+    { name: 'payment:create', resource: 'payments', action: 'create' },
+    { name: 'payment:read', resource: 'payments', action: 'read' },
+
+    // Report management
+    { name: 'report:create', resource: 'reports', action: 'create' },
+    { name: 'report:read', resource: 'reports', action: 'read' },
+
+    // RBAC management
+    { name: 'role:create', resource: 'roles', action: 'create' },
+    { name: 'role:read', resource: 'roles', action: 'read' },
+    { name: 'role:update', resource: 'roles', action: 'update' },
+    { name: 'role:delete', resource: 'roles', action: 'delete' },
+    { name: 'permission:read', resource: 'permissions', action: 'read' },
+  ]).returning('*');
+
+  // Create permission map for easier reference
+  const permMap: { [key: string]: string } = {};
+  permissions.forEach((p: any) => {
+    permMap[p.name] = p.id;
+  });
+
+  // Create predefined roles
+  const roles = await knex('roles').insert([
+    {
+      name: 'admin',
+      description: 'System Administrator - Full access to all features',
+      is_predefined: true,
+    },
+    {
+      name: 'principal',
+      description: 'School Principal - Academic management and oversight',
+      is_predefined: true,
+    },
+    {
+      name: 'teacher',
+      description: 'Teacher - Grade entry and attendance marking',
+      is_predefined: true,
+    },
+    {
+      name: 'student',
+      description: 'Student - View own grades, attendance, and schedule',
+      is_predefined: true,
+    },
+    {
+      name: 'parent',
+      description: 'Parent/Guardian - View child academic information',
+      is_predefined: true,
+    },
+    {
+      name: 'accountant',
+      description: 'Accountant - Fee and payment management',
+      is_predefined: true,
+    },
+    {
+      name: 'admissions_officer',
+      description: 'Admissions Officer - Student enrollment management',
+      is_predefined: true,
+    },
+  ]).returning('*');
+
+  // Create role map for easier reference
+  const roleMap: { [key: string]: string } = {};
+  roles.forEach((r: any) => {
+    roleMap[r.name] = r.id;
+  });
+
+  // Assign permissions to Admin role (all permissions)
+  const adminPerms = permissions.map((p: any) => ({
+    role_id: roleMap.admin,
+    permission_id: p.id,
+    created_at: new Date(),
+  }));
+  await knex('role_permissions').insert(adminPerms);
+
+  // Assign permissions to Principal role
+  const principalPerms = [
+    'user:read', 'user:update', 'user:create',
+    'student:read', 'student:update', 'student:create',
+    'grade:read', 'grade:update',
+    'attendance:read', 'attendance:update',
+    'class:read', 'class:create', 'class:update',
+    'fee:read', 'payment:read',
+    'report:read', 'report:create',
+    'role:read',
+    'permission:read',
+  ].map((pname) => ({
+    role_id: roleMap.principal,
+    permission_id: permMap[pname],
+    created_at: new Date(),
+  }));
+  await knex('role_permissions').insert(principalPerms);
+
+  // Assign permissions to Teacher role
+  const teacherPerms = [
+    'student:read',
+    'grade:create', 'grade:read', 'grade:update',
+    'attendance:create', 'attendance:read', 'attendance:update',
+    'class:read',
+  ].map((pname) => ({
+    role_id: roleMap.teacher,
+    permission_id: permMap[pname],
+    created_at: new Date(),
+  }));
+  await knex('role_permissions').insert(teacherPerms);
+
+  // Assign permissions to Student role
+  const studentPerms = [
+    'student:read',
+    'grade:read',
+    'attendance:read',
+    'class:read',
+    'fee:read',
+  ].map((pname) => ({
+    role_id: roleMap.student,
+    permission_id: permMap[pname],
+    created_at: new Date(),
+  }));
+  await knex('role_permissions').insert(studentPerms);
+
+  // Assign permissions to Parent role
+  const parentPerms = [
+    'student:read',
+    'grade:read',
+    'attendance:read',
+    'class:read',
+    'fee:read',
+  ].map((pname) => ({
+    role_id: roleMap.parent,
+    permission_id: permMap[pname],
+    created_at: new Date(),
+  }));
+  await knex('role_permissions').insert(parentPerms);
+
+  // Assign permissions to Accountant role
+  const accountantPerms = [
+    'fee:read', 'fee:create', 'fee:update',
+    'payment:read', 'payment:create',
+    'student:read',
+    'report:read', 'report:create',
+  ].map((pname) => ({
+    role_id: roleMap.accountant,
+    permission_id: permMap[pname],
+    created_at: new Date(),
+  }));
+  await knex('role_permissions').insert(accountantPerms);
+
+  // Assign permissions to Admissions Officer role
+  const admissionsPerms = [
+    'student:create', 'student:read', 'student:update',
+    'class:read',
+    'report:read',
+  ].map((pname) => ({
+    role_id: roleMap.admissions_officer,
+    permission_id: permMap[pname],
+    created_at: new Date(),
+  }));
+  await knex('role_permissions').insert(admissionsPerms);
+
+  // ===== USER SETUP =====
 
   // Insert academic sessions
   const sessions = await knex('academic_sessions').insert([
@@ -318,5 +522,5 @@ export async function seed(knex: Knex): Promise<void> {
     },
   ]);
 
-  console.log('Seed data inserted successfully');
+  console.log('Seed data inserted successfully with RBAC setup');
 }

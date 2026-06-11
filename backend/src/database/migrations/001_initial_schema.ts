@@ -1,29 +1,64 @@
-import { Knex } from 'knex';
+import type { Knex } from 'knex';
 
 export async function up(knex: Knex): Promise<void> {
-  // Create users table
-  await knex.schema.createTable('users', (table) => {
+  // Helper function to create table if it doesn't exist
+  const createIfNotExists = async (tableName: string, schema: (table: Knex.CreateTableBuilder) => void) => {
+    const exists = await knex.schema.hasTable(tableName);
+    if (!exists) {
+      await knex.schema.createTable(tableName, schema);
+    }
+  };
+
+  // Create tenants table
+  await createIfNotExists('tenants', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
-    table.string('email', 255).unique().notNullable();
+    table.string('name', 255).notNullable();
+    table.string('slug', 100).notNullable();
+    table.text('description');
+    table.string('domain', 255);
+    table.string('logo_url', 500);
+    table.string('status', 50).defaultTo('active');
+    table.integer('max_users').defaultTo(1000);
+    table.integer('max_storage_gb').defaultTo(100);
+    table.jsonb('settings').defaultTo('{}');
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.timestamp('updated_at').defaultTo(knex.fn.now());
+    
+    table.unique(['name']);
+    table.unique(['slug']);
+    table.unique(['domain']);
+    table.index('slug');
+    table.index('domain');
+    table.index('status');
+  });
+
+  // Create users table
+  await createIfNotExists('users', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+    table.uuid('tenant_id').notNullable().references('id').inTable('tenants').onDelete('CASCADE');
+    table.string('email', 255).notNullable();
+    table.unique(['tenant_id', 'email']);
     table.string('password_hash', 255).notNullable();
     table.string('first_name', 100).notNullable();
     table.string('last_name', 100).notNullable();
-    table.string('role', 50).notNullable(); // admin, principal, teacher, student, parent, accountant, admissions_officer
-    table.string('status', 50).defaultTo('active'); // active, inactive, suspended
+    table.string('role', 50).notNullable();
+    table.string('status', 50).defaultTo('active');
     table.timestamp('last_login');
     table.timestamp('created_at').defaultTo(knex.fn.now());
     table.timestamp('updated_at').defaultTo(knex.fn.now());
     table.uuid('created_by').references('id').inTable('users');
     table.uuid('updated_by').references('id').inTable('users');
     
+    table.index('tenant_id');
     table.index('email');
     table.index('role');
     table.index('status');
   });
 
   // Create academic_sessions table
-  await knex.schema.createTable('academic_sessions', (table) => {
+  await createIfNotExists('academic_sessions', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+    table.uuid('tenant_id').notNullable().references('id').inTable('tenants').onDelete('CASCADE');
     table.string('name', 100).notNullable();
     table.date('start_date').notNullable();
     table.date('end_date').notNullable();
@@ -31,11 +66,12 @@ export async function up(knex: Knex): Promise<void> {
     table.timestamp('created_at').defaultTo(knex.fn.now());
     table.timestamp('updated_at').defaultTo(knex.fn.now());
     
+    table.index('tenant_id');
     table.index('is_active');
   });
 
   // Create students table
-  await knex.schema.createTable('students', (table) => {
+  await createIfNotExists('students', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('user_id').unique().notNullable().references('id').inTable('users').onDelete('CASCADE');
     table.string('student_id', 50).unique().notNullable();
@@ -58,7 +94,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create teachers table
-  await knex.schema.createTable('teachers', (table) => {
+  await createIfNotExists('teachers', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('user_id').unique().notNullable().references('id').inTable('users').onDelete('CASCADE');
     table.string('teacher_id', 50).unique().notNullable();
@@ -78,7 +114,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create subjects table
-  await knex.schema.createTable('subjects', (table) => {
+  await createIfNotExists('subjects', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.string('code', 50).unique().notNullable();
     table.string('name', 100).notNullable();
@@ -91,7 +127,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create classes table
-  await knex.schema.createTable('classes', (table) => {
+  await createIfNotExists('classes', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.string('name', 100).notNullable();
     table.string('level', 50).notNullable();
@@ -107,7 +143,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create class_subjects table
-  await knex.schema.createTable('class_subjects', (table) => {
+  await createIfNotExists('class_subjects', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('class_id').notNullable().references('id').inTable('classes').onDelete('CASCADE');
     table.uuid('subject_id').notNullable().references('id').inTable('subjects').onDelete('CASCADE');
@@ -119,7 +155,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create teacher_assignments table
-  await knex.schema.createTable('teacher_assignments', (table) => {
+  await createIfNotExists('teacher_assignments', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('teacher_id').notNullable().references('id').inTable('teachers').onDelete('CASCADE');
     table.uuid('subject_id').notNullable().references('id').inTable('subjects');
@@ -134,7 +170,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create enrollments table
-  await knex.schema.createTable('enrollments', (table) => {
+  await createIfNotExists('enrollments', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('student_id').notNullable().references('id').inTable('students').onDelete('CASCADE');
     table.uuid('class_id').notNullable().references('id').inTable('classes');
@@ -151,7 +187,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create grades table
-  await knex.schema.createTable('grades', (table) => {
+  await createIfNotExists('grades', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('student_id').notNullable().references('id').inTable('students').onDelete('CASCADE');
     table.uuid('subject_id').notNullable().references('id').inTable('subjects');
@@ -169,7 +205,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create attendance table
-  await knex.schema.createTable('attendance', (table) => {
+  await createIfNotExists('attendance', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('student_id').notNullable().references('id').inTable('students').onDelete('CASCADE');
     table.uuid('class_id').notNullable().references('id').inTable('classes');
@@ -187,7 +223,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create schedules table
-  await knex.schema.createTable('schedules', (table) => {
+  await createIfNotExists('schedules', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('class_id').notNullable().references('id').inTable('classes');
     table.uuid('subject_id').notNullable().references('id').inTable('subjects');
@@ -204,7 +240,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create fee_types table
-  await knex.schema.createTable('fee_types', (table) => {
+  await createIfNotExists('fee_types', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.string('name', 100).notNullable();
     table.text('description');
@@ -217,7 +253,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create fees table
-  await knex.schema.createTable('fees', (table) => {
+  await createIfNotExists('fees', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('student_id').notNullable().references('id').inTable('students').onDelete('CASCADE');
     table.uuid('fee_type_id').notNullable().references('id').inTable('fee_types');
@@ -234,7 +270,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create payments table
-  await knex.schema.createTable('payments', (table) => {
+  await createIfNotExists('payments', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('student_id').notNullable().references('id').inTable('students').onDelete('CASCADE');
     table.decimal('amount', 10, 2).notNullable();
@@ -252,7 +288,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create audit_logs table
-  await knex.schema.createTable('audit_logs', (table) => {
+  await createIfNotExists('audit_logs', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('user_id').references('id').inTable('users');
     table.string('action', 100).notNullable();
@@ -269,7 +305,7 @@ export async function up(knex: Knex): Promise<void> {
   });
 
   // Create notifications table
-  await knex.schema.createTable('notifications', (table) => {
+  await createIfNotExists('notifications', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('user_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
     table.string('type', 50).notNullable();
@@ -283,10 +319,91 @@ export async function up(knex: Knex): Promise<void> {
     table.index('user_id');
     table.index('status');
   });
+
+  // Create roles table
+  await createIfNotExists('roles', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+    table.string('name', 100).unique().notNullable();
+    table.text('description');
+    table.boolean('is_predefined').defaultTo(false);
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.timestamp('updated_at').defaultTo(knex.fn.now());
+    
+    table.index('name');
+  });
+
+  // Create permissions table
+  await createIfNotExists('permissions', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+    table.string('name', 100).unique().notNullable();
+    table.text('description');
+    table.string('resource', 100).notNullable();
+    table.string('action', 100).notNullable();
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    
+    table.index('resource');
+    table.index('action');
+  });
+
+  // Create role_permissions table
+  await createIfNotExists('role_permissions', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+    table.uuid('role_id').notNullable().references('id').inTable('roles').onDelete('CASCADE');
+    table.uuid('permission_id').notNullable().references('id').inTable('permissions').onDelete('CASCADE');
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    
+    table.unique(['role_id', 'permission_id']);
+    table.index('role_id');
+    table.index('permission_id');
+  });
+
+  // Create refresh_tokens table
+  await createIfNotExists('refresh_tokens', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+    table.uuid('user_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
+    table.text('token').notNullable();
+    table.timestamp('expires_at').notNullable();
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.timestamp('revoked_at');
+    
+    table.index('user_id');
+    table.index('expires_at');
+    table.index('revoked_at');
+  });
+
+  // Create password_resets table
+  await createIfNotExists('password_resets', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+    table.uuid('user_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
+    table.text('token_hash').notNullable();
+    table.timestamp('expires_at').notNullable();
+    table.timestamp('used_at');
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    
+    table.index('user_id');
+    table.index('expires_at');
+  });
+
+  // Seed a default tenant
+  const tenantExists = await knex('tenants').where({ slug: 'default' }).first();
+  if (!tenantExists) {
+    await knex('tenants').insert({
+      name: 'Default School',
+      slug: 'default',
+      description: 'Default tenant for school management system',
+      status: 'active',
+      created_at: knex.fn.now(),
+      updated_at: knex.fn.now(),
+    });
+  }
 }
 
 export async function down(knex: Knex): Promise<void> {
-  // Drop tables in reverse order of creation
+  await knex.schema.dropTableIfExists('password_resets');
+  await knex.schema.dropTableIfExists('refresh_tokens');
+  await knex.schema.dropTableIfExists('role_permissions');
+  await knex.schema.dropTableIfExists('permissions');
+  await knex.schema.dropTableIfExists('roles');
   await knex.schema.dropTableIfExists('notifications');
   await knex.schema.dropTableIfExists('audit_logs');
   await knex.schema.dropTableIfExists('payments');
@@ -304,4 +421,5 @@ export async function down(knex: Knex): Promise<void> {
   await knex.schema.dropTableIfExists('students');
   await knex.schema.dropTableIfExists('academic_sessions');
   await knex.schema.dropTableIfExists('users');
+  await knex.schema.dropTableIfExists('tenants');
 }
