@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Loader,
 } from 'lucide-react';
+import MainLayout from '@components/layout/MainLayout';
 import AdminMetricsCard from '@components/dashboard/AdminMetricsCard';
 import AlertCard, { AlertProps } from '@components/dashboard/AlertCard';
 import ChartComponent from '@components/dashboard/ChartComponent';
@@ -32,12 +33,14 @@ export const AdminDashboard: React.FC = () => {
 
   if (loading && !dashboard) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <Loader className="animate-spin mx-auto mb-4 text-blue-500" size={40} />
-          <p className="text-gray-600">Loading dashboard...</p>
+      <MainLayout>
+        <div className="flex items-center justify-center h-screen">
+          <div className="text-center">
+            <Loader className="animate-spin mx-auto mb-4 text-blue-500" size={40} />
+            <p className="text-gray-600">Loading dashboard...</p>
+          </div>
         </div>
-      </div>
+      </MainLayout>
     );
   }
 
@@ -55,7 +58,7 @@ export const AdminDashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <MainLayout>
       {/* Header */}
       <div className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -261,7 +264,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
+    </MainLayout>
   );
 };
 
