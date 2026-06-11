@@ -47,9 +47,7 @@ export const LoginPage: React.FC = () => {
     }
 
     const success = await login(formData.email, formData.password);
-    if (!success) {
-      // Error is handled by the hook and displayed via the 'error' state
-    }
+    // Navigation is handled by the useAuth hook after successful login
   };
 
   const handleGoogleAuth = () => {
