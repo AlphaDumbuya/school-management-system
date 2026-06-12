@@ -8,7 +8,7 @@
 import { Knex } from 'knex';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 /**
  * Import/Export Configuration and Types
@@ -166,33 +166,34 @@ export class Phase14ImportExportService {
    */
   async parseExcel(buffer: Buffer): Promise<{ headers: string[]; rows: Record<string, any>[] }> {
     try {
-      const workbook = XLSX.read(buffer, { type: 'buffer' });
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buffer);
+      const ws = wb.worksheets[0];
 
-      if (!worksheet) {
+      if (!ws) {
         throw new AppError('Excel file contains no sheets', 400, 'PARSE_ERROR');
       }
 
-      const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+      const allRows: any[][] = [];
+      ws.eachRow((row) => {
+        allRows.push((row.values as any[]).slice(1)); // strip 1-based index offset
+      });
 
-      if (rows.length === 0) {
+      if (allRows.length < 2) {
         throw new AppError('Excel sheet contains no data', 400, 'VALIDATION_ERROR');
       }
 
-      // Extract headers from first row keys
-      const headers = Object.keys(rows[0] || {});
-
-      // Normalize row keys to lowercase
-      const normalizedRows = rows.map((row) => {
+      const headers = allRows[0].map((v) => String(v ?? ''));
+      const rows: Record<string, any>[] = allRows.slice(1).map((rowValues) => {
         const normalized: Record<string, any> = {};
-        Object.keys(row).forEach((key) => {
-          normalized[key.toLowerCase().trim()] = row[key];
+        headers.forEach((h, i) => {
+          normalized[h.toLowerCase().trim()] = rowValues[i] ?? '';
         });
         return normalized;
       });
 
-      logger.info(`Parsed Excel: ${headers.length} headers, ${normalizedRows.length} rows`);
-      return { headers, rows: normalizedRows };
+      logger.info(`Parsed Excel: ${headers.length} headers, ${rows.length} rows`);
+      return { headers, rows };
     } catch (error) {
       throw new AppError(`Failed to parse Excel: ${(error as Error).message}`, 400, 'PARSE_ERROR');
     }
@@ -660,11 +661,14 @@ export class Phase14ImportExportService {
    */
   async exportToExcel(options: ExportOptions): Promise<Buffer> {
     const data = await this.fetchExportData(options);
-    const worksheet = XLSX.utils.json_to_sheet(data, { header: options.fields });
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
-
-    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Data');
+    if (data.length > 0) {
+      ws.addRow(options.fields);
+      data.forEach((row) => ws.addRow(options.fields.map((f) => row[f] ?? '')));
+    }
+    const buffer = await wb.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 
   /**

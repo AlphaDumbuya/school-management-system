@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import * as ExcelJS from 'exceljs';
 import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
 import * as fs from 'fs';
@@ -50,18 +50,33 @@ export class ImportExportService {
   /**
    * Parse Excel file into array of objects
    */
-  parseExcel(filePath: string, sheetName?: string): any[] {
-    const workbook = XLSX.readFile(filePath);
-    const sheet = sheetName || workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheet];
-    const records = XLSX.utils.sheet_to_json(worksheet);
-    return records;
+  async parseExcel(filePath: string, sheetName?: string): Promise<any[]> {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(filePath);
+    const ws = sheetName ? wb.getWorksheet(sheetName) : wb.worksheets[0];
+    if (!ws) return [];
+
+    const rows: any[] = [];
+    let headers: string[] = [];
+
+    ws.eachRow((row, rowNumber) => {
+      const values = (row.values as any[]).slice(1); // ExcelJS row.values is 1-indexed with undefined at 0
+      if (rowNumber === 1) {
+        headers = values.map((v) => String(v ?? ''));
+      } else {
+        const obj: Record<string, any> = {};
+        headers.forEach((h, i) => { obj[h] = values[i] ?? ''; });
+        rows.push(obj);
+      }
+    });
+
+    return rows;
   }
 
   /**
    * Parse uploaded file (CSV or Excel)
    */
-  parseUploadedFile(filePath: string): any[] {
+  async parseUploadedFile(filePath: string): Promise<any[]> {
     const extension = path.extname(filePath).toLowerCase();
 
     if (extension === '.csv') {
@@ -218,11 +233,14 @@ export class ImportExportService {
   /**
    * Export data to Excel format
    */
-  exportToExcel(data: any[], filePath: string, sheetName = 'Data'): void {
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-    XLSX.writeFile(workbook, filePath);
+  async exportToExcel(data: any[], filePath: string, sheetName = 'Data'): Promise<void> {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(sheetName);
+    if (data.length > 0) {
+      ws.addRow(Object.keys(data[0]));
+      data.forEach((row) => ws.addRow(Object.values(row)));
+    }
+    await wb.xlsx.writeFile(filePath);
   }
 
   /**

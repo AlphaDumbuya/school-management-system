@@ -127,8 +127,11 @@ export const optionalAuth = (req: Request, res: Response, next: NextFunction) =>
  * Rate limiting middleware for login attempts
  */
 const loginAttempts = new Map<string, { count: number; resetTime: number }>();
-const MAX_LOGIN_ATTEMPTS = 5;
-const LOGIN_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
+
+// Use higher limits in development so you don't get locked out during testing
+const IS_DEV = process.env.NODE_ENV !== 'production';
+const MAX_LOGIN_ATTEMPTS = IS_DEV ? 20 : 5;
+const LOGIN_ATTEMPT_WINDOW = IS_DEV ? 2 * 60 * 1000 : 15 * 60 * 1000; // 2 min dev / 15 min prod
 
 export const rateLimitLogin = (req: Request, res: Response, next: NextFunction) => {
   const identifier = req.body.email || req.ip;

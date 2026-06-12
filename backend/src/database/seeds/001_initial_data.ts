@@ -61,6 +61,11 @@ export async function seed(knex: Knex): Promise<void> {
     { name: 'student:read', resource: 'students', action: 'read' },
     { name: 'student:update', resource: 'students', action: 'update' },
     { name: 'student:delete', resource: 'students', action: 'delete' },
+    { name: 'student:suspend', resource: 'students', action: 'suspend' },
+    { name: 'student:expel', resource: 'students', action: 'expel' },
+    { name: 'student:transfer', resource: 'students', action: 'transfer' },
+    { name: 'student:promote', resource: 'students', action: 'promote' },
+    { name: 'student:admit', resource: 'students', action: 'admit' },
 
     // Grade management
     { name: 'grade:create', resource: 'grades', action: 'create' },
@@ -79,14 +84,61 @@ export async function seed(knex: Knex): Promise<void> {
     { name: 'class:read', resource: 'classes', action: 'read' },
     { name: 'class:update', resource: 'classes', action: 'update' },
     { name: 'class:delete', resource: 'classes', action: 'delete' },
+    { name: 'class:assign_teacher', resource: 'classes', action: 'assign_teacher' },
+    { name: 'class:assign_student', resource: 'classes', action: 'assign_student' },
+
+    // Subject management
+    { name: 'subject:create', resource: 'subjects', action: 'create' },
+    { name: 'subject:read', resource: 'subjects', action: 'read' },
+    { name: 'subject:update', resource: 'subjects', action: 'update' },
+    { name: 'subject:delete', resource: 'subjects', action: 'delete' },
+    { name: 'subject:assign_teacher', resource: 'subjects', action: 'assign_teacher' },
+
+    // Timetable management
+    { name: 'timetable:create', resource: 'timetables', action: 'create' },
+    { name: 'timetable:read', resource: 'timetables', action: 'read' },
+    { name: 'timetable:update', resource: 'timetables', action: 'update' },
+    { name: 'timetable:approve', resource: 'timetables', action: 'approve' },
+    { name: 'timetable:delete', resource: 'timetables', action: 'delete' },
+
+    // Staff management (teachers & non-teaching)
+    { name: 'staff:create', resource: 'staff', action: 'create' },
+    { name: 'staff:read', resource: 'staff', action: 'read' },
+    { name: 'staff:update', resource: 'staff', action: 'update' },
+    { name: 'staff:delete', resource: 'staff', action: 'delete' },
+    { name: 'staff:assign', resource: 'staff', action: 'assign' },
+    { name: 'staff:approve_leave', resource: 'staff', action: 'approve_leave' },
+    { name: 'staff:evaluate', resource: 'staff', action: 'evaluate' },
+
+    // Examination management
+    { name: 'exam:create', resource: 'exams', action: 'create' },
+    { name: 'exam:read', resource: 'exams', action: 'read' },
+    { name: 'exam:update', resource: 'exams', action: 'update' },
+    { name: 'exam:approve', resource: 'exams', action: 'approve' },
+    { name: 'exam:lock_results', resource: 'exams', action: 'lock_results' },
+    { name: 'exam:publish_results', resource: 'exams', action: 'publish_results' },
+    { name: 'exam:publish_report_cards', resource: 'exams', action: 'publish_report_cards' },
+
+    // Communication
+    { name: 'announcement:create', resource: 'announcements', action: 'create' },
+    { name: 'announcement:read', resource: 'announcements', action: 'read' },
+    { name: 'announcement:update', resource: 'announcements', action: 'update' },
+    { name: 'announcement:delete', resource: 'announcements', action: 'delete' },
+    { name: 'message:send', resource: 'messages', action: 'send' },
+    { name: 'message:read', resource: 'messages', action: 'read' },
 
     // Fee management
     { name: 'fee:create', resource: 'fees', action: 'create' },
     { name: 'fee:read', resource: 'fees', action: 'read' },
     { name: 'fee:update', resource: 'fees', action: 'update' },
     { name: 'fee:delete', resource: 'fees', action: 'delete' },
+    { name: 'fee:approve_structure', resource: 'fees', action: 'approve_structure' },
     { name: 'payment:create', resource: 'payments', action: 'create' },
     { name: 'payment:read', resource: 'payments', action: 'read' },
+
+    // Budget
+    { name: 'budget:read', resource: 'budget', action: 'read' },
+    { name: 'budget:approve', resource: 'budget', action: 'approve' },
 
     // Report management
     { name: 'report:create', resource: 'reports', action: 'create' },
@@ -159,20 +211,49 @@ export async function seed(knex: Knex): Promise<void> {
   }));
   await knex('role_permissions').insert(adminPerms);
 
-  // Assign permissions to Principal role
+  // Assign permissions to Principal role (Head of School - full academic authority)
   const principalPerms = [
+    // User management (read + create + update; no delete — that's admin)
     'user:read', 'user:update', 'user:create',
+    // Student management (full authority including discipline)
     'student:read', 'student:update', 'student:create',
-    'grade:read', 'grade:update',
-    'attendance:read', 'attendance:update',
-    'class:read', 'class:create', 'class:update',
-    'fee:read', 'payment:read',
+    'student:suspend', 'student:expel', 'student:transfer',
+    'student:promote', 'student:admit',
+    // Class management
+    'class:read', 'class:create', 'class:update', 'class:delete',
+    'class:assign_teacher', 'class:assign_student',
+    // Subject management
+    'subject:read', 'subject:create', 'subject:update', 'subject:delete',
+    'subject:assign_teacher',
+    // Timetable management
+    'timetable:read', 'timetable:create', 'timetable:update',
+    'timetable:approve', 'timetable:delete',
+    // Staff management
+    'staff:read', 'staff:create', 'staff:update',
+    'staff:assign', 'staff:approve_leave', 'staff:evaluate',
+    // Grades
+    'grade:read', 'grade:update', 'grade:create',
+    // Attendance
+    'attendance:read', 'attendance:update', 'attendance:create',
+    // Examination management
+    'exam:read', 'exam:create', 'exam:update', 'exam:approve',
+    'exam:lock_results', 'exam:publish_results', 'exam:publish_report_cards',
+    // Communication
+    'announcement:read', 'announcement:create', 'announcement:update', 'announcement:delete',
+    'message:send', 'message:read',
+    // Financial oversight (read + approve; no create/delete — that's accountant/admin)
+    'fee:read', 'fee:approve_structure',
+    'payment:read',
+    'budget:read', 'budget:approve',
+    // Reports
     'report:read', 'report:create',
-    'role:read',
-    'permission:read',
+    // RBAC (read only)
+    'role:read', 'permission:read',
   ].map((pname) => ({
     role_id: roleMap.principal,
     permission_id: permMap[pname],
+    created_at: new Date(),
+  }));
     created_at: new Date(),
   }));
   await knex('role_permissions').insert(principalPerms);

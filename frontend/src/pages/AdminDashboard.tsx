@@ -57,6 +57,8 @@ export const AdminDashboard: React.FC = () => {
     refreshDashboard();
   };
 
+  const isAdmin = user?.role === 'admin';
+  const dashboardTitle = user?.role === 'principal' ? 'Principal Dashboard' : 'Admin Dashboard';
   return (
     <MainLayout>
       {/* Header */}
@@ -64,7 +66,7 @@ export const AdminDashboard: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+              <h1 className="text-3xl font-bold text-gray-900">{dashboardTitle}</h1>
               <p className="text-sm text-gray-600 mt-1">
                 Welcome back, {user?.firstName} {user?.lastName}
               </p>
@@ -149,9 +151,9 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         {/* Financial Summary and System Health */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div className={`grid grid-cols-1 gap-6 mb-8 ${isAdmin ? 'lg:grid-cols-3' : ''}`}>
           {/* Financial Summary Card */}
-          <div className="lg:col-span-1 bg-white rounded-lg shadow-md p-6">
+          <div className={`${isAdmin ? 'lg:col-span-1' : ''} bg-white rounded-lg shadow-md p-6`}>
             <h3 className="text-lg font-semibold mb-4 text-gray-800">Financial Summary</h3>
             <div className="space-y-4">
               <div>
@@ -177,18 +179,20 @@ export const AdminDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* System Health */}
-          <div className="lg:col-span-2">
-            {dashboard?.systemHealth && (
-              <SystemHealthPanel
-                databaseStatus={dashboard.systemHealth.databaseStatus}
-                lastBackup={dashboard.systemHealth.lastBackup}
-                apiResponseTime={dashboard.systemHealth.apiResponseTime}
-                storageUsage={dashboard.systemHealth.storageUsage}
-                activeUsers={dashboard.systemHealth.activeUsers}
-              />
-            )}
-          </div>
+          {/* System Health — admin only */}
+          {isAdmin && (
+            <div className="lg:col-span-2">
+              {dashboard?.systemHealth && (
+                <SystemHealthPanel
+                  databaseStatus={dashboard.systemHealth.databaseStatus}
+                  lastBackup={dashboard.systemHealth.lastBackup}
+                  apiResponseTime={dashboard.systemHealth.apiResponseTime}
+                  storageUsage={dashboard.systemHealth.storageUsage}
+                  activeUsers={dashboard.systemHealth.activeUsers}
+                />
+              )}
+            </div>
+          )}
         </div>
 
         {/* Charts Section */}
@@ -245,6 +249,7 @@ export const AdminDashboard: React.FC = () => {
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-lg font-semibold mb-4 text-gray-800">Quick Actions</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Shared actions */}
             <button className="flex items-center justify-center gap-2 p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors text-gray-700">
               <Plus size={20} />
               <span className="text-sm font-medium">Enroll Student</span>
@@ -254,13 +259,36 @@ export const AdminDashboard: React.FC = () => {
               <span className="text-sm font-medium">Create Class</span>
             </button>
             <button className="flex items-center justify-center gap-2 p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors text-gray-700">
+              <Plus size={20} />
+              <span className="text-sm font-medium">Add Teacher</span>
+            </button>
+            <button className="flex items-center justify-center gap-2 p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors text-gray-700">
+              <BookOpen size={20} />
+              <span className="text-sm font-medium">Assign Class</span>
+            </button>
+            <button className="flex items-center justify-center gap-2 p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors text-gray-700">
+              <Briefcase size={20} />
+              <span className="text-sm font-medium">Manage Timetable</span>
+            </button>
+            <button className="flex items-center justify-center gap-2 p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors text-gray-700">
+              <Download size={20} />
+              <span className="text-sm font-medium">Publish Results</span>
+            </button>
+            <button className="flex items-center justify-center gap-2 p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors text-gray-700">
               <Download size={20} />
               <span className="text-sm font-medium">Generate Report</span>
             </button>
             <button className="flex items-center justify-center gap-2 p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors text-gray-700">
-              <Plus size={20} />
-              <span className="text-sm font-medium">Add Teacher</span>
+              <Users size={20} />
+              <span className="text-sm font-medium">Send Announcement</span>
             </button>
+            {/* Admin-only */}
+            {isAdmin && (
+              <button className="flex items-center justify-center gap-2 p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors text-gray-700">
+                <Download size={20} />
+                <span className="text-sm font-medium">Import / Export</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

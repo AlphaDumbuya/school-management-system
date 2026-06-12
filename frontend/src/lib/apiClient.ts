@@ -187,13 +187,31 @@ const handleError = (error: unknown): ErrorResponse => {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status || 500;
     const data = error.response?.data as any;
-    const message = data?.error || data?.message || error.message || 'An error occurred';
 
-    console.error(`API Error [${status}]:`, message);
+    // Backend sends { error: { status, code, message, ... } }
+    // Handle both nested object and flat string shapes
+    const errorField = data?.error;
+    const message =
+      (typeof errorField === 'object' && errorField !== null
+        ? errorField.message
+        : typeof errorField === 'string'
+        ? errorField
+        : undefined) ||
+      data?.message ||
+      error.message ||
+      'An error occurred';
+
+    // Add a user-friendly hint for rate limiting
+    const friendlyMessage =
+      status === 429
+        ? message || 'Too many attempts. Please wait a moment before trying again.'
+        : message;
+
+    console.error(`API Error [${status}]:`, friendlyMessage);
 
     return {
       success: false,
-      error: message,
+      error: friendlyMessage,
       statusCode: status,
     };
   }

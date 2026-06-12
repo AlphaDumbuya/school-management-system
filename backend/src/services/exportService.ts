@@ -1,7 +1,7 @@
 import { logger } from '@utils/logger';
 import db from '@utils/database';
 import PDFDocument from 'pdfkit';
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { stringify } from 'csv-stringify/sync';
 import { Readable } from 'stream';
 
@@ -75,64 +75,49 @@ class ExportService {
    */
   async exportToExcel(data: any, options: ExportOptions): Promise<Buffer> {
     try {
-      const wb = XLSX.utils.book_new();
+      const wb = new ExcelJS.Workbook();
 
       // Dashboard sheet
       if (data.metrics) {
-        const metricsData = [
-          ['Key Metric', 'Value'],
-          ['Total Students', data.metrics.totalStudents],
-          ['Total Teachers', data.metrics.totalTeachers],
-          ['Total Classes', data.metrics.totalClasses],
-          ['Outstanding Fees', data.metrics.outstandingFees],
-          ['Total Collected', data.metrics.totalCollected],
-          ['Attendance Rate', `${data.metrics.attendanceRate}%`],
-          ['Average Grade', data.metrics.averageGrade],
-        ];
-
-        const ws = XLSX.utils.aoa_to_sheet(metricsData);
-        XLSX.utils.book_append_sheet(wb, ws, 'Metrics');
+        const ws = wb.addWorksheet('Metrics');
+        ws.addRow(['Key Metric', 'Value']);
+        ws.addRow(['Total Students', data.metrics.totalStudents]);
+        ws.addRow(['Total Teachers', data.metrics.totalTeachers]);
+        ws.addRow(['Total Classes', data.metrics.totalClasses]);
+        ws.addRow(['Outstanding Fees', data.metrics.outstandingFees]);
+        ws.addRow(['Total Collected', data.metrics.totalCollected]);
+        ws.addRow(['Attendance Rate', `${data.metrics.attendanceRate}%`]);
+        ws.addRow(['Average Grade', data.metrics.averageGrade]);
       }
 
       // Financial sheet
       if (data.financialSummary) {
-        const financialData = [
-          ['Financial Metric', 'Value'],
-          ['Total Revenue', data.financialSummary.totalRevenue],
-          ['This Month Collected', data.financialSummary.thisMonthCollected],
-          ['Monthly Target', data.financialSummary.thisMonthTarget],
-          ['Outstanding Balance', data.financialSummary.outstandingBalance],
-          ['Overdue Amount', data.financialSummary.overdueAmount],
-          ['Collection Rate', `${data.financialSummary.collectionRate}%`],
-          ['Trend', `${data.financialSummary.trend}%`],
-        ];
-
-        const ws = XLSX.utils.aoa_to_sheet(financialData);
-        XLSX.utils.book_append_sheet(wb, ws, 'Financial');
+        const ws = wb.addWorksheet('Financial');
+        ws.addRow(['Financial Metric', 'Value']);
+        ws.addRow(['Total Revenue', data.financialSummary.totalRevenue]);
+        ws.addRow(['This Month Collected', data.financialSummary.thisMonthCollected]);
+        ws.addRow(['Monthly Target', data.financialSummary.thisMonthTarget]);
+        ws.addRow(['Outstanding Balance', data.financialSummary.outstandingBalance]);
+        ws.addRow(['Overdue Amount', data.financialSummary.overdueAmount]);
+        ws.addRow(['Collection Rate', `${data.financialSummary.collectionRate}%`]);
+        ws.addRow(['Trend', `${data.financialSummary.trend}%`]);
       }
 
       // Alerts sheet
       if (data.alerts && data.alerts.length > 0) {
-        const alertsData = [
-          ['Type', 'Title', 'Message', 'Severity', 'Timestamp'],
-          ...data.alerts.map((alert: any) => [
-            alert.type,
-            alert.title,
-            alert.message,
-            alert.severity,
-            alert.timestamp,
-          ]),
-        ];
-
-        const ws = XLSX.utils.aoa_to_sheet(alertsData);
-        XLSX.utils.book_append_sheet(wb, ws, 'Alerts');
+        const ws = wb.addWorksheet('Alerts');
+        ws.addRow(['Type', 'Title', 'Message', 'Severity', 'Timestamp']);
+        data.alerts.forEach((alert: any) => {
+          ws.addRow([alert.type, alert.title, alert.message, alert.severity, alert.timestamp]);
+        });
       }
 
       // At-risk students sheet
       if (data.atRiskStudents && data.atRiskStudents.length > 0) {
-        const studentsData = [
-          ['Name', 'Roll Number', 'Class', 'Risk Factors', 'Attendance', 'Grade', 'Severity'],
-          ...data.atRiskStudents.map((student: any) => [
+        const ws = wb.addWorksheet('At-Risk Students');
+        ws.addRow(['Name', 'Roll Number', 'Class', 'Risk Factors', 'Attendance', 'Grade', 'Severity']);
+        data.atRiskStudents.forEach((student: any) => {
+          ws.addRow([
             student.name,
             student.rollNumber,
             student.className,
@@ -140,16 +125,12 @@ class ExportService {
             `${student.attendanceRate}%`,
             student.averageGrade,
             student.severity,
-          ]),
-        ];
-
-        const ws = XLSX.utils.aoa_to_sheet(studentsData);
-        XLSX.utils.book_append_sheet(wb, ws, 'At-Risk Students');
+          ]);
+        });
       }
 
-      // Generate buffer
-      const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-      return buffer;
+      const buffer = await wb.xlsx.writeBuffer();
+      return Buffer.from(buffer);
     } catch (error) {
       logger.error(`Excel export error: ${error}`);
       throw error;

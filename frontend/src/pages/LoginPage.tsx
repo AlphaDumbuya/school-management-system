@@ -78,7 +78,12 @@ export const LoginPage: React.FC = () => {
             {(validationError || error) && (
               <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 text-sm text-red-700 animate-shake">
                 <p className="font-semibold">Error</p>
-                <p>{validationError || error}</p>
+                <p>
+                  {validationError ||
+                    (typeof error === 'string'
+                      ? error
+                      : 'Login failed. Please try again.')}
+                </p>
               </div>
             )}
 
@@ -190,12 +195,24 @@ export const LoginPage: React.FC = () => {
               <code className="bg-blue-900 bg-opacity-30 px-2 py-1 rounded">admin@school.com</code>
             </div>
             <div className="flex justify-between items-center">
+              <span className="font-medium">Principal:</span>
+              <code className="bg-blue-900 bg-opacity-30 px-2 py-1 rounded">principal@school.com</code>
+            </div>
+            <div className="flex justify-between items-center">
               <span className="font-medium">Teacher:</span>
-              <code className="bg-blue-900 bg-opacity-30 px-2 py-1 rounded">teacher@school.com</code>
+              <code className="bg-blue-900 bg-opacity-30 px-2 py-1 rounded">teacher1@school.com</code>
             </div>
             <div className="flex justify-between items-center">
               <span className="font-medium">Student:</span>
-              <code className="bg-blue-900 bg-opacity-30 px-2 py-1 rounded">student@school.com</code>
+              <code className="bg-blue-900 bg-opacity-30 px-2 py-1 rounded">student1@school.com</code>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="font-medium">Parent:</span>
+              <code className="bg-blue-900 bg-opacity-30 px-2 py-1 rounded">parent@school.com</code>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="font-medium">Accountant:</span>
+              <code className="bg-blue-900 bg-opacity-30 px-2 py-1 rounded">accountant@school.com</code>
             </div>
             <p className="text-xs text-blue-100 pt-2 border-t border-blue-400 border-opacity-20">
               Password: <code className="bg-blue-900 bg-opacity-30 px-2 py-1 rounded">password123</code>

@@ -20,6 +20,28 @@ interface UseAuthReturn {
   canAccess: (roles: UserRole[]) => boolean;
 }
 
+/** Returns the home path for a given role */
+export const getDashboardPath = (role: UserRole): string => {
+  switch (role) {
+    case 'teacher':
+      return '/teacher/dashboard';
+    case 'student':
+      return '/student/dashboard';
+    case 'parent':
+    case 'guardian':
+      return '/parent/dashboard';
+    case 'accountant':
+      return '/accountant/dashboard';
+    case 'admissions_officer':
+      return '/admissions/dashboard';
+    case 'admin':
+    case 'principal':
+    case 'staff':
+    default:
+      return '/admin/dashboard';
+  }
+};
+
 export const useAuth = (): UseAuthReturn => {
   const navigate = useNavigate();
   const authStore = useAuthStore();
@@ -35,12 +57,14 @@ export const useAuth = (): UseAuthReturn => {
     canAccess,
   } = authStore;
 
-  // Login handler with navigation
+  // Login handler — navigates to the correct dashboard based on role
   const login = useCallback(
     async (email: string, password: string) => {
       const success = await storeLogin(email, password);
       if (success) {
-        navigate('/dashboard');
+        const { user: loggedInUser } = useAuthStore.getState();
+        const path = loggedInUser ? getDashboardPath(loggedInUser.role) : '/dashboard';
+        navigate(path, { replace: true });
       }
       return success;
     },
@@ -50,7 +74,7 @@ export const useAuth = (): UseAuthReturn => {
   // Logout handler with navigation
   const logout = useCallback(async () => {
     await storeLogout();
-    navigate('/login');
+    navigate('/login', { replace: true });
   }, [storeLogout, navigate]);
 
   return {

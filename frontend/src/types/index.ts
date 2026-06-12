@@ -7,7 +7,7 @@
 // Authentication Types
 // ============================================================================
 
-export type UserRole = 'admin' | 'principal' | 'teacher' | 'student' | 'parent' | 'guardian' | 'accountant' | 'admissionsOfficer' | 'staff';
+export type UserRole = 'admin' | 'principal' | 'teacher' | 'student' | 'parent' | 'accountant' | 'admissions_officer';
 
 export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending';
 

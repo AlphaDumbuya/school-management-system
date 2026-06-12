@@ -123,7 +123,7 @@ export const Phase13TeacherDashboard: React.FC = () => {
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Teacher Dashboard</h1>
-          <p className="text-gray-600 mt-2">Welcome, {user?.name || 'Teacher'}! Manage your classes and students.</p>
+          <p className="text-gray-600 mt-2">Welcome, {user?.firstName || 'Teacher'}! Manage your classes and students.</p>
         </div>
 
         {/* Quick Stats */}

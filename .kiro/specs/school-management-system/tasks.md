@@ -1,4 +1,4 @@
-# Comprehensive Implementation Plan - School Management System
+# Implementation Plan: School Management System
 
 ---
 
@@ -35,9 +35,10 @@
 
 **All 25 phases have been successfully implemented, tested, and documented.**
 
+
 ---
 
-## Project Overview
+## Overview
 
 This comprehensive School Management System has been fully completed with all 25 phases implemented. The system is built with Node.js/Express backend, React frontend, PostgreSQL (Neon) database, with enterprise-grade architecture including Docker, Kubernetes, CI/CD pipeline, and comprehensive security measures.
 
@@ -57,6 +58,8 @@ This comprehensive School Management System has been fully completed with all 25
 - **Code Coverage**: 85%+
 - **Quality Score**: 9.5/10
 - **Team Size**: 1 (AI-assisted development)
+
+## Tasks
 
 ## Phase 1: Project Setup and Infrastructure
 
@@ -1742,7 +1745,7 @@ Phase 12 implements 6 major advanced features transforming the dashboard system 
   - Create user documentation
   - _Requirements: 23_
 
-## Implementation Notes
+## Notes
 
 - Tasks are organized by feature area and build incrementally
 - Each task references specific requirements for traceability
@@ -2589,3 +2592,67 @@ All three external services are fully configured and ready:
 **Detailed Status**: See PROJECT_COMPLETION_STATUS.md
 **Phase 25 Details**: See PHASE_25_EXTERNAL_SERVICES_INTEGRATION.md
 **Delivery Summary**: See PHASE_25_DELIVERY_SUMMARY.md
+
+## Task Dependency Graph
+
+```json
+{
+  "waves": [
+    {
+      "wave": 1,
+      "tasks": ["1.1", "1.2", "1.3", "1.4", "1.5"],
+      "description": "Infrastructure & project setup — no dependencies"
+    },
+    {
+      "wave": 2,
+      "tasks": ["2.1", "2.2", "2.3", "2.4", "2.5"],
+      "description": "Authentication & authorization — depends on Wave 1"
+    },
+    {
+      "wave": 3,
+      "tasks": ["3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
+      "description": "Core data models — depends on Wave 2"
+    },
+    {
+      "wave": 4,
+      "tasks": ["4.1", "4.2", "4.3", "4.4", "5.1", "5.2", "5.3", "5.4", "5.5", "5.6", "5.7", "5.8", "5.9", "5.10", "6.1", "6.2", "6.3", "6.4", "6.5", "8.1", "8.2", "8.3", "8.4", "8.5", "8.6", "15.1", "15.2", "15.3", "15.4", "15.5", "15.6", "15.7"],
+      "description": "Enrollment, grades, scheduling, financial management, system config — depends on Wave 3"
+    },
+    {
+      "wave": 5,
+      "tasks": ["7.1", "7.2", "7.3", "7.4", "7.5", "9.1", "9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8", "14.1", "14.2", "14.3", "14.4", "14.5", "14.6", "16.1", "16.2", "16.3", "16.4", "17.1", "17.2", "17.3", "17.4", "17.5", "17.6", "18.1", "18.2", "18.3", "18.4", "19.1", "19.2", "19.3", "19.4", "19.5", "20.1", "20.2", "20.3", "20.4", "20.5", "20.6", "21.1", "21.2", "21.3", "21.4", "22.1", "22.2", "22.3", "22.4"],
+      "description": "Reporting, notifications, import/export, backup, security, audit, integration, mobile, help, serialization — depends on Wave 4"
+    },
+    {
+      "wave": 6,
+      "tasks": ["10.1", "10.2", "10.3", "10.4", "10.5", "25.1", "25.2", "25.3"],
+      "description": "Admin dashboard backend, external services integration — depends on Wave 5"
+    },
+    {
+      "wave": 7,
+      "tasks": ["11.1", "11.2", "11.3", "11.4", "11.5"],
+      "description": "Frontend dashboard implementation — depends on Wave 6"
+    },
+    {
+      "wave": 8,
+      "tasks": ["12.1", "12.2", "12.3", "12.4", "12.5", "12.6"],
+      "description": "Advanced features & real-time integration — depends on Wave 7"
+    },
+    {
+      "wave": 9,
+      "tasks": ["13.1", "13.2", "13.3", "13.4", "13.5", "13.6", "13.7"],
+      "description": "Specialized dashboards & portals — depends on Wave 8"
+    },
+    {
+      "wave": 10,
+      "tasks": ["23.1", "23.2", "23.3", "23.4", "23.5", "23.6", "23.7", "23.8"],
+      "description": "Testing & QA — depends on all prior waves"
+    },
+    {
+      "wave": 11,
+      "tasks": ["24.1", "24.2", "24.3", "24.4", "24.5", "24.6"],
+      "description": "Deployment & DevOps — depends on Wave 10 (testing complete)"
+    }
+  ]
+}
+```
