@@ -14,6 +14,7 @@ import { Phase13StudentDashboard } from '@pages/Phase13StudentDashboard';
 import { Phase13ParentDashboard } from '@pages/Phase13ParentDashboard';
 import { Phase13AccountantDashboard } from '@pages/Phase13AccountantDashboard';
 import { Phase13AdmissionsDashboard } from '@pages/Phase13AdmissionsDashboard';
+import { ComingSoonPage } from '@pages/ComingSoonPage';
 import useAuthStore from '@store/authStore';
 import { getDashboardPath } from '@hooks/useAuth';
 
@@ -127,6 +128,156 @@ const router = createBrowserRouter(
           element: (
             <ProtectedRoute requiredRoles={['admissions_officer']}>
               <Phase13AdmissionsDashboard />
+            </ProtectedRoute>
+          ),
+        },
+        // Academic Routes
+        {
+          path: 'students',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal', 'teacher', 'admissions_officer']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'classes',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal', 'teacher']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'subjects',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'timetable',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'examinations',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'grades',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal', 'teacher', 'student']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'attendance',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal', 'teacher', 'student']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        // Staff Routes
+        {
+          path: 'teachers',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'staff',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        // Communication Routes
+        {
+          path: 'announcements',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'messages',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'notifications',
+          element: (
+            <ProtectedRoute requiredRoles={['admin']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        // Finance Routes
+        {
+          path: 'finance',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal', 'accountant']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        // Reports Routes
+        {
+          path: 'reports',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal', 'accountant']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        // System Routes
+        {
+          path: 'users',
+          element: (
+            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'import-export',
+          element: (
+            <ProtectedRoute requiredRoles={['admin']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'settings',
+          element: (
+            <ProtectedRoute>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'profile',
+          element: (
+            <ProtectedRoute>
+              <ComingSoonPage />
             </ProtectedRoute>
           ),
         },
