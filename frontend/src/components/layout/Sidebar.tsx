@@ -23,7 +23,7 @@ import {
   FaBuilding,
   FaAward,
   FaBarcode,
-  FaMessageSquare,
+  FaComments,
   FaShieldAlt,
 } from 'react-icons/fa';
 import { FaRightFromBracket } from 'react-icons/fa6';
@@ -249,7 +249,7 @@ const navItems: NavItem[] = [
   },
   {
     label: 'Messages',
-    icon: <FaMessageSquare className="w-4 sm:w-5 h-4 sm:h-5" />,
+    icon: <FaComments className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/communication/messages',
     roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
     module: 'Communication',

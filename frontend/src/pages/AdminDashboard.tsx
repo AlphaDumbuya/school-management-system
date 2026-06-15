@@ -151,9 +151,9 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         {/* Financial Summary and System Health */}
-        <div className={`grid grid-cols-1 gap-6 mb-8 ${isAdmin ? 'lg:grid-cols-3' : ''}`}>
+        <div className={`grid grid-cols-1 gap-6 mb-8 ${isPrincipal ? 'lg:grid-cols-3' : ''}`}>
           {/* Financial Summary Card */}
-          <div className={`${isAdmin ? 'lg:col-span-1' : ''} bg-white rounded-lg shadow-md p-6`}>
+          <div className={`${isPrincipal ? 'lg:col-span-1' : ''} bg-white rounded-lg shadow-md p-6`}>
             <h3 className="text-lg font-semibold mb-4 text-gray-800">Financial Summary</h3>
             <div className="space-y-4">
               <div>
