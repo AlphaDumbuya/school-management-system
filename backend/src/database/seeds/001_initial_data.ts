@@ -254,8 +254,6 @@ export async function seed(knex: Knex): Promise<void> {
     permission_id: permMap[pname],
     created_at: new Date(),
   }));
-    created_at: new Date(),
-  }));
   await knex('role_permissions').insert(principalPerms);
 
   // Assign permissions to Teacher role

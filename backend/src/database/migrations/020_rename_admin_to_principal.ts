@@ -7,77 +7,62 @@
  * the hierarchical structure of the school management system.
  * 
  * Changes:
- * 1. Update users table role enum
- * 2. Update all existing 'admin' users to 'principal'
- * 3. Update role_permissions mappings
- * 4. Update audit_logs references
+ * 1. Update all existing 'admin' users to 'principal'
+ * 2. Update role_permissions mappings
+ * 3. Update audit_logs references
  */
 
-import { Knex } from 'knex';
+import type { Knex } from 'knex';
 
 export async function up(knex: Knex): Promise<void> {
   console.log('Starting migration: Rename Admin to Principal');
 
   try {
-    // Step 1: Add new 'principal' value to role enum if not exists
-    console.log('Step 1: Updating role enum...');
-    await knex.raw(`
-      DO $$ BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_enum 
-          WHERE enumlabel = 'principal' 
-          AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'user_role')
-        ) THEN
-          ALTER TYPE user_role ADD VALUE 'principal';
-        END IF;
-      END $$;
-    `);
-    console.log('✓ Role enum updated');
+    // Step 1: Check if role column exists (string type, not enum)
+    console.log('Step 1: Checking users table role column...');
+    const hasRoleColumn = await knex.schema.hasColumn('users', 'role');
+    if (!hasRoleColumn) {
+      throw new Error('Users table does not have a role column');
+    }
+    console.log('✓ Role column exists (string type)');
 
     // Step 2: Update all existing 'admin' users to 'principal'
     console.log('Step 2: Migrating existing admin users to principal...');
-    const updatedUsers = await knex('users')
+    const updatedUsersCount = await knex('users')
       .where({ role: 'admin' })
-      .update({ role: 'principal' })
-      .returning('id');
-    console.log(`✓ Updated ${updatedUsers.length} users from admin to principal`);
+      .update({ role: 'principal', updated_at: knex.fn.now() });
+    console.log(`✓ Updated ${updatedUsersCount} users from admin to principal`);
 
-    // Step 3: Update role_permissions table
-    console.log('Step 3: Updating role_permissions...');
-    const updatedPermissions = await knex('role_permissions')
-      .where({ role_name: 'admin' })
-      .update({ role_name: 'principal' })
-      .returning('id');
-    console.log(`✓ Updated ${updatedPermissions.length} role_permissions from admin to principal`);
+    // Step 3: Check if roles table exists and update if needed
+    console.log('Step 3: Checking roles table...');
+    const hasRolesTable = await knex.schema.hasTable('roles');
+    if (hasRolesTable) {
+      const updatedRoles = await knex('roles')
+        .where({ name: 'admin' })
+        .update({ name: 'principal', updated_at: knex.fn.now() });
+      console.log(`✓ Updated ${updatedRoles} role records from admin to principal`);
+    } else {
+      console.log('⚠ Roles table not found, skipping');
+    }
 
-    // Step 4: Update audit_logs if they reference roles
+    // Step 4: Update audit_logs if they exist and reference roles
     console.log('Step 4: Updating audit_logs...');
-    await knex.raw(`
-      UPDATE audit_logs 
-      SET details = jsonb_set(
-        details::jsonb,
-        '{role}',
-        '"principal"'::jsonb
-      )
-      WHERE details::text LIKE '%"role":"admin"%'
-    `);
-    console.log('✓ Audit logs updated');
-
-    // Step 5: Create a note in the database about this migration
-    console.log('Step 5: Creating migration record...');
-    await knex('system_settings').insert({
-      key: 'role_migration_admin_to_principal',
-      value: JSON.stringify({
-        migrated_at: new Date().toISOString(),
-        affected_users: updatedUsers.length,
-        affected_permissions: updatedPermissions.length,
-        note: 'Admin role renamed to Principal as part of Phase 1.2 refactoring'
-      }),
-      category: 'system',
-      created_at: knex.fn.now(),
-      updated_at: knex.fn.now()
-    }).onConflict('key').merge();
-    console.log('✓ Migration record created');
+    const hasAuditLogs = await knex.schema.hasTable('audit_logs');
+    if (hasAuditLogs) {
+      const hasChangesColumn = await knex.schema.hasColumn('audit_logs', 'changes');
+      if (hasChangesColumn) {
+        await knex.raw(`
+          UPDATE audit_logs 
+          SET changes = jsonb_set(
+            COALESCE(changes, '{}'::jsonb),
+            '{role}',
+            '"principal"'::jsonb
+          )
+          WHERE changes::text LIKE '%"role"%' AND changes::text LIKE '%"admin"%'
+        `);
+        console.log('✓ Audit logs updated');
+      }
+    }
 
     console.log('Migration completed successfully: Rename Admin to Principal');
   } catch (error) {
@@ -92,40 +77,39 @@ export async function down(knex: Knex): Promise<void> {
   try {
     // Step 1: Update all 'principal' users back to 'admin'
     console.log('Step 1: Rolling back principal users to admin...');
-    const updatedUsers = await knex('users')
+    const updatedUsersCount = await knex('users')
       .where({ role: 'principal' })
-      .whereNot({ is_platform_admin: true }) // Don't touch super_admin
-      .update({ role: 'admin' })
-      .returning('id');
-    console.log(`✓ Rolled back ${updatedUsers.length} users from principal to admin`);
+      .update({ role: 'admin', updated_at: knex.fn.now() });
+    console.log(`✓ Rolled back ${updatedUsersCount} users from principal to admin`);
 
-    // Step 2: Update role_permissions table
-    console.log('Step 2: Rolling back role_permissions...');
-    const updatedPermissions = await knex('role_permissions')
-      .where({ role_name: 'principal' })
-      .update({ role_name: 'admin' })
-      .returning('id');
-    console.log(`✓ Rolled back ${updatedPermissions.length} role_permissions from principal to admin`);
+    // Step 2: Update roles table if it exists
+    console.log('Step 2: Rolling back roles table...');
+    const hasRolesTable = await knex.schema.hasTable('roles');
+    if (hasRolesTable) {
+      const updatedRoles = await knex('roles')
+        .where({ name: 'principal' })
+        .update({ name: 'admin', updated_at: knex.fn.now() });
+      console.log(`✓ Rolled back ${updatedRoles} role records from principal to admin`);
+    }
 
     // Step 3: Update audit_logs
     console.log('Step 3: Rolling back audit_logs...');
-    await knex.raw(`
-      UPDATE audit_logs 
-      SET details = jsonb_set(
-        details::jsonb,
-        '{role}',
-        '"admin"'::jsonb
-      )
-      WHERE details::text LIKE '%"role":"principal"%'
-    `);
-    console.log('✓ Audit logs rolled back');
-
-    // Step 4: Remove migration record
-    console.log('Step 4: Removing migration record...');
-    await knex('system_settings')
-      .where({ key: 'role_migration_admin_to_principal' })
-      .delete();
-    console.log('✓ Migration record removed');
+    const hasAuditLogs = await knex.schema.hasTable('audit_logs');
+    if (hasAuditLogs) {
+      const hasChangesColumn = await knex.schema.hasColumn('audit_logs', 'changes');
+      if (hasChangesColumn) {
+        await knex.raw(`
+          UPDATE audit_logs 
+          SET changes = jsonb_set(
+            COALESCE(changes, '{}'::jsonb),
+            '{role}',
+            '"admin"'::jsonb
+          )
+          WHERE changes::text LIKE '%"role"%' AND changes::text LIKE '%"principal"%'
+        `);
+        console.log('✓ Audit logs rolled back');
+      }
+    }
 
     console.log('Rollback completed successfully: Principal renamed back to Admin');
   } catch (error) {

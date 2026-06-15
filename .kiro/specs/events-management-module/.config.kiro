@@ -1,0 +1,14 @@
+{
+  "name": "Events Management Module",
+  "version": "1.0.0",
+  "description": "School events, calendar, RSVP, and event management system",
+  "status": "in_progress",
+  "phase": "2.2",
+  "created": "2026-06-15",
+  "priority": "high",
+  "dependencies": [
+    "Phase 1 - Role System",
+    "Phase 2.1 - Identity Management"
+  ],
+  "tags": ["events", "calendar", "rsvp", "notifications", "phase-2"]
+}

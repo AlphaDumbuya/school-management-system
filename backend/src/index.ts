@@ -33,6 +33,12 @@ import phase21HelpSupportRoutes from '@routes/phase21HelpSupportRoutes';
 import phase22SerializationRoutes from '@routes/phase22SerializationRoutes';
 import phase25ExternalServicesRoutes from '@routes/phase25ExternalServicesRoutes';
 import platformRoutes from '@routes/platformRoutes';
+import admissionRoutes from '@routes/admissionRoutes';
+import idCardRoutes from '@routes/idCardRoutes';
+import templateRoutes from '@routes/templateRoutes';
+import idCardReportingRoutes from '@routes/idCardReportingRoutes';
+import printConfigRoutes from '@routes/printConfigRoutes';
+import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
 
 // Load environment variables
 dotenv.config();
@@ -72,6 +78,13 @@ app.get('/health', (req: Request, res: Response) => {
     uptime: process.uptime(),
   });
 });
+
+// Serve static files from storage directory (local storage only)
+if (process.env.STORAGE_PROVIDER === 'local' || !process.env.STORAGE_PROVIDER) {
+  const storagePath = process.env.LOCAL_STORAGE_PATH || './storage';
+  app.use('/storage', express.static(storagePath));
+  logger.info(`Serving static files from ${storagePath}`);
+}
 
 // API Routes
 app.get('/api', (req: Request, res: Response) => {
@@ -160,6 +173,21 @@ app.use('/api/v1', phase25ExternalServicesRoutes);
 // Platform Management Routes (Phase 1: Super Admin)
 app.use('/api/v1/platform', platformRoutes);
 
+// Admission Management Routes (Phase 1.3: Admissions Officer Enhancement)
+app.use('/api/v1/admissions', admissionRoutes);
+
+// ID Card Management Routes (Phase 2.1: Identity Management Module)
+app.use('/api/v1/id-cards', idCardRoutes);
+
+// Card Template Management Routes (Phase 2.1: Identity Management Module)
+app.use('/api/v1/card-templates', templateRoutes);
+
+// ID Card Reporting Routes (Phase 2.1: Identity Management Module)
+app.use('/api/v1/id-cards/reports', idCardReportingRoutes);
+
+// Print Configuration Routes (Phase 2.1: Identity Management Module)
+app.use('/api/v1/print-configs', printConfigRoutes);
+
 // 404 handler
 app.use((req: Request, res: Response) => {
   res.status(404).json({
@@ -176,6 +204,11 @@ app.use(errorHandler);
 const server = app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT} in ${NODE_ENV} mode`);
   logger.info(`Health check: http://localhost:${PORT}/health`);
+  
+  // Start identity management scheduled jobs
+  if (NODE_ENV === 'production' || process.env.ENABLE_SCHEDULED_JOBS === 'true') {
+    startIdentityManagementJobs();
+  }
 });
 
 // Graceful shutdown
