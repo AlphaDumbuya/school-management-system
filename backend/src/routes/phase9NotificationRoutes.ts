@@ -65,7 +65,7 @@ router.get('/notifications/:notificationId', authenticate, async (req: Request, 
     }
 
     // Check authorization
-    if (notification.recipientId !== (req as any).user.id && (req as any).user.role !== 'admin') {
+    if (notification.recipientId !== (req as any).user.id && (req as any).user.role !== 'principal') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -119,7 +119,7 @@ router.patch('/notifications/:notificationId/read', authenticate, async (req: Re
     const notification = await notificationService.markAsRead(req.params.notificationId);
 
     // Check authorization
-    if (notification.recipientId !== (req as any).user.id && (req as any).user.role !== 'admin') {
+    if (notification.recipientId !== (req as any).user.id && (req as any).user.role !== 'principal') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -166,7 +166,7 @@ router.delete('/notifications/:notificationId', authenticate, async (req: Reques
     }
 
     // Check authorization
-    if (notification.recipientId !== (req as any).user.id && (req as any).user.role !== 'admin') {
+    if (notification.recipientId !== (req as any).user.id && (req as any).user.role !== 'principal') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -543,8 +543,8 @@ router.post('/notification-preferences/resubscribe', authenticate, async (req: R
 router.get('/notification-preferences/summary', authenticate, async (req: Request, res: Response) => {
   try {
     // Check authorization
-    if ((req as any).user.role !== 'admin') {
-      return res.status(403).json({ error: 'Unauthorized - Admin access required' });
+    if ((req as any).user.role !== 'principal') {
+      return res.status(403).json({ error: 'Unauthorized - Principal access required' });
     }
 
     const summary = await notificationPreferenceService.getPreferencesSummary();
@@ -570,7 +570,7 @@ router.get('/notification-preferences/summary', authenticate, async (req: Reques
  */
 router.get('/email-templates', authenticate, async (req: Request, res: Response) => {
   try {
-    if ((req as any).user.role !== 'admin') {
+    if ((req as any).user.role !== 'principal') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -594,7 +594,7 @@ router.get('/email-templates', authenticate, async (req: Request, res: Response)
  */
 router.post('/email-templates', authenticate, async (req: Request, res: Response) => {
   try {
-    if ((req as any).user.role !== 'admin') {
+    if ((req as any).user.role !== 'principal') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -620,7 +620,7 @@ router.post('/email-templates', authenticate, async (req: Request, res: Response
  */
 router.patch('/email-templates/:templateId', authenticate, async (req: Request, res: Response) => {
   try {
-    if ((req as any).user.role !== 'admin') {
+    if ((req as any).user.role !== 'principal') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -643,7 +643,7 @@ router.patch('/email-templates/:templateId', authenticate, async (req: Request, 
  */
 router.delete('/email-templates/:templateId', authenticate, async (req: Request, res: Response) => {
   try {
-    if ((req as any).user.role !== 'admin') {
+    if ((req as any).user.role !== 'principal') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -667,7 +667,7 @@ router.delete('/email-templates/:templateId', authenticate, async (req: Request,
  */
 router.get('/sms-templates', authenticate, async (req: Request, res: Response) => {
   try {
-    if ((req as any).user.role !== 'admin') {
+    if ((req as any).user.role !== 'principal') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -691,7 +691,7 @@ router.get('/sms-templates', authenticate, async (req: Request, res: Response) =
  */
 router.post('/sms-templates', authenticate, async (req: Request, res: Response) => {
   try {
-    if ((req as any).user.role !== 'admin') {
+    if ((req as any).user.role !== 'principal') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -717,7 +717,7 @@ router.post('/sms-templates', authenticate, async (req: Request, res: Response) 
  */
 router.patch('/sms-templates/:templateId', authenticate, async (req: Request, res: Response) => {
   try {
-    if ((req as any).user.role !== 'admin') {
+    if ((req as any).user.role !== 'principal') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -740,7 +740,7 @@ router.patch('/sms-templates/:templateId', authenticate, async (req: Request, re
  */
 router.delete('/sms-templates/:templateId', authenticate, async (req: Request, res: Response) => {
   try {
-    if ((req as any).user.role !== 'admin') {
+    if ((req as any).user.role !== 'principal') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 

@@ -185,9 +185,9 @@ export class SensitiveActionService {
   ): Promise<void> {
     try {
       // Get admin users for this tenant
-      const admins = await this.db('users')
+      const principals = await this.db('users')
         .where('tenant_id', tenantId)
-        .where('role', 'admin')
+        .where('role', 'principal')
         .select('id');
 
       // Create approval request for primary admin

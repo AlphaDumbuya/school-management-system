@@ -11,9 +11,9 @@ const db = knex(knexConfig.development);
 
 /**
  * POST /api/v1/users
- * Create a new user (admin only)
+ * Create a new user (principal only)
  */
-router.post('/', authenticate, authorize('admin'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, first_name, last_name, role, status } = req.body;
     const createdBy = (req as any).user.id;
@@ -69,9 +69,9 @@ router.post('/', authenticate, authorize('admin'), async (req: Request, res: Res
 
 /**
  * GET /api/v1/users
- * List all users with pagination (admin only)
+ * List all users with pagination (principal only)
  */
-router.get('/', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
@@ -116,8 +116,8 @@ router.get('/:id', authenticate, async (req: Request, res: Response, next: NextF
     const userId = req.params.id;
     const currentUser = (req as any).user;
 
-    // Users can only view their own profile unless they're admin
-    if (userId !== currentUser.id && !['admin', 'principal'].includes(currentUser.role)) {
+    // Users can only view their own profile unless they're principal
+    if (userId !== currentUser.id && currentUser.role !== 'principal') {
       throw new AppError('Unauthorized', 403, 'AUTHORIZATION_ERROR');
     }
 
@@ -146,8 +146,8 @@ router.put('/:id', authenticate, async (req: Request, res: Response, next: NextF
     const currentUser = (req as any).user;
     const { first_name, last_name, status } = req.body;
 
-    // Users can only update their own profile unless they're admin
-    if (userId !== currentUser.id && !['admin', 'principal'].includes(currentUser.role)) {
+    // Users can only update their own profile unless they're principal
+    if (userId !== currentUser.id && currentUser.role !== 'principal') {
       throw new AppError('Unauthorized', 403, 'AUTHORIZATION_ERROR');
     }
 
@@ -156,7 +156,7 @@ router.put('/:id', authenticate, async (req: Request, res: Response, next: NextF
     if (first_name) updateData.first_name = first_name;
     if (last_name) updateData.last_name = last_name;
 
-    if (status && ['admin', 'principal'].includes(currentUser.role)) {
+    if (status && currentUser.role === 'principal') {
       updateData.status = status;
     }
 
@@ -187,7 +187,7 @@ router.put('/:id', authenticate, async (req: Request, res: Response, next: NextF
  * DELETE /api/v1/users/:id
  * Soft delete user (deactivate)
  */
-router.delete('/:id', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.params.id;
     const currentUser = (req as any).user;
@@ -221,15 +221,15 @@ router.delete('/:id', authenticate, authorize('admin', 'principal'), async (req:
 
 /**
  * PUT /api/v1/users/:id/role
- * Update user role (admin only)
+ * Update user role (principal only)
  */
-router.put('/:id/role', authenticate, authorize('admin'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id/role', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.params.id;
     const { role } = req.body;
     const currentUser = (req as any).user;
 
-    const validRoles = ['admin', 'principal', 'teacher', 'student', 'parent', 'accountant', 'admissions_officer'];
+    const validRoles = ['principal', 'teacher', 'student', 'parent', 'accountant', 'admissions_officer'];
     if (!role || !validRoles.includes(role)) {
       throw new AppError(`Invalid role. Must be one of: ${validRoles.join(', ')}`, 400, 'VALIDATION_ERROR');
     }
@@ -258,16 +258,16 @@ router.put('/:id/role', authenticate, authorize('admin'), async (req: Request, r
 
 /**
  * GET /api/v1/users/role/:role
- * Get users by role (admin only)
+ * Get users by role (principal only)
  */
-router.get('/role/:role', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/role/:role', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const role = req.params.role;
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
     const offset = (page - 1) * limit;
 
-    const validRoles = ['admin', 'principal', 'teacher', 'student', 'parent', 'accountant', 'admissions_officer'];
+    const validRoles = ['principal', 'teacher', 'student', 'parent', 'accountant', 'admissions_officer'];
     if (!validRoles.includes(role)) {
       throw new AppError(`Invalid role. Must be one of: ${validRoles.join(', ')}`, 400, 'VALIDATION_ERROR');
     }

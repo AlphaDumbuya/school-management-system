@@ -14,6 +14,7 @@ import { Phase13StudentDashboard } from '@pages/Phase13StudentDashboard';
 import { Phase13ParentDashboard } from '@pages/Phase13ParentDashboard';
 import { Phase13AccountantDashboard } from '@pages/Phase13AccountantDashboard';
 import { Phase13AdmissionsDashboard } from '@pages/Phase13AdmissionsDashboard';
+import SuperAdminDashboard from '@pages/SuperAdminDashboard';
 import { ComingSoonPage } from '@pages/ComingSoonPage';
 import useAuthStore from '@store/authStore';
 import { getDashboardPath } from '@hooks/useAuth';
@@ -26,7 +27,7 @@ const DashboardRedirect: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   if (!user) return <Navigate to="/login" replace />;
   const path = getDashboardPath(user.role);
-  // Admin/principal stay here — render inline to avoid a redirect loop
+  // Principal stay here — render inline to avoid a redirect loop
   if (path === '/admin/dashboard') return <AdminDashboard />;
   return <Navigate to={path} replace />;
 };
@@ -77,12 +78,46 @@ const router = createBrowserRouter(
             </ProtectedRoute>
           ),
         },
-        // Admin & Principal dashboard
+        // Principal dashboard
         {
           path: 'admin/dashboard',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+            <ProtectedRoute requiredRoles={['principal']}>
               <AdminDashboard />
+            </ProtectedRoute>
+          ),
+        },
+        // Super Admin / Platform dashboard
+        {
+          path: 'platform/dashboard',
+          element: (
+            <ProtectedRoute requiredRoles={['super_admin']}>
+              <SuperAdminDashboard />
+            </ProtectedRoute>
+          ),
+        },
+        // Platform Management Routes (Super Admin Only)
+        {
+          path: 'platform/tenants',
+          element: (
+            <ProtectedRoute requiredRoles={['super_admin']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'platform/subscriptions',
+          element: (
+            <ProtectedRoute requiredRoles={['super_admin']}>
+              <ComingSoonPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: 'platform/analytics',
+          element: (
+            <ProtectedRoute requiredRoles={['super_admin']}>
+              <ComingSoonPage />
             </ProtectedRoute>
           ),
         },
@@ -135,7 +170,7 @@ const router = createBrowserRouter(
         {
           path: 'students',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal', 'teacher', 'admissions_officer']}>
+            <ProtectedRoute requiredRoles={['principal', 'teacher', 'admissions_officer']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -143,7 +178,7 @@ const router = createBrowserRouter(
         {
           path: 'classes',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal', 'teacher']}>
+            <ProtectedRoute requiredRoles={['principal', 'teacher']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -151,7 +186,7 @@ const router = createBrowserRouter(
         {
           path: 'subjects',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+            <ProtectedRoute requiredRoles={['principal']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -159,7 +194,7 @@ const router = createBrowserRouter(
         {
           path: 'timetable',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+            <ProtectedRoute requiredRoles={['principal']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -167,7 +202,7 @@ const router = createBrowserRouter(
         {
           path: 'examinations',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+            <ProtectedRoute requiredRoles={['principal']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -175,7 +210,7 @@ const router = createBrowserRouter(
         {
           path: 'grades',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal', 'teacher', 'student']}>
+            <ProtectedRoute requiredRoles={['principal', 'teacher', 'student']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -183,7 +218,7 @@ const router = createBrowserRouter(
         {
           path: 'attendance',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal', 'teacher', 'student']}>
+            <ProtectedRoute requiredRoles={['principal', 'teacher', 'student']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -192,7 +227,7 @@ const router = createBrowserRouter(
         {
           path: 'teachers',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+            <ProtectedRoute requiredRoles={['principal']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -200,7 +235,7 @@ const router = createBrowserRouter(
         {
           path: 'staff',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+            <ProtectedRoute requiredRoles={['principal']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -209,7 +244,7 @@ const router = createBrowserRouter(
         {
           path: 'announcements',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+            <ProtectedRoute requiredRoles={['principal']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -217,7 +252,7 @@ const router = createBrowserRouter(
         {
           path: 'messages',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+            <ProtectedRoute requiredRoles={['principal']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -225,7 +260,7 @@ const router = createBrowserRouter(
         {
           path: 'notifications',
           element: (
-            <ProtectedRoute requiredRoles={['admin']}>
+            <ProtectedRoute requiredRoles={['principal']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -234,7 +269,7 @@ const router = createBrowserRouter(
         {
           path: 'finance',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal', 'accountant']}>
+            <ProtectedRoute requiredRoles={['principal', 'accountant']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -243,7 +278,7 @@ const router = createBrowserRouter(
         {
           path: 'reports',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal', 'accountant']}>
+            <ProtectedRoute requiredRoles={['principal', 'accountant']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -252,7 +287,7 @@ const router = createBrowserRouter(
         {
           path: 'users',
           element: (
-            <ProtectedRoute requiredRoles={['admin', 'principal']}>
+            <ProtectedRoute requiredRoles={['principal']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),
@@ -260,7 +295,7 @@ const router = createBrowserRouter(
         {
           path: 'import-export',
           element: (
-            <ProtectedRoute requiredRoles={['admin']}>
+            <ProtectedRoute requiredRoles={['principal']}>
               <ComingSoonPage />
             </ProtectedRoute>
           ),

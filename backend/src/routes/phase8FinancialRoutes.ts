@@ -16,7 +16,7 @@ const auditService = new AuditService(db);
 /**
  * Create a fee
  * POST /api/v1/fees
- * Requires: admin or accountant role
+ * Requires: principal or accountant role
  */
 router.post(
   '/fees',
@@ -219,7 +219,7 @@ router.get(
 /**
  * Record a payment
  * POST /api/v1/payments
- * Requires: admin, accountant, or student role
+ * Requires: principal, accountant, or student role
  */
 router.post(
   '/payments',
@@ -360,7 +360,7 @@ router.get(
 /**
  * Refund a payment
  * POST /api/v1/payments/:paymentId/refund
- * Requires: admin or accountant role
+ * Requires: principal or accountant role
  */
 router.post(
   '/payments/:paymentId/refund',
@@ -395,7 +395,7 @@ router.post(
 /**
  * Generate invoice
  * POST /api/v1/invoices
- * Requires: admin or accountant role
+ * Requires: principal or accountant role
  */
 router.post(
   '/invoices',
@@ -536,7 +536,7 @@ router.patch(
 /**
  * Get overdue invoices
  * GET /api/v1/invoices/overdue
- * Requires: admin or accountant role
+ * Requires: principal or accountant role
  */
 router.get(
   '/invoices-overdue',
@@ -652,7 +652,7 @@ router.get(
 /**
  * Bulk create fees
  * POST /api/v1/fees/bulk
- * Requires: admin or accountant role
+ * Requires: principal or accountant role
  */
 router.post(
   '/fees/bulk',
@@ -690,7 +690,7 @@ router.post(
 /**
  * Bulk record payments
  * POST /api/v1/payments/bulk
- * Requires: admin or accountant role
+ * Requires: principal or accountant role
  */
 router.post(
   '/payments/bulk',
@@ -728,7 +728,7 @@ router.post(
 /**
  * Bulk generate invoices
  * POST /api/v1/invoices/bulk
- * Requires: admin or accountant role
+ * Requires: principal or accountant role
  */
 router.post(
   '/invoices/bulk',
@@ -766,7 +766,7 @@ router.post(
 /**
  * Get overdue fees
  * GET /api/v1/fees/overdue
- * Requires: admin or accountant role
+ * Requires: principal or accountant role
  */
 router.get(
   '/fees-overdue',
@@ -828,7 +828,7 @@ router.get(
 /**
  * Adjust fee amount
  * PATCH /api/v1/fees/:feeId/adjust
- * Requires: admin or accountant role
+ * Requires: principal or accountant role
  */
 router.patch(
   '/fees/:feeId/adjust',
@@ -1015,9 +1015,9 @@ router.get(
 );
 
 /**
- * Delete fee (admin only)
+ * Delete fee (principal only)
  * DELETE /api/v1/fees/:feeId
- * Requires: admin role
+ * Requires: principal role
  */
 router.delete(
   '/fees/:feeId',

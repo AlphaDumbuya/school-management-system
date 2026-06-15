@@ -12,7 +12,7 @@ const db = knex(knexConfig.development);
  * POST /api/v1/grades
  * Create/record a grade for a student
  */
-router.post('/', authenticate, authorize('admin', 'principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { student_id, subject_id, class_id, marks_obtained, total_marks, grade, remarks } = req.body;
     const recordedBy = (req as any).user.id;
@@ -137,7 +137,7 @@ router.get('/student/:studentId', authenticate, async (req: Request, res: Respon
     }
 
     // Check authorization
-    if (currentUser.role === 'student' && student.user_id !== currentUser.id && currentUser.role !== 'admin') {
+    if (currentUser.role === 'student' && student.user_id !== currentUser.id && currentUser.role !== 'principal') {
       throw new AppError('Insufficient permissions', 403, 'AUTHORIZATION_ERROR');
     }
 
@@ -164,7 +164,7 @@ router.get('/student/:studentId', authenticate, async (req: Request, res: Respon
  * PUT /api/v1/grades/:gradeId
  * Update a grade
  */
-router.put('/:gradeId', authenticate, authorize('admin', 'principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:gradeId', authenticate, authorize('principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { gradeId } = req.params;
     const { marks_obtained, remarks, status } = req.body;
@@ -221,7 +221,7 @@ router.put('/:gradeId', authenticate, authorize('admin', 'principal', 'teacher')
  * POST /api/v1/grades/:gradeId/finalize
  * Finalize a grade (lock it from further changes)
  */
-router.post('/:gradeId/finalize', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:gradeId/finalize', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { gradeId } = req.params;
     const finalizedBy = (req as any).user.id;

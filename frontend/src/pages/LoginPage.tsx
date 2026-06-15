@@ -191,7 +191,7 @@ export const LoginPage: React.FC = () => {
           </p>
           <div className="space-y-2 text-sm text-blue-50">
             <div className="flex justify-between items-center">
-              <span className="font-medium">Admin:</span>
+              <span className="font-medium">Principal:</span>
               <code className="bg-blue-900 bg-opacity-30 px-2 py-1 rounded">admin@school.com</code>
             </div>
             <div className="flex justify-between items-center">

@@ -57,7 +57,7 @@ export const AdminDashboard: React.FC = () => {
     refreshDashboard();
   };
 
-  const isAdmin = user?.role === 'admin';
+  const isPrincipal = user?.role === 'principal';
   const dashboardTitle = user?.role === 'principal' ? 'Principal Dashboard' : 'Admin Dashboard';
   return (
     <MainLayout>
@@ -179,8 +179,8 @@ export const AdminDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* System Health — admin only */}
-          {isAdmin && (
+          {/* System Health — principal only */}
+          {isPrincipal && (
             <div className="lg:col-span-2">
               {dashboard?.systemHealth && (
                 <SystemHealthPanel
@@ -282,8 +282,8 @@ export const AdminDashboard: React.FC = () => {
               <Users size={20} />
               <span className="text-sm font-medium">Send Announcement</span>
             </button>
-            {/* Admin-only */}
-            {isAdmin && (
+            {/* Principal-only */}
+            {isPrincipal && (
               <button className="flex items-center justify-center gap-2 p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors text-gray-700">
                 <Download size={20} />
                 <span className="text-sm font-medium">Import / Export</span>

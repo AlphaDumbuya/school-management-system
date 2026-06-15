@@ -12,11 +12,11 @@ async function insertTestUser() {
 
     // Insert admin user
     await db('users').insert({
-      email: 'admin@school.com',
+      email: 'testadmin@school.com',
       password_hash: hashedPassword,
-      first_name: 'Admin',
-      last_name: 'User',
-      role: 'admin',
+      first_name: 'Principal',
+      last_name: 'Test',
+      role: 'principal',
       status: 'active',
     }).onConflict('email').ignore();
 

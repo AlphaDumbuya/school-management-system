@@ -14,7 +14,7 @@ interface ExportTemplate {
 interface ExportDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  dashboardType: 'admin' | 'teacher' | 'student' | 'parent' | 'accountant' | 'admissions';
+  dashboardType: 'principal' | 'teacher' | 'student' | 'parent' | 'accountant' | 'admissions';
   onExport?: (config: ExportConfig) => Promise<void>;
   availableColumns?: string[];
   filters?: any;

@@ -73,7 +73,7 @@ export class NotificationConfigurationService {
           { name: 'email', enabled: true },
           { name: 'in-app', enabled: true },
         ],
-        recipientTypes: ['admin'],
+        recipientTypes: ['principal', 'super_admin'],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },

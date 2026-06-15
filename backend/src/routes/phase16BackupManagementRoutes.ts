@@ -50,8 +50,8 @@ export function registerPhase16Routes(app: Express, db: Knex): void {
     if (!req.user) {
       throw new AppError('Authentication required', 401);
     }
-    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
-      throw new AppError('Admin access required', 403);
+    if (req.user.role !== 'principal' && req.user.role !== 'super_admin') {
+      throw new AppError('Principal or Super Admin access required', 403);
     }
     next();
   };

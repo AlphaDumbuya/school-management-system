@@ -203,13 +203,13 @@ export async function seed(knex: Knex): Promise<void> {
     roleMap[r.name] = r.id;
   });
 
-  // Assign permissions to Admin role (all permissions)
-  const adminPerms = permissions.map((p: any) => ({
-    role_id: roleMap.admin,
+  // Assign permissions to Principal role (all permissions including admin-level access)
+  const principalPerms = permissions.map((p: any) => ({
+    role_id: roleMap.principal,
     permission_id: p.id,
     created_at: new Date(),
   }));
-  await knex('role_permissions').insert(adminPerms);
+  await knex('role_permissions').insert(principalPerms);
 
   // Assign permissions to Principal role (Head of School - full academic authority)
   const principalPerms = [
@@ -345,23 +345,23 @@ export async function seed(knex: Knex): Promise<void> {
   ]).returning('*');
 
   // Insert admin user
-  const adminUser = await knex('users').insert({
+  const principalAdminUser = await knex('users').insert({
     tenant_id: tenantId,
     email: 'admin@school.com',
     password_hash: hashedPassword,
-    first_name: 'Admin',
-    last_name: 'User',
-    role: 'admin',
+    first_name: 'Principal',
+    last_name: 'Admin',
+    role: 'principal',
     status: 'active',
   }).returning('*');
 
-  // Insert principal user
+  // Insert another principal user for testing
   const principalUser = await knex('users').insert({
     tenant_id: tenantId,
     email: 'principal@school.com',
     password_hash: hashedPassword,
-    first_name: 'Principal',
-    last_name: 'User',
+    first_name: 'School',
+    last_name: 'Principal',
     role: 'principal',
     status: 'active',
   }).returning('*');

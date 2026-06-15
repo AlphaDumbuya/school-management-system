@@ -116,7 +116,7 @@ class DashboardService {
       // Get total staff
       const totalStaff = await db('users')
         .where((qb: any) => {
-          qb.where({ role: 'admin' })
+          qb.where({ role: 'principal' })
             .orWhere({ role: 'staff' })
             .orWhere({ role: 'accountant' })
             .orWhere({ role: 'admissionsOfficer' });

@@ -15,7 +15,7 @@ const studentService = new StudentService(db);
  * Create a new student
  * @requires admin, principal, teacher
  */
-router.post('/', authenticate, authorize('admin', 'principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { first_name, last_name, date_of_birth, gender, email, phone_number, address, city, state, postal_code, country, enrollment_date, status } = req.body;
     const createdBy = (req as any).user.id;
@@ -99,7 +99,7 @@ router.post('/', authenticate, authorize('admin', 'principal', 'teacher'), async
  * List all students with pagination and filtering
  * @requires admin, principal, teacher
  */
-router.get('/', authenticate, authorize('admin', 'principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', authenticate, authorize('principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
@@ -169,8 +169,8 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
 
-    // Check authorization: students can view their own record, others need admin/principal/teacher
-    if (currentUser.role === 'student' && student.user_id !== currentUser.id && currentUser.role !== 'admin') {
+    // Check authorization: students can view their own record, others need principal/teacher
+    if (currentUser.role === 'student' && student.user_id !== currentUser.id && currentUser.role !== 'principal') {
       throw new AppError('Insufficient permissions to view this student record', 403, 'AUTHORIZATION_ERROR');
     }
 
@@ -204,17 +204,17 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
 
     // Check authorization
     const isOwner = student.user_id === currentUser.id;
-    const isAdmin = ['admin', 'principal', 'teacher'].includes(currentUser.role);
+    const isAuthorized = ['principal', 'teacher'].includes(currentUser.role);
 
-    if (!isOwner && !isAdmin) {
+    if (!isOwner && !isAuthorized) {
       throw new AppError('Insufficient permissions to update this student', 403, 'AUTHORIZATION_ERROR');
     }
 
-    // Students can only update certain fields, admins can update all
+    // Students can only update certain fields, principal/teacher can update all
     const updateData: any = {};
 
-    if (first_name && isAdmin) updateData.first_name = first_name.trim();
-    if (last_name && isAdmin) updateData.last_name = last_name.trim();
+    if (first_name && isAuthorized) updateData.first_name = first_name.trim();
+    if (last_name && isAuthorized) updateData.last_name = last_name.trim();
     if (gender) updateData.gender = gender;
     if (email) {
       // Check email uniqueness
@@ -230,7 +230,7 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
     if (state) updateData.state = state;
     if (postal_code) updateData.postal_code = postal_code;
     if (country) updateData.country = country;
-    if (status && isAdmin) updateData.status = status;
+    if (status && isAuthorized) updateData.status = status;
 
     updateData.updated_at = new Date();
     updateData.updated_by = currentUser.id;
@@ -258,7 +258,7 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
  * Deactivate student (soft delete)
  * @requires admin, principal
  */
-router.delete('/:studentId', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:studentId', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const currentUser = (req as any).user;
@@ -295,7 +295,7 @@ router.delete('/:studentId', authenticate, authorize('admin', 'principal'), asyn
  * Reactivate a deactivated student
  * @requires admin, principal
  */
-router.post('/:studentId/reactivate', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:studentId/reactivate', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const currentUser = (req as any).user;

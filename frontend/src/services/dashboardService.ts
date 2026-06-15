@@ -3,7 +3,7 @@ import { CompleteDashboard } from '@hooks/useDashboard';
 
 class DashboardService {
   /**
-   * Get complete admin dashboard with all data
+   * Get complete principal dashboard with all data
    * Falls back to individual endpoint calls if complete endpoint not available
    */
   async getCompleteDashboard(): Promise<CompleteDashboard> {
@@ -47,7 +47,7 @@ class DashboardService {
   }
 
   /**
-   * Get admin dashboard metrics (KPIs)
+   * Get principal dashboard metrics (KPIs)
    */
   async getMetrics() {
     const response = await apiClient.get('/dashboards/admin/metrics');

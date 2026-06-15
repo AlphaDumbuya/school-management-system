@@ -14,7 +14,7 @@ const auditService = new AuditService(db);
 /**
  * Generate grade report for a class
  * POST /api/v1/reports/grades
- * Requires: admin, teacher, or student role
+ * Requires: principal, teacher, or student role
  */
 router.post(
   '/reports/grades',
@@ -71,7 +71,7 @@ router.post(
 /**
  * Generate attendance report for a class
  * POST /api/v1/reports/attendance
- * Requires: admin, teacher, or student role
+ * Requires: principal, teacher, or student role
  */
 router.post(
   '/reports/attendance',
@@ -127,7 +127,7 @@ router.post(
 /**
  * Generate performance report for a student
  * POST /api/v1/reports/performance
- * Requires: admin or teacher role
+ * Requires: principal or teacher role
  */
 router.post(
   '/reports/performance',
@@ -180,7 +180,7 @@ router.post(
 /**
  * Generate class performance report
  * POST /api/v1/reports/class-performance
- * Requires: admin or teacher role
+ * Requires: principal or teacher role
  */
 router.post(
   '/reports/class-performance',
@@ -233,7 +233,7 @@ router.post(
 /**
  * Generate schedule utilization report
  * POST /api/v1/reports/schedule-utilization
- * Requires: admin role
+ * Requires: principal role
  */
 router.post(
   '/reports/schedule-utilization',
@@ -286,7 +286,7 @@ router.post(
 /**
  * Get dashboard analytics
  * GET /api/v1/analytics/dashboard
- * Requires: admin, teacher, or manager role
+ * Requires: principal, teacher, or accountant role
  */
 router.get(
   '/analytics/dashboard',
@@ -338,7 +338,7 @@ router.get(
 /**
  * Get student analytics
  * GET /api/v1/analytics/students/:studentId
- * Requires: admin, teacher, or the student
+ * Requires: principal, teacher, or the student
  */
 router.get(
   '/analytics/students/:studentId',
@@ -378,7 +378,7 @@ router.get(
 /**
  * Get class analytics
  * GET /api/v1/analytics/classes/:classId
- * Requires: admin or teacher role
+ * Requires: principal or teacher role
  */
 router.get(
   '/analytics/classes/:classId',
@@ -417,7 +417,7 @@ router.get(
 /**
  * Get enrollment analytics
  * GET /api/v1/analytics/enrollment
- * Requires: admin or manager role
+ * Requires: principal or accountant role
  */
 router.get(
   '/analytics/enrollment',
@@ -456,7 +456,7 @@ router.get(
 /**
  * Get system health metrics
  * GET /api/v1/analytics/health
- * Requires: admin role
+ * Requires: principal role
  */
 router.get(
   '/analytics/health',
@@ -483,7 +483,7 @@ router.get(
 /**
  * Get report history
  * GET /api/v1/reports/history
- * Requires: admin or manager role
+ * Requires: principal or accountant role
  */
 router.get(
   '/reports/history',
@@ -555,7 +555,7 @@ router.get(
 /**
  * Delete report
  * DELETE /api/v1/reports/:reportId
- * Requires: admin role or report creator
+ * Requires: principal role or report creator
  */
 router.delete(
   '/reports/:reportId',
@@ -576,7 +576,7 @@ router.delete(
       }
 
       // Check authorization
-      if (report.created_by !== userId && (req as any).user.role !== 'admin') {
+      if (report.created_by !== userId && (req as any).user.role !== 'principal') {
         return res
           .status(403)
           .json({ error: 'Forbidden' });

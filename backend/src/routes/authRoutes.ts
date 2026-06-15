@@ -289,9 +289,9 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
 
 /**
  * POST /api/v1/users
- * Create a new user (admin only)
+ * Create a new user (principal only)
  */
-router.post('/users', authenticate, authorize(UserRole.ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/users', authenticate, authorize(UserRole.PRINCIPAL), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, password, first_name, last_name, role } = req.body;
     const createdBy = (req as any).auth.userId;
@@ -329,9 +329,9 @@ router.post('/users', authenticate, authorize(UserRole.ADMIN), async (req: Reque
 
 /**
  * GET /api/v1/users
- * List all users (admin only)
+ * List all users (principal only)
  */
-router.get('/users', authenticate, authorize(UserRole.ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/users', authenticate, authorize(UserRole.PRINCIPAL), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { role, status, limit = 50, offset = 0 } = req.query;
 
@@ -371,8 +371,8 @@ router.get('/users/:id', authenticate, async (req: Request, res: Response, next:
     const currentUserId = (req as any).auth.userId;
     const currentUserRole = (req as any).auth.role;
 
-    // Allow users to view their own profile, or admins to view anyone
-    if (id !== currentUserId && currentUserRole !== UserRole.ADMIN) {
+    // Allow users to view their own profile, or principals to view anyone
+    if (id !== currentUserId && currentUserRole !== UserRole.PRINCIPAL) {
       throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
     }
 
@@ -395,14 +395,14 @@ router.put('/users/:id', authenticate, async (req: Request, res: Response, next:
     const currentUserId = (req as any).auth.userId;
     const currentUserRole = (req as any).auth.role;
 
-    // Allow users to update their own profile (except role and status), or admins to update anyone
-    if (id !== currentUserId && currentUserRole !== UserRole.ADMIN) {
+    // Allow users to update their own profile (except role and status), or principals to update anyone
+    if (id !== currentUserId && currentUserRole !== UserRole.PRINCIPAL) {
       throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
     }
 
-    // Non-admins cannot change role or status
-    if (currentUserRole !== UserRole.ADMIN && (role !== undefined || status !== undefined)) {
-      throw new AppError('Only admins can modify role or status', 403, 'INSUFFICIENT_PERMISSIONS');
+    // Non-principals cannot change role or status
+    if (currentUserRole !== UserRole.PRINCIPAL && (role !== undefined || status !== undefined)) {
+      throw new AppError('Only principals can modify role or status', 403, 'INSUFFICIENT_PERMISSIONS');
     }
 
     const updatePayload: any = {};
@@ -427,9 +427,9 @@ router.put('/users/:id', authenticate, async (req: Request, res: Response, next:
 
 /**
  * DELETE /api/v1/users/:id
- * Deactivate user (admin only)
+ * Deactivate user (principal only)
  */
-router.delete('/users/:id', authenticate, authorize(UserRole.ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/users/:id', authenticate, authorize(UserRole.PRINCIPAL), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const deactivatedBy = (req as any).auth.userId;
@@ -453,9 +453,9 @@ router.delete('/users/:id', authenticate, authorize(UserRole.ADMIN), async (req:
 
 /**
  * POST /api/v1/users/:id/reactivate
- * Reactivate user (admin only)
+ * Reactivate user (principal only)
  */
-router.post('/users/:id/reactivate', authenticate, authorize(UserRole.ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/users/:id/reactivate', authenticate, authorize(UserRole.PRINCIPAL), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const reactivatedBy = (req as any).auth.userId;

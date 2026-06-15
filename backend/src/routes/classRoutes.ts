@@ -12,7 +12,7 @@ const db = knex(knexConfig.development);
  * POST /api/v1/classes
  * Create a new class
  */
-router.post('/', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, level, section, capacity, academic_session_id, class_teacher_id, room_number, floor, building } = req.body;
     const createdBy = (req as any).user.id;
@@ -115,7 +115,7 @@ router.get('/:classId', authenticate, async (req: Request, res: Response, next: 
  * PUT /api/v1/classes/:classId
  * Update class
  */
-router.put('/:classId', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:classId', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
     const { name, level, section, capacity, class_teacher_id, room_number, status } = req.body;
@@ -162,7 +162,7 @@ router.put('/:classId', authenticate, authorize('admin', 'principal'), async (re
  * DELETE /api/v1/classes/:classId
  * Delete class (soft delete)
  */
-router.delete('/:classId', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:classId', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
 

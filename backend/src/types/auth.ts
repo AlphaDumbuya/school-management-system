@@ -48,7 +48,7 @@ export interface PasswordChangeRequest {
 }
 
 export enum UserRole {
-  ADMIN = 'admin',
+  SUPER_ADMIN = 'super_admin',
   PRINCIPAL = 'principal',
   TEACHER = 'teacher',
   STUDENT = 'student',
@@ -82,4 +82,6 @@ export interface AuthContext {
   email: string;
   role: UserRole;
   permissions: string[];
+  tenantId?: string;
+  isPlatformAdmin?: boolean;
 }

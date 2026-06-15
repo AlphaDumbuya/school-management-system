@@ -1,6 +1,6 @@
 /**
  * Sidebar Navigation Component
- * Main navigation menu with role-based items
+ * Main navigation menu with role-based items organized by module
  * Phase 11: Frontend Dashboard Implementation
  */
 
@@ -20,6 +20,11 @@ import {
   FaBell,
   FaFileImport,
   FaClock,
+  FaBuilding,
+  FaAward,
+  FaBarcode,
+  FaMessageSquare,
+  FaShieldAlt,
 } from 'react-icons/fa';
 import { FaRightFromBracket } from 'react-icons/fa6';
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
@@ -32,6 +37,7 @@ interface NavItem {
   roles: string[];
   badge?: string;
   group?: string;
+  module?: string;
 }
 
 interface SidebarProps {
@@ -40,123 +46,334 @@ interface SidebarProps {
 }
 
 const navItems: NavItem[] = [
-  // ── Academic ─────────────────────────────────────────────────────
+  // ── ACADEMIC MANAGEMENT ─────────────────────────────────────────────
   {
-    label: 'Students',
-    icon: <FaUsers className="w-5 h-5" />,
-    path: '/students',
-    roles: ['admin', 'principal', 'teacher', 'admissions_officer'],
-    group: 'Academic',
-  },
-  {
-    label: 'Classes',
-    icon: <FaBook className="w-5 h-5" />,
-    path: '/classes',
-    roles: ['admin', 'principal', 'teacher'],
+    label: 'Classes & Streams',
+    icon: <FaBook className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/academic/classes',
+    roles: ['super_admin', 'principal', 'teacher'],
+    module: 'Academic Management',
     group: 'Academic',
   },
   {
     label: 'Subjects',
-    icon: <FaClipboardList className="w-5 h-5" />,
-    path: '/subjects',
-    roles: ['admin', 'principal'],
+    icon: <FaClipboardList className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/academic/subjects',
+    roles: ['super_admin', 'principal'],
+    module: 'Academic Management',
     group: 'Academic',
   },
   {
-    label: 'Timetable',
-    icon: <FaClock className="w-5 h-5" />,
-    path: '/timetable',
-    roles: ['admin', 'principal'],
+    label: 'Timetables',
+    icon: <FaClock className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/academic/timetables',
+    roles: ['super_admin', 'principal', 'teacher'],
+    module: 'Academic Management',
+    group: 'Academic',
+  },
+  {
+    label: 'Assignments',
+    icon: <FaClipboardList className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/academic/assignments',
+    roles: ['super_admin', 'principal', 'teacher', 'student'],
+    module: 'Academic Management',
     group: 'Academic',
   },
   {
     label: 'Examinations',
-    icon: <FaFileImport className="w-5 h-5" />,
-    path: '/examinations',
-    roles: ['admin', 'principal'],
+    icon: <FaFileImport className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/academic/examinations',
+    roles: ['super_admin', 'principal', 'teacher'],
+    module: 'Academic Management',
     group: 'Academic',
   },
   {
-    label: 'Grades',
-    icon: <FaChartBar className="w-5 h-5" />,
-    path: '/grades',
-    roles: ['admin', 'principal', 'teacher', 'student'],
+    label: 'Results & Grades',
+    icon: <FaChartBar className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/academic/results',
+    roles: ['super_admin', 'principal', 'teacher', 'student', 'parent'],
+    module: 'Academic Management',
     group: 'Academic',
+  },
+  {
+    label: 'Report Cards',
+    icon: <FaFileImport className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/academic/report-cards',
+    roles: ['super_admin', 'principal', 'teacher', 'student', 'parent'],
+    module: 'Academic Management',
+    group: 'Academic',
+  },
+  {
+    label: 'Promotions',
+    icon: <FaAward className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/academic/promotions',
+    roles: ['super_admin', 'principal'],
+    module: 'Academic Management',
+    group: 'Academic',
+  },
+
+  // ── STUDENT MANAGEMENT ──────────────────────────────────────────────
+  {
+    label: 'Student Directory',
+    icon: <FaUsers className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/students/directory',
+    roles: ['super_admin', 'principal', 'teacher', 'admissions_officer'],
+    module: 'Student Management',
+    group: 'Students',
+  },
+  {
+    label: 'Admissions',
+    icon: <FaClipboardList className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/students/admissions',
+    roles: ['super_admin', 'principal', 'admissions_officer'],
+    module: 'Student Management',
+    group: 'Students',
+  },
+  {
+    label: 'Student Profiles',
+    icon: <FaUsers className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/students/profiles',
+    roles: ['super_admin', 'principal', 'teacher', 'admissions_officer'],
+    module: 'Student Management',
+    group: 'Students',
   },
   {
     label: 'Attendance',
-    icon: <FaCalendar className="w-5 h-5" />,
-    path: '/attendance',
-    roles: ['admin', 'principal', 'teacher', 'student'],
-    group: 'Academic',
+    icon: <FaCalendar className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/students/attendance',
+    roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
+    module: 'Student Management',
+    group: 'Students',
   },
-  // ── Staff ────────────────────────────────────────────────────────
+  {
+    label: 'Discipline & Conduct',
+    icon: <FaShieldAlt className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/students/discipline',
+    roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
+    module: 'Student Management',
+    group: 'Students',
+  },
+
+  // ── STAFF MANAGEMENT ────────────────────────────────────────────────
   {
     label: 'Teachers',
-    icon: <FaUserTie className="w-5 h-5" />,
-    path: '/teachers',
-    roles: ['admin', 'principal'],
+    icon: <FaUserTie className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/staff/teachers',
+    roles: ['super_admin', 'principal'],
+    module: 'Staff Management',
     group: 'Staff',
   },
   {
-    label: 'Staff',
-    icon: <FaUsers className="w-5 h-5" />,
-    path: '/staff',
-    roles: ['admin', 'principal'],
+    label: 'Non-Teaching Staff',
+    icon: <FaUsers className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/staff/members',
+    roles: ['super_admin', 'principal'],
+    module: 'Staff Management',
     group: 'Staff',
   },
-  // ── Communication ────────────────────────────────────────────────
+  {
+    label: 'Leave Management',
+    icon: <FaCalendar className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/staff/leave',
+    roles: ['super_admin', 'principal', 'teacher'],
+    module: 'Staff Management',
+    group: 'Staff',
+  },
+  {
+    label: 'Performance Reviews',
+    icon: <FaChartBar className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/staff/performance',
+    roles: ['super_admin', 'principal'],
+    module: 'Staff Management',
+    group: 'Staff',
+  },
+
+  // ── FINANCIAL MANAGEMENT ────────────────────────────────────────────
+  {
+    label: 'Fee Structures',
+    icon: <FaMoneyBill className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/fees',
+    roles: ['super_admin', 'principal', 'accountant'],
+    module: 'Financial Management',
+    group: 'Finance',
+  },
+  {
+    label: 'Invoices',
+    icon: <FaFileImport className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/invoices',
+    roles: ['super_admin', 'principal', 'accountant', 'parent'],
+    module: 'Financial Management',
+    group: 'Finance',
+  },
+  {
+    label: 'Payments & Receipts',
+    icon: <FaMoneyBill className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/payments',
+    roles: ['super_admin', 'principal', 'accountant', 'parent'],
+    module: 'Financial Management',
+    group: 'Finance',
+  },
+  {
+    label: 'Expenses',
+    icon: <FaMoneyBill className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/expenses',
+    roles: ['super_admin', 'principal', 'accountant'],
+    module: 'Financial Management',
+    group: 'Finance',
+  },
+  {
+    label: 'Payroll',
+    icon: <FaMoneyBill className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/payroll',
+    roles: ['super_admin', 'principal', 'accountant'],
+    module: 'Financial Management',
+    group: 'Finance',
+  },
+  {
+    label: 'Scholarships',
+    icon: <FaAward className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/scholarships',
+    roles: ['super_admin', 'principal', 'accountant'],
+    module: 'Financial Management',
+    group: 'Finance',
+  },
+
+  // ── COMMUNICATION ───────────────────────────────────────────────────
   {
     label: 'Announcements',
-    icon: <FaBell className="w-5 h-5" />,
-    path: '/announcements',
-    roles: ['admin', 'principal'],
+    icon: <FaBell className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/communication/announcements',
+    roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
+    module: 'Communication',
     group: 'Communication',
   },
   {
     label: 'Messages',
-    icon: <FaClipboardList className="w-5 h-5" />,
-    path: '/messages',
-    roles: ['admin', 'principal'],
+    icon: <FaMessageSquare className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/communication/messages',
+    roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
+    module: 'Communication',
     group: 'Communication',
   },
   {
-    label: 'Notifications',
-    icon: <FaBell className="w-5 h-5" />,
-    path: '/notifications',
-    roles: ['admin'],
+    label: 'SMS Notifications',
+    icon: <FaBell className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/communication/sms',
+    roles: ['super_admin', 'principal', 'accountant', 'admissions_officer'],
+    module: 'Communication',
     group: 'Communication',
   },
-  // ── Finance ──────────────────────────────────────────────────────
   {
-    label: 'Finance',
-    icon: <FaMoneyBill className="w-5 h-5" />,
-    path: '/finance',
-    roles: ['admin', 'principal', 'accountant'],
-    group: 'Finance',
+    label: 'Email Notifications',
+    icon: <FaBell className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/communication/email',
+    roles: ['super_admin', 'principal', 'accountant', 'admissions_officer'],
+    module: 'Communication',
+    group: 'Communication',
   },
-  // ── Reports ──────────────────────────────────────────────────────
+
+  // ── IDENTITY MANAGEMENT ────────────────────────────────────────────
   {
-    label: 'Reports',
-    icon: <FaChartBar className="w-5 h-5" />,
-    path: '/reports',
-    roles: ['admin', 'principal', 'accountant'],
+    label: 'ID Cards',
+    icon: <FaBarcode className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/identity/cards',
+    roles: ['super_admin', 'principal', 'admissions_officer'],
+    module: 'Identity Management',
+    group: 'Identity',
+  },
+  {
+    label: 'QR Codes',
+    icon: <FaBarcode className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/identity/qr-codes',
+    roles: ['super_admin', 'principal', 'admissions_officer'],
+    module: 'Identity Management',
+    group: 'Identity',
+  },
+
+  // ── EVENTS MANAGEMENT ──────────────────────────────────────────────
+  {
+    label: 'School Events',
+    icon: <FaAward className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/events/school',
+    roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
+    module: 'Events Management',
+    group: 'Events',
+  },
+  {
+    label: 'Calendar',
+    icon: <FaCalendar className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/events/calendar',
+    roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
+    module: 'Events Management',
+    group: 'Events',
+  },
+
+  // ── REPORTS & ANALYTICS ────────────────────────────────────────────
+  {
+    label: 'Academic Reports',
+    icon: <FaChartBar className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/reports/academic',
+    roles: ['super_admin', 'principal', 'teacher'],
+    module: 'Reports & Analytics',
     group: 'Reports',
   },
-  // ── System (admin only) ──────────────────────────────────────────
   {
-    label: 'Users',
-    icon: <FaUserTie className="w-5 h-5" />,
-    path: '/users',
-    roles: ['admin', 'principal'],
-    group: 'System',
+    label: 'Financial Reports',
+    icon: <FaChartBar className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/reports/financial',
+    roles: ['super_admin', 'principal', 'accountant'],
+    module: 'Reports & Analytics',
+    group: 'Reports',
   },
   {
-    label: 'Import / Export',
-    icon: <FaFileImport className="w-5 h-5" />,
-    path: '/import-export',
-    roles: ['admin'],
-    group: 'System',
+    label: 'Attendance Reports',
+    icon: <FaChartBar className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/reports/attendance',
+    roles: ['super_admin', 'principal', 'teacher'],
+    module: 'Reports & Analytics',
+    group: 'Reports',
+  },
+  {
+    label: 'Enrollment Reports',
+    icon: <FaChartBar className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/reports/enrollment',
+    roles: ['super_admin', 'principal', 'admissions_officer'],
+    module: 'Reports & Analytics',
+    group: 'Reports',
+  },
+  {
+    label: 'Discipline Reports',
+    icon: <FaChartBar className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/reports/discipline',
+    roles: ['super_admin', 'principal'],
+    module: 'Reports & Analytics',
+    group: 'Reports',
+  },
+
+  // ── PLATFORM MANAGEMENT (SUPER ADMIN ONLY) ────────────────────────
+  {
+    label: 'Tenant Management',
+    icon: <FaBuilding className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/platform/tenants',
+    roles: ['super_admin'],
+    module: 'Platform Management',
+    group: 'Platform',
+  },
+  {
+    label: 'Subscriptions',
+    icon: <FaMoneyBill className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/platform/subscriptions',
+    roles: ['super_admin'],
+    module: 'Platform Management',
+    group: 'Platform',
+  },
+  {
+    label: 'Platform Analytics',
+    icon: <FaChartBar className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/platform/analytics',
+    roles: ['super_admin'],
+    module: 'Platform Management',
+    group: 'Platform',
   },
 ];
 

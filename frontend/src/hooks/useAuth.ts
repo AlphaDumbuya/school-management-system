@@ -23,6 +23,8 @@ interface UseAuthReturn {
 /** Returns the home path for a given role */
 export const getDashboardPath = (role: UserRole): string => {
   switch (role) {
+    case 'super_admin':
+      return '/platform/dashboard';
     case 'teacher':
       return '/teacher/dashboard';
     case 'student':
@@ -34,7 +36,6 @@ export const getDashboardPath = (role: UserRole): string => {
       return '/accountant/dashboard';
     case 'admissions_officer':
       return '/admissions/dashboard';
-    case 'admin':
     case 'principal':
     case 'staff':
     default:

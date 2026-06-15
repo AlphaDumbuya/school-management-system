@@ -32,6 +32,7 @@ import phase20PerformanceRoutes from '@routes/phase20PerformanceRoutes';
 import phase21HelpSupportRoutes from '@routes/phase21HelpSupportRoutes';
 import phase22SerializationRoutes from '@routes/phase22SerializationRoutes';
 import phase25ExternalServicesRoutes from '@routes/phase25ExternalServicesRoutes';
+import platformRoutes from '@routes/platformRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -155,6 +156,9 @@ phase22SerializationRoutes(app, db);
 
 // External Services Integration Routes (Phase 25)
 app.use('/api/v1', phase25ExternalServicesRoutes);
+
+// Platform Management Routes (Phase 1: Super Admin)
+app.use('/api/v1/platform', platformRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

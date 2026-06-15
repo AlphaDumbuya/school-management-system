@@ -13,9 +13,9 @@ const rbacService = new RBACService(db);
 
 /**
  * GET /api/v1/roles
- * Get all roles (admin only)
+ * Get all roles (principal only)
  */
-router.get('/', authenticate, authorize(UserRole.ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', authenticate, authorize(UserRole.PRINCIPAL), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const roles = await rbacService.getAllRoles();
 
@@ -30,9 +30,9 @@ router.get('/', authenticate, authorize(UserRole.ADMIN), async (req: Request, re
 
 /**
  * GET /api/v1/roles/:id
- * Get role by ID with permissions (admin only)
+ * Get role by ID with permissions (principal only)
  */
-router.get('/:id', authenticate, authorize(UserRole.ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id', authenticate, authorize(UserRole.PRINCIPAL), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 
@@ -46,9 +46,9 @@ router.get('/:id', authenticate, authorize(UserRole.ADMIN), async (req: Request,
 
 /**
  * POST /api/v1/roles
- * Create a new role (admin only)
+ * Create a new role (principal only)
  */
-router.post('/', authenticate, authorize(UserRole.ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, authorize(UserRole.PRINCIPAL), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, description } = req.body;
 
@@ -71,12 +71,12 @@ router.post('/', authenticate, authorize(UserRole.ADMIN), async (req: Request, r
 
 /**
  * POST /api/v1/roles/:roleId/permissions/:permissionId
- * Assign permission to role (admin only)
+ * Assign permission to role (principal only)
  */
 router.post(
   '/:roleId/permissions/:permissionId',
   authenticate,
-  authorize(UserRole.ADMIN),
+  authorize(UserRole.PRINCIPAL),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { roleId, permissionId } = req.params;
@@ -100,12 +100,12 @@ router.post(
 
 /**
  * DELETE /api/v1/roles/:roleId/permissions/:permissionId
- * Remove permission from role (admin only)
+ * Remove permission from role (principal only)
  */
 router.delete(
   '/:roleId/permissions/:permissionId',
   authenticate,
-  authorize(UserRole.ADMIN),
+  authorize(UserRole.PRINCIPAL),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { roleId, permissionId } = req.params;
@@ -126,9 +126,9 @@ router.delete(
 
 /**
  * GET /api/v1/permissions
- * Get all permissions (admin only)
+ * Get all permissions (principal only)
  */
-router.get('/permissions', authenticate, authorize(UserRole.ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/permissions', authenticate, authorize(UserRole.PRINCIPAL), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const permissions = await rbacService.getAllPermissions();
 
@@ -143,12 +143,12 @@ router.get('/permissions', authenticate, authorize(UserRole.ADMIN), async (req: 
 
 /**
  * GET /api/v1/permissions/resource/:resource
- * Get permissions by resource (admin only)
+ * Get permissions by resource (principal only)
  */
 router.get(
   '/resource/:resource',
   authenticate,
-  authorize(UserRole.ADMIN),
+  authorize(UserRole.PRINCIPAL),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { resource } = req.params;
@@ -178,8 +178,8 @@ router.get(
       const currentUserId = (req as any).auth.userId;
       const currentUserRole = (req as any).auth.role;
 
-      // Allow users to view their own permissions, or admins to view anyone's
-      if (userId !== currentUserId && currentUserRole !== UserRole.ADMIN) {
+      // Allow users to view their own permissions, or principals to view anyone's
+      if (userId !== currentUserId && currentUserRole !== UserRole.PRINCIPAL) {
         throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
       }
 

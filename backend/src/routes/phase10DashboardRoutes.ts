@@ -11,16 +11,16 @@ const router: Router = express.Router();
 
 /**
  * GET /api/v1/dashboards/admin/metrics
- * Get comprehensive admin dashboard metrics (KPIs)
- * Role: admin, principal
+ * Get comprehensive principal dashboard metrics (KPIs)
+ * Role: principal
  */
 router.get('/dashboards/admin/metrics', authenticate, async (req: Request, res: Response) => {
   try {
     // Check authorization
-    if (!['admin', 'principal'].includes(req.user?.role)) {
+    if (req.user?.role !== 'principal') {
       return res.status(403).json({
         error: 'Forbidden',
-        message: 'Only admins and principals can access admin dashboard metrics',
+        message: 'Only principals can access admin dashboard metrics',
       });
     }
 
@@ -44,7 +44,7 @@ router.get('/dashboards/admin/metrics', authenticate, async (req: Request, res: 
  */
 router.get('/dashboards/admin/pending-approvals', authenticate, async (req: Request, res: Response) => {
   try {
-    if (!['admin', 'principal'].includes(req.user?.role)) {
+    if (req.user?.role !== 'principal') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -68,7 +68,7 @@ router.get('/dashboards/admin/pending-approvals', authenticate, async (req: Requ
  */
 router.get('/dashboards/admin/financial-summary', authenticate, async (req: Request, res: Response) => {
   try {
-    if (!['admin', 'principal', 'accountant'].includes(req.user?.role)) {
+    if (!['principal', 'accountant'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -92,7 +92,7 @@ router.get('/dashboards/admin/financial-summary', authenticate, async (req: Requ
  */
 router.get('/dashboards/admin/alerts', authenticate, async (req: Request, res: Response) => {
   try {
-    if (!['admin', 'principal'].includes(req.user?.role)) {
+    if (req.user?.role !== 'principal') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -118,7 +118,7 @@ router.get('/dashboards/admin/alerts', authenticate, async (req: Request, res: R
  */
 router.get('/dashboards/admin/recent-activities', authenticate, async (req: Request, res: Response) => {
   try {
-    if (!['admin', 'principal'].includes(req.user?.role)) {
+    if (req.user?.role !== 'principal') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -146,7 +146,7 @@ router.get('/dashboards/admin/recent-activities', authenticate, async (req: Requ
  */
 router.get('/dashboards/admin/students-at-risk', authenticate, async (req: Request, res: Response) => {
   try {
-    if (!['admin', 'principal', 'teacher'].includes(req.user?.role)) {
+    if (!['principal', 'teacher'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -173,7 +173,7 @@ router.get('/dashboards/admin/students-at-risk', authenticate, async (req: Reque
  */
 router.get('/dashboards/admin/system-health', authenticate, async (req: Request, res: Response) => {
   try {
-    if (!['admin', 'principal'].includes(req.user?.role)) {
+    if (req.user?.role !== 'principal') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -201,7 +201,7 @@ router.get('/dashboards/admin/system-health', authenticate, async (req: Request,
  */
 router.get('/dashboards/admin/chart/academic-performance', authenticate, async (req: Request, res: Response) => {
   try {
-    if (!['admin', 'principal', 'teacher'].includes(req.user?.role)) {
+    if (!['principal', 'teacher'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -225,7 +225,7 @@ router.get('/dashboards/admin/chart/academic-performance', authenticate, async (
  */
 router.get('/dashboards/admin/chart/attendance-trend', authenticate, async (req: Request, res: Response) => {
   try {
-    if (!['admin', 'principal', 'teacher'].includes(req.user?.role)) {
+    if (!['principal', 'teacher'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -249,7 +249,7 @@ router.get('/dashboards/admin/chart/attendance-trend', authenticate, async (req:
  */
 router.get('/dashboards/admin/chart/fee-collection', authenticate, async (req: Request, res: Response) => {
   try {
-    if (!['admin', 'principal', 'accountant'].includes(req.user?.role)) {
+    if (!['principal', 'accountant'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -273,7 +273,7 @@ router.get('/dashboards/admin/chart/fee-collection', authenticate, async (req: R
  */
 router.get('/dashboards/admin/chart/student-distribution', authenticate, async (req: Request, res: Response) => {
   try {
-    if (!['admin', 'principal'].includes(req.user?.role)) {
+    if (req.user?.role !== 'principal') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -302,7 +302,7 @@ router.get('/dashboards/admin/chart/student-distribution', authenticate, async (
  */
 router.get('/dashboards/admin/complete', authenticate, async (req: Request, res: Response) => {
   try {
-    if (!['admin', 'principal'].includes(req.user?.role)) {
+    if (req.user?.role !== 'principal') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 

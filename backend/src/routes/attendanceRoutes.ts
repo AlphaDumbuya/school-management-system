@@ -12,7 +12,7 @@ const db = knex(knexConfig.development);
  * POST /api/v1/attendance
  * Record attendance for a student
  */
-router.post('/', authenticate, authorize('admin', 'principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { student_id, class_id, date, status, remarks } = req.body;
     const recordedBy = (req as any).user.id;
@@ -124,7 +124,7 @@ router.get('/student/:studentId', authenticate, async (req: Request, res: Respon
     }
 
     // Check authorization
-    if (currentUser.role === 'student' && student.user_id !== currentUser.id && currentUser.role !== 'admin') {
+    if (currentUser.role === 'student' && student.user_id !== currentUser.id && currentUser.role !== 'principal') {
       throw new AppError('Insufficient permissions', 403, 'AUTHORIZATION_ERROR');
     }
 
