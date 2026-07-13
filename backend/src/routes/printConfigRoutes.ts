@@ -14,7 +14,7 @@ import { logger } from '../utils/logger';
 const router = express.Router();
 
 // All routes require authentication
-router.use(authMiddleware);
+router.use(authenticate);
 
 /**
  * GET /api/v1/print-configs
@@ -168,7 +168,7 @@ router.get('/:configId', async (req: Request, res: Response) => {
  * POST /api/v1/print-configs
  * Create new print configuration
  */
-router.post('/', rbacMiddleware(['principal', 'admin_staff']), async (req: Request, res: Response) => {
+router.post('/', authorize(['principal', 'admin_staff']), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const tenantId = (req as any).user.tenantId;
@@ -206,7 +206,7 @@ router.post('/', rbacMiddleware(['principal', 'admin_staff']), async (req: Reque
  * PUT /api/v1/print-configs/:configId
  * Update existing print configuration
  */
-router.put('/:configId', rbacMiddleware(['principal', 'admin_staff']), async (req: Request, res: Response) => {
+router.put('/:configId', authorize(['principal', 'admin_staff']), async (req: Request, res: Response) => {
   try {
     const { configId } = req.params;
     const userId = (req as any).user.id;
@@ -246,7 +246,7 @@ router.put('/:configId', rbacMiddleware(['principal', 'admin_staff']), async (re
  * POST /api/v1/print-configs/:configId/set-default
  * Set configuration as default
  */
-router.post('/:configId/set-default', rbacMiddleware(['principal', 'admin_staff']), async (req: Request, res: Response) => {
+router.post('/:configId/set-default', authorize(['principal', 'admin_staff']), async (req: Request, res: Response) => {
   try {
     const { configId } = req.params;
     const userId = (req as any).user.id;
@@ -327,7 +327,7 @@ router.post('/:configId/calculate-layout', async (req: Request, res: Response) =
  * DELETE /api/v1/print-configs/:configId
  * Delete print configuration
  */
-router.delete('/:configId', rbacMiddleware(['principal', 'admin_staff']), async (req: Request, res: Response) => {
+router.delete('/:configId', authorize(['principal', 'admin_staff']), async (req: Request, res: Response) => {
   try {
     const { configId } = req.params;
     const userId = (req as any).user.id;

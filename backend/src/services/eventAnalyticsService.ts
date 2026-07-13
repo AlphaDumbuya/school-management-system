@@ -6,7 +6,7 @@
 
 import db from '../utils/database.js';
 import { EventStats, CategoryStats } from '../types/event.js';
-import logger from '../utils/logger.js';
+import { logger } from '../utils/logger.js';
 
 export class EventAnalyticsService {
   /**

@@ -5,7 +5,7 @@
  */
 
 import { db } from '@utils/database.js';
-import logger from '@utils/logger.js';
+import { logger } from '@utils/logger.js';
 import { AppError } from '@middleware/errorHandler.js';
 import notificationService from '@services/notificationService.js';
 import {

@@ -5,9 +5,8 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import authMiddleware from '../middleware/authMiddleware.js';
-import rbacMiddleware from '../middleware/rbacMiddleware.js';
-import logger from '../utils/logger.js';
+import { authenticate, authorize } from '../middleware/authMiddleware.js';
+import { logger } from '../utils/logger.js';
 import disciplineService from '../services/disciplineService.js';
 import infractionService from '../services/infractionService.js';
 import detentionService from '../services/detentionService.js';
@@ -19,7 +18,7 @@ import disciplineAnalyticsService from '../services/disciplineAnalyticsService.j
 const router = Router();
 
 // Apply authentication middleware to all routes
-router.use(authMiddleware);
+router.use(authenticate);
 
 // ==================== INFRACTION MANAGEMENT ====================
 
@@ -29,7 +28,7 @@ router.use(authMiddleware);
  */
 router.post(
   '/infractions',
-  rbacMiddleware(['principal', 'teacher', 'super_admin']),
+  authorize(['principal', 'teacher', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const infraction = await infractionService.recordInfraction(req.user.tenant_id, {
@@ -101,7 +100,7 @@ router.get(
  */
 router.put(
   '/infractions/:infractionId',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const infraction = await infractionService.updateInfraction(
@@ -147,7 +146,7 @@ router.post(
  */
 router.post(
   '/infractions/:infractionId/resolve',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const infraction = await infractionService.resolveInfraction(
@@ -199,7 +198,7 @@ router.get(
  */
 router.get(
   '/repeat-offenders',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const offenders = await infractionService.getRepeatOffenders(
@@ -224,7 +223,7 @@ router.get(
  */
 router.post(
   '/actions',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const action = await disciplineService.assignDisciplineAction(req.user.tenant_id, {
@@ -275,7 +274,7 @@ router.get(
  */
 router.put(
   '/actions/:actionId/status',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const action = await disciplineService.updateActionStatus(
@@ -300,7 +299,7 @@ router.put(
  */
 router.post(
   '/actions/:actionId/cancel',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const action = await disciplineService.cancelAction(
@@ -326,7 +325,7 @@ router.post(
  */
 router.post(
   '/detentions',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const detention = await detentionService.scheduleDetention(req.user.tenant_id, req.body);
@@ -375,7 +374,7 @@ router.get(
  */
 router.post(
   '/detentions/:detentionId/attend',
-  rbacMiddleware(['principal', 'teacher', 'super_admin']),
+  authorize(['principal', 'teacher', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const detention = await detentionService.markAttended(
@@ -398,7 +397,7 @@ router.post(
  */
 router.post(
   '/detentions/:detentionId/absent',
-  rbacMiddleware(['principal', 'teacher', 'super_admin']),
+  authorize(['principal', 'teacher', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const detention = await detentionService.markAbsent(
@@ -422,7 +421,7 @@ router.post(
  */
 router.post(
   '/detentions/:detentionId/reschedule',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const detention = await detentionService.rescheduleDetention(
@@ -447,7 +446,7 @@ router.post(
  */
 router.get(
   '/detention-calendar',
-  rbacMiddleware(['principal', 'teacher', 'super_admin']),
+  authorize(['principal', 'teacher', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const calendar = await detentionService.getDetentionCalendar(
@@ -522,7 +521,7 @@ router.get(
  */
 router.post(
   '/appeals/:appealId/review',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const appeal = await appealService.reviewAppeal(
@@ -545,7 +544,7 @@ router.post(
  */
 router.post(
   '/appeals/:appealId/approve',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const appeal = await appealService.approveAppeal(
@@ -570,7 +569,7 @@ router.post(
  */
 router.post(
   '/appeals/:appealId/reject',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const appeal = await appealService.rejectAppeal(
@@ -594,7 +593,7 @@ router.post(
  */
 router.post(
   '/appeals/:appealId/escalate',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const appeal = await appealService.escalateAppeal(
@@ -618,7 +617,7 @@ router.post(
  */
 router.get(
   '/appeals/pending',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const appeals = await appealService.getPendingAppeals(
@@ -642,7 +641,7 @@ router.get(
  */
 router.post(
   '/notes',
-  rbacMiddleware(['principal', 'teacher', 'super_admin']),
+  authorize(['principal', 'teacher', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const note = await behavioralNoteService.createNote(req.user.tenant_id, {
@@ -713,7 +712,7 @@ router.get(
  */
 router.put(
   '/notes/:noteId',
-  rbacMiddleware(['principal', 'teacher', 'super_admin']),
+  authorize(['principal', 'teacher', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const note = await behavioralNoteService.updateNote(
@@ -737,7 +736,7 @@ router.put(
  */
 router.delete(
   '/notes/:noteId',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       await behavioralNoteService.deleteNote(req.params.noteId, req.user.tenant_id, req.user.id);
@@ -756,7 +755,7 @@ router.delete(
  */
 router.post(
   '/notes/:noteId/share',
-  rbacMiddleware(['principal', 'teacher']),
+  authorize(['principal', 'teacher']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const note = await behavioralNoteService.shareWithStudent(
@@ -781,7 +780,7 @@ router.post(
  */
 router.post(
   '/reports/generate',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const report = await conductReportService.generateReport(
@@ -828,7 +827,7 @@ router.get(
  */
 router.post(
   '/reports/:reportId/share',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const report = await conductReportService.shareWithParents(
@@ -875,7 +874,7 @@ router.post(
  */
 router.get(
   '/analytics/dashboard',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const summary = await disciplineAnalyticsService.getDashboardSummary(req.user.tenant_id);
@@ -894,7 +893,7 @@ router.get(
  */
 router.get(
   '/analytics/trends',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const trends = await disciplineAnalyticsService.getInfractionTrends(
@@ -916,7 +915,7 @@ router.get(
  */
 router.get(
   '/analytics/high-risk',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const students = await disciplineAnalyticsService.getHighRiskStudents(
@@ -938,7 +937,7 @@ router.get(
  */
 router.get(
   '/analytics/report',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const report = await disciplineAnalyticsService.generateComprehensiveReport(req.user.tenant_id);

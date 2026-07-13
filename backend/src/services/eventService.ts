@@ -12,7 +12,7 @@ import {
   EventFilters,
   PaginatedResult,
 } from '../types/event.js';
-import logger from '../utils/logger.js';
+import { logger } from '../utils/logger.js';
 import eventCategoryService from './eventCategoryService.js';
 import eventRecurrenceService from './eventRecurrenceService.js';
 

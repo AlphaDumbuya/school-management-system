@@ -5,9 +5,8 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import authMiddleware from '../middleware/authMiddleware.js';
-import rbacMiddleware from '../middleware/rbacMiddleware.js';
-import logger from '../utils/logger.js';
+import { authenticate, authorize } from '../middleware/authMiddleware.js';
+import { logger } from '../utils/logger.js';
 import eventService from '../services/eventService.js';
 import eventCategoryService from '../services/eventCategoryService.js';
 import eventRegistrationService from '../services/eventRegistrationService.js';
@@ -17,7 +16,7 @@ import eventAnalyticsService from '../services/eventAnalyticsService.js';
 const router = Router();
 
 // Apply authentication middleware to all routes
-router.use(authMiddleware);
+router.use(authenticate);
 
 // ==================== EVENT MANAGEMENT ====================
 
@@ -27,7 +26,7 @@ router.use(authMiddleware);
  */
 router.post(
   '/',
-  rbacMiddleware(['principal', 'teacher', 'super_admin']),
+  authorize(['principal', 'teacher', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { title, description, event_type, start_date, end_date, ...data } = req.body;
@@ -116,7 +115,7 @@ router.get(
  */
 router.put(
   '/:eventId',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const event = await eventService.updateEvent(
@@ -140,7 +139,7 @@ router.put(
  */
 router.delete(
   '/:eventId',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       await eventService.deleteEvent(req.params.eventId, req.user.tenant_id, req.user.id);
@@ -158,7 +157,7 @@ router.delete(
  */
 router.post(
   '/:eventId/publish',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const event = await eventService.publishEvent(
@@ -181,7 +180,7 @@ router.post(
  */
 router.post(
   '/:eventId/cancel',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const event = await eventService.cancelEvent(
@@ -205,7 +204,7 @@ router.post(
  */
 router.post(
   '/:eventId/complete',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const event = await eventService.completeEvent(
@@ -228,7 +227,7 @@ router.post(
  */
 router.post(
   '/:eventId/duplicate',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const event = await eventService.duplicateEvent(
@@ -326,7 +325,7 @@ router.delete(
  */
 router.get(
   '/:eventId/registrations',
-  rbacMiddleware(['principal', 'teacher', 'super_admin']),
+  authorize(['principal', 'teacher', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const registrations = await eventRegistrationService.getEventRegistrations(
@@ -348,7 +347,7 @@ router.get(
  */
 router.post(
   '/:eventId/registrations/:regId/approve',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const registration = await eventRegistrationService.approveRegistration(
@@ -370,7 +369,7 @@ router.post(
  */
 router.post(
   '/:eventId/registrations/:regId/reject',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const registration = await eventRegistrationService.rejectRegistration(
@@ -459,7 +458,7 @@ router.get(
  */
 router.post(
   '/:eventId/attendance',
-  rbacMiddleware(['principal', 'teacher', 'super_admin']),
+  authorize(['principal', 'teacher', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const attendance = await eventAttendanceService.markAttendance(
@@ -482,7 +481,7 @@ router.post(
  */
 router.get(
   '/:eventId/attendance',
-  rbacMiddleware(['principal', 'teacher', 'super_admin']),
+  authorize(['principal', 'teacher', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const attendance = await eventAttendanceService.getEventAttendance(
@@ -503,7 +502,7 @@ router.get(
  */
 router.post(
   '/:eventId/attendance/qr-code',
-  rbacMiddleware(['principal', 'teacher', 'super_admin']),
+  authorize(['principal', 'teacher', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const qrCode = await eventAttendanceService.generateAttendanceQRCode(
@@ -599,7 +598,7 @@ router.get(
  */
 router.get(
   '/analytics/dashboard',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { start_date, end_date } = req.query;
@@ -666,7 +665,7 @@ router.get(
  */
 router.post(
   '/config/categories',
-  rbacMiddleware(['principal', 'super_admin']),
+  authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const category = await eventCategoryService.createCategory(

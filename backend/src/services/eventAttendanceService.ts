@@ -10,7 +10,7 @@ import {
   MarkAttendanceDTO,
   AttendanceReport,
 } from '../types/event.js';
-import logger from '../utils/logger.js';
+import { logger } from '../utils/logger.js';
 import QRCode from 'qrcode';
 
 export class EventAttendanceService {

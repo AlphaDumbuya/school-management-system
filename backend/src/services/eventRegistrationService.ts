@@ -10,7 +10,7 @@ import {
   RegisterForEventDTO,
   CapacityInfo,
 } from '../types/event.js';
-import logger from '../utils/logger.js';
+import { logger } from '../utils/logger.js';
 
 export class EventRegistrationService {
   /**

@@ -5,7 +5,7 @@
  */
 
 import cron from 'node-cron';
-import logger from '../utils/logger.js';
+import { logger } from '../utils/logger.js';
 import { db } from '../utils/database.js';
 import eventService from '../services/eventService.js';
 import eventAnalyticsService from '../services/eventAnalyticsService.js';

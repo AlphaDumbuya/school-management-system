@@ -5,7 +5,7 @@
  */
 
 import { db } from '@utils/database.js';
-import logger from '@utils/logger.js';
+import { logger } from '@utils/logger.js';
 import { ConductAnalytics } from '@types/discipline.js';
 
 class DisciplineAnalyticsService {
