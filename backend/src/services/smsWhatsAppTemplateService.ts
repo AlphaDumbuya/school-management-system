@@ -1,10 +1,10 @@
 import db from '@utils/database';
 import { logger } from '@utils/logger';
-import {
+import type {
   SMSWhatsAppTemplate,
   CreateTemplateRequest,
   MessageTemplateType,
-} from '@types/sms-whatsapp';
+} from '../types/sms-whatsapp';
 
 /**
  * SMS & WhatsApp Template Service
@@ -303,12 +303,17 @@ class SMSWhatsAppTemplateService {
         .count('* as count')
         .first();
 
+      const totalMessages = Number(messageCount?.count || 0);
+      const totalDelivered = Number(deliveredCount?.count || 0);
+      const totalFailed = Number(failedCount?.count || 0);
+      const totalSchedules = Number(scheduleCount?.count || 0);
+
       return {
-        total_messages_sent: messageCount.count,
-        messages_delivered: deliveredCount.count,
-        messages_failed: failedCount.count,
-        active_schedules: scheduleCount.count,
-        delivery_rate: messageCount.count > 0 ? (deliveredCount.count / messageCount.count * 100).toFixed(2) : 0,
+        total_messages_sent: totalMessages,
+        messages_delivered: totalDelivered,
+        messages_failed: totalFailed,
+        active_schedules: totalSchedules,
+        delivery_rate: totalMessages > 0 ? ((totalDelivered / totalMessages) * 100).toFixed(2) : '0.00',
       };
     } catch (error) {
       logger.error(`Error fetching template stats: ${error}`);

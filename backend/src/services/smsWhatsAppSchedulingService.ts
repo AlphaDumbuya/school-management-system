@@ -1,13 +1,13 @@
 import db from '@utils/database';
 import { logger } from '@utils/logger';
-import {
+import type {
   MessageSchedule,
   CreateScheduleRequest,
   ScheduleType,
   MessagingAnalytics,
   UserMessagingStats,
   AnalyticsFilterRequest,
-} from '@types/sms-whatsapp';
+} from '../types/sms-whatsapp';
 import smsWhatsAppService from './smsWhatsAppService';
 
 /**

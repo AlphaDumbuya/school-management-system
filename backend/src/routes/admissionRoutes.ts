@@ -4,8 +4,7 @@
  */
 
 import express, { Request, Response } from 'express';
-import { authenticate } from '../middleware/authMiddleware';
-import { authorize } from '../middleware/rbacMiddleware';
+import { authenticate, authorize } from '../middleware/authMiddleware';
 import * as admissionApplicationService from '../services/admissionApplicationService';
 import * as applicationDocumentService from '../services/applicationDocumentService';
 import * as applicationInterviewService from '../services/applicationInterviewService';

@@ -1,6 +1,5 @@
 import express, { Router, Request, Response } from 'express';
-import { authenticateToken } from '@middleware/auth';
-import { authorize } from '@middleware/rbac';
+import { authenticate, authorize } from '@middleware/authMiddleware';
 import { logger } from '@utils/logger';
 import smsWhatsAppProviderService from '@services/smsWhatsAppProviderService';
 import smsWhatsAppService from '@services/smsWhatsAppService';
@@ -16,7 +15,7 @@ const router: Router = express.Router();
  * Create SMS/WhatsApp provider
  * POST /api/v1/sms-whatsapp/providers
  */
-router.post('/providers', authenticateToken, authorize('admin', 'principal'), async (req: Request, res: Response) => {
+router.post('/providers', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response) => {
   try {
     const tenantId = req.user.tenant_id;
     const provider = await smsWhatsAppProviderService.createProvider(
@@ -42,7 +41,7 @@ router.post('/providers', authenticateToken, authorize('admin', 'principal'), as
  * Get all providers
  * GET /api/v1/sms-whatsapp/providers
  */
-router.get('/providers', authenticateToken, authorize('admin', 'principal'), async (req: Request, res: Response) => {
+router.get('/providers', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response) => {
   try {
     const tenantId = req.user.tenant_id;
     const providers = await smsWhatsAppProviderService.getProvidersByTenant(tenantId);
@@ -65,7 +64,7 @@ router.get('/providers', authenticateToken, authorize('admin', 'principal'), asy
  * Get provider by ID
  * GET /api/v1/sms-whatsapp/providers/:providerId
  */
-router.get('/providers/:providerId', authenticateToken, authorize('admin', 'principal'), async (req: Request, res: Response) => {
+router.get('/providers/:providerId', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response) => {
   try {
     const provider = await smsWhatsAppProviderService.getProviderById(req.params.providerId);
     if (!provider) {
@@ -92,7 +91,7 @@ router.get('/providers/:providerId', authenticateToken, authorize('admin', 'prin
  * Update provider
  * PATCH /api/v1/sms-whatsapp/providers/:providerId
  */
-router.patch('/providers/:providerId', authenticateToken, authorize('admin', 'principal'), async (req: Request, res: Response) => {
+router.patch('/providers/:providerId', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response) => {
   try {
     const provider = await smsWhatsAppProviderService.updateProvider(
       req.params.providerId,
@@ -117,7 +116,7 @@ router.patch('/providers/:providerId', authenticateToken, authorize('admin', 'pr
  * Toggle provider status
  * PATCH /api/v1/sms-whatsapp/providers/:providerId/toggle
  */
-router.patch('/providers/:providerId/toggle', authenticateToken, authorize('admin', 'principal'), async (req: Request, res: Response) => {
+router.patch('/providers/:providerId/toggle', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response) => {
   try {
     const provider = await smsWhatsAppProviderService.toggleProviderStatus(
       req.params.providerId,
@@ -141,7 +140,7 @@ router.patch('/providers/:providerId/toggle', authenticateToken, authorize('admi
  * Set primary provider
  * PUT /api/v1/sms-whatsapp/providers/:providerId/set-primary
  */
-router.put('/providers/:providerId/set-primary', authenticateToken, authorize('admin', 'principal'), async (req: Request, res: Response) => {
+router.put('/providers/:providerId/set-primary', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response) => {
   try {
     const provider = await smsWhatsAppProviderService.setPrimaryProvider(
       req.user.tenant_id,
@@ -165,7 +164,7 @@ router.put('/providers/:providerId/set-primary', authenticateToken, authorize('a
  * Test provider connection
  * POST /api/v1/sms-whatsapp/providers/:providerId/test
  */
-router.post('/providers/:providerId/test', authenticateToken, authorize('admin', 'principal'), async (req: Request, res: Response) => {
+router.post('/providers/:providerId/test', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response) => {
   try {
     const status = await smsWhatsAppProviderService.testProviderConnection(req.params.providerId);
 
@@ -186,7 +185,7 @@ router.post('/providers/:providerId/test', authenticateToken, authorize('admin',
  * Delete provider
  * DELETE /api/v1/sms-whatsapp/providers/:providerId
  */
-router.delete('/providers/:providerId', authenticateToken, authorize('admin', 'principal'), async (req: Request, res: Response) => {
+router.delete('/providers/:providerId', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response) => {
   try {
     await smsWhatsAppProviderService.deleteProvider(req.params.providerId);
 
@@ -209,7 +208,7 @@ router.delete('/providers/:providerId', authenticateToken, authorize('admin', 'p
  * Create message template
  * POST /api/v1/sms-whatsapp/templates
  */
-router.post('/templates', authenticateToken, authorize('admin', 'principal'), async (req: Request, res: Response) => {
+router.post('/templates', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response) => {
   try {
     const template = await smsWhatsAppTemplateService.createTemplate(
       req.user.tenant_id,
@@ -234,7 +233,7 @@ router.post('/templates', authenticateToken, authorize('admin', 'principal'), as
  * Get templates
  * GET /api/v1/sms-whatsapp/templates
  */
-router.get('/templates', authenticateToken, async (req: Request, res: Response) => {
+router.get('/templates', authenticate, async (req: Request, res: Response) => {
   try {
     const { type, channel, active } = req.query;
     let templates;
@@ -271,7 +270,7 @@ router.get('/templates', authenticateToken, async (req: Request, res: Response) 
  * Get template by ID
  * GET /api/v1/sms-whatsapp/templates/:templateId
  */
-router.get('/templates/:templateId', authenticateToken, async (req: Request, res: Response) => {
+router.get('/templates/:templateId', authenticate, async (req: Request, res: Response) => {
   try {
     const template = await smsWhatsAppTemplateService.getTemplateById(req.params.templateId);
     if (!template) {
@@ -298,7 +297,7 @@ router.get('/templates/:templateId', authenticateToken, async (req: Request, res
  * Update template
  * PATCH /api/v1/sms-whatsapp/templates/:templateId
  */
-router.patch('/templates/:templateId', authenticateToken, authorize('admin', 'principal'), async (req: Request, res: Response) => {
+router.patch('/templates/:templateId', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response) => {
   try {
     const template = await smsWhatsAppTemplateService.updateTemplate(
       req.params.templateId,
@@ -322,7 +321,7 @@ router.patch('/templates/:templateId', authenticateToken, authorize('admin', 'pr
  * Get template statistics
  * GET /api/v1/sms-whatsapp/templates/:templateId/stats
  */
-router.get('/templates/:templateId/stats', authenticateToken, async (req: Request, res: Response) => {
+router.get('/templates/:templateId/stats', authenticate, async (req: Request, res: Response) => {
   try {
     const stats = await smsWhatsAppTemplateService.getTemplateStats(req.params.templateId);
 
@@ -345,7 +344,7 @@ router.get('/templates/:templateId/stats', authenticateToken, async (req: Reques
  * Send message
  * POST /api/v1/sms-whatsapp/messages/send
  */
-router.post('/messages/send', authenticateToken, async (req: Request, res: Response) => {
+router.post('/messages/send', authenticate, async (req: Request, res: Response) => {
   try {
     const response = await smsWhatsAppService.sendMessage(
       req.user.tenant_id,
@@ -370,7 +369,7 @@ router.post('/messages/send', authenticateToken, async (req: Request, res: Respo
  * Bulk send messages
  * POST /api/v1/sms-whatsapp/messages/bulk-send
  */
-router.post('/messages/bulk-send', authenticateToken, async (req: Request, res: Response) => {
+router.post('/messages/bulk-send', authenticate, async (req: Request, res: Response) => {
   try {
     const responses = await smsWhatsAppService.bulkSendMessages(
       req.user.tenant_id,
@@ -396,7 +395,7 @@ router.post('/messages/bulk-send', authenticateToken, async (req: Request, res: 
  * Get messages
  * GET /api/v1/sms-whatsapp/messages
  */
-router.get('/messages', authenticateToken, async (req: Request, res: Response) => {
+router.get('/messages', authenticate, async (req: Request, res: Response) => {
   try {
     const { status, channel, recipient_id, limit, offset } = req.query;
     const result = await smsWhatsAppService.getMessages(req.user.tenant_id, {
@@ -425,7 +424,7 @@ router.get('/messages', authenticateToken, async (req: Request, res: Response) =
  * Get message status
  * GET /api/v1/sms-whatsapp/messages/:messageId
  */
-router.get('/messages/:messageId', authenticateToken, async (req: Request, res: Response) => {
+router.get('/messages/:messageId', authenticate, async (req: Request, res: Response) => {
   try {
     const status = await smsWhatsAppService.getMessageStatus(req.params.messageId);
 
@@ -446,7 +445,7 @@ router.get('/messages/:messageId', authenticateToken, async (req: Request, res: 
  * Retry message
  * POST /api/v1/sms-whatsapp/messages/:messageId/retry
  */
-router.post('/messages/:messageId/retry', authenticateToken, async (req: Request, res: Response) => {
+router.post('/messages/:messageId/retry', authenticate, async (req: Request, res: Response) => {
   try {
     const response = await smsWhatsAppService.retryMessage(req.params.messageId);
 
@@ -469,7 +468,7 @@ router.post('/messages/:messageId/retry', authenticateToken, async (req: Request
  * Add phone number
  * POST /api/v1/sms-whatsapp/phone-numbers
  */
-router.post('/phone-numbers', authenticateToken, async (req: Request, res: Response) => {
+router.post('/phone-numbers', authenticate, async (req: Request, res: Response) => {
   try {
     const phoneNumber = await phoneNumberService.addPhoneNumber(
       req.user.tenant_id,
@@ -494,7 +493,7 @@ router.post('/phone-numbers', authenticateToken, async (req: Request, res: Respo
  * Get my phone numbers
  * GET /api/v1/sms-whatsapp/phone-numbers
  */
-router.get('/phone-numbers', authenticateToken, async (req: Request, res: Response) => {
+router.get('/phone-numbers', authenticate, async (req: Request, res: Response) => {
   try {
     const phoneNumbers = await phoneNumberService.getUserPhoneNumbers(
       req.user.tenant_id,
@@ -519,7 +518,7 @@ router.get('/phone-numbers', authenticateToken, async (req: Request, res: Respon
  * Verify phone number
  * POST /api/v1/sms-whatsapp/phone-numbers/:phoneId/verify
  */
-router.post('/phone-numbers/:phoneId/verify', authenticateToken, async (req: Request, res: Response) => {
+router.post('/phone-numbers/:phoneId/verify', authenticate, async (req: Request, res: Response) => {
   try {
     const phoneNumber = await phoneNumberService.verifyPhoneNumber({
       phone_id: req.params.phoneId,
@@ -543,7 +542,7 @@ router.post('/phone-numbers/:phoneId/verify', authenticateToken, async (req: Req
  * Resend verification code
  * POST /api/v1/sms-whatsapp/phone-numbers/:phoneId/resend-code
  */
-router.post('/phone-numbers/:phoneId/resend-code', authenticateToken, async (req: Request, res: Response) => {
+router.post('/phone-numbers/:phoneId/resend-code', authenticate, async (req: Request, res: Response) => {
   try {
     await phoneNumberService.resendVerificationCode(req.params.phoneId);
 
@@ -564,7 +563,7 @@ router.post('/phone-numbers/:phoneId/resend-code', authenticateToken, async (req
  * Delete phone number
  * DELETE /api/v1/sms-whatsapp/phone-numbers/:phoneId
  */
-router.delete('/phone-numbers/:phoneId', authenticateToken, async (req: Request, res: Response) => {
+router.delete('/phone-numbers/:phoneId', authenticate, async (req: Request, res: Response) => {
   try {
     await phoneNumberService.deletePhoneNumber(req.params.phoneId);
 
@@ -587,7 +586,7 @@ router.delete('/phone-numbers/:phoneId', authenticateToken, async (req: Request,
  * Create scheduled message
  * POST /api/v1/sms-whatsapp/schedules
  */
-router.post('/schedules', authenticateToken, async (req: Request, res: Response) => {
+router.post('/schedules', authenticate, async (req: Request, res: Response) => {
   try {
     const schedule = await smsWhatsAppSchedulingService.createSchedule(
       req.user.tenant_id,
@@ -612,7 +611,7 @@ router.post('/schedules', authenticateToken, async (req: Request, res: Response)
  * Get my schedules
  * GET /api/v1/sms-whatsapp/schedules
  */
-router.get('/schedules', authenticateToken, async (req: Request, res: Response) => {
+router.get('/schedules', authenticate, async (req: Request, res: Response) => {
   try {
     const schedules = await smsWhatsAppSchedulingService.getUserSchedules(
       req.user.tenant_id,
@@ -637,7 +636,7 @@ router.get('/schedules', authenticateToken, async (req: Request, res: Response) 
  * Get analytics
  * GET /api/v1/sms-whatsapp/analytics
  */
-router.get('/analytics', authenticateToken, authorize('admin', 'principal'), async (req: Request, res: Response) => {
+router.get('/analytics', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response) => {
   try {
     const { channel, date_from, date_to } = req.query;
     const analytics = await smsWhatsAppSchedulingService.getAnalytics(

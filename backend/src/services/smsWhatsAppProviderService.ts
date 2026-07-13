@@ -1,10 +1,10 @@
 import db from '@utils/database';
 import { logger } from '@utils/logger';
-import {
+import type {
   SMSWhatsAppProvider,
   CreateProviderRequest,
   ProviderStatusResponse,
-} from '@types/sms-whatsapp';
+} from '../types/sms-whatsapp';
 import crypto from 'crypto';
 
 /**

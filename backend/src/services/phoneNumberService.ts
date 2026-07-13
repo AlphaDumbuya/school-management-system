@@ -1,12 +1,12 @@
 import db from '@utils/database';
 import { logger } from '@utils/logger';
-import {
+import type {
   PhoneNumber,
   AddPhoneNumberRequest,
   VerifyPhoneRequest,
   OptOut,
   CreateOptOutRequest,
-} from '@types/sms-whatsapp';
+} from '../types/sms-whatsapp';
 import crypto from 'crypto';
 
 /**

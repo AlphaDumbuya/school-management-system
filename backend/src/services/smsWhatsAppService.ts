@@ -1,6 +1,6 @@
 import db from '@utils/database';
 import { logger } from '@utils/logger';
-import {
+import type {
   SMSWhatsAppMessage,
   MessageStatus,
   SendMessageRequest,
@@ -9,7 +9,7 @@ import {
   MessageStatusResponse,
   MessageFilterRequest,
   DeliveryLog,
-} from '@types/sms-whatsapp';
+} from '../types/sms-whatsapp';
 import smsWhatsAppProviderService from './smsWhatsAppProviderService';
 import notificationService from './notificationService';
 

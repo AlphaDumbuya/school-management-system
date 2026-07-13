@@ -7,10 +7,9 @@
  */
 
 import express, { Request, Response } from 'express';
-import { authMiddleware } from '../middleware/authMiddleware';
-import { rbacMiddleware } from '../middleware/rbacMiddleware';
+import { authenticate, authorize } from '../middleware/authMiddleware';
 import printConfigService from '../services/printConfigService';
-import logger from '../utils/logger';
+import { logger } from '../utils/logger';
 
 const router = express.Router();
 
