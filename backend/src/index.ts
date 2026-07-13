@@ -38,6 +38,7 @@ import idCardRoutes from '@routes/idCardRoutes';
 import templateRoutes from '@routes/templateRoutes';
 import idCardReportingRoutes from '@routes/idCardReportingRoutes';
 import printConfigRoutes from '@routes/printConfigRoutes';
+import eventRoutes from '@routes/eventRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
 
 // Load environment variables
@@ -187,6 +188,9 @@ app.use('/api/v1/id-cards/reports', idCardReportingRoutes);
 
 // Print Configuration Routes (Phase 2.1: Identity Management Module)
 app.use('/api/v1/print-configs', printConfigRoutes);
+
+// Event Management Routes (Phase 2.2: Events Management Module)
+app.use('/api/v1/events', eventRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
