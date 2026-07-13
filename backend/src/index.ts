@@ -39,6 +39,7 @@ import templateRoutes from '@routes/templateRoutes';
 import idCardReportingRoutes from '@routes/idCardReportingRoutes';
 import printConfigRoutes from '@routes/printConfigRoutes';
 import eventRoutes from '@routes/eventRoutes';
+import disciplineRoutes from '@routes/disciplineRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
 import { startEventManagementJobs } from './jobs/eventManagementJobs.js';
 
@@ -192,6 +193,9 @@ app.use('/api/v1/print-configs', printConfigRoutes);
 
 // Event Management Routes (Phase 2.2: Events Management Module)
 app.use('/api/v1/events', eventRoutes);
+
+// Discipline & Conduct Routes (Phase 2.3: Discipline & Conduct Module)
+app.use('/api/v1/discipline', disciplineRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
