@@ -40,6 +40,7 @@ import idCardReportingRoutes from '@routes/idCardReportingRoutes';
 import printConfigRoutes from '@routes/printConfigRoutes';
 import eventRoutes from '@routes/eventRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
+import { startEventManagementJobs } from './jobs/eventManagementJobs.js';
 
 // Load environment variables
 dotenv.config();
@@ -212,6 +213,11 @@ const server = app.listen(PORT, () => {
   // Start identity management scheduled jobs
   if (NODE_ENV === 'production' || process.env.ENABLE_SCHEDULED_JOBS === 'true') {
     startIdentityManagementJobs();
+  }
+  
+  // Start event management scheduled jobs
+  if (NODE_ENV === 'production' || process.env.ENABLE_SCHEDULED_JOBS === 'true') {
+    startEventManagementJobs();
   }
 });
 
