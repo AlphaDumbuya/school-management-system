@@ -211,36 +211,84 @@ export const LoginPage: React.FC = () => {
               <span className="absolute w-2 h-2 sm:w-3 sm:h-3 bg-green-400 rounded-full animate-ping"></span>
               <span className="relative w-2 h-2 sm:w-3 sm:h-3 bg-green-400 rounded-full"></span>
             </span>
-            Test Accounts Available
+            Demo Accounts - All Roles
           </p>
-          <div className="space-y-1.5 sm:space-y-2 md:space-y-2.5 text-xs sm:text-sm text-white max-h-[50vh] sm:max-h-none overflow-y-auto sm:overflow-visible">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all duration-200">
-              <span className="font-semibold min-w-[80px]">Principal:</span>
-              <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">admin@school.com</code>
+          <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-white max-h-[55vh] sm:max-h-[60vh] overflow-y-auto sm:overflow-y-auto pr-2">
+            {/* Administrative Roles */}
+            <div className="mb-2 pb-2 border-b border-white border-opacity-20">
+              <p className="text-blue-200 font-semibold text-xs mb-1.5">👑 Administrative</p>
+              <div className="space-y-1.5">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
+                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Principal #1:</span>
+                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">admin@school.com</code>
+                </div>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
+                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Principal #2:</span>
+                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">principal@school.com</code>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all duration-200">
-              <span className="font-semibold min-w-[80px]">Principal:</span>
-              <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">principal@school.com</code>
+
+            {/* Academic Roles */}
+            <div className="mb-2 pb-2 border-b border-white border-opacity-20">
+              <p className="text-green-200 font-semibold text-xs mb-1.5">📚 Academic Staff</p>
+              <div className="space-y-1.5">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
+                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Teacher #1:</span>
+                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">teacher1@school.com</code>
+                </div>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
+                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Teacher #2:</span>
+                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">teacher2@school.com</code>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all duration-200">
-              <span className="font-semibold min-w-[80px]">Teacher:</span>
-              <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">teacher1@school.com</code>
+
+            {/* Students */}
+            <div className="mb-2 pb-2 border-b border-white border-opacity-20">
+              <p className="text-yellow-200 font-semibold text-xs mb-1.5">🎓 Students</p>
+              <div className="space-y-1.5">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
+                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Student #1:</span>
+                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">student1@school.com</code>
+                </div>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
+                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Student #2:</span>
+                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">student2@school.com</code>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all duration-200">
-              <span className="font-semibold min-w-[80px]">Student:</span>
-              <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">student1@school.com</code>
+
+            {/* Support Staff */}
+            <div className="mb-2 pb-2 border-b border-white border-opacity-20">
+              <p className="text-purple-200 font-semibold text-xs mb-1.5">💼 Support Staff</p>
+              <div className="space-y-1.5">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
+                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Accountant:</span>
+                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">accountant@school.com</code>
+                </div>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
+                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Admissions:</span>
+                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">admissions@school.com</code>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all duration-200">
-              <span className="font-semibold min-w-[80px]">Parent:</span>
-              <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">parent@school.com</code>
+
+            {/* Parents/Guardians */}
+            <div className="mb-2">
+              <p className="text-pink-200 font-semibold text-xs mb-1.5">👨‍👩‍👧‍👦 Parents/Guardians</p>
+              <div className="space-y-1.5">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
+                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Parent:</span>
+                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">parent@school.com</code>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all duration-200">
-              <span className="font-semibold min-w-[80px]">Accountant:</span>
-              <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">accountant@school.com</code>
-            </div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-center gap-1 sm:gap-2 pt-2 sm:pt-3 mt-2 sm:mt-3 border-t border-white border-opacity-20">
-              <span className="text-xs sm:text-sm font-semibold">Password:</span>
-              <code className="bg-gradient-to-r from-blue-500 to-purple-500 bg-opacity-30 backdrop-blur-sm px-3 sm:px-4 py-1.5 sm:py-2 rounded-md sm:rounded-lg font-mono text-xs sm:text-sm font-bold border border-white border-opacity-30">password123</code>
+
+            {/* Password Section */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-center gap-1 sm:gap-2 pt-2 sm:pt-3 mt-2 sm:mt-3 border-t border-white border-opacity-20 bg-white bg-opacity-5 rounded-lg p-2">
+              <span className="text-xs sm:text-sm font-bold text-white">🔑 Password for all accounts:</span>
+              <code className="bg-gradient-to-r from-blue-500 to-purple-500 backdrop-blur-sm px-3 sm:px-4 py-1.5 sm:py-2 rounded-md sm:rounded-lg font-mono text-xs sm:text-sm font-bold border-2 border-white border-opacity-40 shadow-lg">password123</code>
             </div>
           </div>
         </div>
