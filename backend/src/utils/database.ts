@@ -34,13 +34,16 @@ const config: Record<string, Knex.Config> = {
       extension: 'ts',
     },
     pool: {
-      min: 2,
-      max: 20,
+      min: 0,
+      max: 10,
     },
   },
   production: {
     client: 'pg',
-    connection: getConnection(),
+    connection: {
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+    },
     migrations: {
       directory: './src/database/migrations',
       extension: 'ts',
@@ -49,9 +52,13 @@ const config: Record<string, Knex.Config> = {
       directory: './src/database/seeds',
       extension: 'ts',
     },
+    // Serverless-friendly pool — minimal connections, short timeout
     pool: {
-      min: 5,
-      max: 30,
+      min: 0,
+      max: 3,
+      acquireTimeoutMillis: 10000,
+      idleTimeoutMillis: 500,
+      reapIntervalMillis: 200,
     },
   },
 };

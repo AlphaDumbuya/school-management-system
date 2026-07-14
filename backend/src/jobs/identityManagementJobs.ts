@@ -16,7 +16,8 @@ import { logger } from '../utils/logger.js';
  * - Expiration notifications (daily)
  */
 
-const db = knex(knexConfig.development);
+const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
+const db = knex(knexConfig[env] || knexConfig.development);
 const lifecycleService = new CardLifecycleService(db);
 const securityService = new SecurityService(db);
 

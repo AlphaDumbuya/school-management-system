@@ -17,7 +17,8 @@ import * as multer from 'multer';
 import * as path from 'path';
 
 const router = Router();
-const db = knex(knexConfig.development);
+const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
+const db = knex(knexConfig[env] || knexConfig.development);
 const importExportService = new Phase14ImportExportService(db);
 const studentService = new StudentService(db);
 

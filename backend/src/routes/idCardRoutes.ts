@@ -16,7 +16,8 @@ import { QrCodeService } from '../services/qrCodeService.js';
  */
 
 const router = Router();
-const db = knex(knexConfig.development);
+const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
+const db = knex(knexConfig[env] || knexConfig.development);
 
 // Initialize services
 const idCardService = new IdCardService(db);

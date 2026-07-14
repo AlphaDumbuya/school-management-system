@@ -6,7 +6,8 @@ import knex from 'knex';
 import knexConfig from '../../knexfile';
 
 const router = Router();
-const db = knex(knexConfig.development);
+const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
+const db = knex(knexConfig[env] || knexConfig.development);
 
 /**
  * POST /api/v1/students/:studentId/guardians
