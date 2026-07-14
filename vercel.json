@@ -1,9 +1,8 @@
 {
   "version": 2,
-  "buildCommand": "bash build.sh",
-  "outputDirectory": "frontend/dist",
   "installCommand": "echo 'deps installed per workspace in build.sh'",
-  "framework": "vite",
+  "buildCommand": "bash ./build.sh",
+  "outputDirectory": "frontend/dist",
   "rewrites": [
     {
       "source": "/api/(.*)",

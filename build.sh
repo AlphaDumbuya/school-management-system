@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e
 
-# Get the directory where this script lives (repo root)
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+# Resolve repo root — works regardless of where Vercel invokes this script
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo "Repo root: $ROOT"
 
 echo "=== Building backend ==="
 cd "$ROOT/backend"
