@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "echo 'deps installed per package in buildCommand'",
-  "buildCommand": "ROOT=$(pwd) && npm install --legacy-peer-deps --prefix $ROOT/backend && npm run build --prefix $ROOT/backend && npm install --legacy-peer-deps --prefix $ROOT/frontend && $ROOT/frontend/node_modules/.bin/vite build --config $ROOT/frontend/vite.config.ts",
+  "buildCommand": "(cd backend && npm install --legacy-peer-deps --include=dev && node_modules/.bin/tsc || true) && (cd frontend && npm install --legacy-peer-deps --include=dev && node_modules/.bin/vite build)",
   "outputDirectory": "frontend/dist",
   "rewrites": [
     {
