@@ -1,9 +1,15 @@
 /**
  * API Configuration
  * Phase 11: Frontend Dashboard Implementation
+ *
+ * On Vercel, the frontend and backend share the same domain — API calls use
+ * relative URLs (no base URL needed). Locally, VITE_API_URL points to the
+ * Express dev server.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// In production (Vercel), leave baseURL empty so requests go to the same origin.
+// Locally, proxy is configured in vite.config.ts so this also works as empty.
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 export const API_CONFIG = {
   baseURL: API_BASE_URL,

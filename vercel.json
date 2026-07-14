@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build -w backend && npm run build -w frontend",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "npm install --legacy-peer-deps",
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "functions": {
+    "api/index.ts": {
+      "runtime": "@vercel/node@5",
+      "maxDuration": 30,
+      "memory": 1024,
+      "includeFiles": "backend/dist/**"
+    }
+  },
+  "env": {
+    "NODE_ENV": "production"
+  }
+}

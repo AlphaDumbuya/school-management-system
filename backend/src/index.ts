@@ -53,15 +53,36 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Middleware
 app.use(helmet());
+// Build the allowed origins list from env (supports comma-separated values)
+const allowedOrigins: (string | RegExp)[] = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+];
+
+// Add any explicitly configured frontend URL(s)
+if (process.env.FRONTEND_URL) {
+  process.env.FRONTEND_URL.split(',').forEach((url) => {
+    const trimmed = url.trim();
+    if (trimmed) allowedOrigins.push(trimmed);
+  });
+}
+
+// Allow all *.vercel.app subdomains for preview deployments
+allowedOrigins.push(/^https:\/\/.*\.vercel\.app$/);
+
 app.use(
   cors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://127.0.0.1:5173',
-      'http://127.0.0.1:3000',
-      process.env.FRONTEND_URL || '',
-    ].filter(Boolean),
+    origin: (origin, callback) => {
+      // Allow requests with no origin (server-to-server, mobile apps)
+      if (!origin) return callback(null, true);
+      const allowed = allowedOrigins.some((o) =>
+        typeof o === 'string' ? o === origin : o.test(origin)
+      );
+      if (allowed) return callback(null, true);
+      callback(new Error(`CORS: origin '${origin}' not allowed`));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
