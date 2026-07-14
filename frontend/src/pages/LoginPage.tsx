@@ -208,64 +208,20 @@ export const LoginPage: React.FC = () => {
           </div>
 
           <div className="space-y-3 text-xs max-h-64 overflow-y-auto pr-1">
-            {/* Admin */}
-            <div>
-              <p className="text-blue-300 font-semibold mb-1.5">👑 Administrative</p>
-              <div className="space-y-1">
-                {[
-                  { label: 'Principal #1', email: 'admin@school.com' },
-                  { label: 'Principal #2', email: 'principal@school.com' },
-                ].map((a) => (
-                  <div key={a.email} className="flex justify-between items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
-                    <span className="text-gray-300 min-w-[80px]">{a.label}:</span>
-                    <code className="bg-white bg-opacity-10 px-2 py-0.5 rounded font-mono text-blue-200 break-all">{a.email}</code>
-                  </div>
-                ))}
+            {[
+              { emoji: '👑', label: 'Principal',  email: 'principal@school.com', color: 'text-blue-200' },
+              { emoji: '📚', label: 'Teacher',    email: 'teacher1@school.com',  color: 'text-green-200' },
+              { emoji: '🎓', label: 'Student',    email: 'student1@school.com',  color: 'text-yellow-200' },
+              { emoji: '💰', label: 'Accountant', email: 'accountant@school.com',color: 'text-purple-200' },
+              { emoji: '📋', label: 'Admissions', email: 'admissions@school.com',color: 'text-pink-200' },
+              { emoji: '👨‍👩‍👧', label: 'Parent',     email: 'parent@school.com',    color: 'text-orange-200' },
+            ].map((a) => (
+              <div key={a.email} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
+                <span className="text-base">{a.emoji}</span>
+                <span className="text-gray-300 w-[76px] flex-shrink-0 text-[11px]">{a.label}:</span>
+                <code className={`bg-white bg-opacity-10 px-2 py-0.5 rounded font-mono text-[11px] ${a.color} break-all`}>{a.email}</code>
               </div>
-            </div>
-            <div className="border-t border-white border-opacity-10 pt-2">
-              <p className="text-green-300 font-semibold mb-1.5">📚 Academic Staff</p>
-              <div className="space-y-1">
-                {[
-                  { label: 'Teacher #1', email: 'teacher1@school.com' },
-                  { label: 'Teacher #2', email: 'teacher2@school.com' },
-                ].map((a) => (
-                  <div key={a.email} className="flex justify-between items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
-                    <span className="text-gray-300 min-w-[80px]">{a.label}:</span>
-                    <code className="bg-white bg-opacity-10 px-2 py-0.5 rounded font-mono text-green-200 break-all">{a.email}</code>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="border-t border-white border-opacity-10 pt-2">
-              <p className="text-yellow-300 font-semibold mb-1.5">🎓 Students</p>
-              <div className="space-y-1">
-                {[
-                  { label: 'Student #1', email: 'student1@school.com' },
-                  { label: 'Student #2', email: 'student2@school.com' },
-                ].map((a) => (
-                  <div key={a.email} className="flex justify-between items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
-                    <span className="text-gray-300 min-w-[80px]">{a.label}:</span>
-                    <code className="bg-white bg-opacity-10 px-2 py-0.5 rounded font-mono text-yellow-200 break-all">{a.email}</code>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="border-t border-white border-opacity-10 pt-2">
-              <p className="text-purple-300 font-semibold mb-1.5">💼 Support Staff</p>
-              <div className="space-y-1">
-                {[
-                  { label: 'Accountant', email: 'accountant@school.com' },
-                  { label: 'Admissions', email: 'admissions@school.com' },
-                  { label: 'Parent', email: 'parent@school.com' },
-                ].map((a) => (
-                  <div key={a.email} className="flex justify-between items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
-                    <span className="text-gray-300 min-w-[80px]">{a.label}:</span>
-                    <code className="bg-white bg-opacity-10 px-2 py-0.5 rounded font-mono text-purple-200 break-all">{a.email}</code>
-                  </div>
-                ))}
-              </div>
-            </div>
+            ))}
             <div className="border-t border-white border-opacity-10 pt-2 flex flex-wrap items-center justify-center gap-2">
               <span className="text-white font-semibold">🔑 Password for all:</span>
               <code className="bg-gradient-to-r from-blue-600 to-purple-600 px-3 py-1 rounded-lg font-mono font-bold text-white border border-white border-opacity-20 shadow">password123</code>
