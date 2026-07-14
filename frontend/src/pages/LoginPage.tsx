@@ -64,7 +64,7 @@ export const LoginPage: React.FC = () => {
       </div>
 
       {/* ── Page content ── */}
-      <div className="relative z-20 w-full max-w-sm sm:max-w-md flex flex-col items-center">
+      <div className="relative z-20 w-full max-w-sm sm:max-w-md lg:max-w-lg xl:max-w-xl flex flex-col items-center">
 
         {/* School name above card */}
         <div className="text-center mb-6 animate-fade-in-down">
@@ -75,7 +75,7 @@ export const LoginPage: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-black text-white drop-shadow-lg">
             Welcome Back
           </h1>
-          <p className="text-blue-300 text-xs sm:text-sm mt-1">Sign in to continue to your portal</p>
+          <p className="text-blue-300 text-xs sm:text-sm mt-1 pb-4">Sign in to continue to your portal</p>
         </div>
 
         {/* ── Card ── */}
