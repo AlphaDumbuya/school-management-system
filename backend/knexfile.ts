@@ -23,11 +23,14 @@ console.log('DATABASE_URL available:', !!process.env.DATABASE_URL);
 const getConnection = () => {
   if (process.env.DATABASE_URL) {
     console.log('Using DATABASE_URL connection');
-    return process.env.DATABASE_URL;
+    // Return object form so we can attach ssl config
+    return {
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    };
   }
   
   console.log('Using individual DB credentials');
-  // Fallback to individual credentials
   return {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432'),
@@ -72,6 +75,12 @@ const config: { [key: string]: Knex.Config } = {
     seeds: {
       directory: './dist/database/seeds',
       extension: 'js',
+    },
+    pool: {
+      min: 0,
+      max: 3,
+      acquireTimeoutMillis: 10000,
+      idleTimeoutMillis: 500,
     },
   },
 };

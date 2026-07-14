@@ -8,10 +8,11 @@ const environment = process.env.NODE_ENV || 'development';
 // Determine connection method: use DATABASE_URL if available, otherwise use individual credentials
 const getConnection = () => {
   if (process.env.DATABASE_URL) {
-    return process.env.DATABASE_URL;
+    return {
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    };
   }
-  
-  // Fallback to individual credentials
   return {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432'),
