@@ -36,7 +36,7 @@ export async function seed(knex: Knex): Promise<void> {
   
   if (!tenant) {
     const newTenant = await knex('tenants').insert({
-      name: 'Demo School',
+      name: 'Sierra Leone Grammar School',
       slug: 'demo-school',
       domain: 'demo.school.local',
       status: 'active',
@@ -203,58 +203,13 @@ export async function seed(knex: Knex): Promise<void> {
     roleMap[r.name] = r.id;
   });
 
-  // Assign permissions to Principal role (all permissions including admin-level access)
+  // Assign ALL permissions to Principal role (full system access)
   const principalPermsAll = permissions.map((p: any) => ({
     role_id: roleMap.principal,
     permission_id: p.id,
     created_at: new Date(),
   }));
   await knex('role_permissions').insert(principalPermsAll);
-
-  // Assign permissions to Principal role (Head of School - full academic authority)
-  const principalPerms = [
-    // User management (read + create + update; no delete — that's admin)
-    'user:read', 'user:update', 'user:create',
-    // Student management (full authority including discipline)
-    'student:read', 'student:update', 'student:create',
-    'student:suspend', 'student:expel', 'student:transfer',
-    'student:promote', 'student:admit',
-    // Class management
-    'class:read', 'class:create', 'class:update', 'class:delete',
-    'class:assign_teacher', 'class:assign_student',
-    // Subject management
-    'subject:read', 'subject:create', 'subject:update', 'subject:delete',
-    'subject:assign_teacher',
-    // Timetable management
-    'timetable:read', 'timetable:create', 'timetable:update',
-    'timetable:approve', 'timetable:delete',
-    // Staff management
-    'staff:read', 'staff:create', 'staff:update',
-    'staff:assign', 'staff:approve_leave', 'staff:evaluate',
-    // Grades
-    'grade:read', 'grade:update', 'grade:create',
-    // Attendance
-    'attendance:read', 'attendance:update', 'attendance:create',
-    // Examination management
-    'exam:read', 'exam:create', 'exam:update', 'exam:approve',
-    'exam:lock_results', 'exam:publish_results', 'exam:publish_report_cards',
-    // Communication
-    'announcement:read', 'announcement:create', 'announcement:update', 'announcement:delete',
-    'message:send', 'message:read',
-    // Financial oversight (read + approve; no create/delete — that's accountant/admin)
-    'fee:read', 'fee:approve_structure',
-    'payment:read',
-    'budget:read', 'budget:approve',
-    // Reports
-    'report:read', 'report:create',
-    // RBAC (read only)
-    'role:read', 'permission:read',
-  ].map((pname) => ({
-    role_id: roleMap.principal,
-    permission_id: permMap[pname],
-    created_at: new Date(),
-  }));
-  await knex('role_permissions').insert(principalPerms);
 
   // Assign permissions to Teacher role
   const teacherPerms = [
@@ -347,8 +302,8 @@ export async function seed(knex: Knex): Promise<void> {
     tenant_id: tenantId,
     email: 'admin@school.com',
     password_hash: hashedPassword,
-    first_name: 'Principal',
-    last_name: 'Admin',
+    first_name: 'Alhaji',
+    last_name: 'Kamara',
     role: 'principal',
     status: 'active',
   }).returning('*');
@@ -358,8 +313,8 @@ export async function seed(knex: Knex): Promise<void> {
     tenant_id: tenantId,
     email: 'principal@school.com',
     password_hash: hashedPassword,
-    first_name: 'School',
-    last_name: 'Principal',
+    first_name: 'Bai',
+    last_name: 'Koroma',
     role: 'principal',
     status: 'active',
   }).returning('*');
@@ -370,8 +325,8 @@ export async function seed(knex: Knex): Promise<void> {
       tenant_id: tenantId,
       email: 'teacher1@school.com',
       password_hash: hashedPassword,
-      first_name: 'John',
-      last_name: 'Doe',
+      first_name: 'Mohamed',
+      last_name: 'Bangura',
       role: 'teacher',
       status: 'active',
     },
@@ -379,8 +334,8 @@ export async function seed(knex: Knex): Promise<void> {
       tenant_id: tenantId,
       email: 'teacher2@school.com',
       password_hash: hashedPassword,
-      first_name: 'Jane',
-      last_name: 'Smith',
+      first_name: 'Fatmata',
+      last_name: 'Sesay',
       role: 'teacher',
       status: 'active',
     },
@@ -392,8 +347,8 @@ export async function seed(knex: Knex): Promise<void> {
       tenant_id: tenantId,
       email: 'student1@school.com',
       password_hash: hashedPassword,
-      first_name: 'Alice',
-      last_name: 'Johnson',
+      first_name: 'Aminata',
+      last_name: 'Conteh',
       role: 'student',
       status: 'active',
     },
@@ -401,8 +356,8 @@ export async function seed(knex: Knex): Promise<void> {
       tenant_id: tenantId,
       email: 'student2@school.com',
       password_hash: hashedPassword,
-      first_name: 'Bob',
-      last_name: 'Williams',
+      first_name: 'Ibrahim',
+      last_name: 'Turay',
       role: 'student',
       status: 'active',
     },
@@ -413,8 +368,8 @@ export async function seed(knex: Knex): Promise<void> {
     tenant_id: tenantId,
     email: 'parent@school.com',
     password_hash: hashedPassword,
-    first_name: 'Parent',
-    last_name: 'User',
+    first_name: 'Mariama',
+    last_name: 'Fofanah',
     role: 'parent',
     status: 'active',
   }).returning('*');
@@ -424,8 +379,8 @@ export async function seed(knex: Knex): Promise<void> {
     tenant_id: tenantId,
     email: 'accountant@school.com',
     password_hash: hashedPassword,
-    first_name: 'Accountant',
-    last_name: 'User',
+    first_name: 'Sorie',
+    last_name: 'Koroma',
     role: 'accountant',
     status: 'active',
   }).returning('*');
@@ -435,8 +390,8 @@ export async function seed(knex: Knex): Promise<void> {
     tenant_id: tenantId,
     email: 'admissions@school.com',
     password_hash: hashedPassword,
-    first_name: 'Admissions',
-    last_name: 'Officer',
+    first_name: 'Hawa',
+    last_name: 'Turay',
     role: 'admissions_officer',
     status: 'active',
   }).returning('*');
@@ -446,10 +401,10 @@ export async function seed(knex: Knex): Promise<void> {
     {
       user_id: teacherUsers[0].id,
       teacher_id: 'TCH-2024-001',
-      qualifications: 'B.Sc Mathematics, M.Ed',
+      qualifications: 'B.Sc Mathematics, Fourah Bay College',
       experience_years: 5,
       specialization: 'Mathematics',
-      phone: '+1234567890',
+      phone: '+232-76-123456',
       office_location: 'Room 101',
       status: 'active',
       hire_date: '2019-04-01',
@@ -457,10 +412,10 @@ export async function seed(knex: Knex): Promise<void> {
     {
       user_id: teacherUsers[1].id,
       teacher_id: 'TCH-2024-002',
-      qualifications: 'B.A English, M.Ed',
+      qualifications: 'B.A English, University of Sierra Leone',
       experience_years: 3,
       specialization: 'English',
-      phone: '+1234567891',
+      phone: '+232-77-234567',
       office_location: 'Room 102',
       status: 'active',
       hire_date: '2021-04-01',
@@ -474,12 +429,12 @@ export async function seed(knex: Knex): Promise<void> {
       student_id: 'STU-2024-001',
       date_of_birth: '2008-05-15',
       gender: 'Female',
-      phone: '+1234567892',
-      address: '123 Main St',
-      city: 'New York',
-      state: 'NY',
-      postal_code: '10001',
-      country: 'USA',
+      phone: '+232-78-345678',
+      address: '14 Wilkinson Road',
+      city: 'Freetown',
+      state: 'Western Area',
+      postal_code: '00232',
+      country: 'Sierra Leone',
       status: 'active',
       enrollment_date: '2024-04-01',
     },
@@ -488,12 +443,12 @@ export async function seed(knex: Knex): Promise<void> {
       student_id: 'STU-2024-002',
       date_of_birth: '2008-06-20',
       gender: 'Male',
-      phone: '+1234567893',
-      address: '456 Oak Ave',
-      city: 'New York',
-      state: 'NY',
-      postal_code: '10002',
-      country: 'USA',
+      phone: '+232-30-456789',
+      address: '7 Spur Road',
+      city: 'Freetown',
+      state: 'Western Area',
+      postal_code: '00232',
+      country: 'Sierra Leone',
       status: 'active',
       enrollment_date: '2024-04-01',
     },
