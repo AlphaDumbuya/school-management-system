@@ -15,7 +15,6 @@
   ],
   "functions": {
     "api/index.ts": {
-      "runtime": "@vercel/node@5",
       "maxDuration": 30,
       "memory": 1024,
       "includeFiles": "backend/dist/**"
