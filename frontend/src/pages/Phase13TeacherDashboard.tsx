@@ -52,11 +52,11 @@ const mockClasses = [
 ];
 
 const mockStudents = [
-  { id: 'std-1', name: 'Aarav Sharma', rollNumber: '001', email: 'aarav@example.com' },
-  { id: 'std-2', name: 'Bhavna Patel', rollNumber: '002', email: 'bhavna@example.com' },
-  { id: 'std-3', name: 'Chirag Kumar', rollNumber: '003', email: 'chirag@example.com' },
-  { id: 'std-4', name: 'Divya Singh', rollNumber: '004', email: 'divya@example.com' },
-  { id: 'std-5', name: 'Esha Gupta', rollNumber: '005', email: 'esha@example.com' },
+  { id: 'std-1', name: 'Mohamed Kamara', rollNumber: '001', email: 'mkamara@example.com' },
+  { id: 'std-2', name: 'Fatmata Sesay', rollNumber: '002', email: 'fsesay@example.com' },
+  { id: 'std-3', name: 'Ibrahim Koroma', rollNumber: '003', email: 'ikoroma@example.com' },
+  { id: 'std-4', name: 'Aminata Bangura', rollNumber: '004', email: 'abangura@example.com' },
+  { id: 'std-5', name: 'Abdul Conteh', rollNumber: '005', email: 'aconteh@example.com' },
 ];
 
 type TabType = 'overview' | 'classes' | 'grading' | 'attendance';

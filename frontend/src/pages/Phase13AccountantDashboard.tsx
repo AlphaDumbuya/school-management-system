@@ -13,18 +13,18 @@ import useAuthStore from '@store/authStore';
 
 // Mock data
 const mockTransactions = [
-  { id: '1', studentName: 'Aarav Sharma', class: '10th Grade A', type: 'Tuition', amount: 50000, date: 'Today', status: 'paid' },
-  { id: '2', studentName: 'Anaya Sharma', class: '8th Grade B', type: 'Transport', amount: 10000, date: 'Yesterday', status: 'paid' },
-  { id: '3', studentName: 'Rohan Patel', class: '9th Grade A', type: 'Activities', amount: 5000, date: '2 days ago', status: 'pending' },
-  { id: '4', studentName: 'Priya Gupta', class: '7th Grade C', type: 'Library', amount: 2000, date: '3 days ago', status: 'paid' },
-  { id: '5', studentName: 'Arjun Kumar', class: '10th Grade B', type: 'Tuition', amount: 50000, date: '5 days ago', status: 'pending' },
+  { id: '1', studentName: 'Mohamed Kamara', class: '10th Grade A', type: 'Tuition', amount: 50000, date: 'Today', status: 'paid' },
+  { id: '2', studentName: 'Fatmata Sesay', class: '8th Grade B', type: 'Transport', amount: 10000, date: 'Yesterday', status: 'paid' },
+  { id: '3', studentName: 'Ibrahim Koroma', class: '9th Grade A', type: 'Activities', amount: 5000, date: '2 days ago', status: 'pending' },
+  { id: '4', studentName: 'Aminata Bangura', class: '7th Grade C', type: 'Library', amount: 2000, date: '3 days ago', status: 'paid' },
+  { id: '5', studentName: 'Abdul Conteh', class: '10th Grade B', type: 'Tuition', amount: 50000, date: '5 days ago', status: 'pending' },
 ];
 
 const mockOutstandingFees = [
-  { id: '1', studentName: 'Rohan Patel', class: '9th Grade A', totalDue: 15000, daysOverdue: 5, parentPhone: '9876543210', parentEmail: 'parent1@example.com' },
-  { id: '2', studentName: 'Arjun Kumar', class: '10th Grade B', totalDue: 50000, daysOverdue: 10, parentPhone: '9876543211', parentEmail: 'parent2@example.com' },
-  { id: '3', studentName: 'Simran Singh', class: '8th Grade A', totalDue: 7000, daysOverdue: 2, parentPhone: '9876543212', parentEmail: 'parent3@example.com' },
-  { id: '4', studentName: 'Neha Verma', class: '9th Grade B', totalDue: 12000, daysOverdue: 15, parentPhone: '9876543213', parentEmail: 'parent4@example.com' },
+  { id: '1', studentName: 'Ibrahim Koroma', class: '9th Grade A', totalDue: 15000, daysOverdue: 5, parentPhone: '+232-76-123456', parentEmail: 'parent1@example.com' },
+  { id: '2', studentName: 'Abdul Conteh', class: '10th Grade B', totalDue: 50000, daysOverdue: 10, parentPhone: '+232-77-234567', parentEmail: 'parent2@example.com' },
+  { id: '3', studentName: 'Hawa Turay', class: '8th Grade A', totalDue: 7000, daysOverdue: 2, parentPhone: '+232-78-345678', parentEmail: 'parent3@example.com' },
+  { id: '4', studentName: 'Mariama Fofanah', class: '9th Grade B', totalDue: 12000, daysOverdue: 15, parentPhone: '+232-30-456789', parentEmail: 'parent4@example.com' },
 ];
 
 type TabType = 'overview' | 'transactions' | 'outstanding';

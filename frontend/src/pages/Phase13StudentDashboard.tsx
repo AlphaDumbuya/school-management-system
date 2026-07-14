@@ -19,7 +19,7 @@ import { RecordsDownload } from '@components/student/RecordsDownload';
 // Mock data - replace with API calls
 const mockStudentData = {
   id: 'student-1',
-  name: 'Aarav Sharma',
+  name: 'Mohamed Kamara',
   rollNumber: '001',
   class: '10th Grade A',
   gpa: 3.8,
@@ -33,7 +33,7 @@ const mockGrades = [
   { id: '2', subject: 'English', marks: 85, maxMarks: 100, grade: 'A', term: 'Term 1', date: '2026-06-15' },
   { id: '3', subject: 'Science', marks: 88, maxMarks: 100, grade: 'A', term: 'Term 1', date: '2026-06-15' },
   { id: '4', subject: 'Social Studies', marks: 90, maxMarks: 100, grade: 'A+', term: 'Term 1', date: '2026-06-15' },
-  { id: '5', subject: 'Hindi', marks: 78, maxMarks: 100, grade: 'B+', term: 'Term 1', date: '2026-06-15' },
+  { id: '5', subject: 'Integrated Science', marks: 78, maxMarks: 100, grade: 'B+', term: 'Term 1', date: '2026-06-15' },
 ];
 
 const mockAttendance = {
@@ -45,9 +45,9 @@ const mockAttendance = {
 };
 
 const mockUpcomingClasses = [
-  { subject: 'Mathematics', teacher: 'Mr. Kumar', time: '9:00 AM', room: '101' },
-  { subject: 'English', teacher: 'Ms. Sharma', time: '10:00 AM', room: '102' },
-  { subject: 'Science', teacher: 'Mr. Patel', time: '11:00 AM', room: '201' },
+  { subject: 'Mathematics', teacher: 'Mr. Bangura', time: '9:00 AM', room: '101' },
+  { subject: 'English', teacher: 'Ms. Koroma', time: '10:00 AM', room: '102' },
+  { subject: 'Science', teacher: 'Mr. Sesay', time: '11:00 AM', room: '201' },
 ];
 
 const mockFees = {

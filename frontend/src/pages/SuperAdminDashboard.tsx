@@ -60,11 +60,11 @@ const SuperAdminDashboard: React.FC = () => {
   };
 
   const recentTenants: TenantSummary[] = [
-    { id: '1', name: 'Springfield High School', status: 'active', plan: 'Premium', users: 450, students: 3200 },
-    { id: '2', name: 'Riverside Academy', status: 'trial', plan: 'Trial', users: 120, students: 800, expiresAt: '2026-06-30' },
-    { id: '3', name: 'Greenwood Elementary', status: 'active', plan: 'Basic', users: 85, students: 450 },
-    { id: '4', name: 'Oakdale International', status: 'active', plan: 'Enterprise', users: 680, students: 5000 },
-    { id: '5', name: 'Sunset College', status: 'suspended', plan: 'Premium', users: 320, students: 2100 },
+    { id: '1', name: 'Sierra Leone Grammar School', status: 'active', plan: 'Premium', users: 450, students: 3200 },
+    { id: '2', name: 'Annie Walsh Memorial School', status: 'trial', plan: 'Trial', users: 120, students: 800, expiresAt: '2026-06-30' },
+    { id: '3', name: 'Model Primary School Bo', status: 'active', plan: 'Basic', users: 85, students: 450 },
+    { id: '4', name: 'St. Edward\'s Secondary School', status: 'active', plan: 'Enterprise', users: 680, students: 5000 },
+    { id: '5', name: 'Freetown Secondary School', status: 'suspended', plan: 'Premium', users: 320, students: 2100 },
   ];
 
   const getStatusColor = (status: string) => {
@@ -148,7 +148,7 @@ const SuperAdminDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Monthly Revenue</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">${platformStats.monthlyRevenue.toLocaleString()}</p>
+                <p className="text-3xl font-bold text-gray-900 mt-2">Le{platformStats.monthlyRevenue.toLocaleString()}</p>
                 <p className="text-sm text-green-600 mt-2 flex items-center">
                   <FaArrowUp className="mr-1" />
                   12% vs last month

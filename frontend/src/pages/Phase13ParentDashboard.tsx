@@ -20,7 +20,7 @@ import { RecordsAccess } from '@components/parent/RecordsAccess';
 const mockChildren = [
   {
     id: 'child-1',
-    name: 'Aarav Sharma',
+    name: 'Mohamed Kamara',
     class: '10th Grade A',
     gpa: 3.8,
     attendance: 92,
@@ -28,7 +28,7 @@ const mockChildren = [
   },
   {
     id: 'child-2',
-    name: 'Anaya Sharma',
+    name: 'Fatmata Kamara',
     class: '8th Grade B',
     gpa: 3.6,
     attendance: 95,
@@ -44,9 +44,9 @@ const mockGrades = [
 ];
 
 const mockSchedule = [
-  { subject: 'Mathematics', teacher: 'Mr. Kumar', time: '9:00 AM', room: '101' },
-  { subject: 'English', teacher: 'Ms. Sharma', time: '10:00 AM', room: '102' },
-  { subject: 'Science', teacher: 'Mr. Patel', time: '11:00 AM', room: '201' },
+  { subject: 'Mathematics', teacher: 'Mr. Bangura', time: '9:00 AM', room: '101' },
+  { subject: 'English', teacher: 'Ms. Koroma', time: '10:00 AM', room: '102' },
+  { subject: 'Science', teacher: 'Mr. Sesay', time: '11:00 AM', room: '201' },
 ];
 
 const mockFees = [
@@ -59,9 +59,9 @@ const mockFees = [
 const mockMessages = [
   {
     id: '1',
-    sender: 'Mr. Kumar (Math Teacher)',
-    subject: 'Aarav is doing well in class',
-    preview: 'Aarav has shown improvement in problem-solving. Keep encouraging him to practice more.',
+    sender: 'Mr. Bangura (Math Teacher)',
+    subject: 'Mohamed is doing well in class',
+    preview: 'Mohamed has shown improvement in problem-solving. Keep encouraging him to practice more.',
     timestamp: 'Today at 2:30 PM',
     read: false,
   },
@@ -113,7 +113,7 @@ const mockMeetings = [
     title: 'Parent-Teacher Conference - Mathematics',
     date: 'July 10, 2026',
     time: '3:00 PM',
-    organizer: 'Mr. Kumar',
+    organizer: 'Mr. Bangura',
     status: 'pending' as const,
   },
   {

@@ -16,7 +16,7 @@ const mockApplications = [
   // New
   {
     id: '1',
-    name: 'Rajesh Patel',
+    name: 'Sorie Koroma',
     class: '9th Grade',
     appliedDate: 'July 2, 2026',
     status: 'new' as const,
@@ -24,7 +24,7 @@ const mockApplications = [
   },
   {
     id: '2',
-    name: 'Neha Singh',
+    name: 'Mariama Fofanah',
     class: '7th Grade',
     appliedDate: 'July 1, 2026',
     status: 'new' as const,
@@ -33,7 +33,7 @@ const mockApplications = [
   // Under Review
   {
     id: '3',
-    name: 'Arjun Verma',
+    name: 'Abdul Conteh',
     class: '10th Grade',
     appliedDate: 'June 28, 2026',
     status: 'under_review' as const,
@@ -41,7 +41,7 @@ const mockApplications = [
   },
   {
     id: '4',
-    name: 'Priya Gupta',
+    name: 'Aminata Bangura',
     class: '8th Grade',
     appliedDate: 'June 27, 2026',
     status: 'under_review' as const,
@@ -50,7 +50,7 @@ const mockApplications = [
   // Approved
   {
     id: '5',
-    name: 'Rohan Kapoor',
+    name: 'Ibrahim Kamara',
     class: '9th Grade',
     appliedDate: 'June 20, 2026',
     status: 'approved' as const,
@@ -58,7 +58,7 @@ const mockApplications = [
   },
   {
     id: '6',
-    name: 'Simran Sharma',
+    name: 'Hawa Turay',
     class: '7th Grade',
     appliedDate: 'June 19, 2026',
     status: 'approved' as const,
@@ -67,7 +67,7 @@ const mockApplications = [
   // Enrolled
   {
     id: '7',
-    name: 'Aarav Sharma',
+    name: 'Mohamed Sesay',
     class: '10th Grade',
     appliedDate: 'June 10, 2026',
     status: 'enrolled' as const,
@@ -76,7 +76,7 @@ const mockApplications = [
   // Rejected
   {
     id: '8',
-    name: 'Vikram Singh',
+    name: 'Fatmata Koroma',
     class: '9th Grade',
     appliedDate: 'June 5, 2026',
     status: 'rejected' as const,
