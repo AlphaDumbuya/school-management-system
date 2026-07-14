@@ -136,8 +136,8 @@ export class AuthService {
       if (error instanceof AppError) {
         throw error;
       }
-      logger.error('Error logging in user', error);
-      throw new AppError('Login failed', 500, 'LOGIN_FAILED');
+      logger.error('Error logging in user:', { error: String(error), stack: error instanceof Error ? error.stack : undefined });
+      throw new AppError(`Login failed: ${String(error)}`, 500, 'LOGIN_FAILED');
     }
   }
 

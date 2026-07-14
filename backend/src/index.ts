@@ -104,6 +104,26 @@ app.get('/health', (req: Request, res: Response) => {
   });
 });
 
+// Debug endpoint — shows env and DB connectivity (remove after fixing)
+app.get('/api/v1/debug', async (req: Request, res: Response) => {
+  const info: Record<string, any> = {
+    node_env: NODE_ENV,
+    has_database_url: !!process.env.DATABASE_URL,
+    has_jwt_secret: !!process.env.JWT_SECRET,
+    has_refresh_secret: !!process.env.REFRESH_TOKEN_SECRET,
+    jwt_secret_length: process.env.JWT_SECRET?.length ?? 0,
+    database_url_prefix: process.env.DATABASE_URL?.substring(0, 30) + '...',
+  };
+  try {
+    await db.raw('SELECT 1');
+    info.db_connected = true;
+  } catch (e) {
+    info.db_connected = false;
+    info.db_error = String(e);
+  }
+  res.json(info);
+});
+
 // Serve static files from storage directory (local storage only)
 if (process.env.STORAGE_PROVIDER === 'local' || !process.env.STORAGE_PROVIDER) {
   const storagePath = process.env.LOCAL_STORAGE_PATH || './storage';
