@@ -8,6 +8,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import responsive dashboard utilities */
+@import './responsive-dashboard.css';
+@import './theme.css';
+
 /* Global Styles */
 * {
   @apply transition-colors duration-200;
