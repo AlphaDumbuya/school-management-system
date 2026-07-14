@@ -99,7 +99,7 @@ export const ChildSelector: React.FC<ChildSelectorProps> = ({
                 </div>
                 <div className="p-2 bg-white rounded-lg">
                   <p className="text-xs text-gray-600">Outstanding</p>
-                  <p className="font-bold text-orange-600">₹{child.outstandingFees}</p>
+                  <p className="font-bold text-orange-600">Le{child.outstandingFees}</p>
                 </div>
               </div>
             </CardContent>

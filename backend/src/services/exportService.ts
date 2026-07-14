@@ -215,7 +215,7 @@ class ExportService {
       { label: 'Total Students', value: metrics.totalStudents },
       { label: 'Total Teachers', value: metrics.totalTeachers },
       { label: 'Total Classes', value: metrics.totalClasses },
-      { label: 'Outstanding Fees', value: `₹${metrics.outstandingFees.toLocaleString()}` },
+      { label: 'Outstanding Fees', value: `Le${metrics.outstandingFees.toLocaleString()}` },
       { label: 'Attendance Rate', value: `${metrics.attendanceRate}%` },
     ];
 
@@ -235,11 +235,11 @@ class ExportService {
     doc.moveDown();
 
     const financialData = [
-      { label: 'Total Revenue', value: `₹${financial.totalRevenue.toLocaleString()}` },
-      { label: 'This Month', value: `₹${financial.thisMonthCollected.toLocaleString()}` },
-      { label: 'Monthly Target', value: `₹${financial.thisMonthTarget.toLocaleString()}` },
+      { label: 'Total Revenue', value: `Le${financial.totalRevenue.toLocaleString()}` },
+      { label: 'This Month', value: `Le${financial.thisMonthCollected.toLocaleString()}` },
+      { label: 'Monthly Target', value: `Le${financial.thisMonthTarget.toLocaleString()}` },
       { label: 'Collection Rate', value: `${financial.collectionRate}%` },
-      { label: 'Outstanding Balance', value: `₹${financial.outstandingBalance.toLocaleString()}` },
+      { label: 'Outstanding Balance', value: `Le${financial.outstandingBalance.toLocaleString()}` },
     ];
 
     doc.fontSize(10).font('Helvetica');

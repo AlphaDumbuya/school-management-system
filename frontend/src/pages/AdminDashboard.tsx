@@ -122,7 +122,7 @@ export const AdminDashboard: React.FC = () => {
           />
           <AdminMetricsCard
             label="Outstanding Fees"
-            value={`₹${(dashboard?.metrics?.outstandingFees || 0).toLocaleString()}`}
+            value={`Le${(dashboard?.metrics?.outstandingFees || 0).toLocaleString()}`}
             icon={<DollarSign size={32} />}
             color="red"
             trend={-8}
@@ -159,7 +159,7 @@ export const AdminDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-gray-600">This Month Collected</p>
                 <p className="text-2xl font-bold text-green-600">
-                  ₹{(dashboard?.financialSummary?.thisMonthCollected || 0).toLocaleString()}
+                  Le{(dashboard?.financialSummary?.thisMonthCollected || 0).toLocaleString()}
                 </p>
               </div>
               <div className="h-2 bg-gray-200 rounded-full overflow-hidden">

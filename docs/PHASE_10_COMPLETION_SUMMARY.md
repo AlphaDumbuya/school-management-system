@@ -334,7 +334,7 @@ Usage analytics and tracking.
 
 1. **Total Revenue**: All-time collections
 2. **This Month Collected**: Current month amount
-3. **Monthly Target**: Configurable goal (default: ₹50,000)
+3. **Monthly Target**: Configurable goal (default: Le50,000)
 4. **Outstanding Balance**: Pending + Partial fees
 5. **Overdue Amount**: Past-due fees
 6. **Collection Rate**: % of monthly target

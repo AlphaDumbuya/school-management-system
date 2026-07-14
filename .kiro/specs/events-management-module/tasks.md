@@ -1,4 +1,4 @@
-# Phase 2.2 - Events Management Module Tasks
+## Phase 2.2 - Events Management Module Tasks
 
 **Status:** ✅ Backend Complete  
 **Progress:** 28/35 tasks (80%)  

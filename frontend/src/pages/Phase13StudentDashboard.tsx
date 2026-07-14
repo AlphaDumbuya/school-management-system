@@ -111,7 +111,7 @@ export const Phase13StudentDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-600 text-sm">Outstanding</p>
-                  <p className="text-3xl font-bold text-orange-600">₹{outstandingFees}</p>
+                  <p className="text-3xl font-bold text-orange-600">Le{outstandingFees}</p>
                 </div>
                 <DollarSign className="w-10 h-10 text-orange-100" />
               </div>

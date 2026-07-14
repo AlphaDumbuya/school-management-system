@@ -204,12 +204,12 @@ export async function seed(knex: Knex): Promise<void> {
   });
 
   // Assign permissions to Principal role (all permissions including admin-level access)
-  const principalPerms = permissions.map((p: any) => ({
+  const principalPermsAll = permissions.map((p: any) => ({
     role_id: roleMap.principal,
     permission_id: p.id,
     created_at: new Date(),
   }));
-  await knex('role_permissions').insert(principalPerms);
+  await knex('role_permissions').insert(principalPermsAll);
 
   // Assign permissions to Principal role (Head of School - full academic authority)
   const principalPerms = [

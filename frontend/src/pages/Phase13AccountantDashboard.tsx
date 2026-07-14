@@ -89,7 +89,7 @@ export const Phase13AccountantDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-600 text-sm">Total Revenue</p>
-                  <p className="text-3xl font-bold text-blue-600">₹{(totalRevenue / 100000).toFixed(1)}L</p>
+                  <p className="text-3xl font-bold text-blue-600">Le{(totalRevenue / 100000).toFixed(1)}L</p>
                 </div>
                 <TrendingUp className="w-10 h-10 text-blue-100" />
               </div>
@@ -101,7 +101,7 @@ export const Phase13AccountantDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-600 text-sm">Pending Amount</p>
-                  <p className="text-3xl font-bold text-orange-600">₹{(pendingAmount / 1000).toFixed(0)}K</p>
+                  <p className="text-3xl font-bold text-orange-600">Le{(pendingAmount / 1000).toFixed(0)}K</p>
                 </div>
                 <AlertCircle className="w-10 h-10 text-orange-100" />
               </div>
@@ -125,7 +125,7 @@ export const Phase13AccountantDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-600 text-sm">Outstanding Fees</p>
-                  <p className="text-3xl font-bold text-red-600">₹{(totalOutstanding / 100000).toFixed(2)}L</p>
+                  <p className="text-3xl font-bold text-red-600">Le{(totalOutstanding / 100000).toFixed(2)}L</p>
                 </div>
                 <DollarSign className="w-10 h-10 text-red-100" />
               </div>
@@ -141,7 +141,7 @@ export const Phase13AccountantDashboard: React.FC = () => {
               <div>
                 <p className="font-semibold text-red-900">High Outstanding Amount</p>
                 <p className="text-sm text-red-800">
-                  ₹{totalOutstanding.toLocaleString()} in outstanding fees from {mockOutstandingFees.length} students.
+                  Le{totalOutstanding.toLocaleString()} in outstanding fees from {mockOutstandingFees.length} students.
                 </p>
               </div>
             </div>
@@ -190,12 +190,12 @@ export const Phase13AccountantDashboard: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="p-4 bg-green-50 rounded-lg">
                       <p className="text-sm text-gray-600 mb-1">Total Collected</p>
-                      <p className="text-2xl font-bold text-green-600">₹{(totalRevenue / 100000).toFixed(1)}L</p>
+                      <p className="text-2xl font-bold text-green-600">Le{(totalRevenue / 100000).toFixed(1)}L</p>
                       <p className="text-xs text-gray-600 mt-2">From {mockTransactions.filter(t => t.status === 'paid').length} payments</p>
                     </div>
                     <div className="p-4 bg-orange-50 rounded-lg">
                       <p className="text-sm text-gray-600 mb-1">Pending Collection</p>
-                      <p className="text-2xl font-bold text-orange-600">₹{(pendingAmount / 1000).toFixed(0)}K</p>
+                      <p className="text-2xl font-bold text-orange-600">Le{(pendingAmount / 1000).toFixed(0)}K</p>
                       <p className="text-xs text-gray-600 mt-2">From {mockTransactions.filter(t => t.status === 'pending').length} students</p>
                     </div>
                     <div className="p-4 bg-blue-50 rounded-lg">
@@ -221,7 +221,7 @@ export const Phase13AccountantDashboard: React.FC = () => {
                           <p className="text-sm text-gray-600">{tx.class} • {tx.type}</p>
                         </div>
                         <div className="text-right">
-                          <p className="font-semibold text-gray-900">₹{tx.amount.toLocaleString()}</p>
+                          <p className="font-semibold text-gray-900">Le{tx.amount.toLocaleString()}</p>
                           <span className={`text-xs font-medium ${
                             tx.status === 'paid' ? 'text-green-600' : 'text-orange-600'
                           }`}>
@@ -262,7 +262,7 @@ export const Phase13AccountantDashboard: React.FC = () => {
                           <p className="text-sm text-gray-600">{tx.class} • {tx.type}</p>
                         </div>
                         <div className="text-right">
-                          <p className="font-bold text-lg text-gray-900">₹{tx.amount.toLocaleString()}</p>
+                          <p className="font-bold text-lg text-gray-900">Le{tx.amount.toLocaleString()}</p>
                           <p className="text-xs text-gray-600 mb-1">{tx.date}</p>
                           <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
                             tx.status === 'paid'
@@ -317,7 +317,7 @@ export const Phase13AccountantDashboard: React.FC = () => {
                           <p className="text-sm text-gray-600">{fee.class}</p>
                         </div>
                         <div className="text-right">
-                          <p className="font-bold text-lg text-red-600">₹{fee.totalDue.toLocaleString()}</p>
+                          <p className="font-bold text-lg text-red-600">Le{fee.totalDue.toLocaleString()}</p>
                           <span className="inline-block px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium mt-1">
                             {fee.daysOverdue} days overdue
                           </span>
@@ -380,7 +380,7 @@ export const Phase13AccountantDashboard: React.FC = () => {
               </div>
               <div className="flex items-center justify-between p-3 border rounded-lg">
                 <span>Average Outstanding per Student</span>
-                <span className="font-bold text-red-600">₹{Math.round(totalOutstanding / mockOutstandingFees.length).toLocaleString()}</span>
+                <span className="font-bold text-red-600">Le{Math.round(totalOutstanding / mockOutstandingFees.length).toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between p-3 border rounded-lg">
                 <span>Collection Efficiency Target</span>

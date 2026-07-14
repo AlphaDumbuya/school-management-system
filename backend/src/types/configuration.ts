@@ -84,7 +84,7 @@ export interface FeeConfiguration {
   id: string;
   name: string;
   amount: number;
-  currency: string; // "USD", "INR", etc.
+  currency: string; // "USD", "SLE", etc.
   description?: string;
   applicableClasses?: string[]; // Class IDs
   dueDate?: string; // YYYY-MM-DD

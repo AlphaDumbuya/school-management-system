@@ -253,7 +253,7 @@ export const Phase13ParentDashboard: React.FC = () => {
                       <p className={`text-3xl font-bold ${
                         selectedChild.outstandingFees === 0 ? 'text-green-600' : 'text-orange-600'
                       }`}>
-                        ₹{selectedChild.outstandingFees}
+                        Le{selectedChild.outstandingFees}
                       </p>
                     </div>
                   </div>
@@ -281,7 +281,7 @@ export const Phase13ParentDashboard: React.FC = () => {
                     <div>
                       <p className="font-semibold text-orange-900">Outstanding Fees</p>
                       <p className="text-sm text-orange-800">
-                        ₹{selectedChild.outstandingFees} due. Please make payment to avoid late fees.
+                        Le{selectedChild.outstandingFees} due. Please make payment to avoid late fees.
                       </p>
                     </div>
                   </div>

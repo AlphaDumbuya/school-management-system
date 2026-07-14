@@ -67,21 +67,21 @@ export const ChildFeeStatus: React.FC<ChildFeeStatusProps> = ({
         <Card>
           <CardContent className="pt-4">
             <p className="text-xs text-gray-600 mb-1">Total Fees</p>
-            <p className="text-2xl font-bold text-gray-900">₹{totalAmount.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-gray-900">Le{totalAmount.toLocaleString()}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="pt-4">
             <p className="text-xs text-gray-600 mb-1">Paid</p>
-            <p className="text-2xl font-bold text-green-600">₹{totalPaid.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-green-600">Le{totalPaid.toLocaleString()}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="pt-4">
             <p className="text-xs text-gray-600 mb-1">Outstanding</p>
-            <p className="text-2xl font-bold text-orange-600">₹{totalOutstanding.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-orange-600">Le{totalOutstanding.toLocaleString()}</p>
           </CardContent>
         </Card>
 
@@ -128,7 +128,7 @@ export const ChildFeeStatus: React.FC<ChildFeeStatusProps> = ({
                 <div>
                   <p className="font-semibold text-gray-900">{fee.type}</p>
                   <p className="text-sm text-gray-600">
-                    ₹{fee.paid.toLocaleString()} / ₹{fee.amount.toLocaleString()}
+                    Le{fee.paid.toLocaleString()} / Le{fee.amount.toLocaleString()}
                   </p>
                 </div>
                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(fee.status)}`}>
@@ -166,19 +166,19 @@ export const ChildFeeStatus: React.FC<ChildFeeStatusProps> = ({
           <div className="space-y-2 text-sm">
             <div className="flex items-center justify-between p-2 bg-green-50 rounded">
               <span>Tuition Fee (Term 1)</span>
-              <span className="font-semibold">₹50,000</span>
+              <span className="font-semibold">Le50,000</span>
             </div>
             <div className="flex items-center justify-between p-2 bg-green-50 rounded">
               <span>Transport Fee (Term 1)</span>
-              <span className="font-semibold">₹10,000</span>
+              <span className="font-semibold">Le10,000</span>
             </div>
             <div className="flex items-center justify-between p-2 bg-green-50 rounded">
               <span>Library Fee (Term 1)</span>
-              <span className="font-semibold">₹2,000</span>
+              <span className="font-semibold">Le2,000</span>
             </div>
             <div className="flex items-center justify-between p-2 bg-yellow-50 rounded">
               <span>Activities Fee (Pending)</span>
-              <span className="font-semibold text-orange-600">₹5,000</span>
+              <span className="font-semibold text-orange-600">Le5,000</span>
             </div>
           </div>
 

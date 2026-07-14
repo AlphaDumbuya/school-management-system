@@ -943,7 +943,7 @@ const KPICards = ({ metrics }) => {
     { label: 'Total Students', value: metrics.totalStudents, icon: '👨‍🎓' },
     { label: 'Active Teachers', value: metrics.totalTeachers, icon: '👩‍🏫' },
     { label: 'Classes', value: metrics.totalClasses, icon: '🏫' },
-    { label: 'Outstanding Fees', value: `₹${metrics.outstandingFees}`, icon: '💰' },
+    { label: 'Outstanding Fees', value: `Le${metrics.outstandingFees}`, icon: '💰' },
   ];
 
   return (

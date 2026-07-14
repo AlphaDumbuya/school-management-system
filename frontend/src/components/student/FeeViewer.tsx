@@ -76,7 +76,7 @@ export const FeeViewer: React.FC<FeeViewerProps> = ({
               <p className={`text-3xl font-bold ${
                 outstandingAmount === 0 ? 'text-green-600' : 'text-orange-600'
               }`}>
-                ₹{outstandingAmount.toLocaleString()}
+                Le{outstandingAmount.toLocaleString()}
               </p>
             </div>
             {outstandingAmount === 0 ? (
@@ -102,7 +102,7 @@ export const FeeViewer: React.FC<FeeViewerProps> = ({
                   <div>
                     <p className="font-semibold capitalize">{fee.type}</p>
                     <p className="text-sm text-gray-600">
-                      ₹{fee.paid.toLocaleString()} / ₹{fee.amount.toLocaleString()} paid
+                      Le{fee.paid.toLocaleString()} / Le{fee.amount.toLocaleString()} paid
                     </p>
                   </div>
                 </div>
@@ -126,7 +126,7 @@ export const FeeViewer: React.FC<FeeViewerProps> = ({
               {/* Remaining Amount */}
               {fee.paid < fee.amount && (
                 <p className="mt-2 text-sm text-gray-600">
-                  Remaining: ₹{(fee.amount - fee.paid).toLocaleString()}
+                  Remaining: Le{(fee.amount - fee.paid).toLocaleString()}
                 </p>
               )}
             </div>

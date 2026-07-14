@@ -7,16 +7,31 @@
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
 
 /**
- * Format currency values
+ * Format currency values (Sierra Leonean Leone - SLE)
  */
-export const formatCurrency = (value: number, currency = 'INR'): string => {
-  const formatter = new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
-  return formatter.format(value);
+export const formatCurrency = (value: number, currency = 'SLE'): string => {
+  try {
+    // Custom formatting for SLE as it may not be fully supported in all browsers
+    if (currency === 'SLE') {
+      const formatted = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      }).format(value);
+      return `Le ${formatted}`;
+    }
+    
+    // Fallback for other currencies
+    const formatter = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+    return formatter.format(value);
+  } catch (error) {
+    // Ultimate fallback
+    return `Le ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+  }
 };
 
 /**
@@ -27,10 +42,10 @@ export const formatPercentage = (value: number, decimals = 1): string => {
 };
 
 /**
- * Format numbers with commas
+ * Format numbers with commas (Sierra Leone locale)
  */
 export const formatNumber = (value: number, decimals = 0): string => {
-  return value.toLocaleString('en-IN', {
+  return value.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
@@ -103,21 +118,22 @@ export const formatEmail = (email: string): string => {
 };
 
 /**
- * Format phone number
+ * Format phone number (Sierra Leone format)
  */
 export const formatPhone = (phone: string): string => {
   // Remove all non-digits
   const digits = phone.replace(/\D/g, '');
   
-  // Format as +91-XXXXX-XXXXX for India
-  if (digits.length === 10) {
-    return `+91-${digits.slice(0, 5)}-${digits.slice(5)}`;
+  // Format as +232-XX-XXXXXX for Sierra Leone
+  if (digits.length === 8) {
+    return `+232-${digits.slice(0, 2)}-${digits.slice(2)}`;
   }
   
-  if (digits.length === 12 && digits.startsWith('91')) {
-    return `+${digits.slice(0, 2)}-${digits.slice(2, 7)}-${digits.slice(7)}`;
+  if (digits.length === 11 && digits.startsWith('232')) {
+    return `+${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
   }
   
+  // Generic format
   return phone;
 };
 
