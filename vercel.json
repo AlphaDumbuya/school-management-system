@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "installCommand": "echo 'deps installed per package in buildCommand'",
-  "buildCommand": "(cd backend && npm install --legacy-peer-deps --include=dev && node_modules/.bin/tsc || true) && (cd frontend && npm install --legacy-peer-deps --include=dev && node_modules/.bin/vite build)",
+  "installCommand": "npm install --legacy-peer-deps --include=dev",
+  "buildCommand": "(cd backend && ../node_modules/.bin/tsc || true) && (cd frontend && ../node_modules/.bin/vite build)",
   "outputDirectory": "frontend/dist",
   "rewrites": [
     {
