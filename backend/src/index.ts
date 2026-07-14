@@ -255,7 +255,7 @@ app.use((req: Request, res: Response) => {
 app.use(errorHandler);
 
 // Only start the HTTP server when running directly (not in serverless)
-// Vercel imports this module and uses the exported app directly
+// Vercel sets VERCEL=1 in both build and runtime environments
 if (process.env.VERCEL !== '1') {
   const server = app.listen(PORT, () => {
     logger.info(`Server running on port ${PORT} in ${NODE_ENV} mode`);
