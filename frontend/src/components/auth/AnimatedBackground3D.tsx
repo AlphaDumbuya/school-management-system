@@ -1,433 +1,392 @@
 /**
  * AnimatedBackground3D Component
- * Premium 3D animated background for login page
- * Features: Particle system, 3D geometric shapes, parallax effect, dynamic lighting
- * Uses Canvas API for lightweight, performant 3D effects
+ * Educational-themed animated background for login page
+ * Features: Floating education icons (books, caps, pencils, atoms, stars),
+ *           particle connections, deep blue gradient atmosphere
  */
 
 import React, { useEffect, useRef } from 'react';
 
-interface Particle {
+interface EduParticle {
   x: number;
   y: number;
-  z: number;
   vx: number;
   vy: number;
-  vz: number;
-  radius: number;
+  size: number;
+  opacity: number;
+  opacityDir: number;
+  rotation: number;
+  rotSpeed: number;
+  type: number; // 0=star, 1=circle dot, 2=plus, 3=diamond
   color: string;
-  brightness: number;
-  pulse: number;
 }
 
-interface FloatingShape {
+interface EduIcon {
   x: number;
   y: number;
-  z: number;
-  rotation: number;
-  rotationX: number;
-  rotationSpeed: number;
-  rotationSpeedX: number;
+  vx: number;
+  vy: number;
   size: number;
-  type: 'cube' | 'pyramid' | 'octahedron' | 'torus';
+  rotation: number;
+  rotSpeed: number;
+  opacity: number;
+  opacityDir: number;
+  type: 'book' | 'cap' | 'pencil' | 'atom' | 'bulb' | 'star5';
   color: string;
-  glowIntensity: number;
+  bobPhase: number;
 }
+
+const COLORS = [
+  'rgba(147, 197, 253, 0.7)',  // blue-300
+  'rgba(196, 181, 253, 0.7)',  // purple-300
+  'rgba(167, 243, 208, 0.6)',  // green-200
+  'rgba(253, 230, 138, 0.6)',  // yellow-200
+  'rgba(255, 255, 255, 0.5)',  // white
+];
 
 export const AnimatedBackground3D: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const particles = useRef<Particle[]>([]);
-  const shapes = useRef<FloatingShape[]>([]);
-  const animationFrameId = useRef<number>();
-  const mousePos = useRef({ x: 0, y: 0 });
+  const particles = useRef<EduParticle[]>([]);
+  const icons = useRef<EduIcon[]>([]);
+  const rafId = useRef<number>();
+  const mouse = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size
-    const resizeCanvas = () => {
+    const resize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
     };
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+    resize();
+    window.addEventListener('resize', resize);
 
-    // Initialize particles with enhanced properties - responsive particle count
+    const isMobile = () => window.innerWidth < 768;
+
+    // ── Init particles ─────────────────────────────────────────────
     const initParticles = () => {
       particles.current = [];
-      // Adjust particle count based on screen size for performance
-      const isMobile = window.innerWidth < 768;
-      const isTablet = window.innerWidth >= 768 && window.innerWidth < 1024;
-      const particleCount = isMobile ? 80 : isTablet ? 150 : 200;
-      
-      const colors = [
-        'rgba(59, 130, 246, 0.8)',   // Blue
-        'rgba(99, 102, 241, 0.8)',   // Indigo
-        'rgba(139, 92, 246, 0.8)',   // Purple
-        'rgba(236, 72, 153, 0.8)',   // Pink
-        'rgba(167, 139, 250, 0.8)',  // Light purple
-        'rgba(56, 189, 248, 0.8)',   // Sky blue
-      ];
-      
-      for (let i = 0; i < particleCount; i++) {
+      const count = isMobile() ? 40 : 80;
+      for (let i = 0; i < count; i++) {
         particles.current.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          z: Math.random() * 1200,
-          vx: (Math.random() - 0.5) * 0.3,
-          vy: (Math.random() - 0.5) * 0.3,
-          vz: (Math.random() - 0.5) * 1.5,
-          radius: Math.random() * 2.5 + 0.5,
-          color: colors[Math.floor(Math.random() * colors.length)],
-          brightness: Math.random() * 0.5 + 0.5,
-          pulse: Math.random() * Math.PI * 2,
+          vx: (Math.random() - 0.5) * 0.4,
+          vy: (Math.random() - 0.5) * 0.4,
+          size: Math.random() * 2 + 1,
+          opacity: Math.random() * 0.5 + 0.2,
+          opacityDir: Math.random() > 0.5 ? 1 : -1,
+          rotation: Math.random() * Math.PI * 2,
+          rotSpeed: (Math.random() - 0.5) * 0.02,
+          type: Math.floor(Math.random() * 4),
+          color: COLORS[Math.floor(Math.random() * COLORS.length)],
         });
       }
     };
 
-    // Initialize floating shapes with enhanced variety - responsive shape count
-    const initShapes = () => {
-      shapes.current = [];
-      // Adjust shape count based on screen size for performance
-      const isMobile = window.innerWidth < 768;
-      const isTablet = window.innerWidth >= 768 && window.innerWidth < 1024;
-      const shapeCount = isMobile ? 5 : isTablet ? 8 : 12;
-      
-      const types: Array<'cube' | 'pyramid' | 'octahedron' | 'torus'> = ['cube', 'pyramid', 'octahedron', 'torus'];
-      const colors = [
-        'rgba(59, 130, 246, 0.2)',   // Blue
-        'rgba(99, 102, 241, 0.2)',   // Indigo
-        'rgba(139, 92, 246, 0.2)',   // Purple
-        'rgba(167, 139, 250, 0.25)', // Light purple
-        'rgba(56, 189, 248, 0.2)',   // Sky blue
-      ];
-      
-      for (let i = 0; i < shapeCount; i++) {
-        // Smaller shapes on mobile devices
-        const sizeMultiplier = isMobile ? 0.7 : isTablet ? 0.85 : 1;
-        shapes.current.push({
+    // ── Init edu icons ─────────────────────────────────────────────
+    const initIcons = () => {
+      icons.current = [];
+      const types: EduIcon['type'][] = ['book', 'cap', 'pencil', 'atom', 'bulb', 'star5'];
+      const count = isMobile() ? 8 : 16;
+      for (let i = 0; i < count; i++) {
+        icons.current.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          z: Math.random() * 600 + 400,
+          vx: (Math.random() - 0.5) * 0.25,
+          vy: (Math.random() - 0.5) * 0.25,
+          size: isMobile() ? Math.random() * 18 + 14 : Math.random() * 28 + 18,
           rotation: Math.random() * Math.PI * 2,
-          rotationX: Math.random() * Math.PI * 2,
-          rotationSpeed: (Math.random() - 0.5) * 0.015,
-          rotationSpeedX: (Math.random() - 0.5) * 0.012,
-          size: (Math.random() * 120 + 60) * sizeMultiplier,
+          rotSpeed: (Math.random() - 0.5) * 0.008,
+          opacity: Math.random() * 0.35 + 0.1,
+          opacityDir: Math.random() > 0.5 ? 1 : -1,
           type: types[Math.floor(Math.random() * types.length)],
-          color: colors[Math.floor(Math.random() * colors.length)],
-          glowIntensity: Math.random() * 0.5 + 0.5,
+          color: COLORS[Math.floor(Math.random() * COLORS.length)],
+          bobPhase: Math.random() * Math.PI * 2,
         });
       }
     };
 
     initParticles();
-    initShapes();
+    initIcons();
 
-    // Mouse move effect
-    const handleMouseMove = (e: MouseEvent) => {
-      mousePos.current = {
-        x: (e.clientX / canvas.width - 0.5) * 100,
-        y: (e.clientY / canvas.height - 0.5) * 100,
-      };
-    };
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', (e) => {
+      mouse.current = { x: e.clientX, y: e.clientY };
+    });
 
-    // Draw 3D wireframe cube
-    const drawCube = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, rotation: number, color: string) => {
-      const vertices = [
-        [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
-        [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
-      ];
-
-      const edges = [
-        [0, 1], [1, 2], [2, 3], [3, 0],
-        [4, 5], [5, 6], [6, 7], [7, 4],
-        [0, 4], [1, 5], [2, 6], [3, 7],
-      ];
-
-      const rotated = vertices.map(([vx, vy, vz]) => {
-        // Rotate around Y axis
-        const rx = vx * Math.cos(rotation) - vz * Math.sin(rotation);
-        const rz = vx * Math.sin(rotation) + vz * Math.cos(rotation);
-        // Rotate around X axis
-        const ry = vy * Math.cos(rotation * 0.7) - rz * Math.sin(rotation * 0.7);
-        const rz2 = vy * Math.sin(rotation * 0.7) + rz * Math.cos(rotation * 0.7);
-        return [rx * size, ry * size, rz2 * size];
-      });
-
+    // ── Draw helpers ───────────────────────────────────────────────
+    const drawBook = (ctx: CanvasRenderingContext2D, x: number, y: number, s: number, rot: number, color: string, alpha: number) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+      ctx.globalAlpha = alpha;
       ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = s * 0.08;
       ctx.lineCap = 'round';
-
-      edges.forEach(([start, end]) => {
-        const [x1, y1, z1] = rotated[start];
-        const [x2, y2, z2] = rotated[end];
-        
-        // Simple perspective projection
-        const scale1 = 500 / (500 + z1);
-        const scale2 = 500 / (500 + z2);
-        
+      ctx.lineJoin = 'round';
+      // Book body
+      const w = s * 0.7, h = s * 0.9;
+      ctx.strokeRect(-w / 2, -h / 2, w, h);
+      // Spine
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.1, -h / 2);
+      ctx.lineTo(-w * 0.1, h / 2);
+      ctx.stroke();
+      // Lines (pages)
+      for (let i = 1; i <= 3; i++) {
+        const ly = -h / 2 + (h / 4) * i;
         ctx.beginPath();
-        ctx.moveTo(x + x1 * scale1, y + y1 * scale1);
-        ctx.lineTo(x + x2 * scale2, y + y2 * scale2);
-        ctx.stroke();
-      });
-    };
-
-    // Draw 3D pyramid
-    const drawPyramid = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, rotation: number, color: string) => {
-      const vertices = [
-        [0, -1, 0],
-        [-1, 1, -1], [1, 1, -1], [1, 1, 1], [-1, 1, 1],
-      ];
-
-      const edges = [
-        [0, 1], [0, 2], [0, 3], [0, 4],
-        [1, 2], [2, 3], [3, 4], [4, 1],
-      ];
-
-      const rotated = vertices.map(([vx, vy, vz]) => {
-        const rx = vx * Math.cos(rotation) - vz * Math.sin(rotation);
-        const rz = vx * Math.sin(rotation) + vz * Math.cos(rotation);
-        const ry = vy * Math.cos(rotation * 0.5) - rz * Math.sin(rotation * 0.5);
-        const rz2 = vy * Math.sin(rotation * 0.5) + rz * Math.cos(rotation * 0.5);
-        return [rx * size, ry * size, rz2 * size];
-      });
-
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.lineCap = 'round';
-
-      edges.forEach(([start, end]) => {
-        const [x1, y1, z1] = rotated[start];
-        const [x2, y2, z2] = rotated[end];
-        
-        const scale1 = 500 / (500 + z1);
-        const scale2 = 500 / (500 + z2);
-        
-        ctx.beginPath();
-        ctx.moveTo(x + x1 * scale1, y + y1 * scale1);
-        ctx.lineTo(x + x2 * scale2, y + y2 * scale2);
-        ctx.stroke();
-      });
-    };
-
-    // Draw 3D octahedron
-    const drawOctahedron = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, rotation: number, rotationX: number, color: string) => {
-      const vertices = [
-        [0, -1, 0], [0, 1, 0],
-        [-1, 0, 0], [1, 0, 0],
-        [0, 0, -1], [0, 0, 1],
-      ];
-
-      const edges = [
-        [0, 2], [0, 3], [0, 4], [0, 5],
-        [1, 2], [1, 3], [1, 4], [1, 5],
-        [2, 4], [4, 3], [3, 5], [5, 2],
-      ];
-
-      const rotated = vertices.map(([vx, vy, vz]) => {
-        // Y-axis rotation
-        let rx = vx * Math.cos(rotation) - vz * Math.sin(rotation);
-        let rz = vx * Math.sin(rotation) + vz * Math.cos(rotation);
-        // X-axis rotation
-        const ry = vy * Math.cos(rotationX) - rz * Math.sin(rotationX);
-        rz = vy * Math.sin(rotationX) + rz * Math.cos(rotationX);
-        return [rx * size, ry * size, rz * size];
-      });
-
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2.5;
-      ctx.lineCap = 'round';
-
-      edges.forEach(([start, end]) => {
-        const [x1, y1, z1] = rotated[start];
-        const [x2, y2, z2] = rotated[end];
-        
-        const scale1 = 500 / (500 + z1);
-        const scale2 = 500 / (500 + z2);
-        
-        ctx.beginPath();
-        ctx.moveTo(x + x1 * scale1, y + y1 * scale1);
-        ctx.lineTo(x + x2 * scale2, y + y2 * scale2);
-        ctx.stroke();
-      });
-    };
-
-    // Draw 3D torus (simplified ring)
-    const drawTorus = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, rotation: number, rotationX: number, color: string) => {
-      const segments = 16;
-      const vertices: number[][] = [];
-      
-      for (let i = 0; i < segments; i++) {
-        const angle = (i / segments) * Math.PI * 2;
-        vertices.push([Math.cos(angle), Math.sin(angle), 0]);
-      }
-
-      const rotated = vertices.map(([vx, vy, vz]) => {
-        // Y-axis rotation
-        let rx = vx * Math.cos(rotation) - vz * Math.sin(rotation);
-        let rz = vx * Math.sin(rotation) + vz * Math.cos(rotation);
-        // X-axis rotation
-        const ry = vy * Math.cos(rotationX) - rz * Math.sin(rotationX);
-        rz = vy * Math.sin(rotationX) + rz * Math.cos(rotationX);
-        return [rx * size, ry * size, rz * size];
-      });
-
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2.5;
-      ctx.lineCap = 'round';
-
-      for (let i = 0; i < segments; i++) {
-        const [x1, y1, z1] = rotated[i];
-        const [x2, y2, z2] = rotated[(i + 1) % segments];
-        
-        const scale1 = 500 / (500 + z1);
-        const scale2 = 500 / (500 + z2);
-        
-        ctx.beginPath();
-        ctx.moveTo(x + x1 * scale1, y + y1 * scale1);
-        ctx.lineTo(x + x2 * scale2, y + y2 * scale2);
+        ctx.moveTo(-w * 0.05, ly);
+        ctx.lineTo(w / 2 - s * 0.05, ly);
         ctx.stroke();
       }
+      ctx.restore();
     };
 
-    // Animation loop
+    const drawCap = (ctx: CanvasRenderingContext2D, x: number, y: number, s: number, rot: number, color: string, alpha: number) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = s * 0.07;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      // Board (diamond shape)
+      const hw = s * 0.6, hh = s * 0.18;
+      ctx.beginPath();
+      ctx.moveTo(0, -hh);
+      ctx.lineTo(hw, 0);
+      ctx.lineTo(0, hh);
+      ctx.lineTo(-hw, 0);
+      ctx.closePath();
+      ctx.stroke();
+      // Tassel
+      ctx.beginPath();
+      ctx.moveTo(hw * 0.6, 0);
+      ctx.lineTo(hw * 0.6, s * 0.35);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(hw * 0.6, s * 0.38, s * 0.06, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    const drawPencil = (ctx: CanvasRenderingContext2D, x: number, y: number, s: number, rot: number, color: string, alpha: number) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = s * 0.07;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const len = s * 0.9, w = s * 0.18;
+      // Body
+      ctx.strokeRect(-len / 2, -w / 2, len * 0.75, w);
+      // Tip triangle
+      ctx.beginPath();
+      ctx.moveTo(-len / 2 + len * 0.75, -w / 2);
+      ctx.lineTo(-len / 2 + len * 0.75, w / 2);
+      ctx.lineTo(-len / 2 + len, 0);
+      ctx.closePath();
+      ctx.stroke();
+      // Eraser end
+      ctx.beginPath();
+      ctx.moveTo(len / 2 - s * 0.1, -w / 2);
+      ctx.lineTo(len / 2 - s * 0.1, w / 2);
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    const drawAtom = (ctx: CanvasRenderingContext2D, x: number, y: number, s: number, rot: number, color: string, alpha: number) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = s * 0.06;
+      // Nucleus
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 0.1, 0, Math.PI * 2);
+      ctx.stroke();
+      // 3 orbital ellipses at 0°, 60°, 120°
+      for (let i = 0; i < 3; i++) {
+        ctx.save();
+        ctx.rotate(rot + (i * Math.PI) / 3);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, s * 0.5, s * 0.18, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+    };
+
+    const drawBulb = (ctx: CanvasRenderingContext2D, x: number, y: number, s: number, rot: number, color: string, alpha: number) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = s * 0.07;
+      ctx.lineCap = 'round';
+      // Bulb circle
+      ctx.beginPath();
+      ctx.arc(0, -s * 0.1, s * 0.32, Math.PI * 0.1, Math.PI * 0.9, true);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, -s * 0.1, s * 0.32, Math.PI * 0.1, Math.PI * 0.9);
+      // Base lines
+      ctx.moveTo(-s * 0.18, s * 0.22);
+      ctx.lineTo(-s * 0.18, s * 0.38);
+      ctx.moveTo(s * 0.18, s * 0.22);
+      ctx.lineTo(s * 0.18, s * 0.38);
+      ctx.moveTo(-s * 0.18, s * 0.38);
+      ctx.lineTo(s * 0.18, s * 0.38);
+      ctx.stroke();
+      // Rays
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2 - Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(angle) * s * 0.38, -s * 0.1 + Math.sin(angle) * s * 0.38);
+        ctx.lineTo(Math.cos(angle) * s * 0.52, -s * 0.1 + Math.sin(angle) * s * 0.52);
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
+    const drawStar5 = (ctx: CanvasRenderingContext2D, x: number, y: number, s: number, rot: number, color: string, alpha: number) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = s * 0.07;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const outerAngle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        const innerAngle = outerAngle + Math.PI / 5;
+        if (i === 0) ctx.moveTo(Math.cos(outerAngle) * s * 0.5, Math.sin(outerAngle) * s * 0.5);
+        else ctx.lineTo(Math.cos(outerAngle) * s * 0.5, Math.sin(outerAngle) * s * 0.5);
+        ctx.lineTo(Math.cos(innerAngle) * s * 0.22, Math.sin(innerAngle) * s * 0.22);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    // ── Animate ─────────────────────────────────────────────────────
     const animate = () => {
-      ctx.fillStyle = 'rgba(30, 41, 59, 0.1)';
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Subtle scanline bg overlay (let CSS gradient show through)
+      ctx.fillStyle = 'rgba(15, 23, 60, 0.18)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Update and draw particles with enhanced effects
-      particles.current.forEach((particle) => {
-        // Update position with parallax effect
-        particle.x += particle.vx + mousePos.current.x * 0.008;
-        particle.y += particle.vy + mousePos.current.y * 0.008;
-        particle.z += particle.vz;
-        
-        // Update pulse for breathing effect
-        particle.pulse += 0.05;
+      // Draw particles + connections
+      particles.current.forEach((p) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rotation += p.rotSpeed;
+        p.opacity += p.opacityDir * 0.003;
+        if (p.opacity > 0.7 || p.opacity < 0.1) p.opacityDir *= -1;
+        if (p.x < 0) p.x = canvas.width;
+        if (p.x > canvas.width) p.x = 0;
+        if (p.y < 0) p.y = canvas.height;
+        if (p.y > canvas.height) p.y = 0;
 
-        // Wrap around screen
-        if (particle.x < 0) particle.x = canvas.width;
-        if (particle.x > canvas.width) particle.x = 0;
-        if (particle.y < 0) particle.y = canvas.height;
-        if (particle.y > canvas.height) particle.y = 0;
-        if (particle.z < 0) particle.z = 1200;
-        if (particle.z > 1200) particle.z = 0;
-
-        // Perspective projection
-        const scale = 1200 / (1200 + particle.z);
-        const projectedX = particle.x * scale + (1 - scale) * canvas.width / 2;
-        const projectedY = particle.y * scale + (1 - scale) * canvas.height / 2;
-        const pulseFactor = 1 + Math.sin(particle.pulse) * 0.3;
-        const projectedRadius = particle.radius * scale * pulseFactor;
-
-        // Draw particle with glow
-        const brightness = particle.brightness * (1 + Math.sin(particle.pulse) * 0.2);
-        const colorMatch = particle.color.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)/);
-        if (colorMatch) {
-          const [_, r, g, b] = colorMatch;
-          
-          // Outer glow
-          const gradient = ctx.createRadialGradient(projectedX, projectedY, 0, projectedX, projectedY, projectedRadius * 3);
-          gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.4 * brightness})`);
-          gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${0.1 * brightness})`);
-          gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
-          ctx.fillStyle = gradient;
+        ctx.save();
+        ctx.globalAlpha = p.opacity;
+        ctx.fillStyle = p.color;
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 1;
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        if (p.type === 0) {
+          // star dot
           ctx.beginPath();
-          ctx.arc(projectedX, projectedY, projectedRadius * 3, 0, Math.PI * 2);
+          ctx.arc(0, 0, p.size, 0, Math.PI * 2);
           ctx.fill();
-          
-          // Core particle
-          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.9 * brightness})`;
+        } else if (p.type === 1) {
+          // plus
+          const half = p.size * 1.5;
           ctx.beginPath();
-          ctx.arc(projectedX, projectedY, projectedRadius, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.moveTo(-half, 0); ctx.lineTo(half, 0);
+          ctx.moveTo(0, -half); ctx.lineTo(0, half);
+          ctx.stroke();
+        } else if (p.type === 2) {
+          // diamond
+          ctx.beginPath();
+          ctx.moveTo(0, -p.size * 1.4);
+          ctx.lineTo(p.size, 0);
+          ctx.lineTo(0, p.size * 1.4);
+          ctx.lineTo(-p.size, 0);
+          ctx.closePath();
+          ctx.stroke();
+        } else {
+          // small circle ring
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size * 1.2, 0, Math.PI * 2);
+          ctx.stroke();
         }
+        ctx.restore();
 
-        // Draw connections to nearby particles (skip on mobile for performance)
-        const isMobile = window.innerWidth < 768;
-        if (!isMobile) {
+        // Connections (desktop only)
+        if (!isMobile()) {
           particles.current.forEach((other) => {
-            const dx = particle.x - other.x;
-            const dy = particle.y - other.y;
-            const dz = particle.z - other.z;
-            const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-            if (distance < 150) {
-              const otherScale = 1200 / (1200 + other.z);
-              const otherX = other.x * otherScale + (1 - otherScale) * canvas.width / 2;
-              const otherY = other.y * otherScale + (1 - otherScale) * canvas.height / 2;
-
-              const opacity = (1 - distance / 150) * 0.3;
-              ctx.strokeStyle = `rgba(99, 102, 241, ${opacity})`;
+            const dx = p.x - other.x, dy = p.y - other.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 120 && dist > 0) {
+              ctx.save();
+              ctx.globalAlpha = (1 - dist / 120) * 0.12;
+              ctx.strokeStyle = 'rgba(147, 197, 253, 1)';
               ctx.lineWidth = 0.5;
               ctx.beginPath();
-              ctx.moveTo(projectedX, projectedY);
-              ctx.lineTo(otherX, otherY);
+              ctx.moveTo(p.x, p.y);
+              ctx.lineTo(other.x, other.y);
               ctx.stroke();
+              ctx.restore();
             }
           });
         }
       });
 
-      // Update and draw floating shapes with enhanced animations
-      shapes.current.forEach((shape) => {
-        shape.rotation += shape.rotationSpeed;
-        shape.rotationX += shape.rotationSpeedX;
+      // Draw floating edu icons
+      icons.current.forEach((icon) => {
+        icon.x += icon.vx;
+        icon.y += icon.vy + Math.sin(icon.bobPhase) * 0.15;
+        icon.bobPhase += 0.012;
+        icon.rotation += icon.rotSpeed;
+        icon.opacity += icon.opacityDir * 0.002;
+        if (icon.opacity > 0.45 || icon.opacity < 0.05) icon.opacityDir *= -1;
+        if (icon.x < -80) icon.x = canvas.width + 80;
+        if (icon.x > canvas.width + 80) icon.x = -80;
+        if (icon.y < -80) icon.y = canvas.height + 80;
+        if (icon.y > canvas.height + 80) icon.y = -80;
 
-        // Complex floating motion with sine waves
-        shape.y += Math.sin(shape.rotation * 0.5) * 0.25 + Math.cos(shape.rotationX * 0.7) * 0.15;
-        shape.x += Math.cos(shape.rotation * 0.3) * 0.2 + Math.sin(shape.rotationX * 0.4) * 0.1;
-
-        // Apply parallax mouse influence
-        const depth = shape.z / 1000;
-        shape.x += mousePos.current.x * 0.03 * (1 - depth);
-        shape.y += mousePos.current.y * 0.03 * (1 - depth);
-
-        // Wrap around with buffer
-        if (shape.x < -300) shape.x = canvas.width + 300;
-        if (shape.x > canvas.width + 300) shape.x = -300;
-        if (shape.y < -300) shape.y = canvas.height + 300;
-        if (shape.y > canvas.height + 300) shape.y = -300;
-
-        // Add glow effect to shapes (reduce on mobile for performance)
-        const isMobile = window.innerWidth < 768;
-        ctx.shadowBlur = isMobile ? 10 * shape.glowIntensity : 20 * shape.glowIntensity;
-        ctx.shadowColor = shape.color.replace(/[\d.]+\)$/, '0.6)');
-
-        // Draw shape based on type
-        if (shape.type === 'cube') {
-          drawCube(ctx, shape.x, shape.y, shape.size, shape.rotation, shape.color);
-        } else if (shape.type === 'pyramid') {
-          drawPyramid(ctx, shape.x, shape.y, shape.size, shape.rotation, shape.color);
-        } else if (shape.type === 'octahedron') {
-          drawOctahedron(ctx, shape.x, shape.y, shape.size, shape.rotation, shape.rotationX, shape.color);
-        } else if (shape.type === 'torus') {
-          drawTorus(ctx, shape.x, shape.y, shape.size, shape.rotation, shape.rotationX, shape.color);
-        }
-
-        // Reset shadow
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = icon.color;
+        if (icon.type === 'book') drawBook(ctx, icon.x, icon.y, icon.size, icon.rotation, icon.color, icon.opacity);
+        else if (icon.type === 'cap') drawCap(ctx, icon.x, icon.y, icon.size, icon.rotation, icon.color, icon.opacity);
+        else if (icon.type === 'pencil') drawPencil(ctx, icon.x, icon.y, icon.size, icon.rotation, icon.color, icon.opacity);
+        else if (icon.type === 'atom') drawAtom(ctx, icon.x, icon.y, icon.size, icon.rotation, icon.color, icon.opacity);
+        else if (icon.type === 'bulb') drawBulb(ctx, icon.x, icon.y, icon.size, icon.rotation, icon.color, icon.opacity);
+        else if (icon.type === 'star5') drawStar5(ctx, icon.x, icon.y, icon.size, icon.rotation, icon.color, icon.opacity);
         ctx.shadowBlur = 0;
       });
 
-      animationFrameId.current = requestAnimationFrame(animate);
+      rafId.current = requestAnimationFrame(animate);
     };
 
     animate();
 
-    // Cleanup
     return () => {
-      window.removeEventListener('resize', resizeCanvas);
-      window.removeEventListener('mousemove', handleMouseMove);
-      if (animationFrameId.current) {
-        cancelAnimationFrame(animationFrameId.current);
-      }
+      window.removeEventListener('resize', resize);
+      if (rafId.current) cancelAnimationFrame(rafId.current);
     };
   }, []);
 
@@ -435,7 +394,9 @@ export const AnimatedBackground3D: React.FC = () => {
     <canvas
       ref={canvasRef}
       className="absolute inset-0 w-full h-full"
-      style={{ background: 'linear-gradient(135deg, #1e293b 0%, #312e81 50%, #581c87 100%)' }}
+      style={{
+        background: 'linear-gradient(135deg, #0f1b4c 0%, #1a2d8a 35%, #2a3fa8 60%, #1e1b6e 100%)',
+      }}
     />
   );
 };

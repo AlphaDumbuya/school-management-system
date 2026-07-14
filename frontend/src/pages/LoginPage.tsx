@@ -1,18 +1,16 @@
 /**
- * Login Page - Premium 3D Experience
- * User authentication page with stunning 3D animated background
- * Features: Glassmorphism, 3D particles, floating geometric shapes
+ * Login Page
+ * Design: 3D-style card with avatar topper, icon-prefixed fields,
+ *         educational animated background
  */
 
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FaSpinner, FaGoogle, FaEye, FaEyeSlash, FaGraduationCap } from 'react-icons/fa';
+import { FaSpinner, FaEye, FaEyeSlash, FaUserCircle, FaLock, FaUser, FaGraduationCap } from 'react-icons/fa';
 import useAuth from '@hooks/useAuth';
 import type { LoginFormData } from '@types';
 import AnimatedBackground3D from '@components/auth/AnimatedBackground3D';
 
 export const LoginPage: React.FC = () => {
-  const navigate = useNavigate();
   const { login, isLoading, error } = useAuth();
   const [formData, setFormData] = useState<LoginFormData>({
     email: '',
@@ -34,372 +32,270 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setValidationError(null);
 
-    // Basic validation
     if (!formData.email || !formData.password) {
       setValidationError('Email and password are required');
       return;
     }
-
-    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
       setValidationError('Please enter a valid email address');
       return;
     }
-
-    const success = await login(formData.email, formData.password);
-    // Navigation is handled by the useAuth hook after successful login
+    await login(formData.email, formData.password);
   };
 
-  const handleGoogleAuth = () => {
-    // TODO: Implement Google OAuth flow
-    alert('Google authentication coming soon!');
-  };
+  const displayError = validationError || (typeof error === 'string' ? error : error ? 'Login failed. Please try again.' : null);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-3 sm:p-4 md:p-6 lg:p-8 relative overflow-hidden">
-      {/* 3D Animated Background */}
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Animated educational background */}
       <AnimatedBackground3D />
 
-      {/* Enhanced Ambient light effects with animated gradients - responsive sizes */}
-      <div className="absolute top-5 left-5 sm:top-10 sm:left-10 w-48 h-48 sm:w-80 sm:h-80 md:w-96 md:h-96 lg:w-[32rem] lg:h-[32rem] bg-gradient-to-br from-blue-400 via-blue-500 to-indigo-600 rounded-full mix-blend-screen filter blur-[60px] sm:blur-[80px] md:blur-[100px] opacity-30 animate-blob"></div>
-      <div className="absolute bottom-10 right-5 sm:bottom-20 sm:right-10 w-40 h-40 sm:w-72 sm:h-72 md:w-80 md:h-80 lg:w-[28rem] lg:h-[28rem] bg-gradient-to-br from-purple-400 via-purple-500 to-pink-500 rounded-full mix-blend-screen filter blur-[60px] sm:blur-[80px] md:blur-[100px] opacity-30 animate-blob animation-delay-2000"></div>
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 sm:w-96 sm:h-96 md:w-[28rem] md:h-[28rem] lg:w-[36rem] lg:h-[36rem] bg-gradient-to-br from-indigo-400 via-purple-400 to-pink-400 rounded-full mix-blend-screen filter blur-[80px] sm:blur-[100px] md:blur-[120px] opacity-20 animate-blob animation-delay-4000"></div>
-      <div className="absolute top-1/3 right-1/4 w-36 h-36 sm:w-64 sm:h-64 md:w-80 md:h-80 lg:w-[24rem] lg:h-[24rem] bg-gradient-to-br from-cyan-400 via-blue-400 to-indigo-400 rounded-full mix-blend-screen filter blur-[50px] sm:blur-[70px] md:blur-[90px] opacity-25 animate-blob animation-delay-3000"></div>
+      {/* Dot-grid decorative accents (like reference image) */}
+      <div className="absolute top-12 left-8 sm:top-16 sm:left-16 grid grid-cols-3 gap-2 opacity-40 z-10" aria-hidden>
+        {Array.from({ length: 9 }).map((_, i) => (
+          <div key={i} className="w-1.5 h-1.5 bg-blue-200 rounded-full" />
+        ))}
+      </div>
+      <div className="absolute bottom-12 right-8 sm:bottom-16 sm:right-16 grid grid-cols-3 gap-2 opacity-40 z-10" aria-hidden>
+        {Array.from({ length: 9 }).map((_, i) => (
+          <div key={i} className="w-1.5 h-1.5 bg-purple-200 rounded-full" />
+        ))}
+      </div>
 
-      <div className="w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl xl:max-w-2xl relative z-10">
-        {/* Logo Section with enhanced animations - responsive sizing */}
-        <div className="text-center mb-6 sm:mb-8 md:mb-10 animate-fade-in-down">
-          <div className="relative inline-block mb-4 sm:mb-6">
-            {/* Glow effect behind logo */}
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500 rounded-2xl sm:rounded-3xl blur-xl sm:blur-2xl opacity-60 animate-pulse-glow"></div>
-            <div className="relative inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-600 backdrop-blur-2xl rounded-2xl sm:rounded-3xl border-2 border-white border-opacity-30 shadow-2xl transform hover:scale-110 hover:rotate-3 transition-all duration-500 cursor-pointer group">
-              <FaGraduationCap className="text-4xl sm:text-5xl md:text-6xl text-white drop-shadow-2xl group-hover:scale-110 transition-transform duration-300" />
-            </div>
+      {/* ── Page content ── */}
+      <div className="relative z-20 w-full max-w-sm sm:max-w-md flex flex-col items-center">
+
+        {/* School name above card */}
+        <div className="text-center mb-6 animate-fade-in-down">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <FaGraduationCap className="text-blue-300 text-xl sm:text-2xl" />
+            <span className="text-blue-200 text-xs sm:text-sm font-semibold tracking-widest uppercase">School Management System</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white mb-2 sm:mb-3 md:mb-4 drop-shadow-2xl tracking-tight animate-gradient px-2">
-            School <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-purple-300 to-pink-300 animate-gradient-x">Management</span>
+          <h1 className="text-2xl sm:text-3xl font-black text-white drop-shadow-lg">
+            Welcome Back
           </h1>
-          <p className="text-blue-100 text-sm sm:text-base md:text-lg lg:text-xl font-light tracking-wide drop-shadow-lg opacity-90 px-4">Welcome back to your learning hub</p>
+          <p className="text-blue-300 text-xs sm:text-sm mt-1">Sign in to continue to your portal</p>
         </div>
 
-        {/* Main Card - Enhanced Glassmorphism - responsive padding and border radius */}
-        <div className="relative group">
-          {/* Animated border gradient */}
-          <div className="absolute -inset-0.5 sm:-inset-1 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 rounded-2xl sm:rounded-3xl blur opacity-30 group-hover:opacity-50 transition duration-500 animate-tilt"></div>
-          <div className="relative bg-white bg-opacity-[0.08] backdrop-blur-3xl rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-6 md:p-8 border border-white border-opacity-20 hover:bg-opacity-[0.12] transition-all duration-500 hover:border-opacity-40 animate-fade-in">
-          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5 md:space-y-6">
-            {/* Error Messages */}
-            {(validationError || error) && (
-              <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-red-700 animate-shake">
-                <p className="font-semibold">Error</p>
-                <p className="mt-1">
-                  {validationError ||
-                    (typeof error === 'string'
-                      ? error
-                      : 'Login failed. Please try again.')}
-                </p>
-              </div>
-            )}
+        {/* ── Card ── */}
+        <div className="w-full relative animate-fade-in">
+          {/* Outer glow border */}
+          <div className="absolute -inset-0.5 rounded-2xl sm:rounded-3xl bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-500 opacity-60 blur-sm" />
 
-            {/* Email Field */}
-            <div className="space-y-1.5 sm:space-y-2">
-              <label htmlFor="email" className="block text-xs sm:text-sm font-semibold text-white drop-shadow-lg">
-                Email Address
-              </label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="you@example.com"
-                className="w-full px-3 sm:px-4 md:px-5 py-2.5 sm:py-3 md:py-3.5 text-sm sm:text-base bg-white bg-opacity-95 backdrop-blur-xl border-2 border-white border-opacity-30 rounded-lg sm:rounded-xl focus:border-blue-400 focus:ring-4 focus:ring-blue-400 focus:ring-opacity-30 outline-none transition-all duration-300 placeholder:text-gray-400 hover:bg-opacity-100 hover:shadow-lg text-gray-800 font-medium"
-                disabled={isLoading}
-              />
-            </div>
+          {/* Card body */}
+          <div className="relative bg-gradient-to-br from-[#2a45c2] via-[#2d3fb5] to-[#1e2ea8] rounded-2xl sm:rounded-3xl shadow-2xl overflow-visible">
 
-            {/* Password Field */}
-            <div className="space-y-1.5 sm:space-y-2">
-              <label htmlFor="password" className="block text-xs sm:text-sm font-semibold text-white drop-shadow-lg">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  id="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="••••••••"
-                  className="w-full px-3 sm:px-4 md:px-5 py-2.5 sm:py-3 md:py-3.5 pr-11 sm:pr-12 md:pr-14 text-sm sm:text-base bg-white bg-opacity-95 backdrop-blur-xl border-2 border-white border-opacity-30 rounded-lg sm:rounded-xl focus:border-blue-400 focus:ring-4 focus:ring-blue-400 focus:ring-opacity-30 outline-none transition-all duration-300 placeholder:text-gray-400 hover:bg-opacity-100 hover:shadow-lg text-gray-800 font-medium"
-                  disabled={isLoading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-blue-600 transition-all duration-200 hover:scale-110 disabled:opacity-50"
-                  disabled={isLoading}
-                  tabIndex={-1}
-                >
-                  {showPassword ? <FaEyeSlash className="w-4 h-4 sm:w-5 sm:h-5" /> : <FaEye className="w-4 h-4 sm:w-5 sm:h-5" />}
-                </button>
+            {/* ── Avatar topper ── */}
+            <div className="flex justify-center -mt-0 pt-0">
+              <div className="relative -top-7 sm:-top-8">
+                {/* Outer ring */}
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-300 to-indigo-500 opacity-50 blur-md scale-110" />
+                <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-[#3a57d8] to-[#2940b8] border-4 border-[#3a57d8] shadow-xl flex items-center justify-center">
+                  <FaUserCircle className="text-blue-100 text-4xl sm:text-5xl" />
+                </div>
               </div>
             </div>
 
-            {/* Remember Me & Forgot Password */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 text-xs sm:text-sm">
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  name="rememberMe"
-                  checked={formData.rememberMe}
-                  onChange={handleChange}
-                  className="w-4 h-4 sm:w-5 sm:h-5 rounded-md border-2 border-white border-opacity-50 bg-white bg-opacity-20 text-blue-500 focus:ring-2 focus:ring-blue-400 cursor-pointer transition-all duration-200"
-                  disabled={isLoading}
-                />
-                <span className="text-white drop-shadow-md group-hover:text-blue-200 transition-colors duration-200">Remember me</span>
-              </label>
-              <a href="#" className="text-blue-200 hover:text-white font-semibold transition-all duration-200 hover:underline drop-shadow-md ml-6 sm:ml-0">
-                Forgot password?
-              </a>
-            </div>
+            {/* Card content — pulled up to sit tight under avatar */}
+            <div className="px-5 sm:px-8 pb-6 sm:pb-8 -mt-2">
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="relative w-full group/btn overflow-hidden rounded-lg sm:rounded-xl"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 animate-gradient-x"></div>
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300"></div>
-              <span className="relative flex items-center justify-center gap-2 sm:gap-3 py-3 sm:py-3.5 md:py-4 text-white font-bold text-sm sm:text-base md:text-lg tracking-wide drop-shadow-lg group-hover/btn:scale-105 transition-transform duration-300">
-                {isLoading && <FaSpinner className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />}
-                {isLoading ? 'Signing in...' : 'Sign In'}
-              </span>
-              <div className="absolute inset-0 rounded-lg sm:rounded-xl border-2 border-white border-opacity-20 group-hover/btn:border-opacity-40 transition-all duration-300"></div>
-            </button>
-          </form>
+              {/* Title inside card */}
+              <p className="text-center text-white font-bold text-base sm:text-lg mb-5 sm:mb-6 tracking-wide">
+                User Login
+              </p>
 
-          {/* Divider */}
-          <div className="relative my-6 sm:my-7 md:my-8">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white border-opacity-20" />
-            </div>
-            <div className="relative flex justify-center text-xs sm:text-sm">
-              <span className="px-3 sm:px-4 bg-gradient-to-r from-transparent via-slate-900 via-opacity-50 to-transparent text-white font-semibold drop-shadow-md">Or continue with</span>
-            </div>
-          </div>
+              {/* Error */}
+              {displayError && (
+                <div className="mb-4 bg-red-500 bg-opacity-20 border border-red-400 border-opacity-50 rounded-xl px-4 py-3 text-xs sm:text-sm text-red-200 animate-shake flex items-center gap-2">
+                  <span className="text-red-300">⚠</span>
+                  {displayError}
+                </div>
+              )}
 
-          {/* Google Auth Button */}
-          <button
-            type="button"
-            onClick={handleGoogleAuth}
-            disabled={isLoading}
-            className="w-full bg-white bg-opacity-95 backdrop-blur-xl border-2 border-white border-opacity-40 text-gray-800 font-bold py-2.5 sm:py-3 md:py-3.5 rounded-lg sm:rounded-xl hover:bg-opacity-100 hover:border-opacity-60 hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 sm:gap-3 shadow-lg hover:scale-[1.02] transform text-sm sm:text-base"
-          >
-            <FaGoogle className="w-4 h-4 sm:w-5 sm:h-5 text-red-500" />
-            <span>Sign in with Google</span>
-          </button>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Email field */}
+                <div className="flex rounded-xl overflow-hidden shadow-inner">
+                  <div className="bg-[#3a57d8] bg-opacity-60 flex items-center justify-center px-3.5 sm:px-4 border-r border-blue-400 border-opacity-30 flex-shrink-0">
+                    <FaUser className="text-blue-200 text-sm sm:text-base" />
+                  </div>
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    placeholder="Email address"
+                    autoComplete="email"
+                    disabled={isLoading}
+                    className="flex-1 bg-[#2e4acf] bg-opacity-50 text-white placeholder-blue-300 text-sm sm:text-base px-4 py-3 sm:py-3.5 outline-none focus:bg-opacity-70 transition-all duration-200 disabled:opacity-60"
+                  />
+                </div>
+
+                {/* Password field */}
+                <div className="flex rounded-xl overflow-hidden shadow-inner">
+                  <div className="bg-[#3a57d8] bg-opacity-60 flex items-center justify-center px-3.5 sm:px-4 border-r border-blue-400 border-opacity-30 flex-shrink-0">
+                    <FaLock className="text-blue-200 text-sm sm:text-base" />
+                  </div>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    id="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    placeholder="Password"
+                    autoComplete="current-password"
+                    disabled={isLoading}
+                    className="flex-1 bg-[#2e4acf] bg-opacity-50 text-white placeholder-blue-300 text-sm sm:text-base px-4 py-3 sm:py-3.5 outline-none focus:bg-opacity-70 transition-all duration-200 disabled:opacity-60"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                    disabled={isLoading}
+                    className="bg-[#3a57d8] bg-opacity-60 flex items-center justify-center px-3.5 sm:px-4 text-blue-300 hover:text-white transition-colors border-l border-blue-400 border-opacity-30"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <FaEyeSlash className="text-sm" /> : <FaEye className="text-sm" />}
+                  </button>
+                </div>
+
+                {/* Remember me / Forgot password */}
+                <div className="flex items-center justify-between text-xs sm:text-sm pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-blue-200 hover:text-white transition-colors select-none">
+                    <input
+                      type="checkbox"
+                      name="rememberMe"
+                      checked={formData.rememberMe}
+                      onChange={handleChange}
+                      disabled={isLoading}
+                      className="w-4 h-4 rounded accent-blue-400 cursor-pointer"
+                    />
+                    Remember me
+                  </label>
+                  <a
+                    href="#"
+                    className="text-blue-300 hover:text-white font-semibold transition-colors hover:underline"
+                  >
+                    Forgot Password?
+                  </a>
+                </div>
+
+                {/* LOGIN button — matches reference: light / white button at bottom */}
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full bg-gradient-to-r from-slate-100 to-blue-100 hover:from-white hover:to-blue-50 text-[#1e2ea8] font-black text-sm sm:text-base tracking-[0.15em] py-3 sm:py-3.5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98]"
+                  >
+                    {isLoading && <FaSpinner className="animate-spin w-4 h-4" />}
+                    {isLoading ? 'SIGNING IN...' : 'LOGIN'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
 
-        {/* Demo Info Card - responsive with scrollable content on mobile */}
-        <div className="mt-4 sm:mt-6 md:mt-8 bg-white bg-opacity-[0.08] backdrop-blur-2xl rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 border border-white border-opacity-20 hover:bg-opacity-[0.12] hover:border-opacity-30 transition-all duration-500 animate-fade-in-up shadow-2xl">
-          <p className="text-white font-bold mb-3 sm:mb-4 flex items-center gap-2 sm:gap-3 text-sm sm:text-base md:text-lg">
-            <span className="flex items-center justify-center">
-              <span className="absolute w-2 h-2 sm:w-3 sm:h-3 bg-green-400 rounded-full animate-ping"></span>
-              <span className="relative w-2 h-2 sm:w-3 sm:h-3 bg-green-400 rounded-full"></span>
+        {/* ── Demo accounts card ── */}
+        <div className="mt-5 w-full bg-white bg-opacity-5 backdrop-blur-sm border border-white border-opacity-10 rounded-2xl p-4 sm:p-5 animate-fade-in-up">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-400"></span>
             </span>
-            Demo Accounts - All Roles
-          </p>
-          <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-white max-h-[55vh] sm:max-h-[60vh] overflow-y-auto sm:overflow-y-auto pr-2">
-            {/* Administrative Roles */}
-            <div className="mb-2 pb-2 border-b border-white border-opacity-20">
-              <p className="text-blue-200 font-semibold text-xs mb-1.5">👑 Administrative</p>
-              <div className="space-y-1.5">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
-                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Principal #1:</span>
-                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">admin@school.com</code>
-                </div>
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
-                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Principal #2:</span>
-                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">principal@school.com</code>
-                </div>
+            <p className="text-white font-bold text-xs sm:text-sm">Demo Accounts — All Roles</p>
+          </div>
+
+          <div className="space-y-3 text-xs max-h-64 overflow-y-auto pr-1">
+            {/* Admin */}
+            <div>
+              <p className="text-blue-300 font-semibold mb-1.5">👑 Administrative</p>
+              <div className="space-y-1">
+                {[
+                  { label: 'Principal #1', email: 'admin@school.com' },
+                  { label: 'Principal #2', email: 'principal@school.com' },
+                ].map((a) => (
+                  <div key={a.email} className="flex justify-between items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
+                    <span className="text-gray-300 min-w-[80px]">{a.label}:</span>
+                    <code className="bg-white bg-opacity-10 px-2 py-0.5 rounded font-mono text-blue-200 break-all">{a.email}</code>
+                  </div>
+                ))}
               </div>
             </div>
-
-            {/* Academic Roles */}
-            <div className="mb-2 pb-2 border-b border-white border-opacity-20">
-              <p className="text-green-200 font-semibold text-xs mb-1.5">📚 Academic Staff</p>
-              <div className="space-y-1.5">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
-                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Teacher #1:</span>
-                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">teacher1@school.com</code>
-                </div>
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
-                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Teacher #2:</span>
-                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">teacher2@school.com</code>
-                </div>
+            <div className="border-t border-white border-opacity-10 pt-2">
+              <p className="text-green-300 font-semibold mb-1.5">📚 Academic Staff</p>
+              <div className="space-y-1">
+                {[
+                  { label: 'Teacher #1', email: 'teacher1@school.com' },
+                  { label: 'Teacher #2', email: 'teacher2@school.com' },
+                ].map((a) => (
+                  <div key={a.email} className="flex justify-between items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
+                    <span className="text-gray-300 min-w-[80px]">{a.label}:</span>
+                    <code className="bg-white bg-opacity-10 px-2 py-0.5 rounded font-mono text-green-200 break-all">{a.email}</code>
+                  </div>
+                ))}
               </div>
             </div>
-
-            {/* Students */}
-            <div className="mb-2 pb-2 border-b border-white border-opacity-20">
-              <p className="text-yellow-200 font-semibold text-xs mb-1.5">🎓 Students</p>
-              <div className="space-y-1.5">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
-                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Student #1:</span>
-                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">student1@school.com</code>
-                </div>
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
-                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Student #2:</span>
-                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">student2@school.com</code>
-                </div>
+            <div className="border-t border-white border-opacity-10 pt-2">
+              <p className="text-yellow-300 font-semibold mb-1.5">🎓 Students</p>
+              <div className="space-y-1">
+                {[
+                  { label: 'Student #1', email: 'student1@school.com' },
+                  { label: 'Student #2', email: 'student2@school.com' },
+                ].map((a) => (
+                  <div key={a.email} className="flex justify-between items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
+                    <span className="text-gray-300 min-w-[80px]">{a.label}:</span>
+                    <code className="bg-white bg-opacity-10 px-2 py-0.5 rounded font-mono text-yellow-200 break-all">{a.email}</code>
+                  </div>
+                ))}
               </div>
             </div>
-
-            {/* Support Staff */}
-            <div className="mb-2 pb-2 border-b border-white border-opacity-20">
-              <p className="text-purple-200 font-semibold text-xs mb-1.5">💼 Support Staff</p>
-              <div className="space-y-1.5">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
-                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Accountant:</span>
-                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">accountant@school.com</code>
-                </div>
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
-                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Admissions:</span>
-                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">admissions@school.com</code>
-                </div>
+            <div className="border-t border-white border-opacity-10 pt-2">
+              <p className="text-purple-300 font-semibold mb-1.5">💼 Support Staff</p>
+              <div className="space-y-1">
+                {[
+                  { label: 'Accountant', email: 'accountant@school.com' },
+                  { label: 'Admissions', email: 'admissions@school.com' },
+                  { label: 'Parent', email: 'parent@school.com' },
+                ].map((a) => (
+                  <div key={a.email} className="flex justify-between items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
+                    <span className="text-gray-300 min-w-[80px]">{a.label}:</span>
+                    <code className="bg-white bg-opacity-10 px-2 py-0.5 rounded font-mono text-purple-200 break-all">{a.email}</code>
+                  </div>
+                ))}
               </div>
             </div>
-
-            {/* Parents/Guardians */}
-            <div className="mb-2">
-              <p className="text-pink-200 font-semibold text-xs mb-1.5">👨‍👩‍👧‍👦 Parents/Guardians</p>
-              <div className="space-y-1.5">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 hover:bg-white hover:bg-opacity-10 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-200">
-                  <span className="font-semibold min-w-[90px] text-[11px] sm:text-xs">Parent:</span>
-                  <code className="bg-white bg-opacity-20 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-white border-opacity-20 break-all">parent@school.com</code>
-                </div>
-              </div>
-            </div>
-
-            {/* Password Section */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-center gap-1 sm:gap-2 pt-2 sm:pt-3 mt-2 sm:mt-3 border-t border-white border-opacity-20 bg-white bg-opacity-5 rounded-lg p-2">
-              <span className="text-xs sm:text-sm font-bold text-white">🔑 Password for all accounts:</span>
-              <code className="bg-gradient-to-r from-blue-500 to-purple-500 backdrop-blur-sm px-3 sm:px-4 py-1.5 sm:py-2 rounded-md sm:rounded-lg font-mono text-xs sm:text-sm font-bold border-2 border-white border-opacity-40 shadow-lg">password123</code>
+            <div className="border-t border-white border-opacity-10 pt-2 flex flex-wrap items-center justify-center gap-2">
+              <span className="text-white font-semibold">🔑 Password for all:</span>
+              <code className="bg-gradient-to-r from-blue-600 to-purple-600 px-3 py-1 rounded-lg font-mono font-bold text-white border border-white border-opacity-20 shadow">password123</code>
             </div>
           </div>
         </div>
       </div>
 
       <style>{`
-        @keyframes blob {
-          0%, 100% { 
-            transform: translate(0, 0) scale(1) rotate(0deg); 
-          }
-          33% { 
-            transform: translate(40px, -60px) scale(1.15) rotate(120deg); 
-          }
-          66% { 
-            transform: translate(-30px, 40px) scale(0.95) rotate(240deg); 
-          }
-        }
-        
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
-          20%, 40%, 60%, 80% { transform: translateX(8px); }
-        }
-        
         @keyframes fadeInDown {
-          from { 
-            opacity: 0; 
-            transform: translateY(-30px); 
-          }
-          to { 
-            opacity: 1; 
-            transform: translateY(0); 
-          }
+          from { opacity: 0; transform: translateY(-24px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-        
         @keyframes fadeIn {
           from { opacity: 0; }
-          to { opacity: 1; }
+          to   { opacity: 1; }
         }
-        
         @keyframes fadeInUp {
-          from { 
-            opacity: 0; 
-            transform: translateY(30px); 
-          }
-          to { 
-            opacity: 1; 
-            transform: translateY(0); 
-          }
+          from { opacity: 0; transform: translateY(24px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-        
-        @keyframes gradientX {
-          0%, 100% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
+        @keyframes shake {
+          0%,100% { transform: translateX(0); }
+          15%,45%,75% { transform: translateX(-6px); }
+          30%,60%,90% { transform: translateX(6px); }
         }
-        
-        @keyframes tilt {
-          0%, 100% { transform: rotate(0deg); }
-          25% { transform: rotate(1deg); }
-          75% { transform: rotate(-1deg); }
-        }
-        
-        @keyframes pulseGlow {
-          0%, 100% { opacity: 0.6; transform: scale(1); }
-          50% { opacity: 0.8; transform: scale(1.05); }
-        }
-        
-        .animate-blob {
-          animation: blob 8s infinite ease-in-out;
-        }
-        
-        .animation-delay-2000 {
-          animation-delay: 2s;
-        }
-        
-        .animation-delay-3000 {
-          animation-delay: 3s;
-        }
-        
-        .animation-delay-4000 {
-          animation-delay: 4s;
-        }
-        
-        .animate-shake {
-          animation: shake 0.6s ease-in-out;
-        }
-        
-        .animate-fade-in-down {
-          animation: fadeInDown 0.8s ease-out;
-        }
-        
-        .animate-fade-in {
-          animation: fadeIn 1s ease-out;
-        }
-        
-        .animate-fade-in-up {
-          animation: fadeInUp 0.8s ease-out 0.2s backwards;
-        }
-        
-        .animate-gradient-x {
-          background-size: 200% 200%;
-          animation: gradientX 3s ease infinite;
-        }
-        
-        .animate-tilt {
-          animation: tilt 10s infinite ease-in-out;
-        }
-        
-        .animate-pulse-glow {
-          animation: pulseGlow 3s ease-in-out infinite;
-        }
+        .animate-fade-in-down { animation: fadeInDown 0.7s ease-out both; }
+        .animate-fade-in      { animation: fadeIn 0.8s ease-out 0.1s both; }
+        .animate-fade-in-up   { animation: fadeInUp 0.7s ease-out 0.3s both; }
+        .animate-shake        { animation: shake 0.5s ease-in-out; }
       `}</style>
     </div>
   );
