@@ -71,14 +71,15 @@ export const Phase13AccountantDashboard: React.FC = () => {
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Accountant Dashboard</h1>
-            <p className="text-gray-600 mt-2">Financial management and revenue tracking</p>
+            <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Accountant Dashboard</h1>
+            <p className="text-gray-600 mt-1 text-sm sm:mt-2">Financial management and revenue tracking</p>
           </div>
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2">
-            <Download className="w-5 h-5" />
-            Export Report
+          <Button className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-sm px-3 py-1.5 sm:px-4 sm:py-2 flex-shrink-0 self-start sm:self-auto">
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Export Report</span>
+            <span className="sm:hidden">Export</span>
           </Button>
         </div>
 

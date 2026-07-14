@@ -63,26 +63,26 @@ export const AdminDashboard: React.FC = () => {
     <MainLayout>
       {/* Header */}
       <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">{dashboardTitle}</h1>
+              <h1 className="text-xl sm:text-3xl font-bold text-gray-900">{dashboardTitle}</h1>
               <p className="text-sm text-gray-600 mt-1">
                 Welcome back, {user?.firstName} {user?.lastName}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-shrink-0">
               <button
                 onClick={handleRefresh}
                 disabled={loading}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
-                <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-                Refresh
+                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                <span className="hidden sm:inline">Refresh</span>
               </button>
-              <button className="inline-flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
-                <Download size={16} />
-                Export
+              <button className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 text-sm bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
+                <Download size={14} />
+                <span className="hidden sm:inline">Export</span>
               </button>
             </div>
           </div>

@@ -83,8 +83,10 @@ export const SMSWhatsAppDashboard: React.FC = () => {
         <Sheet
           sx={{
             display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
             justifyContent: 'space-between',
-            alignItems: 'center',
+            alignItems: { xs: 'flex-start', sm: 'center' },
+            gap: 1,
             p: 2,
             mb: 3,
             borderRadius: 'md',

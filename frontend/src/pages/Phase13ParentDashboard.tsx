@@ -190,19 +190,19 @@ export const Phase13ParentDashboard: React.FC = () => {
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Parent Portal</h1>
-            <p className="text-gray-600 mt-2">Welcome! Monitor your children's academic progress</p>
+            <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Parent Portal</h1>
+            <p className="text-gray-600 mt-1 text-sm sm:mt-2">Welcome! Monitor your children's academic progress</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" className="text-gray-700">
-              <Bell className="w-5 h-5 mr-2" />
-              Notifications
+          <div className="flex gap-2 flex-shrink-0">
+            <Button variant="outline" className="text-gray-700 text-sm px-3 py-1.5 sm:px-4 sm:py-2">
+              <Bell className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Notifications</span>
             </Button>
-            <Button variant="outline" className="text-gray-700">
-              <Settings className="w-5 h-5 mr-2" />
-              Settings
+            <Button variant="outline" className="text-gray-700 text-sm px-3 py-1.5 sm:px-4 sm:py-2">
+              <Settings className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Settings</span>
             </Button>
           </div>
         </div>

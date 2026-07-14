@@ -133,14 +133,15 @@ export const Phase13AdmissionsDashboard: React.FC = () => {
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Admissions Dashboard</h1>
+            <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Admissions Dashboard</h1>
             <p className="text-gray-600 mt-2">Application pipeline and enrollment management</p>
           </div>
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2">
-            <Plus className="w-5 h-5" />
-            New Application
+          <Button className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-sm px-3 py-1.5 sm:px-4 sm:py-2 flex-shrink-0 self-start sm:self-auto">
+            <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="hidden sm:inline">New Application</span>
+            <span className="sm:hidden">New</span>
           </Button>
         </div>
 

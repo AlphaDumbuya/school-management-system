@@ -73,9 +73,9 @@ export const Phase20MobileIndex: React.FC = () => {
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg">
         <div className="px-4 py-6">
-          <div className="flex items-center gap-3 mb-3">
-            <Smartphone className="w-8 h-8" />
-            <h1 className="text-3xl font-bold">Mobile Portal</h1>
+          <div className="flex items-center gap-3 mb-3 flex-wrap">
+            <Smartphone className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0" />
+            <h1 className="text-xl sm:text-3xl font-bold">Mobile Portal</h1>
           </div>
           <p className="text-blue-100">Phase 20: Mobile Responsiveness & Performance</p>
         </div>
