@@ -82,8 +82,8 @@ export class NeonDatabaseService {
     this.connectionString = process.env.DATABASE_URL || '';
 
     if (!this.connectionString) {
-      logger.error('DATABASE_URL is not configured in environment variables');
-      throw new Error('DATABASE_URL is required to initialize NeonDatabaseService');
+      logger.warn('DATABASE_URL is not configured — NeonDatabaseService will be unavailable');
+      return;
     }
 
     this.poolConfig = {
@@ -553,5 +553,21 @@ export class NeonDatabaseService {
   }
 }
 
-// Export singleton instance
-export default new NeonDatabaseService();
+// Export singleton instance — lazily created so it doesn't throw at import time
+// if DATABASE_URL is not yet available
+let _instance: NeonDatabaseService | null = null;
+
+const neonDatabaseService = new Proxy({} as NeonDatabaseService, {
+  get(_target, prop) {
+    if (!_instance) {
+      if (!process.env.DATABASE_URL) {
+        // Return a no-op for all methods if DATABASE_URL not available
+        return () => Promise.resolve(null);
+      }
+      _instance = new NeonDatabaseService();
+    }
+    return (_instance as any)[prop];
+  }
+});
+
+export default neonDatabaseService;
