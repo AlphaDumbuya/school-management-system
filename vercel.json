@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "echo 'deps installed per package in buildCommand'",
-  "buildCommand": "npm install --legacy-peer-deps --prefix backend && npm run build --prefix backend && npm install --legacy-peer-deps --prefix frontend && npx --prefix frontend vite build",
+  "buildCommand": "ROOT=$(pwd) && npm install --legacy-peer-deps --prefix $ROOT/backend && npm run build --prefix $ROOT/backend && npm install --legacy-peer-deps --prefix $ROOT/frontend && npx --prefix $ROOT/frontend vite build",
   "outputDirectory": "frontend/dist",
   "rewrites": [
     {
