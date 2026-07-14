@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "buildCommand": "cd backend && npm install --legacy-peer-deps && npm run build && cd ../frontend && npm install --legacy-peer-deps && npx vite build",
+  "buildCommand": "bash build.sh",
   "outputDirectory": "frontend/dist",
-  "installCommand": "echo 'skipping root install'",
+  "installCommand": "echo 'deps installed per workspace in build.sh'",
   "framework": "vite",
   "rewrites": [
     {
