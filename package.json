@@ -36,6 +36,7 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@vercel/node": "^5.8.24",
     "concurrently": "^8.2.2",
     "vite": "^6.3.5"
   },
