@@ -254,37 +254,40 @@ app.use((req: Request, res: Response) => {
 // Error handler (must be last)
 app.use(errorHandler);
 
-// Start server
-const server = app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT} in ${NODE_ENV} mode`);
-  logger.info(`Health check: http://localhost:${PORT}/health`);
-  
-  // Start identity management scheduled jobs
-  if (NODE_ENV === 'production' || process.env.ENABLE_SCHEDULED_JOBS === 'true') {
-    startIdentityManagementJobs();
-  }
-  
-  // Start event management scheduled jobs
-  if (NODE_ENV === 'production' || process.env.ENABLE_SCHEDULED_JOBS === 'true') {
-    startEventManagementJobs();
-  }
-});
+// Only start the HTTP server when running directly (not in serverless)
+// Vercel imports this module and uses the exported app directly
+if (process.env.VERCEL !== '1') {
+  const server = app.listen(PORT, () => {
+    logger.info(`Server running on port ${PORT} in ${NODE_ENV} mode`);
+    logger.info(`Health check: http://localhost:${PORT}/health`);
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    logger.info('Server closed');
-    process.exit(0);
-  });
-});
+    // Start identity management scheduled jobs
+    if (NODE_ENV === 'production' || process.env.ENABLE_SCHEDULED_JOBS === 'true') {
+      startIdentityManagementJobs();
+    }
 
-process.on('SIGINT', () => {
-  logger.info('SIGINT received, shutting down gracefully');
-  server.close(() => {
-    logger.info('Server closed');
-    process.exit(0);
+    // Start event management scheduled jobs
+    if (NODE_ENV === 'production' || process.env.ENABLE_SCHEDULED_JOBS === 'true') {
+      startEventManagementJobs();
+    }
   });
-});
+
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    logger.info('SIGTERM received, shutting down gracefully');
+    server.close(() => {
+      logger.info('Server closed');
+      process.exit(0);
+    });
+  });
+
+  process.on('SIGINT', () => {
+    logger.info('SIGINT received, shutting down gracefully');
+    server.close(() => {
+      logger.info('Server closed');
+      process.exit(0);
+    });
+  });
+}
 
 export default app;
