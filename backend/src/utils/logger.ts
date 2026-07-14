@@ -26,19 +26,25 @@ const format = winston.format.combine(
   )
 );
 
-const transports = [
-  // Console transport
+const isServerless = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined;
+
+const transports: winston.transport[] = [
+  // Console transport — always enabled
   new winston.transports.Console(),
-  // Error log file
-  new winston.transports.File({
-    filename: 'logs/error.log',
-    level: 'error',
-  }),
-  // Combined log file
-  new winston.transports.File({
-    filename: 'logs/all.log',
-  }),
 ];
+
+// Only write to files when running locally (serverless filesystems are read-only)
+if (!isServerless) {
+  transports.push(
+    new winston.transports.File({
+      filename: 'logs/error.log',
+      level: 'error',
+    }),
+    new winston.transports.File({
+      filename: 'logs/all.log',
+    })
+  );
+}
 
 export const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'debug',
