@@ -1,9 +1,17 @@
-## Phase 2.2 - Events Management Module Tasks
+# Implementation Plan: Events Management Module
 
-**Status:** ✅ Backend Complete  
-**Progress:** 28/35 tasks (80%)  
-**Started:** June 15, 2026  
+## Overview
+
+Events Management Module (Phase 2.2) for the School Management System. Provides full event lifecycle management including creation, registration, attendance tracking, recurring events, analytics, and scheduled notifications. The backend (database, services, API, jobs) is complete at 80% overall progress. Frontend components, pages, testing, and documentation remain.
+
+**Status:** ✅ Backend Complete
+**Progress:** 28/35 tasks (80%)
+**Started:** June 15, 2026
 **Backend Completed:** June 15, 2026
+
+---
+
+## Tasks
 
 ---
 
@@ -356,6 +364,19 @@
 
 ---
 
+## Notes
+
+- Backend TypeScript, Node.js/Express, PostgreSQL (Knex migrations)
+- Frontend React + TypeScript, Tailwind CSS
+- Scheduled jobs use node-cron; reminders via email, SMS, and in-app channels
+- QR code check-in requires a QR scanning library on the frontend
+- Recurring event generation follows RFC 5545 (iCalendar) patterns
+- All endpoints require JWT authentication; RBAC enforced per role
+- Re-seed the database (`npm run db:seed`) after applying the migration
+- Frontend components must follow WCAG 2.1 AA accessibility standards
+
+---
+
 ## 📊 PROGRESS SUMMARY
 
 ### Completed (80%)
@@ -439,3 +460,52 @@
 **Document Version:** 1.0  
 **Last Updated:** June 15, 2026  
 **Next Review:** After frontend completion
+
+## Task Dependency Graph
+
+```json
+{
+  "waves": [
+    {
+      "wave": 1,
+      "tasks": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"],
+      "description": "Database setup — no dependencies, must run first"
+    },
+    {
+      "wave": 2,
+      "tasks": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"],
+      "description": "Backend services — depend on Wave 1 (database schema)"
+    },
+    {
+      "wave": 3,
+      "tasks": ["3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7"],
+      "description": "API routes — depend on Wave 2 (services)"
+    },
+    {
+      "wave": 4,
+      "tasks": ["4.1", "4.2", "4.3", "4.4"],
+      "description": "Scheduled jobs — depend on Wave 2 (services)"
+    },
+    {
+      "wave": 5,
+      "tasks": ["5.1", "5.2", "5.3", "5.4", "5.5", "5.6", "5.7", "5.8", "5.9", "5.10", "5.11"],
+      "description": "Frontend components — depend on Wave 3 (API routes available)"
+    },
+    {
+      "wave": 6,
+      "tasks": ["6.1", "6.2", "6.3", "6.4", "6.5"],
+      "description": "Pages — depend on Wave 5 (components)"
+    },
+    {
+      "wave": 7,
+      "tasks": ["7.1", "7.2", "7.3", "7.4"],
+      "description": "Testing — depends on Waves 1–6 (all features complete)"
+    },
+    {
+      "wave": 8,
+      "tasks": ["8.1", "8.2", "8.3", "8.4"],
+      "description": "Documentation — depends on Wave 7 (testing complete)"
+    }
+  ]
+}
+```
