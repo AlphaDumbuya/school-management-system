@@ -6,6 +6,8 @@
 
 import React, { useEffect } from 'react';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import useAuthStore from '@store/authStore';
 import AppRouter from '@router/routes';
 import '@styles/index.css';
@@ -46,6 +48,7 @@ export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <AppRouter />
+      <ToastContainer position="top-right" closeButton={true} aria-live="polite" />
     </QueryClientProvider>
   );
 };

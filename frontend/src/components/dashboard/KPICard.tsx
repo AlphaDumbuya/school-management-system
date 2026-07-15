@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { TrendingUp, TrendingDown } from 'react-icons/fa';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 import clsx from 'clsx';
 
 interface KPICardProps {

@@ -92,3 +92,4 @@ public/uploads/
 # Misc
 .DS_Store
 *.pem
+.vercel

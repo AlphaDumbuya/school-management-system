@@ -16,6 +16,7 @@ import { Phase13AccountantDashboard } from '@pages/Phase13AccountantDashboard';
 import { Phase13AdmissionsDashboard } from '@pages/Phase13AdmissionsDashboard';
 import SuperAdminDashboard from '@pages/SuperAdminDashboard';
 import { ComingSoonPage } from '@pages/ComingSoonPage';
+import ClassesPage from '@pages/academic/ClassesPage';
 import useAuthStore from '@store/authStore';
 import { getDashboardPath } from '@hooks/useAuth';
 
@@ -163,6 +164,15 @@ const router = createBrowserRouter(
           element: (
             <ProtectedRoute requiredRoles={['admissions_officer']}>
               <Phase13AdmissionsDashboard />
+            </ProtectedRoute>
+          ),
+        },
+        // Academic Routes — Classes & Streams
+        {
+          path: 'academic/classes',
+          element: (
+            <ProtectedRoute requiredRoles={['principal', 'super_admin', 'teacher']}>
+              <ClassesPage />
             </ProtectedRoute>
           ),
         },
