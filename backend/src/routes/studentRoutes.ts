@@ -18,8 +18,8 @@ const studentService = new StudentService(db);
  */
 router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { first_name, last_name, date_of_birth, gender, email, phone_number, address, city, state, postal_code, country, enrollment_date, status } = req.body;
-    const createdBy = (req as any).user.id;
+    const { first_name, last_name, date_of_birth, gender, email, phone, address, city, state, postal_code, country, enrollment_date, status } = req.body;
+    const createdBy = req.auth?.userId ?? null;
 
     // Validate required fields
     if (!first_name || !last_name || !enrollment_date) {
@@ -58,7 +58,7 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
     const studentId = `STU-${year}-${String(count.count + 1).padStart(5, '0')}`;
 
     // Create student
-    const [id] = await db('students').insert({
+    const [inserted] = await db('students').insert({
       user_id: null, // Can be linked later to user account
       student_id: studentId,
       first_name: first_name.trim(),
@@ -66,7 +66,7 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
       email: email ? email.toLowerCase() : null,
       date_of_birth: date_of_birth || null,
       gender: gender || null,
-      phone_number: phone_number || null,
+      phone: phone || null,
       address: address || null,
       city: city || null,
       state: state || null,
@@ -77,19 +77,14 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
       created_at: new Date(),
       updated_at: new Date(),
       created_by: createdBy,
-    });
-
-    const student = await db('students')
-      .select('id', 'student_id', 'first_name', 'last_name', 'email', 'date_of_birth', 'gender', 'enrollment_date', 'status', 'created_at')
-      .where('id', id)
-      .first();
+    }).returning('*');
 
     res.status(201).json({
       message: 'Student created successfully',
-      student,
+      student: inserted,
     });
 
-    logger.info(`Student created: ${student.student_id} (${first_name} ${last_name})`);
+    logger.info(`Student created: ${inserted.student_id} (${first_name} ${last_name})`);
   } catch (error) {
     next(error);
   }
@@ -158,10 +153,10 @@ router.get('/', authenticate, authorize('principal', 'teacher'), async (req: Req
 router.get('/:studentId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
-    const currentUser = (req as any).user;
+    const currentUser = req.auth;
 
     const student = await db('students')
-      .select('id', 'student_id', 'first_name', 'last_name', 'email', 'date_of_birth', 'gender', 'phone_number', 'address', 'city', 'state', 'postal_code', 'country', 'enrollment_date', 'status', 'created_at', 'updated_at')
+      .select('id', 'student_id', 'first_name', 'last_name', 'email', 'date_of_birth', 'gender', 'phone', 'address', 'city', 'state', 'postal_code', 'country', 'enrollment_date', 'status', 'created_at', 'updated_at')
       .where('student_id', studentId)
       .orWhere('id', studentId)
       .first();
@@ -171,7 +166,7 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
     }
 
     // Check authorization: students can view their own record, others need principal/teacher
-    if (currentUser.role === 'student' && student.user_id !== currentUser.id && currentUser.role !== 'principal') {
+    if (currentUser.role === 'student' && student.user_id !== currentUser?.userId && currentUser.role !== 'principal') {
       throw new AppError('Insufficient permissions to view this student record', 403, 'AUTHORIZATION_ERROR');
     }
 
@@ -189,8 +184,8 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
 router.put('/:studentId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
-    const currentUser = (req as any).user;
-    const { first_name, last_name, gender, email, phone_number, address, city, state, postal_code, country, status } = req.body;
+    const currentUser = req.auth;
+    const { first_name, last_name, gender, email, phone, address, city, state, postal_code, country, status } = req.body;
 
     // Get student
     const student = await db('students')
@@ -204,7 +199,7 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
     }
 
     // Check authorization
-    const isOwner = student.user_id === currentUser.id;
+    const isOwner = student.user_id === currentUser?.userId;
     const isAuthorized = ['principal', 'teacher'].includes(currentUser.role);
 
     if (!isOwner && !isAuthorized) {
@@ -225,7 +220,7 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
       }
       updateData.email = email.toLowerCase();
     }
-    if (phone_number) updateData.phone_number = phone_number;
+    if (phone) updateData.phone = phone;
     if (address) updateData.address = address;
     if (city) updateData.city = city;
     if (state) updateData.state = state;
@@ -234,12 +229,12 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
     if (status && isAuthorized) updateData.status = status;
 
     updateData.updated_at = new Date();
-    updateData.updated_by = currentUser.id;
+    updateData.updated_by = currentUser?.userId;
 
     await db('students').where('id', student.id).update(updateData);
 
     const updatedStudent = await db('students')
-      .select('id', 'student_id', 'first_name', 'last_name', 'email', 'date_of_birth', 'gender', 'phone_number', 'status', 'created_at', 'updated_at')
+      .select('id', 'student_id', 'first_name', 'last_name', 'email', 'date_of_birth', 'gender', 'phone', 'status', 'created_at', 'updated_at')
       .where('id', student.id)
       .first();
 
@@ -262,7 +257,7 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
 router.delete('/:studentId', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
-    const currentUser = (req as any).user;
+    const currentUser = req.auth;
 
     const student = await db('students')
       .select('*')
@@ -278,7 +273,7 @@ router.delete('/:studentId', authenticate, authorize('principal'), async (req: R
     await db('students').where('id', student.id).update({
       status: 'inactive',
       updated_at: new Date(),
-      updated_by: currentUser.id,
+      updated_by: currentUser?.userId,
     });
 
     res.json({
@@ -299,7 +294,7 @@ router.delete('/:studentId', authenticate, authorize('principal'), async (req: R
 router.post('/:studentId/reactivate', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
-    const currentUser = (req as any).user;
+    const currentUser = req.auth;
 
     const student = await db('students')
       .select('*')
@@ -318,7 +313,7 @@ router.post('/:studentId/reactivate', authenticate, authorize('principal'), asyn
     await db('students').where('id', student.id).update({
       status: 'active',
       updated_at: new Date(),
-      updated_by: currentUser.id,
+      updated_by: currentUser?.userId,
     });
 
     res.json({
