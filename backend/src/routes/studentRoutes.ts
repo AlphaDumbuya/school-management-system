@@ -102,7 +102,7 @@ router.get('/', authenticate, authorize('principal', 'teacher'), async (req: Req
     const status = req.query.status as string;
     const search = req.query.search as string;
 
-    let query = db('students').select('id', 'student_id', 'first_name', 'last_name', 'email', 'status', 'enrollment_date', 'created_at');
+    let query = db('students').select('id', 'student_id', 'first_name', 'last_name', 'email', 'gender', 'status', 'enrollment_date', 'created_at');
 
     // Apply filters
     if (status) {
@@ -110,17 +110,30 @@ router.get('/', authenticate, authorize('principal', 'teacher'), async (req: Req
     }
 
     if (search) {
-      query = query.where((builder) => {
-        builder
-          .whereRaw(`CONCAT(first_name, ' ', last_name) ILIKE ?`, [`%${search}%`])
-          .orWhere('student_id', 'ilike', `%${search}%`)
-          .orWhere('email', 'ilike', `%${search}%`);
+      const term = `%${search.trim()}%`;
+      query = query.where(function () {
+        this.where('first_name', 'ilike', term)
+          .orWhere('last_name', 'ilike', term)
+          .orWhere('student_id', 'ilike', term)
+          .orWhere('email', 'ilike', term);
       });
     }
 
-    // Get total count
-    const totalQuery = query.clone().count('* as count').first();
-    const total = await totalQuery;
+    // Separate count query
+    let countQuery = db('students').count('id as count');
+    if (status) countQuery = countQuery.where('status', status);
+    if (search) {
+      const term = `%${search.trim()}%`;
+      countQuery = countQuery.where(function () {
+        this.where('first_name', 'ilike', term)
+          .orWhere('last_name', 'ilike', term)
+          .orWhere('student_id', 'ilike', term)
+          .orWhere('email', 'ilike', term);
+      });
+    }
+
+    const totalResult = await countQuery.first();
+    const total = Number(totalResult?.count ?? 0);
 
     // Get paginated results
     const students = await query
@@ -133,8 +146,8 @@ router.get('/', authenticate, authorize('principal', 'teacher'), async (req: Req
       pagination: {
         page,
         limit,
-        total: total.count,
-        total_pages: Math.ceil(total.count / limit),
+        total,
+        total_pages: Math.ceil(total / limit),
       },
     });
 
