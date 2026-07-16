@@ -9,6 +9,7 @@ import ProtectedRoute from './ProtectedRoute';
 import LoginPage from '@pages/LoginPage';
 import LandingPage from '@pages/LandingPage';
 import FeaturesPage from '@pages/FeaturesPage';
+import PricingPage from '@pages/PricingPage';
 import AdminDashboard from '@pages/AdminDashboard';
 import { Phase13TeacherDashboard } from '@pages/Phase13TeacherDashboard';
 import { Phase13StudentDashboard } from '@pages/Phase13StudentDashboard';
@@ -79,6 +80,7 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: <LandingPage /> },
         { path: 'features', element: <FeaturesPage /> },
+        { path: 'pricing', element: <PricingPage /> },
         { path: 'login', element: <LoginPage /> },
 
         // ── Generic dashboard redirect ──────────────────────────────
