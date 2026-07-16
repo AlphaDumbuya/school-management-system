@@ -228,6 +228,7 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
                     placeholder="Upload photo"
                     helperText="Passport size"
                     previewType="image"
+                    enableCamera
                   />
                 )}
               />
