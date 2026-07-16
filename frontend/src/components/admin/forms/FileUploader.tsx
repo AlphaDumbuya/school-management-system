@@ -69,7 +69,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         throw new Error('No URL returned');
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || 'Upload failed';
+      const errorData = err?.response?.data?.error;
+      const msg = typeof errorData === 'string' ? errorData : (errorData?.message || err?.message || 'Upload failed');
       setUploadError(msg);
     } finally {
       setIsUploading(false);

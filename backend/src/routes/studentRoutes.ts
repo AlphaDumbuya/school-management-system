@@ -16,7 +16,7 @@ const studentService = new StudentService(db);
  * Create a new student
  * @requires admin, principal, teacher
  */
-router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, authorize('principal', 'super_admin', 'teacher', 'admissions_officer'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { first_name, last_name, date_of_birth, gender, email, phone, address, city, state, postal_code, country, enrollment_date, status, photo_url, religion, nationality, place_of_birth, guardian_name, guardian_phone, guardian_relationship, guardian_occupation, emergency_contact, previous_school, medical_conditions, class_id } = req.body;
     const createdBy = req.auth?.userId ?? null;
@@ -52,10 +52,12 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
       }
     }
 
-    // Generate unique student ID (STU-YYYY-XXXXX format)
+    // Generate unique student ID (STU-YYYY-XXXXX format) using MAX to prevent duplicates
     const year = new Date().getFullYear();
-    const count = await db('students').where('student_id', 'like', `STU-${year}-%`).count('* as count').first();
-    const nextNum = Number(count?.count ?? 0) + 1;
+    const maxResult = await db('students')
+      .where('student_id', 'like', `STU-${year}-%`)
+      .max(db.raw("CAST(SPLIT_PART(student_id, '-', 3) AS INTEGER) as max_num"));
+    const nextNum = (Number(maxResult[0]?.max_num) || 0) + 1;
     const studentId = `STU-${year}-${String(nextNum).padStart(5, '0')}`;
 
     // Create student
@@ -118,7 +120,7 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
  * List all students with pagination and filtering
  * @requires admin, principal, teacher
  */
-router.get('/', authenticate, authorize('principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', authenticate, authorize('principal', 'super_admin', 'teacher', 'admissions_officer'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
@@ -304,7 +306,7 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
  * Deactivate student (soft delete)
  * @requires admin, principal
  */
-router.delete('/:studentId', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:studentId', authenticate, authorize('principal', 'super_admin'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const currentUser = req.auth;
@@ -339,7 +341,7 @@ router.delete('/:studentId', authenticate, authorize('principal'), async (req: R
  * DELETE /api/v1/students/:studentId/permanent
  * Permanently delete a student record
  */
-router.delete('/:studentId/permanent', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:studentId/permanent', authenticate, authorize('principal', 'super_admin'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
 
@@ -373,7 +375,7 @@ router.delete('/:studentId/permanent', authenticate, authorize('principal'), asy
  * Reactivate a deactivated student
  * @requires admin, principal
  */
-router.post('/:studentId/reactivate', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:studentId/reactivate', authenticate, authorize('principal', 'super_admin'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const currentUser = req.auth;

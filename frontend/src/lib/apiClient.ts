@@ -74,9 +74,9 @@ axiosInstance.interceptors.response.use(
       }
     }
 
-    // Handle 403 - Forbidden
+    // Handle 403 - Forbidden (don't redirect, let the UI handle it)
     if (error.response?.status === 403) {
-      window.location.href = '/forbidden';
+      console.warn('403 Forbidden:', error.response?.config?.url);
     }
 
     // Handle network errors
