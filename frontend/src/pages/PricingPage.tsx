@@ -7,24 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export const PricingPage: React.FC = () => {
-  const navigate = useNavigate();
-  const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly');
-  const [showAlert, setShowAlert] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
-  const handleSubscribe = () => {
-    setShowAlert(true);
-    setTimeout(() => setShowAlert(false), 3000);
-  };
-
-  const closeMobileMenu = () => {
-    setMobileMenuOpen(false);
-  };
+// ── Plan Data ─────────────────────────────────────────────────────────────────
 
 const PLANS = [
   {
@@ -123,6 +106,16 @@ export const PricingPage: React.FC = () => {
   const navigate = useNavigate();
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly');
   const [showAlert, setShowAlert] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  const handleSubscribe = () => {
+    setShowAlert(true);
+    setTimeout(() => setShowAlert(false), 3000);
+  };
 
   const closeMobileMenu = () => {
     setMobileMenuOpen(false);
