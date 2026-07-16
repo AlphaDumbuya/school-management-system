@@ -76,7 +76,6 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
       status: status || 'active',
       created_at: new Date(),
       updated_at: new Date(),
-      created_by: createdBy,
     }).returning('*');
 
     res.status(201).json({
