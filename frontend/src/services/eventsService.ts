@@ -29,7 +29,7 @@ import {
     AnalyticsFilters,
 } from '@types/events';
 
-const BASE_PATH = '/api/events';
+const BASE_PATH = '/api/v1/events';
 
 export const eventsService = {
     // ============================================================================
