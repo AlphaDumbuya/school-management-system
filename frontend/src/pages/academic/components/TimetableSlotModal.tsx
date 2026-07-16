@@ -16,7 +16,9 @@ import {
   TimetableSlot,
   SlotFormData,
   DAYS_OF_WEEK,
-  STANDARD_PERIODS,
+  PERIOD_STRUCTURES,
+  PeriodDefinition,
+  getSchoolLevel,
 } from '@services/timetableService';
 import { subjectsService } from '@services/subjectsService';
 
@@ -39,6 +41,7 @@ interface TimetableSlotModalProps {
   onClose: () => void;
   onSuccess: () => void;
   classId: string;
+  classLevel?: string;
   editingSlot?: TimetableSlot | null;
   prefillDay?: string;
   prefillPeriodIndex?: number;
@@ -51,6 +54,7 @@ export const TimetableSlotModal: React.FC<TimetableSlotModalProps> = ({
   onClose,
   onSuccess,
   classId,
+  classLevel,
   editingSlot,
   prefillDay,
   prefillPeriodIndex,
@@ -58,6 +62,10 @@ export const TimetableSlotModal: React.FC<TimetableSlotModalProps> = ({
   const isEditing = !!editingSlot;
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  // Get periods based on class level
+  const schoolLevel = classLevel ? getSchoolLevel(classLevel) : 'sss';
+  const periods: PeriodDefinition[] = PERIOD_STRUCTURES[schoolLevel];
 
   // Fetch subjects
   const { data: subjectsData } = useQuery({
@@ -95,7 +103,7 @@ export const TimetableSlotModal: React.FC<TimetableSlotModalProps> = ({
   useEffect(() => {
     if (isOpen && editingSlot) {
       // Find matching period index
-      const periodIdx = STANDARD_PERIODS.findIndex(
+      const periodIdx = periods.findIndex(
         (p) => p.start === editingSlot.start_time && p.end === editingSlot.end_time
       );
       reset({
@@ -121,7 +129,7 @@ export const TimetableSlotModal: React.FC<TimetableSlotModalProps> = ({
     setServerError(null);
     setIsSubmitting(true);
     try {
-      const period = STANDARD_PERIODS[Number(values.period_index)];
+      const period = periods[Number(values.period_index)];
       if (!period || period.isBreak) {
         throw new Error('Invalid period selected');
       }
@@ -156,7 +164,7 @@ export const TimetableSlotModal: React.FC<TimetableSlotModalProps> = ({
   };
 
   // Filter out break periods
-  const periodOptions = STANDARD_PERIODS
+  const periodOptions = periods
     .map((p, i) => ({ ...p, index: i }))
     .filter((p) => !p.isBreak);
 

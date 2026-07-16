@@ -63,18 +63,90 @@ export interface ListSlotsParams {
 
 export const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
-export const STANDARD_PERIODS = [
+/** Period structure varies by school level */
+export type SchoolLevel = 'nursery' | 'primary' | 'jss' | 'sss';
+
+export interface PeriodDefinition {
+  label: string;
+  start: string;
+  end: string;
+  isBreak?: boolean;
+}
+
+/** Nursery: 8:00–12:30, 30 min activities, half day */
+const NURSERY_PERIODS: PeriodDefinition[] = [
+  { label: 'Activity 1', start: '08:00', end: '08:30' },
+  { label: 'Activity 2', start: '08:30', end: '09:00' },
+  { label: 'Activity 3', start: '09:00', end: '09:30' },
+  { label: 'Activity 4', start: '09:30', end: '10:00' },
+  { label: 'Snack Break', start: '10:00', end: '10:30', isBreak: true },
+  { label: 'Activity 5', start: '10:30', end: '11:00' },
+  { label: 'Activity 6', start: '11:00', end: '11:30' },
+  { label: 'Activity 7', start: '11:30', end: '12:00' },
+  { label: 'Closing', start: '12:00', end: '12:30', isBreak: true },
+];
+
+/** Primary: 8:00–14:00, 35 min periods, 7 periods */
+const PRIMARY_PERIODS: PeriodDefinition[] = [
+  { label: 'Period 1', start: '08:00', end: '08:35' },
+  { label: 'Period 2', start: '08:35', end: '09:10' },
+  { label: 'Period 3', start: '09:10', end: '09:45' },
+  { label: 'Period 4', start: '09:45', end: '10:20' },
+  { label: 'Break', start: '10:20', end: '10:45', isBreak: true },
+  { label: 'Period 5', start: '10:45', end: '11:20' },
+  { label: 'Period 6', start: '11:20', end: '11:55' },
+  { label: 'Lunch', start: '11:55', end: '12:30', isBreak: true },
+  { label: 'Period 7', start: '12:30', end: '13:05' },
+  { label: 'Period 8', start: '13:05', end: '13:40' },
+];
+
+/** JSS: 8:00–14:30, 40 min periods, 8 periods */
+const JSS_PERIODS: PeriodDefinition[] = [
+  { label: 'Period 1', start: '08:00', end: '08:40' },
+  { label: 'Period 2', start: '08:40', end: '09:20' },
+  { label: 'Period 3', start: '09:20', end: '10:00' },
+  { label: 'Break', start: '10:00', end: '10:20', isBreak: true },
+  { label: 'Period 4', start: '10:20', end: '11:00' },
+  { label: 'Period 5', start: '11:00', end: '11:40' },
+  { label: 'Period 6', start: '11:40', end: '12:20' },
+  { label: 'Lunch', start: '12:20', end: '13:00', isBreak: true },
+  { label: 'Period 7', start: '13:00', end: '13:40' },
+  { label: 'Period 8', start: '13:40', end: '14:20' },
+];
+
+/** SSS: 8:00–15:00, 45 min periods, 8 periods */
+const SSS_PERIODS: PeriodDefinition[] = [
   { label: 'Period 1', start: '08:00', end: '08:45' },
   { label: 'Period 2', start: '08:45', end: '09:30' },
   { label: 'Period 3', start: '09:30', end: '10:15' },
   { label: 'Period 4', start: '10:15', end: '11:00' },
-  { label: 'Break',    start: '11:00', end: '11:15', isBreak: true },
+  { label: 'Break', start: '11:00', end: '11:15', isBreak: true },
   { label: 'Period 5', start: '11:15', end: '12:00' },
   { label: 'Period 6', start: '12:00', end: '12:45' },
-  { label: 'Lunch',    start: '12:45', end: '13:30', isBreak: true },
+  { label: 'Lunch', start: '12:45', end: '13:30', isBreak: true },
   { label: 'Period 7', start: '13:30', end: '14:15' },
   { label: 'Period 8', start: '14:15', end: '15:00' },
 ];
+
+/** All period definitions keyed by level */
+export const PERIOD_STRUCTURES: Record<SchoolLevel, PeriodDefinition[]> = {
+  nursery: NURSERY_PERIODS,
+  primary: PRIMARY_PERIODS,
+  jss: JSS_PERIODS,
+  sss: SSS_PERIODS,
+};
+
+/** Legacy constant for backward compat */
+export const STANDARD_PERIODS = SSS_PERIODS;
+
+/** Determine school level from class level string */
+export function getSchoolLevel(classLevel: string): SchoolLevel {
+  if (classLevel.startsWith('NURSERY')) return 'nursery';
+  if (classLevel.startsWith('CLASS')) return 'primary';
+  if (classLevel.startsWith('JSS')) return 'jss';
+  if (classLevel.startsWith('SSS')) return 'sss';
+  return 'sss'; // fallback
+}
 
 // ── Service ───────────────────────────────────────────────────────────────────
 

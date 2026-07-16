@@ -19,7 +19,10 @@ import {
   timetableService,
   TimetableSlot,
   DAYS_OF_WEEK,
-  STANDARD_PERIODS,
+  PERIOD_STRUCTURES,
+  PeriodDefinition,
+  getSchoolLevel,
+  SchoolLevel,
 } from '@services/timetableService';
 import { TimetableSlotModal } from './components/TimetableSlotModal';
 
@@ -70,11 +73,17 @@ export const TimetablesPage: React.FC = () => {
   const weekly = (weeklyData as any)?.weekly ?? {};
   const totalSlots = Number((weeklyData as any)?.total_slots ?? 0);
 
+  // Determine period structure based on class level
+  const selectedClass = classes.find((c) => String(c.id) === selectedClassId);
+  const schoolLevel: SchoolLevel = selectedClass ? getSchoolLevel(selectedClass.level) : 'sss';
+  const periods: PeriodDefinition[] = PERIOD_STRUCTURES[schoolLevel];
+  const teachablePeriods = periods.filter((p) => !p.isBreak).length;
+
   // KPI calculations
   const stats = useMemo(() => {
-    const maxSlots = 8 * 5; // 8 periods × 5 days
+    const maxSlots = teachablePeriods * 5; // periods × 5 days
     const scheduled = totalSlots;
-    const unscheduled = maxSlots - scheduled;
+    const unscheduled = Math.max(0, maxSlots - scheduled);
     const teachers = new Set<string>();
     const subjects = new Set<string>();
 
@@ -86,7 +95,7 @@ export const TimetablesPage: React.FC = () => {
     });
 
     return { scheduled, unscheduled, teachers: teachers.size, subjects: subjects.size };
-  }, [weekly, totalSlots]);
+  }, [weekly, totalSlots, teachablePeriods]);
 
   // Find slot for a given day + period
   const getSlot = (day: string, periodStart: string, periodEnd: string): TimetableSlot | undefined => {
@@ -123,7 +132,7 @@ export const TimetablesPage: React.FC = () => {
   };
 
   // ── Render a single timetable cell ──
-  const renderCell = (day: string, period: typeof STANDARD_PERIODS[number], periodIndex: number) => {
+  const renderCell = (day: string, period: PeriodDefinition, periodIndex: number) => {
     if (period.isBreak) {
       return (
         <td
@@ -245,7 +254,21 @@ export const TimetablesPage: React.FC = () => {
 
         {/* KPI Row — only when class selected */}
         {selectedClassId && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
+          <>
+            {/* Level info badge */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Schedule:
+              </span>
+              <span className="text-xs font-semibold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-2.5 py-0.5 rounded-full">
+                {schoolLevel === 'nursery' && '🏒 Nursery · 30 min activities · 8:00–12:30'}
+                {schoolLevel === 'primary' && '📚 Primary · 35 min periods · 8:00–14:00'}
+                {schoolLevel === 'jss' && '📖 JSS · 40 min periods · 8:00–14:20'}
+                {schoolLevel === 'sss' && '🎓 SSS · 45 min periods · 8:00–15:00'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
             {isLoading ? (
               <><SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard /></>
             ) : (
@@ -257,6 +280,7 @@ export const TimetablesPage: React.FC = () => {
               </>
             )}
           </div>
+          </>
         )}
 
         {/* ── DESKTOP: Weekly Grid Table ── */}
@@ -279,7 +303,7 @@ export const TimetablesPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {STANDARD_PERIODS.map((period, periodIndex) => (
+                {periods.map((period, periodIndex) => (
                   <tr
                     key={periodIndex}
                     className={period.isBreak ? 'bg-gray-50/50 dark:bg-gray-800/30' : ''}
@@ -328,7 +352,7 @@ export const TimetablesPage: React.FC = () => {
 
             {/* Period list for selected day */}
             <div className="space-y-2">
-              {STANDARD_PERIODS.map((period, periodIndex) => {
+              {periods.map((period, periodIndex) => {
                 if (period.isBreak) {
                   return (
                     <div key={periodIndex} className="py-2 text-center">
@@ -414,6 +438,7 @@ export const TimetablesPage: React.FC = () => {
           onClose={() => { setSlotModalOpen(false); setEditingSlot(null); }}
           onSuccess={() => queryClient.invalidateQueries({ queryKey: ['timetable-weekly'] })}
           classId={selectedClassId}
+          classLevel={selectedClass?.level}
           editingSlot={editingSlot}
           prefillDay={prefillDay}
           prefillPeriodIndex={prefillPeriod}
