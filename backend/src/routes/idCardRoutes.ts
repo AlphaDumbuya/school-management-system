@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '../middleware/authMiddleware.js';
+import { authenticate, authorize, attachUserContext } from '../middleware/authMiddleware.js';
+import { UserRole } from '../types/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import knex from 'knex';
@@ -26,14 +27,225 @@ const lifecycleService = new CardLifecycleService(db);
 const bulkService = new BulkCardOperationService(db);
 const qrCodeService = new QrCodeService(db);
 
+// Apply auth + user context to all routes
+router.use(authenticate);
+router.use(attachUserContext);
+
+/**
+ * GET /api/v1/id-cards
+ * List all cards with pagination and filters
+ */
+router.get(
+  '/',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 25, 100);
+      const offset = (page - 1) * limit;
+      const { status, search } = req.query;
+      const tenantId = (req as any).user?.tenant_id;
+
+      let query = db('id_cards')
+        .select(
+          'id_cards.*',
+          'users.first_name', 'users.last_name', 'users.email', 'users.role as user_role'
+        )
+        .leftJoin('users', 'id_cards.user_id', 'users.id');
+
+      if (tenantId) {
+        query = query.where('id_cards.tenant_id', tenantId);
+      }
+
+      if (status) {
+        query = query.where('id_cards.status', status as string);
+      }
+
+      if (search) {
+        const term = `%${(search as string).trim()}%`;
+        query = query.where(function () {
+          this.where('id_cards.card_number', 'ilike', term)
+            .orWhere('users.first_name', 'ilike', term)
+            .orWhere('users.last_name', 'ilike', term)
+            .orWhere('users.email', 'ilike', term);
+        });
+      }
+
+      const countResult = await query.clone().clearSelect().clearOrder().count('id_cards.id as count').first();
+      const total = Number(countResult?.count ?? 0);
+
+      const cards = await query
+        .orderBy('id_cards.created_at', 'desc')
+        .limit(limit)
+        .offset(offset);
+
+      // Map to frontend-friendly format
+      const mappedCards = cards.map((c: any) => ({
+        id: c.id,
+        tenantId: c.tenant_id,
+        userId: c.user_id,
+        templateId: c.template_id,
+        cardNumber: c.card_number,
+        format: c.format,
+        status: c.status,
+        pdfUrl: c.pdf_url,
+        issuedAt: c.issued_at,
+        expiresAt: c.expires_at,
+        issuedBy: c.issued_by,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+        user: c.first_name ? {
+          id: c.user_id,
+          firstName: c.first_name,
+          lastName: c.last_name,
+          email: c.email,
+          role: c.user_role,
+        } : null,
+      }));
+
+      res.json({
+        data: mappedCards,
+        pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
+      });
+    } catch (error) {
+      logger.error('Error listing ID cards:', error);
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/v1/id-cards/stats
+ * Dashboard statistics
+ */
+router.get(
+  '/stats',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = (req as any).user?.tenant_id;
+
+      const baseQuery = db('id_cards');
+      const scoped = tenantId ? baseQuery.where('tenant_id', tenantId) : baseQuery;
+
+      const [activeResult] = await scoped.clone().where('status', 'active').count('id as count');
+      const [expiredResult] = await scoped.clone().where('status', 'expired').count('id as count');
+      const [revokedResult] = await scoped.clone().where('status', 'revoked').count('id as count');
+      const [lostResult] = await scoped.clone().where('status', 'lost').count('id as count');
+
+      // Expiring within 30 days
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+      const [expiringResult] = await scoped.clone()
+        .where('status', 'active')
+        .where('expires_at', '<=', thirtyDaysFromNow)
+        .where('expires_at', '>', new Date())
+        .count('id as count');
+
+      res.json({
+        totalActive: Number(activeResult?.count ?? 0),
+        totalExpired: Number(expiredResult?.count ?? 0),
+        totalRevoked: Number(revokedResult?.count ?? 0),
+        totalLost: Number(lostResult?.count ?? 0),
+        expiringSoon: Number(expiringResult?.count ?? 0),
+      });
+    } catch (error) {
+      logger.error('Error fetching ID card stats:', error);
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/v1/id-cards/eligible-members
+ * List enrolled students and staff eligible for ID card generation.
+ * Queries the students and teachers tables directly.
+ */
+router.get(
+  '/eligible-members',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { search, role } = req.query;
+
+      let results: any[] = [];
+
+      // Query students directly from students table (they have their own name fields)
+      if (!role || role === 'student') {
+        let studentsQuery = db('students')
+          .select(
+            'students.id',
+            'students.user_id',
+            'students.first_name',
+            'students.last_name',
+            'students.student_id as member_id',
+            db.raw("'student' as role")
+          )
+          .where('students.status', 'active');
+
+        if (search) {
+          const term = `%${(search as string).trim()}%`;
+          studentsQuery = studentsQuery.where(function() {
+            this.where('students.first_name', 'ilike', term)
+              .orWhere('students.last_name', 'ilike', term)
+              .orWhere('students.student_id', 'ilike', term);
+          });
+        }
+
+        const students = await studentsQuery.limit(100);
+        results = results.concat(students);
+      }
+
+      // Query teachers directly from teachers table
+      if (!role || role === 'teacher') {
+        let teachersQuery = db('teachers')
+          .select(
+            'teachers.id',
+            'teachers.user_id',
+            'teachers.teacher_id as member_id',
+            db.raw("'teacher' as role")
+          )
+          .where('teachers.status', 'active');
+
+        // Teachers may not have first_name directly — get from users table
+        teachersQuery = teachersQuery
+          .select('users.first_name', 'users.last_name')
+          .leftJoin('users', 'teachers.user_id', 'users.id');
+
+        if (search) {
+          const term = `%${(search as string).trim()}%`;
+          teachersQuery = teachersQuery.where(function() {
+            this.where('users.first_name', 'ilike', term)
+              .orWhere('users.last_name', 'ilike', term)
+              .orWhere('teachers.teacher_id', 'ilike', term);
+          });
+        }
+
+        const teachers = await teachersQuery.limit(100);
+        results = results.concat(teachers);
+      }
+
+      // Map to consistent format
+      const data = results.map((r: any) => ({
+        userId: r.user_id || r.id,
+        firstName: r.first_name || '',
+        lastName: r.last_name || '',
+        memberId: r.member_id || '',
+        role: r.role,
+      }));
+
+      res.json({ data });
+    } catch (error) {
+      logger.error('Error fetching eligible members:', error);
+      next(error);
+    }
+  }
+);
+
 /**
  * POST /api/v1/id-cards/generate
  * Generate a single ID card
  */
 router.post(
   '/generate',
-  authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { userId, templateId, format, expirationDate } = req.body;
@@ -73,8 +285,7 @@ router.post(
  */
 router.post(
   '/regenerate/:cardId',
-  authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
@@ -99,7 +310,6 @@ router.post(
  */
 router.get(
   '/:cardId',
-  authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
@@ -119,7 +329,6 @@ router.get(
  */
 router.get(
   '/user/:userId',
-  authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { userId } = req.params;
@@ -139,8 +348,7 @@ router.get(
  */
 router.post(
   '/preview',
-  authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { userId, templateId } = req.body;
@@ -167,8 +375,7 @@ router.post(
  */
 router.post(
   '/:cardId/revoke',
-  authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
@@ -196,7 +403,6 @@ router.post(
  */
 router.post(
   '/:cardId/report-lost',
-  authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
@@ -220,8 +426,7 @@ router.post(
  */
 router.post(
   '/:cardId/suspend',
-  authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
@@ -247,8 +452,7 @@ router.post(
  */
 router.post(
   '/:cardId/reactivate',
-  authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
@@ -269,7 +473,6 @@ router.post(
  */
 router.get(
   '/:cardId/history',
-  authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
@@ -289,8 +492,7 @@ router.get(
  */
 router.post(
   '/bulk',
-  authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { userIds, filters, templateId, format } = req.body;
@@ -332,7 +534,6 @@ router.post(
  */
 router.get(
   '/bulk/:jobId/status',
-  authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { jobId } = req.params;
@@ -352,8 +553,7 @@ router.get(
  */
 router.post(
   '/bulk/:jobId/cancel',
-  authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { jobId } = req.params;
@@ -373,7 +573,6 @@ router.post(
  */
 router.get(
   '/bulk/:jobId/report',
-  authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { jobId } = req.params;
@@ -393,7 +592,6 @@ router.get(
  */
 router.post(
   '/qr-codes/verify',
-  authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { qrCodeContent, scanningDeviceId } = req.body;
@@ -424,8 +622,7 @@ router.post(
  */
 router.get(
   '/reports/expiring',
-  authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = (req as any).user.tenant_id;

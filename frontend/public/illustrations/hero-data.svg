@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 400">
+  <!-- Isometric platform base -->
+  <path d="M250 340 L420 260 L250 180 L80 260 Z" fill="#16213e" stroke="#7c3aed" stroke-width="1" opacity="0.8"/>
+  <path d="M80 260 L80 290 L250 370 L250 340 Z" fill="#0f1629" stroke="#7c3aed" stroke-width="0.5"/>
+  <path d="M250 340 L250 370 L420 290 L420 260 Z" fill="#1a1a2e" stroke="#7c3aed" stroke-width="0.5"/>
+  
+  <!-- Server tower left -->
+  <rect x="120" y="185" width="65" height="100" rx="5" fill="#16213e" stroke="#00d4aa" stroke-width="1.2"/>
+  <rect x="128" y="196" width="49" height="10" rx="2" fill="#0f1629" stroke="#00d4aa" stroke-width="0.5"/>
+  <circle cx="167" cy="201" r="3" fill="#00d4aa"><animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite"/></circle>
+  <rect x="128" y="212" width="49" height="10" rx="2" fill="#0f1629" stroke="#00d4aa" stroke-width="0.5"/>
+  <circle cx="167" cy="217" r="3" fill="#00d4aa"><animate attributeName="opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite"/></circle>
+  <rect x="128" y="228" width="49" height="10" rx="2" fill="#0f1629" stroke="#7c3aed" stroke-width="0.5"/>
+  <circle cx="167" cy="233" r="3" fill="#7c3aed"><animate attributeName="opacity" values="0.4;1;0.4" dur="2.5s" repeatCount="indefinite"/></circle>
+  <rect x="128" y="244" width="49" height="10" rx="2" fill="#0f1629" stroke="#7c3aed" stroke-width="0.5"/>
+  <rect x="128" y="260" width="49" height="10" rx="2" fill="#0f1629" stroke="#00d4aa" stroke-width="0.5"/>
+  <circle cx="167" cy="265" r="3" fill="#00d4aa"><animate attributeName="opacity" values="0.6;1;0.6" dur="1.8s" repeatCount="indefinite"/></circle>
+  
+  <!-- Server tower right -->
+  <rect x="315" y="185" width="65" height="100" rx="5" fill="#16213e" stroke="#7c3aed" stroke-width="1.2"/>
+  <rect x="323" y="196" width="49" height="10" rx="2" fill="#0f1629" stroke="#7c3aed" stroke-width="0.5"/>
+  <circle cx="362" cy="201" r="3" fill="#7c3aed"><animate attributeName="opacity" values="0.3;1;0.3" dur="2.2s" repeatCount="indefinite"/></circle>
+  <rect x="323" y="212" width="49" height="10" rx="2" fill="#0f1629" stroke="#00d4aa" stroke-width="0.5"/>
+  <circle cx="362" cy="217" r="3" fill="#00d4aa"><animate attributeName="opacity" values="0.4;1;0.4" dur="1.7s" repeatCount="indefinite"/></circle>
+  <rect x="323" y="228" width="49" height="10" rx="2" fill="#0f1629" stroke="#00d4aa" stroke-width="0.5"/>
+  <rect x="323" y="244" width="49" height="10" rx="2" fill="#0f1629" stroke="#7c3aed" stroke-width="0.5"/>
+  <circle cx="362" cy="249" r="3" fill="#7c3aed"><animate attributeName="opacity" values="0.5;1;0.5" dur="3s" repeatCount="indefinite"/></circle>
+  <rect x="323" y="260" width="49" height="10" rx="2" fill="#0f1629" stroke="#7c3aed" stroke-width="0.5"/>
+  
+  <!-- Central shield -->
+  <path d="M250 50 L215 70 L215 130 L250 150 L285 130 L285 70 Z" fill="#16213e" stroke="#00d4aa" stroke-width="2"/>
+  <path d="M250 65 L225 80 L225 120 L250 135 L275 120 L275 80 Z" fill="#0f1629" stroke="#00d4aa" stroke-width="1" opacity="0.8"/>
+  <path d="M237 100 L247 110 L267 88" fill="none" stroke="#00d4aa" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Data flow lines - animated -->
+  <path d="M152 190 Q 190 130 245 145" fill="none" stroke="#00d4aa" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.7">
+    <animate attributeName="stroke-dashoffset" values="0;-20" dur="1.5s" repeatCount="indefinite"/>
+  </path>
+  <path d="M348 190 Q 310 130 260 145" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.7">
+    <animate attributeName="stroke-dashoffset" values="0;-20" dur="2s" repeatCount="indefinite"/>
+  </path>
+  
+  <!-- Floating database icons -->
+  <g>
+    <ellipse cx="90" cy="130" rx="18" ry="8" fill="#16213e" stroke="#00d4aa" stroke-width="1"/>
+    <rect x="72" y="130" width="36" height="16" fill="#16213e" stroke="none"/>
+    <ellipse cx="90" cy="146" rx="18" ry="8" fill="none" stroke="#00d4aa" stroke-width="1"/>
+    <line x1="72" y1="130" x2="72" y2="146" stroke="#00d4aa" stroke-width="1"/>
+    <line x1="108" y1="130" x2="108" y2="146" stroke="#00d4aa" stroke-width="1"/>
+    <ellipse cx="90" cy="138" rx="18" ry="8" fill="none" stroke="#00d4aa" stroke-width="0.5" opacity="0.5"/>
+    <animate attributeName="transform" values="translate(0,0);translate(0,-5);translate(0,0)" dur="3s" repeatCount="indefinite"/>
+  </g>
+  
+  <g>
+    <ellipse cx="410" cy="125" rx="18" ry="8" fill="#16213e" stroke="#7c3aed" stroke-width="1"/>
+    <rect x="392" y="125" width="36" height="16" fill="#16213e" stroke="none"/>
+    <ellipse cx="410" cy="141" rx="18" ry="8" fill="none" stroke="#7c3aed" stroke-width="1"/>
+    <line x1="392" y1="125" x2="392" y2="141" stroke="#7c3aed" stroke-width="1"/>
+    <line x1="428" y1="125" x2="428" y2="141" stroke="#7c3aed" stroke-width="1"/>
+    <ellipse cx="410" cy="133" rx="18" ry="8" fill="none" stroke="#7c3aed" stroke-width="0.5" opacity="0.5"/>
+    <animate attributeName="transform" values="translate(0,0);translate(0,-4);translate(0,0)" dur="3.5s" repeatCount="indefinite"/>
+  </g>
+  
+  <!-- Floating particles -->
+  <circle cx="180" cy="100" r="3" fill="#00d4aa" opacity="0.5"><animate attributeName="cy" values="100;90;100" dur="4s" repeatCount="indefinite"/></circle>
+  <circle cx="320" cy="95" r="2.5" fill="#7c3aed" opacity="0.5"><animate attributeName="cy" values="95;85;95" dur="3.5s" repeatCount="indefinite"/></circle>
+  <circle cx="250" cy="30" r="4" fill="#00d4aa" opacity="0.3"><animate attributeName="r" values="4;6;4" dur="3s" repeatCount="indefinite"/></circle>
+  <circle cx="140" cy="155" r="2" fill="#7c3aed" opacity="0.4"><animate attributeName="opacity" values="0.2;0.8;0.2" dur="2s" repeatCount="indefinite"/></circle>
+  <circle cx="360" cy="160" r="2" fill="#00d4aa" opacity="0.4"><animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.5s" repeatCount="indefinite"/></circle>
+  
+  <!-- Cloud at top -->
+  <path d="M230 20 Q 235 10 250 10 Q 265 10 270 20 Q 280 18 280 25 Q 280 32 270 32 L230 32 Q 220 32 220 25 Q 220 18 230 20 Z" fill="#16213e" stroke="#00d4aa" stroke-width="0.8" opacity="0.6">
+    <animate attributeName="transform" values="translate(0,0);translate(0,-3);translate(0,0)" dur="4s" repeatCount="indefinite"/>
+  </path>
+</svg>

@@ -7,6 +7,8 @@ import React from 'react';
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import ProtectedRoute from './ProtectedRoute';
 import LoginPage from '@pages/LoginPage';
+import LandingPage from '@pages/LandingPage';
+import FeaturesPage from '@pages/FeaturesPage';
 import AdminDashboard from '@pages/AdminDashboard';
 import { Phase13TeacherDashboard } from '@pages/Phase13TeacherDashboard';
 import { Phase13StudentDashboard } from '@pages/Phase13StudentDashboard';
@@ -75,7 +77,8 @@ const router = createBrowserRouter(
     {
       path: '/',
       children: [
-        { index: true, element: <Navigate to="/dashboard" replace /> },
+        { index: true, element: <LandingPage /> },
+        { path: 'features', element: <FeaturesPage /> },
         { path: 'login', element: <LoginPage /> },
 
         // ── Generic dashboard redirect ──────────────────────────────

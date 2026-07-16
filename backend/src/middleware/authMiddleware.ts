@@ -3,12 +3,19 @@ import { JWTService } from '../services/jwtService';
 import { AppError } from './errorHandler';
 import { logger } from '../utils/logger';
 import { AuthContext, UserRole } from '../types/auth';
+import { db } from '../utils/database';
 
 // Extend Express Request to include auth context
 declare global {
   namespace Express {
     interface Request {
       auth?: AuthContext;
+      user?: {
+        id: string;
+        tenant_id: string;
+        email: string;
+        role: string;
+      };
     }
   }
 }
@@ -45,6 +52,32 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
     }
   } catch (error) {
     next(error);
+  }
+};
+
+/**
+ * Middleware to populate req.user with tenant_id from database.
+ * Must be used AFTER authenticate middleware.
+ */
+export const attachUserContext = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.auth) {
+      return next();
+    }
+    const user = await db('users').select('id', 'tenant_id', 'email', 'role').where('id', req.auth.userId).first();
+    if (user) {
+      req.user = {
+        id: user.id,
+        tenant_id: user.tenant_id,
+        email: user.email,
+        role: user.role,
+      };
+      req.auth.tenantId = user.tenant_id;
+    }
+    next();
+  } catch (error) {
+    logger.warn('Failed to fetch user context from DB', error);
+    next(); // Continue without tenant info
   }
 };
 

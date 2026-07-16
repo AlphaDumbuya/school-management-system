@@ -355,7 +355,7 @@ export const idCardService = {
      * Get dashboard statistics
      */
     getDashboardStats: async () => {
-        return apiClient.get('/api/v1/id-cards/reports/dashboard');
+        return apiClient.get('/api/v1/id-cards/stats');
     },
 
     /**

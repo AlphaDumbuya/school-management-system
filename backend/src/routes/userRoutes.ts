@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize, requirePermission } from '@middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext, requirePermission } from '@middleware/authMiddleware';
+import { UserRole } from '../types/auth';
 import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
@@ -14,7 +15,7 @@ const db = knex(knexConfig[env] || knexConfig.development);
  * POST /api/v1/users
  * Create a new user (principal only)
  */
-router.post('/', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, first_name, last_name, role, status } = req.body;
     const createdBy = (req as any).user.id;
@@ -72,13 +73,14 @@ router.post('/', authenticate, authorize('principal'), async (req: Request, res:
  * GET /api/v1/users
  * List all users with pagination (principal only)
  */
-router.get('/', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
     const offset = (page - 1) * limit;
     const role = req.query.role as string;
     const status = req.query.status as string;
+    const search = req.query.search as string;
 
     let query = db('users').select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'last_login', 'created_at');
 
@@ -88,17 +90,40 @@ router.get('/', authenticate, authorize('principal'), async (req: Request, res: 
     if (status) {
       query = query.where('status', status);
     }
+    if (search) {
+      const term = `%${search.trim()}%`;
+      query = query.where(function() {
+        this.where('first_name', 'ilike', term)
+          .orWhere('last_name', 'ilike', term)
+          .orWhere('email', 'ilike', term);
+      });
+    }
 
-    const total = await db('users').count('* as count').first();
+    const countQuery = db('users');
+    if (role) countQuery.where('role', role);
+    if (status) countQuery.where('status', status);
+    if (search) {
+      const term = `%${search.trim()}%`;
+      countQuery.where(function() {
+        this.where('first_name', 'ilike', term)
+          .orWhere('last_name', 'ilike', term)
+          .orWhere('email', 'ilike', term);
+      });
+    }
+    const total = await countQuery.count('* as count').first();
     const users = await query.limit(limit).offset(offset);
 
     res.json({
-      data: users,
+      data: users.map((u: any) => ({
+        ...u,
+        firstName: u.first_name,
+        lastName: u.last_name,
+      })),
       pagination: {
         page,
         limit,
-        total: total.count,
-        total_pages: Math.ceil(total.count / limit),
+        total: Number(total?.count ?? 0),
+        total_pages: Math.ceil(Number(total?.count ?? 0) / limit),
       },
     });
 
@@ -188,7 +213,7 @@ router.put('/:id', authenticate, async (req: Request, res: Response, next: NextF
  * DELETE /api/v1/users/:id
  * Soft delete user (deactivate)
  */
-router.delete('/:id', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.params.id;
     const currentUser = (req as any).user;
@@ -224,7 +249,7 @@ router.delete('/:id', authenticate, authorize('principal'), async (req: Request,
  * PUT /api/v1/users/:id/role
  * Update user role (principal only)
  */
-router.put('/:id/role', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id/role', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.params.id;
     const { role } = req.body;
@@ -261,7 +286,7 @@ router.put('/:id/role', authenticate, authorize('principal'), async (req: Reques
  * GET /api/v1/users/role/:role
  * Get users by role (principal only)
  */
-router.get('/role/:role', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/role/:role', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const role = req.params.role;
     const page = parseInt(req.query.page as string) || 1;

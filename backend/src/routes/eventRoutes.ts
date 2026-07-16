@@ -5,7 +5,8 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '../middleware/authMiddleware.js';
+import { authenticate, authorize, attachUserContext } from '../middleware/authMiddleware.js';
+import { UserRole } from '../types/auth.js';
 import { logger } from '../utils/logger.js';
 import eventService from '../services/eventService.js';
 import eventCategoryService from '../services/eventCategoryService.js';
@@ -17,6 +18,7 @@ const router = Router();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);
+router.use(attachUserContext);
 
 // ==================== EVENT MANAGEMENT ====================
 
@@ -26,7 +28,7 @@ router.use(authenticate);
  */
 router.post(
   '/',
-  authorize(['principal', 'teacher', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { title, description, event_type, start_date, end_date, ...data } = req.body;
@@ -115,7 +117,7 @@ router.get(
  */
 router.put(
   '/:eventId',
-  authorize(['principal', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const event = await eventService.updateEvent(
@@ -139,7 +141,7 @@ router.put(
  */
 router.delete(
   '/:eventId',
-  authorize(['principal', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       await eventService.deleteEvent(req.params.eventId, req.user.tenant_id, req.user.id);
@@ -157,7 +159,7 @@ router.delete(
  */
 router.post(
   '/:eventId/publish',
-  authorize(['principal', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const event = await eventService.publishEvent(
@@ -180,7 +182,7 @@ router.post(
  */
 router.post(
   '/:eventId/cancel',
-  authorize(['principal', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const event = await eventService.cancelEvent(
@@ -204,7 +206,7 @@ router.post(
  */
 router.post(
   '/:eventId/complete',
-  authorize(['principal', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const event = await eventService.completeEvent(
@@ -227,7 +229,7 @@ router.post(
  */
 router.post(
   '/:eventId/duplicate',
-  authorize(['principal', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const event = await eventService.duplicateEvent(
@@ -325,7 +327,7 @@ router.delete(
  */
 router.get(
   '/:eventId/registrations',
-  authorize(['principal', 'teacher', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const registrations = await eventRegistrationService.getEventRegistrations(
@@ -347,7 +349,7 @@ router.get(
  */
 router.post(
   '/:eventId/registrations/:regId/approve',
-  authorize(['principal', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const registration = await eventRegistrationService.approveRegistration(
@@ -369,7 +371,7 @@ router.post(
  */
 router.post(
   '/:eventId/registrations/:regId/reject',
-  authorize(['principal', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const registration = await eventRegistrationService.rejectRegistration(
@@ -458,7 +460,7 @@ router.get(
  */
 router.post(
   '/:eventId/attendance',
-  authorize(['principal', 'teacher', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const attendance = await eventAttendanceService.markAttendance(
@@ -481,7 +483,7 @@ router.post(
  */
 router.get(
   '/:eventId/attendance',
-  authorize(['principal', 'teacher', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const attendance = await eventAttendanceService.getEventAttendance(
@@ -502,7 +504,7 @@ router.get(
  */
 router.post(
   '/:eventId/attendance/qr-code',
-  authorize(['principal', 'teacher', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const qrCode = await eventAttendanceService.generateAttendanceQRCode(
@@ -598,7 +600,7 @@ router.get(
  */
 router.get(
   '/analytics/dashboard',
-  authorize(['principal', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { start_date, end_date } = req.query;
@@ -665,7 +667,7 @@ router.get(
  */
 router.post(
   '/config/categories',
-  authorize(['principal', 'super_admin']),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const category = await eventCategoryService.createCategory(
