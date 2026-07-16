@@ -6,7 +6,6 @@
 
 import React, { useRef, useState, useCallback } from 'react';
 import { Upload, X, FileText, Image as ImageIcon, Loader2, Camera, RotateCcw } from 'lucide-react';
-import { axiosInstance } from '@lib/apiClient';
 
 interface FileUploaderProps {
   value?: string; // current file URL
@@ -55,24 +54,22 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     setIsUploading(true);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await axiosInstance.post('/api/v1/uploads', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      const fileUrl = response.data?.data?.url;
-      if (fileUrl) {
-        onChange(fileUrl);
-      } else {
-        throw new Error('No URL returned');
-      }
+      // Convert to base64 data URL (works on Vercel without file storage)
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        onChange(dataUrl);
+        setIsUploading(false);
+      };
+      reader.onerror = () => {
+        setUploadError('Failed to read file');
+        setIsUploading(false);
+      };
+      reader.readAsDataURL(file);
     } catch (err: any) {
       const errorData = err?.response?.data?.error;
       const msg = typeof errorData === 'string' ? errorData : (errorData?.message || err?.message || 'Upload failed');
       setUploadError(msg);
-    } finally {
       setIsUploading(false);
     }
   }, [maxSizeMB, onChange]);
@@ -198,11 +195,11 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
                   <div className="w-28 h-36 sm:w-32 sm:h-40 border-2 border-white/60 rounded-lg" />
                 </div>
               </div>
-              <div className="flex items-center justify-center gap-3 p-2 bg-gray-900">
-                <button type="button" onClick={capturePhoto} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5">
-                  <Camera size={14} /> Capture
+              <div className="flex items-center justify-center gap-3 p-3 bg-gray-900">
+                <button type="button" onClick={capturePhoto} className="flex-1 sm:flex-initial px-4 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5">
+                  <Camera size={16} /> Capture
                 </button>
-                <button type="button" onClick={stopCamera} className="px-3 py-2 bg-gray-700 text-gray-300 text-xs font-bold rounded-lg hover:bg-gray-600 transition-colors">
+                <button type="button" onClick={stopCamera} className="flex-1 sm:flex-initial px-4 py-2.5 bg-gray-700 text-gray-300 text-sm font-bold rounded-lg hover:bg-gray-600 transition-colors">
                   Cancel
                 </button>
               </div>
