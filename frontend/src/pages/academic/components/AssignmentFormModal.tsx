@@ -1,15 +1,18 @@
 /**
  * AssignmentFormModal — Create / Edit an assignment
+ * Uses SearchableSelect for class/subject/teacher (handles large datasets).
+ * Includes level filter to narrow down classes.
  */
 
-import React, { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
 import { Modal } from '@components/admin/feedback/Modal';
 import { Button } from '@components/ui/button';
 import { FormField } from '@components/admin/forms/FormField';
+import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
 import { showToast } from '@utils/toast';
 import { assignmentsService, AssignmentRecord, AssignmentFormData, ASSIGNMENT_TYPES } from '@services/assignmentsService';
 import { classesService } from '@services/classesService';
@@ -33,6 +36,24 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+// ── Level options for filtering classes ───────────────────────────────────────
+
+const CLASS_LEVELS = [
+  { value: '', label: 'All Levels' },
+  { value: 'nursery', label: 'Nursery' },
+  { value: 'primary', label: 'Primary' },
+  { value: 'jss', label: 'JSS' },
+  { value: 'sss', label: 'SSS' },
+];
+
+function getClassLevelCategory(level: string): string {
+  if (level.startsWith('NURSERY')) return 'nursery';
+  if (level.startsWith('CLASS')) return 'primary';
+  if (level.startsWith('JSS')) return 'jss';
+  if (level.startsWith('SSS')) return 'sss';
+  return '';
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface AssignmentFormModalProps {
@@ -53,6 +74,7 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
   const isEditing = !!editingAssignment;
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [levelFilter, setLevelFilter] = useState('');
 
   // Fetch dropdowns
   const { data: classesData } = useQuery({
@@ -60,7 +82,23 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
     queryFn: () => classesService.listClasses({ limit: 100 }),
     staleTime: 60_000,
   });
-  const classes = (classesData as any)?.data ?? [];
+  const allClasses = (classesData as any)?.data ?? [];
+
+  // Filter classes by selected level
+  const filteredClasses = useMemo(() => {
+    if (!levelFilter) return allClasses;
+    return allClasses.filter((c: any) => getClassLevelCategory(c.level) === levelFilter);
+  }, [allClasses, levelFilter]);
+
+  // Class options for SearchableSelect
+  const classOptions = useMemo(() =>
+    filteredClasses.map((c: any) => ({
+      value: String(c.id),
+      label: c.name,
+      sublabel: c.section ? `Stream: ${c.section}` : c.level,
+    })),
+    [filteredClasses]
+  );
 
   const { data: subjectsData } = useQuery({
     queryKey: ['subjects-dropdown'],
@@ -68,6 +106,14 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
     staleTime: 60_000,
   });
   const subjects = (subjectsData as any)?.data ?? [];
+  const subjectOptions = useMemo(() =>
+    subjects.map((s: any) => ({
+      value: String(s.id),
+      label: s.name,
+      sublabel: s.code,
+    })),
+    [subjects]
+  );
 
   const { data: teachersData } = useQuery({
     queryKey: ['teachers-dropdown'],
@@ -75,11 +121,20 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
     staleTime: 60_000,
   });
   const teachers = (teachersData as any)?.data ?? [];
+  const teacherOptions = useMemo(() =>
+    teachers.map((t: any) => ({
+      value: String(t.id),
+      label: `${t.first_name} ${t.last_name}`,
+      sublabel: t.specialization || undefined,
+    })),
+    [teachers]
+  );
 
   const {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -105,12 +160,17 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
         max_marks: editingAssignment.max_marks,
         instructions: editingAssignment.instructions ?? '',
       });
+      // Set level filter based on class
+      if (editingAssignment.class_level) {
+        setLevelFilter(getClassLevelCategory(editingAssignment.class_level));
+      }
     } else if (isOpen && !editingAssignment) {
       reset({
         title: '', description: '', class_id: '', subject_id: '', teacher_id: '',
         type: 'homework', assigned_date: new Date().toISOString().split('T')[0],
         due_date: '', max_marks: 100, instructions: '',
       });
+      setLevelFilter('');
     }
     setServerError(null);
   }, [isOpen, editingAssignment, reset]);
@@ -156,7 +216,7 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title={isEditing ? 'Edit Assignment' : 'Create Assignment'}
-      size="lg"
+      size="xl"
       footer={
         <div className="flex items-center gap-3 ml-auto">
           <Button variant="ghost" disabled={isSubmitting} onClick={onClose}>Cancel</Button>
@@ -172,69 +232,132 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
         </div>
       )}
 
-      <form className="flex flex-col gap-5">
+      <form className="flex flex-col gap-6">
         {/* Title */}
-        <FormField label="Title" placeholder="e.g. Chapter 5 Homework" required error={errors.title?.message} {...register('title')} />
+        <FormField label="Assignment Title" placeholder="e.g. Chapter 5 Questions, Science Project" required error={errors.title?.message} {...register('title')} />
 
-        {/* Class + Subject + Teacher row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Class <span className="text-red-500">*</span></label>
-            <select {...register('class_id')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">Select class...</option>
-              {classes.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            {errors.class_id && <p className="text-xs text-red-600">{errors.class_id.message}</p>}
+        {/* Level filter + Class + Subject + Teacher */}
+        <div>
+          <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest mb-3">
+            Class & Subject
+          </h3>
+
+          {/* Level filter (not part of the form data — just filters class options) */}
+          <div className="mb-3">
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 block">
+              Filter classes by level
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {CLASS_LEVELS.map((lvl) => (
+                <button
+                  key={lvl.value}
+                  type="button"
+                  onClick={() => setLevelFilter(lvl.value)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                    levelFilter === lvl.value
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-blue-300 dark:hover:border-blue-700'
+                  }`}
+                >
+                  {lvl.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Subject <span className="text-red-500">*</span></label>
-            <select {...register('subject_id')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">Select subject...</option>
-              {subjects.map((s: any) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
-            </select>
-            {errors.subject_id && <p className="text-xs text-red-600">{errors.subject_id.message}</p>}
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Controller
+              name="class_id"
+              control={control}
+              render={({ field }) => (
+                <SearchableSelect
+                  label="Class"
+                  required
+                  options={classOptions}
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Select class..."
+                  searchPlaceholder="Search classes..."
+                  error={errors.class_id?.message}
+                />
+              )}
+            />
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Teacher <span className="text-red-500">*</span></label>
-            <select {...register('teacher_id')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">Select teacher...</option>
-              {teachers.map((t: any) => <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>)}
-            </select>
-            {errors.teacher_id && <p className="text-xs text-red-600">{errors.teacher_id.message}</p>}
+            <Controller
+              name="subject_id"
+              control={control}
+              render={({ field }) => (
+                <SearchableSelect
+                  label="Subject"
+                  required
+                  options={subjectOptions}
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Select subject..."
+                  searchPlaceholder="Search subjects..."
+                  error={errors.subject_id?.message}
+                />
+              )}
+            />
+
+            <Controller
+              name="teacher_id"
+              control={control}
+              render={({ field }) => (
+                <SearchableSelect
+                  label="Teacher"
+                  required
+                  options={teacherOptions}
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Select teacher..."
+                  searchPlaceholder="Search teachers..."
+                  error={errors.teacher_id?.message}
+                />
+              )}
+            />
           </div>
         </div>
 
-        {/* Type + Dates + Marks row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Type <span className="text-red-500">*</span></label>
-            <select {...register('type')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              {ASSIGNMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-          </div>
+        {/* Type + Dates + Marks */}
+        <div className="border-t border-gray-100 dark:border-gray-800 pt-5">
+          <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest mb-3">
+            Schedule & Marks
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Type <span className="text-red-500">*</span></label>
+              <select {...register('type')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                {ASSIGNMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Assigned <span className="text-red-500">*</span></label>
-            <input type="date" {...register('assigned_date')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            {errors.assigned_date && <p className="text-xs text-red-600">{errors.assigned_date.message}</p>}
-          </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Assigned <span className="text-red-500">*</span></label>
+              <input type="date" {...register('assigned_date')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              {errors.assigned_date && <p className="text-xs text-red-600">{errors.assigned_date.message}</p>}
+            </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Due Date <span className="text-red-500">*</span></label>
-            <input type="date" {...register('due_date')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            {errors.due_date && <p className="text-xs text-red-600">{errors.due_date.message}</p>}
-          </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Due Date <span className="text-red-500">*</span></label>
+              <input type="date" {...register('due_date')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              {errors.due_date && <p className="text-xs text-red-600">{errors.due_date.message}</p>}
+            </div>
 
-          <FormField label="Max Marks" type="number" placeholder="100" required error={errors.max_marks?.message} {...register('max_marks')} />
+            <FormField label="Max Marks" type="number" placeholder="100" required error={errors.max_marks?.message} {...register('max_marks')} />
+          </div>
         </div>
 
-        {/* Description */}
-        <FormField label="Description" type="textarea" placeholder="Brief description of the assignment..." error={errors.description?.message} {...register('description')} />
-
-        {/* Instructions */}
-        <FormField label="Instructions (Optional)" type="textarea" placeholder="Detailed instructions for students..." error={errors.instructions?.message} {...register('instructions')} />
+        {/* Description & Instructions */}
+        <div className="border-t border-gray-100 dark:border-gray-800 pt-5">
+          <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest mb-3">
+            Details
+          </h3>
+          <div className="space-y-4">
+            <FormField label="Description" type="textarea" placeholder="Brief description of the assignment..." error={errors.description?.message} {...register('description')} />
+            <FormField label="Instructions (Optional)" type="textarea" placeholder="Detailed instructions for students..." error={errors.instructions?.message} {...register('instructions')} />
+          </div>
+        </div>
       </form>
     </Modal>
   );
