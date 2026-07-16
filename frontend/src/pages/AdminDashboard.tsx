@@ -402,13 +402,13 @@ export const AdminDashboard: React.FC = () => {
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: 'Enroll Student',    icon: <UserPlus size={18} />,       route: '/students' },
-              { label: 'Create Class',      icon: <BookOpen size={18} />,       route: '/classes' },
-              { label: 'Add Teacher',       icon: <Briefcase size={18} />,      route: '/teachers' },
-              { label: 'Manage Timetable',  icon: <CalendarDays size={18} />,   route: '/timetable' },
-              { label: 'Publish Results',   icon: <ClipboardCheck size={18} />, route: '/examinations' },
-              { label: 'Generate Report',   icon: <BarChart2 size={18} />,      route: '/reports' },
-              { label: 'Send Announcement', icon: <Megaphone size={18} />,      route: '/announcements' },
+              { label: 'Enroll Student',    icon: <UserPlus size={18} />,       route: '/students/directory' },
+              { label: 'Create Class',      icon: <BookOpen size={18} />,       route: '/academic/classes' },
+              { label: 'Add Teacher',       icon: <Briefcase size={18} />,      route: '/staff/teachers' },
+              { label: 'Manage Timetable',  icon: <CalendarDays size={18} />,   route: '/academic/timetables' },
+              { label: 'Publish Results',   icon: <ClipboardCheck size={18} />, route: '/academic/examinations' },
+              { label: 'Generate Report',   icon: <BarChart2 size={18} />,      route: '/reports/academic' },
+              { label: 'Send Announcement', icon: <Megaphone size={18} />,      route: '/communication/announcements' },
               { label: 'Import / Export',   icon: <ArrowLeftRight size={18} />, route: '/import-export' },
             ].map(({ label, icon, route }) => (
               <Button

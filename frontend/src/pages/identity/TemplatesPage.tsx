@@ -1,0 +1,371 @@
+/**
+ * Card Templates Management Page
+ * Page for managing ID card templates
+ */
+
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ColumnDef } from '@tanstack/react-table';
+import {
+    Layout,
+    Plus,
+    Edit,
+    Trash2,
+    Check,
+    X,
+    RefreshCw,
+    Star,
+    CheckCircle,
+    Clock,
+    Archive,
+} from 'lucide-react';
+import MainLayout from '@components/layout/MainLayout';
+import { PageShell } from '@components/admin/layout/PageShell';
+import { DataTable } from '@components/admin/table/DataTable';
+import { StatusBadge } from '@components/admin/feedback/StatusBadge';
+import { RoleGuard } from '@components/admin/common/RoleGuard';
+import { Button } from '@components/ui/button';
+import { showToast } from '@utils/toast';
+import { idCardService, CardTemplate, TemplateStatus } from '@services/idCardService';
+import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
+import { TemplateFormModal } from './components/TemplateFormModal';
+
+// ── Utility Functions ─────────────────────────────────────────────────────────
+
+function getStatusVariant(
+    status: TemplateStatus
+): 'active' | 'inactive' | 'pending' | 'suspended' {
+    const map: Record<TemplateStatus, 'active' | 'inactive' | 'pending' | 'suspended'> = {
+        approved: 'active',
+        draft: 'inactive',
+        pending_approval: 'pending',
+        archived: 'suspended',
+    };
+    return map[status] || 'inactive';
+}
+
+function formatDate(dateStr: string | null | undefined): string {
+    if (!dateStr) return '—';
+    try {
+        return new Date(dateStr).toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+        });
+    } catch {
+        return '—';
+    }
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export const TemplatesPage: React.FC = () => {
+    const queryClient = useQueryClient();
+
+    // State
+    const [formModalOpen, setFormModalOpen] = useState(false);
+    const [editingTemplate, setEditingTemplate] = useState<CardTemplate | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<CardTemplate | null>(null);
+    const [approveTarget, setApproveTarget] = useState<CardTemplate | null>(null);
+
+    // Fetch templates
+    const { data, isLoading, error, refetch } = useQuery({
+        queryKey: ['card-templates'],
+        queryFn: () => idCardService.listTemplates(),
+        staleTime: 30_000,
+    });
+
+    const templates: CardTemplate[] = (data?.data as any)?.data ?? [];
+
+    // Handle delete
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+
+        const res = await idCardService.deleteTemplate(deleteTarget.id);
+        if (res.success !== false) {
+            showToast.deleted('Template');
+            queryClient.invalidateQueries({ queryKey: ['card-templates'] });
+        } else {
+            showToast.apiError(res.error);
+        }
+        setDeleteTarget(null);
+    };
+
+    // Handle approve
+    const handleApprove = async () => {
+        if (!approveTarget) return;
+
+        const res = await idCardService.approveTemplate(approveTarget.id);
+        if (res.success !== false) {
+            showToast.success('Template approved successfully');
+            queryClient.invalidateQueries({ queryKey: ['card-templates'] });
+        } else {
+            showToast.apiError(res.error);
+        }
+        setApproveTarget(null);
+    };
+
+    // Handle set as default
+    const handleSetDefault = async (template: CardTemplate) => {
+        if (template.defaultForRoles.length === 0) {
+            showToast.error('Please specify roles for this template first');
+            return;
+        }
+
+        const role = template.defaultForRoles[0]; // Use first role for now
+        const res = await idCardService.setDefaultTemplate(template.id, role);
+        if (res.success !== false) {
+            showToast.success('Template set as default');
+            queryClient.invalidateQueries({ queryKey: ['card-templates'] });
+        } else {
+            showToast.apiError(res.error);
+        }
+    };
+
+    // Column definitions
+    const columns: ColumnDef<CardTemplate, any>[] = [
+        {
+            id: 'name',
+            accessorKey: 'name',
+            header: 'Template Name',
+            cell: ({ row }) => (
+                <div className="flex items-center gap-2">
+                    <Layout size={16} className="text-gray-400" />
+                    <div>
+                        <div className="font-medium text-gray-900 dark:text-white">{row.original.name}</div>
+                        {row.original.isDefault && (
+                            <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                                <Star size={12} className="fill-current" />
+                                Default
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ),
+        },
+        {
+            id: 'format',
+            accessorKey: 'format',
+            header: 'Format',
+            cell: ({ row }) => (
+                <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">
+                    {row.original.format}
+                </span>
+            ),
+        },
+        {
+            id: 'version',
+            accessorKey: 'version',
+            header: 'Version',
+            cell: ({ row }) => (
+                <span className="font-mono text-sm text-gray-600 dark:text-gray-400">
+                    v{row.original.version}
+                </span>
+            ),
+        },
+        {
+            id: 'roles',
+            header: 'Default For Roles',
+            cell: ({ row }) => {
+                const roles = row.original.defaultForRoles;
+                return roles.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                        {roles.map((role) => (
+                            <span
+                                key={role}
+                                className="text-xs px-2 py-0.5 border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400 rounded-full capitalize"
+                            >
+                                {role}
+                            </span>
+                        ))}
+                    </div>
+                ) : (
+                    <span className="text-gray-400 dark:text-gray-500 text-sm">—</span>
+                );
+            },
+        },
+        {
+            id: 'status',
+            accessorKey: 'status',
+            header: 'Status',
+            cell: ({ row }) => <StatusBadge status={getStatusVariant(row.original.status)} showDot />,
+        },
+        {
+            id: 'createdAt',
+            accessorKey: 'createdAt',
+            header: 'Created',
+            cell: ({ row }) => (
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {formatDate(row.original.createdAt)}
+                </span>
+            ),
+        },
+    ];
+
+    return (
+        <MainLayout>
+            <PageShell
+                title="Card Templates"
+                subtitle="Manage ID card design templates and branding"
+                breadcrumbs={[{ label: 'Identity' }, { label: 'Templates' }]}
+                actions={
+                    <div className="flex items-center gap-2 sm:gap-3">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => refetch()}
+                            disabled={isLoading}
+                            className="flex items-center gap-1.5"
+                        >
+                            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+                            <span className="hidden sm:inline">Refresh</span>
+                        </Button>
+                        <RoleGuard roles={['principal', 'super_admin']}>
+                            <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => {
+                                    setEditingTemplate(null);
+                                    setFormModalOpen(true);
+                                }}
+                                className="flex items-center gap-1.5 shadow-sm hover:shadow"
+                            >
+                                <Plus size={16} />
+                                <span>Create Template</span>
+                            </Button>
+                        </RoleGuard>
+                    </div>
+                }
+            >
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total Templates</div>
+                                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                                    {templates.length}
+                                </div>
+                            </div>
+                            <Layout size={24} className="text-blue-500" />
+                        </div>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Approved</div>
+                                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                    {templates.filter((t) => t.status === 'approved').length}
+                                </div>
+                            </div>
+                            <CheckCircle size={24} className="text-green-500" />
+                        </div>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Pending</div>
+                                <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                                    {templates.filter((t) => t.status === 'pending_approval').length}
+                                </div>
+                            </div>
+                            <Clock size={24} className="text-amber-500" />
+                        </div>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Archived</div>
+                                <div className="text-2xl font-bold text-gray-600 dark:text-gray-400">
+                                    {templates.filter((t) => t.status === 'archived').length}
+                                </div>
+                            </div>
+                            <Archive size={24} className="text-gray-500" />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Data Table */}
+                <DataTable
+                    columns={columns}
+                    data={templates}
+                    isLoading={isLoading}
+                    error={error ? String(error) : null}
+                    onRetry={refetch}
+                    emptyMessage="No templates found"
+                    emptyAction={{
+                        label: 'Create First Template',
+                        onClick: () => {
+                            setEditingTemplate(null);
+                            setFormModalOpen(true);
+                        },
+                    }}
+                    rowActions={(template) => {
+                        const actions = [
+                            {
+                                label: 'Edit',
+                                onClick: (row: CardTemplate) => {
+                                    setEditingTemplate(row);
+                                    setFormModalOpen(true);
+                                },
+                            },
+                        ];
+
+                        if (template.status === 'pending_approval') {
+                            actions.push({
+                                label: 'Approve',
+                                onClick: (row: CardTemplate) => setApproveTarget(row),
+                            });
+                        }
+
+                        if (!template.isDefault && template.status === 'approved') {
+                            actions.push({
+                                label: 'Set as Default',
+                                onClick: (row: CardTemplate) => handleSetDefault(row),
+                            });
+                        }
+
+                        actions.push({
+                            label: 'Delete',
+                            variant: 'destructive' as const,
+                            onClick: (row: CardTemplate) => setDeleteTarget(row),
+                        });
+
+                        return actions;
+                    }}
+                />
+            </PageShell>
+
+            {/* Modals */}
+            <TemplateFormModal
+                isOpen={formModalOpen}
+                onClose={() => {
+                    setFormModalOpen(false);
+                    setEditingTemplate(null);
+                }}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['card-templates'] })}
+                editingTemplate={editingTemplate}
+            />
+
+            <ConfirmationDialog
+                isOpen={!!deleteTarget}
+                onClose={() => setDeleteTarget(null)}
+                onConfirm={handleDelete}
+                title="Delete Template"
+                message={`Are you sure you want to delete template "${deleteTarget?.name}"? This action cannot be undone.`}
+                confirmLabel="Delete"
+            />
+
+            <ConfirmationDialog
+                isOpen={!!approveTarget}
+                onClose={() => setApproveTarget(null)}
+                onConfirm={handleApprove}
+                title="Approve Template"
+                message={`Approve template "${approveTarget?.name}" for use?`}
+                confirmLabel="Approve"
+            />
+        </MainLayout>
+    );
+};
+
+export default TemplatesPage;

@@ -81,47 +81,16 @@ const CSS_VARIABLES: Record<keyof ThemeColors, string> = {
 
 /**
  * Theme Context Provider
- * Manages application theme (light/dark/system)
+ * Manages application theme — forced to light mode
  */
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [mode, setMode] = useState<ThemeMode>('system');
+  const [mode, setMode] = useState<ThemeMode>('light');
   const [isDark, setIsDark] = useState(false);
   const [isSystemPreference, setIsSystemPreference] = useState(false);
 
-  // Initialize theme from localStorage and system preference
+  // Initialize theme — always force light mode
   useEffect(() => {
-    const initializeTheme = () => {
-      // Load saved preference
-      const savedMode = localStorage.getItem('theme-mode') as ThemeMode | null;
-
-      if (savedMode) {
-        setMode(savedMode);
-        applyTheme(savedMode);
-      } else {
-        // Use system preference
-        setMode('system');
-        detectSystemPreference();
-      }
-    };
-
-    initializeTheme();
-
-    // Listen for system preference changes
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => {
-      if (mode === 'system') {
-        setIsDark(e.matches);
-        applyTheme('system', e.matches);
-      }
-    };
-
-    try {
-      mediaQuery.addEventListener('change', handleChange);
-      return () => mediaQuery.removeEventListener('change', handleChange);
-    } catch (error) {
-      // Fallback for older browsers
-      logger.warn('System theme preference not supported:', error);
-    }
+    applyTheme('light');
   }, []);
 
   // Detect system preference
@@ -159,7 +128,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         document.documentElement.setAttribute('data-theme', 'dark');
         document.documentElement.classList.add('dark');
       } else {
-        document.documentElement.removeAttribute('data-theme');
+        document.documentElement.setAttribute('data-theme', 'light');
         document.documentElement.classList.remove('dark');
       }
 
@@ -171,32 +140,16 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  // Toggle theme
-  const toggleTheme = useCallback((nextMode?: ThemeMode) => {
-    let newMode: ThemeMode;
+  // Toggle theme — disabled, always light
+  const toggleTheme = useCallback((_nextMode?: ThemeMode) => {
+    // Force light mode only — dark mode is disabled
+    applyTheme('light');
+  }, [applyTheme]);
 
-    if (nextMode) {
-      newMode = nextMode;
-    } else {
-      // Cycle through modes
-      const modes: ThemeMode[] = ['light', 'dark', 'system'];
-      const currentIndex = modes.indexOf(mode);
-      newMode = modes[(currentIndex + 1) % modes.length];
-    }
-
-    setMode(newMode);
-    localStorage.setItem('theme-mode', newMode);
-    applyTheme(newMode);
-
-    logger.info(`Theme toggled to: ${newMode}`);
-  }, [mode, applyTheme]);
-
-  // Set specific theme
-  const setTheme = useCallback((newMode: ThemeMode) => {
-    setMode(newMode);
-    localStorage.setItem('theme-mode', newMode);
-    applyTheme(newMode);
-    logger.info(`Theme set to: ${newMode}`);
+  // Set specific theme — disabled, always light
+  const setTheme = useCallback((_newMode: ThemeMode) => {
+    // Force light mode only — dark mode is disabled
+    applyTheme('light');
   }, [applyTheme]);
 
   const colors = isDark ? DARK_COLORS : LIGHT_COLORS;

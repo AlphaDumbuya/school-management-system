@@ -168,9 +168,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   // Helper: Check if user has a specific role
+  // super_admin implicitly has all roles
   hasRole: (role) => {
     const { user } = get();
     if (!user) return false;
+    if (user.role === 'super_admin') return true;
 
     if (Array.isArray(role)) {
       return role.includes(user.role);
@@ -180,9 +182,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   // Helper: Check if user can access resource (has any of required roles)
+  // super_admin always has access to everything
   canAccess: (requiredRoles) => {
     const { user } = get();
     if (!user) return false;
+    if (user.role === 'super_admin') return true;
     return requiredRoles.includes(user.role);
   },
 }));

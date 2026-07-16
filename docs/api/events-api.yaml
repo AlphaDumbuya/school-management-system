@@ -1,0 +1,941 @@
+openapi: 3.0.3
+info:
+  title: School Management System - Events API
+  description: |
+    Complete API documentation for the Events Management Module.
+    
+    **Features:**
+    - Event creation and management
+    - Event registration and RSVP
+    - Attendance tracking with QR codes
+    - Recurring events
+    - Event analytics and reporting
+    - Multi-tenant support
+    
+    **Authentication:** All endpoints require JWT Bearer token authentication.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@school.local
+  license:
+    name: MIT
+    
+servers:
+  - url: https://api.school.local/api/v1
+    description: Production server
+  - url: http://localhost:3000/api/v1
+    description: Development server
+
+tags:
+  - name: Events
+    description: Event management operations
+  - name: Registrations
+    description: Event registration and RSVP management
+  - name: Attendance
+    description: Event attendance tracking
+  - name: Categories
+    description: Event category management
+  - name: Analytics
+    description: Event analytics and reporting
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /auth/login endpoint
+      
+  schemas:
+    Event:
+      type: object
+      required:
+        - title
+        - event_type
+        - start_datetime
+        - end_datetime
+        - capacity
+      properties:
+        event_id:
+          type: integer
+          description: Unique event identifier
+          example: 1
+        tenant_id:
+          type: integer
+          description: Tenant/school identifier
+        title:
+          type: string
+          minLength: 3
+          maxLength: 200
+          description: Event title
+          example: "Annual Sports Day 2026"
+        description:
+          type: string
+          maxLength: 2000
+          description: Detailed event description
+          example: "Annual sports competition featuring athletics, team sports, and more"
+        event_type:
+          type: string
+          enum: [academic, sports, cultural, administrative, parent_meeting, exam, holiday, other]
+          description: Type of event
+          example: "sports"
+        start_datetime:
+          type: string
+          format: date-time
+          description: Event start date and time (ISO 8601)
+          example: "2026-08-15T09:00:00Z"
+        end_datetime:
+          type: string
+          format: date-time
+          description: Event end date and time (ISO 8601)
+          example: "2026-08-15T17:00:00Z"
+        location:
+          type: string
+          maxLength: 255
+          description: Event location
+          example: "School Sports Ground"
+        virtual_link:
+          type: string
+          format: uri
+          description: Virtual meeting link (for online events)
+          example: "https://meet.school.local/sports-day"
+        organizer_id:
+          type: integer
+          description: User ID of the event organizer
+        capacity:
+          type: integer
+          minimum: 1
+          description: Maximum number of participants
+          example: 500
+        registered_count:
+          type: integer
+          description: Current number of registrations
+          example: 350
+        status:
+          type: string
+          enum: [draft, published, cancelled, completed]
+          description: Event status
+          example: "published"
+        is_public:
+          type: boolean
+          description: Whether event is visible to all users
+          example: true
+        requires_approval:
+          type: boolean
+          description: Whether registrations require approval
+          example: false
+        allow_guests:
+          type: boolean
+          description: Whether participants can bring guests
+          example: true
+        enable_waitlist:
+          type: boolean
+          description: Enable waitlist when capacity is reached
+          example: true
+        is_recurring:
+          type: boolean
+          description: Whether this is a recurring event
+          example: false
+        featured_image:
+          type: string
+          format: uri
+          description: URL to event featured image
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          
+    EventRegistration:
+      type: object
+      required:
+        - event_id
+        - rsvp_status
+      properties:
+        registration_id:
+          type: integer
+        event_id:
+          type: integer
+        user_id:
+          type: integer
+        rsvp_status:
+          type: string
+          enum: [going, maybe, not_going]
+          example: "going"
+        guest_count:
+          type: integer
+          minimum: 0
+          default: 0
+          example: 2
+        approval_status:
+          type: string
+          enum: [pending, approved, rejected]
+        is_waitlisted:
+          type: boolean
+        custom_fields:
+          type: object
+          description: Custom registration form responses
+        registered_at:
+          type: string
+          format: date-time
+          
+    EventAttendance:
+      type: object
+      properties:
+        attendance_id:
+          type: integer
+        event_id:
+          type: integer
+        user_id:
+          type: integer
+        status:
+          type: string
+          enum: [present, absent, late, excused]
+          example: "present"
+        check_in_time:
+          type: string
+          format: date-time
+        check_out_time:
+          type: string
+          format: date-time
+        duration_minutes:
+          type: integer
+          description: Duration of attendance in minutes
+        notes:
+          type: string
+          maxLength: 500
+        marked_by_id:
+          type: integer
+          
+    EventCategory:
+      type: object
+      required:
+        - name
+      properties:
+        category_id:
+          type: integer
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Sports Events"
+        description:
+          type: string
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: "#FF5733"
+        icon:
+          type: string
+        is_active:
+          type: boolean
+          
+    PaginatedResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {}
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+            page:
+              type: integer
+            limit:
+              type: integer
+            total_pages:
+              type: integer
+              
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: "Resource not found"
+        code:
+          type: string
+          example: "NOT_FOUND"
+          
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+paths:
+  /events:
+    get:
+      tags:
+        - Events
+      summary: List events
+      description: |
+        Retrieve a paginated list of events with optional filtering.
+        
+        **Permissions:** All authenticated users
+        **Filtering:** By status, type, date range, search query
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+          description: Items per page
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, published, cancelled, completed]
+          description: Filter by status
+        - name: event_type
+          in: query
+          schema:
+            type: string
+          description: Filter by event type
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search in title and description
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter events starting from this date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter events ending before this date
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      success:
+                        type: boolean
+                        example: true
+                  - $ref: '#/components/schemas/PaginatedResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          
+    post:
+      tags:
+        - Events
+      summary: Create event
+      description: |
+        Create a new event.
+        
+        **Permissions:** Principal, Teachers, Admissions Officers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Event'
+            examples:
+              basic:
+                summary: Basic event
+                value:
+                  title: "Parent-Teacher Meeting"
+                  description: "Quarterly parent-teacher conference"
+                  event_type: "parent_meeting"
+                  start_datetime: "2026-09-20T14:00:00Z"
+                  end_datetime: "2026-09-20T16:00:00Z"
+                  location: "School Auditorium"
+                  capacity: 200
+                  is_public: true
+              recurring:
+                summary: Recurring event
+                value:
+                  title: "Weekly Assembly"
+                  event_type: "administrative"
+                  start_datetime: "2026-09-01T08:00:00Z"
+                  end_datetime: "2026-09-01T08:30:00Z"
+                  location: "Main Hall"
+                  capacity: 1000
+                  is_recurring: true
+                  recurrence_pattern: "FREQ=WEEKLY;BYDAY=MO"
+      responses:
+        '201':
+          description: Event created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Event'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          
+  /events/{eventId}:
+    parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Event ID
+        
+    get:
+      tags:
+        - Events
+      summary: Get event details
+      description: Retrieve detailed information about a specific event
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Event'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          
+    put:
+      tags:
+        - Events
+      summary: Update event
+      description: |
+        Update event details.
+        
+        **Permissions:** Event organizer, Principal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Event'
+      responses:
+        '200':
+          description: Event updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Event'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          
+    delete:
+      tags:
+        - Events
+      summary: Delete event
+      description: |
+        Soft delete an event.
+        
+        **Permissions:** Event organizer, Principal
+      responses:
+        '200':
+          description: Event deleted successfully
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          
+  /events/{eventId}/publish:
+    post:
+      tags:
+        - Events
+      summary: Publish event
+      description: Change event status from draft to published
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Event published successfully
+        '400':
+          description: Event cannot be published (validation failed)
+        '404':
+          $ref: '#/components/responses/NotFound'
+          
+  /events/{eventId}/cancel:
+    post:
+      tags:
+        - Events
+      summary: Cancel event
+      description: Cancel a published event and notify registered users
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  description: Cancellation reason
+                  example: "Due to unforeseen circumstances"
+      responses:
+        '200':
+          description: Event cancelled successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+          
+  /events/{eventId}/register:
+    post:
+      tags:
+        - Registrations
+      summary: Register for event
+      description: Register current user for an event
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rsvp_status
+              properties:
+                rsvp_status:
+                  type: string
+                  enum: [going, maybe, not_going]
+                guest_count:
+                  type: integer
+                  minimum: 0
+                custom_fields:
+                  type: object
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/EventRegistration'
+        '400':
+          description: Registration failed (capacity reached, already registered, etc.)
+          
+    delete:
+      tags:
+        - Registrations
+      summary: Cancel registration
+      description: Cancel current user's registration for an event
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Registration cancelled successfully
+        '404':
+          description: Registration not found
+          
+  /events/{eventId}/registrations:
+    get:
+      tags:
+        - Registrations
+      summary: Get event registrations
+      description: |
+        List all registrations for an event.
+        
+        **Permissions:** Event organizer, Principal
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: rsvp_status
+          in: query
+          schema:
+            type: string
+            enum: [going, maybe, not_going]
+        - name: approval_status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, rejected]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      success:
+                        type: boolean
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  
+  /events/{eventId}/attendance:
+    post:
+      tags:
+        - Attendance
+      summary: Mark attendance
+      description: |
+        Mark attendance for a user at an event.
+        
+        **Permissions:** Event organizer, Teachers, Principal
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - status
+              properties:
+                user_id:
+                  type: integer
+                status:
+                  type: string
+                  enum: [present, absent, late, excused]
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Attendance marked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/EventAttendance'
+                    
+    get:
+      tags:
+        - Attendance
+      summary: Get event attendance
+      description: Retrieve attendance records for an event
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [present, absent, late, excused]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/EventAttendance'
+                      statistics:
+                        type: object
+                        properties:
+                          total_registered:
+                            type: integer
+                          total_present:
+                            type: integer
+                          total_absent:
+                            type: integer
+                          attendance_rate:
+                            type: number
+                            
+  /events/{eventId}/attendance/qr-code:
+    post:
+      tags:
+        - Attendance
+      summary: Generate QR code for check-in
+      description: Generate a QR code for event check-in
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: QR code generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      qr_code:
+                        type: string
+                        description: QR code data (JSON string)
+                      qr_image:
+                        type: string
+                        format: uri
+                        description: URL to QR code image
+                        
+  /events/view/calendar:
+    get:
+      tags:
+        - Events
+      summary: Calendar view
+      description: Get events in calendar format for a date range
+      parameters:
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [month, week, day]
+            default: month
+      responses:
+        '200':
+          description: Calendar events retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                      
+  /events/view/upcoming:
+    get:
+      tags:
+        - Events
+      summary: Upcoming events
+      description: Get upcoming events sorted by start date
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+      responses:
+        '200':
+          description: Upcoming events retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                      
+  /events/analytics/dashboard:
+    get:
+      tags:
+        - Analytics
+      summary: Events analytics dashboard
+      description: |
+        Get comprehensive analytics for events.
+        
+        **Permissions:** Principal, Event Organizers
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Analytics data retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      total_events:
+                        type: integer
+                      published_events:
+                        type: integer
+                      total_registrations:
+                        type: integer
+                      average_attendance_rate:
+                        type: number
+                      events_by_type:
+                        type: object
+                      top_events:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Event'
+                      
+  /events/config/categories:
+    get:
+      tags:
+        - Categories
+      summary: List event categories
+      responses:
+        '200':
+          description: Categories retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EventCategory'
+                      
+    post:
+      tags:
+        - Categories
+      summary: Create event category
+      description: |
+        Create a new event category.
+        
+        **Permissions:** Principal only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventCategory'
+      responses:
+        '201':
+          description: Category created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/EventCategory'

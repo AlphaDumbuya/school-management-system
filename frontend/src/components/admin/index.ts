@@ -33,6 +33,10 @@ export type { ChartCardProps, ChartType, ChartSeries } from './charts/ChartCard'
 // ── Feedback ─────────────────────────────────────────────────────────────────
 export { Modal }               from './feedback/Modal';
 export { ConfirmationDialog }  from './feedback/ConfirmationDialog';
+export { DeleteDialog }        from './feedback/DeleteDialog';
+export { FormModal }           from './feedback/FormModal';
+export { Tooltip }             from './feedback/Tooltip';
+export { DropdownMenu }        from './feedback/DropdownMenu';
 export { EmptyState }          from './feedback/EmptyState';
 export { ErrorState }          from './feedback/ErrorState';
 export {
@@ -47,6 +51,10 @@ export { ProgressBar }         from './feedback/ProgressBar';
 export { AvatarGroup }         from './feedback/AvatarGroup';
 export type { ModalProps, ModalSize }                     from './feedback/Modal';
 export type { ConfirmationDialogProps }                    from './feedback/ConfirmationDialog';
+export type { DeleteDialogProps }                          from './feedback/DeleteDialog';
+export type { FormModalProps }                             from './feedback/FormModal';
+export type { TooltipProps, TooltipPosition }              from './feedback/Tooltip';
+export type { DropdownMenuProps, DropdownItem }            from './feedback/DropdownMenu';
 export type { EmptyStateProps }                            from './feedback/EmptyState';
 export type { ErrorStateProps }                            from './feedback/ErrorState';
 export type { SkeletonProps, SkeletonTableRowProps, SkeletonChartProps } from './feedback/Skeleton';
