@@ -80,7 +80,7 @@ const navItems: NavItem[] = [
     group: 'Academic',
   },
   {
-    label: 'Examinations',
+    label: 'Exam Timetable',
     icon: <FaFileImport className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/academic/examinations',
     roles: ['super_admin', 'principal', 'teacher'],
