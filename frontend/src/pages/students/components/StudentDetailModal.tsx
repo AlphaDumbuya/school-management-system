@@ -94,6 +94,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             <InfoCard icon={<User size={16} />} label="Gender" value={student.gender ? student.gender.charAt(0).toUpperCase() + student.gender.slice(1) : '—'} />
             <InfoCard icon={<Calendar size={16} />} label="Date of Birth" value={formatDate(student.date_of_birth)} />
             <InfoCard icon={<Calendar size={16} />} label="Enrollment Date" value={formatDate(student.enrollment_date)} />
+            <InfoCard icon={<BookOpen size={16} />} label="Class" value={s.class_name || '—'} />
             <InfoCard icon={<BookOpen size={16} />} label="Religion" value={s.religion || '—'} />
             <InfoCard icon={<Globe size={16} />} label="Nationality" value={s.nationality || '—'} />
             <InfoCard icon={<MapPin size={16} />} label="Place of Birth" value={s.place_of_birth || '—'} />

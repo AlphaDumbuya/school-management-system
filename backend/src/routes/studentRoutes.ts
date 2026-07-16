@@ -96,7 +96,7 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
         student_id: inserted.id,
         class_id: class_id,
         enrollment_date: enrollment_date || new Date().toISOString().split('T')[0],
-        status: 'enrolled',
+        status: 'active',
         created_at: new Date(),
         updated_at: new Date(),
       }).catch(() => { /* ignore if enrollment fails */ });
@@ -126,33 +126,43 @@ router.get('/', authenticate, authorize('principal', 'teacher'), async (req: Req
     const status = req.query.status as string;
     const search = req.query.search as string;
 
-    let query = db('students').select('*');
+    let query = db('students')
+      .select(
+        'students.*',
+        'classes.name as class_name',
+        'classes.level as class_level'
+      )
+      .leftJoin('enrollments', function () {
+        this.on('students.id', '=', 'enrollments.student_id')
+          .andOnIn('enrollments.status', ['enrolled', 'active']);
+      })
+      .leftJoin('classes', 'enrollments.class_id', 'classes.id');
 
     // Apply filters
     if (status) {
-      query = query.where('status', status);
+      query = query.where('students.status', status);
     }
 
     if (search) {
       const term = `%${search.trim()}%`;
       query = query.where(function () {
-        this.where('first_name', 'ilike', term)
-          .orWhere('last_name', 'ilike', term)
-          .orWhere('student_id', 'ilike', term)
-          .orWhere('email', 'ilike', term);
+        this.where('students.first_name', 'ilike', term)
+          .orWhere('students.last_name', 'ilike', term)
+          .orWhere('students.student_id', 'ilike', term)
+          .orWhere('students.email', 'ilike', term);
       });
     }
 
     // Separate count query
-    let countQuery = db('students').count('id as count');
-    if (status) countQuery = countQuery.where('status', status);
+    let countQuery = db('students').count('students.id as count');
+    if (status) countQuery = countQuery.where('students.status', status);
     if (search) {
       const term = `%${search.trim()}%`;
       countQuery = countQuery.where(function () {
-        this.where('first_name', 'ilike', term)
-          .orWhere('last_name', 'ilike', term)
-          .orWhere('student_id', 'ilike', term)
-          .orWhere('email', 'ilike', term);
+        this.where('students.first_name', 'ilike', term)
+          .orWhere('students.last_name', 'ilike', term)
+          .orWhere('students.student_id', 'ilike', term)
+          .orWhere('students.email', 'ilike', term);
       });
     }
 

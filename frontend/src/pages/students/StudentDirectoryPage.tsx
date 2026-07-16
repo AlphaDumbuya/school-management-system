@@ -153,6 +153,16 @@ export const StudentDirectoryPage: React.FC = () => {
       cell: ({ row }) => <span className="text-xs text-gray-600 dark:text-gray-400 capitalize">{row.original.gender || '—'}</span>,
     },
     {
+      id: 'class',
+      header: 'Class',
+      cell: ({ row }) => {
+        const className = (row.original as any).class_name;
+        return className
+          ? <span className="text-xs font-semibold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800/30">{className}</span>
+          : <span className="text-xs text-gray-400 dark:text-gray-500">—</span>;
+      },
+    },
+    {
       id: 'enrollment_date',
       accessorKey: 'enrollment_date',
       header: 'Enrolled',
