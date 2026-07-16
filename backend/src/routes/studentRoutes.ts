@@ -54,10 +54,11 @@ router.post('/', authenticate, authorize('principal', 'super_admin', 'teacher', 
 
     // Generate unique student ID (STU-YYYY-XXXXX format) using MAX to prevent duplicates
     const year = new Date().getFullYear();
-    const maxResult = await db('students')
-      .where('student_id', 'like', `STU-${year}-%`)
-      .max(db.raw("CAST(SPLIT_PART(student_id, '-', 3) AS INTEGER) as max_num"));
-    const nextNum = (Number(maxResult[0]?.max_num) || 0) + 1;
+    const maxResult = await db.raw(
+      "SELECT COALESCE(MAX(CAST(SPLIT_PART(student_id, '-', 3) AS INTEGER)), 0) as max_num FROM students WHERE student_id LIKE ?",
+      [`STU-${year}-%`]
+    );
+    const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
     const studentId = `STU-${year}-${String(nextNum).padStart(5, '0')}`;
 
     // Create student

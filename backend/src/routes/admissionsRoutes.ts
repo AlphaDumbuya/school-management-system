@@ -22,10 +22,11 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
     const academicYear = req.body.academic_year || `${year}/${nextYear}`;
 
     // Generate application ID using MAX to prevent duplicates
-    const count = await db('admission_applications')
-      .where('application_number', 'like', `ADM-${year}-%`)
-      .max(db.raw("CAST(SPLIT_PART(application_number, '-', 3) AS INTEGER) as max_num"));
-    const nextNum = (Number(count[0]?.max_num) || 0) + 1;
+    const maxResult = await db.raw(
+      "SELECT COALESCE(MAX(CAST(SPLIT_PART(application_number, '-', 3) AS INTEGER)), 0) as max_num FROM admission_applications WHERE application_number LIKE ?",
+      [`ADM-${year}-%`]
+    );
+    const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
     const applicationId = `ADM-${year}-${String(nextNum).padStart(5, '0')}`;
 
     const [inserted] = await db('admission_applications').insert({
