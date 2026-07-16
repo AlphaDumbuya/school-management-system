@@ -422,3 +422,4 @@ When adding a new page:
 5. Register backend route in `backend/src/index.ts`
 6. Create frontend service in `frontend/src/services/`
 7. Run any needed database migrations
+5
