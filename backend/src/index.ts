@@ -17,6 +17,7 @@ import subjectRoutes from '@routes/subjectRoutes';
 import timetableRoutes from '@routes/timetableRoutes';
 import assignmentRoutes from '@routes/assignmentRoutes';
 import examinationRoutes from '@routes/examinationRoutes';
+import resultsRoutes from '@routes/resultsRoutes';
 import enrollmentRoutes from '@routes/enrollmentRoutes';
 import enrollmentWorkflowRoutes from '@routes/enrollmentWorkflowRoutes';
 import gradeRoutes from '@routes/gradeRoutes';
@@ -173,6 +174,9 @@ app.use('/api/v1/assignments', assignmentRoutes);
 
 // Examination Routes
 app.use('/api/v1/examinations', examinationRoutes);
+
+// Results & Grades Routes
+app.use('/api/v1/results', resultsRoutes);
 
 // Enrollment Routes
 app.use('/api/v1/enrollments', enrollmentRoutes);
