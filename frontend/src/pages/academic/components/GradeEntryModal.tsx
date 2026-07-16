@@ -52,18 +52,20 @@ export const GradeEntryModal: React.FC<GradeEntryModalProps> = ({
 
   // Fetch classes
   const { data: classesData } = useQuery({
-    queryKey: ['classes-dropdown'],
+    queryKey: ['grade-entry-classes'],
     queryFn: () => classesService.listClasses({ limit: 100 }),
     staleTime: 60_000,
+    enabled: isOpen,
   });
   const classes = (classesData as any)?.data ?? [];
   const classOptions = useMemo(() => classes.map((c: any) => ({ value: String(c.id), label: c.name, sublabel: c.level })), [classes]);
 
   // Fetch subjects
   const { data: subjectsData } = useQuery({
-    queryKey: ['subjects-dropdown'],
+    queryKey: ['grade-entry-subjects'],
     queryFn: () => subjectsService.listSubjects({ limit: 100, status: 'active' }),
     staleTime: 60_000,
+    enabled: isOpen,
   });
   const subjects = (subjectsData as any)?.data ?? [];
   const subjectOptions = useMemo(() => subjects.map((s: any) => ({ value: String(s.id), label: s.name, sublabel: s.code })), [subjects]);
@@ -181,6 +183,8 @@ export const GradeEntryModal: React.FC<GradeEntryModalProps> = ({
         </div>
       )}
 
+      <div className="min-h-[60vh] flex flex-col">
+
       {/* Selection Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <SearchableSelect
@@ -292,6 +296,7 @@ export const GradeEntryModal: React.FC<GradeEntryModalProps> = ({
           </table>
         </div>
       )}
+      </div>
     </Modal>
   );
 };

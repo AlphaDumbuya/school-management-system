@@ -147,7 +147,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
             </div>
 
             {/* Options list */}
-            <div className="max-h-[200px] overflow-y-auto overscroll-contain">
+            <div className="max-h-[240px] overflow-y-auto overscroll-contain">
               {filtered.length === 0 ? (
                 <div className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">
                   {emptyMessage}
