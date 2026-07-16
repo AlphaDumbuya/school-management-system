@@ -24,7 +24,7 @@ import { timetableService } from '@services/timetableService';
 
 const schema = z.object({
   title: z.string().min(1, 'Title is required').max(200, 'Max 200 characters'),
-  description: z.string().max(2000).optional().or(z.literal('')),
+  description: z.string().max(10000).optional().or(z.literal('')),
   class_id: z.string().min(1, 'Class is required'),
   subject_id: z.string().min(1, 'Subject is required'),
   teacher_id: z.string().min(1, 'Teacher is required'),
@@ -32,7 +32,7 @@ const schema = z.object({
   assigned_date: z.string().min(1, 'Assigned date is required'),
   due_date: z.string().min(1, 'Due date is required'),
   max_marks: z.coerce.number().min(1).max(1000),
-  instructions: z.string().max(5000).optional().or(z.literal('')),
+  instructions: z.string().max(10000).optional().or(z.literal('')),
 });
 
 type FormValues = z.infer<typeof schema>;

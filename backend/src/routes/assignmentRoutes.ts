@@ -70,24 +70,12 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         'classes.level as class_level',
         'subjects.name as subject_name',
         'subjects.code as subject_code',
-        db.raw("COALESCE(users.first_name || ' ' || users.last_name, 'Unknown') as teacher_name"),
-        db.raw('COALESCE(submission_counts.total_submissions, 0) as total_submissions'),
-        db.raw('COALESCE(submission_counts.graded_count, 0) as graded_count')
+        db.raw("COALESCE(users.first_name || ' ' || users.last_name, 'Unknown') as teacher_name")
       )
       .leftJoin('classes', 'assignments.class_id', 'classes.id')
       .leftJoin('subjects', 'assignments.subject_id', 'subjects.id')
       .leftJoin('teachers', 'assignments.teacher_id', 'teachers.id')
-      .leftJoin('users', 'teachers.user_id', 'users.id')
-      .leftJoin(
-        db('assignment_submissions')
-          .select('assignment_id')
-          .count('* as total_submissions')
-          .count(db.raw("CASE WHEN status = 'graded' THEN 1 END as graded_count"))
-          .groupBy('assignment_id')
-          .as('submission_counts'),
-        'assignments.id',
-        'submission_counts.assignment_id'
-      );
+      .leftJoin('users', 'teachers.user_id', 'users.id');
 
     if (class_id) query = query.where('assignments.class_id', class_id as string);
     if (subject_id) query = query.where('assignments.subject_id', subject_id as string);
