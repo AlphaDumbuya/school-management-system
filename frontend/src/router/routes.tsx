@@ -22,6 +22,7 @@ import ClassesPage from '@pages/academic/ClassesPage';
 import SubjectsPage from '@pages/academic/SubjectsPage';
 import TimetablesPage from '@pages/academic/TimetablesPage';
 import AssignmentsPage from '@pages/academic/AssignmentsPage';
+import ExaminationsPage from '@pages/academic/ExaminationsPage';
 import DisciplinePage from '@pages/discipline/DisciplinePage';
 import { EventsPage } from '@pages/events/EventsPage';
 import { EventDetailsPage } from '@pages/events/EventDetailsPage';
@@ -129,7 +130,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'academic/examinations',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><ExaminationsPage /></P>,
         },
         {
           path: 'academic/results',
