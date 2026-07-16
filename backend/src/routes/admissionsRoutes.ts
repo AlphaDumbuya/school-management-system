@@ -173,6 +173,71 @@ router.put('/:appId/status', authenticate, authorize(UserRole.PRINCIPAL, UserRol
     }
 
     await db('admission_applications').where('id', appId).update(updateData);
+
+    // If approved, automatically create a student record and enroll
+    if (status === 'approved') {
+      try {
+        // Generate student ID
+        const year = new Date().getFullYear();
+        const maxResult = await db.raw(
+          "SELECT COALESCE(MAX(CAST(SPLIT_PART(student_id, '-', 3) AS INTEGER)), 0) as max_num FROM students WHERE student_id LIKE ?",
+          [`STU-${year}-%`]
+        );
+        const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
+        const studentId = `STU-${year}-${String(nextNum).padStart(5, '0')}`;
+
+        // Create student from application data
+        const [newStudent] = await db('students').insert({
+          user_id: null,
+          student_id: studentId,
+          first_name: app.child_first_name || app.first_name,
+          last_name: app.child_last_name || app.last_name,
+          email: app.guardian_email || null,
+          date_of_birth: app.child_dob || app.date_of_birth || null,
+          gender: app.child_gender || app.gender || null,
+          phone: app.guardian_phone || null,
+          address: app.child_address || app.address || null,
+          city: null,
+          country: app.child_nationality || 'Sierra Leone',
+          enrollment_date: new Date().toISOString().split('T')[0],
+          photo_url: app.child_photo_url || null,
+          religion: app.child_religion || null,
+          nationality: app.child_nationality || null,
+          place_of_birth: app.child_place_of_birth || null,
+          guardian_name: [app.guardian_first_name, app.guardian_last_name].filter(Boolean).join(' ') || app.parent_name || null,
+          guardian_phone: app.guardian_phone || app.parent_phone || null,
+          guardian_relationship: app.guardian_relationship || null,
+          guardian_occupation: app.guardian_occupation || null,
+          emergency_contact: app.emergency_contact_phone || null,
+          previous_school: app.previous_school || null,
+          medical_conditions: [app.medication_details, app.allergy_details, app.chronic_illness_details].filter(Boolean).join('; ') || null,
+          status: 'active',
+          created_at: new Date(),
+          updated_at: new Date(),
+        }).returning('*');
+
+        // Enroll in the class they applied for
+        if (app.class_applying_for && newStudent?.id) {
+          await db('enrollments').insert({
+            student_id: newStudent.id,
+            class_id: app.class_applying_for,
+            enrollment_date: new Date().toISOString().split('T')[0],
+            status: 'active',
+            created_at: new Date(),
+            updated_at: new Date(),
+          }).catch(() => {});
+        }
+
+        // Update application status to 'enrolled'
+        await db('admission_applications').where('id', appId).update({ status: 'enrolled' });
+
+        logger.info(`Student ${studentId} created from approved admission ${app.application_number}`);
+      } catch (enrollErr) {
+        logger.error(`Failed to create student from admission: ${enrollErr}`);
+        // Don't fail the status update — application is still approved
+      }
+    }
+
     const updated = await db('admission_applications').where('id', appId).first();
 
     res.json({ message: `Application ${status}`, data: updated });

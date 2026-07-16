@@ -203,13 +203,18 @@ export const AdmissionsPage: React.FC = () => {
           onPageChange={setPage}
           emptyMessage="No applications found"
           emptyAction={{ label: 'Create first application', onClick: () => setFormOpen(true) }}
-          rowActions={(row) => [
-            ...(row.status === 'pending' ? [
-              { label: 'Approve', onClick: (r: AdmissionRecord) => handleStatusChange(r, 'approved') },
-              { label: 'Reject', variant: 'destructive' as const, onClick: (r: AdmissionRecord) => handleStatusChange(r, 'rejected') },
-            ] : []),
-            { label: 'Delete', variant: 'destructive' as const, onClick: (r: AdmissionRecord) => setDeleteTarget(r) },
-          ]}
+          rowActions={(row) => {
+            const actions: any[] = [
+              { label: 'Delete', variant: 'destructive', onClick: (r: AdmissionRecord) => setDeleteTarget(r) },
+            ];
+            if (row.status === 'pending') {
+              actions.unshift(
+                { label: 'Approve', onClick: (r: AdmissionRecord) => handleStatusChange(r, 'approved') },
+                { label: 'Reject', variant: 'destructive', onClick: (r: AdmissionRecord) => handleStatusChange(r, 'rejected') },
+              );
+            }
+            return actions;
+          }}
         />
       </PageShell>
 
