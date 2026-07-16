@@ -83,14 +83,29 @@ export const StudentDirectoryPage: React.FC = () => {
   // Delete handler (permanent)
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const res = await studentsService.deactivateStudent(deleteTarget.id); // uses same endpoint for now
+    try {
+      const res = await studentsService.deleteStudent(deleteTarget.id);
+      if (res.success !== false) {
+        showToast.deleted('Student');
+        queryClient.invalidateQueries({ queryKey: ['students'] });
+      } else {
+        showToast.apiError(res.error);
+      }
+    } catch {
+      showToast.error('Failed to delete student');
+    }
+    setDeleteTarget(null);
+  };
+
+  // Reactivate handler
+  const handleReactivate = async (student: StudentRecord) => {
+    const res = await studentsService.reactivateStudent(student.id);
     if (res.success !== false) {
-      showToast.deleted('Student');
+      showToast.success('Student reactivated');
       queryClient.invalidateQueries({ queryKey: ['students'] });
     } else {
       showToast.apiError(res.error);
     }
-    setDeleteTarget(null);
   };
 
   // Columns
@@ -228,8 +243,11 @@ export const StudentDirectoryPage: React.FC = () => {
           rowActions={(row) => [
             { label: 'View Details', onClick: (r) => setViewingStudent(r) },
             { label: 'Edit', onClick: (r) => { setEditingStudent(r); setFormOpen(true); } },
-            { label: 'Deactivate', variant: 'destructive', onClick: (r) => setDeactivateTarget(r) },
-            { label: 'Delete', variant: 'destructive', onClick: (r) => setDeleteTarget(r) },
+            ...(row.status === 'active'
+              ? [{ label: 'Deactivate', variant: 'destructive' as const, onClick: (r: StudentRecord) => setDeactivateTarget(r) }]
+              : [{ label: 'Reactivate', onClick: (r: StudentRecord) => handleReactivate(r) }]
+            ),
+            { label: 'Delete', variant: 'destructive' as const, onClick: (r) => setDeleteTarget(r) },
           ]}
         />
       </PageShell>
@@ -267,6 +285,7 @@ export const StudentDirectoryPage: React.FC = () => {
         isOpen={!!viewingStudent}
         onClose={() => setViewingStudent(null)}
         student={viewingStudent}
+        onEdit={(s) => { setEditingStudent(s); setFormOpen(true); }}
       />
     </MainLayout>
   );

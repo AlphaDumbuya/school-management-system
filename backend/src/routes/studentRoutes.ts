@@ -18,7 +18,7 @@ const studentService = new StudentService(db);
  */
 router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { first_name, last_name, date_of_birth, gender, email, phone, address, city, state, postal_code, country, enrollment_date, status, photo_url } = req.body;
+    const { first_name, last_name, date_of_birth, gender, email, phone, address, city, state, postal_code, country, enrollment_date, status, photo_url, religion, nationality, place_of_birth, guardian_name, guardian_phone, guardian_relationship, guardian_occupation, emergency_contact, previous_school, medical_conditions, class_id } = req.body;
     const createdBy = req.auth?.userId ?? null;
 
     // Validate required fields
@@ -75,10 +75,32 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
       country: country || null,
       enrollment_date: enrollment_date,
       photo_url: photo_url || null,
+      religion: religion || null,
+      nationality: nationality || null,
+      place_of_birth: place_of_birth || null,
+      guardian_name: guardian_name || null,
+      guardian_phone: guardian_phone || null,
+      guardian_relationship: guardian_relationship || null,
+      guardian_occupation: guardian_occupation || null,
+      emergency_contact: emergency_contact || null,
+      previous_school: previous_school || null,
+      medical_conditions: medical_conditions || null,
       status: status || 'active',
       created_at: new Date(),
       updated_at: new Date(),
     }).returning('*');
+
+    // If class_id provided, enroll student in that class
+    if (class_id && inserted.id) {
+      await db('enrollments').insert({
+        student_id: inserted.id,
+        class_id: class_id,
+        enrollment_date: enrollment_date || new Date().toISOString().split('T')[0],
+        status: 'enrolled',
+        created_at: new Date(),
+        updated_at: new Date(),
+      }).catch(() => { /* ignore if enrollment fails */ });
+    }
 
     res.status(201).json({
       message: 'Student created successfully',
@@ -294,6 +316,39 @@ router.delete('/:studentId', authenticate, authorize('principal'), async (req: R
     });
 
     logger.info(`Student deactivated: ${student.student_id} by ${currentUser.email}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/v1/students/:studentId/permanent
+ * Permanently delete a student record
+ */
+router.delete('/:studentId/permanent', authenticate, authorize('principal'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { studentId } = req.params;
+
+    const student = await db('students')
+      .select('*')
+      .where('student_id', studentId)
+      .orWhere('id', studentId)
+      .first();
+
+    if (!student) {
+      throw new AppError('Student not found', 404, 'NOT_FOUND');
+    }
+
+    // Check for linked records
+    const enrollments = await db('enrollments').where('student_id', student.id).count('* as count').first();
+    if (Number(enrollments?.count ?? 0) > 0) {
+      throw new AppError('Cannot permanently delete a student with enrollment history. Use deactivate instead.', 400, 'HAS_ENROLLMENTS');
+    }
+
+    await db('students').where('id', student.id).del();
+
+    res.json({ message: 'Student permanently deleted' });
+    logger.info(`Student permanently deleted: ${student.student_id}`);
   } catch (error) {
     next(error);
   }

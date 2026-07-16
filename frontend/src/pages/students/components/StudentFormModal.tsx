@@ -167,7 +167,18 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
         country: values.country || undefined,
         enrollment_date: values.enrollment_date || undefined,
         photo_url: values.photo_url || undefined,
-      };
+        religion: (values as any).religion || undefined,
+        nationality: (values as any).nationality || undefined,
+        place_of_birth: (values as any).place_of_birth || undefined,
+        guardian_name: (values as any).guardian_name || undefined,
+        guardian_phone: (values as any).guardian_phone || undefined,
+        guardian_relationship: (values as any).guardian_relationship || undefined,
+        guardian_occupation: (values as any).guardian_occupation || undefined,
+        emergency_contact: (values as any).emergency_contact || undefined,
+        previous_school: (values as any).previous_school || undefined,
+        medical_conditions: (values as any).medical_conditions || undefined,
+        class_id: (values as any).class_id || undefined,
+      } as any;
 
       if (isEditing && editingStudent) {
         const res = await studentsService.updateStudent(editingStudent.id, payload);

@@ -76,6 +76,10 @@ export const studentsService = {
     return apiClient.delete(`/api/v1/students/${id}`);
   },
 
+  async deleteStudent(id: string) {
+    return apiClient.delete(`/api/v1/students/${id}/permanent`);
+  },
+
   async reactivateStudent(id: string) {
     return apiClient.post(`/api/v1/students/${id}/reactivate`);
   },
