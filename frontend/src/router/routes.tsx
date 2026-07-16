@@ -20,6 +20,7 @@ import SMSWhatsAppDashboard from '@pages/SMSWhatsAppDashboard';
 // Built pages
 import ClassesPage from '@pages/academic/ClassesPage';
 import SubjectsPage from '@pages/academic/SubjectsPage';
+import TimetablesPage from '@pages/academic/TimetablesPage';
 import DisciplinePage from '@pages/discipline/DisciplinePage';
 import { EventsPage } from '@pages/events/EventsPage';
 import { EventDetailsPage } from '@pages/events/EventDetailsPage';
@@ -119,7 +120,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'academic/timetables',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><TimetablesPage /></P>,
         },
         {
           path: 'academic/assignments',

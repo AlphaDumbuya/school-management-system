@@ -14,6 +14,7 @@ import studentRoutes from '@routes/studentRoutes';
 import guardianRoutes from '@routes/guardianRoutes';
 import classRoutes from '@routes/classRoutes';
 import subjectRoutes from '@routes/subjectRoutes';
+import timetableRoutes from '@routes/timetableRoutes';
 import enrollmentRoutes from '@routes/enrollmentRoutes';
 import enrollmentWorkflowRoutes from '@routes/enrollmentWorkflowRoutes';
 import gradeRoutes from '@routes/gradeRoutes';
@@ -41,6 +42,7 @@ import printConfigRoutes from '@routes/printConfigRoutes';
 import eventRoutes from '@routes/eventRoutes';
 import disciplineRoutes from '@routes/disciplineRoutes';
 import smsWhatsAppRoutes from '@routes/smsWhatsAppRoutes';
+import timetableRoutes from '@routes/timetableRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
 import { startEventManagementJobs } from './jobs/eventManagementJobs.js';
 
@@ -161,6 +163,9 @@ app.use('/api/v1/classes', classRoutes);
 // Subject Routes
 app.use('/api/v1/subjects', subjectRoutes);
 
+// Timetable Routes
+app.use('/api/v1/timetable', timetableRoutes);
+
 // Enrollment Routes
 app.use('/api/v1/enrollments', enrollmentRoutes);
 
@@ -241,6 +246,9 @@ app.use('/api/v1/discipline', disciplineRoutes);
 
 // SMS & WhatsApp Routes (Phase 2.4: SMS & WhatsApp Integration)
 app.use('/api/v1/sms-whatsapp', smsWhatsAppRoutes);
+
+// Timetable Routes (Simplified schedule management)
+app.use('/api/v1/timetable', timetableRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
