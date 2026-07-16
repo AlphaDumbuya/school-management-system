@@ -24,6 +24,7 @@ import TimetablesPage from '@pages/academic/TimetablesPage';
 import AssignmentsPage from '@pages/academic/AssignmentsPage';
 import ExaminationsPage from '@pages/academic/ExaminationsPage';
 import ResultsPage from '@pages/academic/ResultsPage';
+import StudentDirectoryPage from '@pages/students/StudentDirectoryPage';
 import DisciplinePage from '@pages/discipline/DisciplinePage';
 import { EventsPage } from '@pages/events/EventsPage';
 import { EventDetailsPage } from '@pages/events/EventDetailsPage';
@@ -149,7 +150,7 @@ const router = createBrowserRouter(
         // ── STUDENT MANAGEMENT ─────────────────────────────────────
         {
           path: 'students/directory',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'admissions_officer']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'admissions_officer']}><StudentDirectoryPage /></P>,
         },
         {
           path: 'students/admissions',
