@@ -7,6 +7,33 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { Upload, X, FileText, Image as ImageIcon, Loader2, Camera, RotateCcw } from 'lucide-react';
 
+/** Compress image to fit within maxSize pixels and quality */
+function compressImage(file: File, maxSize: number = 300, quality: number = 0.7): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+      // Scale down to maxSize
+      if (width > height) {
+        if (width > maxSize) { height = Math.round((height * maxSize) / width); width = maxSize; }
+      } else {
+        if (height > maxSize) { width = Math.round((width * maxSize) / height); height = maxSize; }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas not supported')); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load image')); };
+    img.src = url;
+  });
+}
+
 interface FileUploaderProps {
   value?: string; // current file URL
   onChange: (url: string) => void;
@@ -54,22 +81,12 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     setIsUploading(true);
 
     try {
-      // Convert to base64 data URL (works on Vercel without file storage)
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        onChange(dataUrl);
-        setIsUploading(false);
-      };
-      reader.onerror = () => {
-        setUploadError('Failed to read file');
-        setIsUploading(false);
-      };
-      reader.readAsDataURL(file);
+      // Compress and convert to base64 data URL
+      const compressed = await compressImage(file, 300, 0.7);
+      onChange(compressed);
+      setIsUploading(false);
     } catch (err: any) {
-      const errorData = err?.response?.data?.error;
-      const msg = typeof errorData === 'string' ? errorData : (errorData?.message || err?.message || 'Upload failed');
-      setUploadError(msg);
+      setUploadError(err?.message || 'Failed to process image');
       setIsUploading(false);
     }
   }, [maxSizeMB, onChange]);
@@ -187,19 +204,17 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         <>
           {/* Camera view */}
           {cameraActive ? (
-            <div className="rounded-xl border-2 border-blue-500 overflow-hidden bg-black">
-              <div className="relative">
-                <video ref={videoRef} autoPlay playsInline muted className="w-full h-40 sm:h-48 object-cover" />
+            <div className="rounded-lg border-2 border-blue-500 overflow-hidden bg-black">
+              <div className="relative aspect-[3/4] max-h-[160px] mx-auto">
+                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
                 {/* Frame guide overlay */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-28 h-36 sm:w-32 sm:h-40 border-2 border-white/60 rounded-lg" />
-                </div>
+                <div className="absolute inset-2 border border-white/50 rounded pointer-events-none" />
               </div>
-              <div className="flex items-center justify-center gap-2 p-3 bg-gray-900">
-                <button type="button" onClick={capturePhoto} className="flex-1 px-3 py-2.5 bg-blue-600 text-white text-xs sm:text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5 min-w-0">
-                  <Camera size={14} /> Capture
+              <div className="flex items-center justify-center gap-1.5 px-2 py-1.5 bg-gray-900">
+                <button type="button" onClick={capturePhoto} className="flex-1 px-2 py-1 bg-blue-600 text-white text-[10px] font-bold rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-1 min-w-0">
+                  <Camera size={11} /> Capture
                 </button>
-                <button type="button" onClick={stopCamera} className="flex-1 px-3 py-2.5 bg-gray-700 text-gray-300 text-xs sm:text-sm font-bold rounded-lg hover:bg-gray-600 transition-colors min-w-0">
+                <button type="button" onClick={stopCamera} className="flex-1 px-2 py-1 bg-gray-700 text-gray-300 text-[10px] font-bold rounded hover:bg-gray-600 transition-colors min-w-0">
                   Cancel
                 </button>
               </div>
@@ -251,9 +266,9 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
             <button
               type="button"
               onClick={startCamera}
-              className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:border-blue-400 dark:hover:border-blue-600 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              className="mt-1.5 w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] font-semibold text-gray-600 dark:text-gray-400 hover:border-blue-400 dark:hover:border-blue-600 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
             >
-              <Camera size={14} /> Use Camera
+              <Camera size={11} /> Use Camera
             </button>
           )}
         </>
