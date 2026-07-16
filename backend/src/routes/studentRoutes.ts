@@ -221,7 +221,7 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
   try {
     const { studentId } = req.params;
     const currentUser = req.auth;
-    const { first_name, last_name, gender, email, phone, address, city, state, postal_code, country, status } = req.body;
+    const { first_name, last_name, gender, email, phone, address, city, state, postal_code, country, status, date_of_birth, enrollment_date, photo_url, religion, nationality, place_of_birth, guardian_name, guardian_phone, guardian_relationship, guardian_occupation, emergency_contact, previous_school, medical_conditions } = req.body;
 
     // Get student
     const student = await db('students')
@@ -242,30 +242,34 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
       throw new AppError('Insufficient permissions to update this student', 403, 'AUTHORIZATION_ERROR');
     }
 
-    // Students can only update certain fields, principal/teacher can update all
     const updateData: any = {};
 
-    if (first_name && isAuthorized) updateData.first_name = first_name.trim();
-    if (last_name && isAuthorized) updateData.last_name = last_name.trim();
-    if (gender) updateData.gender = gender;
-    if (email) {
-      // Check email uniqueness
-      const existingStudent = await db('students').where('email', email).whereNot('id', student.id).first();
-      if (existingStudent) {
-        throw new AppError('Email already registered', 409, 'CONFLICT');
-      }
-      updateData.email = email.toLowerCase();
-    }
-    if (phone) updateData.phone = phone;
-    if (address) updateData.address = address;
-    if (city) updateData.city = city;
-    if (state) updateData.state = state;
-    if (postal_code) updateData.postal_code = postal_code;
-    if (country) updateData.country = country;
+    if (first_name) updateData.first_name = first_name.trim();
+    if (last_name) updateData.last_name = last_name.trim();
+    if (gender !== undefined) updateData.gender = gender || null;
+    if (email !== undefined) updateData.email = email ? email.toLowerCase() : null;
+    if (phone !== undefined) updateData.phone = phone || null;
+    if (address !== undefined) updateData.address = address || null;
+    if (city !== undefined) updateData.city = city || null;
+    if (state !== undefined) updateData.state = state || null;
+    if (postal_code !== undefined) updateData.postal_code = postal_code || null;
+    if (country !== undefined) updateData.country = country || null;
     if (status && isAuthorized) updateData.status = status;
+    if (date_of_birth !== undefined) updateData.date_of_birth = date_of_birth || null;
+    if (enrollment_date !== undefined) updateData.enrollment_date = enrollment_date || null;
+    if (photo_url !== undefined) updateData.photo_url = photo_url || null;
+    if (religion !== undefined) updateData.religion = religion || null;
+    if (nationality !== undefined) updateData.nationality = nationality || null;
+    if (place_of_birth !== undefined) updateData.place_of_birth = place_of_birth || null;
+    if (guardian_name !== undefined) updateData.guardian_name = guardian_name || null;
+    if (guardian_phone !== undefined) updateData.guardian_phone = guardian_phone || null;
+    if (guardian_relationship !== undefined) updateData.guardian_relationship = guardian_relationship || null;
+    if (guardian_occupation !== undefined) updateData.guardian_occupation = guardian_occupation || null;
+    if (emergency_contact !== undefined) updateData.emergency_contact = emergency_contact || null;
+    if (previous_school !== undefined) updateData.previous_school = previous_school || null;
+    if (medical_conditions !== undefined) updateData.medical_conditions = medical_conditions || null;
 
     updateData.updated_at = new Date();
-    updateData.updated_by = currentUser?.userId;
 
     await db('students').where('id', student.id).update(updateData);
 
