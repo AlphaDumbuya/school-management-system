@@ -102,7 +102,25 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       });
     }
 
-    const totalResult = await query.clone().clearSelect().clearOrder().count('assignments.id as count').first();
+    // Count query — simpler version without submission subquery
+    let countQuery = db('assignments')
+      .leftJoin('subjects', 'assignments.subject_id', 'subjects.id')
+      .count('assignments.id as count');
+
+    if (class_id) countQuery = countQuery.where('assignments.class_id', class_id as string);
+    if (subject_id) countQuery = countQuery.where('assignments.subject_id', subject_id as string);
+    if (teacher_id) countQuery = countQuery.where('assignments.teacher_id', teacher_id as string);
+    if (status) countQuery = countQuery.where('assignments.status', status as string);
+    if (type) countQuery = countQuery.where('assignments.type', type as string);
+    if (search) {
+      const term = `%${(search as string).trim()}%`;
+      countQuery = countQuery.where(function () {
+        this.where('assignments.title', 'ilike', term)
+          .orWhere('subjects.name', 'ilike', term);
+      });
+    }
+
+    const totalResult = await countQuery.first();
     const total = Number(totalResult?.count ?? 0);
     const assignments = await query.limit(limit).offset(offset).orderBy('assignments.due_date', 'desc');
 

@@ -7,7 +7,7 @@ import { apiClient } from '@lib/apiClient';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type AssignmentType = 'homework' | 'classwork' | 'project' | 'test' | 'quiz';
+export type AssignmentType = 'homework' | 'classwork' | 'essay' | 'practical' | 'project' | 'quiz' | 'test' | 'presentation' | 'group_work' | 'revision' | 'reading' | 'exercise';
 export type AssignmentStatus = 'active' | 'closed' | 'draft';
 
 export interface AssignmentRecord {
@@ -65,9 +65,16 @@ export interface ListAssignmentsParams {
 export const ASSIGNMENT_TYPES: { value: AssignmentType; label: string }[] = [
   { value: 'homework', label: 'Homework' },
   { value: 'classwork', label: 'Classwork' },
+  { value: 'essay', label: 'Essay / Composition' },
+  { value: 'practical', label: 'Practical / Lab Work' },
   { value: 'project', label: 'Project' },
-  { value: 'test', label: 'Test' },
   { value: 'quiz', label: 'Quiz' },
+  { value: 'test', label: 'Test' },
+  { value: 'presentation', label: 'Presentation' },
+  { value: 'group_work', label: 'Group Work' },
+  { value: 'revision', label: 'Revision Exercise' },
+  { value: 'reading', label: 'Reading Assignment' },
+  { value: 'exercise', label: 'Exercise / Drill' },
 ];
 
 // ── Service ───────────────────────────────────────────────────────────────────

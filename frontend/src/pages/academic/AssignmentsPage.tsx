@@ -35,9 +35,16 @@ function isOverdue(dueDate: string): boolean {
 const TYPE_LABELS: Record<string, string> = {
   homework: 'Homework',
   classwork: 'Classwork',
+  essay: 'Essay',
+  practical: 'Practical',
   project: 'Project',
-  test: 'Test',
   quiz: 'Quiz',
+  test: 'Test',
+  presentation: 'Presentation',
+  group_work: 'Group Work',
+  revision: 'Revision',
+  reading: 'Reading',
+  exercise: 'Exercise',
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────

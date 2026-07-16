@@ -13,6 +13,7 @@ import { Modal } from '@components/admin/feedback/Modal';
 import { Button } from '@components/ui/button';
 import { FormField } from '@components/admin/forms/FormField';
 import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
+import { RichTextarea } from '@components/admin/forms/RichTextarea';
 import { showToast } from '@utils/toast';
 import { assignmentsService, AssignmentRecord, AssignmentFormData, ASSIGNMENT_TYPES } from '@services/assignmentsService';
 import { classesService } from '@services/classesService';
@@ -354,8 +355,35 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
             Details
           </h3>
           <div className="space-y-4">
-            <FormField label="Description" type="textarea" placeholder="Brief description of the assignment..." error={errors.description?.message} {...register('description')} />
-            <FormField label="Instructions (Optional)" type="textarea" placeholder="Detailed instructions for students..." error={errors.instructions?.message} {...register('instructions')} />
+            <Controller
+              name="description"
+              control={control}
+              render={({ field }) => (
+                <RichTextarea
+                  label="Description"
+                  placeholder="Describe the assignment — use bold, lists, headings to format..."
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.description?.message}
+                  minHeight="100px"
+                />
+              )}
+            />
+            <Controller
+              name="instructions"
+              control={control}
+              render={({ field }) => (
+                <RichTextarea
+                  label="Instructions (Optional)"
+                  placeholder="Step-by-step instructions for students..."
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.instructions?.message}
+                  helperText="Use bullet points and numbered lists for clarity"
+                  minHeight="100px"
+                />
+              )}
+            />
           </div>
         </div>
       </form>
