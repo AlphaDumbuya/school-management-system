@@ -103,7 +103,7 @@ router.get('/', authenticate, authorize('principal', 'teacher'), async (req: Req
     const status = req.query.status as string;
     const search = req.query.search as string;
 
-    let query = db('students').select('id', 'student_id', 'first_name', 'last_name', 'email', 'gender', 'phone', 'photo_url', 'status', 'enrollment_date', 'created_at');
+    let query = db('students').select('*');
 
     // Apply filters
     if (status) {
