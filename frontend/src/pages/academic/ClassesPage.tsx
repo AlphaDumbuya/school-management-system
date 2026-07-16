@@ -3,10 +3,10 @@
  * Full CRUD for school classes and streams.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { BookOpen, Users, BarChart2, Percent, LayoutGrid, List, MapPin, Building2, Edit, Trash2, Search, X, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { BookOpen, Users, BarChart2, Percent, LayoutGrid, List, MapPin, Building2, Edit, Trash2, Search, X, ChevronDown, ChevronRight, SlidersHorizontal, Check } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
@@ -50,6 +50,14 @@ const LEVEL_NAMES: Record<string, string> = {
   SSS3: 'SSS 3',
 };
 
+/** Level groups for organized filter dropdown */
+const LEVEL_GROUPS = [
+  { label: 'Nursery', levels: ['NURSERY1', 'NURSERY2', 'NURSERY3'] },
+  { label: 'Primary', levels: ['CLASS1', 'CLASS2', 'CLASS3', 'CLASS4', 'CLASS5', 'CLASS6'] },
+  { label: 'Junior Secondary (JSS)', levels: ['JSS1', 'JSS2', 'JSS3'] },
+  { label: 'Senior Secondary (SSS)', levels: ['SSS1', 'SSS2', 'SSS3'] },
+];
+
 function formatLevel(lvl: string): string {
   return LEVEL_NAMES[lvl] || lvl;
 }
@@ -59,6 +67,163 @@ function capacityColor(pct: number): 'green' | 'amber' | 'red' {
   if (pct >= 75) return 'amber';
   return 'green';
 }
+
+// ── Level Filter Popover ──────────────────────────────────────────────────────
+
+interface LevelFilterPopoverProps {
+  value: string;
+  onChange: (val: string) => void;
+}
+
+const FILTER_CATEGORIES = [
+  { key: 'nursery', label: 'Nursery', icon: '💒', levels: ['NURSERY1', 'NURSERY2', 'NURSERY3'] },
+  { key: 'primary', label: 'Primary', icon: '📚', levels: ['CLASS1', 'CLASS2', 'CLASS3', 'CLASS4', 'CLASS5', 'CLASS6'] },
+  { key: 'jss', label: 'JSS', icon: '📖', levels: ['JSS1', 'JSS2', 'JSS3'] },
+  { key: 'sss', label: 'SSS', icon: '🎓', levels: ['SSS1', 'SSS2', 'SSS3'] },
+];
+
+const LevelFilterPopover: React.FC<LevelFilterPopoverProps> = ({ value, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        setActiveCategory(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isOpen]);
+
+  // Determine which category the current value belongs to
+  const activeCatForValue = value
+    ? FILTER_CATEGORIES.find((c) => c.levels.includes(value))?.key ?? null
+    : null;
+
+  const handleSelect = (level: string) => {
+    onChange(level);
+    setIsOpen(false);
+    setActiveCategory(null);
+  };
+
+  const handleClear = () => {
+    onChange('');
+    setIsOpen(false);
+    setActiveCategory(null);
+  };
+
+  const displayLabel = value ? (LEVEL_NAMES[value] || value) : 'All Levels';
+
+  return (
+    <div ref={popoverRef} className="relative flex-1 sm:flex-initial">
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => { setIsOpen(!isOpen); setActiveCategory(activeCatForValue); }}
+        className={`w-full sm:w-auto flex items-center justify-between gap-2 pl-3 pr-2.5 py-2.5 sm:py-2 border rounded-lg text-sm font-medium transition-all cursor-pointer min-w-0 ${
+          isOpen
+            ? 'border-blue-500 ring-2 ring-blue-500/20 bg-white dark:bg-gray-800'
+            : value
+              ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400'
+              : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+        }`}
+      >
+        <span className="truncate">{displayLabel}</span>
+        <ChevronDown size={14} className={`flex-shrink-0 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Popover */}
+      {isOpen && (
+        <div className="absolute top-full left-0 sm:left-auto sm:right-0 mt-1.5 z-50 w-[280px] sm:w-[320px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+          {/* Header */}
+          <div className="px-3.5 py-2.5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              {activeCategory ? 'Select Year' : 'Filter by Level'}
+            </span>
+            {value && (
+              <button
+                onClick={handleClear}
+                className="text-[11px] font-semibold text-red-500 hover:text-red-700 dark:hover:text-red-400 transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Content */}
+          <div className="p-2.5">
+            {!activeCategory ? (
+              /* ── Step 1: Category selection ── */
+              <div className="grid grid-cols-2 gap-2">
+                {FILTER_CATEGORIES.map((cat) => {
+                  const isActiveCat = activeCatForValue === cat.key;
+                  return (
+                    <button
+                      key={cat.key}
+                      type="button"
+                      onClick={() => setActiveCategory(cat.key)}
+                      className={`relative flex items-center gap-2.5 p-3 rounded-lg border transition-all text-left ${
+                        isActiveCat
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                          : 'border-gray-100 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-800 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                      }`}
+                    >
+                      <span className="text-lg">{cat.icon}</span>
+                      <div className="min-w-0">
+                        <span className={`block text-sm font-bold ${isActiveCat ? 'text-blue-700 dark:text-blue-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                          {cat.label}
+                        </span>
+                        <span className="block text-[10px] text-gray-400 dark:text-gray-500">
+                          {cat.levels.length} levels
+                        </span>
+                      </div>
+                      <ChevronRight size={14} className="ml-auto text-gray-300 dark:text-gray-600" />
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              /* ── Step 2: Level selection within category ── */
+              <div>
+                {/* Back button */}
+                <button
+                  type="button"
+                  onClick={() => setActiveCategory(null)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 mb-2.5 transition-colors"
+                >
+                  <ChevronRight size={12} className="rotate-180" />
+                  Back to categories
+                </button>
+                <div className="flex flex-wrap gap-1.5">
+                  {FILTER_CATEGORIES.find((c) => c.key === activeCategory)?.levels.map((lvl) => (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={() => handleSelect(lvl)}
+                      className={`px-3.5 py-2 rounded-lg border text-sm font-semibold transition-all ${
+                        value === lvl
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 shadow-sm'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                      }`}
+                    >
+                      {value === lvl && <Check size={12} className="inline mr-1 -ml-0.5" />}
+                      {LEVEL_NAMES[lvl]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -72,8 +237,8 @@ export const ClassesPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
-  // View state: grid (default) or table
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  // View state: table (default) or grid
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
 
   // Modal state
   const [formOpen, setFormOpen] = useState(false);
@@ -82,6 +247,7 @@ export const ClassesPage: React.FC = () => {
     open: false, classId: null,
   });
   const [deactivateTarget, setDeactivateTarget] = useState<ClassRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ClassRecord | null>(null);
   const [selectedRows, setSelectedRows] = useState<ClassRecord[]>([]);
 
   // Fetch classes
@@ -96,18 +262,18 @@ export const ClassesPage: React.FC = () => {
     staleTime: 30_000,
   });
 
-  const classes: ClassRecord[] = (data?.data as any)?.data ?? [];
-  const pagination = (data?.data as any)?.pagination ?? { total: 0, total_pages: 1 };
+  const classes: ClassRecord[] = (data as any)?.data ?? [];
+  const pagination = (data as any)?.pagination ?? { total: 0, total_pages: 1 };
 
   // KPI calculations
   const stats = useMemo(() => {
     const total = pagination.total ?? classes.length;
-    const totalEnrolled = classes.reduce((s, c) => s + (c.enrolled_students ?? 0), 0);
+    const totalEnrolled = classes.reduce((s, c) => s + Number(c.enrolled_students ?? 0), 0);
     const avgSize = classes.length > 0
-      ? Math.round(classes.reduce((s, c) => s + (c.enrolled_students ?? 0), 0) / classes.length)
+      ? Math.round(classes.reduce((s, c) => s + Number(c.enrolled_students ?? 0), 0) / classes.length)
       : 0;
     const avgCapPct = classes.length > 0
-      ? Math.round(classes.reduce((s, c) => s + ((c.enrolled_students ?? 0) / c.capacity) * 100, 0) / classes.length)
+      ? Math.round(classes.reduce((s, c) => s + (Number(c.enrolled_students ?? 0) / c.capacity) * 100, 0) / classes.length)
       : 0;
     return { total, totalEnrolled, avgSize, avgCapPct };
   }, [classes, pagination]);
@@ -123,6 +289,19 @@ export const ClassesPage: React.FC = () => {
       showToast.apiError(res.error);
     }
     setDeactivateTarget(null);
+  };
+
+  // Permanent delete handler
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const res = await classesService.deleteClass(deleteTarget.id);
+    if (res.success !== false) {
+      showToast.deleted('Class');
+      queryClient.invalidateQueries({ queryKey: ['classes'] });
+    } else {
+      showToast.apiError(res.error);
+    }
+    setDeleteTarget(null);
   };
 
   // Column definitions
@@ -162,7 +341,7 @@ export const ClassesPage: React.FC = () => {
       header: 'Enrolled / Capacity',
       cell: ({ row }) => {
         const cls = row.original;
-        const enrolled = cls.enrolled_students ?? 0;
+        const enrolled = Number(cls.enrolled_students ?? 0);
         const pct = Math.min(100, Math.round((enrolled / cls.capacity) * 100));
         return (
           <div className="min-w-[140px]">
@@ -200,13 +379,13 @@ export const ClassesPage: React.FC = () => {
         subtitle="Manage school classes, streams, and enrolment capacity"
         breadcrumbs={[{ label: 'Classes & Streams' }]}
         actions={
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap md:flex-nowrap justify-end">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* View Mode Toggle */}
-            <div className="flex items-center border border-gray-200 dark:border-gray-750 bg-white dark:bg-gray-800 rounded-lg p-0.5 shadow-sm">
+            <div className="flex items-center border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg p-0.5 shadow-sm">
               <button
                 type="button"
                 onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-gray-100 dark:bg-gray-700 text-primary-600 dark:text-primary-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-gray-100 dark:bg-gray-700 text-primary-600 dark:text-primary-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
                 title="Grid View"
               >
                 <LayoutGrid size={18} />
@@ -214,7 +393,7 @@ export const ClassesPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-gray-100 dark:bg-gray-700 text-primary-600 dark:text-primary-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                className={`p-2 rounded-md transition-all ${viewMode === 'table' ? 'bg-gray-100 dark:bg-gray-700 text-primary-600 dark:text-primary-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
                 title="Table View"
               >
                 <List size={18} />
@@ -222,8 +401,8 @@ export const ClassesPage: React.FC = () => {
             </div>
 
             <RoleGuard roles={['principal', 'super_admin']}>
-              <Button variant="default" size="sm" onClick={() => { setEditingClass(null); setFormOpen(true); }} className="flex items-center gap-1 shadow-sm hover:shadow">
-                <span>+ Add <span className="hidden sm:inline">Class</span></span>
+              <Button variant="default" size="sm" onClick={() => { setEditingClass(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm hover:shadow">
+                + Add Class
               </Button>
             </RoleGuard>
           </div>
@@ -255,25 +434,25 @@ export const ClassesPage: React.FC = () => {
         </div>
 
         {/* ── Search & Filter Action Bar ── */}
-        <div className="flex flex-col gap-4 mb-6 transition-all duration-300">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:gap-4 mb-6 transition-all duration-300">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             {/* Search Input Box */}
-            <div className="relative flex-1 max-w-full md:max-w-md">
+            <div className="relative w-full lg:max-w-md">
               <Search
                 size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-550 pointer-events-none"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none"
               />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search class name, room, building..."
-                className="w-full pl-9 pr-8 py-2 bg-transparent dark:bg-transparent border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                className="w-full pl-9 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
               />
               {search && (
                 <button
                   onClick={() => setSearch('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   title="Clear search"
                 >
                   <X size={14} />
@@ -282,38 +461,25 @@ export const ClassesPage: React.FC = () => {
             </div>
 
             {/* Filter Dropdowns */}
-            <div className="flex items-center gap-2.5 w-full sm:w-auto">
-              {/* Level Select */}
-              <div className="relative flex-1 sm:flex-initial sm:w-44">
-                <select
-                  value={levelFilter[0] || ''}
-                  onChange={(e) => setLevelFilter(e.target.value ? [e.target.value] : [])}
-                  className="w-full appearance-none pl-3 pr-8 py-2 bg-transparent dark:bg-transparent border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all"
-                >
-                  <option value="">All Levels</option>
-                  {LEVELS.map((l) => (
-                    <option key={l} value={l} className="bg-white dark:bg-gray-800">
-                      {LEVEL_NAMES[l] || l}
-                    </option>
-                  ))}
-                </select>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 dark:text-gray-550">
-                  <ChevronDown size={14} />
-                </div>
-              </div>
+            <div className="flex items-center gap-2 sm:gap-2.5 w-full lg:w-auto">
+              {/* Level Filter — cascading popover */}
+              <LevelFilterPopover
+                value={levelFilter[0] || ''}
+                onChange={(val) => setLevelFilter(val ? [val] : [])}
+              />
 
               {/* Status Select */}
-              <div className="relative flex-1 sm:flex-initial sm:w-40">
+              <div className="relative flex-1 sm:flex-initial sm:min-w-[140px]">
                 <select
                   value={statusFilter[0] || ''}
                   onChange={(e) => setStatusFilter(e.target.value ? [e.target.value] : [])}
-                  className="w-full appearance-none pl-3 pr-8 py-2 bg-transparent dark:bg-transparent border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all"
+                  className="w-full appearance-none pl-3 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all"
                 >
                   <option value="">All Statuses</option>
                   <option value="active" className="bg-white dark:bg-gray-800">Active</option>
                   <option value="inactive" className="bg-white dark:bg-gray-800">Inactive</option>
                 </select>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 dark:text-gray-550">
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 dark:text-gray-500">
                   <ChevronDown size={14} />
                 </div>
               </div>
@@ -412,7 +578,7 @@ export const ClassesPage: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {classes.map((cls) => {
-                const enrolled = cls.enrolled_students ?? 0;
+                const enrolled = Number(cls.enrolled_students ?? 0);
                 const pct = Math.min(100, Math.round((enrolled / cls.capacity) * 100));
                 const capColor = capacityColor(pct);
 
@@ -572,6 +738,11 @@ export const ClassesPage: React.FC = () => {
                 variant: 'destructive',
                 onClick: (row) => setDeactivateTarget(row),
               },
+              {
+                label: 'Delete',
+                variant: 'destructive',
+                onClick: (row) => setDeleteTarget(row),
+              },
             ]}
           />
         )}
@@ -601,6 +772,16 @@ export const ClassesPage: React.FC = () => {
         title="Deactivate Class"
         message={`Are you sure you want to deactivate "${deactivateTarget?.name}"? This will hide the class from active listings.`}
         confirmLabel="Deactivate"
+      />
+
+      {/* Delete Confirmation */}
+      <ConfirmationDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Class Permanently"
+        message={`Are you sure you want to permanently delete "${deleteTarget?.name}"? This cannot be undone. Classes with enrollment history cannot be deleted.`}
+        confirmLabel="Delete Permanently"
       />
     </MainLayout>
   );

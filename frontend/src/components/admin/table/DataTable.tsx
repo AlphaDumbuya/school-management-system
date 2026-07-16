@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -58,24 +58,31 @@ const PAGE_SIZES = [10, 25, 50, 100];
 
 function RowActionMenu<TData>({ row, actions }: { row: TData; actions: RowAction<TData>[] }) {
   const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={menuRef}>
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
         aria-label="Row actions"
-        className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
       >
-        <MoreHorizontal size={16} className="text-gray-500" />
+        <MoreHorizontal size={16} className="text-gray-500 dark:text-gray-400" />
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-xl shadow-lg min-w-[150px] py-1">
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          <div className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl min-w-[160px] py-1"
+            style={{
+              top: menuRef.current ? menuRef.current.getBoundingClientRect().bottom + 4 : 0,
+              right: typeof window !== 'undefined' ? window.innerWidth - (menuRef.current?.getBoundingClientRect().right ?? 0) : 0,
+            }}
+          >
             {actions.map((action, i) => (
               <button
                 key={i}
-                className={`w-full text-left px-3.5 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors ${
-                  action.variant === 'destructive' ? 'text-red-600' : 'text-gray-700'
+                className={`w-full text-left px-3.5 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors ${
+                  action.variant === 'destructive' ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-200'
                 }`}
                 onClick={() => { action.onClick(row); setOpen(false); }}
               >
@@ -399,28 +406,28 @@ export function DataTable<TData>({
 
       {/* ── Pagination Footer (responsive) ────────────────────────────── */}
       {!isLoading && !error && total > 0 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2 sm:px-4 py-3 mt-2 text-xs sm:text-sm text-gray-600">
-          {/* Rows per page selector */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-3 mt-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+          {/* Rows per page selector + total */}
           <div className="flex items-center gap-2">
-            <span className="whitespace-nowrap text-gray-500">Rows:</span>
+            <span className="whitespace-nowrap text-gray-500 dark:text-gray-400">Rows:</span>
             <select
               value={pageSize}
               onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-              className="border border-gray-300 bg-white text-gray-700 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
-            <span className="text-gray-400 hidden sm:inline">·</span>
-            <span className="text-gray-500 hidden sm:inline">{total} total</span>
+            <span className="text-gray-400 dark:text-gray-500">·</span>
+            <span className="text-gray-500 dark:text-gray-400">{total} total</span>
           </div>
 
           {/* Page navigation */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {/* First page */}
             <button
               onClick={() => handlePageChange(0)}
               disabled={pageIndex === 0}
-              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500 hidden sm:block"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500 dark:text-gray-400 hidden sm:flex items-center justify-center"
               aria-label="First page"
             >
               <ChevronsLeft size={16} />
@@ -429,14 +436,14 @@ export function DataTable<TData>({
             <button
               onClick={() => handlePageChange(pageIndex - 1)}
               disabled={!table.getCanPreviousPage()}
-              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500 dark:text-gray-400 flex items-center justify-center"
               aria-label="Previous page"
             >
               <ChevronLeft size={16} />
             </button>
 
             {/* Page indicator */}
-            <span className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg min-w-[80px] text-center">
+            <span className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg min-w-[72px] sm:min-w-[80px] text-center">
               {pageIndex + 1} / {pageCount || 1}
             </span>
 
@@ -444,7 +451,7 @@ export function DataTable<TData>({
             <button
               onClick={() => handlePageChange(pageIndex + 1)}
               disabled={!table.getCanNextPage()}
-              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500 dark:text-gray-400 flex items-center justify-center"
               aria-label="Next page"
             >
               <ChevronRight size={16} />
@@ -453,7 +460,7 @@ export function DataTable<TData>({
             <button
               onClick={() => handlePageChange((pageCount || 1) - 1)}
               disabled={pageIndex >= (pageCount || 1) - 1}
-              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500 hidden sm:block"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500 dark:text-gray-400 hidden sm:flex items-center justify-center"
               aria-label="Last page"
             >
               <ChevronsRight size={16} />

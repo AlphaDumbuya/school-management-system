@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { X } from 'lucide-react';
 import clsx from 'clsx';
 
-export type ModalSize = 'sm' | 'md' | 'lg';
+export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
 export interface ModalProps {
   isOpen: boolean;
@@ -18,6 +18,7 @@ const SIZE_CLASSES: Record<ModalSize, string> = {
   sm: 'sm:max-w-[448px]',
   md: 'sm:max-w-[576px]',
   lg: 'sm:max-w-[768px]',
+  xl: 'sm:max-w-[900px]',
 };
 
 export const Modal: React.FC<ModalProps> = ({
@@ -29,24 +30,18 @@ export const Modal: React.FC<ModalProps> = ({
   children,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
-  // Capture the element that was focused before the modal opened
   const previousFocusRef = useRef<Element | null>(null);
 
-  // Focus trap + Escape key + body scroll lock
   useEffect(() => {
     if (!isOpen) return;
 
-    // Capture previously focused element
     previousFocusRef.current = document.activeElement;
 
-    // Body scroll lock
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    // Focus the dialog itself initially so screen readers announce it
     dialogRef.current?.focus();
 
-    // Focus trap handler
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
@@ -73,13 +68,11 @@ export const Modal: React.FC<ModalProps> = ({
       const last = focusable[focusable.length - 1];
 
       if (e.shiftKey) {
-        // Shift+Tab: if focus is on first, wrap to last
         if (document.activeElement === first) {
           e.preventDefault();
           last.focus();
         }
       } else {
-        // Tab: if focus is on last, wrap to first
         if (document.activeElement === last) {
           e.preventDefault();
           first.focus();
@@ -92,7 +85,6 @@ export const Modal: React.FC<ModalProps> = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = previousOverflow;
-      // Restore focus to the previously focused element
       if (previousFocusRef.current && 'focus' in previousFocusRef.current) {
         (previousFocusRef.current as HTMLElement).focus();
       }
@@ -103,15 +95,15 @@ export const Modal: React.FC<ModalProps> = ({
 
   const content = (
     <>
-      {/* Backdrop */}
+      {/* Backdrop with fade */}
       <div
-        className="fixed inset-0 bg-black/50 z-40"
+        className="fixed inset-0 bg-black/50 backdrop-blur-[1px] z-40 animate-in fade-in duration-150"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Dialog wrapper — sheet on mobile, centred on sm+ */}
-      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      {/* Dialog wrapper — full-sheet on mobile, centred card on sm+ */}
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6">
         <div
           ref={dialogRef}
           role="dialog"
@@ -119,36 +111,47 @@ export const Modal: React.FC<ModalProps> = ({
           aria-labelledby={title ? 'modal-title' : undefined}
           tabIndex={-1}
           className={clsx(
-            'w-full h-dvh sm:h-auto sm:rounded-xl bg-white shadow-xl overflow-hidden flex flex-col',
+            // Layout & sizing
+            'w-full flex flex-col',
+            // Mobile: full-screen sheet
+            'h-dvh',
+            // Desktop: auto-height with max constraint, rounded corners
+            'sm:h-auto sm:max-h-[88vh] sm:rounded-2xl',
+            // Appearance
+            'bg-white dark:bg-gray-900 shadow-2xl overflow-hidden',
+            // Animation
+            'animate-in fade-in slide-in-from-bottom-2 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200',
             'focus:outline-none',
             SIZE_CLASSES[size]
           )}
         >
-          {/* Header */}
+          {/* Header — sticky on scroll */}
           {title && (
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+            <div className="flex-shrink-0 flex items-center justify-between px-5 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
               <h2
                 id="modal-title"
-                className="text-lg font-semibold text-gray-900"
+                className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate pr-4"
               >
                 {title}
               </h2>
               <button
                 onClick={onClose}
                 aria-label="Close"
-                className="p-1 rounded-lg hover:bg-gray-100 transition-colors"
+                className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
           )}
 
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto px-6 py-4">{children}</div>
+          {/* Body — scrollable content area */}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 sm:px-6 py-5 scroll-smooth">
+            {children}
+          </div>
 
-          {/* Footer */}
+          {/* Footer — sticky at bottom */}
           {footer && (
-            <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200">
+            <div className="flex-shrink-0 flex items-center justify-end gap-3 px-5 sm:px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
               {footer}
             </div>
           )}

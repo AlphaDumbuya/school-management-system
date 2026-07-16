@@ -90,6 +90,11 @@ export const classesService = {
     return apiClient.delete(`/api/v1/classes/${id}`);
   },
 
+  /** DELETE /api/v1/classes/:id/permanent — hard delete */
+  async deleteClass(id: string | number) {
+    return apiClient.delete(`/api/v1/classes/${id}/permanent`);
+  },
+
   /** GET /api/v1/classes/:id/students — students enrolled in a class */
   async getClassStudents(id: string | number) {
     return apiClient.get<ClassStudentsResponse>(`/api/v1/classes/${id}/students`);

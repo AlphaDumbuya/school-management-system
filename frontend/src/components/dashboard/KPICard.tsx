@@ -62,7 +62,7 @@ export const KPICard: React.FC<KPICardProps> = ({
   return (
     <div
       className={clsx(
-        'p-6 rounded-lg border-l-4 transition-all duration-200',
+        'p-4 sm:p-6 rounded-lg border-l-4 transition-all duration-200',
         colorClasses[color],
         onClick && 'cursor-pointer hover:shadow-md',
         isLoading && 'opacity-50 pointer-events-none'
@@ -70,20 +70,20 @@ export const KPICard: React.FC<KPICardProps> = ({
       onClick={onClick}
     >
       {/* Header with icon and trend */}
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <p className="text-sm font-medium text-gray-600">{title}</p>
-          {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+      <div className="flex items-start justify-between mb-2 sm:mb-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">{title}</p>
+          {subtitle && <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 truncate">{subtitle}</p>}
         </div>
-        {icon && <div className={clsx('text-xl', textColorClasses[color])}>{icon}</div>}
+        {icon && <div className={clsx('text-lg sm:text-xl flex-shrink-0 ml-2', textColorClasses[color])}>{icon}</div>}
       </div>
 
       {/* Value */}
-      <div className="mb-2">
+      <div className="mb-1 sm:mb-2">
         {isLoading ? (
-          <div className="h-8 bg-gray-200 rounded animate-pulse w-1/2" />
+          <div className="h-6 sm:h-8 bg-gray-200 rounded animate-pulse w-1/2" />
         ) : (
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 truncate">{value}</p>
         )}
       </div>
 
@@ -91,14 +91,14 @@ export const KPICard: React.FC<KPICardProps> = ({
       {trend && (
         <div
           className={clsx(
-            'flex items-center gap-1 text-sm font-semibold',
+            'flex items-center gap-1 text-xs sm:text-sm font-semibold',
             trend.isPositive ? 'text-green-600' : 'text-red-600'
           )}
         >
           {trend.isPositive ? (
-            <TrendingUp className="w-4 h-4" />
+            <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           ) : (
-            <TrendingDown className="w-4 h-4" />
+            <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           )}
           <span>{Math.abs(trend.value)}%</span>
         </div>
