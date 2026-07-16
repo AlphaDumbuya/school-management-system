@@ -52,9 +52,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 const RELIGIONS = ['Christianity', 'Islam', 'Traditional', 'Other'];
-const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const RELATIONSHIPS = ['Father', 'Mother', 'Guardian', 'Uncle', 'Aunt', 'Grandparent', 'Sibling', 'Other'];
-const HOME_LANGUAGES = ['Krio', 'Temne', 'Mende', 'Limba', 'Kono', 'Susu', 'Fula', 'Loko', 'Mandingo', 'Sherbro', 'Kissi', 'English', 'Other'];
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -255,7 +253,7 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
           </div>
 
           {/* Additional personal fields */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-4">
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Religion</label>
               <select {...register('religion')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -265,20 +263,13 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
             </div>
             <FormField label="Nationality" placeholder="Sierra Leonean" error={errors.nationality?.message} {...register('nationality')} />
             <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Blood Group</label>
-              <select {...register('blood_group')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select...</option>
-                {BLOOD_GROUPS.map((bg) => <option key={bg} value={bg}>{bg}</option>)}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Enrollment Date</label>
               <input type="date" {...register('enrollment_date')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
-          {/* Class Assignment + Additional */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+          {/* Class Assignment */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             <Controller
               name="class_id"
               control={control}
@@ -294,13 +285,6 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
               )}
             />
             <FormField label="Place of Birth" placeholder="e.g. Makeni" error={errors.place_of_birth?.message} {...register('place_of_birth')} />
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Home Language</label>
-              <select {...register('home_language')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Select...</option>
-                {HOME_LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
-              </select>
-            </div>
           </div>
         </div>
 
@@ -314,9 +298,8 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
           <div className="mt-4">
             <FormField label="Address" placeholder="e.g. 10 Siaka Stevens Street" error={errors.address?.message} {...register('address')} />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             <FormField label="City / Town" placeholder="e.g. Freetown" error={errors.city?.message} {...register('city')} />
-            <FormField label="District" placeholder="e.g. Western Area Urban" error={errors.state?.message} {...register('state')} />
             <FormField label="Country" placeholder="Sierra Leone" error={errors.country?.message} {...register('country')} />
           </div>
         </div>
