@@ -40,6 +40,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const LEVEL_LABELS: Record<string, string> = {
   all: 'All Levels',
+  nursery: 'Nursery',
   primary: 'Primary',
   jss: 'JSS',
   sss: 'SSS',

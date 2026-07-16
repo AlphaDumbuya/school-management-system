@@ -100,7 +100,12 @@ export const TimetablesPage: React.FC = () => {
   // Find slot for a given day + period
   const getSlot = (day: string, periodStart: string, periodEnd: string): TimetableSlot | undefined => {
     return (weekly[day] || []).find(
-      (slot: TimetableSlot) => slot.start_time === periodStart && slot.end_time === periodEnd
+      (slot: TimetableSlot) => {
+        // Handle PostgreSQL time format (HH:MM:SS vs HH:MM)
+        const slotStart = (slot.start_time || '').substring(0, 5);
+        const slotEnd = (slot.end_time || '').substring(0, 5);
+        return slotStart === periodStart && slotEnd === periodEnd;
+      }
     );
   };
 

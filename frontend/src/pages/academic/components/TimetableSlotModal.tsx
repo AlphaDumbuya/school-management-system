@@ -104,7 +104,7 @@ export const TimetableSlotModal: React.FC<TimetableSlotModalProps> = ({
     if (isOpen && editingSlot) {
       // Find matching period index
       const periodIdx = periods.findIndex(
-        (p) => p.start === editingSlot.start_time && p.end === editingSlot.end_time
+        (p) => p.start === editingSlot.start_time.substring(0, 5) && p.end === editingSlot.end_time.substring(0, 5)
       );
       reset({
         subject_id: editingSlot.subject_id,
