@@ -7,7 +7,7 @@ import { apiClient } from '@lib/apiClient';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type ExamType = 'mid_term' | 'end_of_term' | 'mock' | 'promotion' | 'continuous_assessment' | 'npse' | 'bece' | 'wassce';
+export type ExamType = 'mid_term' | 'end_of_term' | 'mock' | 'promotion' | 'continuous_assessment';
 export type ExamTerm = 'first_term' | 'second_term' | 'third_term';
 export type ExamStatus = 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
 
@@ -73,9 +73,6 @@ export const EXAM_TYPES: { value: ExamType; label: string; description: string }
   { value: 'end_of_term', label: 'End of Term Exam', description: 'Final exam for the term (70% of final)' },
   { value: 'mock', label: 'Mock Exam', description: 'Practice exam before external exams' },
   { value: 'promotion', label: 'Promotion Exam', description: 'Determines advancement to next class' },
-  { value: 'npse', label: 'NPSE', description: 'National Primary School Examination (Class 6)' },
-  { value: 'bece', label: 'BECE', description: 'Basic Education Certificate Examination (JSS 3)' },
-  { value: 'wassce', label: 'WASSCE', description: 'West African Senior School Certificate (SSS 3)' },
 ];
 
 export const EXAM_TERMS: { value: ExamTerm; label: string }[] = [

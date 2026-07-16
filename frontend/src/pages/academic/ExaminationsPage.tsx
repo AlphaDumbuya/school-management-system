@@ -19,6 +19,7 @@ import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { examinationsService, ExaminationRecord, EXAM_TYPES, EXAM_TERMS, EXAM_STATUSES } from '@services/examinationsService';
 import { ExaminationFormModal } from './components/ExaminationFormModal';
+import { ExaminationDetailModal } from './components/ExaminationDetailModal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ export const ExaminationsPage: React.FC = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<ExaminationRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExaminationRecord | null>(null);
+  const [viewingExam, setViewingExam] = useState<ExaminationRecord | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['examinations', { search, typeFilter, termFilter, statusFilter, page, pageSize }],
@@ -233,6 +235,7 @@ export const ExaminationsPage: React.FC = () => {
           emptyMessage="No examinations found"
           emptyAction={{ label: 'Schedule your first exam', onClick: () => { setEditingExam(null); setFormOpen(true); } }}
           rowActions={(row) => [
+            { label: 'View Details', onClick: (r) => setViewingExam(r) },
             { label: 'Edit', onClick: (r) => { setEditingExam(r); setFormOpen(true); } },
             { label: 'Delete', variant: 'destructive', onClick: (r) => setDeleteTarget(r) },
           ]}
@@ -253,6 +256,12 @@ export const ExaminationsPage: React.FC = () => {
         title="Delete Examination"
         message={`Delete "${deleteTarget?.title}"? This action cannot be undone.`}
         confirmLabel="Delete"
+      />
+
+      <ExaminationDetailModal
+        isOpen={!!viewingExam}
+        onClose={() => setViewingExam(null)}
+        exam={viewingExam}
       />
     </MainLayout>
   );

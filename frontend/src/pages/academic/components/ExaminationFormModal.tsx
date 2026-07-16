@@ -12,6 +12,7 @@ import { Modal } from '@components/admin/feedback/Modal';
 import { Button } from '@components/ui/button';
 import { FormField } from '@components/admin/forms/FormField';
 import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
+import { RichTextarea } from '@components/admin/forms/RichTextarea';
 import { showToast } from '@utils/toast';
 import { examinationsService, ExaminationRecord, ExamFormData, EXAM_TYPES, EXAM_TERMS } from '@services/examinationsService';
 import { classesService } from '@services/classesService';
@@ -254,7 +255,21 @@ export const ExaminationFormModal: React.FC<ExaminationFormModalProps> = ({
         </div>
 
         {/* Instructions */}
-        <FormField label="Instructions / Notes (Optional)" type="textarea" placeholder="General exam instructions for invigilators and students..." error={errors.instructions?.message} {...register('instructions')} />
+        <Controller
+          name="instructions"
+          control={control}
+          render={({ field }) => (
+            <RichTextarea
+              label="Instructions / Notes (Optional)"
+              placeholder="General exam instructions for invigilators and students..."
+              value={field.value}
+              onChange={field.onChange}
+              error={errors.instructions?.message}
+              helperText="Use bullet points and formatting for clarity"
+              minHeight="100px"
+            />
+          )}
+        />
       </form>
     </Modal>
   );
