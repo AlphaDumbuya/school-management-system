@@ -1,0 +1,211 @@
+/**
+ * AdmissionFormModal — Multi-step admission application form
+ * Sierra Leone school format: Child Info, Guardian, Medical, Emergency, Documents
+ */
+
+import React, { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Modal } from '@components/admin/feedback/Modal';
+import { Button } from '@components/ui/button';
+import { FormField } from '@components/admin/forms/FormField';
+import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
+import { FileUploader } from '@components/admin/forms/FileUploader';
+import { showToast } from '@utils/toast';
+import { admissionsService } from '@services/admissionsService';
+import { classesService } from '@services/classesService';
+
+const RELATIONSHIPS = ['Father', 'Mother', 'Guardian'];
+const RELIGIONS = ['Christianity', 'Islam', 'Traditional', 'Other'];
+
+interface AdmissionFormModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, onClose, onSuccess }) => {
+  const [step, setStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  // Form data
+  const [form, setForm] = useState<any>({
+    child_first_name: '', child_middle_name: '', child_last_name: '',
+    child_dob: '', child_gender: '', child_nationality: 'Sierra Leonean',
+    child_religion: '', child_place_of_birth: '', class_applying_for: '',
+    child_address: '', previous_school: '', last_grade_attained: '', child_photo_url: '',
+    guardian_first_name: '', guardian_middle_name: '', guardian_last_name: '',
+    guardian_relationship: '', guardian_phone: '', guardian_alt_phone: '',
+    guardian_email: '', guardian_occupation: '', guardian_address: '',
+    guardian_nationality: 'Sierra Leonean', guardian_national_id: '',
+    takes_medication: false, medication_details: '',
+    has_allergies: false, allergy_details: '',
+    has_chronic_illness: false, chronic_illness_details: '',
+    allow_first_aid: true,
+    emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '',
+  });
+
+  const updateForm = (key: string, value: any) => setForm((f: any) => ({ ...f, [key]: value }));
+
+  // Fetch classes
+  const { data: classesData } = useQuery({
+    queryKey: ['admission-classes'], queryFn: () => classesService.listClasses({ limit: 100 }),
+    staleTime: 60_000, enabled: isOpen,
+  });
+  const classes = (classesData as any)?.data ?? [];
+  const classOptions = useMemo(() => classes.map((c: any) => ({ value: String(c.id), label: c.name, sublabel: c.level })), [classes]);
+
+  const handleSubmit = async () => {
+    if (!form.child_first_name || !form.child_last_name || !form.child_dob || !form.child_gender) {
+      setServerError('Please fill in all required child information');
+      setStep(1); return;
+    }
+    if (!form.guardian_first_name || !form.guardian_last_name || !form.guardian_phone || !form.guardian_relationship) {
+      setServerError('Please fill in all required guardian information');
+      setStep(2); return;
+    }
+    setServerError(null);
+    setIsSubmitting(true);
+    try {
+      const res = await admissionsService.submitApplication(form);
+      if (res.success === false) throw new Error(res.error ?? 'Submission failed');
+      showToast.success('Application submitted');
+      onSuccess(); onClose();
+      setStep(1);
+      setForm({ child_first_name: '', child_middle_name: '', child_last_name: '', child_dob: '', child_gender: '', child_nationality: 'Sierra Leonean', child_religion: '', child_place_of_birth: '', class_applying_for: '', child_address: '', previous_school: '', last_grade_attained: '', child_photo_url: '', guardian_first_name: '', guardian_middle_name: '', guardian_last_name: '', guardian_relationship: '', guardian_phone: '', guardian_alt_phone: '', guardian_email: '', guardian_occupation: '', guardian_address: '', guardian_nationality: 'Sierra Leonean', guardian_national_id: '', takes_medication: false, medication_details: '', has_allergies: false, allergy_details: '', has_chronic_illness: false, chronic_illness_details: '', allow_first_aid: true, emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '' });
+    } catch (err) {
+      setServerError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally { setIsSubmitting(false); }
+  };
+
+  const totalSteps = 4;
+  const stepTitles = ['Child Information', 'Parent / Guardian', 'Medical Information', 'Emergency Contact'];
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Admission Application" size="xl"
+      footer={
+        <div className="flex items-center justify-between w-full gap-3">
+          <div className="text-xs text-gray-400 dark:text-gray-500 hidden sm:block">Step {step} of {totalSteps}: {stepTitles[step - 1]}</div>
+          <div className="flex items-center gap-2 ml-auto">
+            {step > 1 && <Button variant="ghost" onClick={() => setStep(step - 1)}>Back</Button>}
+            {step < totalSteps && <Button variant="default" onClick={() => setStep(step + 1)}>Next</Button>}
+            {step === totalSteps && <Button variant="default" disabled={isSubmitting} onClick={handleSubmit}>{isSubmitting ? 'Submitting…' : 'Submit Application'}</Button>}
+          </div>
+        </div>
+      }
+    >
+      {serverError && <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">{serverError}</div>}
+
+      {/* Step indicator */}
+      <div className="flex items-center gap-1 mb-6">
+        {Array.from({ length: totalSteps }).map((_, i) => (
+          <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i < step ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+        ))}
+      </div>
+
+      {/* Step 1: Child Information */}
+      {step === 1 && (
+        <div className="space-y-4">
+          <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest mb-3">1. Child's Personal Information</h3>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="sm:w-[140px]">
+              <FileUploader label="Photo" value={form.child_photo_url} onChange={(v) => updateForm('child_photo_url', v)} accept="image/*" maxSizeMB={2} placeholder="Upload" enableCamera previewType="image" />
+            </div>
+            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">First Name *</label><input value={form.child_first_name} onChange={(e) => updateForm('child_first_name', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+              <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Middle Name</label><input value={form.child_middle_name} onChange={(e) => updateForm('child_middle_name', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+              <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Last Name *</label><input value={form.child_last_name} onChange={(e) => updateForm('child_last_name', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Date of Birth *</label><input type="date" value={form.child_dob} onChange={(e) => updateForm('child_dob', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Sex *</label><select value={form.child_gender} onChange={(e) => updateForm('child_gender', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select...</option><option value="male">Male</option><option value="female">Female</option></select></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Nationality</label><input value={form.child_nationality} onChange={(e) => updateForm('child_nationality', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Religion</label><select value={form.child_religion} onChange={(e) => updateForm('child_religion', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select...</option>{RELIGIONS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Place of Birth</label><input value={form.child_place_of_birth} onChange={(e) => updateForm('child_place_of_birth', e.target.value)} placeholder="e.g. Freetown" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            <SearchableSelect label="Class Applying For *" options={classOptions} value={form.class_applying_for} onChange={(v) => updateForm('class_applying_for', v)} placeholder="Select class..." searchPlaceholder="Search..." />
+          </div>
+          <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Home Address</label><input value={form.child_address} onChange={(e) => updateForm('child_address', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Previous School</label><input value={form.previous_school} onChange={(e) => updateForm('previous_school', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Last Grade Attained</label><input value={form.last_grade_attained} onChange={(e) => updateForm('last_grade_attained', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Guardian */}
+      {step === 2 && (
+        <div className="space-y-4">
+          <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest mb-3">2. Parent / Guardian Information</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">First Name *</label><input value={form.guardian_first_name} onChange={(e) => updateForm('guardian_first_name', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Middle Name</label><input value={form.guardian_middle_name} onChange={(e) => updateForm('guardian_middle_name', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Last Name *</label><input value={form.guardian_last_name} onChange={(e) => updateForm('guardian_last_name', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Relationship *</label><select value={form.guardian_relationship} onChange={(e) => updateForm('guardian_relationship', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Select...</option>{RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Phone *</label><input type="tel" value={form.guardian_phone} onChange={(e) => updateForm('guardian_phone', e.target.value)} placeholder="+232..." className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Alt Phone</label><input type="tel" value={form.guardian_alt_phone} onChange={(e) => updateForm('guardian_alt_phone', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Email</label><input type="email" value={form.guardian_email} onChange={(e) => updateForm('guardian_email', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Occupation</label><input value={form.guardian_occupation} onChange={(e) => updateForm('guardian_occupation', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+          </div>
+          <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Home Address</label><input value={form.guardian_address} onChange={(e) => updateForm('guardian_address', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Nationality</label><input value={form.guardian_nationality} onChange={(e) => updateForm('guardian_nationality', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">National ID / Passport No.</label><input value={form.guardian_national_id} onChange={(e) => updateForm('guardian_national_id', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Medical */}
+      {step === 3 && (
+        <div className="space-y-4">
+          <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest mb-3">3. Child's Medical Information</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <span className="text-sm text-gray-700 dark:text-gray-300">Does your child regularly take medication?</span>
+              <select value={form.takes_medication ? 'yes' : 'no'} onChange={(e) => updateForm('takes_medication', e.target.value === 'yes')} className="px-3 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"><option value="no">No</option><option value="yes">Yes</option></select>
+            </div>
+            {form.takes_medication && <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Specify medication(s)</label><input value={form.medication_details} onChange={(e) => updateForm('medication_details', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>}
+            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <span className="text-sm text-gray-700 dark:text-gray-300">Known allergies?</span>
+              <select value={form.has_allergies ? 'yes' : 'no'} onChange={(e) => updateForm('has_allergies', e.target.value === 'yes')} className="px-3 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"><option value="no">No</option><option value="yes">Yes</option></select>
+            </div>
+            {form.has_allergies && <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Describe allergies</label><input value={form.allergy_details} onChange={(e) => updateForm('allergy_details', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>}
+            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <span className="text-sm text-gray-700 dark:text-gray-300">Chronic illness or condition?</span>
+              <select value={form.has_chronic_illness ? 'yes' : 'no'} onChange={(e) => updateForm('has_chronic_illness', e.target.value === 'yes')} className="px-3 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"><option value="no">No</option><option value="yes">Yes</option></select>
+            </div>
+            {form.has_chronic_illness && <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Describe condition</label><input value={form.chronic_illness_details} onChange={(e) => updateForm('chronic_illness_details', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>}
+            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <span className="text-sm text-gray-700 dark:text-gray-300">May school administer first aid?</span>
+              <select value={form.allow_first_aid ? 'yes' : 'no'} onChange={(e) => updateForm('allow_first_aid', e.target.value === 'yes')} className="px-3 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"><option value="yes">Yes</option><option value="no">No</option></select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 4: Emergency Contact */}
+      {step === 4 && (
+        <div className="space-y-4">
+          <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest mb-3">4. Emergency Contact (Other Than Parent/Guardian)</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Full Name</label><input value={form.emergency_contact_name} onChange={(e) => updateForm('emergency_contact_name', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Relationship</label><input value={form.emergency_contact_relationship} onChange={(e) => updateForm('emergency_contact_relationship', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Phone Number</label><input type="tel" value={form.emergency_contact_phone} onChange={(e) => updateForm('emergency_contact_phone', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+          </div>
+          <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950/20 rounded-xl border border-blue-200 dark:border-blue-800">
+            <p className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-1">Ready to Submit</p>
+            <p className="text-xs text-blue-600 dark:text-blue-400">By submitting, you confirm all information is accurate. The application will be reviewed by the admissions team.</p>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+};
+
+export default AdmissionFormModal;

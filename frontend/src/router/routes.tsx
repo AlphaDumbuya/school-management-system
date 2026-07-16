@@ -25,6 +25,7 @@ import AssignmentsPage from '@pages/academic/AssignmentsPage';
 import ExaminationsPage from '@pages/academic/ExaminationsPage';
 import ResultsPage from '@pages/academic/ResultsPage';
 import StudentDirectoryPage from '@pages/students/StudentDirectoryPage';
+import AdmissionsPage from '@pages/students/AdmissionsPage';
 import DisciplinePage from '@pages/discipline/DisciplinePage';
 import { EventsPage } from '@pages/events/EventsPage';
 import { EventDetailsPage } from '@pages/events/EventDetailsPage';
@@ -154,7 +155,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'students/admissions',
-          element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><AdmissionsPage /></P>,
         },
         {
           path: 'students/profiles',
