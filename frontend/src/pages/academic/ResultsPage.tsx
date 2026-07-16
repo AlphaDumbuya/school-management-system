@@ -22,6 +22,7 @@ import { resultsService, GradeRecord, TERMS, DEFAULT_GRADING_SCALE } from '@serv
 import { classesService } from '@services/classesService';
 import { subjectsService } from '@services/subjectsService';
 import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
+import { GradeEntryModal } from './components/GradeEntryModal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,7 @@ export const ResultsPage: React.FC = () => {
   const [pageSize] = useState(50);
 
   const [deleteTarget, setDeleteTarget] = useState<GradeRecord | null>(null);
+  const [gradeEntryOpen, setGradeEntryOpen] = useState(false);
 
   // Fetch classes & subjects for filters
   const { data: classesData } = useQuery({
@@ -186,8 +188,8 @@ export const ResultsPage: React.FC = () => {
         breadcrumbs={[{ label: 'Results & Grades' }]}
         actions={
           <RoleGuard roles={['principal', 'super_admin', 'teacher']}>
-            <Button variant="default" size="sm" className="whitespace-nowrap shadow-sm" disabled>
-              + Enter Grades (Coming Soon)
+            <Button variant="default" size="sm" className="whitespace-nowrap shadow-sm" onClick={() => setGradeEntryOpen(true)}>
+              + Enter Grades
             </Button>
           </RoleGuard>
         }
@@ -288,6 +290,12 @@ export const ResultsPage: React.FC = () => {
         title="Delete Result"
         message={`Delete the grade for ${deleteTarget?.student_name} in ${deleteTarget?.subject_name}?`}
         confirmLabel="Delete"
+      />
+
+      <GradeEntryModal
+        isOpen={gradeEntryOpen}
+        onClose={() => setGradeEntryOpen(false)}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['results'] })}
       />
     </MainLayout>
   );
