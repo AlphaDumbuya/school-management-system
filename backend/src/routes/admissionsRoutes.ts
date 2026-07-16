@@ -22,14 +22,19 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
     const academicYear = req.body.academic_year || `${year}/${nextYear}`;
 
     // Generate application ID
-    const count = await db('admission_applications').where('application_id', 'like', `ADM-${year}-%`).count('* as count').first();
+    const count = await db('admission_applications').where('application_number', 'like', `ADM-${year}-%`).count('* as count').first();
     const nextNum = Number(count?.count ?? 0) + 1;
     const applicationId = `ADM-${year}-${String(nextNum).padStart(5, '0')}`;
 
     const [inserted] = await db('admission_applications').insert({
-      application_id: applicationId,
+      application_number: applicationId,
       academic_year: academicYear,
-      // Child info
+      // Legacy columns (from old schema - required NOT NULL)
+      first_name: req.body.child_first_name,
+      last_name: req.body.child_last_name,
+      date_of_birth: req.body.child_dob || null,
+      gender: req.body.child_gender || null,
+      // Child info (new columns)
       child_first_name: req.body.child_first_name,
       child_middle_name: req.body.child_middle_name || null,
       child_last_name: req.body.child_last_name,
@@ -54,7 +59,6 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       guardian_occupation: req.body.guardian_occupation || null,
       guardian_address: req.body.guardian_address || null,
       guardian_nationality: req.body.guardian_nationality || null,
-      guardian_religion: req.body.guardian_religion || null,
       guardian_national_id: req.body.guardian_national_id || null,
       // Medical
       takes_medication: req.body.takes_medication || false,
@@ -69,10 +73,9 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       emergency_contact_relationship: req.body.emergency_contact_relationship || null,
       emergency_contact_phone: req.body.emergency_contact_phone || null,
       // Documents
-      documents_submitted: req.body.documents_submitted ? JSON.stringify(req.body.documents_submitted) : null,
+      // documents_submitted and date_received handled separately if columns exist
       // Status
       status: 'pending',
-      date_received: new Date(),
       created_by: createdBy,
       created_at: new Date(),
       updated_at: new Date(),
@@ -107,7 +110,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       query = query.where(function () {
         this.where('admission_applications.child_first_name', 'ilike', term)
           .orWhere('admission_applications.child_last_name', 'ilike', term)
-          .orWhere('admission_applications.application_id', 'ilike', term)
+          .orWhere('admission_applications.application_number', 'ilike', term)
           .orWhere('admission_applications.guardian_phone', 'ilike', term);
       });
     }
@@ -135,7 +138,7 @@ router.get('/:appId', authenticate, async (req: Request, res: Response, next: Ne
       .select('admission_applications.*', 'classes.name as class_name')
       .leftJoin('classes', 'admission_applications.class_applying_for', 'classes.id')
       .where('admission_applications.id', req.params.appId)
-      .orWhere('admission_applications.application_id', req.params.appId)
+      .orWhere('admission_applications.application_number', req.params.appId)
       .first();
     if (!app) throw new AppError('Application not found', 404, 'NOT_FOUND');
     res.json(app);

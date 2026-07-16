@@ -87,10 +87,10 @@ export const AdmissionsPage: React.FC = () => {
 
   const columns: ColumnDef<AdmissionRecord, any>[] = [
     {
-      id: 'application_id',
-      accessorKey: 'application_id',
+      id: 'application_number',
+      accessorKey: 'application_number',
       header: 'App ID',
-      cell: ({ row }) => <span className="font-mono text-xs font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">{row.original.application_id}</span>,
+      cell: ({ row }) => <span className="font-mono text-xs font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">{row.original.application_number}</span>,
     },
     {
       id: 'child_name',

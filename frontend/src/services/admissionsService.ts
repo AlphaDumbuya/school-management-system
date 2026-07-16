@@ -8,7 +8,7 @@ export type AdmissionStatus = 'pending' | 'under_review' | 'interview_scheduled'
 
 export interface AdmissionRecord {
   id: string;
-  application_id: string;
+  application_number: string;
   academic_year: string;
   child_first_name: string;
   child_middle_name?: string;
