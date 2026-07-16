@@ -80,9 +80,25 @@ export const StudentDirectoryPage: React.FC = () => {
   // Columns
   const columns: ColumnDef<StudentRecord, any>[] = [
     {
+      id: 'photo',
+      header: '',
+      size: 50,
+      cell: ({ row }) => (
+        <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden flex items-center justify-center flex-shrink-0">
+          {(row.original as any).photo_url ? (
+            <img src={(row.original as any).photo_url} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-xs font-bold text-gray-400 dark:text-gray-600">
+              {row.original.first_name?.[0]}{row.original.last_name?.[0]}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
       id: 'student_id',
       accessorKey: 'student_id',
-      header: 'ID',
+      header: 'Student ID',
       cell: ({ row }) => (
         <span className="font-mono text-xs font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">
           {row.original.student_id}

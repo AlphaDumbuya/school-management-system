@@ -166,6 +166,7 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
         state: values.state || undefined,
         country: values.country || undefined,
         enrollment_date: values.enrollment_date || undefined,
+        photo_url: values.photo_url || undefined,
       };
 
       if (isEditing && editingStudent) {

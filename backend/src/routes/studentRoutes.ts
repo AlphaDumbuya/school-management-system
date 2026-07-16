@@ -18,7 +18,7 @@ const studentService = new StudentService(db);
  */
 router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { first_name, last_name, date_of_birth, gender, email, phone, address, city, state, postal_code, country, enrollment_date, status } = req.body;
+    const { first_name, last_name, date_of_birth, gender, email, phone, address, city, state, postal_code, country, enrollment_date, status, photo_url } = req.body;
     const createdBy = req.auth?.userId ?? null;
 
     // Validate required fields
@@ -73,6 +73,7 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
       postal_code: postal_code || null,
       country: country || null,
       enrollment_date: enrollment_date,
+      photo_url: photo_url || null,
       status: status || 'active',
       created_at: new Date(),
       updated_at: new Date(),
@@ -102,7 +103,7 @@ router.get('/', authenticate, authorize('principal', 'teacher'), async (req: Req
     const status = req.query.status as string;
     const search = req.query.search as string;
 
-    let query = db('students').select('id', 'student_id', 'first_name', 'last_name', 'email', 'gender', 'status', 'enrollment_date', 'created_at');
+    let query = db('students').select('id', 'student_id', 'first_name', 'last_name', 'email', 'gender', 'phone', 'photo_url', 'status', 'enrollment_date', 'created_at');
 
     // Apply filters
     if (status) {

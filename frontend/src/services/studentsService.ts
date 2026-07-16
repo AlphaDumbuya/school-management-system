@@ -40,6 +40,7 @@ export interface StudentFormData {
   country?: string;
   status?: string;
   enrollment_date?: string;
+  photo_url?: string;
 }
 
 export interface ListStudentsParams {
