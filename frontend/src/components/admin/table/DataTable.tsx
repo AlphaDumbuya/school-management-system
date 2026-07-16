@@ -17,6 +17,8 @@ import {
   MoreHorizontal,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import { SkeletonTableRow } from '../feedback/Skeleton';
 import { EmptyState } from '../feedback/EmptyState';
@@ -52,6 +54,8 @@ export interface DataTableProps<TData> {
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
+// ── Row Action Menu ───────────────────────────────────────────────────────────
+
 function RowActionMenu<TData>({ row, actions }: { row: TData; actions: RowAction<TData>[] }) {
   const [open, setOpen] = useState(false);
   return (
@@ -59,18 +63,18 @@ function RowActionMenu<TData>({ row, actions }: { row: TData; actions: RowAction
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="Row actions"
-        className="p-1 rounded hover:bg-gray-100"
+        className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
       >
         <MoreHorizontal size={16} className="text-gray-500" />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[140px]">
+          <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-xl shadow-lg min-w-[150px] py-1">
             {actions.map((action, i) => (
               <button
                 key={i}
-                className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                className={`w-full text-left px-3.5 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors ${
                   action.variant === 'destructive' ? 'text-red-600' : 'text-gray-700'
                 }`}
                 onClick={() => { action.onClick(row); setOpen(false); }}
@@ -85,6 +89,78 @@ function RowActionMenu<TData>({ row, actions }: { row: TData; actions: RowAction
     </div>
   );
 }
+
+// ── Mobile Card View ──────────────────────────────────────────────────────────
+
+function MobileCard<TData>({
+  row,
+  columns,
+  rowActions,
+  enableRowSelection,
+  isSelected,
+  onToggleSelect,
+}: {
+  row: TData;
+  columns: ColumnDef<TData, any>[];
+  rowActions?: (row: TData) => RowAction<TData>[];
+  enableRowSelection: boolean;
+  isSelected: boolean;
+  onToggleSelect: () => void;
+}) {
+  // Get visible user-defined columns (skip _select and _actions)
+  const visibleCols = columns.filter(c => c.id !== '_select' && c.id !== '_actions');
+
+  return (
+    <div className={`bg-white border border-gray-200 rounded-xl p-4 space-y-2.5 ${isSelected ? 'ring-2 ring-blue-500' : ''}`}>
+      {/* Header row: checkbox + first column value + actions */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          {enableRowSelection && (
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={onToggleSelect}
+              aria-label="Select row"
+              className="rounded border-gray-300 mt-0.5 flex-shrink-0"
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            {/* Render first column prominently */}
+            {visibleCols[0] && (
+              <div className="font-semibold text-gray-900 text-sm truncate">
+                {typeof visibleCols[0].cell === 'function'
+                  ? flexRender(visibleCols[0].cell, { row: { original: row } } as any)
+                  : (row as any)[(visibleCols[0] as any).accessorKey] ?? '—'}
+              </div>
+            )}
+          </div>
+        </div>
+        {rowActions && (
+          <RowActionMenu row={row} actions={rowActions(row)} />
+        )}
+      </div>
+
+      {/* Remaining columns as key-value pairs */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pl-0">
+        {visibleCols.slice(1).map((col, idx) => {
+          const header = typeof col.header === 'string' ? col.header : (col.id || `Col ${idx}`);
+          return (
+            <div key={col.id || idx} className="min-w-0">
+              <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">{header}</p>
+              <div className="text-sm text-gray-700 truncate">
+                {typeof col.cell === 'function'
+                  ? flexRender(col.cell, { row: { original: row } } as any)
+                  : (row as any)[(col as any).accessorKey] ?? '—'}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Main DataTable Component ──────────────────────────────────────────────────
 
 export function DataTable<TData>({
   columns,
@@ -203,9 +279,13 @@ export function DataTable<TData>({
     }
   };
 
+  // Get current page rows for mobile view
+  const currentRows = table.getRowModel().rows;
+
   return (
-    <div className="flex flex-col gap-0">
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+    <div className="flex flex-col">
+      {/* ── Desktop/Tablet: Traditional Table (hidden on mobile) ──────── */}
+      <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200">
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-50 border-b border-gray-200">
             {table.getHeaderGroups().map((hg) => (
@@ -217,7 +297,7 @@ export function DataTable<TData>({
                     <th
                       key={header.id}
                       scope="col"
-                      className={`px-4 py-3 font-medium text-gray-600 whitespace-nowrap ${canSort ? 'cursor-pointer select-none hover:text-gray-900' : ''}`}
+                      className={`px-4 py-3 font-semibold text-xs text-gray-500 uppercase tracking-wider whitespace-nowrap ${canSort ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
                       style={header.column.columnDef.size ? { width: header.column.columnDef.size } : undefined}
                       onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                     >
@@ -246,17 +326,17 @@ export function DataTable<TData>({
                   <ErrorState message={error} onRetry={onRetry} />
                 </td>
               </tr>
-            ) : table.getRowModel().rows.length === 0 ? (
+            ) : currentRows.length === 0 ? (
               <tr>
                 <td colSpan={colCount} className="p-0">
                   <EmptyState message={emptyMessage} action={emptyAction} />
                 </td>
               </tr>
             ) : (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50 transition-colors">
+              currentRows.map((row) => (
+                <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-3 text-gray-700">
+                    <td key={cell.id} className="px-4 py-3.5 text-gray-700">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -267,45 +347,120 @@ export function DataTable<TData>({
         </table>
       </div>
 
-      {/* Pagination footer — always visible */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 bg-transparent dark:bg-transparent text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-        {/* Rows selector */}
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-center sm:justify-start">
-          <span className="whitespace-nowrap">Rows per page:</span>
-          <select
-            value={pageSize}
-            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-            className="border border-gray-300 dark:border-gray-600 bg-transparent dark:bg-transparent text-gray-850 dark:text-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            {PAGE_SIZES.map((s) => <option key={s} value={s} className="bg-white dark:bg-gray-800">{s}</option>)}
-          </select>
-        </div>
+      {/* ── Mobile: Card Layout (visible only on mobile) ──────────────── */}
+      <div className="md:hidden">
+        {isLoading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+                <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="h-3 bg-gray-200 rounded animate-pulse" />
+                  <div className="h-3 bg-gray-200 rounded animate-pulse" />
+                  <div className="h-3 bg-gray-200 rounded animate-pulse w-2/3" />
+                  <div className="h-3 bg-gray-200 rounded animate-pulse w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : error ? (
+          <ErrorState message={error} onRetry={onRetry} />
+        ) : currentRows.length === 0 ? (
+          <EmptyState message={emptyMessage} action={emptyAction} />
+        ) : (
+          <div className="space-y-3">
+            {/* Select all on mobile */}
+            {enableRowSelection && currentRows.length > 0 && (
+              <div className="flex items-center gap-2 px-1 pb-1">
+                <input
+                  type="checkbox"
+                  checked={table.getIsAllPageRowsSelected()}
+                  onChange={table.getToggleAllPageRowsSelectedHandler()}
+                  aria-label="Select all"
+                  className="rounded border-gray-300"
+                />
+                <span className="text-xs text-gray-500 font-medium">Select all</span>
+              </div>
+            )}
+            {currentRows.map((row) => (
+              <MobileCard
+                key={row.id}
+                row={row.original}
+                columns={finalColumns}
+                rowActions={rowActions}
+                enableRowSelection={enableRowSelection}
+                isSelected={row.getIsSelected()}
+                onToggleSelect={row.getToggleSelectedHandler()}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
-        {/* Page Indicators & Actions */}
-        <div className="flex flex-wrap items-center gap-3 sm:gap-4 w-full sm:w-auto justify-center sm:justify-end">
-          <span className="whitespace-nowrap">
-            Page {pageIndex + 1} of {pageCount || 1} &nbsp;·&nbsp; {total} total
-          </span>
-          <div className="flex items-center gap-1">
+      {/* ── Pagination Footer (responsive) ────────────────────────────── */}
+      {!isLoading && !error && total > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2 sm:px-4 py-3 mt-2 text-xs sm:text-sm text-gray-600">
+          {/* Rows per page selector */}
+          <div className="flex items-center gap-2">
+            <span className="whitespace-nowrap text-gray-500">Rows:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+              className="border border-gray-300 bg-white text-gray-700 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <span className="text-gray-400 hidden sm:inline">·</span>
+            <span className="text-gray-500 hidden sm:inline">{total} total</span>
+          </div>
+
+          {/* Page navigation */}
+          <div className="flex items-center gap-1.5">
+            {/* First page */}
+            <button
+              onClick={() => handlePageChange(0)}
+              disabled={pageIndex === 0}
+              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500 hidden sm:block"
+              aria-label="First page"
+            >
+              <ChevronsLeft size={16} />
+            </button>
+            {/* Previous */}
             <button
               onClick={() => handlePageChange(pageIndex - 1)}
               disabled={!table.getCanPreviousPage()}
-              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-gray-500 dark:text-gray-400"
+              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500"
               aria-label="Previous page"
             >
               <ChevronLeft size={16} />
             </button>
+
+            {/* Page indicator */}
+            <span className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg min-w-[80px] text-center">
+              {pageIndex + 1} / {pageCount || 1}
+            </span>
+
+            {/* Next */}
             <button
               onClick={() => handlePageChange(pageIndex + 1)}
               disabled={!table.getCanNextPage()}
-              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-gray-500 dark:text-gray-400"
+              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500"
               aria-label="Next page"
             >
               <ChevronRight size={16} />
             </button>
+            {/* Last page */}
+            <button
+              onClick={() => handlePageChange((pageCount || 1) - 1)}
+              disabled={pageIndex >= (pageCount || 1) - 1}
+              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500 hidden sm:block"
+              aria-label="Last page"
+            >
+              <ChevronsRight size={16} />
+            </button>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
