@@ -19,6 +19,7 @@ import SMSWhatsAppDashboard from '@pages/SMSWhatsAppDashboard';
 
 // Built pages
 import ClassesPage from '@pages/academic/ClassesPage';
+import SubjectsPage from '@pages/academic/SubjectsPage';
 import DisciplinePage from '@pages/discipline/DisciplinePage';
 import { EventsPage } from '@pages/events/EventsPage';
 import { EventDetailsPage } from '@pages/events/EventDetailsPage';
@@ -114,7 +115,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'academic/subjects',
-          element: <P requiredRoles={['principal', 'super_admin']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin']}><SubjectsPage /></P>,
         },
         {
           path: 'academic/timetables',

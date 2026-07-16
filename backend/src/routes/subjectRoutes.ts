@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
+import { UserRole } from '../types/auth';
 import knex from 'knex';
 import knexConfig from '../../knexfile';
 
@@ -13,16 +14,16 @@ const db = knex(knexConfig[env] || knexConfig.development);
  * POST /api/v1/subjects
  * Create a new subject
  */
-router.post('/', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { code, name, description, credit_points, max_marks, pass_marks } = req.body;
-    const createdBy = (req as any).user.id;
+    const { code, name, description, credit_points, max_marks, pass_marks, category, level, department, is_elective } = req.body;
+    const createdBy = req.auth?.userId ?? null;
 
-    if (!code || !name || max_marks === undefined || pass_marks === undefined) {
-      throw new AppError('Missing required fields: code, name, max_marks, pass_marks', 400, 'VALIDATION_ERROR');
+    if (!code || !name) {
+      throw new AppError('Missing required fields: code, name', 400, 'VALIDATION_ERROR');
     }
 
-    if (max_marks <= pass_marks) {
+    if (max_marks !== undefined && pass_marks !== undefined && max_marks <= pass_marks) {
       throw new AppError('Max marks must be greater than pass marks', 400, 'VALIDATION_ERROR');
     }
 
@@ -32,24 +33,26 @@ router.post('/', authenticate, authorize('admin', 'principal'), async (req: Requ
       throw new AppError('Subject code already exists', 409, 'CONFLICT');
     }
 
-    const [id] = await db('subjects').insert({
+    const [inserted] = await db('subjects').insert({
       code: code.toUpperCase(),
       name: name.trim(),
       description: description || null,
       credit_points: credit_points || 0,
-      max_marks,
-      pass_marks,
+      max_marks: max_marks || 100,
+      pass_marks: pass_marks || 40,
+      category: category || null,
+      level: level || 'all',
+      department: department || null,
+      is_elective: is_elective || false,
       status: 'active',
       created_at: new Date(),
       updated_at: new Date(),
       created_by: createdBy,
-    });
-
-    const subject = await db('subjects').where('id', id).first();
+    }).returning('*');
 
     res.status(201).json({
       message: 'Subject created successfully',
-      subject,
+      subject: inserted,
     });
 
     logger.info(`Subject created: ${code} - ${name}`);
@@ -60,22 +63,39 @@ router.post('/', authenticate, authorize('admin', 'principal'), async (req: Requ
 
 /**
  * GET /api/v1/subjects
- * List all subjects
+ * List all subjects with search, category, level, and status filters
  */
 router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
     const offset = (page - 1) * limit;
-    const status = req.query.status as string;
+    const { search, status, category, level } = req.query;
 
-    let query = db('subjects').select('id', 'code', 'name', 'credit_points', 'max_marks', 'pass_marks', 'status', 'created_at');
+    let query = db('subjects').select('*');
 
     if (status) {
-      query = query.where('status', status);
+      query = query.where('status', status as string);
     }
 
-    const total = await query.clone().count('* as count').first();
+    if (category) {
+      query = query.where('category', category as string);
+    }
+
+    if (level) {
+      query = query.where('level', level as string);
+    }
+
+    if (search) {
+      const term = `%${(search as string).trim()}%`;
+      query = query.where(function () {
+        this.where('name', 'ilike', term)
+          .orWhere('code', 'ilike', term);
+      });
+    }
+
+    const totalResult = await query.clone().clearSelect().clearOrder().count('id as count').first();
+    const total = Number(totalResult?.count ?? 0);
     const subjects = await query.limit(limit).offset(offset).orderBy('code', 'asc');
 
     res.json({
@@ -83,8 +103,8 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       pagination: {
         page,
         limit,
-        total: total.count,
-        total_pages: Math.ceil(total.count / limit),
+        total,
+        total_pages: Math.ceil(total / limit),
       },
     });
   } catch (error) {
@@ -115,11 +135,11 @@ router.get('/:subjectId', authenticate, async (req: Request, res: Response, next
  * PUT /api/v1/subjects/:subjectId
  * Update subject
  */
-router.put('/:subjectId', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { subjectId } = req.params;
-    const { code, name, description, credit_points, max_marks, pass_marks, status } = req.body;
-    const updatedBy = (req as any).user.id;
+    const { code, name, description, credit_points, max_marks, pass_marks, status, category, level, department, is_elective } = req.body;
+    const updatedBy = req.auth?.userId ?? null;
 
     const subject = await db('subjects').where('id', subjectId).first();
     if (!subject) {
@@ -135,7 +155,7 @@ router.put('/:subjectId', authenticate, authorize('admin', 'principal'), async (
       updateData.code = code.toUpperCase();
     }
     if (name) updateData.name = name.trim();
-    if (description) updateData.description = description;
+    if (description !== undefined) updateData.description = description || null;
     if (credit_points !== undefined) updateData.credit_points = credit_points;
     if (max_marks !== undefined && pass_marks !== undefined) {
       if (max_marks <= pass_marks) {
@@ -145,6 +165,10 @@ router.put('/:subjectId', authenticate, authorize('admin', 'principal'), async (
       updateData.pass_marks = pass_marks;
     }
     if (status) updateData.status = status;
+    if (category !== undefined) updateData.category = category || null;
+    if (level !== undefined) updateData.level = level || 'all';
+    if (department !== undefined) updateData.department = department || null;
+    if (is_elective !== undefined) updateData.is_elective = is_elective;
 
     updateData.updated_at = new Date();
     updateData.updated_by = updatedBy;
@@ -166,9 +190,9 @@ router.put('/:subjectId', authenticate, authorize('admin', 'principal'), async (
 
 /**
  * DELETE /api/v1/subjects/:subjectId
- * Delete subject (soft delete)
+ * Deactivate subject (soft delete)
  */
-router.delete('/:subjectId', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { subjectId } = req.params;
 
@@ -187,6 +211,38 @@ router.delete('/:subjectId', authenticate, authorize('admin', 'principal'), asyn
     });
 
     logger.info(`Subject deactivated: ${subjectId}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/v1/subjects/:subjectId/permanent
+ * Permanently delete a subject (only if no dependencies)
+ */
+router.delete('/:subjectId/permanent', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { subjectId } = req.params;
+
+    const subject = await db('subjects').where('id', subjectId).first();
+    if (!subject) {
+      throw new AppError('Subject not found', 404, 'NOT_FOUND');
+    }
+
+    // Check if subject has any grade records linked
+    const gradeCount = await db('grades').where('subject_id', subjectId).count('* as count').first();
+    if (Number(gradeCount?.count ?? 0) > 0) {
+      throw new AppError('Cannot delete a subject with grade records. Use deactivate instead.', 400, 'HAS_GRADES');
+    }
+
+    // Permanently remove
+    await db('subjects').where('id', subjectId).del();
+
+    res.json({
+      message: 'Subject permanently deleted',
+    });
+
+    logger.info(`Subject permanently deleted: ${subjectId}`);
   } catch (error) {
     next(error);
   }
