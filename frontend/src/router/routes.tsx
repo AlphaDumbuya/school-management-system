@@ -21,6 +21,7 @@ import SMSWhatsAppDashboard from '@pages/SMSWhatsAppDashboard';
 import ClassesPage from '@pages/academic/ClassesPage';
 import SubjectsPage from '@pages/academic/SubjectsPage';
 import TimetablesPage from '@pages/academic/TimetablesPage';
+import AssignmentsPage from '@pages/academic/AssignmentsPage';
 import DisciplinePage from '@pages/discipline/DisciplinePage';
 import { EventsPage } from '@pages/events/EventsPage';
 import { EventDetailsPage } from '@pages/events/EventDetailsPage';
@@ -124,7 +125,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'academic/assignments',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student']}><AssignmentsPage /></P>,
         },
         {
           path: 'academic/examinations',

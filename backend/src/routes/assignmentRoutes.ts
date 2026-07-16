@@ -1,0 +1,191 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import { authenticate, authorize } from '@middleware/authMiddleware';
+import { AppError } from '@middleware/errorHandler';
+import { logger } from '@utils/logger';
+import { UserRole } from '../types/auth';
+import knex from 'knex';
+import knexConfig from '../../knexfile';
+
+const router = Router();
+const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
+const db = knex(knexConfig[env] || knexConfig.development);
+
+/**
+ * POST /api/v1/assignments
+ * Create a new assignment
+ */
+router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { title, description, class_id, subject_id, teacher_id, type, assigned_date, due_date, max_marks, instructions, resources, status } = req.body;
+    const createdBy = req.auth?.userId ?? null;
+
+    if (!title || !class_id || !subject_id || !teacher_id || !assigned_date || !due_date) {
+      throw new AppError('Missing required fields: title, class_id, subject_id, teacher_id, assigned_date, due_date', 400, 'VALIDATION_ERROR');
+    }
+
+    const [inserted] = await db('assignments').insert({
+      title: title.trim(),
+      description: description || null,
+      class_id,
+      subject_id,
+      teacher_id,
+      type: type || 'homework',
+      assigned_date,
+      due_date,
+      max_marks: max_marks || 100,
+      instructions: instructions || null,
+      resources: resources ? JSON.stringify(resources) : null,
+      status: status || 'active',
+      created_by: createdBy,
+      created_at: new Date(),
+      updated_at: new Date(),
+    }).returning('*');
+
+    res.status(201).json({
+      message: 'Assignment created successfully',
+      data: inserted,
+    });
+
+    logger.info(`Assignment created: ${title}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/assignments
+ * List assignments with filters
+ */
+router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+    const offset = (page - 1) * limit;
+    const { class_id, subject_id, teacher_id, status, type, search } = req.query;
+
+    let query = db('assignments')
+      .select(
+        'assignments.*',
+        'classes.name as class_name',
+        'classes.level as class_level',
+        'subjects.name as subject_name',
+        'subjects.code as subject_code',
+        db.raw("COALESCE(users.first_name || ' ' || users.last_name, 'Unknown') as teacher_name"),
+        db.raw('COALESCE(submission_counts.total_submissions, 0) as total_submissions'),
+        db.raw('COALESCE(submission_counts.graded_count, 0) as graded_count')
+      )
+      .leftJoin('classes', 'assignments.class_id', 'classes.id')
+      .leftJoin('subjects', 'assignments.subject_id', 'subjects.id')
+      .leftJoin('teachers', 'assignments.teacher_id', 'teachers.id')
+      .leftJoin('users', 'teachers.user_id', 'users.id')
+      .leftJoin(
+        db('assignment_submissions')
+          .select('assignment_id')
+          .count('* as total_submissions')
+          .count(db.raw("CASE WHEN status = 'graded' THEN 1 END as graded_count"))
+          .groupBy('assignment_id')
+          .as('submission_counts'),
+        'assignments.id',
+        'submission_counts.assignment_id'
+      );
+
+    if (class_id) query = query.where('assignments.class_id', class_id as string);
+    if (subject_id) query = query.where('assignments.subject_id', subject_id as string);
+    if (teacher_id) query = query.where('assignments.teacher_id', teacher_id as string);
+    if (status) query = query.where('assignments.status', status as string);
+    if (type) query = query.where('assignments.type', type as string);
+    if (search) {
+      const term = `%${(search as string).trim()}%`;
+      query = query.where(function () {
+        this.where('assignments.title', 'ilike', term)
+          .orWhere('subjects.name', 'ilike', term);
+      });
+    }
+
+    const totalResult = await query.clone().clearSelect().clearOrder().count('assignments.id as count').first();
+    const total = Number(totalResult?.count ?? 0);
+    const assignments = await query.limit(limit).offset(offset).orderBy('assignments.due_date', 'desc');
+
+    res.json({
+      data: assignments,
+      pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/assignments/:id
+ */
+router.get('/:assignmentId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { assignmentId } = req.params;
+    const assignment = await db('assignments').where('id', assignmentId).first();
+    if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
+    res.json(assignment);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/v1/assignments/:id
+ */
+router.put('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { assignmentId } = req.params;
+    const { title, description, type, due_date, max_marks, instructions, resources, status } = req.body;
+    const updatedBy = req.auth?.userId ?? null;
+
+    const assignment = await db('assignments').where('id', assignmentId).first();
+    if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
+
+    const updateData: any = {};
+    if (title) updateData.title = title.trim();
+    if (description !== undefined) updateData.description = description || null;
+    if (type) updateData.type = type;
+    if (due_date) updateData.due_date = due_date;
+    if (max_marks !== undefined) updateData.max_marks = max_marks;
+    if (instructions !== undefined) updateData.instructions = instructions || null;
+    if (resources !== undefined) updateData.resources = resources ? JSON.stringify(resources) : null;
+    if (status) updateData.status = status;
+    updateData.updated_by = updatedBy;
+    updateData.updated_at = new Date();
+
+    await db('assignments').where('id', assignmentId).update(updateData);
+    const updated = await db('assignments').where('id', assignmentId).first();
+
+    res.json({ message: 'Assignment updated successfully', data: updated });
+    logger.info(`Assignment updated: ${assignmentId}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/v1/assignments/:id
+ */
+router.delete('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { assignmentId } = req.params;
+    const assignment = await db('assignments').where('id', assignmentId).first();
+    if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
+
+    // Check for submissions
+    const submissions = await db('assignment_submissions').where('assignment_id', assignmentId).count('* as count').first();
+    if (Number(submissions?.count ?? 0) > 0) {
+      // Soft close instead of delete
+      await db('assignments').where('id', assignmentId).update({ status: 'closed', updated_at: new Date() });
+      res.json({ message: 'Assignment closed (has submissions)' });
+    } else {
+      await db('assignments').where('id', assignmentId).del();
+      res.json({ message: 'Assignment deleted successfully' });
+    }
+    logger.info(`Assignment deleted/closed: ${assignmentId}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
