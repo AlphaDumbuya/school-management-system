@@ -19,6 +19,7 @@ import assignmentRoutes from '@routes/assignmentRoutes';
 import examinationRoutes from '@routes/examinationRoutes';
 import resultsRoutes from '@routes/resultsRoutes';
 import uploadRoutes from '@routes/uploadRoutes';
+import admissionsNewRoutes from '@routes/admissionsRoutes';
 import enrollmentRoutes from '@routes/enrollmentRoutes';
 import enrollmentWorkflowRoutes from '@routes/enrollmentWorkflowRoutes';
 import gradeRoutes from '@routes/gradeRoutes';
@@ -181,6 +182,9 @@ app.use('/api/v1/results', resultsRoutes);
 
 // File Upload Routes
 app.use('/api/v1/uploads', uploadRoutes);
+
+// Admissions Routes
+app.use('/api/v1/admissions', admissionsNewRoutes);
 
 // Enrollment Routes
 app.use('/api/v1/enrollments', enrollmentRoutes);
