@@ -171,7 +171,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       )}
 
       {/* Preview or Upload Zone */}
-      {value ? (
+      {value && value.length > 10 ? (
         // File already uploaded — show preview
         <div className="relative rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-gray-800">
           {previewType === 'image' ? (

@@ -60,7 +60,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/30">
           {/* Photo */}
           <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white dark:bg-gray-800 shadow-md overflow-hidden flex items-center justify-center flex-shrink-0 border-2 border-white dark:border-gray-700">
-            {s.photo_url ? (
+            {s.photo_url && s.photo_url.length > 10 ? (
               <img src={s.photo_url} alt={`${student.first_name} ${student.last_name}`} className="w-full h-full object-cover" />
             ) : (
               <span className="text-3xl font-bold text-gray-300 dark:text-gray-600">

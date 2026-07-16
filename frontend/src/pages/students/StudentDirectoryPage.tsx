@@ -116,7 +116,7 @@ export const StudentDirectoryPage: React.FC = () => {
       size: 50,
       cell: ({ row }) => (
         <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden flex items-center justify-center flex-shrink-0">
-          {(row.original as any).photo_url ? (
+          {(row.original as any).photo_url && (row.original as any).photo_url.length > 10 ? (
             <img src={(row.original as any).photo_url} alt="" className="w-full h-full object-cover" />
           ) : (
             <span className="text-xs font-bold text-gray-400 dark:text-gray-600">
