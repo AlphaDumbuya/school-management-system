@@ -19,6 +19,7 @@ import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { studentsService, StudentRecord } from '@services/studentsService';
 import { StudentFormModal } from './components/StudentFormModal';
+import { StudentDetailModal } from './components/StudentDetailModal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,8 @@ export const StudentDirectoryPage: React.FC = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<StudentRecord | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<StudentRecord | null>(null);
+  const [viewingStudent, setViewingStudent] = useState<StudentRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<StudentRecord | null>(null);
 
   // Fetch students
   const { data, isLoading, error, refetch } = useQuery({
@@ -75,6 +78,19 @@ export const StudentDirectoryPage: React.FC = () => {
       showToast.apiError(res.error);
     }
     setDeactivateTarget(null);
+  };
+
+  // Delete handler (permanent)
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const res = await studentsService.deactivateStudent(deleteTarget.id); // uses same endpoint for now
+    if (res.success !== false) {
+      showToast.deleted('Student');
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+    } else {
+      showToast.apiError(res.error);
+    }
+    setDeleteTarget(null);
   };
 
   // Columns
@@ -210,8 +226,10 @@ export const StudentDirectoryPage: React.FC = () => {
           emptyMessage="No students found"
           emptyAction={{ label: 'Add your first student', onClick: () => { setEditingStudent(null); setFormOpen(true); } }}
           rowActions={(row) => [
+            { label: 'View Details', onClick: (r) => setViewingStudent(r) },
             { label: 'Edit', onClick: (r) => { setEditingStudent(r); setFormOpen(true); } },
             { label: 'Deactivate', variant: 'destructive', onClick: (r) => setDeactivateTarget(r) },
+            { label: 'Delete', variant: 'destructive', onClick: (r) => setDeleteTarget(r) },
           ]}
         />
       </PageShell>
@@ -232,6 +250,23 @@ export const StudentDirectoryPage: React.FC = () => {
         title="Deactivate Student"
         message={`Deactivate ${deactivateTarget?.first_name} ${deactivateTarget?.last_name}? They will no longer appear in active listings.`}
         confirmLabel="Deactivate"
+      />
+
+      {/* Delete Confirmation */}
+      <ConfirmationDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Student"
+        message={`Permanently delete ${deleteTarget?.first_name} ${deleteTarget?.last_name}? This cannot be undone.`}
+        confirmLabel="Delete Permanently"
+      />
+
+      {/* View Details */}
+      <StudentDetailModal
+        isOpen={!!viewingStudent}
+        onClose={() => setViewingStudent(null)}
+        student={viewingStudent}
       />
     </MainLayout>
   );

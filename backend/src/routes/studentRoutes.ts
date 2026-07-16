@@ -54,8 +54,9 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
 
     // Generate unique student ID (STU-YYYY-XXXXX format)
     const year = new Date().getFullYear();
-    const count = await db('students').where(db.raw(`student_id LIKE '${year}%'`)).count('* as count').first();
-    const studentId = `STU-${year}-${String(count.count + 1).padStart(5, '0')}`;
+    const count = await db('students').where('student_id', 'like', `STU-${year}-%`).count('* as count').first();
+    const nextNum = Number(count?.count ?? 0) + 1;
+    const studentId = `STU-${year}-${String(nextNum).padStart(5, '0')}`;
 
     // Create student
     const [inserted] = await db('students').insert({
@@ -286,7 +287,6 @@ router.delete('/:studentId', authenticate, authorize('principal'), async (req: R
     await db('students').where('id', student.id).update({
       status: 'inactive',
       updated_at: new Date(),
-      updated_by: currentUser?.userId,
     });
 
     res.json({
@@ -326,7 +326,6 @@ router.post('/:studentId/reactivate', authenticate, authorize('principal'), asyn
     await db('students').where('id', student.id).update({
       status: 'active',
       updated_at: new Date(),
-      updated_by: currentUser?.userId,
     });
 
     res.json({
