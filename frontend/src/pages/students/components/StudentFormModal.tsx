@@ -3,16 +3,19 @@
  * Comprehensive Sierra Leone student registration form.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useQuery } from '@tanstack/react-query';
 import { Modal } from '@components/admin/feedback/Modal';
 import { Button } from '@components/ui/button';
 import { FormField } from '@components/admin/forms/FormField';
 import { FileUploader } from '@components/admin/forms/FileUploader';
+import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
 import { showToast } from '@utils/toast';
 import { studentsService, StudentRecord, StudentFormData } from '@services/studentsService';
+import { classesService } from '@services/classesService';
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
@@ -29,11 +32,14 @@ const schema = z.object({
   country: z.string().max(100).optional().or(z.literal('')),
   enrollment_date: z.string().optional().or(z.literal('')),
   // Additional fields
+  class_id: z.string().optional().or(z.literal('')),
+  place_of_birth: z.string().max(100).optional().or(z.literal('')),
   religion: z.string().max(50).optional().or(z.literal('')),
   nationality: z.string().max(100).optional().or(z.literal('')),
   blood_group: z.string().max(10).optional().or(z.literal('')),
   medical_conditions: z.string().max(500).optional().or(z.literal('')),
   previous_school: z.string().max(200).optional().or(z.literal('')),
+  home_language: z.string().max(50).optional().or(z.literal('')),
   photo_url: z.string().max(500).optional().or(z.literal('')),
   // Guardian
   guardian_name: z.string().max(200).optional().or(z.literal('')),
@@ -48,6 +54,7 @@ type FormValues = z.infer<typeof schema>;
 const RELIGIONS = ['Christianity', 'Islam', 'Traditional', 'Other'];
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const RELATIONSHIPS = ['Father', 'Mother', 'Guardian', 'Uncle', 'Aunt', 'Grandparent', 'Sibling', 'Other'];
+const HOME_LANGUAGES = ['Krio', 'Temne', 'Mende', 'Limba', 'Kono', 'Susu', 'Fula', 'Loko', 'Mandingo', 'Sherbro', 'Kissi', 'English', 'Other'];
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -70,6 +77,16 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
+  // Fetch classes for dropdown
+  const { data: classesData } = useQuery({
+    queryKey: ['student-form-classes'],
+    queryFn: () => classesService.listClasses({ limit: 100 }),
+    staleTime: 60_000,
+    enabled: isOpen,
+  });
+  const classes = (classesData as any)?.data ?? [];
+  const classOptions = useMemo(() => classes.map((c: any) => ({ value: String(c.id), label: c.name, sublabel: c.section ? `Stream: ${c.section}` : c.level })), [classes]);
+
   const {
     register,
     handleSubmit,
@@ -83,8 +100,9 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
       first_name: '', last_name: '', email: '', date_of_birth: '', gender: '',
       phone: '', address: '', city: '', state: '', country: 'Sierra Leone',
       enrollment_date: new Date().toISOString().split('T')[0],
+      class_id: '', place_of_birth: '',
       religion: '', nationality: 'Sierra Leonean', blood_group: '', medical_conditions: '',
-      previous_school: '', photo_url: '',
+      previous_school: '', home_language: '', photo_url: '',
       guardian_name: '', guardian_phone: '', guardian_relationship: '', guardian_occupation: '',
       emergency_contact: '',
     },
@@ -104,11 +122,14 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
         state: editingStudent.state ?? '',
         country: editingStudent.country ?? 'Sierra Leone',
         enrollment_date: editingStudent.enrollment_date?.split('T')[0] ?? '',
+        class_id: (editingStudent as any).class_id ?? '',
+        place_of_birth: (editingStudent as any).place_of_birth ?? '',
         religion: (editingStudent as any).religion ?? '',
         nationality: (editingStudent as any).nationality ?? 'Sierra Leonean',
         blood_group: (editingStudent as any).blood_group ?? '',
         medical_conditions: (editingStudent as any).medical_conditions ?? '',
         previous_school: (editingStudent as any).previous_school ?? '',
+        home_language: (editingStudent as any).home_language ?? '',
         photo_url: (editingStudent as any).photo_url ?? '',
         guardian_name: (editingStudent as any).guardian_name ?? '',
         guardian_phone: (editingStudent as any).guardian_phone ?? '',
@@ -121,8 +142,9 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
         first_name: '', last_name: '', email: '', date_of_birth: '', gender: '',
         phone: '', address: '', city: '', state: '', country: 'Sierra Leone',
         enrollment_date: new Date().toISOString().split('T')[0],
+        class_id: '', place_of_birth: '',
         religion: '', nationality: 'Sierra Leonean', blood_group: '', medical_conditions: '',
-        previous_school: '', photo_url: '',
+        previous_school: '', home_language: '', photo_url: '',
         guardian_name: '', guardian_phone: '', guardian_relationship: '', guardian_occupation: '',
         emergency_contact: '',
       });
@@ -252,6 +274,32 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Enrollment Date</label>
               <input type="date" {...register('enrollment_date')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+
+          {/* Class Assignment + Additional */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+            <Controller
+              name="class_id"
+              control={control}
+              render={({ field }) => (
+                <SearchableSelect
+                  label="Assign to Class"
+                  options={classOptions}
+                  value={field.value || ''}
+                  onChange={field.onChange}
+                  placeholder="Select class..."
+                  searchPlaceholder="Search classes..."
+                />
+              )}
+            />
+            <FormField label="Place of Birth" placeholder="e.g. Makeni" error={errors.place_of_birth?.message} {...register('place_of_birth')} />
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Home Language</label>
+              <select {...register('home_language')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Select...</option>
+                {HOME_LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
             </div>
           </div>
         </div>
