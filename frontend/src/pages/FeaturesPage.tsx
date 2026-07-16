@@ -4,16 +4,25 @@
  * Covers every module in the platform with the digital-first philosophy.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export const FeaturesPage: React.FC = () => {
   const navigate = useNavigate();
   const [showAlert, setShowAlert] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   const handleComingSoon = () => {
     setShowAlert(true);
     setTimeout(() => setShowAlert(false), 3000);
+  };
+
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
   };
 
   return (
@@ -39,13 +48,56 @@ export const FeaturesPage: React.FC = () => {
             <img src="/logo.png" alt="WiSkul" className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg object-contain" />
             <span className="text-lg sm:text-xl font-black tracking-tight">Wi<span className="text-[#00d4aa]">Skul</span></span>
           </div>
+          
+          {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-8 text-sm text-gray-300">
             <span onClick={() => navigate('/')} className="hover:text-white cursor-pointer transition-colors">Home</span>
             <span className="text-[#00d4aa] font-semibold">Features</span>
+            <span onClick={() => navigate('/pricing')} className="hover:text-white cursor-pointer transition-colors">Pricing</span>
           </div>
-          <button onClick={handleComingSoon} className="bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-xs sm:text-sm px-5 sm:px-7 py-2.5 rounded-full transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,212,170,0.3)]">
+          
+          {/* Desktop Get Started Button */}
+          <button onClick={handleComingSoon} className="hidden md:block bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-xs sm:text-sm px-5 sm:px-7 py-2.5 rounded-full transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,212,170,0.3)]">
             Get Started
           </button>
+
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden flex flex-col gap-1.5 w-8 h-8 items-center justify-center"
+            aria-label="Toggle menu"
+          >
+            <span className={`w-6 h-0.5 bg-white transition-all duration-300 ${mobileMenuOpen ? 'rotate-45 translate-y-2' : ''}`} />
+            <span className={`w-6 h-0.5 bg-white transition-all duration-300 ${mobileMenuOpen ? 'opacity-0' : ''}`} />
+            <span className={`w-6 h-0.5 bg-white transition-all duration-300 ${mobileMenuOpen ? '-rotate-45 -translate-y-2' : ''}`} />
+          </button>
+        </div>
+
+        {/* Mobile Menu */}
+        <div className={`md:hidden overflow-hidden transition-all duration-300 ${mobileMenuOpen ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'}`}>
+          <div className="px-6 py-4 bg-[#16213e] border-t border-white/[0.06] space-y-3">
+            <span 
+              onClick={() => { navigate('/'); closeMobileMenu(); }}
+              className="block py-2.5 text-gray-300 hover:text-white cursor-pointer transition-colors"
+            >
+              Home
+            </span>
+            <span className="block py-2.5 text-[#00d4aa] font-semibold">
+              Features
+            </span>
+            <span 
+              onClick={() => { navigate('/pricing'); closeMobileMenu(); }}
+              className="block py-2.5 text-gray-300 hover:text-white cursor-pointer transition-colors"
+            >
+              Pricing
+            </span>
+            <button
+              onClick={() => { handleComingSoon(); closeMobileMenu(); }}
+              className="w-full bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm px-6 py-3 rounded-full transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,212,170,0.3)] active:scale-95 mt-2"
+            >
+              Get Started
+            </button>
+          </div>
         </div>
       </nav>
 

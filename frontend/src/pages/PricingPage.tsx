@@ -4,10 +4,27 @@
  * Dark cyber design matching the landing page.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-// ── Plan Data ─────────────────────────────────────────────────────────────────
+export const PricingPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly');
+  const [showAlert, setShowAlert] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  const handleSubscribe = () => {
+    setShowAlert(true);
+    setTimeout(() => setShowAlert(false), 3000);
+  };
+
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
+  };
 
 const PLANS = [
   {
@@ -107,9 +124,8 @@ export const PricingPage: React.FC = () => {
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly');
   const [showAlert, setShowAlert] = useState(false);
 
-  const handleSubscribe = () => {
-    setShowAlert(true);
-    setTimeout(() => setShowAlert(false), 3000);
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
   };
 
   return (
@@ -135,14 +151,56 @@ export const PricingPage: React.FC = () => {
             <img src="/logo.png" alt="WiSkul" className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg object-contain" />
             <span className="text-lg sm:text-xl font-black tracking-tight">Wi<span className="text-[#00d4aa]">Skul</span></span>
           </div>
+          
+          {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-8 text-sm text-gray-300">
             <span onClick={() => navigate('/')} className="hover:text-white cursor-pointer transition-colors">Home</span>
             <span onClick={() => navigate('/features')} className="hover:text-white cursor-pointer transition-colors">Features</span>
             <span className="text-[#00d4aa] font-semibold">Pricing</span>
           </div>
-          <button onClick={() => navigate('/login')} className="bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-xs sm:text-sm px-5 sm:px-7 py-2.5 rounded-full transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,212,170,0.3)]">
+          
+          {/* Desktop Sign In Button */}
+          <button onClick={() => navigate('/login')} className="hidden md:block bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-xs sm:text-sm px-5 sm:px-7 py-2.5 rounded-full transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,212,170,0.3)]">
             Sign In
           </button>
+
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden flex flex-col gap-1.5 w-8 h-8 items-center justify-center"
+            aria-label="Toggle menu"
+          >
+            <span className={`w-6 h-0.5 bg-white transition-all duration-300 ${mobileMenuOpen ? 'rotate-45 translate-y-2' : ''}`} />
+            <span className={`w-6 h-0.5 bg-white transition-all duration-300 ${mobileMenuOpen ? 'opacity-0' : ''}`} />
+            <span className={`w-6 h-0.5 bg-white transition-all duration-300 ${mobileMenuOpen ? '-rotate-45 -translate-y-2' : ''}`} />
+          </button>
+        </div>
+
+        {/* Mobile Menu */}
+        <div className={`md:hidden overflow-hidden transition-all duration-300 ${mobileMenuOpen ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'}`}>
+          <div className="px-6 py-4 bg-[#16213e] border-t border-white/[0.06] space-y-3">
+            <span 
+              onClick={() => { navigate('/'); closeMobileMenu(); }}
+              className="block py-2.5 text-gray-300 hover:text-white cursor-pointer transition-colors"
+            >
+              Home
+            </span>
+            <span 
+              onClick={() => { navigate('/features'); closeMobileMenu(); }}
+              className="block py-2.5 text-gray-300 hover:text-white cursor-pointer transition-colors"
+            >
+              Features
+            </span>
+            <span className="block py-2.5 text-[#00d4aa] font-semibold">
+              Pricing
+            </span>
+            <button
+              onClick={() => { navigate('/login'); closeMobileMenu(); }}
+              className="w-full bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm px-6 py-3 rounded-full transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,212,170,0.3)] active:scale-95 mt-2"
+            >
+              Sign In
+            </button>
+          </div>
         </div>
       </nav>
 
