@@ -195,11 +195,11 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
                   <div className="w-28 h-36 sm:w-32 sm:h-40 border-2 border-white/60 rounded-lg" />
                 </div>
               </div>
-              <div className="flex items-center justify-center gap-3 p-3 bg-gray-900">
-                <button type="button" onClick={capturePhoto} className="flex-1 sm:flex-initial px-4 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5">
-                  <Camera size={16} /> Capture
+              <div className="flex items-center justify-center gap-2 p-3 bg-gray-900">
+                <button type="button" onClick={capturePhoto} className="flex-1 px-3 py-2.5 bg-blue-600 text-white text-xs sm:text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5 min-w-0">
+                  <Camera size={14} /> Capture
                 </button>
-                <button type="button" onClick={stopCamera} className="flex-1 sm:flex-initial px-4 py-2.5 bg-gray-700 text-gray-300 text-sm font-bold rounded-lg hover:bg-gray-600 transition-colors">
+                <button type="button" onClick={stopCamera} className="flex-1 px-3 py-2.5 bg-gray-700 text-gray-300 text-xs sm:text-sm font-bold rounded-lg hover:bg-gray-600 transition-colors min-w-0">
                   Cancel
                 </button>
               </div>
