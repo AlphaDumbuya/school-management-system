@@ -157,7 +157,7 @@ export const PricingPage: React.FC = () => {
             Sign In
           </button>
 
-          {/* Mobile Menu Button */}
+          {/* Mobile Menu Button - Hamburger Icon */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="md:hidden flex flex-col gap-1.5 w-8 h-8 items-center justify-center"
