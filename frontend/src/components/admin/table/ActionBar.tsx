@@ -14,6 +14,10 @@ export interface ActionBarFilter {
 
 export interface ActionBarProps {
   onSearch?: (value: string) => void;
+  /** Forward to SearchBar: shows spinner icon while loading */
+  searchLoading?: boolean;
+  /** Forward to SearchBar: shows "N results found" hint */
+  searchResultCount?: number;
   filters?: ActionBarFilter[];
   filterValues?: Record<string, any>;
   onFilterChange?: (key: string, value: any) => void;
@@ -26,6 +30,8 @@ export interface ActionBarProps {
 
 export const ActionBar: React.FC<ActionBarProps> = ({
   onSearch,
+  searchLoading,
+  searchResultCount,
   filters = [],
   filterValues = {},
   onFilterChange,
@@ -78,7 +84,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
         {/* Left: search + inline filters (desktop only when ≤3 filters) */}
         <div className="flex flex-wrap items-center gap-2">
-          {onSearch && <SearchBar onSearch={onSearch} />}
+          {onSearch && (
+            <SearchBar
+              onSearch={onSearch}
+              isLoading={searchLoading}
+              resultCount={searchResultCount}
+            />
+          )}
           {/* Inline filters on desktop when ≤3 */}
           {!isMobileFilters && (
             <div className="hidden sm:flex items-center gap-2">
