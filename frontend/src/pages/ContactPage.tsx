@@ -6,27 +6,24 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import PublicNavbar from '@components/public';
 
-interface ContactFormData {
-  name: string;
-  email: string;
-  phone: string;
-  school: string;
-  role: string;
-  message: string;
-}
+const contactSchema = z.object({
+  name: z.string().min(1, 'Full name is required').max(100, 'Max 100 characters'),
+  email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
+  phone: z.string().optional().or(z.literal('')),
+  school: z.string().optional().or(z.literal('')),
+  role: z.string().min(1, 'Please select your role'),
+  message: z.string().min(10, 'Message must be at least 10 characters').max(2000, 'Max 2000 characters'),
+});
+
+type ContactFormValues = z.infer<typeof contactSchema>;
 
 export const ContactPage: React.FC = () => {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState<ContactFormData>({
-    name: '',
-    email: '',
-    phone: '',
-    school: '',
-    role: '',
-    message: '',
-  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -35,15 +32,24 @@ export const ContactPage: React.FC = () => {
     window.scrollTo(0, 0);
   }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value
-    }));
-  };
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<ContactFormValues>({
+    resolver: zodResolver(contactSchema),
+    defaultValues: {
+      name: '',
+      email: '',
+      phone: '',
+      school: '',
+      role: '',
+      message: '',
+    },
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: ContactFormValues) => {
     setIsSubmitting(true);
     setSubmitStatus('idle');
     setErrorMessage('');
@@ -54,22 +60,15 @@ export const ContactPage: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(data),
       });
 
       if (response.ok) {
         setSubmitStatus('success');
-        setFormData({
-          name: '',
-          email: '',
-          phone: '',
-          school: '',
-          role: '',
-          message: '',
-        });
+        reset();
       } else {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to send message');
+        const resData = await response.json();
+        throw new Error(resData.message || 'Failed to send message');
       }
     } catch (error: any) {
       setSubmitStatus('error');
@@ -234,32 +233,36 @@ export const ContactPage: React.FC = () => {
                   </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-5">
+                <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <div>
                       <label className="block text-sm font-bold text-gray-400 mb-2">Full Name *</label>
                       <input
                         type="text"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleChange}
-                        required
+                        {...register('name')}
                         placeholder="John Doe"
-                        className="w-full bg-[#0a0a14] border border-white/[0.08] rounded-xl px-4 py-3.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00d4aa]/50 transition-colors"
+                        className={`w-full bg-[#0a0a14] border rounded-xl px-4 py-3.5 text-sm text-white placeholder-gray-600 outline-none transition-colors ${
+                          errors.name ? 'border-red-500/50 focus:border-red-500' : 'border-white/[0.08] focus:border-[#00d4aa]/50'
+                        }`}
                       />
+                      {errors.name && (
+                        <p className="mt-1.5 text-xs text-red-400">{errors.name.message}</p>
+                      )}
                     </div>
 
                     <div>
                       <label className="block text-sm font-bold text-gray-400 mb-2">Email Address *</label>
                       <input
                         type="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        required
+                        {...register('email')}
                         placeholder="john@school.com"
-                        className="w-full bg-[#0a0a14] border border-white/[0.08] rounded-xl px-4 py-3.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00d4aa]/50 transition-colors"
+                        className={`w-full bg-[#0a0a14] border rounded-xl px-4 py-3.5 text-sm text-white placeholder-gray-600 outline-none transition-colors ${
+                          errors.email ? 'border-red-500/50 focus:border-red-500' : 'border-white/[0.08] focus:border-[#00d4aa]/50'
+                        }`}
                       />
+                      {errors.email && (
+                        <p className="mt-1.5 text-xs text-red-400">{errors.email.message}</p>
+                      )}
                     </div>
                   </div>
 
@@ -268,35 +271,40 @@ export const ContactPage: React.FC = () => {
                       <label className="block text-sm font-bold text-gray-400 mb-2">Phone Number</label>
                       <input
                         type="tel"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleChange}
+                        {...register('phone')}
                         placeholder="+232 76 123 456"
-                        className="w-full bg-[#0a0a14] border border-white/[0.08] rounded-xl px-4 py-3.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00d4aa]/50 transition-colors"
+                        className={`w-full bg-[#0a0a14] border rounded-xl px-4 py-3.5 text-sm text-white placeholder-gray-600 outline-none transition-colors ${
+                          errors.phone ? 'border-red-500/50 focus:border-red-500' : 'border-white/[0.08] focus:border-[#00d4aa]/50'
+                        }`}
                       />
+                      {errors.phone && (
+                        <p className="mt-1.5 text-xs text-red-400">{errors.phone.message}</p>
+                      )}
                     </div>
 
                     <div>
                       <label className="block text-sm font-bold text-gray-400 mb-2">School Name</label>
                       <input
                         type="text"
-                        name="school"
-                        value={formData.school}
-                        onChange={handleChange}
+                        {...register('school')}
                         placeholder="ABC International School"
-                        className="w-full bg-[#0a0a14] border border-white/[0.08] rounded-xl px-4 py-3.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00d4aa]/50 transition-colors"
+                        className={`w-full bg-[#0a0a14] border rounded-xl px-4 py-3.5 text-sm text-white placeholder-gray-600 outline-none transition-colors ${
+                          errors.school ? 'border-red-500/50 focus:border-red-500' : 'border-white/[0.08] focus:border-[#00d4aa]/50'
+                        }`}
                       />
+                      {errors.school && (
+                        <p className="mt-1.5 text-xs text-red-400">{errors.school.message}</p>
+                      )}
                     </div>
                   </div>
 
                   <div>
                     <label className="block text-sm font-bold text-gray-400 mb-2">Your Role *</label>
                     <select
-                      name="role"
-                      value={formData.role}
-                      onChange={handleChange}
-                      required
-                      className="w-full bg-[#0a0a14] border border-white/[0.08] rounded-xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-[#00d4aa]/50 transition-colors"
+                      {...register('role')}
+                      className={`w-full bg-[#0a0a14] border rounded-xl px-4 py-3.5 text-sm text-white outline-none transition-colors ${
+                        errors.role ? 'border-red-500/50 focus:border-red-500' : 'border-white/[0.08] focus:border-[#00d4aa]/50'
+                      }`}
                     >
                       <option value="">Select your role</option>
                       <option value="principal">Principal</option>
@@ -306,19 +314,24 @@ export const ContactPage: React.FC = () => {
                       <option value="owner">School Owner</option>
                       <option value="other">Other</option>
                     </select>
+                    {errors.role && (
+                      <p className="mt-1.5 text-xs text-red-400">{errors.role.message}</p>
+                    )}
                   </div>
 
                   <div>
                     <label className="block text-sm font-bold text-gray-400 mb-2">Message *</label>
                     <textarea
-                      name="message"
-                      value={formData.message}
-                      onChange={handleChange}
-                      required
+                      {...register('message')}
                       rows={5}
                       placeholder="Tell us how we can help you..."
-                      className="w-full bg-[#0a0a14] border border-white/[0.08] rounded-xl px-4 py-3.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00d4aa]/50 transition-colors resize-none"
+                      className={`w-full bg-[#0a0a14] border rounded-xl px-4 py-3.5 text-sm text-white placeholder-gray-600 outline-none transition-colors resize-none ${
+                        errors.message ? 'border-red-500/50 focus:border-red-500' : 'border-white/[0.08] focus:border-[#00d4aa]/50'
+                      }`}
                     />
+                    {errors.message && (
+                      <p className="mt-1.5 text-xs text-red-400">{errors.message.message}</p>
+                    )}
                   </div>
 
                   <button
