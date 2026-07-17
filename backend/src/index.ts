@@ -48,6 +48,7 @@ import eventRoutes from '@routes/eventRoutes';
 import disciplineRoutes from '@routes/disciplineRoutes';
 import smsWhatsAppRoutes from '@routes/smsWhatsAppRoutes';
 import timetableRoutes from '@routes/timetableRoutes';
+import contactRoutes from '@routes/contactRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
 import { startEventManagementJobs } from './jobs/eventManagementJobs.js';
 
@@ -266,6 +267,9 @@ app.use('/api/v1/discipline', disciplineRoutes);
 
 // SMS & WhatsApp Routes (Phase 2.4: SMS & WhatsApp Integration)
 app.use('/api/v1/sms-whatsapp', smsWhatsAppRoutes);
+
+// Contact Form Routes (Public)
+app.use('/api/contact', contactRoutes);
 
 // Timetable Routes (Simplified schedule management)
 app.use('/api/v1/timetable', timetableRoutes);
