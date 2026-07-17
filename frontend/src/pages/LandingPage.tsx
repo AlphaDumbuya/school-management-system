@@ -6,20 +6,16 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import PublicNavbar from '@components/public';
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
   const [showAlert, setShowAlert] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleComingSoon = () => {
     setShowAlert(true);
     setTimeout(() => setShowAlert(false), 3000);
-  };
-
-  const closeMobileMenu = () => {
-    setMobileMenuOpen(false);
   };
 
   useEffect(() => {
@@ -45,95 +41,11 @@ export const LandingPage: React.FC = () => {
       )}
 
       {/* ── Navigation ── */}
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#1a1a2e]/95 backdrop-blur-xl shadow-lg shadow-purple-900/10' : 'bg-[#1a1a2e]/80 backdrop-blur-sm'}`}>
-        <div className="max-w-7xl mx-auto px-6 sm:px-10 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="WiSkul" className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg object-contain" />
-            <span className="text-lg sm:text-xl font-black tracking-tight">Wi<span className="text-[#00d4aa]">Skul</span></span>
-          </div>
-          
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-8 text-sm text-gray-300">
-            <a href="#features" className="hover:text-white transition-colors">Features</a>
-            <a href="#why" className="hover:text-white transition-colors">Why WiSkul</a>
-            <a href="#benefits" className="hover:text-white transition-colors">Benefits</a>
-            <span onClick={() => navigate('/features')} className="hover:text-white cursor-pointer transition-colors">All Features</span>
-            <span onClick={() => navigate('/pricing')} className="hover:text-white cursor-pointer transition-colors">Pricing</span>
-            <a href="#contact" className="hover:text-white transition-colors">Contact</a>
-          </div>
-
-          {/* Desktop CTA Button */}
-          <button
-            onClick={handleComingSoon}
-            className="hidden md:block bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-xs sm:text-sm px-5 sm:px-7 py-2.5 rounded-full transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,212,170,0.3)] active:scale-95"
-          >
-            Get a free trial
-          </button>
-
-          {/* Mobile Menu Button */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden flex flex-col gap-1.5 w-8 h-8 items-center justify-center"
-            aria-label="Toggle menu"
-          >
-            <span className={`w-6 h-0.5 bg-white transition-all duration-300 ${mobileMenuOpen ? 'rotate-45 translate-y-2' : ''}`} />
-            <span className={`w-6 h-0.5 bg-white transition-all duration-300 ${mobileMenuOpen ? 'opacity-0' : ''}`} />
-            <span className={`w-6 h-0.5 bg-white transition-all duration-300 ${mobileMenuOpen ? '-rotate-45 -translate-y-2' : ''}`} />
-          </button>
-        </div>
-
-        {/* Mobile Menu */}
-        <div className={`md:hidden overflow-hidden transition-all duration-300 ${mobileMenuOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
-          <div className="px-6 py-4 bg-[#16213e] border-t border-white/[0.06] space-y-3">
-            <a 
-              href="#features" 
-              onClick={closeMobileMenu}
-              className="block py-2.5 text-gray-300 hover:text-white transition-colors"
-            >
-              Features
-            </a>
-            <a 
-              href="#why" 
-              onClick={closeMobileMenu}
-              className="block py-2.5 text-gray-300 hover:text-white transition-colors"
-            >
-              Why WiSkul
-            </a>
-            <a 
-              href="#benefits" 
-              onClick={closeMobileMenu}
-              className="block py-2.5 text-gray-300 hover:text-white transition-colors"
-            >
-              Benefits
-            </a>
-            <span 
-              onClick={() => { navigate('/features'); closeMobileMenu(); }}
-              className="block py-2.5 text-gray-300 hover:text-white cursor-pointer transition-colors"
-            >
-              All Features
-            </span>
-            <span 
-              onClick={() => { navigate('/pricing'); closeMobileMenu(); }}
-              className="block py-2.5 text-gray-300 hover:text-white cursor-pointer transition-colors"
-            >
-              Pricing
-            </span>
-            <a 
-              href="#contact" 
-              onClick={closeMobileMenu}
-              className="block py-2.5 text-gray-300 hover:text-white transition-colors"
-            >
-              Contact
-            </a>
-            <button
-              onClick={() => { handleComingSoon(); closeMobileMenu(); }}
-              className="w-full bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm px-6 py-3 rounded-full transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,212,170,0.3)] active:scale-95 mt-2"
-            >
-              Get a free trial
-            </button>
-          </div>
-        </div>
-      </nav>
+      <PublicNavbar 
+        onCtaClick={handleComingSoon}
+        ctaText="Get a free trial"
+        ctaAction="custom"
+      />
 
       {/* ── Hero Section ── */}
       <section className="relative pt-28 sm:pt-36 pb-20 sm:pb-28 px-6 sm:px-10 overflow-hidden">
@@ -216,6 +128,17 @@ export const LandingPage: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* Learn More Button */}
+          <div className="text-center mt-12">
+            <button
+              onClick={() => navigate('/why')}
+              className="inline-flex items-center gap-2 bg-[#1a1a2e] hover:bg-[#2a2a3e] text-white font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,212,170,0.2)]"
+            >
+              Learn More About WiSkul
+              <span className="text-[#00d4aa]">→</span>
+            </button>
           </div>
         </div>
       </section>
@@ -389,6 +312,17 @@ export const LandingPage: React.FC = () => {
                 <p className="text-gray-300 text-xs leading-relaxed">{benefit.desc}</p>
               </div>
             ))}
+          </div>
+
+          {/* View All Benefits Button */}
+          <div className="text-center mt-12">
+            <button
+              onClick={() => navigate('/benefits')}
+              className="inline-flex items-center gap-2 bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,170,0.3)]"
+            >
+              View All Benefits
+              <span>→</span>
+            </button>
           </div>
         </div>
       </section>
