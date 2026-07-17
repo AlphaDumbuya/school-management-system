@@ -6,46 +6,43 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { FaSpinner, FaEye, FaEyeSlash } from 'react-icons/fa';
 import useAuth from '@hooks/useAuth';
-import type { LoginFormData } from '@appTypes';
+
+const loginSchema = z.object({
+  email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
+  password: z.string().min(1, 'Password is required'),
+  rememberMe: z.boolean().default(false),
+});
+
+type LoginFormValues = z.infer<typeof loginSchema>;
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login, isLoading, error } = useAuth();
-  const [formData, setFormData] = useState<LoginFormData>({
-    email: '',
-    password: '',
-    rememberMe: false,
-  });
-  const [validationError, setValidationError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }));
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+      rememberMe: false,
+    },
+  });
+
+  const onSubmit = async (data: LoginFormValues) => {
+    await login(data.email, data.password);
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setValidationError(null);
-
-    if (!formData.email || !formData.password) {
-      setValidationError('Email and password are required');
-      return;
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      setValidationError('Please enter a valid email address');
-      return;
-    }
-    await login(formData.email, formData.password);
-  };
-
-  const displayError = validationError || (typeof error === 'string' ? error : error ? 'Login failed. Please try again.' : null);
+  const displayError = typeof error === 'string' ? error : error ? 'Login failed. Please try again.' : null;
 
   return (
     <div className="min-h-screen bg-[#1a1a2e] flex items-center justify-center p-4 relative overflow-hidden">
@@ -87,20 +84,25 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
               {/* Email */}
               <div>
                 <label className="block text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">Email Address</label>
                 <input
                   type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
+                  {...register('email')}
                   placeholder="you@school.com"
                   autoComplete="email"
                   disabled={isLoading}
-                  className="w-full bg-[#1a1a2e] border border-white/[0.08] rounded-xl px-4 py-3.5 text-sm text-white placeholder-gray-600 outline-none focus:border-[#00d4aa]/50 focus:ring-1 focus:ring-[#00d4aa]/20 transition-all disabled:opacity-50"
+                  className={`w-full bg-[#1a1a2e] border rounded-xl px-4 py-3.5 text-sm text-white placeholder-gray-600 outline-none transition-all disabled:opacity-50 ${
+                    errors.email
+                      ? 'border-red-500/50 focus:border-red-500 focus:ring-1 focus:ring-red-500/20'
+                      : 'border-white/[0.08] focus:border-[#00d4aa]/50 focus:ring-1 focus:ring-[#00d4aa]/20'
+                  }`}
                 />
+                {errors.email && (
+                  <p className="mt-1.5 text-xs text-red-400">{errors.email.message}</p>
+                )}
               </div>
 
               {/* Password */}
@@ -109,13 +111,15 @@ export const LoginPage: React.FC = () => {
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
+                    {...register('password')}
                     placeholder="••••••••"
                     autoComplete="current-password"
                     disabled={isLoading}
-                    className="w-full bg-[#1a1a2e] border border-white/[0.08] rounded-xl px-4 py-3.5 pr-12 text-sm text-white placeholder-gray-600 outline-none focus:border-[#00d4aa]/50 focus:ring-1 focus:ring-[#00d4aa]/20 transition-all disabled:opacity-50"
+                    className={`w-full bg-[#1a1a2e] border rounded-xl px-4 py-3.5 pr-12 text-sm text-white placeholder-gray-600 outline-none transition-all disabled:opacity-50 ${
+                      errors.password
+                        ? 'border-red-500/50 focus:border-red-500 focus:ring-1 focus:ring-red-500/20'
+                        : 'border-white/[0.08] focus:border-[#00d4aa]/50 focus:ring-1 focus:ring-[#00d4aa]/20'
+                    }`}
                   />
                   <button
                     type="button"
@@ -128,6 +132,9 @@ export const LoginPage: React.FC = () => {
                     {showPassword ? <FaEyeSlash size={14} /> : <FaEye size={14} />}
                   </button>
                 </div>
+                {errors.password && (
+                  <p className="mt-1.5 text-xs text-red-400">{errors.password.message}</p>
+                )}
               </div>
 
               {/* Remember + Forgot */}
@@ -135,9 +142,7 @@ export const LoginPage: React.FC = () => {
                 <label className="flex items-center gap-2 cursor-pointer text-gray-400 text-xs hover:text-gray-300 transition-colors select-none">
                   <input
                     type="checkbox"
-                    name="rememberMe"
-                    checked={formData.rememberMe}
-                    onChange={handleChange}
+                    {...register('rememberMe')}
                     disabled={isLoading}
                     className="w-3.5 h-3.5 rounded border-gray-600 bg-[#1a1a2e] text-[#00d4aa] focus:ring-[#00d4aa]/30 cursor-pointer"
                   />
