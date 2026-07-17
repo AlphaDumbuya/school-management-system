@@ -1,38 +1,21 @@
 /**
- * PublicNavbar — Premium shared navigation for all public-facing pages.
+ * PublicNavbar — Premium public navigation.
  *
- * Features:
- *  • Transparent → frosted-glass on scroll
- *  • Active-page indicator with animated teal underline
- *  • Smooth animated mobile drawer (slides in from right)
- *  • "Sign In" ghost button + primary CTA
- *  • Animated cyber hamburger → X
- *  • Keyboard-accessible (Escape closes drawer)
- *  • Zero external dependencies beyond react-router-dom
+ * Mobile: full-width dropdown below the bar (no side drawer, no duplicate X).
+ * Desktop: inline links + ghost Sign In + gradient CTA.
+ * Scroll: transparent → frosted-glass after 24 px.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
-
-// ── Types ──────────────────────────────────────────────────────────────────────
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 export interface PublicNavbarProps {
-  /** Override the primary CTA button text */
-  ctaText?: string;
-  /** What happens when the primary CTA is clicked */
+  ctaText?:   string;
   ctaAction?: 'login' | 'custom';
-  /** Custom CTA handler (used when ctaAction === 'custom') */
   onCtaClick?: () => void;
 }
 
-interface NavItem {
-  label: string;
-  path: string;
-}
-
-// ── Nav link definitions ───────────────────────────────────────────────────────
-
-const NAV_LINKS: NavItem[] = [
+const NAV_LINKS = [
   { label: 'Home',     path: '/'         },
   { label: 'Features', path: '/features' },
   { label: 'Why Us',   path: '/why'      },
@@ -41,7 +24,8 @@ const NAV_LINKS: NavItem[] = [
   { label: 'Contact',  path: '/contact'  },
 ];
 
-// ── Component ──────────────────────────────────────────────────────────────────
+const TEAL = '#00d4aa';
+const BG   = '#0d0d21';
 
 export const PublicNavbar: React.FC<PublicNavbarProps> = ({
   ctaText    = 'Get Started',
@@ -50,506 +34,312 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
 }) => {
   const navigate  = useNavigate();
   const location  = useLocation();
+  const [open,      setOpen]    = useState(false);
+  const [scrolled,  setScrolled] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
 
-  const [scrolled,    setScrolled]    = useState(false);
-  const [drawerOpen,  setDrawerOpen]  = useState(false);
-
-  /* ── Scroll detection ── */
+  /* scroll */
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    const fn = () => setScrolled(window.scrollY > 24);
+    window.addEventListener('scroll', fn, { passive: true });
+    return () => window.removeEventListener('scroll', fn);
   }, []);
 
-  /* ── Close drawer on route change ── */
-  useEffect(() => setDrawerOpen(false), [location.pathname]);
+  /* close on route change */
+  useEffect(() => setOpen(false), [location.pathname]);
 
-  /* ── Escape key ── */
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') setDrawerOpen(false);
+  /* Escape key */
+  const onKey = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') setOpen(false);
   }, []);
   useEffect(() => {
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onKey]);
 
-  /* ── Lock body scroll when drawer is open ── */
+  /* lock body scroll when open */
   useEffect(() => {
-    document.body.style.overflow = drawerOpen ? 'hidden' : '';
+    document.body.style.overflow = open ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
-  }, [drawerOpen]);
-
-  /* ── CTA handler ── */
-  const handleCta = () => {
-    if (ctaAction === 'custom' && onCtaClick) {
-      onCtaClick();
-    } else {
-      navigate('/login');
-    }
-    setDrawerOpen(false);
-  };
+  }, [open]);
 
   const isActive = (path: string) =>
-    path === '/'
-      ? location.pathname === '/'
-      : location.pathname.startsWith(path);
+    path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  const handleCta = () => {
+    setOpen(false);
+    ctaAction === 'custom' && onCtaClick ? onCtaClick() : navigate('/login');
+  };
+
   return (
     <>
-      {/* ── NAV BAR ──────────────────────────────────────────────────────── */}
       <nav
+        ref={navRef}
         aria-label="Main navigation"
         style={{
           position:       'fixed',
-          top:            0,
-          left:           0,
-          right:          0,
+          top: 0, left: 0, right: 0,
           zIndex:         1000,
-          transition:     'background 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease',
-          background:     scrolled
-            ? 'rgba(16, 16, 36, 0.88)'
-            : 'rgba(16, 16, 36, 0.0)',
-          backdropFilter: scrolled ? 'blur(20px) saturate(180%)' : 'none',
-          WebkitBackdropFilter: scrolled ? 'blur(20px) saturate(180%)' : 'none',
-          borderBottom:   scrolled
-            ? '1px solid rgba(0, 212, 170, 0.12)'
+          background:     scrolled || open
+            ? `rgba(13,13,33,0.95)`
+            : 'transparent',
+          backdropFilter: scrolled || open ? 'blur(18px) saturate(160%)' : 'none',
+          WebkitBackdropFilter: scrolled || open ? 'blur(18px) saturate(160%)' : 'none',
+          borderBottom:   scrolled || open
+            ? '1px solid rgba(0,212,170,0.1)'
             : '1px solid transparent',
-          boxShadow:      scrolled
-            ? '0 4px 32px rgba(0, 0, 0, 0.4)'
-            : 'none',
+          boxShadow:      scrolled ? '0 4px 40px rgba(0,0,0,0.5)' : 'none',
+          transition:     'background 0.3s, border-color 0.3s, box-shadow 0.3s',
         }}
       >
+        {/* ── Top bar ──────────────────────────────────────────────── */}
         <div style={{
           maxWidth:       '1280px',
           margin:         '0 auto',
-          padding:        '0 2rem',
-          height:         '68px',
+          padding:        '0 1.5rem',
+          height:         '64px',
           display:        'flex',
           alignItems:     'center',
           justifyContent: 'space-between',
-          gap:            '1.5rem',
+          gap:            '1rem',
         }}>
 
-          {/* ── Logo ── */}
+          {/* Logo */}
           <Link
             to="/"
             aria-label="WiSkul home"
-            style={{
-              display:        'flex',
-              alignItems:     'center',
-              gap:            '0.6rem',
-              textDecoration: 'none',
-              flexShrink:     0,
-            }}
+            style={{ display:'flex', alignItems:'center', gap:'0.55rem', textDecoration:'none', flexShrink:0 }}
           >
             <div style={{
-              width:        '36px',
-              height:       '36px',
-              borderRadius: '10px',
-              background:   'linear-gradient(135deg, #00d4aa 0%, #00a8a0 100%)',
-              display:      'flex',
-              alignItems:   'center',
-              justifyContent: 'center',
-              boxShadow:    '0 0 18px rgba(0,212,170,0.35)',
-              flexShrink:   0,
+              width:'34px', height:'34px', borderRadius:'9px',
+              background:'linear-gradient(135deg,#00d4aa,#009e9a)',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              boxShadow:'0 0 16px rgba(0,212,170,0.35)', flexShrink:0,
             }}>
-              {/* Wi logo mark */}
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path
-                  d="M3 5l3.5 10L10 8l3.5 7L17 5"
-                  stroke="#101024"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                <path d="M3 5l3.5 10L10 8l3.5 7L17 5" stroke="#0d0d21"
+                  strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </div>
-            <span style={{
-              fontSize:    '1.2rem',
-              fontWeight:  900,
-              color:       '#ffffff',
-              letterSpacing: '-0.02em',
-              lineHeight:  1,
-            }}>
-              Wi<span style={{ color: '#00d4aa' }}>Skul</span>
+            <span style={{ fontSize:'1.15rem', fontWeight:900, color:'#fff', letterSpacing:'-0.02em', lineHeight:1 }}>
+              Wi<span style={{ color:TEAL }}>Skul</span>
             </span>
           </Link>
 
-          {/* ── Desktop Links ── */}
-          <div style={{
-            display:    'none',
-            alignItems: 'center',
-            gap:        '0.25rem',
-            flex:       1,
-            justifyContent: 'center',
-          }} className="pn-desktop-links">
-            {NAV_LINKS.map((link) => {
+          {/* Desktop links */}
+          <div className="pn-desk-links" style={{
+            display:'none', alignItems:'center', gap:'0.15rem',
+            flex:1, justifyContent:'center',
+          }}>
+            {NAV_LINKS.map(link => {
               const active = isActive(link.path);
               return (
                 <Link
                   key={link.path}
                   to={link.path}
+                  className={active ? 'pn-link pn-link--active' : 'pn-link'}
                   style={{
-                    position:       'relative',
-                    padding:        '0.45rem 0.85rem',
-                    borderRadius:   '8px',
-                    fontSize:       '0.875rem',
-                    fontWeight:     active ? 600 : 400,
-                    color:          active ? '#00d4aa' : 'rgba(255,255,255,0.7)',
-                    textDecoration: 'none',
-                    transition:     'color 0.2s, background 0.2s',
-                    background:     active ? 'rgba(0,212,170,0.08)' : 'transparent',
-                    whiteSpace:     'nowrap',
-                  }}
-                  onMouseEnter={e => {
-                    if (!active) {
-                      (e.currentTarget as HTMLElement).style.color = '#ffffff';
-                      (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)';
-                    }
-                  }}
-                  onMouseLeave={e => {
-                    if (!active) {
-                      (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.7)';
-                      (e.currentTarget as HTMLElement).style.background = 'transparent';
-                    }
+                    position:'relative', padding:'0.4rem 0.8rem', borderRadius:'7px',
+                    fontSize:'0.875rem', fontWeight: active ? 600 : 400,
+                    color: active ? TEAL : 'rgba(255,255,255,0.7)',
+                    textDecoration:'none',
+                    background: active ? 'rgba(0,212,170,0.08)' : 'transparent',
+                    transition:'color 0.18s, background 0.18s',
+                    whiteSpace:'nowrap',
                   }}
                 >
                   {link.label}
-                  {/* Active underline */}
                   {active && (
                     <span style={{
-                      position:     'absolute',
-                      bottom:       '4px',
-                      left:         '50%',
-                      transform:    'translateX(-50%)',
-                      width:        '18px',
-                      height:       '2px',
-                      borderRadius: '2px',
-                      background:   '#00d4aa',
-                      boxShadow:    '0 0 8px rgba(0,212,170,0.6)',
-                    }} />
+                      position:'absolute', bottom:'3px', left:'50%',
+                      transform:'translateX(-50%)',
+                      width:'16px', height:'2px', borderRadius:'2px',
+                      background:TEAL, boxShadow:`0 0 6px ${TEAL}`,
+                    }}/>
                   )}
                 </Link>
               );
             })}
           </div>
 
-          {/* ── Desktop Actions ── */}
-          <div style={{
-            display:    'none',
-            alignItems: 'center',
-            gap:        '0.75rem',
-            flexShrink: 0,
-          }} className="pn-desktop-actions">
-            {/* Ghost Sign In */}
+          {/* Desktop actions */}
+          <div className="pn-desk-actions" style={{ display:'none', alignItems:'center', gap:'0.65rem', flexShrink:0 }}>
             <button
               onClick={() => navigate('/login')}
+              className="pn-btn-ghost"
               style={{
-                padding:      '0.5rem 1.1rem',
-                borderRadius: '8px',
-                border:       '1px solid rgba(255,255,255,0.15)',
-                background:   'transparent',
-                color:        'rgba(255,255,255,0.8)',
-                fontSize:     '0.875rem',
-                fontWeight:   500,
-                cursor:       'pointer',
-                transition:   'all 0.2s',
-                whiteSpace:   'nowrap',
+                padding:'0.45rem 1rem', borderRadius:'7px',
+                border:'1px solid rgba(255,255,255,0.15)', background:'transparent',
+                color:'rgba(255,255,255,0.8)', fontSize:'0.875rem', fontWeight:500,
+                cursor:'pointer', transition:'all 0.2s', whiteSpace:'nowrap',
               }}
-              onMouseEnter={e => {
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,212,170,0.4)';
-                (e.currentTarget as HTMLElement).style.color = '#ffffff';
-                (e.currentTarget as HTMLElement).style.background = 'rgba(0,212,170,0.05)';
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)';
-                (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.8)';
-                (e.currentTarget as HTMLElement).style.background = 'transparent';
-              }}
-            >
-              Sign In
-            </button>
-
-            {/* Primary CTA */}
+            >Sign In</button>
             <button
               onClick={handleCta}
+              className="pn-btn-cta"
               style={{
-                padding:      '0.5rem 1.4rem',
-                borderRadius: '8px',
-                border:       'none',
-                background:   'linear-gradient(135deg, #00d4aa 0%, #00b899 100%)',
-                color:        '#101024',
-                fontSize:     '0.875rem',
-                fontWeight:   700,
-                cursor:       'pointer',
-                transition:   'all 0.25s',
-                whiteSpace:   'nowrap',
-                boxShadow:    '0 0 0 rgba(0,212,170,0)',
+                padding:'0.48rem 1.25rem', borderRadius:'7px', border:'none',
+                background:`linear-gradient(135deg,${TEAL},#00a898)`,
+                color:'#0d0d21', fontSize:'0.875rem', fontWeight:700,
+                cursor:'pointer', transition:'all 0.25s', whiteSpace:'nowrap',
+                boxShadow:`0 0 0 rgba(0,212,170,0)`,
               }}
-              onMouseEnter={e => {
-                (e.currentTarget as HTMLElement).style.boxShadow = '0 0 22px rgba(0,212,170,0.4)';
-                (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.boxShadow = '0 0 0 rgba(0,212,170,0)';
-                (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
-              }}
-            >
-              {ctaText}
-            </button>
+            >{ctaText}</button>
           </div>
 
-          {/* ── Mobile Hamburger ── */}
+          {/* Hamburger — mobile only. Animates to × when open. No separate close btn. */}
           <button
-            onClick={() => setDrawerOpen(v => !v)}
-            aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
-            aria-expanded={drawerOpen}
-            className="pn-hamburger"
+            className="pn-burger"
+            onClick={() => setOpen(v => !v)}
+            aria-label={open ? 'Close menu' : 'Open menu'}
+            aria-expanded={open}
+            aria-controls="pn-dropdown"
             style={{
-              display:         'flex',
-              flexDirection:   'column',
-              justifyContent:  'center',
-              alignItems:      'center',
-              gap:             '5px',
-              width:           '40px',
-              height:          '40px',
-              background:      'rgba(255,255,255,0.06)',
-              border:          '1px solid rgba(255,255,255,0.1)',
-              borderRadius:    '10px',
-              cursor:          'pointer',
-              padding:         0,
-              flexShrink:      0,
-              transition:      'background 0.2s, border-color 0.2s',
-            }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.background = 'rgba(0,212,170,0.1)';
-              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,212,170,0.3)';
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
-              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)';
+              display:'flex', flexDirection:'column', justifyContent:'center',
+              alignItems:'center', gap:'5px',
+              width:'40px', height:'40px', padding:0, flexShrink:0,
+              background: open ? 'rgba(0,212,170,0.1)' : 'rgba(255,255,255,0.06)',
+              border:`1px solid ${open ? 'rgba(0,212,170,0.3)' : 'rgba(255,255,255,0.12)'}`,
+              borderRadius:'9px', cursor:'pointer', transition:'background 0.2s, border-color 0.2s',
             }}
           >
             <span style={{
-              display:    'block',
-              width:      '18px',
-              height:     '2px',
-              borderRadius: '2px',
-              background: '#00d4aa',
-              transformOrigin: 'center',
-              transition: 'transform 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.3s',
-              transform:  drawerOpen ? 'translateY(7px) rotate(45deg)' : 'none',
-            }} />
+              display:'block', width:'17px', height:'2px', borderRadius:'2px',
+              background: TEAL, transition:'transform 0.3s cubic-bezier(0.4,0,0.2,1)',
+              transformOrigin:'center',
+              transform: open ? 'translateY(7px) rotate(45deg)' : 'none',
+            }}/>
             <span style={{
-              display:    'block',
-              width:      '18px',
-              height:     '2px',
-              borderRadius: '2px',
-              background: '#00d4aa',
-              transition: 'opacity 0.2s',
-              opacity:    drawerOpen ? 0 : 1,
-            }} />
+              display:'block', width:'17px', height:'2px', borderRadius:'2px',
+              background: TEAL, transition:'opacity 0.2s, width 0.2s',
+              opacity: open ? 0 : 1, width: open ? 0 : '17px',
+            }}/>
             <span style={{
-              display:    'block',
-              width:      '18px',
-              height:     '2px',
-              borderRadius: '2px',
-              background: '#00d4aa',
-              transformOrigin: 'center',
-              transition: 'transform 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.3s',
-              transform:  drawerOpen ? 'translateY(-7px) rotate(-45deg)' : 'none',
-            }} />
+              display:'block', width:'17px', height:'2px', borderRadius:'2px',
+              background: TEAL, transition:'transform 0.3s cubic-bezier(0.4,0,0.2,1)',
+              transformOrigin:'center',
+              transform: open ? 'translateY(-7px) rotate(-45deg)' : 'none',
+            }}/>
           </button>
+        </div>
+
+        {/* ── Mobile dropdown ──────────────────────────────────────── */}
+        <div
+          id="pn-dropdown"
+          role="navigation"
+          aria-label="Mobile navigation"
+          className="pn-dropdown"
+          style={{
+            overflow:   'hidden',
+            maxHeight:  open ? '600px' : '0px',
+            opacity:    open ? 1 : 0,
+            transition: 'max-height 0.38s cubic-bezier(0.4,0,0.2,1), opacity 0.25s ease',
+            borderTop:  open ? '1px solid rgba(0,212,170,0.08)' : '1px solid transparent',
+          }}
+        >
+          <div style={{ padding:'0.5rem 1rem 1.25rem' }}>
+            {/* Nav links */}
+            {NAV_LINKS.map(link => {
+              const active = isActive(link.path);
+              return (
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  onClick={() => setOpen(false)}
+                  style={{
+                    display:'flex', alignItems:'center', justifyContent:'space-between',
+                    padding:'0.75rem 0.9rem', borderRadius:'9px', marginBottom:'2px',
+                    textDecoration:'none', fontSize:'0.95rem',
+                    fontWeight: active ? 700 : 500,
+                    color: active ? TEAL : 'rgba(255,255,255,0.75)',
+                    background: active ? 'rgba(0,212,170,0.08)' : 'transparent',
+                    borderLeft:`3px solid ${active ? TEAL : 'transparent'}`,
+                    transition:'background 0.15s, color 0.15s',
+                  }}
+                >
+                  <span>{link.label}</span>
+                  {active && (
+                    <span style={{
+                      width:'6px', height:'6px', borderRadius:'50%',
+                      background: TEAL, boxShadow:`0 0 7px ${TEAL}`,
+                      flexShrink:0,
+                    }}/>
+                  )}
+                </Link>
+              );
+            })}
+
+            {/* Divider */}
+            <div style={{ margin:'0.75rem 0', height:'1px', background:'rgba(255,255,255,0.06)' }}/>
+
+            {/* Actions */}
+            <div style={{ display:'flex', flexDirection:'column', gap:'0.6rem' }}>
+              <button
+                onClick={() => { navigate('/login'); setOpen(false); }}
+                style={{
+                  width:'100%', padding:'0.78rem',
+                  borderRadius:'9px', border:'1px solid rgba(255,255,255,0.15)',
+                  background:'transparent', color:'rgba(255,255,255,0.85)',
+                  fontSize:'0.9rem', fontWeight:600, cursor:'pointer',
+                  transition:'border-color 0.2s, background 0.2s',
+                }}
+              >Sign In</button>
+              <button
+                onClick={handleCta}
+                style={{
+                  width:'100%', padding:'0.85rem',
+                  borderRadius:'9px', border:'none',
+                  background:`linear-gradient(135deg,${TEAL},#00a898)`,
+                  color:'#0d0d21', fontSize:'0.9rem', fontWeight:700,
+                  cursor:'pointer', boxShadow:`0 4px 18px rgba(0,212,170,0.28)`,
+                  transition:'box-shadow 0.2s, transform 0.15s',
+                }}
+              >{ctaText}</button>
+            </div>
+          </div>
         </div>
       </nav>
 
-      {/* ── MOBILE DRAWER BACKDROP ────────────────────────────────────────── */}
-      <div
-        onClick={() => setDrawerOpen(false)}
-        aria-hidden="true"
-        style={{
-          position:   'fixed',
-          inset:      0,
-          zIndex:     998,
-          background: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(4px)',
-          transition: 'opacity 0.3s ease',
-          opacity:    drawerOpen ? 1 : 0,
-          pointerEvents: drawerOpen ? 'auto' : 'none',
-        }}
-        className="pn-backdrop"
-      />
+      {/* Dim backdrop — behind everything except nav */}
+      {open && (
+        <div
+          aria-hidden="true"
+          onClick={() => setOpen(false)}
+          style={{
+            position:'fixed', inset:0, zIndex:999,
+            background:'rgba(0,0,0,0.45)',
+            backdropFilter:'blur(2px)',
+            WebkitBackdropFilter:'blur(2px)',
+          }}
+        />
+      )}
 
-      {/* ── MOBILE DRAWER ─────────────────────────────────────────────────── */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Navigation menu"
-        style={{
-          position:   'fixed',
-          top:        0,
-          right:      0,
-          bottom:     0,
-          width:      'min(320px, 85vw)',
-          zIndex:     999,
-          background: 'linear-gradient(180deg, #0f0f27 0%, #13132e 100%)',
-          borderLeft: '1px solid rgba(0,212,170,0.15)',
-          boxShadow:  drawerOpen ? '-24px 0 80px rgba(0,0,0,0.6)' : 'none',
-          transform:  drawerOpen ? 'translateX(0)' : 'translateX(100%)',
-          transition: 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
-          display:    'flex',
-          flexDirection: 'column',
-          overflowY:  'auto',
-        }}
-        className="pn-drawer"
-      >
-        {/* Drawer header */}
-        <div style={{
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: 'space-between',
-          padding:        '1.25rem 1.5rem',
-          borderBottom:   '1px solid rgba(0,212,170,0.1)',
-        }}>
-          <Link
-            to="/"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none' }}
-            onClick={() => setDrawerOpen(false)}
-          >
-            <div style={{
-              width: '32px', height: '32px', borderRadius: '8px',
-              background: 'linear-gradient(135deg, #00d4aa 0%, #00a8a0 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 0 14px rgba(0,212,170,0.3)',
-            }}>
-              <svg width="17" height="17" viewBox="0 0 20 20" fill="none">
-                <path d="M3 5l3.5 10L10 8l3.5 7L17 5" stroke="#101024" strokeWidth="2.4"
-                  strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#fff', letterSpacing: '-0.02em' }}>
-              Wi<span style={{ color: '#00d4aa' }}>Skul</span>
-            </span>
-          </Link>
+      {/* Spacer so page content starts below the fixed nav */}
+      <div style={{ height:'64px' }} aria-hidden="true" className="pn-spacer"/>
 
-          <button
-            onClick={() => setDrawerOpen(false)}
-            aria-label="Close navigation menu"
-            style={{
-              width: '36px', height: '36px', borderRadius: '8px',
-              border: '1px solid rgba(255,255,255,0.1)',
-              background: 'rgba(255,255,255,0.05)',
-              color: 'rgba(255,255,255,0.7)',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '1.1rem', transition: 'all 0.2s',
-            }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.background = 'rgba(0,212,170,0.1)';
-              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,212,170,0.3)';
-              (e.currentTarget as HTMLElement).style.color = '#00d4aa';
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)';
-              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)';
-              (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.7)';
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Drawer links */}
-        <nav aria-label="Mobile navigation" style={{ flex: 1, padding: '1rem 0.75rem' }}>
-          {NAV_LINKS.map((link, i) => {
-            const active = isActive(link.path);
-            return (
-              <Link
-                key={link.path}
-                to={link.path}
-                onClick={() => setDrawerOpen(false)}
-                style={{
-                  display:        'flex',
-                  alignItems:     'center',
-                  gap:            '0.75rem',
-                  padding:        '0.85rem 1rem',
-                  borderRadius:   '10px',
-                  marginBottom:   '2px',
-                  textDecoration: 'none',
-                  fontSize:       '0.95rem',
-                  fontWeight:     active ? 700 : 500,
-                  color:          active ? '#00d4aa' : 'rgba(255,255,255,0.75)',
-                  background:     active ? 'rgba(0,212,170,0.1)' : 'transparent',
-                  borderLeft:     active ? '3px solid #00d4aa' : '3px solid transparent',
-                  transition:     'all 0.2s',
-                  animationDelay: `${i * 40}ms`,
-                }}
-              >
-                {link.label}
-                {active && (
-                  <span style={{
-                    marginLeft: 'auto',
-                    width: '6px', height: '6px', borderRadius: '50%',
-                    background: '#00d4aa',
-                    boxShadow: '0 0 8px rgba(0,212,170,0.8)',
-                  }} />
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* Drawer footer actions */}
-        <div style={{
-          padding:     '1rem 1.25rem 2rem',
-          borderTop:   '1px solid rgba(0,212,170,0.1)',
-          display:     'flex',
-          flexDirection: 'column',
-          gap:         '0.75rem',
-        }}>
-          <button
-            onClick={() => { navigate('/login'); setDrawerOpen(false); }}
-            style={{
-              width: '100%', padding: '0.8rem',
-              borderRadius: '10px',
-              border: '1px solid rgba(255,255,255,0.15)',
-              background: 'transparent',
-              color: 'rgba(255,255,255,0.8)',
-              fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-          >
-            Sign In
-          </button>
-          <button
-            onClick={handleCta}
-            style={{
-              width: '100%', padding: '0.9rem',
-              borderRadius: '10px', border: 'none',
-              background: 'linear-gradient(135deg, #00d4aa 0%, #00b899 100%)',
-              color: '#101024',
-              fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer',
-              boxShadow: '0 4px 20px rgba(0,212,170,0.3)',
-              transition: 'all 0.2s',
-            }}
-          >
-            {ctaText}
-          </button>
-        </div>
-      </div>
-
-      {/* ── RESPONSIVE STYLES ─────────────────────────────────────────────── */}
       <style>{`
-        /* Show desktop links/actions on md+ */
+        /* Desktop: show links+actions, hide burger */
         @media (min-width: 768px) {
-          .pn-desktop-links   { display: flex !important; }
-          .pn-desktop-actions { display: flex !important; }
-          .pn-hamburger       { display: none !important; }
+          .pn-desk-links   { display: flex !important; }
+          .pn-desk-actions { display: flex !important; }
+          .pn-burger       { display: none  !important; }
+          .pn-dropdown     { display: none  !important; }
+          .pn-spacer       { height: 0 !important; }
         }
-        /* Always hide drawer chrome on desktop */
-        @media (min-width: 768px) {
-          .pn-backdrop { display: none !important; }
-          .pn-drawer   { display: none !important; }
+
+        /* Link hover (desktop) */
+        .pn-link:not(.pn-link--active):hover {
+          color: #fff !important;
+          background: rgba(255,255,255,0.05) !important;
+        }
+        .pn-btn-ghost:hover {
+          border-color: rgba(0,212,170,0.4) !important;
+          color: #fff !important;
+          background: rgba(0,212,170,0.05) !important;
+        }
+        .pn-btn-cta:hover {
+          box-shadow: 0 0 22px rgba(0,212,170,0.42) !important;
+          transform: translateY(-1px) !important;
         }
       `}</style>
     </>
