@@ -10,6 +10,13 @@ const router = Router();
 const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
 const db = knex(knexConfig[env] || knexConfig.development);
 
+const mapSubject = (subject: any) => {
+  if (!subject) return subject;
+  const mapped = { ...subject, credit_points: subject.credits ?? 0 };
+  delete mapped.credits;
+  return mapped;
+};
+
 /**
  * POST /api/v1/subjects
  * Create a new subject
@@ -37,7 +44,7 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       code: code.toUpperCase(),
       name: name.trim(),
       description: description || null,
-      credit_points: credit_points || 0,
+      credits: credit_points || 0,
       max_marks: max_marks || 100,
       pass_marks: pass_marks || 40,
       category: category || null,
@@ -52,7 +59,7 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
 
     res.status(201).json({
       message: 'Subject created successfully',
-      subject: inserted,
+      subject: mapSubject(inserted),
     });
 
     logger.info(`Subject created: ${code} - ${name}`);
@@ -99,7 +106,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     const subjects = await query.limit(limit).offset(offset).orderBy('code', 'asc');
 
     res.json({
-      data: subjects,
+      data: subjects.map(mapSubject),
       pagination: {
         page,
         limit,
@@ -125,7 +132,7 @@ router.get('/:subjectId', authenticate, async (req: Request, res: Response, next
       throw new AppError('Subject not found', 404, 'NOT_FOUND');
     }
 
-    res.json(subject);
+    res.json(mapSubject(subject));
   } catch (error) {
     next(error);
   }
@@ -156,7 +163,7 @@ router.put('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
     }
     if (name) updateData.name = name.trim();
     if (description !== undefined) updateData.description = description || null;
-    if (credit_points !== undefined) updateData.credit_points = credit_points;
+    if (credit_points !== undefined) updateData.credits = credit_points;
     if (max_marks !== undefined && pass_marks !== undefined) {
       if (max_marks <= pass_marks) {
         throw new AppError('Max marks must be greater than pass marks', 400, 'VALIDATION_ERROR');
@@ -179,7 +186,7 @@ router.put('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
 
     res.json({
       message: 'Subject updated successfully',
-      subject: updated,
+      subject: mapSubject(updated),
     });
 
     logger.info(`Subject updated: ${subjectId}`);
