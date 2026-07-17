@@ -169,36 +169,10 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Demo accounts */}
-        <div className="mt-6 w-full bg-white/[0.02] border border-white/[0.06] rounded-2xl p-5 animate-fade-in-up">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-2 h-2 rounded-full bg-[#00d4aa] animate-pulse shadow-[0_0_6px_rgba(0,212,170,0.5)]" />
-            <p className="text-white font-bold text-xs">Demo Accounts</p>
-          </div>
-          <div className="space-y-2 text-[11px]">
-            {[
-              { emoji: '👑', role: 'Principal', email: 'principal@school.com' },
-              { emoji: '📚', role: 'Teacher', email: 'teacher1@school.com' },
-              { emoji: '🎓', role: 'Student', email: 'student1@school.com' },
-              { emoji: '💰', role: 'Accountant', email: 'accountant@school.com' },
-              { emoji: '📋', role: 'Admissions', email: 'admissions@school.com' },
-              { emoji: '👨‍👩‍👧', role: 'Parent', email: 'parent@school.com' },
-            ].map((a) => (
-              <div key={a.email} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.03] transition-colors">
-                <span>{a.emoji}</span>
-                <span className="text-gray-500 w-[70px] flex-shrink-0">{a.role}:</span>
-                <code className="text-[#00d4aa] font-mono text-[10px]">{a.email}</code>
-              </div>
-            ))}
-            <div className="border-t border-white/[0.06] pt-2 mt-2 flex items-center justify-center gap-2">
-              <span className="text-gray-400 font-medium">🔑 Password:</span>
-              <code className="bg-[#7c3aed]/20 text-[#7c3aed] px-2.5 py-0.5 rounded font-mono font-bold border border-[#7c3aed]/20">password123</code>
-            </div>
-          </div>
-        </div>
+
 
         {/* Back to home */}
-        <button onClick={() => navigate('/')} className="mt-5 text-gray-600 text-xs hover:text-gray-400 transition-colors">
+        <button onClick={() => navigate('/')} className="mt-6 text-gray-600 text-xs hover:text-gray-400 transition-colors">
           ← Back to home
         </button>
       </div>

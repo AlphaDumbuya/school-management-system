@@ -3,7 +3,7 @@
  * Used on Landing, Features, and Pricing pages
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface PublicNavbarProps {
@@ -20,6 +20,11 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Close mobile menu when route changes
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   const closeMobileMenu = () => {
     setMobileMenuOpen(false);
@@ -42,6 +47,18 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
 
   const isActive = (path: string) => location.pathname === path;
 
+  // Determine if we're on a public/marketing page
+  const isPublicPage = [
+    '/',
+    '/features',
+    '/pricing',
+    '/why',
+    '/benefits',
+    '/contact'
+  ].includes(location.pathname);
+
+  const isHomePage = location.pathname === '/';
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-[#1a1a2e]/95 backdrop-blur-xl border-b border-white/[0.04]">
       <div className="max-w-7xl mx-auto px-6 sm:px-10 py-4 flex items-center justify-between">
@@ -62,7 +79,7 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
         
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center gap-8 text-sm text-gray-300">
-          {location.pathname === '/' ? (
+          {isHomePage ? (
             <>
               <a 
                 href="#features" 
@@ -154,10 +171,17 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
         </button>
       </div>
 
-      {/* Mobile Menu Dropdown */}
-      <div className={`md:hidden overflow-hidden transition-all duration-300 ${mobileMenuOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+      {/* Mobile Menu Dropdown with Backdrop */}
+      {mobileMenuOpen && (
+        <div 
+          className="fixed inset-0 md:hidden z-40 bg-black/20 backdrop-blur-sm"
+          onClick={closeMobileMenu}
+        />
+      )}
+      
+      <div className={`md:hidden overflow-hidden transition-all duration-300 ${mobileMenuOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'} relative z-50`}>
         <div className="px-6 py-4 bg-[#16213e] border-t border-white/[0.06] space-y-3">
-          {location.pathname === '/' ? (
+          {isHomePage ? (
             <>
               <a 
                 href="#features" 
