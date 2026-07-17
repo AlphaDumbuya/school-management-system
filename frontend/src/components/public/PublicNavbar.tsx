@@ -34,6 +34,18 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
     setMobileMenuOpen(false);
   }, [location.pathname]);
 
+  // Close menu on Escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && mobileMenuOpen) {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [mobileMenuOpen]);
+
   const handleAnchorClick = (anchorId: string) => {
     const element = document.getElementById(anchorId);
     if (element) {
@@ -156,6 +168,7 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
         <div
           className="fixed inset-0 md:hidden z-40 bg-black/40 backdrop-blur-sm"
           onClick={() => setMobileMenuOpen(false)}
+          aria-label="Close menu"
         />
       )}
 
@@ -165,20 +178,47 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
           mobileMenuOpen ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
         }`}
       >
-        <div className="px-6 py-4 bg-gradient-to-b from-[#16213e] to-[#1a1a2e] border-t border-[#00d4aa]/20 space-y-1">
-          {navLinks.map((link) => (
+        <div className="px-6 py-4 bg-gradient-to-b from-[#16213e] to-[#1a1a2e] border-t border-[#00d4aa]/20">
+          {/* Close Button */}
+          <div className="flex justify-end mb-3">
             <button
-              key={link.label}
-              onClick={() => handleNavClick(link)}
-              className={`w-full text-left py-3 px-4 rounded-lg transition-all duration-200 ${
-                isNavActive(link)
-                  ? 'bg-[#00d4aa]/10 text-[#00d4aa] font-semibold border-l-2 border-[#00d4aa] pl-3'
-                  : 'text-gray-300 hover:bg-white/[0.05] hover:text-white'
-              }`}
+              onClick={() => setMobileMenuOpen(false)}
+              className="p-1.5 hover:bg-white/[0.08] rounded-lg transition-colors"
+              aria-label="Close menu"
+              title="Close"
             >
-              {link.label}
+              <svg
+                className="w-5 h-5 text-gray-300 hover:text-[#00d4aa] transition-colors"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
             </button>
-          ))}
+          </div>
+
+          {/* Navigation Links */}
+          <div className="space-y-1">
+            {navLinks.map((link) => (
+              <button
+                key={link.label}
+                onClick={() => handleNavClick(link)}
+                className={`w-full text-left py-3 px-4 rounded-lg transition-all duration-200 ${
+                  isNavActive(link)
+                    ? 'bg-[#00d4aa]/10 text-[#00d4aa] font-semibold border-l-2 border-[#00d4aa] pl-3'
+                    : 'text-gray-300 hover:bg-white/[0.05] hover:text-white'
+                }`}
+              >
+                {link.label}
+              </button>
+            ))}
+          </div>
 
           {/* Mobile CTA Button */}
           <button
