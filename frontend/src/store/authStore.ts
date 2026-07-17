@@ -15,6 +15,7 @@ interface AuthStore {
   isLoading: boolean;
   error: string | null;
   accessToken: string | null;
+  isInitialized: boolean;
 
   // Actions
   setUser: (user: AuthUser | null) => void;
@@ -42,6 +43,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   isLoading: false,
   error: null,
   accessToken: authService.getAccessToken(),
+  isInitialized: false,
 
   // State setters
   setUser: (user) => set({ user }),
@@ -92,6 +94,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       // Don't clear auth data on error, just log it
     } finally {
       setIsLoading(false);
+      set({ isInitialized: true });
     }
   },
 

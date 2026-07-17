@@ -25,14 +25,14 @@ const queryClient = new QueryClient({
 });
 
 export const App: React.FC = () => {
-  const { initialize, isLoading } = useAuthStore();
+  const { initialize, isInitialized } = useAuthStore();
 
   // Initialize auth on app load
   useEffect(() => {
     initialize();
   }, [initialize]);
 
-  if (isLoading) {
+  if (!isInitialized) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
