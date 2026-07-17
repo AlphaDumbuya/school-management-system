@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import PublicNavbar from '@components/public';
 
 export const WhyWiskulPage: React.FC = () => {
   const [showAlert, setShowAlert] = useState(false);
@@ -35,6 +36,8 @@ export const WhyWiskulPage: React.FC = () => {
       )}
 
 
+      {/* Navigation */}
+      <PublicNavbar ctaText="Get Started" ctaAction="custom" onCtaClick={handleComingSoon} />
 
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 px-6 sm:px-10 overflow-hidden">

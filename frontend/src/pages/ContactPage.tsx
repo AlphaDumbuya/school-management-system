@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import PublicNavbar from '@components/public';
 
 interface ContactFormData {
   name: string;
@@ -79,7 +80,8 @@ export const ContactPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#0a0a14] text-white overflow-x-hidden font-sans">
 
-
+      {/* Navigation */}
+      <PublicNavbar ctaText="Sign In" ctaAction="login" />
 
       {/* Hero Section */}
       <section className="relative pt-32 pb-16 px-6 sm:px-10 overflow-hidden">

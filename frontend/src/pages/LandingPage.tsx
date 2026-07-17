@@ -6,6 +6,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import PublicNavbar from '@components/public';
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -39,7 +40,8 @@ export const LandingPage: React.FC = () => {
         </div>
       )}
 
-
+      {/* ── Navigation ── */}
+      <PublicNavbar ctaText="Get a free trial" ctaAction="custom" onCtaClick={handleComingSoon} />
 
       {/* ── Hero Section ── */}
       <section className="relative pt-28 sm:pt-36 pb-20 sm:pb-28 px-6 sm:px-10 overflow-hidden">

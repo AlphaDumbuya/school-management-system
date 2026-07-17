@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import PublicNavbar from '@components/public';
 
 export const FeaturesPage: React.FC = () => {
   const [showAlert, setShowAlert] = useState(false);
@@ -35,8 +36,10 @@ export const FeaturesPage: React.FC = () => {
       )}
 
 
+      {/* ── Navigation ── */}
+      <PublicNavbar ctaText="Get Started" ctaAction="custom" onCtaClick={handleComingSoon} />
 
-      {/* ── Hero: 100% Digital Philosophy ── */}
+      {/* ── Hero ── */}
       <section className="pt-32 pb-20 px-6 sm:px-10 relative overflow-hidden">
         <div className="absolute top-[10%] left-[-10%] w-[500px] h-[500px] rounded-full bg-purple-600/8 blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-5%] w-[400px] h-[400px] rounded-full bg-cyan-500/5 blur-[100px]" />

@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import PublicNavbar from '@components/public';
 
 // ── Plan Data ─────────────────────────────────────────────────────────────────
 
@@ -131,6 +132,8 @@ export const PricingPage: React.FC = () => {
       )}
 
 
+      {/* ── Navigation ── */}
+      <PublicNavbar ctaText="Sign In" ctaAction="login" />
 
       {/* ── Hero ── */}
       <section className="pt-32 pb-12 px-6 sm:px-10 text-center relative overflow-hidden">
