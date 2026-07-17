@@ -7,7 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@components/ui/card';
-import { AttendanceMarkerProps, AttendanceStatus, BulkAttendanceDTO } from '@types/events';
+import { AttendanceMarkerProps, AttendanceStatus, BulkAttendanceDTO } from '@appTypes/events';
 import { eventsService } from '@services/eventsService';
 import { toast } from 'react-toastify';
 import { Search, CheckCircle, XCircle, Clock, QrCode, Download } from 'lucide-react';

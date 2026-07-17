@@ -13,7 +13,7 @@ import {
   StudentAtRisk,
   SystemHealth,
   ChartData,
-} from '@types/index';
+} from '@appTypes/index';
 import dashboardService from '@services/dashboardService';
 
 interface DashboardCache {

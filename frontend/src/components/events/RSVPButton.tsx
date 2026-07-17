@@ -6,7 +6,7 @@
 
 import React, { useState } from 'react';
 import { Button } from '@components/ui/button';
-import { RSVPButtonProps, RSVPStatus } from '@types/events';
+import { RSVPButtonProps, RSVPStatus } from '@appTypes/events';
 import { eventsService } from '@services/eventsService';
 import { toast } from 'react-toastify';
 import { Check, X, HelpCircle, Users } from 'lucide-react';

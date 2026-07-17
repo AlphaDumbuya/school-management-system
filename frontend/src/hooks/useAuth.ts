@@ -7,7 +7,7 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '@store/authStore';
-import { UserRole } from '@types/index';
+import { UserRole } from '@appTypes/index';
 
 interface UseAuthReturn {
   user: typeof useAuthStore extends { getState: () => infer T } ? T['user'] : any;

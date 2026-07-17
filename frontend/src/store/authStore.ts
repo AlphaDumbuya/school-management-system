@@ -5,7 +5,7 @@
  */
 
 import { create } from 'zustand';
-import { AuthUser, UserRole } from '@types/index';
+import { AuthUser, UserRole } from '@appTypes/index';
 import authService from '@services/authService';
 
 interface AuthStore {

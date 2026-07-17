@@ -8,7 +8,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@components/ui/card';
 import { Button } from '@components/ui/button';
 import { RSVPButton } from './RSVPButton';
-import { EventDetailsProps, Event } from '@types/events';
+import { EventDetailsProps, Event } from '@appTypes/events';
 import { eventsService } from '@services/eventsService';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';

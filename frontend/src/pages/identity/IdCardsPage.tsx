@@ -9,9 +9,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   CreditCard, Users, AlertTriangle, CheckCircle, XCircle, Plus, Download,
-  RefreshCw, Search, X, ChevronDown, SlidersHorizontal, Eye, Edit, Ban,
+  RefreshCw, X, ChevronDown, SlidersHorizontal, Eye, Edit, Ban,
   RotateCcw, LayoutGrid, List, Calendar,
 } from 'lucide-react';
+import { SearchBar } from '@components/admin/table/SearchBar';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
@@ -257,22 +258,14 @@ export const IdCardsPage: React.FC = () => {
         {/* ── Search & Filter Bar ── */}
         <div className="flex flex-col gap-3 sm:gap-4 mb-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            {/* Search */}
-            <div className="relative w-full lg:max-w-md">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                placeholder="Search card number, name, or email..."
-                className="w-full pl-9 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-              />
-              {search && (
-                <button onClick={() => { setSearch(''); setPage(1); }} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Clear search">
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+            {/* Search Bar — shared component */}
+            <SearchBar
+              placeholder="Search card number, name, or email..."
+              onSearch={(v) => { setSearch(v); setPage(1); }}
+              isLoading={isLoading}
+              resultCount={search ? cards.length : undefined}
+              className="w-full lg:max-w-md"
+            />
 
             {/* Filter Dropdown */}
             <div className="flex items-center gap-2 sm:gap-2.5 w-full lg:w-auto">

@@ -6,7 +6,7 @@
 
 import axios, { AxiosInstance, AxiosError, AxiosResponse, AxiosRequestConfig } from 'axios';
 import { API_CONFIG, getAuthHeaders } from '@config/api.config';
-import { ApiResponse } from '@types/index';
+import { ApiResponse } from '@appTypes/index';
 
 // Create axios instance
 export const axiosInstance: AxiosInstance = axios.create({

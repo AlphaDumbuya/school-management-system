@@ -8,7 +8,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaSpinner, FaEye, FaEyeSlash } from 'react-icons/fa';
 import useAuth from '@hooks/useAuth';
-import type { LoginFormData } from '@types';
+import type { LoginFormData } from '@appTypes';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();

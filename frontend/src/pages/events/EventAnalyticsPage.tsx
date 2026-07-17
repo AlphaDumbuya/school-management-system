@@ -21,7 +21,7 @@ import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Button } from '@components/ui/button';
 import { eventsService } from '@services/eventsService';
-import type { OverallStats, AnalyticsFilters } from '@types/events';
+import type { OverallStats, AnalyticsFilters } from '@appTypes/events';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

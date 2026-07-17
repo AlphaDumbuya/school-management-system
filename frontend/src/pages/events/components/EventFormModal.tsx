@@ -11,7 +11,7 @@ import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { eventsService } from '@services/eventsService';
 import { Calendar, Clock, MapPin, Users, Type, FileText } from 'lucide-react';
-import type { Event, CreateEventDTO, EventType, EventVisibility, LocationType } from '@types/events';
+import type { Event, CreateEventDTO, EventType, EventVisibility, LocationType } from '@appTypes/events';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

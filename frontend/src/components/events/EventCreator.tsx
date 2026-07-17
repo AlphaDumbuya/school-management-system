@@ -16,7 +16,7 @@ import {
     EventVisibility,
     LocationType,
     RecurrenceConfig,
-} from '@types/events';
+} from '@appTypes/events';
 import { eventsService } from '@services/eventsService';
 import { toast } from 'react-toastify';
 import { Calendar, MapPin, Users, Image, Link as LinkIcon, Bell } from 'lucide-react';

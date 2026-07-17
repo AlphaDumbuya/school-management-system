@@ -150,7 +150,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           height: 36px;
           border-radius: 10px;
           border: 1.5px solid #e2e8f0;
-          background: #ffffff;
+          background: transparent;
           box-shadow: 0 1px 3px rgba(0,0,0,0.04);
           transition:
             border-color 0.2s ease,
@@ -163,33 +163,33 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           box-shadow:
             0 0 0 3px rgba(99, 102, 241, 0.12),
             0 1px 3px rgba(0,0,0,0.06);
-          background: #fafaff;
+          background: transparent;
         }
 
         /* Dark mode */
         @media (prefers-color-scheme: dark) {
           .search-bar-inner {
             border-color: #334155;
-            background: #1e293b;
+            background: transparent;
           }
           .search-bar-inner--focused {
             border-color: #818cf8;
             box-shadow:
               0 0 0 3px rgba(129, 140, 248, 0.15),
               0 1px 3px rgba(0,0,0,0.2);
-            background: #1e2540;
+            background: transparent;
           }
         }
         .dark .search-bar-inner {
           border-color: #334155;
-          background: #1e293b;
+          background: transparent;
         }
         .dark .search-bar-inner--focused {
           border-color: #818cf8;
           box-shadow:
             0 0 0 3px rgba(129, 140, 248, 0.15),
             0 1px 3px rgba(0,0,0,0.2);
-          background: #1e2540;
+          background: transparent;
         }
 
         .search-bar-icon {

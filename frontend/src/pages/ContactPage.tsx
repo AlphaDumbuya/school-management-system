@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import PublicNavbar from '@components/public';
 
 interface ContactFormData {
@@ -17,6 +18,7 @@ interface ContactFormData {
 }
 
 export const ContactPage: React.FC = () => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState<ContactFormData>({
     name: '',
     email: '',

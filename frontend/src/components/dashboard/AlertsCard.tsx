@@ -6,7 +6,7 @@
 
 import React, { useState } from 'react';
 import { AlertCircle, CheckCircle, AlertTriangle, XCircle } from 'react-icons/fa';
-import { DashboardAlert } from '@types/index';
+import { DashboardAlert } from '@appTypes/index';
 import clsx from 'clsx';
 
 interface AlertsCardProps {

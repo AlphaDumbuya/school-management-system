@@ -8,9 +8,10 @@ import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle, ShieldAlert, Gavel, MessageSquare, BarChart2,
-  Search, X, ChevronDown, Plus, TrendingUp, TrendingDown, Minus,
+  X, ChevronDown, Plus, TrendingUp, TrendingDown, Minus,
   User, Calendar, CheckCircle2, Clock, XCircle,
 } from 'lucide-react';
+import { SearchBar } from '@components/admin/table/SearchBar';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
@@ -573,21 +574,13 @@ export const DisciplinePage: React.FC = () => {
         {/* ── SEARCH BAR (shared for data tabs) ─────────────────────── */}
         {activeTab !== 'dashboard' && (
           <div className="flex flex-col md:flex-row md:items-center gap-3 mb-6">
-            <div className="relative flex-1 max-w-md">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search by student name or ID…"
-                className="w-full pl-9 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-transparent text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {search && (
-                <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+          <SearchBar
+              placeholder="Search by student name or ID…"
+              onSearch={setSearch}
+              isLoading={isLoading}
+              resultCount={search ? undefined : undefined}
+              className="flex-1 max-w-md"
+            />
 
             {/* Status filter */}
             <div className="relative w-40">

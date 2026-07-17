@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from '@components/ui/button';
-import { EventCalendarProps, Event, CalendarView, CalendarFilters } from '@types/events';
+import { EventCalendarProps, Event, CalendarView, CalendarFilters } from '@appTypes/events';
 import { eventsService } from '@services/eventsService';
 import { toast } from 'react-toastify';
 import {

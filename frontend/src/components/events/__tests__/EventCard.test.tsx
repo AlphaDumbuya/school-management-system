@@ -6,7 +6,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { EventCard } from '../EventCard';
-import { Event } from '@types/events';
+import { Event } from '@appTypes/events';
 
 // Mock router
 vi.mock('react-router-dom', () => ({

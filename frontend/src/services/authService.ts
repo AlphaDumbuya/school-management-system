@@ -12,7 +12,7 @@ import {
   LoginCredentials,
   RegisterPayload,
   ApiResponse,
-} from '@types/index';
+} from '@appTypes/index';
 
 // Local storage keys
 const STORAGE_KEYS = {

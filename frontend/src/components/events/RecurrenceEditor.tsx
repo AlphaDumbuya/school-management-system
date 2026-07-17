@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { RecurrenceEditorProps, RecurrenceConfig, RecurrencePattern } from '@types/events';
+import { RecurrenceEditorProps, RecurrenceConfig, RecurrencePattern } from '@appTypes/events';
 
 export const RecurrenceEditor: React.FC<RecurrenceEditorProps> = ({ value, onChange }) => {
     const [config, setConfig] = useState<RecurrenceConfig>(

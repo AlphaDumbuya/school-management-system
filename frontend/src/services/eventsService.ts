@@ -5,7 +5,7 @@
  */
 
 import { apiClient } from '@lib/apiClient';
-import { ApiResponse, PaginatedResponse } from '@types/index';
+import { ApiResponse, PaginatedResponse } from '@appTypes/index';
 import {
     Event,
     EventCategory,
@@ -27,7 +27,7 @@ import {
     EventFilters,
     CalendarFilters,
     AnalyticsFilters,
-} from '@types/events';
+} from '@appTypes/events';
 
 const BASE_PATH = '/api/v1/events';
 

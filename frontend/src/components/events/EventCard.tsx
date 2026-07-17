@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { Card, CardContent } from '@components/ui/card';
-import { EventCardProps, EventStatus } from '@types/events';
+import { EventCardProps, EventStatus } from '@appTypes/events';
 import { format } from 'date-fns';
 import { Calendar, MapPin, Users, Clock } from 'lucide-react';
 

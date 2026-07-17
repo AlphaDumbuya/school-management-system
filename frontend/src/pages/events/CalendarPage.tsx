@@ -16,7 +16,7 @@ import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { Button } from '@components/ui/button';
 import { eventsService } from '@services/eventsService';
 import { EventFormModal } from './components/EventFormModal';
-import type { Event } from '@types/events';
+import type { Event } from '@appTypes/events';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

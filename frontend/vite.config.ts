@@ -13,7 +13,6 @@ export default defineConfig({
   server: {
     port: 5173,
     open: false,
-    historyApiFallback: true,
     proxy: {
       '/api': {
         target: process.env.VITE_API_URL || 'http://localhost:3000',
@@ -38,7 +37,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@types': path.resolve(__dirname, './src/types'),
+      '@appTypes': path.resolve(__dirname, './src/types'),
       '@config': path.resolve(__dirname, './src/config'),
       '@services': path.resolve(__dirname, './src/services'),
       '@components': path.resolve(__dirname, './src/components'),

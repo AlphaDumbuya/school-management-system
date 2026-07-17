@@ -7,7 +7,7 @@
 import React, { useState } from 'react';
 import { Button } from '@components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@components/ui/card';
-import { RegistrationFormProps, RegisterForEventDTO } from '@types/events';
+import { RegistrationFormProps, RegisterForEventDTO } from '@appTypes/events';
 import { eventsService } from '@services/eventsService';
 import { toast } from 'react-toastify';
 import { Users, Check } from 'lucide-react';

@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { EventListProps, Event, EventFilters, EventStatus } from '@types/events';
+import { EventListProps, Event, EventFilters, EventStatus } from '@appTypes/events';
 import { eventsService } from '@services/eventsService';
 import { EventCard } from './EventCard';
 import { Button } from '@components/ui/button';

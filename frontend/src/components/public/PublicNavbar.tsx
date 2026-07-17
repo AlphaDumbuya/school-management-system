@@ -6,7 +6,7 @@
  * Scroll: transparent → frosted-glass after 24 px.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 export interface PublicNavbarProps {
@@ -25,7 +25,6 @@ const NAV_LINKS = [
 ];
 
 const TEAL = '#00d4aa';
-const BG   = '#0d0d21';
 
 export const PublicNavbar: React.FC<PublicNavbarProps> = ({
   ctaText    = 'Get Started',
@@ -36,7 +35,6 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
   const location  = useLocation();
   const [open,      setOpen]    = useState(false);
   const [scrolled,  setScrolled] = useState(false);
-  const navRef = useRef<HTMLElement>(null);
 
   /* scroll */
   useEffect(() => {
@@ -74,7 +72,6 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
   return (
     <>
       <nav
-        ref={navRef}
         aria-label="Main navigation"
         style={{
           position:       'fixed',
@@ -128,7 +125,7 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
 
           {/* Desktop links */}
           <div className="pn-desk-links" style={{
-            display:'none', alignItems:'center', gap:'0.15rem',
+            display:'none', alignItems:'center', gap:'0.5rem',
             flex:1, justifyContent:'center',
           }}>
             {NAV_LINKS.map(link => {
@@ -139,8 +136,8 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
                   to={link.path}
                   className={active ? 'pn-link pn-link--active' : 'pn-link'}
                   style={{
-                    position:'relative', padding:'0.4rem 0.8rem', borderRadius:'7px',
-                    fontSize:'0.875rem', fontWeight: active ? 600 : 400,
+                    position:'relative', padding:'0.4rem 1rem', borderRadius:'7px',
+                    fontSize:'0.875rem', fontWeight: 600,
                     color: active ? TEAL : 'rgba(255,255,255,0.7)',
                     textDecoration:'none',
                     background: active ? 'rgba(0,212,170,0.08)' : 'transparent',
@@ -210,9 +207,9 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
               transform: open ? 'translateY(7px) rotate(45deg)' : 'none',
             }}/>
             <span style={{
-              display:'block', width:'17px', height:'2px', borderRadius:'2px',
+              display:'block', height:'2px', borderRadius:'2px',
               background: TEAL, transition:'opacity 0.2s, width 0.2s',
-              opacity: open ? 0 : 1, width: open ? 0 : '17px',
+              opacity: open ? 0 : 1, width: open ? '0px' : '17px',
             }}/>
             <span style={{
               display:'block', width:'17px', height:'2px', borderRadius:'2px',

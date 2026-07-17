@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { ChartData } from '@types/index';
+import { ChartData } from '@appTypes/index';
 
 interface ChartCardProps {
   title: string;

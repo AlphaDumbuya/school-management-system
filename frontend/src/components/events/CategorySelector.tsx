@@ -7,7 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@components/ui/button';
 import { eventsService } from '@services/eventsService';
-import { EventCategory, CategorySelectorProps } from '@types/events';
+import { EventCategory, CategorySelectorProps } from '@appTypes/events';
 import { toast } from 'react-toastify';
 
 export const CategorySelector: React.FC<CategorySelectorProps> = ({

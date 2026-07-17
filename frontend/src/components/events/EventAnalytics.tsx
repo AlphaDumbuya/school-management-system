@@ -6,7 +6,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@components/ui/card';
-import { EventAnalyticsProps, OverallStats, CategoryStats } from '@types/events';
+import { EventAnalyticsProps, OverallStats, CategoryStats } from '@appTypes/events';
 import { eventsService } from '@services/eventsService';
 import { toast } from 'react-toastify';
 import {
