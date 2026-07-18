@@ -561,9 +561,9 @@ export const StudentProfilesPage: React.FC = () => {
                       {/* Attendance KPIs */}
                       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                         <KPICard title="Attendance Rate" value={`${attendanceSummary.attendance_percentage}%`} icon={<Activity size={20} />} color={attendanceSummary.attendance_percentage >= 85 ? "green" : attendanceSummary.attendance_percentage >= 75 ? "amber" : "red"} />
-                        <KPICard title="Days Present" value={attendanceSummary.present_count} icon={<CheckCircle size={20} />} color="green" />
-                        <KPICard title="Days Late" value={attendanceSummary.late_count} icon={<Clock size={20} />} color="amber" />
-                        <KPICard title="Days Absent" value={attendanceSummary.absent_count} icon={<XCircle size={20} />} color="red" />
+                        <KPICard title="Days Present" value={attendanceSummary.present} icon={<CheckCircle size={20} />} color="green" />
+                        <KPICard title="Days Late" value={attendanceSummary.late} icon={<Clock size={20} />} color="amber" />
+                        <KPICard title="Days Absent" value={attendanceSummary.absent} icon={<XCircle size={20} />} color="red" />
                       </div>
 
                       {/* Attendance Logs */}
@@ -777,11 +777,11 @@ export const StudentProfilesPage: React.FC = () => {
                               <tbody className="divide-y divide-gray-150 dark:divide-gray-700">
                                 {invoices.map((inv: any) => (
                                   <tr key={inv.id} className="hover:bg-gray-50 dark:hover:bg-gray-850 transition-colors">
-                                    <td className="p-4 font-mono font-bold text-gray-900 dark:text-white">{inv.invoiceNumber}</td>
-                                    <td className="p-4 font-semibold text-gray-650 dark:text-gray-400 text-xs font-mono">{formatDate(inv.dueDate)}</td>
+                                    <td className="p-4 font-mono font-bold text-gray-900 dark:text-white">{inv.invoice_number}</td>
+                                    <td className="p-4 font-semibold text-gray-650 dark:text-gray-400 text-xs font-mono">{formatDate(inv.due_date)}</td>
                                     <td className="p-4 text-right font-mono text-gray-700 dark:text-gray-300 font-bold">SLE {Number(inv.amount).toFixed(2)}</td>
-                                    <td className="p-4 text-right font-mono text-green-600 dark:text-green-400">SLE {Number(inv.paidAmount).toFixed(2)}</td>
-                                    <td className="p-4 text-right font-mono font-bold text-gray-900 dark:text-white">SLE {Number(inv.amount - inv.paidAmount).toFixed(2)}</td>
+                                    <td className="p-4 text-right font-mono text-green-600 dark:text-green-400">SLE {Number(inv.paid_amount).toFixed(2)}</td>
+                                    <td className="p-4 text-right font-mono font-bold text-gray-900 dark:text-white">SLE {Number(inv.amount - inv.paid_amount).toFixed(2)}</td>
                                     <td className="p-4">
                                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
                                         inv.status === 'paid' ? 'bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-400' :
@@ -828,8 +828,8 @@ export const StudentProfilesPage: React.FC = () => {
                               <tbody className="divide-y divide-gray-150 dark:divide-gray-700">
                                 {payments.map((p: any) => (
                                   <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-850 transition-colors">
-                                    <td className="p-4 font-mono font-semibold text-gray-650 dark:text-gray-400 text-xs">{formatDate(p.paymentDate)}</td>
-                                    <td className="p-4 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">{p.paymentMethod}</td>
+                                    <td className="p-4 font-mono font-semibold text-gray-650 dark:text-gray-400 text-xs">{formatDate(p.payment_date)}</td>
+                                    <td className="p-4 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">{p.method}</td>
                                     <td className="p-4 font-mono text-xs text-gray-600 dark:text-gray-400">{p.reference || '—'}</td>
                                     <td className="p-4 text-right font-mono font-bold text-green-600 dark:text-green-400">SLE {Number(p.amount).toFixed(2)}</td>
                                     <td className="p-4 text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">{p.notes || '—'}</td>
