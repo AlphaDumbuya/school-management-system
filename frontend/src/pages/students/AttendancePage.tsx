@@ -620,7 +620,7 @@ export const AttendancePage: React.FC = () => {
               </div>
 
               {/* Filters */}
-              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 items-start sm:items-center bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-full">
+              <div className="flex flex-wrap items-center gap-3 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-full">
                 {/* Search */}
                 <SearchBar
                   onSearch={(val) => { setSearch(val); setPage(1); }}
@@ -629,20 +629,18 @@ export const AttendancePage: React.FC = () => {
                   isLoading={logsLoading}
                   className="w-full sm:max-w-xs"
                 />
-
-                <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
                   {/* Date */}
                   <input
                     type="date"
                     value={dateFilter}
                     onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
-                    className="flex-1 sm:flex-initial px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[140px] sm:min-w-[160px]"
+                    className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[140px] sm:min-w-[160px]"
                   />
                   {/* Class */}
                   <select
                     value={classFilter}
                     onChange={(e) => { setClassFilter(e.target.value); setPage(1); }}
-                    className="flex-1 sm:flex-initial px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[120px] sm:min-w-[150px]"
+                    className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[120px] sm:min-w-[150px]"
                   >
                     <option value="">All Classes</option>
                     {classes.map((c: any) => (
@@ -653,7 +651,7 @@ export const AttendancePage: React.FC = () => {
                   <select
                     value={statusFilter}
                     onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                    className="flex-1 sm:flex-initial px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[120px] sm:min-w-[140px]"
+                    className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[120px] sm:min-w-[140px]"
                   >
                     <option value="">All Statuses</option>
                     <option value="present">Present</option>
@@ -679,7 +677,6 @@ export const AttendancePage: React.FC = () => {
                   >
                     <RefreshCw size={16} className={logsLoading ? 'animate-spin' : ''} />
                   </button>
-                </div>
               </div>
 
               {/* Table */}
