@@ -85,7 +85,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         db('enrollments')
           .select('class_id')
           .count('* as enrolled_students')
-          .where('status', 'enrolled')
+          .whereIn('status', ['enrolled', 'active'])
           .groupBy('class_id')
           .as('enrollment_counts'),
         'classes.id',
@@ -142,7 +142,7 @@ router.get('/:classId', authenticate, async (req: Request, res: Response, next: 
     }
 
     // Get enrollment count
-    const enrollmentCount = await db('enrollments').where('class_id', classData.id).where('status', 'enrolled').count('* as count').first();
+    const enrollmentCount = await db('enrollments').where('class_id', classData.id).whereIn('status', ['enrolled', 'active']).count('* as count').first();
     classData.enrolled_students = Number(enrollmentCount?.count ?? 0);
 
     res.json(classData);
@@ -277,7 +277,7 @@ router.get('/:classId/students', authenticate, async (req: Request, res: Respons
       .join('enrollments', 'students.id', '=', 'enrollments.student_id')
       .select('students.id', 'students.student_id', 'students.first_name', 'students.last_name', 'enrollments.roll_number', 'enrollments.status')
       .where('enrollments.class_id', classData.id)
-      .where('enrollments.status', 'enrolled')
+      .whereIn('enrollments.status', ['enrolled', 'active'])
       .orderBy('enrollments.roll_number', 'asc');
 
     res.json({

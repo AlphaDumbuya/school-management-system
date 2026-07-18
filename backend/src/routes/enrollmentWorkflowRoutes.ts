@@ -21,7 +21,7 @@ const auditService = new AuditService(db);
  * Submit an enrollment request
  */
 router.post(
-  '/',
+  '/enrollment-requests',
   authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -54,7 +54,7 @@ router.post(
  * Get enrollment requests with filtering
  */
 router.get(
-  '/',
+  '/enrollment-requests',
   authenticate,
   requirePermission('enrollment:read'),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -86,7 +86,7 @@ router.get(
  * Get enrollment request by ID
  */
 router.get(
-  '/:requestId',
+  '/enrollment-requests/:requestId',
   authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -109,7 +109,7 @@ router.get(
  * Approve an enrollment request
  */
 router.post(
-  '/:requestId/approve',
+  '/enrollment-requests/:requestId/approve',
   authenticate,
   requirePermission('enrollment:approve'),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -135,7 +135,7 @@ router.post(
  * Reject an enrollment request
  */
 router.post(
-  '/:requestId/reject',
+  '/enrollment-requests/:requestId/reject',
   authenticate,
   requirePermission('enrollment:reject'),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -173,7 +173,7 @@ router.post(
  * Cancel an enrollment request
  */
 router.post(
-  '/:requestId/cancel',
+  '/enrollment-requests/:requestId/cancel',
   authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {

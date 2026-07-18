@@ -195,6 +195,7 @@ frontend/src/
 ```typescript
 // Main page component
 - Header with title and actions
+- Reusable SearchBar (for search and filtering query parameters)
 - KPI cards grid
 - Alert system (dismissible)
 - Tab navigation

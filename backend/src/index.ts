@@ -1,3 +1,4 @@
+import './utils/env.js';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -121,13 +122,25 @@ app.get('/api/v1/debug', async (req: Request, res: Response) => {
     has_refresh_secret: !!process.env.REFRESH_TOKEN_SECRET,
     jwt_secret_length: process.env.JWT_SECRET?.length ?? 0,
     database_url_prefix: process.env.DATABASE_URL?.substring(0, 30) + '...',
+    cwd: process.cwd(),
+    env_keys: Object.keys(process.env).filter(k => k.includes('DB') || k.includes('URL') || k.includes('SECRET')),
   };
   try {
     await db.raw('SELECT 1');
     info.db_connected = true;
-  } catch (e) {
+  } catch (e: any) {
     info.db_connected = false;
-    info.db_error = String(e);
+    info.db_error = {
+      message: e.message,
+      code: e.code,
+      stack: e.stack,
+      errors: e.errors ? e.errors.map((err: any) => ({
+        message: err.message,
+        code: err.code,
+        address: err.address,
+        port: err.port
+      })) : undefined
+    };
   }
   res.json(info);
 });

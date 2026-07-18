@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
+import { UserRole } from '../types/auth';
 import { logger } from '@utils/logger';
 import knex from 'knex';
 import knexConfig from '../../knexfile';
@@ -13,7 +14,7 @@ const db = knex(knexConfig[env] || knexConfig.development);
  * POST /api/v1/enrollments
  * Create a new enrollment
  */
-router.post('/', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { student_id, class_id, academic_session_id, enrollment_date, roll_number, status } = req.body;
     const createdBy = (req as any).user.id;
@@ -35,8 +36,9 @@ router.post('/', authenticate, authorize('admin', 'principal'), async (req: Requ
     }
 
     // Check capacity
-    const enrolled = await db('enrollments').where('class_id', class_id).where('status', 'enrolled').count('* as count').first();
-    if (enrolled.count >= classData.capacity) {
+    const enrolled = await db('enrollments').where('class_id', class_id).whereIn('status', ['enrolled', 'active']).count('* as count').first();
+    const currentEnrolledCount = Number(enrolled?.count ?? 0);
+    if (currentEnrolledCount >= classData.capacity) {
       throw new AppError('Class is at full capacity', 400, 'VALIDATION_ERROR');
     }
 
@@ -45,7 +47,7 @@ router.post('/', authenticate, authorize('admin', 'principal'), async (req: Requ
       .where('student_id', student_id)
       .where('class_id', class_id)
       .where('academic_session_id', academic_session_id)
-      .where('status', 'enrolled')
+      .whereIn('status', ['enrolled', 'active'])
       .first();
 
     if (existing) {
@@ -57,14 +59,15 @@ router.post('/', authenticate, authorize('admin', 'principal'), async (req: Requ
       class_id,
       academic_session_id,
       enrollment_date,
-      roll_number: roll_number || (enrolled.count + 1),
+      roll_number: roll_number || (currentEnrolledCount + 1),
       status: status || 'enrolled',
       created_at: new Date(),
       updated_at: new Date(),
       created_by: createdBy,
-    });
+    }).returning('id');
 
-    const enrollment = await db('enrollments').where('id', id).first();
+    const insertedId = typeof id === 'object' ? id.id : id;
+    const enrollment = await db('enrollments').where('id', insertedId).first();
 
     res.status(201).json({
       message: 'Enrollment created successfully',
@@ -102,8 +105,8 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       pagination: {
         page,
         limit,
-        total: total.count,
-        total_pages: Math.ceil(total.count / limit),
+        total: Number(total?.count ?? 0),
+        total_pages: Math.ceil(Number(total?.count ?? 0) / limit),
       },
     });
   } catch (error) {
@@ -134,7 +137,7 @@ router.get('/:enrollmentId', authenticate, async (req: Request, res: Response, n
  * PUT /api/v1/enrollments/:enrollmentId
  * Update enrollment
  */
-router.put('/:enrollmentId', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:enrollmentId', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { enrollmentId } = req.params;
     const { roll_number, status } = req.body;
@@ -171,7 +174,7 @@ router.put('/:enrollmentId', authenticate, authorize('admin', 'principal'), asyn
  * POST /api/v1/enrollments/:enrollmentId/drop
  * Drop student from class
  */
-router.post('/:enrollmentId/drop', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:enrollmentId/drop', authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { enrollmentId } = req.params;
     const { reason } = req.body;

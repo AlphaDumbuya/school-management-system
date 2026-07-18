@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '@middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
+import { UserRole } from '../types/auth';
 import { logger } from '@utils/logger';
 import knex from 'knex';
 import knexConfig from '../../knexfile';
@@ -11,14 +12,14 @@ const db = knex(knexConfig[env] || knexConfig.development);
 
 /**
  * POST /api/v1/attendance
- * Record attendance for a student
+ * Record attendance for a student with session support
  */
-router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { student_id, class_id, date, status, remarks } = req.body;
-    const recordedBy = (req as any).user.id;
+    const { student_id, class_id, date, status, session_type, check_in_time, check_out_time, remarks } = req.body;
+    const recordedBy = (req as any).user?.id || (req as any).auth?.userId;
 
-    if (!student_id || !class_id || !date || !status) {
+    if (!student_id || !date || !status) {
       throw new AppError('Missing required fields', 400, 'VALIDATION_ERROR');
     }
 
@@ -27,42 +28,63 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
       throw new AppError(`Status must be one of: ${validStatuses.join(', ')}`, 400, 'VALIDATION_ERROR');
     }
 
+    const validSessions = ['morning', 'afternoon', 'full_day'];
+    const sessionType = session_type || 'full_day';
+    if (!validSessions.includes(sessionType)) {
+      throw new AppError(`Session type must be one of: ${validSessions.join(', ')}`, 400, 'VALIDATION_ERROR');
+    }
+
     // Verify student exists
     const student = await db('students').where('id', student_id).first();
     if (!student) {
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
 
-    // Check duplicate attendance record
+    // Check duplicate attendance record for same student, date, and session
     const existing = await db('attendance')
       .where('student_id', student_id)
-      .where('class_id', class_id)
-      .where('date', date)
+      .where('attendance_date', date)
+      .where('session_type', sessionType)
+      .andWhere(function() {
+        if (class_id) {
+          this.where('class_id', class_id);
+        }
+      })
       .first();
 
     if (existing) {
-      throw new AppError('Attendance already recorded for this date', 409, 'CONFLICT');
+      throw new AppError('Attendance already recorded for this date and session', 409, 'CONFLICT');
     }
 
-    const [id] = await db('attendance').insert({
+    const attendanceData: any = {
       student_id,
-      class_id,
-      date,
+      attendance_date: date,
       status,
+      session_type: sessionType,
+      check_in_time: check_in_time || null,
+      check_out_time: check_out_time || null,
       remarks: remarks || null,
-      recorded_by: recordedBy,
+      marked_by: recordedBy,
+      marked_at: new Date(),
       created_at: new Date(),
       updated_at: new Date(),
-    });
+    };
 
-    const attendance = await db('attendance').where('id', id).first();
+    if (class_id) {
+      attendanceData.class_id = class_id;
+    }
+
+    const [id] = await db('attendance').insert(attendanceData).returning('id');
+
+    const insertedId = typeof id === 'object' ? id.id : id;
+    const attendance = await db('attendance').where('id', insertedId).first();
 
     res.status(201).json({
       message: 'Attendance recorded successfully',
       attendance,
     });
 
-    logger.info(`Attendance recorded for student ${student.student_id}: ${status}`);
+    logger.info(`Attendance recorded for student ${student.student_id}: ${status} (${sessionType} session)`);
   } catch (error) {
     next(error);
   }
@@ -70,9 +92,9 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
 
 /**
  * GET /api/v1/attendance
- * List attendance records with filtering
+ * List attendance records with filtering, joins, search, pagination, and session support
  */
-router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
@@ -80,41 +102,84 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     const studentId = req.query.studentId as string;
     const classId = req.query.classId as string;
     const status = req.query.status as string;
+    const date = req.query.date as string;
+    const session_type = req.query.session_type as string;
+    const search = req.query.search as string;
 
-    let query = db('attendance').select('id', 'student_id', 'class_id', 'date', 'status', 'remarks', 'created_at');
+    let query = db('attendance')
+      .leftJoin('students', 'attendance.student_id', 'students.id')
+      .leftJoin('classes', 'attendance.class_id', 'classes.id');
 
     if (studentId) {
-      query = query.where('student_id', studentId);
+      query = query.where('attendance.student_id', studentId);
     }
     if (classId) {
-      query = query.where('class_id', classId);
+      query = query.where('attendance.class_id', classId);
     }
     if (status) {
-      query = query.where('status', status);
+      query = query.where('attendance.status', status);
+    }
+    if (date) {
+      query = query.where('attendance.attendance_date', date);
+    }
+    if (session_type) {
+      query = query.where('attendance.session_type', session_type);
+    }
+    if (search) {
+      const term = `%${search.trim()}%`;
+      query = query.where(function () {
+        this.where('students.first_name', 'ilike', term)
+          .orWhere('students.last_name', 'ilike', term)
+          .orWhere('students.student_id', 'ilike', term);
+      });
     }
 
-    const total = await query.clone().count('* as count').first();
-    const records = await query.limit(limit).offset(offset).orderBy('date', 'desc');
+    const totalResult = await query.clone().count('attendance.id as count').first();
+    const total = Number(totalResult?.count ?? 0);
+
+    const records = await query
+      .select(
+        'attendance.id',
+        'attendance.student_id',
+        'attendance.class_id',
+        'attendance.attendance_date as date',
+        'attendance.status',
+        'attendance.session_type',
+        'attendance.check_in_time',
+        'attendance.check_out_time',
+        'attendance.marked_at',
+        'attendance.remarks',
+        'attendance.created_at',
+        db.raw("students.first_name || ' ' || students.last_name as student_name"),
+        'students.student_id as student_id_code',
+        'classes.name as class_name'
+      )
+      .limit(limit)
+      .offset(offset)
+      .orderBy('attendance.attendance_date', 'desc')
+      .orderBy('attendance.session_type', 'asc')
+      .orderBy('students.first_name', 'asc');
 
     res.json({
       data: records,
       pagination: {
         page,
         limit,
-        total: total.count,
-        total_pages: Math.ceil(total.count / limit),
+        total,
+        total_pages: Math.ceil(total / limit),
       },
     });
   } catch (error) {
+    logger.error('Error in GET /api/v1/attendance:', error);
     next(error);
   }
 });
 
 /**
- * GET /api/v1/students/:studentId/attendance
- * Get attendance record for a student
+ * GET /api/v1/attendance/student/:studentId
+ * Get attendance records & summary statistics for a specific student
  */
-router.get('/student/:studentId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/student/:studentId', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const currentUser = (req as any).user;
@@ -130,11 +195,10 @@ router.get('/student/:studentId', authenticate, async (req: Request, res: Respon
     }
 
     const attendance = await db('attendance')
-      .select('id', 'class_id', 'date', 'status')
+      .select('id', 'class_id', 'attendance_date as date', 'status')
       .where('student_id', student.id)
-      .orderBy('date', 'desc');
+      .orderBy('attendance_date', 'desc');
 
-    // Calculate attendance percentage
     const total = attendance.length;
     const present = attendance.filter((a: any) => a.status === 'present').length;
     const late = attendance.filter((a: any) => a.status === 'late').length;
@@ -163,13 +227,13 @@ router.get('/student/:studentId', authenticate, async (req: Request, res: Respon
 
 /**
  * PUT /api/v1/attendance/:attendanceId
- * Update an attendance record
+ * Update an attendance record with session support
  */
-router.put('/:attendanceId', authenticate, authorize('admin', 'principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:attendanceId', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { attendanceId } = req.params;
-    const { status, remarks } = req.body;
-    const updatedBy = (req as any).user.id;
+    const { status, session_type, check_in_time, check_out_time, remarks } = req.body;
+    const updatedBy = (req as any).user?.id || (req as any).auth?.userId;
 
     const attendance = await db('attendance').where('id', attendanceId).first();
     if (!attendance) {
@@ -177,6 +241,7 @@ router.put('/:attendanceId', authenticate, authorize('admin', 'principal', 'teac
     }
 
     const updateData: any = {};
+    
     if (status) {
       const validStatuses = ['present', 'absent', 'late', 'excused'];
       if (!validStatuses.includes(status)) {
@@ -184,10 +249,22 @@ router.put('/:attendanceId', authenticate, authorize('admin', 'principal', 'teac
       }
       updateData.status = status;
     }
+
+    if (session_type) {
+      const validSessions = ['morning', 'afternoon', 'full_day'];
+      if (!validSessions.includes(session_type)) {
+        throw new AppError(`Session type must be one of: ${validSessions.join(', ')}`, 400, 'VALIDATION_ERROR');
+      }
+      updateData.session_type = session_type;
+    }
+
+    if (check_in_time !== undefined) updateData.check_in_time = check_in_time;
+    if (check_out_time !== undefined) updateData.check_out_time = check_out_time;
     if (remarks !== undefined) updateData.remarks = remarks;
 
     updateData.updated_at = new Date();
-    updateData.updated_by = updatedBy;
+    updateData.marked_by = updatedBy;
+    updateData.marked_at = new Date();
 
     await db('attendance').where('id', attendanceId).update(updateData);
 
@@ -205,13 +282,14 @@ router.put('/:attendanceId', authenticate, authorize('admin', 'principal', 'teac
 });
 
 /**
- * GET /api/v1/classes/:classId/attendance
- * Get class attendance summary
+ * GET /api/v1/attendance/class/:classId
+ * Get class attendance summary with session support
  */
-router.get('/class/:classId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/class/:classId', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
     const date = req.query.date as string;
+    const session_type = req.query.session_type as string;
 
     const classData = await db('classes').where('id', classId).first();
     if (!classData) {
@@ -221,12 +299,26 @@ router.get('/class/:classId', authenticate, async (req: Request, res: Response, 
     let query = db('attendance').where('class_id', classData.id);
 
     if (date) {
-      query = query.where('date', date);
+      query = query.where('attendance_date', date);
+    }
+    if (session_type) {
+      query = query.where('session_type', session_type);
     }
 
     const records = await query
-      .select('student_id', 'status', 'date')
-      .orderBy('date', 'desc')
+      .select(
+        'id', 
+        'student_id', 
+        'status', 
+        'session_type',
+        'check_in_time',
+        'check_out_time',
+        'marked_at',
+        'remarks', 
+        'attendance_date as date'
+      )
+      .orderBy('attendance_date', 'desc')
+      .orderBy('session_type', 'asc')
       .orderBy('student_id', 'asc');
 
     res.json({
@@ -235,6 +327,96 @@ router.get('/class/:classId', authenticate, async (req: Request, res: Response, 
       attendance_records: records,
     });
   } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/attendance/bulk
+ * Record attendance for multiple students (batch/bulk upsert) with session support
+ */
+router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { class_id, date, session_type, records } = req.body;
+    const recordedBy = (req as any).user?.id || (req as any).auth?.userId;
+
+    if (!date || !records || !Array.isArray(records)) {
+      throw new AppError('Missing required fields or invalid records format', 400, 'VALIDATION_ERROR');
+    }
+
+    const sessionTypeValue = session_type || 'full_day';
+    const validSessions = ['morning', 'afternoon', 'full_day'];
+    if (!validSessions.includes(sessionTypeValue)) {
+      throw new AppError(`Session type must be one of: ${validSessions.join(', ')}`, 400, 'VALIDATION_ERROR');
+    }
+
+    // Insert or update attendance records in a transaction
+    await db.transaction(async (trx) => {
+      for (const record of records) {
+        const { student_id, status, check_in_time, check_out_time, remarks } = record;
+
+        // Validations
+        const validStatuses = ['present', 'absent', 'late', 'excused'];
+        if (!validStatuses.includes(status)) continue;
+
+        // Check if duplicate exists (same student, date, and session)
+        const existing = await trx('attendance')
+          .where('student_id', student_id)
+          .where('attendance_date', date)
+          .where('session_type', sessionTypeValue)
+          .andWhere(function() {
+            if (class_id) {
+              this.where('class_id', class_id);
+            }
+          })
+          .first();
+
+        if (existing) {
+          // Update existing record
+          await trx('attendance')
+            .where('id', existing.id)
+            .update({
+              status,
+              check_in_time: check_in_time || existing.check_in_time || null,
+              check_out_time: check_out_time || existing.check_out_time || null,
+              remarks: remarks || null,
+              marked_by: recordedBy,
+              marked_at: new Date(),
+              updated_at: new Date()
+            });
+        } else {
+          // Insert new record
+          const attendanceData: any = {
+            student_id,
+            attendance_date: date,
+            status,
+            session_type: sessionTypeValue,
+            check_in_time: check_in_time || null,
+            check_out_time: check_out_time || null,
+            remarks: remarks || null,
+            marked_by: recordedBy,
+            marked_at: new Date(),
+            created_at: new Date(),
+            updated_at: new Date()
+          };
+
+          if (class_id) {
+            attendanceData.class_id = class_id;
+          }
+
+          await trx('attendance').insert(attendanceData);
+        }
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Bulk attendance recorded successfully'
+    });
+
+    logger.info(`Bulk attendance recorded for ${class_id ? `class ${class_id}` : 'all students'} on ${date} (${sessionTypeValue} session) by ${recordedBy}`);
+  } catch (error) {
+    logger.error('Error in POST /api/v1/attendance/bulk:', error);
     next(error);
   }
 });

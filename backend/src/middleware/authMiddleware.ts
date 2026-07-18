@@ -13,6 +13,7 @@ declare global {
       user?: {
         id: string;
         tenant_id: string;
+        tenantId: string;
         email: string;
         role: string;
       };
@@ -69,6 +70,7 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
       req.user = {
         id: user.id,
         tenant_id: user.tenant_id,
+        tenantId: user.tenant_id,
         email: user.email,
         role: user.role,
       };

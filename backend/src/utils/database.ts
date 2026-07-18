@@ -1,7 +1,6 @@
+import './env.js';
 import knex, { Knex } from 'knex';
 import dotenv from 'dotenv';
-
-dotenv.config();
 
 const environment = process.env.NODE_ENV || 'development';
 

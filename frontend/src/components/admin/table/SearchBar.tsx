@@ -36,6 +36,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [value, debounceMs, onSearch]);
 
+  /* Sync value with defaultValue when it changes externally */
+  useEffect(() => {
+    setValue(defaultValue);
+  }, [defaultValue]);
+
   const handleClear = () => {
     setValue('');
     onSearch('');
@@ -122,23 +127,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       )}
 
       <style>{`
+        .search-bar-wrapper:not([class*="w-"]):not([class*="max-w-"]) {
+          width: 220px;
+        }
+        .search-bar-wrapper:not([class*="w-"]):not([class*="max-w-"]):focus-within {
+          width: 280px;
+        }
         .search-bar-wrapper {
           display: flex;
           flex-direction: column;
           gap: 4px;
-          width: 220px;
           transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .search-bar-inner--focused,
-        .search-bar-inner--has-value {
-          /* parent wrapper also expands */
-        }
-        .search-bar-wrapper:focus-within {
-          width: 280px;
-        }
         @media (max-width: 640px) {
-          .search-bar-wrapper,
-          .search-bar-wrapper:focus-within {
+          .search-bar-wrapper:not([class*="w-"]):not([class*="max-w-"]),
+          .search-bar-wrapper:not([class*="w-"]):not([class*="max-w-"]):focus-within {
             width: 100%;
           }
         }
@@ -147,49 +150,37 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           position: relative;
           display: flex;
           align-items: center;
-          height: 36px;
-          border-radius: 10px;
-          border: 1.5px solid #e2e8f0;
+          height: 38px;
+          border-radius: 8px;
+          border: 1px solid #cbd5e1;
           background: transparent;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-          transition:
-            border-color 0.2s ease,
-            box-shadow 0.2s ease,
-            background 0.2s ease;
+          box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+          transition: all 0.2s ease;
           overflow: hidden;
         }
         .search-bar-inner--focused {
-          border-color: #6366f1;
-          box-shadow:
-            0 0 0 3px rgba(99, 102, 241, 0.12),
-            0 1px 3px rgba(0,0,0,0.06);
-          background: transparent;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
         }
 
         /* Dark mode */
         @media (prefers-color-scheme: dark) {
           .search-bar-inner {
-            border-color: #334155;
+            border-color: #475569;
             background: transparent;
           }
           .search-bar-inner--focused {
-            border-color: #818cf8;
-            box-shadow:
-              0 0 0 3px rgba(129, 140, 248, 0.15),
-              0 1px 3px rgba(0,0,0,0.2);
-            background: transparent;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
           }
         }
         .dark .search-bar-inner {
-          border-color: #334155;
+          border-color: #475569;
           background: transparent;
         }
         .dark .search-bar-inner--focused {
-          border-color: #818cf8;
-          box-shadow:
-            0 0 0 3px rgba(129, 140, 248, 0.15),
-            0 1px 3px rgba(0,0,0,0.2);
-          background: transparent;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
         }
 
         .search-bar-icon {
@@ -203,10 +194,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           transition: color 0.2s;
         }
         .search-bar-inner--focused .search-bar-icon {
-          color: #6366f1;
+          color: #3b82f6;
         }
         .dark .search-bar-inner--focused .search-bar-icon {
-          color: #818cf8;
+          color: #3b82f6;
         }
 
         .search-bar-spinner {

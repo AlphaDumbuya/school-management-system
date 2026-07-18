@@ -18,6 +18,7 @@ import { KPICard } from '@components/dashboard/KPICard';
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { Button } from '@components/ui/button';
+import { SearchBar } from '@components/admin/table/SearchBar';
 import { studentsService, StudentRecord } from '@services/studentsService';
 import { classesService } from '@services/classesService';
 import { resultsService } from '@services/resultsService';
@@ -219,16 +220,14 @@ export const StudentProfilesPage: React.FC = () => {
           <div className="space-y-6">
             {/* Filters panel */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-150 dark:border-gray-700/50">
-              <div className="relative flex-1 max-w-md">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search student by name, ID or email..."
-                  value={search}
-                  onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                  className="w-full pl-9 pr-4 py-2 border border-gray-250 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              <SearchBar
+                placeholder="Search student by name, ID or email..."
+                onSearch={(val) => { setSearch(val); setPage(1); }}
+                defaultValue={search}
+                isLoading={isStudentsLoading}
+                resultCount={search ? filteredStudents.length : undefined}
+                className="w-full sm:max-w-md"
+              />
 
               <div className="flex items-center gap-3">
                 <div className="relative">

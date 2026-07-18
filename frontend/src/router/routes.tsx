@@ -33,6 +33,7 @@ import ResultsPage from '@pages/academic/ResultsPage';
 import StudentDirectoryPage from '@pages/students/StudentDirectoryPage';
 import AdmissionsPage from '@pages/students/AdmissionsPage';
 import { StudentProfilesPage } from '@pages/students/StudentProfilesPage';
+import { AttendancePage } from '@pages/students/AttendancePage';
 import DisciplinePage from '@pages/discipline/DisciplinePage';
 import { EventsPage } from '@pages/events/EventsPage';
 import { EventDetailsPage } from '@pages/events/EventDetailsPage';
@@ -175,7 +176,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'students/attendance',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'parent', 'student']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'parent', 'student']}><AttendancePage /></P>,
         },
         {
           path: 'discipline',

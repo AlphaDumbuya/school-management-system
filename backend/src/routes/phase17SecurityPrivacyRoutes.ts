@@ -21,6 +21,7 @@ import { logger } from '@utils/logger';
 interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
+    tenant_id: string;
     tenantId: string;
     email: string;
     role: string;
