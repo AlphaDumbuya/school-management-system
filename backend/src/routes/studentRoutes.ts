@@ -205,9 +205,18 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
     const currentUser = req.auth;
 
     const student = await db('students')
-      .select('id', 'student_id', 'first_name', 'last_name', 'email', 'date_of_birth', 'gender', 'phone', 'address', 'city', 'state', 'postal_code', 'country', 'enrollment_date', 'status', 'created_at', 'updated_at')
-      .where('student_id', studentId)
-      .orWhere('id', studentId)
+      .select(
+        'students.*',
+        'classes.name as class_name',
+        'classes.level as class_level'
+      )
+      .leftJoin('enrollments', function () {
+        this.on('students.id', '=', 'enrollments.student_id')
+          .andOnIn('enrollments.status', ['enrolled', 'active']);
+      })
+      .leftJoin('classes', 'enrollments.class_id', 'classes.id')
+      .where('students.student_id', studentId)
+      .orWhere('students.id', studentId)
       .first();
 
     if (!student) {

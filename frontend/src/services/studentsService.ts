@@ -23,6 +23,19 @@ export interface StudentRecord {
   country?: string;
   status: 'active' | 'inactive' | 'suspended' | 'graduated';
   enrollment_date?: string;
+  photo_url?: string;
+  religion?: string;
+  nationality?: string;
+  place_of_birth?: string;
+  guardian_name?: string;
+  guardian_phone?: string;
+  guardian_relationship?: string;
+  guardian_occupation?: string;
+  emergency_contact?: string;
+  previous_school?: string;
+  medical_conditions?: string;
+  class_name?: string;
+  class_level?: string;
   created_at: string;
 }
 
