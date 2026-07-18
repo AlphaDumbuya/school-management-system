@@ -83,6 +83,79 @@ export const studentsService = {
   async reactivateStudent(id: string) {
     return apiClient.post(`/api/v1/students/${id}/reactivate`);
   },
+
+  async getStudentAttendance(studentId: string) {
+    return apiClient.get<{
+      summary: {
+        total_days: number;
+        present_count: number;
+        late_count: number;
+        absent_count: number;
+        excused_count: number;
+        attendance_percentage: number;
+        at_risk: boolean;
+      };
+      records: Array<{
+        id: string;
+        date: string;
+        status: 'present' | 'absent' | 'late' | 'excused';
+        remarks?: string;
+      }>;
+    }>(`/api/v1/attendance/student/${studentId}`);
+  },
+
+  async getStudentFees(studentId: string) {
+    return apiClient.get<{
+      success: boolean;
+      data: Array<{
+        id: string;
+        type: string;
+        amount: number;
+        dueDate: string;
+        status: 'paid' | 'unpaid' | 'partially_paid';
+        description?: string;
+      }>;
+    }>(`/api/v1/students/${studentId}/fees`);
+  },
+
+  async getStudentOutstanding(studentId: string) {
+    return apiClient.get<{
+      success: boolean;
+      data: {
+        studentId: string;
+        outstandingBalance: number;
+      };
+    }>(`/api/v1/students/${studentId}/outstanding`);
+  },
+
+  async getStudentInvoices(studentId: string) {
+    return apiClient.get<{
+      success: boolean;
+      data: Array<{
+        id: string;
+        invoiceNumber: string;
+        amount: number;
+        paidAmount: number;
+        dueDate: string;
+        status: 'paid' | 'unpaid' | 'partially_paid';
+        issueDate: string;
+      }>;
+    }>(`/api/v1/students/${studentId}/invoices`);
+  },
+
+  async getStudentPayments(studentId: string) {
+    return apiClient.get<{
+      success: boolean;
+      data: Array<{
+        id: string;
+        amount: number;
+        paymentDate: string;
+        paymentMethod: string;
+        reference?: string;
+        notes?: string;
+      }>;
+    }>(`/api/v1/students/${studentId}/payments`);
+  },
 };
 
 export default studentsService;
