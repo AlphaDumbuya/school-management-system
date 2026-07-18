@@ -40,7 +40,7 @@ const schema = z.object({
   medical_conditions: z.string().max(500).optional().or(z.literal('')),
   previous_school: z.string().max(200).optional().or(z.literal('')),
   home_language: z.string().max(50).optional().or(z.literal('')),
-  photo_url: z.string().max(500).optional().or(z.literal('')),
+  photo_url: z.string().optional().or(z.literal('')),
   // Guardian
   guardian_name: z.string().max(200).optional().or(z.literal('')),
   guardian_phone: z.string().max(20).optional().or(z.literal('')),

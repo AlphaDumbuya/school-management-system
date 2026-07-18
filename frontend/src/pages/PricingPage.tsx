@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import PublicNavbar from '@components/public';
 
 // ── Plan Data ─────────────────────────────────────────────────────────────────
@@ -103,6 +104,7 @@ const PLANS = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const PricingPage: React.FC = () => {
+  const navigate = useNavigate();
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly');
   const [showAlert, setShowAlert] = useState(false);
 

@@ -17,7 +17,7 @@ interface KPICardProps {
     isPositive: boolean;
   };
   icon?: React.ReactNode;
-  color?: 'blue' | 'green' | 'red' | 'amber' | 'purple' | 'indigo';
+  color?: 'blue' | 'green' | 'red' | 'amber' | 'purple' | 'indigo' | 'gray';
   onClick?: () => void;
   isLoading?: boolean;
 }
@@ -29,6 +29,7 @@ const colorClasses = {
   amber: 'bg-amber-50 border-amber-200',
   purple: 'bg-purple-50 border-purple-200',
   indigo: 'bg-indigo-50 border-indigo-200',
+  gray: 'bg-gray-50 border-gray-200',
 };
 
 const textColorClasses = {
@@ -38,6 +39,7 @@ const textColorClasses = {
   amber: 'text-amber-600',
   purple: 'text-purple-600',
   indigo: 'text-indigo-600',
+  gray: 'text-gray-600',
 };
 
 const trendColorClasses = {
@@ -47,6 +49,7 @@ const trendColorClasses = {
   amber: 'bg-amber-100',
   purple: 'bg-purple-100',
   indigo: 'bg-indigo-100',
+  gray: 'bg-gray-100',
 };
 
 export const KPICard: React.FC<KPICardProps> = ({

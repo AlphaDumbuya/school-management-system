@@ -5,9 +5,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import PublicNavbar from '@components/public';
 
 export const FeaturesPage: React.FC = () => {
+  const navigate = useNavigate();
   const [showAlert, setShowAlert] = useState(false);
 
   useEffect(() => {
