@@ -48,6 +48,7 @@ import printConfigRoutes from '@routes/printConfigRoutes';
 import eventRoutes from '@routes/eventRoutes';
 import disciplineRoutes from '@routes/disciplineRoutes';
 import smsWhatsAppRoutes from '@routes/smsWhatsAppRoutes';
+import teacherRoutes from '@routes/teacherRoutes';
 import timetableRoutes from '@routes/timetableRoutes';
 import contactRoutes from '@routes/contactRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
@@ -280,6 +281,9 @@ app.use('/api/v1/discipline', disciplineRoutes);
 
 // SMS & WhatsApp Routes (Phase 2.4: SMS & WhatsApp Integration)
 app.use('/api/v1/sms-whatsapp', smsWhatsAppRoutes);
+
+// Teachers Management Routes
+app.use('/api/v1/teachers', teacherRoutes);
 
 // Contact Form Routes (Public)
 app.use('/api/contact', contactRoutes);

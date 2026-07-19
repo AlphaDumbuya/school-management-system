@@ -61,6 +61,7 @@ export enum UserStatus {
   ACTIVE = 'active',
   INACTIVE = 'inactive',
   SUSPENDED = 'suspended',
+  DISMISSED = 'dismissed',
   PENDING_VERIFICATION = 'pending_verification',
 }
 

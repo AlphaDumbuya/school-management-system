@@ -11,6 +11,7 @@ const STATUS_MAP: Record<string, BadgeVariant> = {
   pending: 'warning',
   partial: 'warning',
   suspended: 'destructive',
+  dismissed: 'destructive',
   overdue: 'destructive',
   cancelled: 'destructive',
   published: 'default',

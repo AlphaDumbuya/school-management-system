@@ -84,7 +84,7 @@ export class TeacherService {
       updated_at: new Date(),
     });
 
-    const teacher = await this.getTeacherById(teacherId);
+    const teacher = await this.getTeacherById(String(teacherId));
     logger.info(`Teacher created: ${first_name} ${last_name} (${teacherId})`);
 
     return teacher;
@@ -180,13 +180,15 @@ export class TeacherService {
       .offset(offset)
       .orderBy('created_at', 'desc');
 
+    const countVal = total ? Number((total as any).count) : 0;
+
     return {
       data: teachers,
       pagination: {
         page,
         limit,
-        total: total.count,
-        total_pages: Math.ceil(total.count / limit),
+        total: countVal,
+        total_pages: Math.ceil(countVal / limit),
       },
     };
   }
@@ -251,7 +253,7 @@ export class TeacherService {
 
     const assignments = await this.db('teacher_assignments')
       .select(
-        'assignment_id',
+        'id as assignment_id',
         'teacher_id',
         'subject_id',
         'class_id',

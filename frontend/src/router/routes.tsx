@@ -42,6 +42,7 @@ import { MyEventsPage } from '@pages/events/MyEventsPage';
 import { EventAnalyticsPage } from '@pages/events/EventAnalyticsPage';
 import { IdCardsPage } from '@pages/identity/IdCardsPage';
 import { TemplatesPage } from '@pages/identity/TemplatesPage';
+import TeachersPage from '@pages/staff/TeachersPage';
 
 import useAuthStore from '@store/authStore';
 import { getDashboardPath } from '@hooks/useAuth';
@@ -186,7 +187,7 @@ const router = createBrowserRouter(
         // ── STAFF MANAGEMENT ───────────────────────────────────────
         {
           path: 'staff/teachers',
-          element: <P requiredRoles={['principal', 'super_admin']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin']}><TeachersPage /></P>,
         },
         {
           path: 'staff/members',

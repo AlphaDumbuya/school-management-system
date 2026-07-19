@@ -10,7 +10,7 @@ export interface FormFieldOption {
 export interface FormFieldProps extends React.HTMLAttributes<HTMLDivElement> {
   name: string;
   label: string;
-  type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'textarea' | 'select';
+  type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'textarea' | 'select' | 'date';
   placeholder?: string;
   helperText?: string;
   required?: boolean;

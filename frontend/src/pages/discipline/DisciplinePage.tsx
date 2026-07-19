@@ -411,7 +411,12 @@ export const DisciplinePage: React.FC = () => {
               key={tab.key}
               role="tab"
               aria-selected={activeTab === tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                setActiveTab(tab.key);
+                setSearch('');
+                setStatusFilter('');
+                setSeverityFilter('');
+              }}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0
                 ${activeTab === tab.key
                   ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
@@ -573,17 +578,17 @@ export const DisciplinePage: React.FC = () => {
 
         {/* ── SEARCH BAR (shared for data tabs) ─────────────────────── */}
         {activeTab !== 'dashboard' && (
-          <div className="flex flex-col md:flex-row md:items-center gap-3 mb-6">
-          <SearchBar
+          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
+            <SearchBar
               placeholder="Search by student name or ID…"
               onSearch={setSearch}
-              isLoading={isLoading}
-              resultCount={search ? undefined : undefined}
+              isLoading={false}
+              defaultValue={search}
               className="flex-1 max-w-md"
             />
 
             {/* Status filter */}
-            <div className="relative w-40">
+            <div className="relative w-full md:w-40">
               <select
                 value={statusFilter}
                 onChange={e => setStatusFilter(e.target.value)}
@@ -629,7 +634,7 @@ export const DisciplinePage: React.FC = () => {
 
             {/* Severity filter — infractions only */}
             {activeTab === 'infractions' && (
-              <div className="relative w-40">
+              <div className="relative w-full md:w-40">
                 <select
                   value={severityFilter}
                   onChange={e => setSeverityFilter(e.target.value)}
@@ -749,12 +754,11 @@ interface InfractionsTabProps {
 const InfractionsTab: React.FC<InfractionsTabProps> = ({
   search, statusFilter, severityFilter, infractionColumns, onAssignAction,
 }) => {
-  const [page, setPage] = useState(1);
   const PAGE_SIZE = 25;
 
   // Fetch recent infractions via the analytics comprehensive report which includes recent_infractions
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['discipline-infractions-list', { search, statusFilter, severityFilter, page }],
+    queryKey: ['discipline-infractions-list', { search, statusFilter, severityFilter }],
     queryFn: () => disciplineService.getComprehensiveReport(),
     staleTime: 30_000,
   });
@@ -767,10 +771,6 @@ const InfractionsTab: React.FC<InfractionsTabProps> = ({
     (!statusFilter || i.status === statusFilter) &&
     (!severityFilter || i.severity_level === severityFilter)
   );
-
-  const total = filtered.length;
-  const start = (page - 1) * PAGE_SIZE;
-  const items = filtered.slice(start, start + PAGE_SIZE);
 
   return (
     <DataTable
@@ -796,13 +796,12 @@ const InfractionsTab: React.FC<InfractionsTabProps> = ({
           ),
         },
       ]}
-      data={items}
+      data={filtered}
       isLoading={isLoading}
       error={error ? String(error) : null}
       onRetry={refetch}
       paginationMode="client"
       pageSize={PAGE_SIZE}
-      totalRows={total}
       emptyMessage="No infractions found"
     />
   );
