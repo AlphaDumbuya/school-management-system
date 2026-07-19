@@ -9,32 +9,71 @@ class DashboardService {
   async getCompleteDashboard(): Promise<CompleteDashboard> {
     try {
       // Try the complete endpoint first
-      const response = await apiClient.get<CompleteDashboard>('/dashboards/admin/complete');
+      const response = await apiClient.get<CompleteDashboard>('/api/v1/dashboards/admin/complete');
       if (response.success && response.data) {
         return response.data;
       }
       throw new Error(response.error || 'Failed to load dashboard');
     } catch (error) {
       // Fallback to individual endpoint calls
-      console.warn('Complete dashboard endpoint not available, using individual endpoints');
+      console.warn('Complete dashboard endpoint not available, using individual endpoints:', error);
+      
+      const safeCall = async <T>(promise: Promise<any>, fallback: T): Promise<T> => {
+        try {
+          const res = await promise;
+          return res !== undefined ? res : fallback;
+        } catch (e) {
+          console.error('Dashboard component load failed:', e);
+          return fallback;
+        }
+      };
+
       const [metrics, alerts, financialSummary, atRiskStudents, systemHealth, academicChart, attendanceChart, feeChart, distributionChart] = await Promise.all([
-        this.getMetrics(),
-        this.getAlerts(),
-        this.getFinancialSummary(),
-        this.getStudentsAtRisk(10),
-        this.getSystemHealth(),
-        this.getAcademicPerformanceChart(),
-        this.getAttendanceTrendChart(),
-        this.getFeeCollectionChart(),
-        this.getStudentDistributionChart(),
+        safeCall(this.getMetrics(), null),
+        safeCall(this.getAlerts(), []),
+        safeCall(this.getFinancialSummary(), null),
+        safeCall(this.getStudentsAtRisk(10), []),
+        safeCall(this.getSystemHealth(), null),
+        safeCall(this.getAcademicPerformanceChart(), { labels: [], datasets: [] }),
+        safeCall(this.getAttendanceTrendChart(), { labels: [], datasets: [] }),
+        safeCall(this.getFeeCollectionChart(), { labels: [], datasets: [] }),
+        safeCall(this.getStudentDistributionChart(), { labels: [], datasets: [] }),
       ]);
 
       return {
-        metrics,
-        alerts,
-        financialSummary,
-        atRiskStudents,
-        systemHealth,
+        metrics: metrics || {
+          totalStudents: 0,
+          activeStudents: 0,
+          totalTeachers: 0,
+          totalClasses: 0,
+          outstandingFees: 0,
+          totalCollected: 0,
+          attendanceRate: 0,
+          averageGrade: 0,
+          classroomsInUse: 0,
+          totalStaff: 0,
+          totalEnrollments: 0,
+        },
+        alerts: alerts || [],
+        financialSummary: financialSummary || {
+          totalRevenue: 0,
+          thisMonthCollected: 0,
+          thisMonthTarget: 0,
+          outstandingBalance: 0,
+          overdueAmount: 0,
+          collectionRate: 0,
+          trend: 0,
+          pendingFees: 0,
+          partiallyPaid: 0,
+        },
+        atRiskStudents: atRiskStudents || [],
+        systemHealth: systemHealth || {
+          databaseStatus: 'error',
+          lastBackup: new Date().toISOString(),
+          apiResponseTime: 0,
+          storageUsage: 0,
+          activeUsers: 0,
+        },
         charts: {
           academicPerformance: academicChart,
           attendanceTrend: attendanceChart,
@@ -50,7 +89,7 @@ class DashboardService {
    * Get principal dashboard metrics (KPIs)
    */
   async getMetrics() {
-    const response = await apiClient.get('/dashboards/admin/metrics');
+    const response = await apiClient.get('/api/v1/dashboards/admin/metrics');
     return response.data;
   }
 
@@ -58,7 +97,7 @@ class DashboardService {
    * Get financial summary
    */
   async getFinancialSummary() {
-    const response = await apiClient.get('/dashboards/admin/financial-summary');
+    const response = await apiClient.get('/api/v1/dashboards/admin/financial-summary');
     return response.data;
   }
 
@@ -66,7 +105,7 @@ class DashboardService {
    * Get dashboard alerts
    */
   async getAlerts() {
-    const response = await apiClient.get('/dashboards/admin/alerts');
+    const response = await apiClient.get('/api/v1/dashboards/admin/alerts');
     return response.data;
   }
 
@@ -74,7 +113,7 @@ class DashboardService {
    * Get recent activities
    */
   async getRecentActivities(limit: number = 20) {
-    const response = await apiClient.get('/dashboards/admin/recent-activities', {
+    const response = await apiClient.get('/api/v1/dashboards/admin/recent-activities', {
       params: { limit },
     });
     return response.data;
@@ -84,7 +123,7 @@ class DashboardService {
    * Get students at risk
    */
   async getStudentsAtRisk(limit: number = 10) {
-    const response = await apiClient.get('/dashboards/admin/students-at-risk', {
+    const response = await apiClient.get('/api/v1/dashboards/admin/students-at-risk', {
       params: { limit },
     });
     return response.data;
@@ -94,7 +133,7 @@ class DashboardService {
    * Get system health status
    */
   async getSystemHealth() {
-    const response = await apiClient.get('/dashboards/admin/system-health');
+    const response = await apiClient.get('/api/v1/dashboards/admin/system-health');
     return response.data;
   }
 
@@ -102,7 +141,7 @@ class DashboardService {
    * Get academic performance chart data
    */
   async getAcademicPerformanceChart() {
-    const response = await apiClient.get('/dashboards/admin/chart/academic-performance');
+    const response = await apiClient.get('/api/v1/dashboards/admin/chart/academic-performance');
     return response.data;
   }
 
@@ -110,7 +149,7 @@ class DashboardService {
    * Get attendance trend chart data
    */
   async getAttendanceTrendChart() {
-    const response = await apiClient.get('/dashboards/admin/chart/attendance-trend');
+    const response = await apiClient.get('/api/v1/dashboards/admin/chart/attendance-trend');
     return response.data;
   }
 
@@ -118,7 +157,7 @@ class DashboardService {
    * Get fee collection chart data
    */
   async getFeeCollectionChart() {
-    const response = await apiClient.get('/dashboards/admin/chart/fee-collection');
+    const response = await apiClient.get('/api/v1/dashboards/admin/chart/fee-collection');
     return response.data;
   }
 
@@ -126,7 +165,7 @@ class DashboardService {
    * Get student distribution chart data
    */
   async getStudentDistributionChart() {
-    const response = await apiClient.get('/dashboards/admin/chart/student-distribution');
+    const response = await apiClient.get('/api/v1/dashboards/admin/chart/student-distribution');
     return response.data;
   }
 
@@ -134,7 +173,7 @@ class DashboardService {
    * Get pending approvals
    */
   async getPendingApprovals() {
-    const response = await apiClient.get('/dashboards/admin/pending-approvals');
+    const response = await apiClient.get('/api/v1/dashboards/admin/pending-approvals');
     return response.data;
   }
 }

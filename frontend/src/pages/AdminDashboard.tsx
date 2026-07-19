@@ -253,7 +253,7 @@ export const AdminDashboard: React.FC = () => {
 
             {/* System Health — principal only */}
             <div className="lg:col-span-2">
-              <RoleGuard roles={['principal']}>
+              <RoleGuard roles={['principal', 'super_admin']}>
                 {dashboard?.systemHealth && (
                   <SystemHealthPanel
                     databaseStatus={dashboard.systemHealth.databaseStatus}

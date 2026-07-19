@@ -101,7 +101,7 @@ const router = createBrowserRouter(
         // ── Role dashboards ─────────────────────────────────────────
         {
           path: 'admin/dashboard',
-          element: <P requiredRoles={['principal']}><AdminDashboard /></P>,
+          element: <P requiredRoles={['principal', 'super_admin']}><AdminDashboard /></P>,
         },
         {
           path: 'platform/dashboard',

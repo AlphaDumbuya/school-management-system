@@ -101,26 +101,21 @@ class DashboardService {
    */
   async getAdminDashboardMetrics(): Promise<DashboardMetrics> {
     try {
-      // Get total students
+      // Get total students (users with role='student' and status='active')
       const totalStudents = await db('users')
         .where({ role: 'student', status: 'active' })
         .count('* as count')
         .first();
 
-      // Get total teachers
+      // Get total teachers (users with role='teacher' and status='active')
       const totalTeachers = await db('users')
         .where({ role: 'teacher', status: 'active' })
         .count('* as count')
         .first();
 
-      // Get total staff
+      // Get total staff (non-student, non-teacher active users)
       const totalStaff = await db('users')
-        .where((qb: any) => {
-          qb.where({ role: 'principal' })
-            .orWhere({ role: 'staff' })
-            .orWhere({ role: 'accountant' })
-            .orWhere({ role: 'admissionsOfficer' });
-        })
+        .whereIn('role', ['principal', 'staff', 'accountant', 'admissionsOfficer', 'super_admin'])
         .where({ status: 'active' })
         .count('* as count')
         .first();
@@ -130,28 +125,28 @@ class DashboardService {
         .count('* as count')
         .first();
 
-      // Get total enrollments
+      // Get total active enrollments
       const totalEnrollments = await db('enrollments')
         .where({ status: 'active' })
         .count('* as count')
         .first();
 
-      // Get outstanding fees
+      // Get outstanding fees — fees table has 'amount' column, not 'balance'
       const outstandingFees = await db('fees')
-        .where((qb: any) => {
-          qb.where({ status: 'pending' }).orWhere({ status: 'partial' });
+        .where(function(this: any) {
+          this.where({ status: 'pending' }).orWhere({ status: 'partial' });
         })
-        .sum('balance as total')
+        .sum('amount as total')
         .first();
 
-      // Get total collected this month
+      // Get total collected this month — payments uses snake_case 'created_at'
       const thisMonthCollected = await db('payments')
         .whereRaw("EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM NOW())")
         .whereRaw("EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM NOW())")
         .sum('amount as total')
         .first();
 
-      // Get attendance rate
+      // Get attendance rate from attendance table
       const totalAttendanceRecords = await db('attendance')
         .count('* as count')
         .first();
@@ -161,27 +156,27 @@ class DashboardService {
         .count('* as count')
         .first();
 
-      const attendanceRate = totalAttendanceRecords?.count > 0
-        ? (presentCount?.count / totalAttendanceRecords.count) * 100
-        : 0;
+      const totalAtt = Number(totalAttendanceRecords?.count) || 0;
+      const presentAtt = Number(presentCount?.count) || 0;
+      const attendanceRate = totalAtt > 0 ? (presentAtt / totalAtt) * 100 : 0;
 
-      // Get average grade
+      // Get average grade — grades table has 'grade_value' column
       const averageGrade = await db('grades')
-        .avg('grade as avg')
+        .avg('grade_value as avg')
         .first();
 
       return {
-        totalStudents: totalStudents?.count || 0,
-        activeStudents: totalStudents?.count || 0,
-        totalTeachers: totalTeachers?.count || 0,
-        totalStaff: totalStaff?.count || 0,
-        totalClasses: totalClasses?.count || 0,
-        totalEnrollments: totalEnrollments?.count || 0,
-        outstandingFees: outstandingFees?.total || 0,
-        totalCollected: thisMonthCollected?.total || 0,
+        totalStudents: Number(totalStudents?.count) || 0,
+        activeStudents: Number(totalStudents?.count) || 0,
+        totalTeachers: Number(totalTeachers?.count) || 0,
+        totalStaff: Number(totalStaff?.count) || 0,
+        totalClasses: Number(totalClasses?.count) || 0,
+        totalEnrollments: Number(totalEnrollments?.count) || 0,
+        outstandingFees: Number(outstandingFees?.total) || 0,
+        totalCollected: Number(thisMonthCollected?.total) || 0,
         attendanceRate: Math.round(attendanceRate * 100) / 100,
-        averageGrade: Math.round((averageGrade?.avg || 0) * 100) / 100,
-        classroomsInUse: totalClasses?.count || 0,
+        averageGrade: Math.round(Number(averageGrade?.avg || 0) * 100) / 100,
+        classroomsInUse: Number(totalClasses?.count) || 0,
       };
     } catch (error) {
       logger.error(`Error getting dashboard metrics: ${error}`);
@@ -194,28 +189,54 @@ class DashboardService {
    */
   async getPendingApprovals(): Promise<PendingApprovals> {
     try {
-      const enrollmentRequests = await db('enrollmentRequests')
-        .where({ status: 'pending' })
-        .count('* as count')
-        .first();
+      // Check admissions table for pending applications
+      let enrollmentRequestCount = 0;
+      try {
+        const hasAdmissions = await db.schema.hasTable('admissions');
+        if (hasAdmissions) {
+          const result = await db('admissions')
+            .where({ status: 'pending' })
+            .count('* as count')
+            .first();
+          enrollmentRequestCount = Number(result?.count) || 0;
+        }
+      } catch {
+        // Table may not exist
+      }
 
-      const paymentPlanRequests = await db('paymentPlans')
-        .where({ status: 'pending' })
-        .count('* as count')
-        .first();
+      // Check payment_plans table for pending plans
+      let paymentPlanCount = 0;
+      try {
+        const hasPaymentPlans = await db.schema.hasTable('payment_plans');
+        if (hasPaymentPlans) {
+          const result = await db('payment_plans')
+            .where({ status: 'active' })
+            .count('* as count')
+            .first();
+          paymentPlanCount = Number(result?.count) || 0;
+        }
+      } catch {
+        // Table may not exist
+      }
 
-      const totalPending = (enrollmentRequests?.count || 0) + (paymentPlanRequests?.count || 0);
+      const totalPending = enrollmentRequestCount + paymentPlanCount;
 
       return {
-        enrollmentRequests: enrollmentRequests?.count || 0,
-        paymentPlanRequests: paymentPlanRequests?.count || 0,
+        enrollmentRequests: enrollmentRequestCount,
+        paymentPlanRequests: paymentPlanCount,
         leaveRequests: 0,
         otherRequests: 0,
         totalPending,
       };
     } catch (error) {
       logger.error(`Error getting pending approvals: ${error}`);
-      throw new Error(`Failed to get pending approvals: ${error}`);
+      return {
+        enrollmentRequests: 0,
+        paymentPlanRequests: 0,
+        leaveRequests: 0,
+        otherRequests: 0,
+        totalPending: 0,
+      };
     }
   }
 
@@ -229,22 +250,22 @@ class DashboardService {
         .sum('amount as total')
         .first();
 
-      // This month collected
+      // This month collected — use snake_case created_at
       const thisMonthCollected = await db('payments')
-        .whereRaw("EXTRACT(YEAR FROM \"createdAt\") = EXTRACT(YEAR FROM NOW())")
-        .whereRaw("EXTRACT(MONTH FROM \"createdAt\") = EXTRACT(MONTH FROM NOW())")
+        .whereRaw("EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM NOW())")
+        .whereRaw("EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM NOW())")
         .sum('amount as total')
         .first();
 
       // Monthly target (configurable, default 50000)
       const monthlyTarget = 50000;
 
-      // Outstanding balance
+      // Outstanding balance — fees has 'amount', not 'balance'
       const outstandingBalance = await db('fees')
-        .where((qb: any) => {
-          qb.where({ status: 'pending' }).orWhere({ status: 'partial' });
+        .where(function(this: any) {
+          this.where({ status: 'pending' }).orWhere({ status: 'partial' });
         })
-        .sum('balance as total')
+        .sum('amount as total')
         .first();
 
       // Count of pending and partial fees
@@ -258,40 +279,42 @@ class DashboardService {
         .count('* as count')
         .first();
 
-      // Overdue amount
+      // Overdue amount — fees uses snake_case 'due_date'
       const overdueAmount = await db('fees')
-        .where('dueDate', '<', db.fn.now())
-        .where((qb: any) => {
-          qb.where({ status: 'pending' }).orWhere({ status: 'partial' });
+        .where('due_date', '<', db.fn.now())
+        .where(function(this: any) {
+          this.where({ status: 'pending' }).orWhere({ status: 'partial' });
         })
-        .sum('balance as total')
-        .first();
-
-      const collectionRate = monthlyTarget > 0
-        ? ((thisMonthCollected?.total || 0) / monthlyTarget) * 100
-        : 0;
-
-      // Calculate trend (current vs previous month)
-      const previousMonthCollected = await db('payments')
-        .whereRaw("EXTRACT(YEAR FROM \"createdAt\") = EXTRACT(YEAR FROM NOW())")
-        .whereRaw("EXTRACT(MONTH FROM \"createdAt\") = EXTRACT(MONTH FROM NOW() - INTERVAL '1 month')")
         .sum('amount as total')
         .first();
 
-      const trend = previousMonthCollected?.total > 0
-        ? (((thisMonthCollected?.total || 0) - (previousMonthCollected?.total || 0)) / (previousMonthCollected?.total || 1)) * 100
+      const collected = Number(thisMonthCollected?.total) || 0;
+      const collectionRate = monthlyTarget > 0
+        ? (collected / monthlyTarget) * 100
+        : 0;
+
+      // Calculate trend (current vs previous month) — use snake_case created_at
+      const previousMonthCollected = await db('payments')
+        .whereRaw("EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM (NOW() - INTERVAL '1 month'))")
+        .whereRaw("EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM (NOW() - INTERVAL '1 month'))")
+        .sum('amount as total')
+        .first();
+
+      const prevAmount = Number(previousMonthCollected?.total) || 0;
+      const trend = prevAmount > 0
+        ? ((collected - prevAmount) / prevAmount) * 100
         : 0;
 
       return {
-        totalRevenue: totalRevenue?.total || 0,
-        thisMonthCollected: thisMonthCollected?.total || 0,
+        totalRevenue: Number(totalRevenue?.total) || 0,
+        thisMonthCollected: collected,
         thisMonthTarget: monthlyTarget,
-        outstandingBalance: outstandingBalance?.total || 0,
-        overdueAmount: overdueAmount?.total || 0,
+        outstandingBalance: Number(outstandingBalance?.total) || 0,
+        overdueAmount: Number(overdueAmount?.total) || 0,
         collectionRate: Math.round(collectionRate * 100) / 100,
         trend: Math.round(trend * 100) / 100,
-        pendingFees: pendingFeesCount?.count || 0,
-        partiallyPaid: partialFeesCount?.count || 0,
+        pendingFees: Number(pendingFeesCount?.count) || 0,
+        partiallyPaid: Number(partialFeesCount?.count) || 0,
       };
     } catch (error) {
       logger.error(`Error getting financial summary: ${error}`);
@@ -304,19 +327,20 @@ class DashboardService {
    */
   async getRecentActivities(limit: number = 20): Promise<RecentActivity[]> {
     try {
-      const activities = await db('auditLogs')
-        .orderBy('createdAt', 'desc')
+      // audit_logs table uses snake_case column names
+      const activities = await db('audit_logs')
+        .orderBy('created_at', 'desc')
         .limit(limit)
         .select();
 
       return activities.map((activity: any) => ({
         id: activity.id,
         type: activity.action,
-        description: activity.details,
-        user: activity.userId,
-        timestamp: activity.createdAt,
-        relatedEntity: activity.entityType,
-        severity: 'info',
+        description: activity.changes ? JSON.stringify(activity.changes) : 'Activity recorded',
+        user: activity.user_id || 'System',
+        timestamp: activity.created_at,
+        relatedEntity: activity.entity_type,
+        severity: 'info' as const,
       }));
     } catch (error) {
       logger.error(`Error getting recent activities: ${error}`);
@@ -346,76 +370,92 @@ class DashboardService {
         });
       }
 
-      // Check for overdue fees
-      const overdueCount = await db('fees')
-        .where('dueDate', '<', db.fn.now())
-        .where({ status: 'pending' })
-        .count('* as count')
-        .first();
+      // Check for overdue fees — use snake_case 'due_date'
+      try {
+        const overdueCount = await db('fees')
+          .where('due_date', '<', db.fn.now())
+          .where({ status: 'pending' })
+          .count('* as count')
+          .first();
 
-      if (overdueCount?.count > 0) {
-        alerts.push({
-          id: 'overdue-fees',
-          type: 'financial',
-          title: 'Overdue Fees Alert',
-          message: `${overdueCount.count} students have overdue fees. Total outstanding: Check financial summary`,
-          severity: 'warning',
-          timestamp: new Date().toISOString(),
-          actionUrl: '/admin/finances',
-          dismissible: true,
-        });
+        if (Number(overdueCount?.count) > 0) {
+          alerts.push({
+            id: 'overdue-fees',
+            type: 'financial',
+            title: 'Overdue Fees Alert',
+            message: `${overdueCount?.count} students have overdue fees. Check financial summary for details.`,
+            severity: 'warning',
+            timestamp: new Date().toISOString(),
+            actionUrl: '/admin/finances',
+            dismissible: true,
+          });
+        }
+      } catch {
+        // Fees table query failed - skip this alert
       }
 
-      // Check for low attendance students
-      const lowAttendanceCount = await db.raw(`
-        SELECT COUNT(DISTINCT u.id) as count
-        FROM users u
-        JOIN enrollments e ON u.id = e.studentId
-        LEFT JOIN attendance a ON u.id = a.studentId AND a.createdAt > NOW() - INTERVAL '30 days'
-        WHERE u.role = 'student' AND u.isActive = true
-        GROUP BY u.id
-        HAVING COUNT(CASE WHEN a.status = 'present' THEN 1 END)::numeric / NULLIF(COUNT(*), 0) < 0.75
-      `);
+      // Check for low attendance students — use snake_case columns
+      try {
+        const lowAttendanceCount = await db.raw(`
+          SELECT COUNT(*) as cnt FROM (
+            SELECT u.id
+            FROM users u
+            JOIN students s ON u.id = s.user_id
+            JOIN enrollments e ON s.id = e.student_id
+            LEFT JOIN attendance a ON s.id = a.student_id AND a.created_at > NOW() - INTERVAL '30 days'
+            WHERE u.role = 'student' AND u.status = 'active'
+            GROUP BY u.id
+            HAVING COUNT(CASE WHEN a.status = 'present' THEN 1 END)::numeric / NULLIF(COUNT(a.id), 0) < 0.75
+          ) sub
+        `);
 
-      if ((lowAttendanceCount?.rows?.length || 0) > 0) {
-        alerts.push({
-          id: 'low-attendance',
-          type: 'academic',
-          title: 'Low Attendance Alert',
-          message: `${lowAttendanceCount.rows.length} students have attendance below 75% threshold`,
-          severity: 'warning',
-          timestamp: new Date().toISOString(),
-          actionUrl: '/admin/attendance',
-          dismissible: true,
-        });
+        const lowCount = Number(lowAttendanceCount?.rows?.[0]?.cnt) || 0;
+        if (lowCount > 0) {
+          alerts.push({
+            id: 'low-attendance',
+            type: 'academic',
+            title: 'Low Attendance Alert',
+            message: `${lowCount} students have attendance below 75% threshold`,
+            severity: 'warning',
+            timestamp: new Date().toISOString(),
+            actionUrl: '/admin/attendance',
+            dismissible: true,
+          });
+        }
+      } catch {
+        // Attendance query failed - skip this alert
       }
 
-      // Check for students at academic risk (failing grades)
-      const atRiskStudents = await db('grades')
-        .join('users', 'grades.studentId', 'users.id')
-        .where('grades.grade', '<', 40)
-        .where('users.isActive', true)
-        .count('* as count')
-        .first();
+      // Check for students at academic risk (failing grades) — use snake_case
+      try {
+        const atRiskStudents = await db('grades')
+          .join('students', 'grades.student_id', 'students.id')
+          .join('users', 'students.user_id', 'users.id')
+          .where('grades.grade_value', '<', 40)
+          .where('users.status', 'active')
+          .countDistinct('users.id as count')
+          .first();
 
-      if (atRiskStudents?.count > 0) {
-        alerts.push({
-          id: 'academic-risk',
-          type: 'academic',
-          title: 'Students at Academic Risk',
-          message: `${atRiskStudents.count} students have grades below passing threshold`,
-          severity: 'warning',
-          timestamp: new Date().toISOString(),
-          actionUrl: '/admin/grades',
-          dismissible: true,
-        });
+        if (Number(atRiskStudents?.count) > 0) {
+          alerts.push({
+            id: 'academic-risk',
+            type: 'academic',
+            title: 'Students at Academic Risk',
+            message: `${atRiskStudents?.count} students have grades below passing threshold`,
+            severity: 'warning',
+            timestamp: new Date().toISOString(),
+            actionUrl: '/admin/grades',
+            dismissible: true,
+          });
+        }
+      } catch {
+        // Grades query failed - skip this alert
       }
 
       // Check for system health (database connectivity)
       try {
         await db.raw('SELECT 1');
-        // Database is healthy - no alert needed
-      } catch (error) {
+      } catch {
         alerts.push({
           id: 'db-health',
           type: 'system',
@@ -439,33 +479,50 @@ class DashboardService {
    */
   async getSystemHealth(): Promise<SystemHealth> {
     try {
-      const now = Date.now();
       let databaseStatus: 'healthy' | 'warning' | 'error' = 'healthy';
+      const startTime = Date.now();
 
       try {
         await db.raw('SELECT 1');
-      } catch (error) {
+      } catch {
         databaseStatus = 'error';
       }
 
-      // Calculate API response time (mock - in real scenario, measure actual response time)
-      const apiResponseTime = Math.round(Math.random() * 200) + 50;
+      // Measure actual API response time from the DB ping
+      const apiResponseTime = Date.now() - startTime;
 
-      // Get storage usage (mock percentage)
-      const storageUsage = Math.round(Math.random() * 60) + 20;
+      // Get storage usage (approximate from DB size)
+      let storageUsage = 0;
+      try {
+        const dbSize = await db.raw(`
+          SELECT pg_database_size(current_database()) as size
+        `);
+        // Convert to percentage of a nominal 1GB limit
+        const sizeBytes = Number(dbSize?.rows?.[0]?.size) || 0;
+        storageUsage = Math.min(Math.round((sizeBytes / (1024 * 1024 * 1024)) * 100), 100);
+      } catch {
+        storageUsage = 0;
+      }
 
-      // Count active users (online in last 5 minutes)
-      const activeUsers = await db('users')
-        .where('lastActivity', '>', new Date(Date.now() - 5 * 60 * 1000))
-        .count('* as count')
-        .first();
+      // Count active users (users who logged in within last 24 hours)
+      // users table has 'last_login' column, not 'lastActivity'
+      let activeUserCount = 0;
+      try {
+        const activeUsers = await db('users')
+          .where('last_login', '>', new Date(Date.now() - 24 * 60 * 60 * 1000))
+          .count('* as count')
+          .first();
+        activeUserCount = Number(activeUsers?.count) || 0;
+      } catch {
+        // last_login column might not exist - default to 0
+      }
 
       return {
         databaseStatus,
         lastBackup: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
         apiResponseTime,
         storageUsage,
-        activeUsers: activeUsers?.count || 0,
+        activeUsers: activeUserCount,
       };
     } catch (error) {
       logger.error(`Error getting system health: ${error}`);
@@ -484,30 +541,33 @@ class DashboardService {
    */
   async getAcademicPerformanceChart(): Promise<ChartData> {
     try {
+      // classes table doesn't have 'isActive' — just get all classes
       const classes = await db('classes')
         .select('id', 'name')
-        .where({ isActive: true });
+        .limit(20);
 
-      const datasets = await Promise.all(
-        classes.map(async (cls: any) => {
-          const avgGrade = await db('grades')
-            .join('enrollments', 'grades.studentId', 'enrollments.studentId')
-            .where('enrollments.classId', cls.id)
-            .avg('grades.grade as avg')
-            .first();
+      if (classes.length === 0) {
+        return { labels: [], datasets: [] };
+      }
 
-          return {
-            label: cls.name,
-            data: [Math.round((avgGrade?.avg || 0) * 100) / 100],
-          };
-        })
-      );
+      const avgGrades: number[] = [];
+
+      for (const cls of classes) {
+        // Use snake_case join columns
+        const avgGrade = await db('grades')
+          .join('enrollments', 'grades.student_id', 'enrollments.student_id')
+          .where('enrollments.class_id', cls.id)
+          .avg('grades.grade_value as avg')
+          .first();
+
+        avgGrades.push(Math.round(Number(avgGrade?.avg || 0) * 100) / 100);
+      }
 
       return {
         labels: classes.map((c: any) => c.name),
         datasets: [{
           label: 'Average Grade',
-          data: datasets.map(d => d.data[0]),
+          data: avgGrades,
           borderColor: '#2563EB',
           backgroundColor: 'rgba(37, 99, 235, 0.1)',
         }],
@@ -523,33 +583,36 @@ class DashboardService {
    */
   async getAttendanceTrendChart(): Promise<ChartData> {
     try {
-      const last30Days = [];
+      const last30Days: string[] = [];
       for (let i = 29; i >= 0; i--) {
         const date = new Date();
         date.setDate(date.getDate() - i);
         last30Days.push(date.toISOString().split('T')[0]);
       }
 
-      const attendanceData = await Promise.all(
-        last30Days.map(async (date) => {
-          const total = await db('attendance')
-            .whereRaw(`DATE(createdAt) = '${date}'`)
-            .count('* as count')
-            .first();
+      const attendanceData: number[] = [];
 
-          const present = await db('attendance')
-            .whereRaw(`DATE(createdAt) = '${date}'`)
-            .where({ status: 'present' })
-            .count('* as count')
-            .first();
+      for (const date of last30Days) {
+        // Use snake_case 'attendance_date'
+        const total = await db('attendance')
+          .whereRaw('DATE(attendance_date) = ?', [date])
+          .count('* as count')
+          .first();
 
-          const percentage = total?.count > 0
-            ? ((present?.count || 0) / total.count) * 100
-            : 0;
+        const present = await db('attendance')
+          .whereRaw('DATE(attendance_date) = ?', [date])
+          .where({ status: 'present' })
+          .count('* as count')
+          .first();
 
-          return Math.round(percentage);
-        })
-      );
+        const totalCount = Number(total?.count) || 0;
+        const presentCount = Number(present?.count) || 0;
+        const percentage = totalCount > 0
+          ? (presentCount / totalCount) * 100
+          : 0;
+
+        attendanceData.push(Math.round(percentage));
+      }
 
       return {
         labels: last30Days.map(d => d.split('-').slice(1).join('-')),
@@ -572,8 +635,8 @@ class DashboardService {
    */
   async getFeeCollectionChart(): Promise<ChartData> {
     try {
-      const last12Months = [];
-      const monthLabels = [];
+      const last12Months: Date[] = [];
+      const monthLabels: string[] = [];
 
       for (let i = 11; i >= 0; i--) {
         const date = new Date();
@@ -582,17 +645,20 @@ class DashboardService {
         monthLabels.push(date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
       }
 
-      const feeData = await Promise.all(
-        last12Months.map(async (date) => {
-          const collection = await db('payments')
-            .whereRaw("EXTRACT(YEAR FROM \"createdAt\") = EXTRACT(YEAR FROM ?)", [date])
-            .whereRaw("EXTRACT(MONTH FROM \"createdAt\") = EXTRACT(MONTH FROM ?)", [date])
-            .sum('amount as total')
-            .first();
+      const feeData: number[] = [];
 
-          return collection?.total || 0;
-        })
-      );
+      for (const date of last12Months) {
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+        // Use snake_case 'created_at'
+        const collection = await db('payments')
+          .whereRaw("EXTRACT(YEAR FROM created_at) = ?", [year])
+          .whereRaw("EXTRACT(MONTH FROM created_at) = ?", [month])
+          .sum('amount as total')
+          .first();
+
+        feeData.push(Number(collection?.total) || 0);
+      }
 
       return {
         labels: monthLabels,
@@ -615,8 +681,9 @@ class DashboardService {
    */
   async getStudentDistributionChart(): Promise<ChartData> {
     try {
+      // Use snake_case join columns
       const classDistribution = await db('enrollments')
-        .join('classes', 'enrollments.classId', 'classes.id')
+        .join('classes', 'enrollments.class_id', 'classes.id')
         .where('enrollments.status', 'active')
         .select('classes.name', db.raw('COUNT(*) as count'))
         .groupBy('classes.name')
@@ -626,13 +693,16 @@ class DashboardService {
         labels: classDistribution.map((c: any) => c.name),
         datasets: [{
           label: 'Students per Class',
-          data: classDistribution.map((c: any) => c.count),
+          data: classDistribution.map((c: any) => Number(c.count)),
           backgroundColor: [
             'rgba(37, 99, 235, 0.8)',
             'rgba(16, 185, 129, 0.8)',
             'rgba(245, 158, 11, 0.8)',
             'rgba(239, 68, 68, 0.8)',
             'rgba(139, 92, 246, 0.8)',
+            'rgba(14, 165, 233, 0.8)',
+            'rgba(249, 115, 22, 0.8)',
+            'rgba(168, 85, 247, 0.8)',
           ],
         }],
       };
@@ -647,53 +717,57 @@ class DashboardService {
    */
   async getStudentsAtRisk(limit: number = 10): Promise<StudentAtRiskData[]> {
     try {
-      // Students with attendance < 75% OR grades < 40
+      // Rewritten with snake_case columns matching actual schema
       const atRiskStudents = await db.raw(`
-        SELECT DISTINCT
+        SELECT
           u.id,
-          u.firstName || ' ' || u.lastName as name,
-          u.rollNumber,
-          c.name as className,
-          COALESCE(AVG(g.grade), 0) as averageGrade,
+          u.first_name || ' ' || u.last_name as name,
+          s.student_id as roll_number,
+          c.name as class_name,
+          COALESCE(AVG(g.grade_value), 0) as average_grade,
           COALESCE(
             ROUND(COUNT(CASE WHEN a.status = 'present' THEN 1 END)::numeric / NULLIF(COUNT(a.id), 0) * 100, 2),
             100
-          ) as attendanceRate
+          ) as attendance_rate
         FROM users u
-        JOIN enrollments e ON u.id = e.studentId
-        JOIN classes c ON e.classId = c.id
-        LEFT JOIN grades g ON u.id = g.studentId
-        LEFT JOIN attendance a ON u.id = a.studentId AND a.createdAt > NOW() - INTERVAL '30 days'
-        WHERE u.role = 'student' AND u.isActive = true
-        AND (
-          COALESCE(AVG(g.grade), 0) < 40
+        JOIN students s ON u.id = s.user_id
+        JOIN enrollments e ON s.id = e.student_id
+        JOIN classes c ON e.class_id = c.id
+        LEFT JOIN grades g ON s.id = g.student_id
+        LEFT JOIN attendance a ON s.id = a.student_id AND a.created_at > NOW() - INTERVAL '30 days'
+        WHERE u.role = 'student' AND u.status = 'active' AND e.status = 'active'
+        GROUP BY u.id, u.first_name, u.last_name, s.student_id, c.name
+        HAVING (
+          COALESCE(AVG(g.grade_value), 0) < 40
           OR COALESCE(COUNT(CASE WHEN a.status = 'present' THEN 1 END)::numeric / NULLIF(COUNT(a.id), 0) * 100, 100) < 75
         )
-        GROUP BY u.id, u.firstName, u.lastName, u.rollNumber, c.name
-        ORDER BY averageGrade ASC, attendanceRate ASC
+        ORDER BY average_grade ASC, attendance_rate ASC
         LIMIT ?
       `, [limit]);
 
-      return atRiskStudents.rows.map((student: any) => {
+      return (atRiskStudents.rows || []).map((student: any) => {
         const riskFactors: string[] = [];
-        if (student.averageGrade < 40) riskFactors.push('Low Grades');
-        if (student.attendanceRate < 75) riskFactors.push('Low Attendance');
+        const avgGrade = Number(student.average_grade) || 0;
+        const attRate = Number(student.attendance_rate) || 0;
+
+        if (avgGrade < 40) riskFactors.push('Low Grades');
+        if (attRate < 75) riskFactors.push('Low Attendance');
 
         let severity: 'high' | 'medium' | 'low' = 'low';
-        if (riskFactors.length === 2 || student.averageGrade < 30 || student.attendanceRate < 60) {
+        if (riskFactors.length === 2 || avgGrade < 30 || attRate < 60) {
           severity = 'high';
-        } else if (student.averageGrade < 40 || student.attendanceRate < 70) {
+        } else if (avgGrade < 40 || attRate < 70) {
           severity = 'medium';
         }
 
         return {
           id: student.id,
           name: student.name,
-          rollNumber: student.rollNumber,
-          className: student.className,
+          rollNumber: student.roll_number || '',
+          className: student.class_name || '',
           riskFactors,
-          attendanceRate: student.attendanceRate,
-          averageGrade: student.averageGrade,
+          attendanceRate: attRate,
+          averageGrade: avgGrade,
           lastActivity: new Date().toISOString(),
           severity,
         };
