@@ -1,3 +1,3 @@
 git add -A
-git commit -m "feat: implement subscription expiration tracking and guard enforcement"
+git commit -m "docs: update FEATURE_ROADMAP.md with subscription notification templates"
 git push

@@ -161,6 +161,20 @@ The app already has an `EmailService` (Brevo) and a `notification_templates` tab
 
 ---
 
+### 💳 Subscriptions & Platform Billing
+
+| Template ID | Trigger | Recipient | Key Variables |
+|---|---|---|---|
+| `subscription_invoice_generated` | New invoice generated | Principal | `{{schoolName}}`, `{{invoiceRef}}`, `{{amount}}`, `{{planType}}`, `{{dueDate}}`, `{{billingCycle}}` |
+| `subscription_payment_confirmed` | Subscription payment received | Principal | `{{schoolName}}`, `{{receiptRef}}`, `{{amount}}`, `{{planType}}`, `{{paymentDate}}` |
+| `subscription_expiration_warning_30d` | Subscription expiring in 30 days | Principal | `{{schoolName}}`, `{{planType}}`, `{{expiryDate}}`, `{{renewalUrl}}` |
+| `subscription_expiration_warning_7d` | Subscription expiring in 7 days | Principal | `{{schoolName}}`, `{{planType}}`, `{{expiryDate}}`, `{{renewalUrl}}` |
+| `subscription_expired` | Subscription expires | Principal | `{{schoolName}}`, `{{planType}}`, `{{expiryDate}}`, `{{renewUrl}}` |
+| `subscription_limit_alert_students` | Student usage hits 90% | Principal | `{{schoolName}}`, `{{currentStudents}}`, `{{maxStudents}}`, `{{upgradeUrl}}` |
+| `subscription_limit_alert_staff` | Staff usage hits 90% | Principal | `{{schoolName}}`, `{{currentStaff}}`, `{{maxStaff}}`, `{{upgradeUrl}}` |
+
+---
+
 ## PILLAR 2 — AI-Powered Live Analysis on All Dashboards
 
 > **Concept**: Each dashboard role gets a dedicated AI assistant panel that analyses real data in real time and communicates what is happening, what needs attention, and what trends are emerging — like having a personal analyst watching over the school 24/7.
