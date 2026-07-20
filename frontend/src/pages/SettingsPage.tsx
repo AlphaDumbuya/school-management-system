@@ -89,6 +89,12 @@ export const SettingsPage: React.FC = () => {
   const [subscription, setSubscription] = useState<SubscriptionDetails | null>(null);
   const [billingHistory, setBillingHistory] = useState<BillingInvoice[]>([]);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [aiAnalysis, setAiAnalysis] = useState<{
+    healthStatus: 'healthy' | 'warning' | 'critical';
+    summary: string;
+    insights: string[];
+    recommendations: string[];
+  } | null>(null);
 
   // Trigger temporary Toast notifications
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -111,12 +117,13 @@ export const SettingsPage: React.FC = () => {
 
       // School Info & Global Settings - Only if authorized
       if (isPrincipalOrSuper) {
-        const [infoRes, settingsRes, scalesRes, subRes, billingRes] = await Promise.all([
+        const [infoRes, settingsRes, scalesRes, subRes, billingRes, aiRes] = await Promise.all([
           schoolConfigService.getSchoolInfo().catch(() => ({ success: false, data: {} })),
           schoolConfigService.getSettings().catch(() => ({ success: false, data: {} })),
           schoolConfigService.getGradingScales().catch(() => ({ success: false, data: [] })),
           schoolConfigService.getActiveSubscription().catch(() => ({ success: false, data: null })),
           schoolConfigService.getBillingHistory().catch(() => ({ success: false, data: [] })),
+          schoolConfigService.getSubscriptionAIAnalysis().catch(() => ({ success: false, data: null })),
         ]);
 
         if (infoRes.success && infoRes.data) {
@@ -133,6 +140,9 @@ export const SettingsPage: React.FC = () => {
         }
         if (billingRes.success && billingRes.data) {
           setBillingHistory(billingRes.data);
+        }
+        if (aiRes.success && aiRes.data) {
+          setAiAnalysis(aiRes.data);
         }
       }
     } catch (error) {
@@ -978,6 +988,56 @@ export const SettingsPage: React.FC = () => {
                       </CardContent>
                     </Card>
 
+                    {/* AI Subscription Advisor Panel */}
+                    {aiAnalysis && (
+                      <Card className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-100 shadow-sm relative overflow-hidden">
+                        <div className="absolute right-0 top-0 text-[100px] text-violet-500/5 select-none font-black translate-x-10 translate-y-[-20px]">
+                          AI
+                        </div>
+                        <CardContent className="p-6">
+                          <div className="flex items-start gap-4">
+                            <div className="p-2.5 bg-violet-100 text-violet-600 rounded-xl animate-pulse">
+                              <Sparkles size={22} />
+                            </div>
+                            <div className="space-y-3 flex-1">
+                              <div>
+                                <h4 className="font-extrabold text-violet-900 text-sm flex items-center gap-2">
+                                  AI billing advisor
+                                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                    aiAnalysis.healthStatus === 'critical' ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                                    aiAnalysis.healthStatus === 'warning' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 
+                                    'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  }`}>
+                                    {aiAnalysis.healthStatus}
+                                  </span>
+                                </h4>
+                                <p className="text-xs text-violet-800/80 mt-1">{aiAnalysis.summary}</p>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                                <div>
+                                  <p className="text-[10px] text-violet-700 font-bold uppercase tracking-wider">Key Insights</p>
+                                  <ul className="list-disc list-inside text-xs text-gray-700 space-y-1.5 mt-1.5">
+                                    {aiAnalysis.insights.map((insight, idx) => (
+                                      <li key={idx}>{insight}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] text-violet-700 font-bold uppercase tracking-wider">AI Recommendations</p>
+                                  <ul className="list-disc list-inside text-xs text-gray-700 space-y-1.5 mt-1.5 font-medium">
+                                    {aiAnalysis.recommendations.map((rec, idx) => (
+                                      <li key={idx} className="text-violet-900">{rec}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
                     {/* Choose Plan Panel */}
                     <Card>
                       <CardHeader className="flex flex-row justify-between items-center">
@@ -1022,7 +1082,10 @@ export const SettingsPage: React.FC = () => {
                             </div>
                             <p className="text-gray-400 text-xs mt-1 italic">"Start free, grow strong"</p>
                             <p className="text-2xl font-black text-gray-900 mt-4">
-                              {billingCycle === 'monthly' ? '$400' : '$4000'}
+                              {(() => {
+                                const symbol = settings.currency === 'SLE' ? 'Le ' : settings.currency === 'NLe' ? 'NLe ' : '$';
+                                return `${symbol}${billingCycle === 'monthly' ? '400' : '4000'}`;
+                              })()}
                               <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
                             </p>
                             
@@ -1063,7 +1126,10 @@ export const SettingsPage: React.FC = () => {
                             </div>
                             <p className="text-gray-400 text-xs mt-1 italic">"A mother managing her children"</p>
                             <p className="text-2xl font-black text-gray-900 mt-4">
-                              {billingCycle === 'monthly' ? '$900' : '$9000'}
+                              {(() => {
+                                const symbol = settings.currency === 'SLE' ? 'Le ' : settings.currency === 'NLe' ? 'NLe ' : '$';
+                                return `${symbol}${billingCycle === 'monthly' ? '900' : '9000'}`;
+                              })()}
                               <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
                             </p>
                             
@@ -1102,7 +1168,10 @@ export const SettingsPage: React.FC = () => {
                             </div>
                             <p className="text-gray-400 text-xs mt-1 italic">"The highest peak"</p>
                             <p className="text-2xl font-black text-gray-900 mt-4">
-                              {billingCycle === 'monthly' ? '$1750' : '$17500'}
+                              {(() => {
+                                const symbol = settings.currency === 'SLE' ? 'Le ' : settings.currency === 'NLe' ? 'NLe ' : '$';
+                                return `${symbol}${billingCycle === 'monthly' ? '1750' : '17500'}`;
+                              })()}
                               <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
                             </p>
                             

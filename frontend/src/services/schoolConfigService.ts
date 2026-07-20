@@ -123,6 +123,15 @@ export const schoolConfigService = {
   async getBillingHistory() {
     return apiClient.get<BillingInvoice[]>('/api/v1/school-config/subscription/billing');
   },
+
+  async getSubscriptionAIAnalysis() {
+    return apiClient.get<{
+      healthStatus: 'healthy' | 'warning' | 'critical';
+      summary: string;
+      insights: string[];
+      recommendations: string[];
+    }>('/api/v1/school-config/subscription/ai-analysis');
+  },
 };
 
 export default schoolConfigService;

@@ -222,6 +222,73 @@ router.post('/subscription/change-plan', authenticate, authorize(UserRole.PRINCI
 });
 
 /**
+ * GET /api/v1/school-config/subscription/ai-analysis
+ * Get AI-generated billing analysis and optimization recommendations
+ */
+router.get('/subscription/ai-analysis', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = getTenantId(req);
+    const subscription = await SubscriptionService.getActiveSubscription(tenantId);
+    
+    // Fetch limits usage counts
+    const studentsLimit = await SubscriptionService.checkLimit(tenantId, 'students');
+    const staffLimit = await SubscriptionService.checkLimit(tenantId, 'staff');
+
+    const studentUsagePct = Math.round((studentsLimit.current / studentsLimit.max) * 100);
+    const staffUsagePct = Math.round((staffLimit.current / staffLimit.max) * 100);
+
+    const insights: string[] = [];
+    const recommendations: string[] = [];
+    let healthStatus: 'healthy' | 'warning' | 'critical' = 'healthy';
+
+    // Student limit analysis
+    if (studentUsagePct >= 95) {
+      healthStatus = 'critical';
+      insights.push(`Your student directory is at ${studentUsagePct}% capacity (${studentsLimit.current}/${studentsLimit.max} students).`);
+      recommendations.push(`Urgent: Upgrade to the next plan immediately. New student admissions are about to be blocked.`);
+    } else if (studentUsagePct >= 80) {
+      if (healthStatus !== 'critical') healthStatus = 'warning';
+      insights.push(`Your student directory is nearing capacity at ${studentUsagePct}% (${studentsLimit.current}/${studentsLimit.max} students).`);
+      recommendations.push(`Upgrade to COMBRA soon to expand student limit up to 500 profiles and avoid registration blocks.`);
+    } else {
+      insights.push(`Student limit utilization is healthy at ${studentUsagePct}% (${studentsLimit.current}/${studentsLimit.max} students).`);
+    }
+
+    // Staff limit analysis
+    if (staffUsagePct >= 90) {
+      if (healthStatus !== 'critical') healthStatus = 'warning';
+      insights.push(`Your staff directory has reached ${staffUsagePct}% utilization (${staffLimit.current}/${staffLimit.max} staff members).`);
+      recommendations.push(`Upgrade plan to expand your administrative and teaching staff directories.`);
+    }
+
+    // Feature availability insights
+    if (subscription.plan_type === 'freetong') {
+      insights.push(`Your current trial plan (FREETONG) does not include ID Card printing or advanced Grade examinations.`);
+      recommendations.push(`Upgrade to COMBRA to unlock PVC Student ID generation, automated Report Cards, and parent WhatsApp messaging.`);
+    } else if (subscription.plan_type === 'combra') {
+      insights.push(`You are utilizing the COMBRA plan. Advanced features like Payroll, Scholarships, and Multi-branch management are locked.`);
+      recommendations.push(`Upgrade to BINTUMANI to unlock unlimited student/staff records, payroll runs, scholarship tracking, and custom school branding.`);
+    } else {
+      insights.push(`You are running on BINTUMANI (Enterprise) with unlimited students, staff, and complete access to all system modules.`);
+      recommendations.push(`Everything is fully optimized. Your school has unlimited operations capacity.`);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        healthStatus,
+        summary: `School billing system analysis: Your plan is currently ${subscription.plan_type.toUpperCase()} (${subscription.status.toUpperCase()}). Limits utilization is ${healthStatus.toUpperCase()}.`,
+        insights,
+        recommendations,
+        timestamp: new Date().toISOString(),
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/v1/school-config/subscription/billing
  * Get subscription billing and payment history
  */
