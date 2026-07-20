@@ -59,6 +59,53 @@ async function main() {
   const billingRes = await axios.get(`${BASE}/school-config/subscription/billing`, { headers });
   console.log('✅ Billing history fetched count:', billingRes.data.data?.length);
 
+  // Step 8: Validate Expiration Tracking
+  console.log('🔄 Simulating subscription expiration...');
+  const { db } = await import('./utils/database.js');
+  
+  // Set end_date to yesterday in database
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  await db('subscriptions')
+    .where({ tenant_id: 'cea3d4e9-e226-40cd-9d82-38f238a159ee', status: 'active' })
+    .update({ end_date: yesterday });
+    
+  // Fetch active subscription (should automatically mark status as 'expired')
+  const expiredSubRes = await axios.get(`${BASE}/school-config/subscription/active`, { headers });
+  console.log('✅ Expired subscription status detected:', expiredSubRes.data.data?.subscription?.status);
+
+  // Attempt to create student (should be blocked by subscription guard)
+  try {
+    console.log('🔄 Attempting to create student under expired plan...');
+    await axios.post(`${BASE}/students`, {
+      first_name: 'Test',
+      last_name: 'Student',
+      enrollment_date: '2026-07-20',
+      date_of_birth: '2010-01-01',
+    }, { headers });
+    console.log('❌ Error: Student creation succeeded under expired subscription plan!');
+  } catch (err: any) {
+    console.log('✅ Success: Student creation blocked as expected:', {
+      status: err.response?.status,
+      code: err.response?.data?.error?.code,
+      message: err.response?.data?.error?.message,
+    });
+  }
+
+  // Restore plan for clean database state
+  console.log('🔄 Restoring active subscription status for Demo School...');
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 30);
+  await db('subscriptions')
+    .where({ tenant_id: 'cea3d4e9-e226-40cd-9d82-38f238a159ee' })
+    .update({ status: 'active', end_date: tomorrow });
+  await db('tenants')
+    .where({ id: 'cea3d4e9-e226-40cd-9d82-38f238a159ee' })
+    .update({ status: 'active' });
+
+  await db.destroy();
+
   console.log('🎉 Settings & Subscriptions integration fully validated!');
 }
 

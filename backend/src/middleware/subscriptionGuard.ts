@@ -16,6 +16,16 @@ export const requirePlanFeature = (featureKey: string) => {
       }
 
       const subscription = await SubscriptionService.getActiveSubscription(tenantId);
+      
+      // Enforce active subscription status checks
+      if (subscription.status === 'expired' || subscription.status === 'suspended') {
+        throw new AppError(
+          `Your school subscription has ${subscription.status}. Please renew your plan to restore access to features.`,
+          403,
+          'SUBSCRIPTION_EXPIRED'
+        );
+      }
+
       const isFeatureEnabled = subscription.features[featureKey] === true;
 
       if (!isFeatureEnabled) {
@@ -44,6 +54,17 @@ export const checkSubscriptionLimit = (limitType: 'students' | 'staff') => {
 
       if (!tenantId) {
         throw new AppError('Tenant context required', 400, 'TENANT_CONTEXT_MISSING');
+      }
+
+      const subscription = await SubscriptionService.getActiveSubscription(tenantId);
+      
+      // Enforce active subscription status checks
+      if (subscription.status === 'expired' || subscription.status === 'suspended') {
+        throw new AppError(
+          `Your school subscription has ${subscription.status}. Please renew your plan to restore access.`,
+          403,
+          'SUBSCRIPTION_EXPIRED'
+        );
       }
 
       const limitCheck = await SubscriptionService.checkLimit(tenantId, limitType);

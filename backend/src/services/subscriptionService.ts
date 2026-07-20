@@ -95,11 +95,29 @@ export class SubscriptionService {
   static async getActiveSubscription(tenantId: string): Promise<ActiveSubscription> {
     try {
       let subscription = await db('subscriptions')
-        .where({ tenant_id: tenantId, status: 'active' })
+        .where({ tenant_id: tenantId })
+        .whereIn('status', ['active', 'expired', 'suspended'])
+        .orderBy('created_at', 'desc')
         .first();
 
+      // Check if subscription has expired
+      if (subscription && subscription.status === 'active' && subscription.end_date && new Date(subscription.end_date) < new Date()) {
+        logger.info(`Subscription ${subscription.id} for tenant ${tenantId} has expired. Updating database status.`);
+        
+        await db('subscriptions')
+          .where({ id: subscription.id })
+          .update({ status: 'expired', updated_at: db.fn.now() });
+
+        await db('tenants')
+          .where({ id: tenantId })
+          .update({ status: 'expired', updated_at: db.fn.now() });
+
+        // Set status locally
+        subscription.status = 'expired';
+      }
+
       if (!subscription) {
-        logger.info(`No active subscription found for tenant ${tenantId}. Initializing default Freetong plan.`);
+        logger.info(`No active or past subscription found for tenant ${tenantId}. Initializing default Freetong plan.`);
         subscription = await this.initializeDefaultSubscription(tenantId);
       }
 

@@ -1,3 +1,3 @@
 git add -A
-git commit -m "feat: add AI billing advisor panel and dynamic currency support in plan options"
+git commit -m "feat: implement subscription expiration tracking and guard enforcement"
 git push
