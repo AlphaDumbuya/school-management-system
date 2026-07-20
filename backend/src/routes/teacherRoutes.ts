@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
+import { checkSubscriptionLimit } from '@middleware/subscriptionGuard';
 import { UserRole } from '../types/auth';
 import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
@@ -164,7 +165,7 @@ router.get('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
  * POST /api/v1/teachers
  * Create a new teacher user and corresponding teacher record
  */
-router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), checkSubscriptionLimit('staff'), async (req: Request, res: Response, next: NextFunction) => {
   const trx = await db.transaction();
   try {
     const {

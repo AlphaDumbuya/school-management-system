@@ -98,12 +98,26 @@ export class Phase15SchoolConfigService {
    */
   async getSchoolInfo(tenantId: string): Promise<SchoolInfo> {
     try {
-      const school = await this.db('schools')
+      let school = await this.db('schools')
         .where('tenant_id', tenantId)
         .first();
 
       if (!school) {
-        throw new AppError('School information not found', 404, 'NOT_FOUND');
+        logger.info(`No school record found for tenant ${tenantId}. Initializing default school info.`);
+        const tenant = await this.db('tenants').where('id', tenantId).first();
+        if (!tenant) {
+          throw new AppError('Tenant not found', 404, 'NOT_FOUND');
+        }
+
+        const [inserted] = await this.db('schools')
+          .insert({
+            tenant_id: tenantId,
+            name: tenant.name,
+            timezone: tenant.timezone || 'UTC',
+            language_preference: tenant.language || 'en',
+          })
+          .returning('*');
+        school = inserted;
       }
 
       return {

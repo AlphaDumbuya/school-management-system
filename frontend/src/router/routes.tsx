@@ -21,6 +21,7 @@ import { Phase13AccountantDashboard } from '@pages/Phase13AccountantDashboard';
 import { Phase13AdmissionsDashboard } from '@pages/Phase13AdmissionsDashboard';
 import SuperAdminDashboard from '@pages/SuperAdminDashboard';
 import { ComingSoonPage } from '@pages/ComingSoonPage';
+import { SettingsPage } from '@pages/SettingsPage';
 import SMSWhatsAppDashboard from '@pages/SMSWhatsAppDashboard';
 
 // Built pages
@@ -325,7 +326,7 @@ const router = createBrowserRouter(
         // ── SYSTEM ─────────────────────────────────────────────────
         {
           path: 'settings',
-          element: <P><CS /></P>,
+          element: <P><SettingsPage /></P>,
         },
         {
           path: 'profile',

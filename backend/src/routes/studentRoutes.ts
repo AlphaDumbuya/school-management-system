@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '@middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
+import { checkSubscriptionLimit } from '@middleware/subscriptionGuard';
 import { StudentService } from '@services/studentService';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
@@ -16,7 +17,7 @@ const studentService = new StudentService(db);
  * Create a new student
  * @requires admin, principal, teacher
  */
-router.post('/', authenticate, authorize('principal', 'super_admin', 'teacher', 'admissions_officer'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, attachUserContext, authorize('principal', 'super_admin', 'teacher', 'admissions_officer'), checkSubscriptionLimit('students'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { first_name, last_name, date_of_birth, gender, email, phone, address, city, state, postal_code, country, enrollment_date, status, photo_url, religion, nationality, place_of_birth, guardian_name, guardian_phone, guardian_relationship, guardian_occupation, emergency_contact, previous_school, medical_conditions, class_id } = req.body;
     const createdBy = req.auth?.userId ?? null;

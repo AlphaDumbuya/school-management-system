@@ -1,0 +1,128 @@
+import { apiClient } from '@lib/apiClient';
+
+export interface SchoolInfo {
+  school_id: string;
+  tenant_id: string;
+  name: string;
+  short_name?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+  logo_url?: string;
+  founded_year?: number;
+  principal_name?: string;
+  principal_email?: string;
+  school_registration_number?: string;
+  accreditation_status?: string;
+  timezone?: string;
+  language_preference?: string;
+}
+
+export interface GradeEntry {
+  grade: string;
+  min_score: number;
+  max_score: number;
+  grade_points: number;
+  description?: string;
+}
+
+export interface GradeScale {
+  scale_id?: string;
+  name: string;
+  description?: string;
+  scale_type: 'letter' | 'numeric' | 'percentage' | 'point';
+  min_value: number;
+  max_value: number;
+  is_default: boolean;
+  is_active: boolean;
+  grades: GradeEntry[];
+}
+
+export interface BillingInvoice {
+  id: string;
+  tenant_id: string;
+  subscription_id: string;
+  amount: number;
+  currency: string;
+  payment_method: string;
+  transaction_id: string;
+  status: 'paid' | 'pending' | 'failed' | 'refunded';
+  billing_date: string;
+  due_date: string;
+  paid_date?: string;
+  notes?: string;
+}
+
+export interface SubscriptionInfo {
+  id: string;
+  tenant_id: string;
+  plan_type: 'freetong' | 'combra' | 'bintumani';
+  status: 'active' | 'suspended' | 'expired' | 'cancelled';
+  start_date: string;
+  end_date: string | null;
+  monthly_price: number;
+  max_users: number;
+  max_students: number;
+  max_storage_gb: number;
+  features: Record<string, boolean>;
+}
+
+export interface SubscriptionDetails {
+  subscription: SubscriptionInfo;
+  usage: {
+    students: { current: number; max: number };
+    staff: { current: number; max: number };
+  };
+}
+
+export const schoolConfigService = {
+  async getSchoolInfo() {
+    return apiClient.get<SchoolInfo>('/api/v1/school-config/info');
+  },
+
+  async updateSchoolInfo(data: Partial<SchoolInfo>) {
+    return apiClient.put<{ message: string; data: SchoolInfo }>('/api/v1/school-config/info', data);
+  },
+
+  async getSettings() {
+    return apiClient.get<Record<string, any>>('/api/v1/school-config/settings');
+  },
+
+  async updateSettings(settings: Record<string, any>) {
+    return apiClient.post<{ message: string }>('/api/v1/school-config/settings', settings);
+  },
+
+  async getGradingScales() {
+    return apiClient.get<GradeScale[]>('/api/v1/school-config/grading-scales');
+  },
+
+  async saveGradingScale(scale: GradeScale) {
+    return apiClient.post<{ message: string; data: GradeScale }>('/api/v1/school-config/grading-scales', scale);
+  },
+
+  async deleteGradingScale(scaleId: string) {
+    return apiClient.delete<{ message: string }>(`/api/v1/school-config/grading-scales/${scaleId}`);
+  },
+
+  async getActiveSubscription() {
+    return apiClient.get<SubscriptionDetails>('/api/v1/school-config/subscription/active');
+  },
+
+  async changePlan(planType: 'freetong' | 'combra' | 'bintumani', billingCycle: 'monthly' | 'yearly') {
+    return apiClient.post<{ message: string; data: SubscriptionInfo }>('/api/v1/school-config/subscription/change-plan', {
+      plan_type: planType,
+      billing_cycle: billingCycle,
+    });
+  },
+
+  async getBillingHistory() {
+    return apiClient.get<BillingInvoice[]>('/api/v1/school-config/subscription/billing');
+  },
+};
+
+export default schoolConfigService;
