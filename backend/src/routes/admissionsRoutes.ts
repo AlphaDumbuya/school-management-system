@@ -84,19 +84,84 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       emergency_contact_phone: req.body.emergency_contact_phone || null,
       // Documents
       // documents_submitted and date_received handled separately if columns exist
-      // Status
-      status: 'pending',
+      // Status: auto-approved on creation
+      status: 'approved',
+      decided_by: createdBy,
+      decided_at: new Date(),
       created_by: createdBy,
       created_at: new Date(),
       updated_at: new Date(),
     }).returning('*');
 
-    res.status(201).json({ message: 'Application submitted successfully', data: inserted });
+    // Auto-create a student record from the approved application
+    try {
+      const year = new Date().getFullYear();
+      const maxResult = await db.raw(
+        "SELECT COALESCE(MAX(CAST(SPLIT_PART(student_id, '-', 3) AS INTEGER)), 0) as max_num FROM students WHERE student_id LIKE ? AND tenant_id = ?",
+        [`STU-${year}-%`, tenantId]
+      );
+      const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
+      const studentId = `STU-${year}-${String(nextNum).padStart(5, '0')}`;
+
+      const [newStudent] = await db('students').insert({
+        tenant_id: tenantId,
+        user_id: null,
+        student_id: studentId,
+        first_name: inserted.child_first_name || inserted.first_name,
+        last_name: inserted.child_last_name || inserted.last_name,
+        email: inserted.guardian_email || null,
+        date_of_birth: inserted.child_dob || inserted.date_of_birth || null,
+        gender: inserted.child_gender || inserted.gender || null,
+        phone: inserted.guardian_phone || null,
+        address: inserted.child_address || inserted.address || null,
+        city: null,
+        country: inserted.child_nationality || 'Sierra Leone',
+        enrollment_date: new Date().toISOString().split('T')[0],
+        photo_url: inserted.child_photo_url || null,
+        religion: inserted.child_religion || null,
+        nationality: inserted.child_nationality || null,
+        place_of_birth: inserted.child_place_of_birth || null,
+        guardian_name: [inserted.guardian_first_name, inserted.guardian_last_name].filter(Boolean).join(' ') || null,
+        guardian_phone: inserted.guardian_phone || null,
+        guardian_relationship: inserted.guardian_relationship || null,
+        guardian_occupation: inserted.guardian_occupation || null,
+        emergency_contact: inserted.emergency_contact_phone || null,
+        previous_school: inserted.previous_school || null,
+        medical_conditions: [inserted.medication_details, inserted.allergy_details, inserted.chronic_illness_details].filter(Boolean).join('; ') || null,
+        status: 'active',
+        created_at: new Date(),
+        updated_at: new Date(),
+      }).returning('*');
+
+      // Enroll in the class they applied for
+      if (inserted.class_applying_for && newStudent?.id) {
+        await db('enrollments').insert({
+          student_id: newStudent.id,
+          class_id: inserted.class_applying_for,
+          enrollment_date: new Date().toISOString().split('T')[0],
+          status: 'active',
+          created_at: new Date(),
+          updated_at: new Date(),
+        }).catch(() => {});
+      }
+
+      // Mark application as enrolled
+      await db('admission_applications').where('id', inserted.id).update({ status: 'enrolled' });
+      inserted.status = 'enrolled';
+
+      logger.info(`Student ${studentId} created from new admission ${applicationId}`);
+    } catch (enrollErr) {
+      logger.error(`Failed to auto-create student from admission: ${enrollErr}`);
+      // Don't fail the admission creation — it's still approved
+    }
+
+    res.status(201).json({ message: 'Application submitted and student enrolled successfully', data: inserted });
     logger.info(`Admission application created: ${applicationId}`);
   } catch (error) {
     next(error);
   }
 });
+
 
 /**
  * GET /api/v1/admissions
