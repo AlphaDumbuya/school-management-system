@@ -5,6 +5,7 @@ import { UserRole } from '../types/auth';
 import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
+import { generateNextId } from '@utils/idGenerator';
 import knex from 'knex';
 import knexConfig from '../../knexfile';
 
@@ -248,14 +249,8 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       updated_at: new Date(),
     }).returning('*');
 
-    // Generate unique teacher ID (TCH-YYYY-XXX format) within this tenant
-    const year = new Date().getFullYear();
-    const maxResult = await trx.raw(
-      "SELECT COALESCE(MAX(CAST(SPLIT_PART(teachers.teacher_id, '-', 3) AS INTEGER)), 0) as max_num FROM teachers JOIN users ON teachers.user_id = users.id WHERE teachers.teacher_id LIKE ? AND users.tenant_id = ?",
-      [`TCH-${year}-%`, tenantId]
-    );
-    const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
-    const teacherIdStr = `TCH-${year}-${String(nextNum).padStart(3, '0')}`;
+    // Generate unique teacher ID according to tenant settings
+    const teacherIdStr = await generateNextId(db, tenantId, 'teacher');
 
     // Create teacher record
     const [insertedTeacher] = await trx('teachers').insert({

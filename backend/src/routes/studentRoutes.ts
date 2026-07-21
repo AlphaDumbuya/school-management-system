@@ -4,6 +4,7 @@ import { checkSubscriptionLimit } from '@middleware/subscriptionGuard';
 import { StudentService } from '@services/studentService';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
+import { generateNextId } from '@utils/idGenerator';
 import knex from 'knex';
 import knexConfig from '../../knexfile';
 
@@ -60,14 +61,8 @@ router.post('/', authenticate, attachUserContext, authorize('principal', 'super_
       }
     }
 
-    // Generate unique student ID (STU-YYYY-XXXXX format) using MAX to prevent duplicates within this tenant
-    const year = new Date().getFullYear();
-    const maxResult = await db.raw(
-      "SELECT COALESCE(MAX(CAST(SPLIT_PART(student_id, '-', 3) AS INTEGER)), 0) as max_num FROM students WHERE student_id LIKE ? AND tenant_id = ?",
-      [`STU-${year}-%`, tenantId]
-    );
-    const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
-    const studentId = `STU-${year}-${String(nextNum).padStart(5, '0')}`;
+    // Generate unique student ID according to tenant settings
+    const studentId = await generateNextId(db, tenantId, 'student');
 
     // Create student
     const [inserted] = await db('students').insert({

@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
+import { generateNextId } from '@utils/idGenerator';
 import { UserRole } from '../types/auth';
 import knex from 'knex';
 import knexConfig from '../../knexfile';
@@ -28,13 +29,8 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
-    // Generate application ID using MAX to prevent duplicates within this tenant
-    const maxResult = await db.raw(
-      "SELECT COALESCE(MAX(CAST(SPLIT_PART(admission_applications.application_number, '-', 3) AS INTEGER)), 0) as max_num FROM admission_applications JOIN users ON admission_applications.created_by = users.id WHERE admission_applications.application_number LIKE ? AND users.tenant_id = ?",
-      [`ADM-${year}-%`, tenantId]
-    );
-    const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
-    const applicationId = `ADM-${year}-${String(nextNum).padStart(5, '0')}`;
+    // Generate application ID according to tenant settings
+    const applicationId = await generateNextId(db, tenantId, 'admission');
 
     const [inserted] = await db('admission_applications').insert({
       application_number: applicationId,
@@ -95,13 +91,7 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
 
     // Auto-create a student record from the approved application
     try {
-      const year = new Date().getFullYear();
-      const maxResult = await db.raw(
-        "SELECT COALESCE(MAX(CAST(SPLIT_PART(student_id, '-', 3) AS INTEGER)), 0) as max_num FROM students WHERE student_id LIKE ? AND tenant_id = ?",
-        [`STU-${year}-%`, tenantId]
-      );
-      const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
-      const studentId = `STU-${year}-${String(nextNum).padStart(5, '0')}`;
+      const studentId = await generateNextId(db, tenantId, 'student');
 
       const [newStudent] = await db('students').insert({
         tenant_id: tenantId,
@@ -280,14 +270,7 @@ router.put('/:appId/status', authenticate, authorize(UserRole.PRINCIPAL, UserRol
     // If approved, automatically create a student record and enroll
     if (status === 'approved') {
       try {
-        // Generate student ID within this tenant
-        const year = new Date().getFullYear();
-        const maxResult = await db.raw(
-          "SELECT COALESCE(MAX(CAST(SPLIT_PART(student_id, '-', 3) AS INTEGER)), 0) as max_num FROM students WHERE student_id LIKE ? AND tenant_id = ?",
-          [`STU-${year}-%`, tenantId]
-        );
-        const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
-        const studentId = `STU-${year}-${String(nextNum).padStart(5, '0')}`;
+        const studentId = await generateNextId(db, tenantId, 'student');
 
         // Create student from application data
         const [newStudent] = await db('students').insert({

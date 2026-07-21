@@ -375,10 +375,10 @@ export const SettingsPage: React.FC = () => {
   // Helper: generates standard ID preview dynamically
   const getIDPreview = () => {
     const prefix = settings.id_student_prefix || 'STU';
-    const separator = settings.id_separator || '-';
-    const yearPart = settings.id_include_year ? `2026${separator}` : '';
-    const numberPart = String(42).padStart(settings.id_padding || 4, '0');
-    return `${prefix}${separator}${yearPart}${numberPart}`;
+    const separator = settings.id_separator !== undefined ? settings.id_separator : '-';
+    const yearPart = settings.id_include_year ? `${separator}2026` : '';
+    const numberPart = String(42).padStart(settings.id_padding || 5, '0');
+    return `${prefix}${yearPart}${separator}${numberPart}`;
   };
 
   // Tabs mapping
