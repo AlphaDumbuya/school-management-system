@@ -80,7 +80,7 @@ export const GradeEntryModal: React.FC<GradeEntryModalProps> = ({
 
   // When class changes, populate student list
   useEffect(() => {
-    const students = (studentsData as any)?.students ?? [];
+    const students = (studentsData as any)?.data?.students ?? (studentsData as any)?.students ?? [];
     if (students.length > 0) {
       setGrades(students.map((s: any) => ({
         student_id: s.id,

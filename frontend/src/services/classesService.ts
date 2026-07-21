@@ -28,6 +28,7 @@ export interface ClassStudent {
   student_id: string;
   first_name: string;
   last_name: string;
+  photo_url?: string;
   roll_number: string;
   status: string;
 }

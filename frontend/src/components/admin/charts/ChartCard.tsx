@@ -32,6 +32,11 @@ export interface ChartCardProps {
   dateRangeFilter?: React.ReactNode;
   donutCenterLabel?: string;
   colors?: string[];
+  emptyState?: {
+    message: string;
+    description?: string;
+    action?: { label: string; onClick: () => void };
+  };
 }
 
 const PALETTE = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'];
@@ -84,6 +89,7 @@ export const ChartCard: React.FC<ChartCardProps> = ({
   dateRangeFilter,
   donutCenterLabel,
   colors = PALETTE,
+  emptyState,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -128,7 +134,14 @@ export const ChartCard: React.FC<ChartCardProps> = ({
           <Tooltip content={<CustomTooltip />} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           {series.map((s, i) => (
-            <Line key={s.name} type="monotone" dataKey={s.name} stroke={colors[i % colors.length]} strokeWidth={2} dot={false} />
+            <Line
+              key={s.name}
+              type="monotone"
+              dataKey={s.name}
+              stroke={colors[i % colors.length]}
+              strokeWidth={2}
+              dot={labels.length === 1 ? { r: 4 } : false}
+            />
           ))}
         </LineChart>
       );
@@ -204,7 +217,12 @@ export const ChartCard: React.FC<ChartCardProps> = ({
           <SkeletonChart height={height} />
         ) : isSeriesEmpty(series, labels) ? (
           <div style={{ height }} className="flex items-center justify-center">
-            <EmptyState message="No data available" className="min-h-0" />
+            <EmptyState
+              message={emptyState?.message ?? 'No data available'}
+              description={emptyState?.description}
+              action={emptyState?.action}
+              className="min-h-0"
+            />
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={height}>

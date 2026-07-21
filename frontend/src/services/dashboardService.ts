@@ -1,7 +1,15 @@
 import { apiClient } from '@lib/apiClient';
 import { CompleteDashboard } from '@hooks/useDashboard';
+import { ApiResponse } from '@appTypes/index';
 
 class DashboardService {
+  private unwrapResponse<T>(response: ApiResponse<T> | T | undefined): T | undefined {
+    if (!response) return undefined;
+    if (typeof response === 'object' && response !== null && 'success' in response) {
+      return (response as ApiResponse<T>).data ?? undefined;
+    }
+    return response as T;
+  }
   /**
    * Get complete principal dashboard with all data
    * Falls back to individual endpoint calls if complete endpoint not available
@@ -10,10 +18,11 @@ class DashboardService {
     try {
       // Try the complete endpoint first
       const response = await apiClient.get<CompleteDashboard>('/api/v1/dashboards/admin/complete');
-      if (response.success && response.data) {
-        return response.data;
+      const payload = this.unwrapResponse(response);
+      if (payload) {
+        return payload;
       }
-      throw new Error(response.error || 'Failed to load dashboard');
+      throw new Error((response as ApiResponse<CompleteDashboard>).error || 'Failed to load dashboard');
     } catch (error) {
       // Fallback to individual endpoint calls
       console.warn('Complete dashboard endpoint not available, using individual endpoints:', error);
@@ -90,7 +99,7 @@ class DashboardService {
    */
   async getMetrics() {
     const response = await apiClient.get('/api/v1/dashboards/admin/metrics');
-    return response.data;
+    return this.unwrapResponse(response);
   }
 
   /**
@@ -98,7 +107,7 @@ class DashboardService {
    */
   async getFinancialSummary() {
     const response = await apiClient.get('/api/v1/dashboards/admin/financial-summary');
-    return response.data;
+    return this.unwrapResponse(response);
   }
 
   /**
@@ -106,7 +115,7 @@ class DashboardService {
    */
   async getAlerts() {
     const response = await apiClient.get('/api/v1/dashboards/admin/alerts');
-    return response.data;
+    return this.unwrapResponse(response);
   }
 
   /**
@@ -116,7 +125,7 @@ class DashboardService {
     const response = await apiClient.get('/api/v1/dashboards/admin/recent-activities', {
       params: { limit },
     });
-    return response.data;
+    return this.unwrapResponse(response);
   }
 
   /**
@@ -126,7 +135,7 @@ class DashboardService {
     const response = await apiClient.get('/api/v1/dashboards/admin/students-at-risk', {
       params: { limit },
     });
-    return response.data;
+    return this.unwrapResponse(response);
   }
 
   /**
@@ -134,7 +143,7 @@ class DashboardService {
    */
   async getSystemHealth() {
     const response = await apiClient.get('/api/v1/dashboards/admin/system-health');
-    return response.data;
+    return this.unwrapResponse(response);
   }
 
   /**
@@ -142,7 +151,7 @@ class DashboardService {
    */
   async getAcademicPerformanceChart() {
     const response = await apiClient.get('/api/v1/dashboards/admin/chart/academic-performance');
-    return response.data;
+    return this.unwrapResponse(response);
   }
 
   /**
@@ -150,7 +159,7 @@ class DashboardService {
    */
   async getAttendanceTrendChart() {
     const response = await apiClient.get('/api/v1/dashboards/admin/chart/attendance-trend');
-    return response.data;
+    return this.unwrapResponse(response);
   }
 
   /**
@@ -158,7 +167,7 @@ class DashboardService {
    */
   async getFeeCollectionChart() {
     const response = await apiClient.get('/api/v1/dashboards/admin/chart/fee-collection');
-    return response.data;
+    return this.unwrapResponse(response);
   }
 
   /**
@@ -166,7 +175,7 @@ class DashboardService {
    */
   async getStudentDistributionChart() {
     const response = await apiClient.get('/api/v1/dashboards/admin/chart/student-distribution');
-    return response.data;
+    return this.unwrapResponse(response);
   }
 
   /**
@@ -174,7 +183,7 @@ class DashboardService {
    */
   async getPendingApprovals() {
     const response = await apiClient.get('/api/v1/dashboards/admin/pending-approvals');
-    return response.data;
+    return this.unwrapResponse(response);
   }
 }
 

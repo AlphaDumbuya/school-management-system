@@ -131,28 +131,28 @@ export const AdminDashboard: React.FC = () => {
             <>
               <KPICard
                 title="Total Students"
-                value={dashboard?.metrics?.totalStudents ?? 0}
+                value={dashboard ? dashboard.metrics.totalStudents : '—'}
                 icon={<Users size={32} />}
                 color="blue"
                 isLoading={loading && !dashboard}
               />
               <KPICard
                 title="Total Teachers"
-                value={dashboard?.metrics?.totalTeachers ?? 0}
+                value={dashboard ? dashboard.metrics.totalTeachers : '—'}
                 icon={<Briefcase size={32} />}
                 color="green"
                 isLoading={loading && !dashboard}
               />
               <KPICard
                 title="Total Classes"
-                value={dashboard?.metrics?.totalClasses ?? 0}
+                value={dashboard ? dashboard.metrics.totalClasses : '—'}
                 icon={<BookOpen size={32} />}
                 color="purple"
                 isLoading={loading && !dashboard}
               />
               <KPICard
                 title="Outstanding Fees"
-                value={formatCurrency(dashboard?.metrics?.outstandingFees)}
+                value={dashboard ? formatCurrency(dashboard.metrics.outstandingFees) : '—'}
                 icon={<DollarSign size={32} />}
                 color="red"
                 isLoading={loading && !dashboard}
@@ -280,10 +280,16 @@ export const AdminDashboard: React.FC = () => {
           ) : (
             <>
               <ChartCard
-                title="Attendance Trend (Last 30 Days)"
+                title="School Attendance Overview"
+                subtitle="Daily attendance rate for your school — last 30 days"
                 type="line"
                 height={300}
                 isLoading={false}
+                emptyState={{
+                  message: 'No attendance recorded for your school in the last 30 days',
+                  description: 'Mark attendance for enrolled students to see your school trend.',
+                  action: { label: 'Mark attendance', onClick: () => navigate('/students/attendance') },
+                }}
                 {...(!isChartEmpty(dashboard?.charts?.attendanceTrend) && dashboard?.charts?.attendanceTrend
                   ? toChartSeries(dashboard.charts.attendanceTrend)
                   : { series: [], labels: [] })}
@@ -293,6 +299,11 @@ export const AdminDashboard: React.FC = () => {
                 type="bar"
                 height={300}
                 isLoading={false}
+                emptyState={{
+                  message: 'No fee collections in the last 12 months',
+                  description: 'Recorded payments will appear here automatically.',
+                  action: { label: 'Manage fees', onClick: () => navigate('/finance/fees') },
+                }}
                 {...(!isChartEmpty(dashboard?.charts?.feeCollection) && dashboard?.charts?.feeCollection
                   ? toChartSeries(dashboard.charts.feeCollection)
                   : { series: [], labels: [] })}
@@ -302,6 +313,11 @@ export const AdminDashboard: React.FC = () => {
                 type="pie"
                 height={300}
                 isLoading={false}
+                emptyState={{
+                  message: 'No active class enrollments',
+                  description: 'Enroll students in a class to show the distribution.',
+                  action: { label: 'Manage classes', onClick: () => navigate('/academic/classes') },
+                }}
                 {...(!isChartEmpty(dashboard?.charts?.studentDistribution) && dashboard?.charts?.studentDistribution
                   ? toChartSeries(dashboard.charts.studentDistribution)
                   : { series: [], labels: [] })}
@@ -311,6 +327,11 @@ export const AdminDashboard: React.FC = () => {
                 type="bar"
                 height={300}
                 isLoading={false}
+                emptyState={{
+                  message: 'No graded results available',
+                  description: 'Published grade records will appear by class.',
+                  action: { label: 'View results', onClick: () => navigate('/academic/results') },
+                }}
                 {...(!isChartEmpty(dashboard?.charts?.academicPerformance) && dashboard?.charts?.academicPerformance
                   ? toChartSeries(dashboard.charts.academicPerformance)
                   : { series: [], labels: [] })}
@@ -333,8 +354,9 @@ export const AdminDashboard: React.FC = () => {
 
             {!dashboard?.atRiskStudents || dashboard.atRiskStudents.length === 0 ? (
               <EmptyState
-                message="No students at risk"
-                description="All students are performing within acceptable parameters"
+                message="No students currently meet the risk criteria"
+                description="Students appear here when their recorded average is below 40% or attendance falls below 75%."
+                action={{ label: 'Review attendance', onClick: () => navigate('/students/attendance') }}
               />
             ) : (
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">

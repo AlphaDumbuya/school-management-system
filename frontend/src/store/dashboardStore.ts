@@ -115,24 +115,24 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     try {
       const response = await dashboardService.getCompleteDashboard();
 
-      if (response.success && response.data) {
+      if (response) {
         set({
-          dashboard: response.data,
-          metrics: response.data.metrics,
-          financialSummary: response.data.financialSummary,
-          alerts: response.data.alerts,
-          atRiskStudents: response.data.atRiskStudents,
-          systemHealth: response.data.systemHealth,
-          charts: response.data.charts,
+          dashboard: response,
+          metrics: response.metrics,
+          financialSummary: response.financialSummary,
+          alerts: response.alerts,
+          atRiskStudents: response.atRiskStudents,
+          systemHealth: response.systemHealth,
+          charts: response.charts,
           lastUpdated: Date.now(),
           cache: {
-            data: response.data,
+            data: response,
             lastFetched: Date.now(),
             isStale: false,
           },
         });
       } else {
-        set({ error: response.error || 'Failed to fetch dashboard' });
+        set({ error: 'Failed to fetch dashboard' });
       }
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to fetch dashboard' });
@@ -148,10 +148,10 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     try {
       const response = await dashboardService.getMetrics();
 
-      if (response.success && response.data) {
-        set({ metrics: response.data, lastUpdated: Date.now() });
+      if (response) {
+        set({ metrics: response, lastUpdated: Date.now() });
       } else {
-        set({ error: response.error || 'Failed to fetch metrics' });
+        set({ error: 'Failed to fetch metrics' });
       }
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to fetch metrics' });
@@ -167,10 +167,10 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     try {
       const response = await dashboardService.getFinancialSummary();
 
-      if (response.success && response.data) {
-        set({ financialSummary: response.data, lastUpdated: Date.now() });
+      if (response) {
+        set({ financialSummary: response, lastUpdated: Date.now() });
       } else {
-        set({ error: response.error || 'Failed to fetch financial summary' });
+        set({ error: 'Failed to fetch financial summary' });
       }
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to fetch financial summary' });
@@ -184,8 +184,8 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     try {
       const response = await dashboardService.getAlerts();
 
-      if (response.success && response.data) {
-        set({ alerts: response.data });
+      if (response) {
+        set({ alerts: response });
       }
     } catch (error) {
       console.error('Failed to fetch alerts:', error);
@@ -197,8 +197,8 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     try {
       const response = await dashboardService.getStudentsAtRisk(10);
 
-      if (response.success && response.data) {
-        set({ atRiskStudents: response.data });
+      if (response) {
+        set({ atRiskStudents: response });
       }
     } catch (error) {
       console.error('Failed to fetch at-risk students:', error);
@@ -210,8 +210,8 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     try {
       const response = await dashboardService.getSystemHealth();
 
-      if (response.success && response.data) {
-        set({ systemHealth: response.data });
+      if (response) {
+        set({ systemHealth: response });
       }
     } catch (error) {
       console.error('Failed to fetch system health:', error);
@@ -230,10 +230,10 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
 
       set({
         charts: {
-          academic: academic.success ? academic.data || null : null,
-          attendance: attendance.success ? attendance.data || null : null,
-          feeCollection: feeCollection.success ? feeCollection.data || null : null,
-          studentDistribution: distribution.success ? distribution.data || null : null,
+          academic: academic || null,
+          attendance: attendance || null,
+          feeCollection: feeCollection || null,
+          studentDistribution: distribution || null,
         },
       });
     } catch (error) {

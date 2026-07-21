@@ -29,8 +29,8 @@ export const ClassStudentsModal: React.FC<ClassStudentsModalProps> = ({
     enabled: isOpen && classId !== null,
   });
 
-  const students = data?.data?.students ?? [];
-  const total = data?.data?.total_students ?? 0;
+  const students = (data as any)?.data?.students ?? (data as any)?.students ?? [];
+  const total = (data as any)?.data?.total_students ?? (data as any)?.total_students ?? 0;
 
   return (
     <Modal

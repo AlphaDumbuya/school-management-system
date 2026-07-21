@@ -171,6 +171,75 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 });
 
 /**
+ * GET /api/v1/classes/:classId/students
+ * Get enrolled students in a class
+ */
+router.get('/:classId/students', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { classId } = req.params;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const classData = await db('classes')
+      .select('classes.*')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+      .where('classes.id', classId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
+      .first();
+
+    if (!classData) {
+      throw new AppError('Class not found', 404, 'NOT_FOUND');
+    }
+
+    const students = await db('students')
+      .join('enrollments', 'students.id', '=', 'enrollments.student_id')
+      .leftJoin('users', 'students.user_id', 'users.id')
+      .select(
+        'students.id',
+        'students.student_id',
+        db.raw("COALESCE(students.first_name, users.first_name, '') as first_name"),
+        db.raw("COALESCE(students.last_name, users.last_name, '') as last_name"),
+        db.raw("COALESCE(students.photo_url, users.photo_url) as photo_url"),
+        'enrollments.roll_number',
+        'enrollments.status'
+      )
+      .where('enrollments.class_id', classData.id)
+      .where(function () {
+        this.where('students.tenant_id', tenantId)
+          .orWhere('users.tenant_id', tenantId)
+          .orWhereNull('students.tenant_id');
+      })
+      .where(function () {
+        this.whereIn('enrollments.status', ['enrolled', 'active'])
+          .orWhereNull('enrollments.status');
+      })
+      .orderBy('enrollments.roll_number', 'asc');
+
+    res.json({
+      success: true,
+      data: {
+        class_id: classId,
+        class_name: classData.name,
+        total_students: students.length,
+        students,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/v1/classes/:classId
  * Get class details
  */
@@ -366,70 +435,6 @@ router.delete('/:classId/permanent', authenticate, authorize(UserRole.PRINCIPAL,
     });
 
     logger.info(`Class permanently deleted: ${classId}`);
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * GET /api/v1/classes/:classId/students
- * Get enrolled students in a class
- */
-router.get('/:classId/students', authenticate, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { classId } = req.params;
-    const tenantId = req.user?.tenant_id;
-
-    if (!tenantId) {
-      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
-    }
-
-    const classData = await db('classes')
-      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
-      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
-      .where('classes.id', classId)
-      .where(function () {
-        this.where('academic_sessions.tenant_id', tenantId)
-          .orWhere(function () {
-            this.whereNull('classes.academic_session_id')
-              .where('class_creator.tenant_id', tenantId);
-          });
-      })
-      .first();
-
-    if (!classData) {
-      throw new AppError('Class not found', 404, 'NOT_FOUND');
-    }
-
-    const students = await db('students')
-      .join('enrollments', 'students.id', '=', 'enrollments.student_id')
-      .leftJoin('users', 'students.user_id', 'users.id')
-      .select(
-        'students.id',
-        'students.student_id',
-        db.raw("COALESCE(students.first_name, users.first_name, '') as first_name"),
-        db.raw("COALESCE(students.last_name, users.last_name, '') as last_name"),
-        'enrollments.roll_number',
-        'enrollments.status'
-      )
-      .where('enrollments.class_id', classData.id)
-      .where(function () {
-        this.where('students.tenant_id', tenantId)
-          .orWhere('users.tenant_id', tenantId)
-          .orWhereNull('students.tenant_id');
-      })
-      .where(function () {
-        this.whereIn('enrollments.status', ['enrolled', 'active'])
-          .orWhereNull('enrollments.status');
-      })
-      .orderBy('enrollments.roll_number', 'asc');
-
-    res.json({
-      class_id: classId,
-      class_name: classData.name,
-      total_students: students.length,
-      students,
-    });
   } catch (error) {
     next(error);
   }

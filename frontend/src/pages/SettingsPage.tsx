@@ -432,8 +432,34 @@ export const SettingsPage: React.FC = () => {
         )}
 
         <div className="flex flex-col lg:flex-row gap-8 items-start">
+          {/* ── Mobile Navigation Tabs ── */}
+          <div className="w-full lg:hidden">
+            <div className="overflow-x-auto pb-3">
+              <div className="inline-flex gap-2 px-2">
+                {tabs.map((tab) => {
+                  if (tab.adminOnly && !isPrincipalOrSuper) return null;
+                  const active = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`inline-flex items-center gap-2 min-w-[120px] px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
+                        active
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className={active ? 'text-white' : 'text-gray-500'}>{tab.icon}</span>
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
           {/* ── Left Sidebar Navigation ── */}
-          <Card className="w-full lg:w-64 shrink-0 bg-white border border-gray-200 shadow-sm sticky top-6">
+          <Card className="hidden lg:block w-full lg:w-64 shrink-0 bg-white border border-gray-200 shadow-sm sticky top-6">
             <CardContent className="p-3">
               <nav className="space-y-1">
                 {tabs.map((tab) => {

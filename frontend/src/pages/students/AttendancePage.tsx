@@ -171,7 +171,7 @@ export const AttendancePage: React.FC = () => {
     enabled: !!regClassId && activeTab === 'register' && !isAllStudentsMode,
     staleTime: 60_000,
   });
-  const classStudents = (classStudentsData as any)?.students ?? [];
+  const classStudents = (classStudentsData as any)?.data?.students ?? (classStudentsData as any)?.students ?? [];
 
   // 3b. All enrolled students
   const { data: allStudentsData, isLoading: allStudentsLoading } = useQuery({
@@ -214,9 +214,9 @@ export const AttendancePage: React.FC = () => {
     refetchOnMount: 'always', // Always refetch when component mounts
   });
   
-  const existingRecords: any[] = isAllStudentsMode 
+  const existingRecords: any[] = isAllStudentsMode
     ? (existingAttData as any)?.data ?? []
-    : (existingAttData as any)?.attendance_records ?? [];
+    : (existingAttData as any)?.data?.attendance_records ?? (existingAttData as any)?.attendance_records ?? [];
 
   // 5. Analytics: all logs (no pagination for stats)
   const { data: analyticsData, isLoading: analyticsLoading } = useQuery({
@@ -620,63 +620,79 @@ export const AttendancePage: React.FC = () => {
               </div>
 
               {/* Filters */}
-              <div className="flex flex-wrap items-center gap-3 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-full">
-                {/* Search */}
-                <SearchBar
-                  onSearch={(val) => { setSearch(val); setPage(1); }}
-                  placeholder="Search student name or ID…"
-                  defaultValue={search}
-                  isLoading={logsLoading}
-                  className="w-full sm:max-w-xs"
-                />
-                  {/* Date */}
-                  <input
-                    type="date"
-                    value={dateFilter}
-                    onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
-                    className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[140px] sm:min-w-[160px]"
-                  />
-                  {/* Class */}
-                  <select
-                    value={classFilter}
-                    onChange={(e) => { setClassFilter(e.target.value); setPage(1); }}
-                    className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[120px] sm:min-w-[150px]"
-                  >
-                    <option value="">All Classes</option>
-                    {classes.map((c: any) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                  {/* Status */}
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                    className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[120px] sm:min-w-[140px]"
-                  >
-                    <option value="">All Statuses</option>
-                    <option value="present">Present</option>
-                    <option value="absent">Absent</option>
-                    <option value="late">Late</option>
-                    <option value="excused">Excused</option>
-                  </select>
+              <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-full">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Search</label>
+                    <SearchBar
+                      onSearch={(val) => { setSearch(val); setPage(1); }}
+                      placeholder="Search student name or ID…"
+                      defaultValue={search}
+                      isLoading={logsLoading}
+                      className="w-full"
+                    />
+                  </div>
 
-                  {/* Clear */}
-                  {(search || classFilter || statusFilter || dateFilter) && (
-                    <button
-                      onClick={() => { setSearch(''); setClassFilter(''); setStatusFilter(''); setDateFilter(''); setPage(1); }}
-                      className="flex items-center gap-1 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Date</label>
+                    <input
+                      type="date"
+                      value={dateFilter}
+                      onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Class</label>
+                    <select
+                      value={classFilter}
+                      onChange={(e) => { setClassFilter(e.target.value); setPage(1); }}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <X size={12} /> Clear
-                    </button>
-                  )}
+                      <option value="">All Classes</option>
+                      {classes.map((c: any) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Status</label>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">All Statuses</option>
+                      <option value="present">Present</option>
+                      <option value="absent">Absent</option>
+                      <option value="late">Late</option>
+                      <option value="excused">Excused</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    {(search || classFilter || statusFilter || dateFilter) && (
+                      <button
+                        onClick={() => { setSearch(''); setClassFilter(''); setStatusFilter(''); setDateFilter(''); setPage(1); }}
+                        className="flex items-center gap-1 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      >
+                        <X size={12} /> Clear
+                      </button>
+                    )}
+                  </div>
 
                   <button
                     onClick={() => refetchLogs()}
-                    className="p-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    className="flex items-center justify-center p-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     title="Refresh"
                   >
                     <RefreshCw size={16} className={logsLoading ? 'animate-spin' : ''} />
                   </button>
+                </div>
               </div>
 
               {/* Table */}
@@ -879,8 +895,8 @@ export const AttendancePage: React.FC = () => {
                         ) : (
                           <>
                             Roll Call Sheet
-                            {(classStudentsData as any)?.class_name && (
-                              <span className="ml-2 text-blue-600 dark:text-blue-400">{(classStudentsData as any).class_name}</span>
+                            {((classStudentsData as any)?.data?.class_name || (classStudentsData as any)?.class_name) && (
+                              <span className="ml-2 text-blue-600 dark:text-blue-400">{(classStudentsData as any)?.data?.class_name || (classStudentsData as any)?.class_name}</span>
                             )}
                           </>
                         )}
