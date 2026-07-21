@@ -32,9 +32,16 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
 
     // Verify class belongs to this tenant
     const classCheck = await db('classes')
-      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .where('classes.id', class_id)
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .first();
     if (!classCheck) {
       throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
@@ -87,11 +94,18 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 
     let query = db('assignments')
       .join('classes', 'assignments.class_id', 'classes.id')
-      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .leftJoin('subjects', 'assignments.subject_id', 'subjects.id')
       .leftJoin('teachers', 'assignments.teacher_id', 'teachers.id')
       .leftJoin('users', 'teachers.user_id', 'users.id')
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .select(
         'assignments.*',
         'classes.name as class_name',
@@ -117,9 +131,16 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     // Count query — simpler version without submission subquery
     let countQuery = db('assignments')
       .join('classes', 'assignments.class_id', 'classes.id')
-      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .leftJoin('subjects', 'assignments.subject_id', 'subjects.id')
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .count('assignments.id as count');
 
     if (class_id) countQuery = countQuery.where('assignments.class_id', class_id as string);
@@ -162,9 +183,16 @@ router.get('/:assignmentId', authenticate, async (req: Request, res: Response, n
 
     const assignment = await db('assignments')
       .join('classes', 'assignments.class_id', 'classes.id')
-      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .where('assignments.id', assignmentId)
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .select('assignments.*')
       .first();
 
@@ -191,9 +219,16 @@ router.put('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, UserRol
 
     const assignment = await db('assignments')
       .join('classes', 'assignments.class_id', 'classes.id')
-      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .where('assignments.id', assignmentId)
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .select('assignments.*')
       .first();
     if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
@@ -234,9 +269,16 @@ router.delete('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, User
 
     const assignment = await db('assignments')
       .join('classes', 'assignments.class_id', 'classes.id')
-      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .where('assignments.id', assignmentId)
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .select('assignments.*')
       .first();
     if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');

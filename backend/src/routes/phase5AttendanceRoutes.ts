@@ -38,9 +38,16 @@ router.post(
 
       // Verify class belongs to this tenant
       const classCheck = await db('classes')
-        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
         .where('classes.id', class_id)
-        .where('academic_sessions.tenant_id', tenantId)
+        .where(function () {
+          this.where('academic_sessions.tenant_id', tenantId)
+            .orWhere(function () {
+              this.whereNull('classes.academic_session_id')
+                .where('class_creator.tenant_id', tenantId);
+            });
+        })
         .first();
       if (!classCheck) {
         throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
@@ -112,9 +119,16 @@ router.get(
       // Verify class belongs to this tenant if provided
       if (class_id) {
         const classCheck = await db('classes')
-          .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+          .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+          .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
           .where('classes.id', class_id as string)
-          .where('academic_sessions.tenant_id', tenantId)
+          .where(function () {
+            this.where('academic_sessions.tenant_id', tenantId)
+              .orWhere(function () {
+                this.whereNull('classes.academic_session_id')
+                  .where('class_creator.tenant_id', tenantId);
+              });
+          })
           .first();
         if (!classCheck) {
           throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
@@ -174,9 +188,16 @@ router.get(
 
       // Verify class belongs to this tenant
       const classCheck = await db('classes')
-        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
         .where('classes.id', classId)
-        .where('academic_sessions.tenant_id', tenantId)
+        .where(function () {
+          this.where('academic_sessions.tenant_id', tenantId)
+            .orWhere(function () {
+              this.whereNull('classes.academic_session_id')
+                .where('class_creator.tenant_id', tenantId);
+            });
+        })
         .first();
       if (!classCheck) {
         throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
@@ -236,9 +257,16 @@ router.get(
 
       // Verify class belongs to this tenant
       const classCheck = await db('classes')
-        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
         .where('classes.id', classId as string)
-        .where('academic_sessions.tenant_id', tenantId)
+        .where(function () {
+          this.where('academic_sessions.tenant_id', tenantId)
+            .orWhere(function () {
+              this.whereNull('classes.academic_session_id')
+                .where('class_creator.tenant_id', tenantId);
+            });
+        })
         .first();
       if (!classCheck) {
         throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
@@ -293,9 +321,16 @@ router.get(
 
       // Verify class belongs to this tenant
       const classCheck = await db('classes')
-        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
         .where('classes.id', classId)
-        .where('academic_sessions.tenant_id', tenantId)
+        .where(function () {
+          this.where('academic_sessions.tenant_id', tenantId)
+            .orWhere(function () {
+              this.whereNull('classes.academic_session_id')
+                .where('class_creator.tenant_id', tenantId);
+            });
+        })
         .first();
       if (!classCheck) {
         throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
@@ -408,9 +443,16 @@ router.get(
 
       // Verify class belongs to this tenant
       const classCheck = await db('classes')
-        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
         .where('classes.id', classId)
-        .where('academic_sessions.tenant_id', tenantId)
+        .where(function () {
+          this.where('academic_sessions.tenant_id', tenantId)
+            .orWhere(function () {
+              this.whereNull('classes.academic_session_id')
+                .where('class_creator.tenant_id', tenantId);
+            });
+        })
         .first();
       if (!classCheck) {
         throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');

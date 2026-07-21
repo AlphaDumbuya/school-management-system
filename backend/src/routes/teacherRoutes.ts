@@ -151,8 +151,9 @@ router.get('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
     // Fetch assignments
     const assignments = await db('teacher_assignments')
       .join('classes', 'teacher_assignments.class_id', 'classes.id')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .join('subjects', 'teacher_assignments.subject_id', 'subjects.id')
-      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
       .select(
         'teacher_assignments.id as id',
         'teacher_assignments.class_id',
@@ -162,7 +163,13 @@ router.get('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
         'subjects.code as subject_code'
       )
       .where('teacher_assignments.teacher_id', teacherId)
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .where(function() {
         this.where('teacher_assignments.end_date', '>=', new Date()).orWhereNull('teacher_assignments.end_date');
       });
