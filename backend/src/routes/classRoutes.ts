@@ -403,10 +403,25 @@ router.get('/:classId/students', authenticate, async (req: Request, res: Respons
 
     const students = await db('students')
       .join('enrollments', 'students.id', '=', 'enrollments.student_id')
-      .select('students.id', 'students.student_id', 'students.first_name', 'students.last_name', 'enrollments.roll_number', 'enrollments.status')
+      .leftJoin('users', 'students.user_id', 'users.id')
+      .select(
+        'students.id',
+        'students.student_id',
+        db.raw("COALESCE(students.first_name, users.first_name, '') as first_name"),
+        db.raw("COALESCE(students.last_name, users.last_name, '') as last_name"),
+        'enrollments.roll_number',
+        'enrollments.status'
+      )
       .where('enrollments.class_id', classData.id)
-      .where('students.tenant_id', tenantId)
-      .whereIn('enrollments.status', ['enrolled', 'active'])
+      .where(function () {
+        this.where('students.tenant_id', tenantId)
+          .orWhere('users.tenant_id', tenantId)
+          .orWhereNull('students.tenant_id');
+      })
+      .where(function () {
+        this.whereIn('enrollments.status', ['enrolled', 'active'])
+          .orWhereNull('enrollments.status');
+      })
       .orderBy('enrollments.roll_number', 'asc');
 
     res.json({
