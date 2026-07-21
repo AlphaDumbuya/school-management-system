@@ -33,9 +33,16 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
 
     // Verify class belongs to this tenant
     const classCheck = await db('classes')
-      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .where('classes.id', class_id)
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .first();
     if (!classCheck) {
       throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
@@ -119,11 +126,18 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 
     let query = db('schedules')
       .join('classes', 'schedules.class_id', 'classes.id')
-      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .leftJoin('subjects', 'schedules.subject_id', 'subjects.id')
       .leftJoin('teachers', 'schedules.teacher_id', 'teachers.id')
       .leftJoin('users', 'teachers.user_id', 'users.id')
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .select(
         'schedules.*',
         'classes.name as class_name',
@@ -163,9 +177,16 @@ router.get('/weekly/:classId', authenticate, async (req: Request, res: Response,
     }
 
     const classData = await db('classes')
-      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .where('classes.id', classId)
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .select('classes.*')
       .first();
     if (!classData) {
@@ -254,9 +275,16 @@ router.put('/:slotId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPE
 
     const slot = await db('schedules')
       .join('classes', 'schedules.class_id', 'classes.id')
-      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .where('schedules.id', slotId)
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .select('schedules.*')
       .first();
     if (!slot) {
@@ -322,9 +350,16 @@ router.delete('/:slotId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
 
     const slot = await db('schedules')
       .join('classes', 'schedules.class_id', 'classes.id')
-      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .where('schedules.id', slotId)
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .select('schedules.*')
       .first();
     if (!slot) {
