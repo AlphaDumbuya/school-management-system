@@ -94,6 +94,10 @@ export const SettingsPage: React.FC = () => {
     id_padding: 5,
     id_year_format: 'short',   // 'full' | 'short' | 'none'
     id_include_year: true,     // legacy compat
+    // Continue-from: last number already used (system continues from +1)
+    id_student_start_from: '',
+    id_staff_start_from: '',
+    id_admission_start_from: '',
     min_attendance_warning: 75,
     min_attendance_critical: 60,
     late_cutoff_time: '08:30',
@@ -376,20 +380,23 @@ export const SettingsPage: React.FC = () => {
   };
 
   // Helper: generates ID preview dynamically for a given prefix type
-  const buildIDPreview = (prefix: string) => {
+  const buildIDPreview = (prefix: string, startFrom?: string | number) => {
     const sep = settings.id_separator === 'none' ? '' : (settings.id_separator ?? '-');
     const yearFmt = settings.id_year_format || (settings.id_include_year ? 'full' : 'none');
     const fullYear = new Date().getFullYear();
     const shortYear = String(fullYear).slice(-2);
     const yearStr = yearFmt === 'full' ? String(fullYear) : yearFmt === 'short' ? shortYear : '';
     const pad = settings.id_padding || 5;
-    const numStr = String(42).padStart(pad, '0');
+    // Use startFrom+1 if set, otherwise use sample 42
+    const sf = startFrom !== undefined && startFrom !== '' ? Number(startFrom) : undefined;
+    const sampleNum = sf !== undefined && !isNaN(sf) ? sf + 1 : 42;
+    const numStr = String(sampleNum).padStart(pad, '0');
     const parts = [prefix || 'STU'];
     if (yearStr) parts.push(yearStr);
     parts.push(numStr);
     return parts.join(sep);
   };
-  const getIDPreview = () => buildIDPreview(settings.id_student_prefix || 'STU');
+  const getIDPreview = () => buildIDPreview(settings.id_student_prefix || 'STU', settings.id_student_start_from);
 
   // Tabs mapping
   const tabs = [
@@ -1159,19 +1166,74 @@ export const SettingsPage: React.FC = () => {
                         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Live Preview</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           {[
-                            { label: 'Student ID', prefix: settings.id_student_prefix || 'STU', color: 'from-blue-50 to-indigo-50 border-blue-100 dark:from-blue-900/20 dark:to-indigo-900/20 dark:border-blue-800', dot: 'bg-blue-500' },
-                            { label: 'Teacher ID', prefix: settings.id_staff_prefix || 'TCH', color: 'from-purple-50 to-violet-50 border-purple-100 dark:from-purple-900/20 dark:to-violet-900/20 dark:border-purple-800', dot: 'bg-purple-500' },
-                            { label: 'Admission No.', prefix: settings.id_admission_prefix || 'ADM', color: 'from-emerald-50 to-teal-50 border-emerald-100 dark:from-emerald-900/20 dark:to-teal-900/20 dark:border-emerald-800', dot: 'bg-emerald-500' },
+                            { label: 'Student ID', prefix: settings.id_student_prefix || 'STU', startFrom: settings.id_student_start_from, color: 'from-blue-50 to-indigo-50 border-blue-100 dark:from-blue-900/20 dark:to-indigo-900/20 dark:border-blue-800', dot: 'bg-blue-500' },
+                            { label: 'Teacher ID', prefix: settings.id_staff_prefix || 'TCH', startFrom: settings.id_staff_start_from, color: 'from-purple-50 to-violet-50 border-purple-100 dark:from-purple-900/20 dark:to-violet-900/20 dark:border-purple-800', dot: 'bg-purple-500' },
+                            { label: 'Admission No.', prefix: settings.id_admission_prefix || 'ADM', startFrom: settings.id_admission_start_from, color: 'from-emerald-50 to-teal-50 border-emerald-100 dark:from-emerald-900/20 dark:to-teal-900/20 dark:border-emerald-800', dot: 'bg-emerald-500' },
                           ].map((item) => (
                             <div key={item.label} className={`bg-gradient-to-br ${item.color} border rounded-xl p-4`}>
                               <div className="flex items-center gap-2 mb-2">
                                 <div className={`w-2 h-2 rounded-full ${item.dot}`} />
                                 <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">{item.label}</p>
                               </div>
-                              <p className="text-xl font-mono font-bold text-gray-800 dark:text-white">{buildIDPreview(item.prefix)}</p>
-                              <p className="text-[10px] text-gray-400 mt-1">Next assigned ID</p>
+                              <p className="text-xl font-mono font-bold text-gray-800 dark:text-white">{buildIDPreview(item.prefix, item.startFrom)}</p>
+                              <p className="text-[10px] text-gray-400 mt-1">
+                                {item.startFrom && item.startFrom !== '' ? `Continues from ${item.startFrom}` : 'Next assigned ID (sample)'}
+                              </p>
                             </div>
                           ))}
+                        </div>
+                      </div>
+
+                      {/* ── Continue-From Section ── */}
+                      <div className="border-t border-gray-200 dark:border-gray-700 pt-5">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">Continue From an Existing Numbering System</h4>
+                          <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-0.5 rounded-full">Optional</span>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                          If your school already has ID numbers (e.g. the last student was 20345), enter that last-used number here.
+                          The system will continue from the <strong>next number</strong> (20346, 20347…) with no gaps or duplicates.
+                          Leave blank to let the system auto-count from the database.
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          {[
+                            { key: 'id_student_start_from', label: 'Last Student Number', placeholder: 'e.g. 20345', prefix: settings.id_student_prefix || 'STU' },
+                            { key: 'id_staff_start_from', label: 'Last Teacher Number', placeholder: 'e.g. 150', prefix: settings.id_staff_prefix || 'TCH' },
+                            { key: 'id_admission_start_from', label: 'Last Admission Number', placeholder: 'e.g. 5000', prefix: settings.id_admission_prefix || 'ADM' },
+                          ].map((item) => {
+                            const val = settings[item.key];
+                            const nextNum = val !== '' && !isNaN(Number(val)) ? Number(val) + 1 : null;
+                            const pad = settings.id_padding || 5;
+                            const sep = settings.id_separator === 'none' ? '' : (settings.id_separator ?? '-');
+                            const yearFmt = settings.id_year_format || 'short';
+                            const yr = yearFmt === 'full' ? String(new Date().getFullYear()) : yearFmt === 'short' ? String(new Date().getFullYear()).slice(-2) : '';
+                            const nextParts = [item.prefix];
+                            if (yr) nextParts.push(yr);
+                            if (nextNum !== null) nextParts.push(String(nextNum).padStart(pad, '0'));
+                            return (
+                              <div key={item.key}>
+                                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">{item.label}</label>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  placeholder={item.placeholder}
+                                  value={settings[item.key] ?? ''}
+                                  onChange={(e) => {
+                                    const raw = e.target.value.replace(/[^0-9]/g, '');
+                                    setSettings({ ...settings, [item.key]: raw });
+                                  }}
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono"
+                                />
+                                {nextNum !== null ? (
+                                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
+                                    ✓ Next ID: <span className="font-mono font-bold">{nextParts.join(sep)}</span>
+                                  </p>
+                                ) : (
+                                  <p className="text-[10px] text-gray-400 mt-1">Leave blank = auto-count</p>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
 

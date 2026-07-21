@@ -3,14 +3,20 @@ import { Knex } from 'knex';
 export type IdType = 'student' | 'teacher' | 'admission';
 
 /**
- * Generate unique custom ID based on tenant's ID format settings in school_config_settings
+ * Generate a unique ID based on the tenant's ID format settings stored in school_config_settings.
+ *
+ * The generator:
+ *  1. Reads prefix, separator, year format, padding, and the optional "start_from" floor number.
+ *  2. Scans the target table to find the current max trailing number (so existing records are never duplicated).
+ *  3. Uses Math.max(dbMax, startFrom) — whichever is higher — so schools that continue from an existing
+ *     numbering system (e.g. last used 20345) seamlessly pick up at 20346.
  */
 export async function generateNextId(
   db: Knex,
   tenantId: string,
   type: IdType
 ): Promise<string> {
-  // Fetch tenant settings for ID format
+  // ── 1. Load tenant ID-format settings ──────────────────────────────────────
   const settingsRows = await db('school_config_settings')
     .where('tenant_id', tenantId)
     .whereIn('setting_key', [
@@ -20,79 +26,87 @@ export async function generateNextId(
       'id_separator',
       'id_padding',
       'id_include_year',
-      'id_year_format'
+      'id_year_format',
+      'id_student_start_from',
+      'id_staff_start_from',
+      'id_admission_start_from',
     ]);
 
-  const settingsMap: Record<string, any> = {};
+  const s: Record<string, any> = {};
   for (const row of settingsRows) {
     let val = row.setting_value;
     if (row.data_type === 'number') val = Number(val);
     if (row.data_type === 'boolean') val = val === true || val === 'true';
-    settingsMap[row.setting_key] = val;
+    s[row.setting_key] = val;
   }
 
-  // Fallback defaults
-  let defaultPrefix = 'STU';
-  if (type === 'teacher') defaultPrefix = 'TCH';
-  if (type === 'admission') defaultPrefix = 'ADM';
+  // ── 2. Resolve prefix ──────────────────────────────────────────────────────
+  const defaultPrefixes: Record<IdType, string> = {
+    student: 'STU',
+    teacher: 'TCH',
+    admission: 'ADM',
+  };
 
   let rawPrefix = '';
-  if (type === 'teacher') {
-    rawPrefix = settingsMap['id_staff_prefix'];
-  } else if (type === 'admission') {
-    rawPrefix = settingsMap['id_admission_prefix'] || settingsMap['id_student_prefix'];
-  } else {
-    rawPrefix = settingsMap['id_student_prefix'];
-  }
+  if (type === 'teacher') rawPrefix = s['id_staff_prefix'];
+  else if (type === 'admission') rawPrefix = s['id_admission_prefix'] || s['id_student_prefix'];
+  else rawPrefix = s['id_student_prefix'];
 
-  const prefix = (rawPrefix && String(rawPrefix).trim()) ? String(rawPrefix).trim() : defaultPrefix;
+  const prefix = (rawPrefix && String(rawPrefix).trim()) ? String(rawPrefix).trim() : defaultPrefixes[type];
 
-  // Separator: 'none', '', or undefined -> empty string
-  let separator = settingsMap['id_separator'];
-  if (separator === 'none' || separator === undefined || separator === null) {
+  // ── 3. Separator ───────────────────────────────────────────────────────────
+  let separator: string;
+  const rawSep = s['id_separator'];
+  if (rawSep === 'none' || rawSep === undefined || rawSep === null) {
     separator = '';
   } else {
-    separator = String(separator);
+    separator = String(rawSep);
   }
 
-  // Year Format: 'full' (2026), 'short' (26), 'none'
-  let yearFormat = settingsMap['id_year_format'];
+  // ── 4. Year ────────────────────────────────────────────────────────────────
+  let yearFormat = s['id_year_format'];
   if (!yearFormat) {
-    const includeYear = settingsMap['id_include_year'] !== undefined ? Boolean(settingsMap['id_include_year']) : true;
+    const includeYear = s['id_include_year'] !== undefined ? Boolean(s['id_include_year']) : true;
     yearFormat = includeYear ? 'full' : 'none';
   }
 
   const fullYear = new Date().getFullYear();
   const shortYear = String(fullYear).slice(-2);
-  let yearPart = '';
-  if (yearFormat === 'full') {
-    yearPart = String(fullYear);
-  } else if (yearFormat === 'short') {
-    yearPart = shortYear;
-  }
+  const yearPart =
+    yearFormat === 'full' ? String(fullYear) :
+    yearFormat === 'short' ? shortYear :
+    '';
 
-  const padding = Number(settingsMap['id_padding']) || (type === 'teacher' ? 3 : 5);
+  // ── 5. Padding ─────────────────────────────────────────────────────────────
+  const defaultPadding: Record<IdType, number> = { student: 5, teacher: 3, admission: 5 };
+  const padding = Number(s['id_padding']) || defaultPadding[type];
 
-  let tableName = 'students';
-  let idColumn = 'student_id';
+  // ── 6. Start-from floor ────────────────────────────────────────────────────
+  const startFromKey: Record<IdType, string> = {
+    student: 'id_student_start_from',
+    teacher: 'id_staff_start_from',
+    admission: 'id_admission_start_from',
+  };
+  const startFromRaw = s[startFromKey[type]];
+  const startFrom = (startFromRaw !== undefined && startFromRaw !== '' && !isNaN(Number(startFromRaw)))
+    ? Number(startFromRaw)
+    : 0;
 
-  if (type === 'teacher') {
-    tableName = 'teachers';
-    idColumn = 'teacher_id';
-  } else if (type === 'admission') {
-    tableName = 'admission_applications';
-    idColumn = 'application_number';
-  }
+  // ── 7. Find current max from the target table ──────────────────────────────
+  const tableMap: Record<IdType, { table: string; col: string }> = {
+    student: { table: 'students', col: 'student_id' },
+    teacher: { table: 'teachers', col: 'teacher_id' },
+    admission: { table: 'admission_applications', col: 'application_number' },
+  };
+  const { table: tableName, col: idColumn } = tableMap[type];
 
-  // Prefix pattern for matching existing IDs in DB
-  const partsForPattern: string[] = [];
-  if (prefix) partsForPattern.push(prefix);
+  // Build a pattern prefix to narrow the LIKE scan
+  const partsForPattern: string[] = [prefix];
   if (yearPart) partsForPattern.push(yearPart);
-  const patternPrefix = partsForPattern.join(separator);
-  const searchPattern = patternPrefix ? `${patternPrefix}${separator}%` : '%';
+  const patternBase = partsForPattern.join(separator);
+  const searchPattern = patternBase ? `${patternBase}${separator}%` : '%';
 
-  let maxNum = 0;
-
+  let dbMax = 0;
   try {
     const records = await db(tableName)
       .where(idColumn, 'like', searchPattern)
@@ -100,23 +114,23 @@ export async function generateNextId(
 
     for (const rec of records) {
       const val = String(rec[idColumn]);
-      const lastDigitsMatch = val.match(/(\d+)$/);
-      if (lastDigitsMatch) {
-        const num = parseInt(lastDigitsMatch[1], 10);
-        if (!isNaN(num) && num > maxNum) {
-          maxNum = num;
-        }
+      // Extract the trailing digits regardless of separator style
+      const match = val.match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > dbMax) dbMax = num;
       }
     }
-  } catch (err) {
-    maxNum = 0;
+  } catch {
+    dbMax = 0;
   }
 
-  const nextNum = maxNum + 1;
+  // ── 8. Pick the highest floor and increment ────────────────────────────────
+  const nextNum = Math.max(dbMax, startFrom) + 1;
   const numberStr = String(nextNum).padStart(padding, '0');
 
-  const finalParts: string[] = [];
-  if (prefix) finalParts.push(prefix);
+  // ── 9. Assemble the ID ─────────────────────────────────────────────────────
+  const finalParts: string[] = [prefix];
   if (yearPart) finalParts.push(yearPart);
   finalParts.push(numberStr);
 
