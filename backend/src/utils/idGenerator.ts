@@ -16,9 +16,11 @@ export async function generateNextId(
     .whereIn('setting_key', [
       'id_student_prefix',
       'id_staff_prefix',
+      'id_admission_prefix',
       'id_separator',
       'id_padding',
-      'id_include_year'
+      'id_include_year',
+      'id_year_format'
     ]);
 
   const settingsMap: Record<string, any> = {};
@@ -34,13 +36,42 @@ export async function generateNextId(
   if (type === 'teacher') defaultPrefix = 'TCH';
   if (type === 'admission') defaultPrefix = 'ADM';
 
-  const prefix = (type === 'teacher' ? settingsMap['id_staff_prefix'] : settingsMap['id_student_prefix']) || defaultPrefix;
-  const separator = settingsMap['id_separator'] !== undefined ? settingsMap['id_separator'] : '-';
-  const includeYear = settingsMap['id_include_year'] !== undefined ? Boolean(settingsMap['id_include_year']) : true;
-  const padding = Number(settingsMap['id_padding']) || (type === 'teacher' ? 3 : 5);
+  let rawPrefix = '';
+  if (type === 'teacher') {
+    rawPrefix = settingsMap['id_staff_prefix'];
+  } else if (type === 'admission') {
+    rawPrefix = settingsMap['id_admission_prefix'] || settingsMap['id_student_prefix'];
+  } else {
+    rawPrefix = settingsMap['id_student_prefix'];
+  }
 
-  const year = new Date().getFullYear();
-  const yearPart = includeYear ? `${separator}${year}` : '';
+  const prefix = (rawPrefix && String(rawPrefix).trim()) ? String(rawPrefix).trim() : defaultPrefix;
+
+  // Separator: 'none', '', or undefined -> empty string
+  let separator = settingsMap['id_separator'];
+  if (separator === 'none' || separator === undefined || separator === null) {
+    separator = '';
+  } else {
+    separator = String(separator);
+  }
+
+  // Year Format: 'full' (2026), 'short' (26), 'none'
+  let yearFormat = settingsMap['id_year_format'];
+  if (!yearFormat) {
+    const includeYear = settingsMap['id_include_year'] !== undefined ? Boolean(settingsMap['id_include_year']) : true;
+    yearFormat = includeYear ? 'full' : 'none';
+  }
+
+  const fullYear = new Date().getFullYear();
+  const shortYear = String(fullYear).slice(-2);
+  let yearPart = '';
+  if (yearFormat === 'full') {
+    yearPart = String(fullYear);
+  } else if (yearFormat === 'short') {
+    yearPart = shortYear;
+  }
+
+  const padding = Number(settingsMap['id_padding']) || (type === 'teacher' ? 3 : 5);
 
   let tableName = 'students';
   let idColumn = 'student_id';
@@ -53,21 +84,28 @@ export async function generateNextId(
     idColumn = 'application_number';
   }
 
-  const prefixPattern = `${prefix}${yearPart}${separator}%`;
+  // Prefix pattern for matching existing IDs in DB
+  const partsForPattern: string[] = [];
+  if (prefix) partsForPattern.push(prefix);
+  if (yearPart) partsForPattern.push(yearPart);
+  const patternPrefix = partsForPattern.join(separator);
+  const searchPattern = patternPrefix ? `${patternPrefix}${separator}%` : '%';
 
   let maxNum = 0;
 
   try {
     const records = await db(tableName)
-      .where(idColumn, 'like', prefixPattern)
+      .where(idColumn, 'like', searchPattern)
       .select(idColumn);
 
     for (const rec of records) {
       const val = String(rec[idColumn]);
-      const lastPart = separator ? val.split(separator).pop() : val.replace(/^[^\d]+/, '');
-      const num = parseInt(lastPart || '0', 10);
-      if (!isNaN(num) && num > maxNum) {
-        maxNum = num;
+      const lastDigitsMatch = val.match(/(\d+)$/);
+      if (lastDigitsMatch) {
+        const num = parseInt(lastDigitsMatch[1], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
       }
     }
   } catch (err) {
@@ -77,5 +115,10 @@ export async function generateNextId(
   const nextNum = maxNum + 1;
   const numberStr = String(nextNum).padStart(padding, '0');
 
-  return `${prefix}${yearPart}${separator}${numberStr}`;
+  const finalParts: string[] = [];
+  if (prefix) finalParts.push(prefix);
+  if (yearPart) finalParts.push(yearPart);
+  finalParts.push(numberStr);
+
+  return finalParts.join(separator);
 }

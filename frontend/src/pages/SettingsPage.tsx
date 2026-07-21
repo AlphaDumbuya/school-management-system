@@ -86,11 +86,14 @@ export const SettingsPage: React.FC = () => {
     term_2_end: '',
     term_3_start: '',
     term_3_end: '',
+    // ID Format settings
     id_student_prefix: 'STU',
     id_staff_prefix: 'TCH',
+    id_admission_prefix: 'ADM',
     id_separator: '-',
-    id_padding: 4,
-    id_include_year: true,
+    id_padding: 5,
+    id_year_format: 'short',   // 'full' | 'short' | 'none'
+    id_include_year: true,     // legacy compat
     min_attendance_warning: 75,
     min_attendance_critical: 60,
     late_cutoff_time: '08:30',
@@ -372,14 +375,21 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  // Helper: generates standard ID preview dynamically
-  const getIDPreview = () => {
-    const prefix = settings.id_student_prefix || 'STU';
-    const separator = settings.id_separator !== undefined ? settings.id_separator : '-';
-    const yearPart = settings.id_include_year ? `${separator}2026` : '';
-    const numberPart = String(42).padStart(settings.id_padding || 5, '0');
-    return `${prefix}${yearPart}${separator}${numberPart}`;
+  // Helper: generates ID preview dynamically for a given prefix type
+  const buildIDPreview = (prefix: string) => {
+    const sep = settings.id_separator === 'none' ? '' : (settings.id_separator ?? '-');
+    const yearFmt = settings.id_year_format || (settings.id_include_year ? 'full' : 'none');
+    const fullYear = new Date().getFullYear();
+    const shortYear = String(fullYear).slice(-2);
+    const yearStr = yearFmt === 'full' ? String(fullYear) : yearFmt === 'short' ? shortYear : '';
+    const pad = settings.id_padding || 5;
+    const numStr = String(42).padStart(pad, '0');
+    const parts = [prefix || 'STU'];
+    if (yearStr) parts.push(yearStr);
+    parts.push(numStr);
+    return parts.join(sep);
   };
+  const getIDPreview = () => buildIDPreview(settings.id_student_prefix || 'STU');
 
   // Tabs mapping
   const tabs = [
@@ -1039,86 +1049,136 @@ export const SettingsPage: React.FC = () => {
                       <CardTitle>ID Number Configuration</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                      {/* Info Banner */}
+                      <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                        <div className="w-5 h-5 text-amber-500 shrink-0 mt-0.5"><Sparkles size={18} /></div>
                         <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Student Prefix</label>
-                          <input
-                            type="text"
-                            placeholder="STU"
-                            value={settings.id_student_prefix}
-                            onChange={(e) => setSettings({ ...settings, id_student_prefix: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Staff/Teacher Prefix</label>
-                          <input
-                            type="text"
-                            placeholder="TCH"
-                            value={settings.id_staff_prefix}
-                            onChange={(e) => setSettings({ ...settings, id_staff_prefix: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Separator</label>
-                          <select
-                            value={settings.id_separator}
-                            onChange={(e) => setSettings({ ...settings, id_separator: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          >
-                            <option value="-">Hyphen (-)</option>
-                            <option value="/">Slash (/)</option>
-                            <option value="_">Underscore (_)</option>
-                            <option value="">None (Empty)</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Counter Padding</label>
-                          <select
-                            value={settings.id_padding}
-                            onChange={(e) => setSettings({ ...settings, id_padding: Number(e.target.value) })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          >
-                            <option value={3}>3 digits (e.g. 042)</option>
-                            <option value={4}>4 digits (e.g. 0042)</option>
-                            <option value={5}>5 digits (e.g. 00042)</option>
-                          </select>
-                        </div>
-                        <div className="flex items-center gap-3 py-2">
-                          <input
-                            type="checkbox"
-                            id="id_include_year"
-                            checked={settings.id_include_year}
-                            onChange={(e) => setSettings({ ...settings, id_include_year: e.target.checked })}
-                            className="rounded text-blue-600 focus:ring-blue-500 h-4.5 w-4.5 border-gray-300"
-                          />
-                          <label htmlFor="id_include_year" className="text-sm font-semibold text-gray-700">
-                            Include current year in ID format
-                          </label>
+                          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Custom ID Format</p>
+                          <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">Set unique ID prefixes for your school. New IDs will use this format. Existing IDs are not changed.</p>
                         </div>
                       </div>
 
-                      {/* Live Preview UI Card */}
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-5 flex flex-col sm:flex-row gap-4 items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                            <Sparkles size={20} />
+                      {/* Prefixes */}
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Prefixes</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Student Prefix <span className="text-gray-400 font-normal">(default: STU)</span></label>
+                            <input
+                              type="text"
+                              placeholder="STU"
+                              maxLength={8}
+                              value={settings.id_student_prefix ?? 'STU'}
+                              onChange={(e) => setSettings({ ...settings, id_student_prefix: e.target.value.toUpperCase() })}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono uppercase"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">Preview: <span className="font-mono font-semibold text-gray-700 dark:text-gray-200">{buildIDPreview(settings.id_student_prefix || 'STU')}</span></p>
                           </div>
                           <div>
-                            <p className="text-xs font-semibold text-blue-800 uppercase tracking-wider">Live Preview</p>
-                            <p className="text-lg font-mono font-bold text-gray-800 mt-0.5">{getIDPreview()}</p>
+                            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Staff / Teacher Prefix <span className="text-gray-400 font-normal">(default: TCH)</span></label>
+                            <input
+                              type="text"
+                              placeholder="TCH"
+                              maxLength={8}
+                              value={settings.id_staff_prefix ?? 'TCH'}
+                              onChange={(e) => setSettings({ ...settings, id_staff_prefix: e.target.value.toUpperCase() })}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono uppercase"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">Preview: <span className="font-mono font-semibold text-gray-700 dark:text-gray-200">{buildIDPreview(settings.id_staff_prefix || 'TCH')}</span></p>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Admission Prefix <span className="text-gray-400 font-normal">(default: ADM)</span></label>
+                            <input
+                              type="text"
+                              placeholder="ADM"
+                              maxLength={8}
+                              value={settings.id_admission_prefix ?? 'ADM'}
+                              onChange={(e) => setSettings({ ...settings, id_admission_prefix: e.target.value.toUpperCase() })}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono uppercase"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">Preview: <span className="font-mono font-semibold text-gray-700 dark:text-gray-200">{buildIDPreview(settings.id_admission_prefix || 'ADM')}</span></p>
                           </div>
                         </div>
-                        <span className="text-xs text-blue-600 font-medium px-3 py-1 bg-white border border-blue-200 rounded-full">
-                          Generated dynamically
-                        </span>
                       </div>
 
-                      <div className="flex justify-end mt-4">
+                      {/* Format Options */}
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Format Options</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+                          {/* Separator */}
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Separator</label>
+                            <select
+                              value={settings.id_separator ?? '-'}
+                              onChange={(e) => setSettings({ ...settings, id_separator: e.target.value })}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                            >
+                              <option value="-">Hyphen  ( - )</option>
+                              <option value="/">Slash  ( / )</option>
+                              <option value="_">Underscore  ( _ )</option>
+                              <option value=".">Dot  ( . )</option>
+                              <option value="none">None (no separator)</option>
+                            </select>
+                          </div>
+
+                          {/* Year Format */}
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Year in ID</label>
+                            <select
+                              value={settings.id_year_format ?? 'short'}
+                              onChange={(e) => setSettings({ ...settings, id_year_format: e.target.value })}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                            >
+                              <option value="full">Full year (e.g. 2026)</option>
+                              <option value="short">Short year (e.g. 26)</option>
+                              <option value="none">No year</option>
+                            </select>
+                          </div>
+
+                          {/* Counter Padding */}
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Counter Digits</label>
+                            <select
+                              value={settings.id_padding ?? 5}
+                              onChange={(e) => setSettings({ ...settings, id_padding: Number(e.target.value) })}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                            >
+                              <option value={3}>3 digits  (e.g. 042)</option>
+                              <option value={4}>4 digits  (e.g. 0042)</option>
+                              <option value={5}>5 digits  (e.g. 00042)</option>
+                              <option value={6}>6 digits  (e.g. 000042)</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Live Preview Cards */}
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Live Preview</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {[
+                            { label: 'Student ID', prefix: settings.id_student_prefix || 'STU', color: 'from-blue-50 to-indigo-50 border-blue-100 dark:from-blue-900/20 dark:to-indigo-900/20 dark:border-blue-800', dot: 'bg-blue-500' },
+                            { label: 'Teacher ID', prefix: settings.id_staff_prefix || 'TCH', color: 'from-purple-50 to-violet-50 border-purple-100 dark:from-purple-900/20 dark:to-violet-900/20 dark:border-purple-800', dot: 'bg-purple-500' },
+                            { label: 'Admission No.', prefix: settings.id_admission_prefix || 'ADM', color: 'from-emerald-50 to-teal-50 border-emerald-100 dark:from-emerald-900/20 dark:to-teal-900/20 dark:border-emerald-800', dot: 'bg-emerald-500' },
+                          ].map((item) => (
+                            <div key={item.label} className={`bg-gradient-to-br ${item.color} border rounded-xl p-4`}>
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className={`w-2 h-2 rounded-full ${item.dot}`} />
+                                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">{item.label}</p>
+                              </div>
+                              <p className="text-xl font-mono font-bold text-gray-800 dark:text-white">{buildIDPreview(item.prefix)}</p>
+                              <p className="text-[10px] text-gray-400 mt-1">Next assigned ID</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end mt-2">
                         <Button onClick={handleSaveSettings} disabled={saving}>
                           {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                          Save ID Format
+                          Save ID Format Settings
                         </Button>
                       </div>
                     </CardContent>
