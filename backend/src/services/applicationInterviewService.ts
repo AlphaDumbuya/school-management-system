@@ -145,19 +145,25 @@ export async function getInterviewerSchedule(
   return await query.orderBy('interview_date', 'asc');
 }
 
-/**
- * Get all upcoming interviews
- */
-export async function getUpcomingInterviews(days: number = 7): Promise<ApplicationInterview[]> {
+export async function getUpcomingInterviews(days: number = 7, tenantId?: string): Promise<ApplicationInterview[]> {
   const today = new Date();
   const futureDate = new Date();
   futureDate.setDate(today.getDate() + days);
   
-  return await db('application_interviews')
-    .where('interview_date', '>=', today)
-    .where('interview_date', '<=', futureDate)
-    .whereIn('status', [InterviewStatus.SCHEDULED, InterviewStatus.RESCHEDULED])
-    .orderBy('interview_date', 'asc');
+  let query = db('application_interviews')
+    .where('application_interviews.interview_date', '>=', today)
+    .where('application_interviews.interview_date', '<=', futureDate)
+    .whereIn('application_interviews.status', [InterviewStatus.SCHEDULED, InterviewStatus.RESCHEDULED]);
+
+  if (tenantId) {
+    query = query
+      .join('admission_applications', 'application_interviews.application_id', 'admission_applications.id')
+      .join('users as creator', 'admission_applications.created_by', 'creator.id')
+      .where('creator.tenant_id', tenantId)
+      .select('application_interviews.*');
+  }
+  
+  return await query.orderBy('application_interviews.interview_date', 'asc');
 }
 
 /**

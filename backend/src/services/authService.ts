@@ -34,8 +34,21 @@ export class AuthService {
       // Hash password
       const hashedPassword = await PasswordService.hashPassword(payload.password);
 
+      // Get or create tenant
+      let tenant = await this.db('tenants').first();
+      if (!tenant) {
+        const [newTenant] = await this.db('tenants').insert({
+          name: 'Default School',
+          slug: 'default-school',
+          status: 'active'
+        }).returning('*');
+        tenant = newTenant;
+      }
+      const tenantId = tenant.id;
+
       // Create user
-      const [userId] = await this.db('users').insert({
+      const [userRow] = await this.db('users').insert({
+        tenant_id: tenantId,
         email: payload.email,
         password_hash: hashedPassword,
         first_name: payload.first_name,
@@ -44,7 +57,8 @@ export class AuthService {
         status: UserStatus.ACTIVE,
         created_at: new Date(),
         updated_at: new Date(),
-      });
+      }).returning('*');
+      const userId = userRow.id;
 
       logger.info(`User registered: ${payload.email} with role ${payload.role}`);
 
@@ -391,8 +405,21 @@ export class AuthService {
       // Hash password
       const hashedPassword = await PasswordService.hashPassword(payload.password);
 
+      // Get or create tenant
+      let tenant = await this.db('tenants').first();
+      if (!tenant) {
+        const [newTenant] = await this.db('tenants').insert({
+          name: 'Default School',
+          slug: 'default-school',
+          status: 'active'
+        }).returning('*');
+        tenant = newTenant;
+      }
+      const tenantId = tenant.id;
+
       // Create user
-      const [userId] = await this.db('users').insert({
+      const [userRow] = await this.db('users').insert({
+        tenant_id: tenantId,
         email: payload.email,
         password_hash: hashedPassword,
         first_name: payload.first_name,
@@ -402,7 +429,8 @@ export class AuthService {
         created_by: payload.createdBy,
         created_at: new Date(),
         updated_at: new Date(),
-      });
+      }).returning('*');
+      const userId = userRow.id;
 
       // Log audit
       await this.logAudit({

@@ -1,10 +1,4 @@
-/**
- * Main App Component
- * Application entry point with providers
- * Phase 11: Frontend Dashboard Implementation
- */
-
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -12,7 +6,7 @@ import useAuthStore from '@store/authStore';
 import AppRouter from '@router/routes';
 import '@styles/index.css';
 
-// Create React Query client
+// Singleton queryClient — but we call .clear() on logout to purge cross-tenant cache
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -24,13 +18,29 @@ const queryClient = new QueryClient({
   },
 });
 
+// Expose so authStore logout can clear it without a circular import
+export function clearQueryCache() {
+  queryClient.clear();
+}
+
 export const App: React.FC = () => {
-  const { initialize, isInitialized } = useAuthStore();
+  const { initialize, isInitialized, isAuthenticated } = useAuthStore();
+  const prevAuthRef = useRef(isAuthenticated);
 
   // Initialize auth on app load
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Clear React Query cache the moment a user logs out so the
+  // next login never sees stale data from the previous tenant.
+  useEffect(() => {
+    const wasAuth = prevAuthRef.current;
+    prevAuthRef.current = isAuthenticated;
+    if (wasAuth && !isAuthenticated) {
+      queryClient.clear();
+    }
+  }, [isAuthenticated]);
 
   if (!isInitialized) {
     return (

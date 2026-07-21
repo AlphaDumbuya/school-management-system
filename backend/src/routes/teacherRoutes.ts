@@ -9,6 +9,8 @@ import knex from 'knex';
 import knexConfig from '../../knexfile';
 
 const router = Router();
+router.use(authenticate);
+router.use(attachUserContext);
 const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
 const db = knex(knexConfig[env] || knexConfig.development);
 
@@ -22,9 +24,15 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, U
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
     const offset = (page - 1) * limit;
     const { status, specialization, search } = req.query;
+    const tenantId = (req as any).user.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     let query = db('teachers')
       .join('users', 'teachers.user_id', 'users.id')
+      .where('users.tenant_id', tenantId)
       .select(
         'teachers.id',
         'teachers.teacher_id',
@@ -100,9 +108,15 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, U
 router.get('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const teacherId = req.params.id;
+    const tenantId = (req as any).user.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     const teacher = await db('teachers')
       .join('users', 'teachers.user_id', 'users.id')
+      .where('users.tenant_id', tenantId)
       .select(
         'teachers.id',
         'teachers.user_id',
@@ -138,6 +152,7 @@ router.get('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
     const assignments = await db('teacher_assignments')
       .join('classes', 'teacher_assignments.class_id', 'classes.id')
       .join('subjects', 'teacher_assignments.subject_id', 'subjects.id')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
       .select(
         'teacher_assignments.id as id',
         'teacher_assignments.class_id',
@@ -147,6 +162,7 @@ router.get('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
         'subjects.code as subject_code'
       )
       .where('teacher_assignments.teacher_id', teacherId)
+      .where('academic_sessions.tenant_id', tenantId)
       .where(function() {
         this.where('teacher_assignments.end_date', '>=', new Date()).orWhereNull('teacher_assignments.end_date');
       });
@@ -225,11 +241,11 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       updated_at: new Date(),
     }).returning('*');
 
-    // Generate unique teacher ID (TCH-YYYY-XXX format)
+    // Generate unique teacher ID (TCH-YYYY-XXX format) within this tenant
     const year = new Date().getFullYear();
     const maxResult = await trx.raw(
-      "SELECT COALESCE(MAX(CAST(SPLIT_PART(teacher_id, '-', 3) AS INTEGER)), 0) as max_num FROM teachers WHERE teacher_id LIKE ?",
-      [`TCH-${year}-%`]
+      "SELECT COALESCE(MAX(CAST(SPLIT_PART(teachers.teacher_id, '-', 3) AS INTEGER)), 0) as max_num FROM teachers JOIN users ON teachers.user_id = users.id WHERE teachers.teacher_id LIKE ? AND users.tenant_id = ?",
+      [`TCH-${year}-%`, tenantId]
     );
     const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
     const teacherIdStr = `TCH-${year}-${String(nextNum).padStart(3, '0')}`;
@@ -310,6 +326,11 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
 router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   const trx = await db.transaction();
   try {
+    const tenantId = (req as any).user.tenant_id;
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
     const teacherId = req.params.id;
     const {
       first_name,
@@ -330,7 +351,12 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
       assigned_subjects = [],
     } = req.body;
 
-    const teacher = await trx('teachers').where('id', teacherId).first();
+    const teacher = await trx('teachers')
+      .join('users', 'teachers.user_id', 'users.id')
+      .where('teachers.id', teacherId)
+      .where('users.tenant_id', tenantId)
+      .select('teachers.*')
+      .first();
     if (!teacher) {
       throw new AppError('Teacher not found', 404, 'NOT_FOUND');
     }
@@ -451,8 +477,17 @@ router.delete('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCI
   const trx = await db.transaction();
   try {
     const teacherId = req.params.id;
+    const tenantId = (req as any).user.tenant_id;
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
-    const teacher = await trx('teachers').where('id', teacherId).first();
+    const teacher = await trx('teachers')
+      .join('users', 'teachers.user_id', 'users.id')
+      .where('teachers.id', teacherId)
+      .where('users.tenant_id', tenantId)
+      .select('teachers.*')
+      .first();
     if (!teacher) {
       throw new AppError('Teacher not found', 404, 'NOT_FOUND');
     }

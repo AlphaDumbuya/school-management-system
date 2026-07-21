@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '@middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
@@ -7,6 +7,8 @@ import knex from 'knex';
 import knexConfig from '../../knexfile';
 
 const router = Router();
+router.use(authenticate);
+router.use(attachUserContext);
 const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
 const db = knex(knexConfig[env] || knexConfig.development);
 
@@ -18,9 +20,24 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
   try {
     const { title, description, class_id, subject_id, teacher_id, type, assigned_date, due_date, max_marks, instructions, resources, status } = req.body;
     const createdBy = req.auth?.userId ?? null;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     if (!title || !class_id || !subject_id || !teacher_id || !assigned_date || !due_date) {
       throw new AppError('Missing required fields: title, class_id, subject_id, teacher_id, assigned_date, due_date', 400, 'VALIDATION_ERROR');
+    }
+
+    // Verify class belongs to this tenant
+    const classCheck = await db('classes')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .where('classes.id', class_id)
+      .where('academic_sessions.tenant_id', tenantId)
+      .first();
+    if (!classCheck) {
+      throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
     }
 
     const [inserted] = await db('assignments').insert({
@@ -62,8 +79,19 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
     const offset = (page - 1) * limit;
     const { class_id, subject_id, teacher_id, status, type, search } = req.query;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     let query = db('assignments')
+      .join('classes', 'assignments.class_id', 'classes.id')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('subjects', 'assignments.subject_id', 'subjects.id')
+      .leftJoin('teachers', 'assignments.teacher_id', 'teachers.id')
+      .leftJoin('users', 'teachers.user_id', 'users.id')
+      .where('academic_sessions.tenant_id', tenantId)
       .select(
         'assignments.*',
         'classes.name as class_name',
@@ -71,11 +99,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         'subjects.name as subject_name',
         'subjects.code as subject_code',
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, 'Unknown') as teacher_name")
-      )
-      .leftJoin('classes', 'assignments.class_id', 'classes.id')
-      .leftJoin('subjects', 'assignments.subject_id', 'subjects.id')
-      .leftJoin('teachers', 'assignments.teacher_id', 'teachers.id')
-      .leftJoin('users', 'teachers.user_id', 'users.id');
+      );
 
     if (class_id) query = query.where('assignments.class_id', class_id as string);
     if (subject_id) query = query.where('assignments.subject_id', subject_id as string);
@@ -92,7 +116,10 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 
     // Count query — simpler version without submission subquery
     let countQuery = db('assignments')
+      .join('classes', 'assignments.class_id', 'classes.id')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
       .leftJoin('subjects', 'assignments.subject_id', 'subjects.id')
+      .where('academic_sessions.tenant_id', tenantId)
       .count('assignments.id as count');
 
     if (class_id) countQuery = countQuery.where('assignments.class_id', class_id as string);
@@ -127,7 +154,20 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 router.get('/:assignmentId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { assignmentId } = req.params;
-    const assignment = await db('assignments').where('id', assignmentId).first();
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const assignment = await db('assignments')
+      .join('classes', 'assignments.class_id', 'classes.id')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .where('assignments.id', assignmentId)
+      .where('academic_sessions.tenant_id', tenantId)
+      .select('assignments.*')
+      .first();
+
     if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
     res.json(assignment);
   } catch (error) {
@@ -143,8 +183,19 @@ router.put('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, UserRol
     const { assignmentId } = req.params;
     const { title, description, type, due_date, max_marks, instructions, resources, status } = req.body;
     const updatedBy = req.auth?.userId ?? null;
+    const tenantId = req.user?.tenant_id;
 
-    const assignment = await db('assignments').where('id', assignmentId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const assignment = await db('assignments')
+      .join('classes', 'assignments.class_id', 'classes.id')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .where('assignments.id', assignmentId)
+      .where('academic_sessions.tenant_id', tenantId)
+      .select('assignments.*')
+      .first();
     if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
 
     const updateData: any = {};
@@ -175,7 +226,19 @@ router.put('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, UserRol
 router.delete('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { assignmentId } = req.params;
-    const assignment = await db('assignments').where('id', assignmentId).first();
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const assignment = await db('assignments')
+      .join('classes', 'assignments.class_id', 'classes.id')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .where('assignments.id', assignmentId)
+      .where('academic_sessions.tenant_id', tenantId)
+      .select('assignments.*')
+      .first();
     if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
 
     // Check for submissions

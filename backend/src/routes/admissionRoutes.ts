@@ -4,11 +4,12 @@
  */
 
 import express, { Request, Response } from 'express';
-import { authenticate, authorize } from '../middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext } from '../middleware/authMiddleware';
 import * as admissionApplicationService from '../services/admissionApplicationService';
 import * as applicationDocumentService from '../services/applicationDocumentService';
 import * as applicationInterviewService from '../services/applicationInterviewService';
 import * as admissionStatisticsService from '../services/admissionStatisticsService';
+import { db } from '../utils/database';
 import {
   CreateApplicationDTO,
   UpdateApplicationDTO,
@@ -24,6 +25,7 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(attachUserContext);
 
 /**
  * @route   POST /api/v1/admissions/applications
@@ -35,7 +37,26 @@ router.post(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const data: CreateApplicationDTO = req.body;
+
+      if (data.grade_id) {
+        const gradeCheck = await db('classes')
+          .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+          .where('classes.id', data.grade_id)
+          .where('academic_sessions.tenant_id', tenantId)
+          .first();
+        if (!gradeCheck) {
+          res.status(400).json({ success: false, message: 'Grade/Class not found or access denied' });
+          return;
+        }
+      }
+
       const application = await admissionApplicationService.createApplication(
         data,
         req.user?.id
@@ -67,6 +88,12 @@ router.get(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const query: ApplicationListQuery = {
         status: req.query.status as any,
         grade_id: req.query.grade_id as string,
@@ -78,7 +105,7 @@ router.get(
         limit: req.query.limit ? parseInt(req.query.limit as string) : undefined
       };
       
-      const result = await admissionApplicationService.listApplications(query);
+      const result = await admissionApplicationService.listApplications(query, tenantId);
       
       res.json({
         success: true,
@@ -111,8 +138,14 @@ router.get(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const { id } = req.params;
-      const application = await admissionApplicationService.getApplicationById(id);
+      const application = await admissionApplicationService.getApplicationById(id, tenantId);
       
       if (!application) {
         res.status(404).json({
@@ -157,13 +190,20 @@ router.patch(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const { id } = req.params;
       const data: UpdateApplicationDTO = req.body;
       
       const application = await admissionApplicationService.updateApplication(
         id,
         data,
-        req.user?.id
+        req.user?.id,
+        tenantId
       );
       
       if (!application) {
@@ -200,13 +240,20 @@ router.patch(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const { id } = req.params;
       const data: UpdateApplicationStatusDTO = req.body;
       
       const application = await admissionApplicationService.updateApplicationStatus(
         id,
         data,
-        req.user?.id
+        req.user?.id,
+        tenantId
       );
       
       if (!application) {
@@ -243,8 +290,14 @@ router.delete(
   authorize(['principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const { id } = req.params;
-      const deleted = await admissionApplicationService.deleteApplication(id);
+      const deleted = await admissionApplicationService.deleteApplication(id, tenantId);
       
       if (!deleted) {
         res.status(404).json({
@@ -279,7 +332,20 @@ router.post(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const { id } = req.params;
+
+      const app = await admissionApplicationService.getApplicationById(id, tenantId);
+      if (!app) {
+        res.status(404).json({ success: false, message: 'Application not found or access denied' });
+        return;
+      }
+
       const { document_type, file_name, file_data, mime_type, file_size } = req.body;
       
       // In a real implementation, this would handle multipart/form-data
@@ -324,7 +390,20 @@ router.get(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const { id } = req.params;
+
+      const app = await admissionApplicationService.getApplicationById(id, tenantId);
+      if (!app) {
+        res.status(404).json({ success: false, message: 'Application not found or access denied' });
+        return;
+      }
+
       const documents = await applicationDocumentService.getApplicationDocuments(id);
       
       res.json({
@@ -352,7 +431,25 @@ router.patch(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const { id } = req.params;
+
+      const doc = await db('application_documents')
+        .join('admission_applications', 'application_documents.application_id', 'admission_applications.id')
+        .join('users as creator', 'admission_applications.created_by', 'creator.id')
+        .where('creator.tenant_id', tenantId)
+        .where('application_documents.id', id)
+        .first();
+      if (!doc) {
+        res.status(404).json({ success: false, message: 'Document not found or access denied' });
+        return;
+      }
+
       const { status, notes } = req.body;
       
       const document = await applicationDocumentService.verifyDocument(
@@ -396,7 +493,25 @@ router.delete(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const { id } = req.params;
+
+      const doc = await db('application_documents')
+        .join('admission_applications', 'application_documents.application_id', 'admission_applications.id')
+        .join('users as creator', 'admission_applications.created_by', 'creator.id')
+        .where('creator.tenant_id', tenantId)
+        .where('application_documents.id', id)
+        .first();
+      if (!doc) {
+        res.status(404).json({ success: false, message: 'Document not found or access denied' });
+        return;
+      }
+
       const deleted = await applicationDocumentService.deleteDocument(id);
       
       if (!deleted) {
@@ -432,7 +547,20 @@ router.post(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const { id } = req.params;
+
+      const app = await admissionApplicationService.getApplicationById(id, tenantId);
+      if (!app) {
+        res.status(404).json({ success: false, message: 'Application not found or access denied' });
+        return;
+      }
+
       const data: ScheduleInterviewDTO = req.body;
       
       const interview = await applicationInterviewService.scheduleInterview(
@@ -467,7 +595,25 @@ router.patch(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const { id } = req.params;
+
+      const interviewCheck = await db('application_interviews')
+        .join('admission_applications', 'application_interviews.application_id', 'admission_applications.id')
+        .join('users as creator', 'admission_applications.created_by', 'creator.id')
+        .where('creator.tenant_id', tenantId)
+        .where('application_interviews.id', id)
+        .first();
+      if (!interviewCheck) {
+        res.status(404).json({ success: false, message: 'Interview not found or access denied' });
+        return;
+      }
+
       const data: UpdateInterviewDTO = req.body;
       
       const interview = await applicationInterviewService.updateInterview(id, data);
@@ -506,8 +652,14 @@ router.get(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const days = req.query.days ? parseInt(req.query.days as string) : 7;
-      const interviews = await applicationInterviewService.getUpcomingInterviews(days);
+      const interviews = await applicationInterviewService.getUpcomingInterviews(days, tenantId);
       
       res.json({
         success: true,
@@ -534,8 +686,14 @@ router.get(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
       const academicYear = req.query.academic_year as string | undefined;
-      const statistics = await admissionStatisticsService.getAdmissionStatistics(academicYear);
+      const statistics = await admissionStatisticsService.getAdmissionStatistics(academicYear, tenantId);
       
       res.json({
         success: true,
@@ -562,7 +720,13 @@ router.get(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const metrics = await admissionStatisticsService.getPipelineMetrics();
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
+      const metrics = await admissionStatisticsService.getPipelineMetrics(tenantId);
       
       res.json({
         success: true,
@@ -589,7 +753,13 @@ router.get(
   authorize(['admissions_officer', 'principal']),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const actionable = await admissionStatisticsService.getActionableApplications();
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Tenant context is required' });
+        return;
+      }
+
+      const actionable = await admissionStatisticsService.getActionableApplications(tenantId);
       
       res.json({
         success: true,

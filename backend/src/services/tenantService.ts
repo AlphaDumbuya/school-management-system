@@ -51,10 +51,12 @@ export class TenantService {
     offset?: number;
   }) {
     try {
-      let query = db('tenants').select('*');
+      let query = db('tenants');
 
       if (filters?.status) {
         query = query.where('status', filters.status);
+      } else {
+        query = query.whereNot('status', 'expired');
       }
 
       if (filters?.search) {
@@ -66,25 +68,28 @@ export class TenantService {
         });
       }
 
-      // Count total before pagination
+      // Count total before pagination and select columns
       const countQuery = query.clone();
       const [{ count }] = await countQuery.count('* as count');
 
+      // Add select * to main query
+      let mainQuery = query.select('*');
+
       // Apply pagination
       if (filters?.limit) {
-        query = query.limit(filters.limit);
+        mainQuery = mainQuery.limit(filters.limit);
       }
       if (filters?.offset) {
-        query = query.offset(filters.offset);
+        mainQuery = mainQuery.offset(filters.offset);
       }
 
-      query = query.orderBy('created_at', 'desc');
+      mainQuery = mainQuery.orderBy('created_at', 'desc');
 
-      const tenants = await query;
+      const tenants = await mainQuery;
 
       return {
         data: tenants,
-        total: parseInt(count as string, 10),
+        total: parseInt(count as string, 10) || 0,
         limit: filters?.limit || tenants.length,
         offset: filters?.offset || 0,
       };
@@ -139,6 +144,8 @@ export class TenantService {
    */
   static async createTenant(data: TenantCreateData, createdBy: string) {
     try {
+      const domainVal = data.domain && data.domain.trim() !== '' ? data.domain.trim() : null;
+
       // Check if slug already exists
       const existingSlug = await db('tenants').where({ slug: data.slug }).first();
       if (existingSlug) {
@@ -146,8 +153,8 @@ export class TenantService {
       }
 
       // Check if domain already exists (if provided)
-      if (data.domain) {
-        const existingDomain = await db('tenants').where({ domain: data.domain }).first();
+      if (domainVal) {
+        const existingDomain = await db('tenants').where({ domain: domainVal }).first();
         if (existingDomain) {
           throw new AppError('Domain already exists', 400, 'DOMAIN_EXISTS');
         }
@@ -158,7 +165,7 @@ export class TenantService {
           name: data.name,
           slug: data.slug,
           description: data.description,
-          domain: data.domain,
+          domain: domainVal,
           contact_email: data.contactEmail,
           contact_phone: data.contactPhone,
           address: data.address,
@@ -194,10 +201,12 @@ export class TenantService {
         throw new AppError('Tenant not found', 404, 'TENANT_NOT_FOUND');
       }
 
+      const domainVal = data.domain && data.domain.trim() !== '' ? data.domain.trim() : null;
+
       // Check domain uniqueness if being updated
-      if (data.domain && data.domain !== tenant.domain) {
+      if (domainVal && domainVal !== tenant.domain) {
         const existingDomain = await db('tenants')
-          .where({ domain: data.domain })
+          .where({ domain: domainVal })
           .whereNot({ id: tenantId })
           .first();
         if (existingDomain) {
@@ -210,7 +219,7 @@ export class TenantService {
         .update({
           name: data.name,
           description: data.description,
-          domain: data.domain,
+          domain: domainVal,
           contact_email: data.contactEmail,
           contact_phone: data.contactPhone,
           address: data.address,
@@ -300,28 +309,29 @@ export class TenantService {
         throw new AppError('Tenant not found', 404, 'TENANT_NOT_FOUND');
       }
 
-      // Check if tenant has active subscriptions
-      const activeSubscription = await db('subscriptions')
-        .where({ tenant_id: tenantId, status: 'active' })
-        .first();
+      // Automatically cancel active subscriptions for this tenant instead of blocking
+      await db('subscriptions')
+        .where({ tenant_id: tenantId })
+        .update({
+          status: 'cancelled',
+          updated_at: db.fn.now(),
+        });
 
-      if (activeSubscription) {
-        throw new AppError(
-          'Cannot delete tenant with active subscription. Cancel subscription first.',
-          400,
-          'ACTIVE_SUBSCRIPTION_EXISTS'
-        );
-      }
+      const deletedSlug = `${tenant.slug}-deleted-${Date.now()}`;
+      const deletedName = `${tenant.name} (Archived-${Date.now()})`;
 
-      // Soft delete by setting status
+      // Soft delete by setting status to expired, renaming name and slug, and detaching subscription reference
       await db('tenants')
         .where({ id: tenantId })
         .update({
           status: 'expired',
+          name: deletedName,
+          slug: deletedSlug,
+          subscription_id: null,
           updated_at: db.fn.now(),
         });
 
-      logger.info(`Tenant deleted: ${tenantId} by user: ${deletedBy}`);
+      logger.info(`Tenant soft-deleted: ${tenantId} by user: ${deletedBy}`);
 
       return { success: true, message: 'Tenant deleted successfully' };
     } catch (error) {
@@ -336,11 +346,20 @@ export class TenantService {
    */
   static async getPlatformStatistics() {
     try {
-      const [totalTenants, activeTenants, totalUsers, totalStudents] = await Promise.all([
-        db('tenants').count('* as count').first(),
+      const [totalTenants, activeTenants, suspendedTenants, trialTenants, totalUsers, totalStudents] = await Promise.all([
+        db('tenants').whereNot({ status: 'expired' }).count('* as count').first(),
         db('tenants').where({ status: 'active' }).count('* as count').first(),
-        db('users').count('* as count').first(),
-        db('students').count('* as count').first(),
+        db('tenants').where({ status: 'suspended' }).count('* as count').first(),
+        db('tenants').where({ status: 'trial' }).count('* as count').first(),
+        db('users')
+          .whereIn('tenant_id', db('tenants').select('id').whereNot({ status: 'expired' }))
+          .count('* as count')
+          .first(),
+        db('students')
+          .join('users', 'students.user_id', 'users.id')
+          .whereIn('users.tenant_id', db('tenants').select('id').whereNot({ status: 'expired' }))
+          .count('students.id as count')
+          .first(),
       ]);
 
       // Get monthly statistics
@@ -353,11 +372,13 @@ export class TenantService {
         .first();
 
       return {
-        totalTenants: parseInt(totalTenants?.count as string, 10),
-        activeTenants: parseInt(activeTenants?.count as string, 10),
-        totalUsers: parseInt(totalUsers?.count as string, 10),
-        totalStudents: parseInt(totalStudents?.count as string, 10),
-        newTenantsThisMonth: parseInt(newTenantsThisMonth?.count as string, 10),
+        totalTenants: parseInt(totalTenants?.count as string, 10) || 0,
+        activeTenants: parseInt(activeTenants?.count as string, 10) || 0,
+        suspendedTenants: parseInt(suspendedTenants?.count as string, 10) || 0,
+        trialTenants: parseInt(trialTenants?.count as string, 10) || 0,
+        totalUsers: parseInt(totalUsers?.count as string, 10) || 0,
+        totalStudents: parseInt(totalStudents?.count as string, 10) || 0,
+        newTenantsThisMonth: parseInt(newTenantsThisMonth?.count as string, 10) || 0,
       };
     } catch (error) {
       logger.error('Error fetching platform statistics:', error);

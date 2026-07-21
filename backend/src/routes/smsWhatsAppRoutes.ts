@@ -7,6 +7,7 @@ import smsWhatsAppService from '@services/smsWhatsAppService';
 import smsWhatsAppTemplateService from '@services/smsWhatsAppTemplateService';
 import smsWhatsAppSchedulingService from '@services/smsWhatsAppSchedulingService';
 import phoneNumberService from '@services/phoneNumberService';
+import { db } from '@utils/database';
 
 const router: Router = express.Router();
 
@@ -73,8 +74,10 @@ router.get('/providers', authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL), as
  */
 router.get('/providers/:providerId', authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL), async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
+    const tenantId = user.tenant_id;
     const provider = await smsWhatsAppProviderService.getProviderById(req.params.providerId);
-    if (!provider) {
+    if (!provider || provider.tenant_id !== tenantId) {
       return res.status(404).json({
         success: false,
         error: 'Provider not found',
@@ -101,6 +104,13 @@ router.get('/providers/:providerId', authorize(UserRole.SUPER_ADMIN, UserRole.PR
 router.patch('/providers/:providerId', authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL), async (req: Request, res: Response) => {
   try {
     const user = req.user!;
+    const tenantId = user.tenant_id;
+    
+    const check = await db('sms_whatsapp_providers').where({ provider_id: req.params.providerId, tenant_id: tenantId }).first();
+    if (!check) {
+      return res.status(404).json({ success: false, error: 'Provider not found' });
+    }
+
     const provider = await smsWhatsAppProviderService.updateProvider(
       req.params.providerId,
       req.body,
@@ -126,6 +136,14 @@ router.patch('/providers/:providerId', authorize(UserRole.SUPER_ADMIN, UserRole.
  */
 router.patch('/providers/:providerId/toggle', authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL), async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
+    const tenantId = user.tenant_id;
+
+    const check = await db('sms_whatsapp_providers').where({ provider_id: req.params.providerId, tenant_id: tenantId }).first();
+    if (!check) {
+      return res.status(404).json({ success: false, error: 'Provider not found' });
+    }
+
     const provider = await smsWhatsAppProviderService.toggleProviderStatus(
       req.params.providerId,
       req.body.enabled
@@ -151,6 +169,13 @@ router.patch('/providers/:providerId/toggle', authorize(UserRole.SUPER_ADMIN, Us
 router.put('/providers/:providerId/set-primary', authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL), async (req: Request, res: Response) => {
   try {
     const user = req.user!;
+    const tenantId = user.tenant_id;
+
+    const check = await db('sms_whatsapp_providers').where({ provider_id: req.params.providerId, tenant_id: tenantId }).first();
+    if (!check) {
+      return res.status(404).json({ success: false, error: 'Provider not found' });
+    }
+
     const provider = await smsWhatsAppProviderService.setPrimaryProvider(
       user.tenant_id,
       req.params.providerId
@@ -175,6 +200,14 @@ router.put('/providers/:providerId/set-primary', authorize(UserRole.SUPER_ADMIN,
  */
 router.post('/providers/:providerId/test', authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL), async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
+    const tenantId = user.tenant_id;
+
+    const check = await db('sms_whatsapp_providers').where({ provider_id: req.params.providerId, tenant_id: tenantId }).first();
+    if (!check) {
+      return res.status(404).json({ success: false, error: 'Provider not found' });
+    }
+
     const status = await smsWhatsAppProviderService.testProviderConnection(req.params.providerId);
 
     res.json({
@@ -196,6 +229,14 @@ router.post('/providers/:providerId/test', authorize(UserRole.SUPER_ADMIN, UserR
  */
 router.delete('/providers/:providerId', authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL), async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
+    const tenantId = user.tenant_id;
+
+    const check = await db('sms_whatsapp_providers').where({ provider_id: req.params.providerId, tenant_id: tenantId }).first();
+    if (!check) {
+      return res.status(404).json({ success: false, error: 'Provider not found' });
+    }
+
     await smsWhatsAppProviderService.deleteProvider(req.params.providerId);
 
     res.json({
@@ -283,8 +324,9 @@ router.get('/templates', async (req: Request, res: Response) => {
  */
 router.get('/templates/:templateId', async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
     const template = await smsWhatsAppTemplateService.getTemplateById(req.params.templateId);
-    if (!template) {
+    if (!template || template.tenant_id !== user.tenant_id) {
       return res.status(404).json({
         success: false,
         error: 'Template not found',
@@ -310,6 +352,12 @@ router.get('/templates/:templateId', async (req: Request, res: Response) => {
  */
 router.patch('/templates/:templateId', authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL), async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
+    const check = await db('sms_whatsapp_templates').where({ template_id: req.params.templateId, tenant_id: user.tenant_id }).first();
+    if (!check) {
+      return res.status(404).json({ success: false, error: 'Template not found' });
+    }
+
     const template = await smsWhatsAppTemplateService.updateTemplate(
       req.params.templateId,
       req.body
@@ -334,6 +382,12 @@ router.patch('/templates/:templateId', authorize(UserRole.SUPER_ADMIN, UserRole.
  */
 router.get('/templates/:templateId/stats', async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
+    const check = await db('sms_whatsapp_templates').where({ template_id: req.params.templateId, tenant_id: user.tenant_id }).first();
+    if (!check) {
+      return res.status(404).json({ success: false, error: 'Template not found' });
+    }
+
     const stats = await smsWhatsAppTemplateService.getTemplateStats(req.params.templateId);
 
     res.json({
@@ -440,6 +494,12 @@ router.get('/messages', async (req: Request, res: Response) => {
  */
 router.get('/messages/:messageId', async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
+    const check = await db('sms_whatsapp_messages').where({ message_id: req.params.messageId, tenant_id: user.tenant_id }).first();
+    if (!check) {
+      return res.status(404).json({ success: false, error: 'Message not found' });
+    }
+
     const status = await smsWhatsAppService.getMessageStatus(req.params.messageId);
 
     res.json({
@@ -461,6 +521,12 @@ router.get('/messages/:messageId', async (req: Request, res: Response) => {
  */
 router.post('/messages/:messageId/retry', async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
+    const check = await db('sms_whatsapp_messages').where({ message_id: req.params.messageId, tenant_id: user.tenant_id }).first();
+    if (!check) {
+      return res.status(404).json({ success: false, error: 'Message not found' });
+    }
+
     const response = await smsWhatsAppService.retryMessage(req.params.messageId);
 
     res.json({
@@ -536,6 +602,12 @@ router.get('/phone-numbers', async (req: Request, res: Response) => {
  */
 router.post('/phone-numbers/:phoneId/verify', async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
+    const check = await db('phone_numbers').where({ phone_id: req.params.phoneId, tenant_id: user.tenant_id }).first();
+    if (!check) {
+      return res.status(404).json({ success: false, error: 'Phone number not found' });
+    }
+
     const phoneNumber = await phoneNumberService.verifyPhoneNumber({
       phone_id: req.params.phoneId,
       verification_code: req.body.verification_code,
@@ -560,6 +632,12 @@ router.post('/phone-numbers/:phoneId/verify', async (req: Request, res: Response
  */
 router.post('/phone-numbers/:phoneId/resend-code', async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
+    const check = await db('phone_numbers').where({ phone_id: req.params.phoneId, tenant_id: user.tenant_id }).first();
+    if (!check) {
+      return res.status(404).json({ success: false, error: 'Phone number not found' });
+    }
+
     await phoneNumberService.resendVerificationCode(req.params.phoneId);
 
     res.json({
@@ -581,6 +659,12 @@ router.post('/phone-numbers/:phoneId/resend-code', async (req: Request, res: Res
  */
 router.delete('/phone-numbers/:phoneId', async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
+    const check = await db('phone_numbers').where({ phone_id: req.params.phoneId, tenant_id: user.tenant_id }).first();
+    if (!check) {
+      return res.status(404).json({ success: false, error: 'Phone number not found' });
+    }
+
     await phoneNumberService.deletePhoneNumber(req.params.phoneId);
 
     res.json({

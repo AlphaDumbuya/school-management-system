@@ -24,6 +24,9 @@ export async function seed(knex: Knex): Promise<void> {
   await knex('academic_sessions').del();
   await knex('refresh_tokens').del();
   await knex('password_resets').del();
+  await knex('tenants').update({ subscription_id: null });
+  await knex('billing_history').del();
+  await knex('subscriptions').del();
   await knex('users').del();
 
   // Hash password for demo users

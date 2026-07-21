@@ -1,11 +1,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, requirePermission } from '@middleware/authMiddleware';
+import { authenticate, requirePermission, attachUserContext } from '@middleware/authMiddleware';
 import { db } from '@utils/database';
 import { AttendanceService } from '@services/attendanceService';
 import { AuditService } from '@services/auditService';
 import { logger } from '@utils/logger';
+import { AppError } from '@middleware/errorHandler';
 
 const router = Router();
+router.use(authenticate);
+router.use(attachUserContext);
 const attendanceService = new AttendanceService(db);
 const auditService = new AuditService(db);
 
@@ -21,6 +24,33 @@ router.post(
     try {
       const { student_id, class_id, academic_session_id, attendance_date, status, remarks } = req.body;
       const userId = (req as any).user.userId;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
+
+      // Verify student belongs to this tenant
+      const student = await db('students').where({ id: student_id, tenant_id: tenantId }).first();
+      if (!student) {
+        throw new AppError('Student not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify class belongs to this tenant
+      const classCheck = await db('classes')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('classes.id', class_id)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!classCheck) {
+        throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify session belongs to this tenant
+      const sessionCheck = await db('academic_sessions').where({ id: academic_session_id, tenant_id: tenantId }).first();
+      if (!sessionCheck) {
+        throw new AppError('Academic session not found or access denied', 404, 'NOT_FOUND');
+      }
 
       const record = await attendanceService.recordAttendance(
         {
@@ -67,6 +97,37 @@ router.get(
     try {
       const { studentId } = req.params;
       const { class_id, academic_session_id, page, limit } = req.query;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
+
+      // Verify student belongs to this tenant
+      const student = await db('students').where({ id: studentId, tenant_id: tenantId }).first();
+      if (!student) {
+        throw new AppError('Student not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify class belongs to this tenant if provided
+      if (class_id) {
+        const classCheck = await db('classes')
+          .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+          .where('classes.id', class_id as string)
+          .where('academic_sessions.tenant_id', tenantId)
+          .first();
+        if (!classCheck) {
+          throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+        }
+      }
+
+      // Verify session belongs to this tenant if provided
+      if (academic_session_id) {
+        const sessionCheck = await db('academic_sessions').where({ id: academic_session_id as string, tenant_id: tenantId }).first();
+        if (!sessionCheck) {
+          throw new AppError('Academic session not found or access denied', 404, 'NOT_FOUND');
+        }
+      }
 
       const result = await attendanceService.getStudentAttendance(studentId, {
         class_id: class_id as string,
@@ -98,12 +159,33 @@ router.get(
     try {
       const { classId, date } = req.params;
       const { academicSessionId } = req.query;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
 
       if (!academicSessionId) {
         return res.status(400).json({
           success: false,
           error: 'academicSessionId is required',
         });
+      }
+
+      // Verify class belongs to this tenant
+      const classCheck = await db('classes')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('classes.id', classId)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!classCheck) {
+        throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify session belongs to this tenant
+      const sessionCheck = await db('academic_sessions').where({ id: academicSessionId as string, tenant_id: tenantId }).first();
+      if (!sessionCheck) {
+        throw new AppError('Academic session not found or access denied', 404, 'NOT_FOUND');
       }
 
       const records = await attendanceService.getClassAttendanceForDate(
@@ -133,12 +215,39 @@ router.get(
     try {
       const { studentId } = req.params;
       const { classId, academicSessionId } = req.query;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
 
       if (!classId || !academicSessionId) {
         return res.status(400).json({
           success: false,
           error: 'classId and academicSessionId are required',
         });
+      }
+
+      // Verify student belongs to this tenant
+      const student = await db('students').where({ id: studentId, tenant_id: tenantId }).first();
+      if (!student) {
+        throw new AppError('Student not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify class belongs to this tenant
+      const classCheck = await db('classes')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('classes.id', classId as string)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!classCheck) {
+        throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify session belongs to this tenant
+      const sessionCheck = await db('academic_sessions').where({ id: academicSessionId as string, tenant_id: tenantId }).first();
+      if (!sessionCheck) {
+        throw new AppError('Academic session not found or access denied', 404, 'NOT_FOUND');
       }
 
       const percentage = await attendanceService.calculateAttendancePercentage(
@@ -169,12 +278,33 @@ router.get(
     try {
       const { classId } = req.params;
       const { academicSessionId } = req.query;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
 
       if (!academicSessionId) {
         return res.status(400).json({
           success: false,
           error: 'academicSessionId is required',
         });
+      }
+
+      // Verify class belongs to this tenant
+      const classCheck = await db('classes')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('classes.id', classId)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!classCheck) {
+        throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify session belongs to this tenant
+      const sessionCheck = await db('academic_sessions').where({ id: academicSessionId as string, tenant_id: tenantId }).first();
+      if (!sessionCheck) {
+        throw new AppError('Academic session not found or access denied', 404, 'NOT_FOUND');
       }
 
       const summary = await attendanceService.getClassAttendanceSummary(
@@ -205,6 +335,21 @@ router.put(
       const { recordId } = req.params;
       const { status, remarks } = req.body;
       const userId = (req as any).user.userId;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
+
+      // Verify record belongs to this tenant (via student)
+      const recordCheck = await db('attendance')
+        .join('students', 'attendance.student_id', 'students.id')
+        .where('attendance.id', recordId)
+        .where('students.tenant_id', tenantId)
+        .first();
+      if (!recordCheck) {
+        throw new AppError('Attendance record not found or access denied', 404, 'NOT_FOUND');
+      }
 
       const oldRecord = await attendanceService.getAttendanceById(recordId);
       const updatedRecord = await attendanceService.updateAttendance(
@@ -248,12 +393,33 @@ router.get(
     try {
       const { classId } = req.params;
       const { academicSessionId, startDate, endDate } = req.query;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
 
       if (!academicSessionId) {
         return res.status(400).json({
           success: false,
           error: 'academicSessionId is required',
         });
+      }
+
+      // Verify class belongs to this tenant
+      const classCheck = await db('classes')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('classes.id', classId)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!classCheck) {
+        throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify session belongs to this tenant
+      const sessionCheck = await db('academic_sessions').where({ id: academicSessionId as string, tenant_id: tenantId }).first();
+      if (!sessionCheck) {
+        throw new AppError('Academic session not found or access denied', 404, 'NOT_FOUND');
       }
 
       const report = await attendanceService.generateAttendanceReport(

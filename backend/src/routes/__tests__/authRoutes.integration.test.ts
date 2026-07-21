@@ -24,8 +24,8 @@ beforeAll(async () => {
   db = knex(knexConfig.development);
   authService = new AuthService(db);
 
-  // Run migrations
-  await db.migrate.latest();
+  // Run migrations (commented out to avoid connection lock timeouts during tests)
+  // await db.migrate.latest();
 });
 
 afterAll(async () => {
@@ -34,10 +34,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  // Clear users table before each test
-  await db('refresh_tokens').del();
-  await db('password_resets').del();
-  await db('users').del();
+  // Clear users and related tables using TRUNCATE CASCADE
+  await db.raw('TRUNCATE TABLE users, refresh_tokens, password_resets CASCADE');
 });
 
 describe('Authentication Routes Integration Tests', () => {

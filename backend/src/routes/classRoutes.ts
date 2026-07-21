@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '@middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
@@ -7,6 +7,8 @@ import knex from 'knex';
 import knexConfig from '../../knexfile';
 
 const router = Router();
+router.use(authenticate);
+router.use(attachUserContext);
 const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
 const db = knex(knexConfig[env] || knexConfig.development);
 
@@ -18,6 +20,11 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
   try {
     const { name, level, section, capacity, academic_session_id, class_teacher_id, room_number, floor, building } = req.body;
     const createdBy = req.auth?.userId ?? null;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     if (!name || !level || !capacity) {
       throw new AppError('Missing required fields: name, level, capacity', 400, 'VALIDATION_ERROR');
@@ -27,12 +34,30 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       throw new AppError('Capacity must be between 5 and 100', 400, 'VALIDATION_ERROR');
     }
 
+    // Auto-resolve active academic session if none is provided
+    let sessionId = academic_session_id;
+    if (!sessionId) {
+      const activeSession = await db('academic_sessions')
+        .where({ tenant_id: tenantId, is_active: true })
+        .first();
+      if (activeSession) {
+        sessionId = activeSession.id;
+      }
+    } else {
+      const validSession = await db('academic_sessions')
+        .where({ id: sessionId, tenant_id: tenantId })
+        .first();
+      if (!validSession) {
+        throw new AppError('Academic session not found or access denied', 400, 'VALIDATION_ERROR');
+      }
+    }
+
     const [inserted] = await db('classes').insert({
       name: name.trim(),
       level,
       section: section || null,
       capacity,
-      academic_session_id: academic_session_id || null,
+      academic_session_id: sessionId || null,
       class_teacher_id: class_teacher_id || null,
       room_number: room_number || null,
       floor: floor || null,
@@ -66,8 +91,25 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     const level = req.query.level as string;
     const status = req.query.status as string;
     const search = req.query.search as string;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     let query = db('classes')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+      .where(function () {
+        // A class belongs to this tenant if:
+        // (a) its session belongs to the tenant, OR
+        // (b) it has no session but was created by a user of this tenant
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .select(
         'classes.id',
         'classes.name',
@@ -135,8 +177,26 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 router.get('/:classId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
+    const tenantId = req.user?.tenant_id;
 
-    const classData = await db('classes').where('id', classId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const classData = await db('classes')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+      .where('classes.id', classId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
+      .select('classes.*')
+      .first();
+
     if (!classData) {
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
@@ -160,8 +220,25 @@ router.put('/:classId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUP
     const { classId } = req.params;
     const { name, level, section, capacity, class_teacher_id, room_number, floor, building, status } = req.body;
     const updatedBy = req.auth?.userId ?? null;
+    const tenantId = req.user?.tenant_id;
 
-    const classData = await db('classes').where('id', classId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const classData = await db('classes')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+      .where('classes.id', classId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
+      .first();
+
     if (!classData) {
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
@@ -207,8 +284,25 @@ router.put('/:classId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUP
 router.delete('/:classId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
+    const tenantId = req.user?.tenant_id;
 
-    const classData = await db('classes').where('id', classId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const classData = await db('classes')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+      .where('classes.id', classId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
+      .first();
+
     if (!classData) {
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
@@ -235,8 +329,25 @@ router.delete('/:classId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.
 router.delete('/:classId/permanent', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
+    const tenantId = req.user?.tenant_id;
 
-    const classData = await db('classes').where('id', classId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const classData = await db('classes')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+      .where('classes.id', classId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
+      .first();
+
     if (!classData) {
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
@@ -267,8 +378,25 @@ router.delete('/:classId/permanent', authenticate, authorize(UserRole.PRINCIPAL,
 router.get('/:classId/students', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
+    const tenantId = req.user?.tenant_id;
 
-    const classData = await db('classes').where('id', classId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const classData = await db('classes')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+      .where('classes.id', classId)
+      .where(function () {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function () {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
+      .first();
+
     if (!classData) {
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
@@ -277,6 +405,7 @@ router.get('/:classId/students', authenticate, async (req: Request, res: Respons
       .join('enrollments', 'students.id', '=', 'enrollments.student_id')
       .select('students.id', 'students.student_id', 'students.first_name', 'students.last_name', 'enrollments.roll_number', 'enrollments.status')
       .where('enrollments.class_id', classData.id)
+      .where('students.tenant_id', tenantId)
       .whereIn('enrollments.status', ['enrolled', 'active'])
       .orderBy('enrollments.roll_number', 'asc');
 

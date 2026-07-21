@@ -8,8 +8,10 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/authMiddleware';
 import { TenantService } from '../services/tenantService';
+import { SubscriptionService } from '../services/subscriptionService';
 import { AppError } from '../middleware/errorHandler';
 import { UserRole } from '../types/auth';
+import { db } from '../utils/database';
 
 const router = Router();
 
@@ -72,7 +74,10 @@ router.get('/tenants/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async 
  */
 router.post('/tenants', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
   try {
-    const { name, slug, description, domain, contactEmail, contactPhone, address, timezone, currency, language, maxUsers, maxStorageGb } = req.body;
+    const { 
+      name, slug, description, domain, contactEmail, contactPhone, address, timezone, currency, language, maxUsers, maxStorageGb,
+      adminFirstName, adminLastName, adminEmail, adminPassword
+    } = req.body;
 
     // Validation
     if (!name || !slug) {
@@ -95,6 +100,25 @@ router.post('/tenants', authenticate, authorize(UserRole.SUPER_ADMIN), async (re
     };
 
     const tenant = await TenantService.createTenant(tenantData, req.auth!.userId);
+
+    // Create the principal user account if administrator credentials are provided
+    if (adminEmail && adminPassword && adminFirstName && adminLastName) {
+      const bcryptjs = await import('bcryptjs');
+      const hashedPassword = await bcryptjs.default.hash(adminPassword, 10);
+
+      await db('users').insert({
+        tenant_id: tenant.id,
+        email: adminEmail.toLowerCase().trim(),
+        password_hash: hashedPassword,
+        first_name: adminFirstName,
+        last_name: adminLastName,
+        role: 'principal',
+        status: 'active',
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+    }
+
     res.status(201).json({ success: true, data: tenant });
   } catch (error) {
     next(error);
@@ -164,6 +188,28 @@ router.delete('/tenants/:id', authenticate, authorize(UserRole.SUPER_ADMIN), asy
     const { id } = req.params;
     const result = await TenantService.deleteTenant(id, req.auth!.userId);
     res.json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/platform/tenants/:id/subscription
+ * @desc    Change subscription plan for any tenant
+ * @access  Super Admin only
+ */
+router.post('/tenants/:id/subscription', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { plan_type, billing_cycle } = req.body;
+    const userId = req.auth!.userId;
+
+    if (!plan_type || !billing_cycle) {
+      throw new AppError('Plan type and billing cycle are required', 400, 'VALIDATION_ERROR');
+    }
+
+    const updated = await SubscriptionService.changePlan(id, plan_type, billing_cycle, userId);
+    res.json({ success: true, message: `Tenant subscription updated to ${plan_type.toUpperCase()}`, data: updated });
   } catch (error) {
     next(error);
   }

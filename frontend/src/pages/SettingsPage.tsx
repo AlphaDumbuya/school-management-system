@@ -19,13 +19,53 @@ import {
   Trash2,
   Loader2,
   Sparkles,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import useAuthStore from '@store/authStore';
 import schoolConfigService, { SchoolInfo, GradeScale, BillingInvoice, SubscriptionDetails } from '../services/schoolConfigService';
+import authService from '../services/authService';
+import { FileUploader } from '@components/admin/forms/FileUploader';
 
 export const SettingsPage: React.FC = () => {
   const user = useAuthStore((s) => s.user);
+  const setUser = useAuthStore((s) => s.setUser);
+  const logout = useAuthStore((s) => s.logout);
   const isPrincipalOrSuper = user?.role === 'principal' || user?.role === 'super_admin';
+
+  // Profile Form States
+  const [profileForm, setProfileForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+  });
+
+  // Sync profileForm state when user loads or updates
+  useEffect(() => {
+    if (user) {
+      setProfileForm({
+        firstName: user.firstName ?? '',
+        lastName: user.lastName ?? '',
+        email: user.email ?? '',
+      });
+    }
+  }, [user]);
+
+  // Password Form States
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+
+  // Password Visibility States
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Form saving states
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
 
   // Navigation
   const [activeTab, setActiveTab] = useState<string>('profile');
@@ -127,7 +167,10 @@ export const SettingsPage: React.FC = () => {
         ]);
 
         if (infoRes.success && infoRes.data) {
-          setSchoolInfo(infoRes.data);
+          setSchoolInfo({
+            ...infoRes.data,
+            timezone: infoRes.data.timezone || 'Africa/Freetown'
+          });
         }
         if (settingsRes.success && settingsRes.data) {
           setSettings((prev) => ({ ...prev, ...settingsRes.data }));
@@ -146,7 +189,7 @@ export const SettingsPage: React.FC = () => {
         }
       }
     } catch (error) {
-      logger.error('Failed to load settings data', error);
+      console.error('Failed to load settings data', error);
       showToast('Error loading configuration data', 'error');
     } finally {
       setLoading(false);
@@ -183,6 +226,82 @@ export const SettingsPage: React.FC = () => {
       showToast(err.message || 'Error saving settings', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.id) return;
+    
+    if (!profileForm.firstName.trim() || !profileForm.lastName.trim() || !profileForm.email.trim()) {
+      showToast('Please fill in all personal details fields.', 'error');
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      const res = await authService.updateProfile(user.id, {
+        firstName: profileForm.firstName,
+        lastName: profileForm.lastName,
+        email: profileForm.email,
+      });
+
+      if (res.success && res.data) {
+        setUser(res.data);
+        showToast('Profile updated successfully!');
+      } else {
+        throw new Error(res.error || 'Failed to update profile');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error updating profile', 'error');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleSavePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      showToast('All password fields are required.', 'error');
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      showToast('New password and confirm password do not match.', 'error');
+      return;
+    }
+    if (passwordForm.newPassword.length < 8) {
+      showToast('New password must be at least 8 characters long.', 'error');
+      return;
+    }
+    if (passwordForm.currentPassword === passwordForm.newPassword) {
+      showToast('New password must be different from current password.', 'error');
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      const res = await authService.changePassword(
+        passwordForm.currentPassword,
+        passwordForm.newPassword
+      );
+
+      if (res.success) {
+        showToast('Password changed successfully! Logging you out...');
+        setPasswordForm({
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: '',
+        });
+        setTimeout(async () => {
+          await logout();
+        }, 1500);
+      } else {
+        throw new Error(res.error || 'Failed to change password');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error changing password', 'error');
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -332,177 +451,466 @@ export const SettingsPage: React.FC = () => {
               <>
                 {/* ── PROFILE TAB ── */}
                 {activeTab === 'profile' && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>My Profile</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">First Name</label>
-                          <input
-                            type="text"
-                            value={user?.firstName ?? ''}
-                            disabled
-                            className="w-full px-3 py-2 border rounded-lg bg-gray-50 border-gray-200 text-gray-700 cursor-not-allowed"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Last Name</label>
-                          <input
-                            type="text"
-                            value={user?.lastName ?? ''}
-                            disabled
-                            className="w-full px-3 py-2 border rounded-lg bg-gray-50 border-gray-200 text-gray-700 cursor-not-allowed"
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Email Address</label>
-                          <input
-                            type="email"
-                            value={user?.email ?? ''}
-                            disabled
-                            className="w-full px-3 py-2 border rounded-lg bg-gray-50 border-gray-200 text-gray-700 cursor-not-allowed"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Role Type</label>
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 capitalize mt-1">
-                            {user?.role?.replace('_', ' ') ?? ''}
-                          </span>
-                        </div>
-                      </div>
+                  <div className="space-y-6">
+                    {/* Personal Details Form */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>My Profile</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <form onSubmit={handleSaveProfile} className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">First Name</label>
+                              <input
+                                type="text"
+                                value={profileForm.firstName}
+                                onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Last Name</label>
+                              <input
+                                type="text"
+                                value={profileForm.lastName}
+                                onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                required
+                              />
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Email Address</label>
+                              <input
+                                type="email"
+                                value={profileForm.email}
+                                onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Role Type</label>
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 capitalize mt-1 select-none">
+                                {user?.role?.replace('_', ' ') ?? ''}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex justify-end pt-2">
+                            <Button type="submit" disabled={savingProfile}>
+                              {savingProfile ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                              Save Profile Details
+                            </Button>
+                          </div>
+                        </form>
+                      </CardContent>
+                    </Card>
 
-                      {/* Display Preferences */}
-                      <hr className="my-6 border-gray-100" />
-                      <h4 className="text-sm font-bold text-gray-800 mb-3">Display Settings</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Language</label>
-                          <select
-                            value={settings.language}
-                            onChange={(e) => setSettings({ ...settings, language: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          >
-                            <option value="en">English (Default)</option>
-                            <option value="krio">Krio</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Date Format</label>
-                          <select
-                            value={settings.date_format}
-                            onChange={(e) => setSettings({ ...settings, date_format: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          >
-                            <option value="YYYY-MM-DD">YYYY-MM-DD (2026-07-20)</option>
-                            <option value="DD/MM/YYYY">DD/MM/YYYY (20/07/2026)</option>
-                            <option value="MM/DD/YYYY">MM/DD/YYYY (07/20/2026)</option>
-                          </select>
-                        </div>
-                      </div>
+                    {/* Change Password Form */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Lock size={18} className="text-gray-500" />
+                          Security & Password
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <form onSubmit={handleSavePassword} className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Current Password</label>
+                              <div className="relative">
+                                <input
+                                  type={showCurrentPassword ? "text" : "password"}
+                                  value={passwordForm.currentPassword}
+                                  onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                  placeholder="••••••••"
+                                  required
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                                >
+                                  {showCurrentPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">New Password</label>
+                              <div className="relative">
+                                <input
+                                  type={showNewPassword ? "text" : "password"}
+                                  value={passwordForm.newPassword}
+                                  onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                  placeholder="Min 8 chars"
+                                  required
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowNewPassword(!showNewPassword)}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                                >
+                                  {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Confirm New Password</label>
+                              <div className="relative">
+                                <input
+                                  type={showConfirmPassword ? "text" : "password"}
+                                  value={passwordForm.confirmPassword}
+                                  onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                  placeholder="••••••••"
+                                  required
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                                >
+                                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex justify-end pt-2">
+                            <Button type="submit" disabled={savingPassword}>
+                              {savingPassword ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                              Update Password
+                            </Button>
+                          </div>
+                        </form>
+                      </CardContent>
+                    </Card>
 
-                      {isPrincipalOrSuper && (
-                        <div className="flex justify-end mt-6">
-                          <Button onClick={handleSaveSettings} disabled={saving}>
-                            {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                            Save Preferences
-                          </Button>
+                    {/* Display preferences (language & date format) */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <SettingsIcon size={18} className="text-gray-500" />
+                          Display Settings (Global Configuration)
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500 block mb-1">Language</label>
+                            <select
+                              value={settings.language}
+                              onChange={(e) => setSettings({ ...settings, language: e.target.value })}
+                              disabled={!isPrincipalOrSuper}
+                              className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 ${!isPrincipalOrSuper ? 'cursor-not-allowed bg-gray-50 text-gray-400' : ''}`}
+                            >
+                              <option value="en">English (Default)</option>
+                              <option value="krio">Krio</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500 block mb-1">Date Format</label>
+                            <select
+                              value={settings.date_format}
+                              onChange={(e) => setSettings({ ...settings, date_format: e.target.value })}
+                              disabled={!isPrincipalOrSuper}
+                              className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 ${!isPrincipalOrSuper ? 'cursor-not-allowed bg-gray-50 text-gray-400' : ''}`}
+                            >
+                              <option value="YYYY-MM-DD">YYYY-MM-DD (2026-07-20)</option>
+                              <option value="DD/MM/YYYY">DD/MM/YYYY (20/07/2026)</option>
+                              <option value="MM/DD/YYYY">MM/DD/YYYY (07/20/2026)</option>
+                            </select>
+                          </div>
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
+
+                        {isPrincipalOrSuper ? (
+                          <div className="flex justify-end mt-4">
+                            <Button onClick={handleSaveSettings} disabled={saving}>
+                              {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                              Save Global Preferences
+                            </Button>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400 mt-2 italic">
+                            Only school administrators can update these display settings.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
                 )}
 
                 {/* ── SCHOOL INFO TAB ── */}
                 {activeTab === 'school' && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>School Information</CardTitle>
+                  <Card className="shadow-md border border-gray-100 bg-white">
+                    <CardHeader className="pb-4 border-b border-gray-50">
+                      <CardTitle className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                        <Building className="text-blue-500" size={22} />
+                        School Information
+                      </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <form onSubmit={handleSaveSchoolInfo} className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="sm:col-span-2">
-                            <label className="text-xs font-semibold text-gray-500 block mb-1">School Name</label>
-                            <input
-                              type="text"
-                              value={schoolInfo.name ?? ''}
-                              onChange={(e) => setSchoolInfo({ ...schoolInfo, name: e.target.value })}
-                              required
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-500 block mb-1">Short Name / Code</label>
-                            <input
-                              type="text"
-                              value={schoolInfo.short_name ?? ''}
-                              onChange={(e) => setSchoolInfo({ ...schoolInfo, short_name: e.target.value })}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-500 block mb-1">Accreditation Number</label>
-                            <input
-                              type="text"
-                              value={schoolInfo.school_registration_number ?? ''}
-                              onChange={(e) => setSchoolInfo({ ...schoolInfo, school_registration_number: e.target.value })}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-500 block mb-1">Principal Name</label>
-                            <input
-                              type="text"
-                              value={schoolInfo.principal_name ?? ''}
-                              onChange={(e) => setSchoolInfo({ ...schoolInfo, principal_name: e.target.value })}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-500 block mb-1">Principal Email</label>
-                            <input
-                              type="email"
-                              value={schoolInfo.principal_email ?? ''}
-                              onChange={(e) => setSchoolInfo({ ...schoolInfo, principal_email: e.target.value })}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                            />
-                          </div>
-                          <div className="sm:col-span-2">
-                            <label className="text-xs font-semibold text-gray-500 block mb-1">School Logo URL</label>
-                            <div className="flex gap-4 items-center">
+                    <CardContent className="p-6">
+                      <form onSubmit={handleSaveSchoolInfo} className="space-y-6">
+                        {/* Section 1: School Basics */}
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100 uppercase tracking-wider text-xs">
+                            General Details
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="md:col-span-2">
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">School Name</label>
                               <input
                                 type="text"
-                                placeholder="/storage/logos/default.png"
-                                value={schoolInfo.logo_url ?? ''}
-                                onChange={(e) => setSchoolInfo({ ...schoolInfo, logo_url: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+                                value={schoolInfo.name ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, name: e.target.value })}
+                                required
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. Sierra Leone Grammar School"
                               />
-                              {schoolInfo.logo_url && (
-                                <img
-                                  src={schoolInfo.logo_url}
-                                  alt="Logo preview"
-                                  className="w-10 h-10 object-contain rounded border"
-                                  onError={(e) => {
-                                    (e.target as HTMLElement).style.display = 'none';
-                                  }}
-                                />
-                              )}
                             </div>
-                          </div>
-                          <div className="sm:col-span-2">
-                            <label className="text-xs font-semibold text-gray-500 block mb-1">Physical Address</label>
-                            <textarea
-                              value={schoolInfo.address ?? ''}
-                              onChange={(e) => setSchoolInfo({ ...schoolInfo, address: e.target.value })}
-                              rows={3}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                            />
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Short Name / Code</label>
+                              <input
+                                type="text"
+                                value={schoolInfo.short_name ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, short_name: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. SLGS"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Founded Year</label>
+                              <input
+                                type="number"
+                                value={schoolInfo.founded_year ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, founded_year: e.target.value ? parseInt(e.target.value) : undefined })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. 1845"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Registration/Accreditation Number</label>
+                              <input
+                                type="text"
+                                value={schoolInfo.school_registration_number ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, school_registration_number: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. REG-48291"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Accreditation Status</label>
+                              <select
+                                value={schoolInfo.accreditation_status ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, accreditation_status: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                              >
+                                <option value="">Select status...</option>
+                                <option value="accredited">Accredited</option>
+                                <option value="pending">Pending</option>
+                                <option value="provisionary">Provisionary</option>
+                                <option value="expired">Expired</option>
+                              </select>
+                            </div>
                           </div>
                         </div>
 
-                        <div className="flex justify-end pt-4">
+                        {/* Section 2: Contact Details */}
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100 uppercase tracking-wider text-xs">
+                            Contact Information
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">School General Email</label>
+                              <input
+                                type="email"
+                                value={schoolInfo.email ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, email: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. info@school.com"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">School Phone Number</label>
+                              <input
+                                type="text"
+                                value={schoolInfo.phone ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, phone: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. +232 76 123456"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">School Website URL</label>
+                              <input
+                                type="url"
+                                value={schoolInfo.website ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, website: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. https://school.edu"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Section 3: Administration */}
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100 uppercase tracking-wider text-xs">
+                            Administration
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Principal Name</label>
+                              <input
+                                type="text"
+                                value={schoolInfo.principal_name ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, principal_name: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. Dr. John Kamara"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Principal Email Address</label>
+                              <input
+                                type="email"
+                                value={schoolInfo.principal_email ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, principal_email: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. principal@school.com"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Section 4: Logo & Appearance */}
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100 uppercase tracking-wider text-xs">
+                            Logo & Appearance
+                          </h3>
+                          <div className="grid grid-cols-1 gap-4">
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">School Logo</label>
+                              <FileUploader
+                                value={schoolInfo.logo_url}
+                                onChange={(url) => setSchoolInfo({ ...schoolInfo, logo_url: url })}
+                                accept="image/*"
+                                placeholder="Click or drag to upload school logo"
+                                previewType="image"
+                                enableCamera={true}
+                                maxSizeMB={2}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Section 5: Address & Location */}
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100 uppercase tracking-wider text-xs">
+                            Address & Location
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="md:col-span-3">
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Physical Address</label>
+                              <textarea
+                                value={schoolInfo.address ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, address: e.target.value })}
+                                rows={2}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. 123 Regent Road, Hill Station"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">City</label>
+                              <input
+                                type="text"
+                                value={schoolInfo.city ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, city: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. Freetown"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">State / Province</label>
+                              <select
+                                value={schoolInfo.state ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, state: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                              >
+                                <option value="">Select Province...</option>
+                                <option value="Western Area">Western Area</option>
+                                <option value="Northern Province">Northern Province</option>
+                                <option value="North West Province">North West Province</option>
+                                <option value="Southern Province">Southern Province</option>
+                                <option value="Eastern Province">Eastern Province</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Postal Code</label>
+                              <select
+                                value={schoolInfo.postal_code ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, postal_code: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                              >
+                                <option value="">Select Postal Code...</option>
+                                <option value="00232">00232 (General / Calling Fallback)</option>
+                                <option value="99100">99100 (Freetown / Western Area Urban)</option>
+                                <option value="99101">99101 (Waterloo / Western Area Rural)</option>
+                                <option value="99102">99102 (Bo District / Southern Province)</option>
+                                <option value="99103">99103 (Kenema District / Eastern Province)</option>
+                                <option value="99104">99104 (Makeni / Bombali District / Northern Province)</option>
+                                <option value="99105">99105 (Port Loko District / North West Province)</option>
+                                <option value="99106">99106 (Koidu / Kono District / Eastern Province)</option>
+                                <option value="99107">99107 (Kailahun District / Eastern Province)</option>
+                                <option value="99108">99108 (Bonthe District / Southern Province)</option>
+                                <option value="99109">99109 (Moyamba District / Southern Province)</option>
+                                <option value="99110">99110 (Pujehun District / Southern Province)</option>
+                                <option value="99111">99111 (Kabala / Koinadugu District / Northern Province)</option>
+                                <option value="99112">99112 (Magburaka / Tonkolili District / Northern Province)</option>
+                                <option value="99113">99113 (Kambia District / North West Province)</option>
+                                <option value="99114">99114 (Kamakwie / Karene District / North West Province)</option>
+                                <option value="99115">99115 (Mongo / Falaba District / Northern Province)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Country</label>
+                              <input
+                                type="text"
+                                value={schoolInfo.country ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, country: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. Sierra Leone"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">Timezone</label>
+                              <select
+                                value={schoolInfo.timezone || 'Africa/Freetown'}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, timezone: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                              >
+                                <option value="Africa/Freetown">Africa/Freetown (GMT+00:00)</option>
+                                <option value="UTC">UTC (GMT+00:00)</option>
+                                <option value="GMT">GMT (GMT+00:00)</option>
+                                <option value="Africa/Lagos">Africa/Lagos (GMT+01:00)</option>
+                                <option value="Africa/Accra">Africa/Accra (GMT+00:00)</option>
+                                <option value="Africa/Nairobi">Africa/Nairobi (GMT+03:00)</option>
+                                <option value="Africa/Johannesburg">Africa/Johannesburg (GMT+02:00)</option>
+                                <option value="Europe/London">Europe/London (GMT+01:00 / BST)</option>
+                                <option value="Europe/Paris">Europe/Paris (GMT+02:00)</option>
+                                <option value="America/New_York">America/New_York (EST/EDT)</option>
+                                <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+                                <option value="Asia/Kolkata">Asia/Kolkata (GMT+05:30)</option>
+                                <option value="Asia/Singapore">Asia/Singapore (GMT+08:00)</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end pt-4 border-t border-gray-100">
                           <Button type="submit" disabled={saving}>
                             {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
                             Save School Details

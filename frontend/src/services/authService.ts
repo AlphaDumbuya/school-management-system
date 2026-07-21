@@ -152,6 +152,29 @@ export const authService = {
   },
 
   /**
+   * Update user profile details
+   */
+  updateProfile: async (
+    userId: string,
+    payload: { firstName: string; lastName: string; email: string }
+  ): Promise<ApiResponse<AuthUser>> => {
+    const response = await apiClient.put<AuthUser>(
+      `/api/v1/auth/users/${userId}`,
+      {
+        first_name: payload.firstName,
+        last_name: payload.lastName,
+        email: payload.email,
+      }
+    );
+
+    if (response.success && response.data) {
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.data));
+    }
+
+    return response;
+  },
+
+  /**
    * Change user password
    */
   changePassword: async (
@@ -159,8 +182,8 @@ export const authService = {
     newPassword: string
   ): Promise<ApiResponse<{ message: string }>> => {
     return apiClient.post(API_ENDPOINTS.AUTH.CHANGE_PASSWORD, {
-      currentPassword,
-      newPassword,
+      old_password: currentPassword,
+      new_password: newPassword,
     });
   },
 

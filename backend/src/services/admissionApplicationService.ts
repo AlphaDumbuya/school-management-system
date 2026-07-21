@@ -95,11 +95,18 @@ export async function createApplication(
 /**
  * Get application by ID
  */
-export async function getApplicationById(id: string): Promise<AdmissionApplication | null> {
-  const application = await db('admission_applications')
-    .where({ id })
-    .first();
-  
+export async function getApplicationById(id: string, tenantId?: string): Promise<AdmissionApplication | null> {
+  let query = db('admission_applications')
+    .where('admission_applications.id', id);
+
+  if (tenantId) {
+    query = query
+      .join('users', 'admission_applications.created_by', 'users.id')
+      .where('users.tenant_id', tenantId)
+      .select('admission_applications.*');
+  }
+
+  const application = await query.first();
   return application || null;
 }
 
@@ -107,11 +114,21 @@ export async function getApplicationById(id: string): Promise<AdmissionApplicati
  * List applications with filters and pagination
  */
 export async function listApplications(
-  query: ApplicationListQuery
+  query: ApplicationListQuery,
+  tenantId?: string
 ): Promise<{ applications: AdmissionApplication[]; total: number; page: number; limit: number }> {
   const { status, grade_id, assigned_to, date_from, date_to, search, page = 1, limit = 20 } = query;
   
-  let queryBuilder = db('admission_applications').select('*');
+  let queryBuilder = db('admission_applications');
+
+  if (tenantId) {
+    queryBuilder = queryBuilder
+      .join('users', 'admission_applications.created_by', 'users.id')
+      .where('users.tenant_id', tenantId)
+      .select('admission_applications.*');
+  } else {
+    queryBuilder = queryBuilder.select('*');
+  }
   
   // Apply filters
   if (status) {
@@ -144,7 +161,7 @@ export async function listApplications(
   }
   
   // Get total count
-  const [{ count }] = await queryBuilder.clone().count('* as count');
+  const [{ count }] = await queryBuilder.clone().count('admission_applications.id as count');
   const total = parseInt(count as string);
   
   // Apply pagination
@@ -168,8 +185,14 @@ export async function listApplications(
 export async function updateApplication(
   id: string,
   data: UpdateApplicationDTO,
-  userId?: string
+  userId?: string,
+  tenantId?: string
 ): Promise<AdmissionApplication | null> {
+  if (tenantId) {
+    const check = await getApplicationById(id, tenantId);
+    if (!check) return null;
+  }
+
   const [application] = await db('admission_applications')
     .where({ id })
     .update({
@@ -188,10 +211,11 @@ export async function updateApplication(
 export async function updateApplicationStatus(
   id: string,
   data: UpdateApplicationStatusDTO,
-  userId?: string
+  userId?: string,
+  tenantId?: string
 ): Promise<AdmissionApplication | null> {
   // Get current status
-  const current = await getApplicationById(id);
+  const current = await getApplicationById(id, tenantId);
   if (!current) {
     return null;
   }
@@ -234,7 +258,12 @@ export async function updateApplicationStatus(
 /**
  * Delete application
  */
-export async function deleteApplication(id: string): Promise<boolean> {
+export async function deleteApplication(id: string, tenantId?: string): Promise<boolean> {
+  if (tenantId) {
+    const check = await getApplicationById(id, tenantId);
+    if (!check) return false;
+  }
+
   const deleted = await db('admission_applications')
     .where({ id })
     .delete();

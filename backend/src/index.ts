@@ -49,7 +49,6 @@ import eventRoutes from '@routes/eventRoutes';
 import disciplineRoutes from '@routes/disciplineRoutes';
 import smsWhatsAppRoutes from '@routes/smsWhatsAppRoutes';
 import teacherRoutes from '@routes/teacherRoutes';
-import timetableRoutes from '@routes/timetableRoutes';
 import contactRoutes from '@routes/contactRoutes';
 import schoolConfigRoutes from '@routes/schoolConfigRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';

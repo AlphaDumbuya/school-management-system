@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '@middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
@@ -7,6 +7,8 @@ import knex from 'knex';
 import knexConfig from '../../knexfile';
 
 const router = Router();
+router.use(authenticate);
+router.use(attachUserContext);
 const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
 const db = knex(knexConfig[env] || knexConfig.development);
 
@@ -20,11 +22,16 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
     const year = new Date().getFullYear();
     const nextYear = year + 1;
     const academicYear = req.body.academic_year || `${year}/${nextYear}`;
+    const tenantId = req.user?.tenant_id;
 
-    // Generate application ID using MAX to prevent duplicates
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    // Generate application ID using MAX to prevent duplicates within this tenant
     const maxResult = await db.raw(
-      "SELECT COALESCE(MAX(CAST(SPLIT_PART(application_number, '-', 3) AS INTEGER)), 0) as max_num FROM admission_applications WHERE application_number LIKE ?",
-      [`ADM-${year}-%`]
+      "SELECT COALESCE(MAX(CAST(SPLIT_PART(admission_applications.application_number, '-', 3) AS INTEGER)), 0) as max_num FROM admission_applications JOIN users ON admission_applications.created_by = users.id WHERE admission_applications.application_number LIKE ? AND users.tenant_id = ?",
+      [`ADM-${year}-%`, tenantId]
     );
     const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
     const applicationId = `ADM-${year}-${String(nextNum).padStart(5, '0')}`;
@@ -101,8 +108,15 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
     const offset = (page - 1) * limit;
     const { status, academic_year, search } = req.query;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     let query = db('admission_applications')
+      .join('users', 'admission_applications.created_by', 'users.id')
+      .where('users.tenant_id', tenantId)
       .select('admission_applications.*', 'classes.name as class_name')
       .leftJoin('classes', 'admission_applications.class_applying_for', 'classes.id');
 
@@ -118,9 +132,12 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       });
     }
 
-    let countQuery = db('admission_applications').count('id as count');
-    if (status) countQuery = countQuery.where('status', status as string);
-    if (academic_year) countQuery = countQuery.where('academic_year', academic_year as string);
+    let countQuery = db('admission_applications')
+      .join('users', 'admission_applications.created_by', 'users.id')
+      .where('users.tenant_id', tenantId)
+      .count('admission_applications.id as count');
+    if (status) countQuery = countQuery.where('admission_applications.status', status as string);
+    if (academic_year) countQuery = countQuery.where('admission_applications.academic_year', academic_year as string);
 
     const totalResult = await countQuery.first();
     const total = Number(totalResult?.count ?? 0);
@@ -137,11 +154,22 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
  */
 router.get('/:appId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { appId } = req.params;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
     const app = await db('admission_applications')
+      .join('users', 'admission_applications.created_by', 'users.id')
       .select('admission_applications.*', 'classes.name as class_name')
       .leftJoin('classes', 'admission_applications.class_applying_for', 'classes.id')
-      .where('admission_applications.id', req.params.appId)
-      .orWhere('admission_applications.application_number', req.params.appId)
+      .where('users.tenant_id', tenantId)
+      .andWhere(function() {
+        this.where('admission_applications.id', appId)
+          .orWhere('admission_applications.application_number', appId);
+      })
       .first();
     if (!app) throw new AppError('Application not found', 404, 'NOT_FOUND');
     res.json(app);
@@ -159,8 +187,18 @@ router.put('/:appId/status', authenticate, authorize(UserRole.PRINCIPAL, UserRol
     const { appId } = req.params;
     const { status, interview_date, assessment_score, decision_notes } = req.body;
     const decidedBy = req.auth?.userId ?? null;
+    const tenantId = req.user?.tenant_id;
 
-    const app = await db('admission_applications').where('id', appId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const app = await db('admission_applications')
+      .join('users', 'admission_applications.created_by', 'users.id')
+      .where('admission_applications.id', appId)
+      .where('users.tenant_id', tenantId)
+      .select('admission_applications.*')
+      .first();
     if (!app) throw new AppError('Application not found', 404, 'NOT_FOUND');
 
     const updateData: any = { status, updated_at: new Date() };
@@ -177,17 +215,18 @@ router.put('/:appId/status', authenticate, authorize(UserRole.PRINCIPAL, UserRol
     // If approved, automatically create a student record and enroll
     if (status === 'approved') {
       try {
-        // Generate student ID
+        // Generate student ID within this tenant
         const year = new Date().getFullYear();
         const maxResult = await db.raw(
-          "SELECT COALESCE(MAX(CAST(SPLIT_PART(student_id, '-', 3) AS INTEGER)), 0) as max_num FROM students WHERE student_id LIKE ?",
-          [`STU-${year}-%`]
+          "SELECT COALESCE(MAX(CAST(SPLIT_PART(student_id, '-', 3) AS INTEGER)), 0) as max_num FROM students WHERE student_id LIKE ? AND tenant_id = ?",
+          [`STU-${year}-%`, tenantId]
         );
         const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
         const studentId = `STU-${year}-${String(nextNum).padStart(5, '0')}`;
 
         // Create student from application data
         const [newStudent] = await db('students').insert({
+          tenant_id: tenantId,
           user_id: null,
           student_id: studentId,
           first_name: app.child_first_name || app.first_name,
@@ -252,9 +291,21 @@ router.put('/:appId/status', authenticate, authorize(UserRole.PRINCIPAL, UserRol
  */
 router.delete('/:appId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const app = await db('admission_applications').where('id', req.params.appId).first();
+    const { appId } = req.params;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const app = await db('admission_applications')
+      .join('users', 'admission_applications.created_by', 'users.id')
+      .where('admission_applications.id', appId)
+      .where('users.tenant_id', tenantId)
+      .select('admission_applications.*')
+      .first();
     if (!app) throw new AppError('Application not found', 404, 'NOT_FOUND');
-    await db('admission_applications').where('id', req.params.appId).del();
+    await db('admission_applications').where('id', appId).del();
     res.json({ message: 'Application deleted' });
   } catch (error) {
     next(error);

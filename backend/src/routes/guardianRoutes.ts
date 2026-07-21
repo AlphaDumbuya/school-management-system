@@ -1,11 +1,13 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '@middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import knex from 'knex';
 import knexConfig from '../../knexfile';
 
 const router = Router();
+router.use(authenticate);
+router.use(attachUserContext);
 const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
 const db = knex(knexConfig[env] || knexConfig.development);
 
@@ -18,9 +20,19 @@ router.post('/:studentId/guardians', authenticate, authorize('admin', 'principal
     const { studentId } = req.params;
     const { first_name, last_name, relationship, email, phone_number, occupation, address_line_1, address_line_2, city, state, postal_code, country, is_primary_guardian } = req.body;
     const createdBy = (req as any).user.id;
+    const tenantId = req.user?.tenant_id;
 
-    // Validate student exists
-    const student = await db('students').where('id', studentId).orWhere('student_id', studentId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    // Validate student exists within this tenant
+    const student = await db('students')
+      .where('tenant_id', tenantId)
+      .andWhere(function() {
+        this.where('id', studentId).orWhere('student_id', studentId);
+      })
+      .first();
     if (!student) {
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
@@ -49,7 +61,7 @@ router.post('/:studentId/guardians', authenticate, authorize('admin', 'principal
       created_at: new Date(),
       updated_at: new Date(),
       created_by: createdBy,
-    });
+    }).returning('id');
 
     const guardian = await db('guardians')
       .select('id', 'student_id', 'first_name', 'last_name', 'relationship', 'email', 'phone_number', 'is_primary_guardian', 'created_at')
@@ -74,17 +86,27 @@ router.post('/:studentId/guardians', authenticate, authorize('admin', 'principal
 router.get('/:studentId/guardians', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
+    const tenantId = req.user?.tenant_id;
 
-    const student = await db('students').where('id', studentId).orWhere('student_id', studentId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const student = await db('students')
+      .where('tenant_id', tenantId)
+      .andWhere(function() {
+        this.where('id', studentId).orWhere('student_id', studentId);
+      })
+      .first();
     if (!student) {
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
 
     const guardians = await db('guardians')
-      .select('id', 'first_name', 'last_name', 'relationship', 'email', 'phone_number', 'is_primary_guardian', 'created_at')
-      .where('student_id', student.id)
-      .orderBy('is_primary_guardian', 'desc')
-      .orderBy('created_at', 'desc');
+      .select('guardians.id', 'guardians.first_name', 'guardians.last_name', 'guardians.relationship', 'guardians.email', 'guardians.phone_number', 'guardians.is_primary_guardian', 'guardians.created_at')
+      .where('guardians.student_id', student.id)
+      .orderBy('guardians.is_primary_guardian', 'desc')
+      .orderBy('guardians.created_at', 'desc');
 
     res.json({
       student_id: student.student_id,
@@ -104,8 +126,18 @@ router.put('/:guardianId', authenticate, authorize('admin', 'principal'), async 
     const { guardianId } = req.params;
     const { first_name, last_name, email, phone_number, occupation, address_line_1, address_line_2, city, state, postal_code, country } = req.body;
     const updatedBy = (req as any).user.id;
+    const tenantId = req.user?.tenant_id;
 
-    const guardian = await db('guardians').where('id', guardianId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const guardian = await db('guardians')
+      .join('students', 'guardians.student_id', 'students.id')
+      .where('guardians.id', guardianId)
+      .where('students.tenant_id', tenantId)
+      .select('guardians.*')
+      .first();
     if (!guardian) {
       throw new AppError('Guardian not found', 404, 'NOT_FOUND');
     }
@@ -148,8 +180,18 @@ router.put('/:guardianId', authenticate, authorize('admin', 'principal'), async 
 router.delete('/:guardianId', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { guardianId } = req.params;
+    const tenantId = req.user?.tenant_id;
 
-    const guardian = await db('guardians').where('id', guardianId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const guardian = await db('guardians')
+      .join('students', 'guardians.student_id', 'students.id')
+      .where('guardians.id', guardianId)
+      .where('students.tenant_id', tenantId)
+      .select('guardians.*')
+      .first();
     if (!guardian) {
       throw new AppError('Guardian not found', 404, 'NOT_FOUND');
     }
@@ -173,8 +215,18 @@ router.delete('/:guardianId', authenticate, authorize('admin', 'principal'), asy
 router.post('/:guardianId/set-primary', authenticate, authorize('admin', 'principal'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { guardianId } = req.params;
+    const tenantId = req.user?.tenant_id;
 
-    const guardian = await db('guardians').where('id', guardianId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const guardian = await db('guardians')
+      .join('students', 'guardians.student_id', 'students.id')
+      .where('guardians.id', guardianId)
+      .where('students.tenant_id', tenantId)
+      .select('guardians.*')
+      .first();
     if (!guardian) {
       throw new AppError('Guardian not found', 404, 'NOT_FOUND');
     }

@@ -8,6 +8,8 @@ import knex from 'knex';
 import knexConfig from '../../knexfile';
 
 const router = Router();
+router.use(authenticate);
+router.use(attachUserContext);
 const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
 const db = knex(knexConfig[env] || knexConfig.development);
 const studentService = new StudentService(db);
@@ -21,6 +23,11 @@ router.post('/', authenticate, attachUserContext, authorize('principal', 'super_
   try {
     const { first_name, last_name, date_of_birth, gender, email, phone, address, city, state, postal_code, country, enrollment_date, status, photo_url, religion, nationality, place_of_birth, guardian_name, guardian_phone, guardian_relationship, guardian_occupation, emergency_contact, previous_school, medical_conditions, class_id } = req.body;
     const createdBy = req.auth?.userId ?? null;
+    const tenantId = (req as any).user.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     // Validate required fields
     if (!first_name || !last_name || !enrollment_date) {
@@ -45,25 +52,26 @@ router.post('/', authenticate, attachUserContext, authorize('principal', 'super_
       }
     }
 
-    // Validate email uniqueness if provided
+    // Validate email uniqueness if provided within this tenant
     if (email) {
-      const existingStudent = await db('students').where('email', email).first();
+      const existingStudent = await db('students').where({ email, tenant_id: tenantId }).first();
       if (existingStudent) {
         throw new AppError('Email already registered as a student', 409, 'CONFLICT');
       }
     }
 
-    // Generate unique student ID (STU-YYYY-XXXXX format) using MAX to prevent duplicates
+    // Generate unique student ID (STU-YYYY-XXXXX format) using MAX to prevent duplicates within this tenant
     const year = new Date().getFullYear();
     const maxResult = await db.raw(
-      "SELECT COALESCE(MAX(CAST(SPLIT_PART(student_id, '-', 3) AS INTEGER)), 0) as max_num FROM students WHERE student_id LIKE ?",
-      [`STU-${year}-%`]
+      "SELECT COALESCE(MAX(CAST(SPLIT_PART(student_id, '-', 3) AS INTEGER)), 0) as max_num FROM students WHERE student_id LIKE ? AND tenant_id = ?",
+      [`STU-${year}-%`, tenantId]
     );
     const nextNum = (Number(maxResult.rows?.[0]?.max_num) || 0) + 1;
     const studentId = `STU-${year}-${String(nextNum).padStart(5, '0')}`;
 
     // Create student
     const [inserted] = await db('students').insert({
+      tenant_id: tenantId,
       user_id: null, // Can be linked later to user account
       student_id: studentId,
       first_name: first_name.trim(),
@@ -129,8 +137,14 @@ router.get('/', authenticate, authorize('principal', 'super_admin', 'teacher', '
     const offset = (page - 1) * limit;
     const status = req.query.status as string;
     const search = req.query.search as string;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     let query = db('students')
+      .where('students.tenant_id', tenantId)
       .select(
         'students.*',
         'classes.name as class_name',
@@ -158,7 +172,7 @@ router.get('/', authenticate, authorize('principal', 'super_admin', 'teacher', '
     }
 
     // Separate count query
-    let countQuery = db('students').count('students.id as count');
+    let countQuery = db('students').where('students.tenant_id', tenantId).count('students.id as count');
     if (status) countQuery = countQuery.where('students.status', status);
     if (search) {
       const term = `%${search.trim()}%`;
@@ -204,6 +218,15 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
   try {
     const { studentId } = req.params;
     const currentUser = req.auth;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    if (!currentUser) {
+      throw new AppError('Not authenticated', 401, 'NOT_AUTHENTICATED');
+    }
 
     const student = await db('students')
       .select(
@@ -216,8 +239,11 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
           .andOnIn('enrollments.status', ['enrolled', 'active']);
       })
       .leftJoin('classes', 'enrollments.class_id', 'classes.id')
-      .where('students.student_id', studentId)
-      .orWhere('students.id', studentId)
+      .where('students.tenant_id', tenantId)
+      .andWhere(function() {
+        this.where('students.student_id', studentId)
+          .orWhere('students.id', studentId);
+      })
       .first();
 
     if (!student) {
@@ -244,13 +270,25 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
   try {
     const { studentId } = req.params;
     const currentUser = req.auth;
+    const tenantId = req.user?.tenant_id;
     const { first_name, last_name, gender, email, phone, address, city, state, postal_code, country, status, date_of_birth, enrollment_date, photo_url, religion, nationality, place_of_birth, guardian_name, guardian_phone, guardian_relationship, guardian_occupation, emergency_contact, previous_school, medical_conditions } = req.body;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    if (!currentUser) {
+      throw new AppError('Not authenticated', 401, 'NOT_AUTHENTICATED');
+    }
 
     // Get student
     const student = await db('students')
       .select('*')
-      .where('student_id', studentId)
-      .orWhere('id', studentId)
+      .where('tenant_id', tenantId)
+      .andWhere(function() {
+        this.where('student_id', studentId)
+          .orWhere('id', studentId);
+      })
       .first();
 
     if (!student) {
@@ -294,11 +332,12 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
 
     updateData.updated_at = new Date();
 
-    await db('students').where('id', student.id).update(updateData);
+    await db('students').where('id', student.id).andWhere('tenant_id', tenantId).update(updateData);
 
     const updatedStudent = await db('students')
       .select('id', 'student_id', 'first_name', 'last_name', 'email', 'date_of_birth', 'gender', 'phone', 'status', 'created_at', 'updated_at')
       .where('id', student.id)
+      .andWhere('tenant_id', tenantId)
       .first();
 
     res.json({
@@ -321,11 +360,23 @@ router.delete('/:studentId', authenticate, authorize('principal', 'super_admin')
   try {
     const { studentId } = req.params;
     const currentUser = req.auth;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    if (!currentUser) {
+      throw new AppError('Not authenticated', 401, 'NOT_AUTHENTICATED');
+    }
 
     const student = await db('students')
       .select('*')
-      .where('student_id', studentId)
-      .orWhere('id', studentId)
+      .where('tenant_id', tenantId)
+      .andWhere(function() {
+        this.where('student_id', studentId)
+          .orWhere('id', studentId);
+      })
       .first();
 
     if (!student) {
@@ -333,10 +384,13 @@ router.delete('/:studentId', authenticate, authorize('principal', 'super_admin')
     }
 
     // Soft delete
-    await db('students').where('id', student.id).update({
-      status: 'inactive',
-      updated_at: new Date(),
-    });
+    await db('students')
+      .where('id', student.id)
+      .andWhere('tenant_id', tenantId)
+      .update({
+        status: 'inactive',
+        updated_at: new Date(),
+      });
 
     res.json({
       message: 'Student deactivated successfully',
@@ -355,11 +409,19 @@ router.delete('/:studentId', authenticate, authorize('principal', 'super_admin')
 router.delete('/:studentId/permanent', authenticate, authorize('principal', 'super_admin'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     const student = await db('students')
       .select('*')
-      .where('student_id', studentId)
-      .orWhere('id', studentId)
+      .where('tenant_id', tenantId)
+      .andWhere(function() {
+        this.where('student_id', studentId)
+          .orWhere('id', studentId);
+      })
       .first();
 
     if (!student) {
@@ -372,7 +434,10 @@ router.delete('/:studentId/permanent', authenticate, authorize('principal', 'sup
       throw new AppError('Cannot permanently delete a student with enrollment history. Use deactivate instead.', 400, 'HAS_ENROLLMENTS');
     }
 
-    await db('students').where('id', student.id).del();
+    await db('students')
+      .where('id', student.id)
+      .andWhere('tenant_id', tenantId)
+      .del();
 
     res.json({ message: 'Student permanently deleted' });
     logger.info(`Student permanently deleted: ${student.student_id}`);
@@ -390,11 +455,23 @@ router.post('/:studentId/reactivate', authenticate, authorize('principal', 'supe
   try {
     const { studentId } = req.params;
     const currentUser = req.auth;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    if (!currentUser) {
+      throw new AppError('Not authenticated', 401, 'NOT_AUTHENTICATED');
+    }
 
     const student = await db('students')
       .select('*')
-      .where('student_id', studentId)
-      .orWhere('id', studentId)
+      .where('tenant_id', tenantId)
+      .andWhere(function() {
+        this.where('student_id', studentId)
+          .orWhere('id', studentId);
+      })
       .first();
 
     if (!student) {
@@ -405,10 +482,13 @@ router.post('/:studentId/reactivate', authenticate, authorize('principal', 'supe
       throw new AppError('Only inactive students can be reactivated', 400, 'VALIDATION_ERROR');
     }
 
-    await db('students').where('id', student.id).update({
-      status: 'active',
-      updated_at: new Date(),
-    });
+    await db('students')
+      .where('id', student.id)
+      .andWhere('tenant_id', tenantId)
+      .update({
+        status: 'active',
+        updated_at: new Date(),
+      });
 
     res.json({
       message: 'Student reactivated successfully',
@@ -427,11 +507,19 @@ router.post('/:studentId/reactivate', authenticate, authorize('principal', 'supe
 router.get('/:studentId/enrollments', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     const student = await db('students')
       .select('*')
-      .where('student_id', studentId)
-      .orWhere('id', studentId)
+      .where('tenant_id', tenantId)
+      .andWhere(function() {
+        this.where('student_id', studentId)
+          .orWhere('id', studentId);
+      })
       .first();
 
     if (!student) {
@@ -461,11 +549,19 @@ router.get('/:studentId/enrollments', authenticate, async (req: Request, res: Re
 router.get('/:studentId/grades', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     const student = await db('students')
       .select('*')
-      .where('student_id', studentId)
-      .orWhere('id', studentId)
+      .where('tenant_id', tenantId)
+      .andWhere(function() {
+        this.where('student_id', studentId)
+          .orWhere('id', studentId);
+      })
       .first();
 
     if (!student) {
@@ -496,11 +592,19 @@ router.get('/:studentId/attendance', authenticate, async (req: Request, res: Res
   try {
     const { studentId } = req.params;
     const classId = req.query.classId as string;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     const student = await db('students')
       .select('*')
-      .where('student_id', studentId)
-      .orWhere('id', studentId)
+      .where('tenant_id', tenantId)
+      .andWhere(function() {
+        this.where('student_id', studentId)
+          .orWhere('id', studentId);
+      })
       .first();
 
     if (!student) {

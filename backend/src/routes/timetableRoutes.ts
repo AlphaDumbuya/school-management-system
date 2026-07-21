@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '@middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
@@ -7,6 +7,8 @@ import knex from 'knex';
 import knexConfig from '../../knexfile';
 
 const router = Router();
+router.use(authenticate);
+router.use(attachUserContext);
 const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
 const db = knex(knexConfig[env] || knexConfig.development);
 
@@ -19,9 +21,34 @@ const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { class_id, subject_id, teacher_id, day_of_week, start_time, end_time, room_number } = req.body;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     if (!class_id || !subject_id || !teacher_id || !day_of_week || !start_time || !end_time) {
       throw new AppError('Missing required fields: class_id, subject_id, teacher_id, day_of_week, start_time, end_time', 400, 'VALIDATION_ERROR');
+    }
+
+    // Verify class belongs to this tenant
+    const classCheck = await db('classes')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .where('classes.id', class_id)
+      .where('academic_sessions.tenant_id', tenantId)
+      .first();
+    if (!classCheck) {
+      throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+    }
+
+    // Verify teacher belongs to this tenant
+    const teacherCheck = await db('teachers')
+      .join('users', 'teachers.user_id', 'users.id')
+      .where('teachers.id', teacher_id)
+      .where('users.tenant_id', tenantId)
+      .first();
+    if (!teacherCheck) {
+      throw new AppError('Teacher not found or access denied', 404, 'NOT_FOUND');
     }
 
     if (!DAYS_OF_WEEK.includes(day_of_week)) {
@@ -84,8 +111,19 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
 router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { class_id, teacher_id, day_of_week } = req.query;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     let query = db('schedules')
+      .join('classes', 'schedules.class_id', 'classes.id')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('subjects', 'schedules.subject_id', 'subjects.id')
+      .leftJoin('teachers', 'schedules.teacher_id', 'teachers.id')
+      .leftJoin('users', 'teachers.user_id', 'users.id')
+      .where('academic_sessions.tenant_id', tenantId)
       .select(
         'schedules.*',
         'classes.name as class_name',
@@ -94,11 +132,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         'subjects.code as subject_code',
         'subjects.category as subject_category',
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, 'Unknown') as teacher_name")
-      )
-      .leftJoin('classes', 'schedules.class_id', 'classes.id')
-      .leftJoin('subjects', 'schedules.subject_id', 'subjects.id')
-      .leftJoin('teachers', 'schedules.teacher_id', 'teachers.id')
-      .leftJoin('users', 'teachers.user_id', 'users.id');
+      );
 
     if (class_id) query = query.where('schedules.class_id', class_id as string);
     if (teacher_id) query = query.where('schedules.teacher_id', teacher_id as string);
@@ -122,8 +156,18 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 router.get('/weekly/:classId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
+    const tenantId = req.user?.tenant_id;
 
-    const classData = await db('classes').where('id', classId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const classData = await db('classes')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .where('classes.id', classId)
+      .where('academic_sessions.tenant_id', tenantId)
+      .select('classes.*')
+      .first();
     if (!classData) {
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
@@ -169,6 +213,12 @@ router.get('/weekly/:classId', authenticate, async (req: Request, res: Response,
  */
 router.get('/teachers', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
     const teachers = await db('teachers')
       .select(
         'teachers.id',
@@ -178,6 +228,7 @@ router.get('/teachers', authenticate, async (req: Request, res: Response, next: 
         'teachers.specialization'
       )
       .leftJoin('users', 'teachers.user_id', 'users.id')
+      .where('users.tenant_id', tenantId)
       .where('teachers.status', 'active')
       .orderBy('users.first_name', 'asc');
 
@@ -195,8 +246,19 @@ router.put('/:slotId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPE
   try {
     const { slotId } = req.params;
     const { subject_id, teacher_id, day_of_week, start_time, end_time, room_number } = req.body;
+    const tenantId = req.user?.tenant_id;
 
-    const slot = await db('schedules').where('id', slotId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const slot = await db('schedules')
+      .join('classes', 'schedules.class_id', 'classes.id')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .where('schedules.id', slotId)
+      .where('academic_sessions.tenant_id', tenantId)
+      .select('schedules.*')
+      .first();
     if (!slot) {
       throw new AppError('Timetable slot not found', 404, 'NOT_FOUND');
     }
@@ -252,8 +314,19 @@ router.put('/:slotId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPE
 router.delete('/:slotId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { slotId } = req.params;
+    const tenantId = req.user?.tenant_id;
 
-    const slot = await db('schedules').where('id', slotId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const slot = await db('schedules')
+      .join('classes', 'schedules.class_id', 'classes.id')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .where('schedules.id', slotId)
+      .where('academic_sessions.tenant_id', tenantId)
+      .select('schedules.*')
+      .first();
     if (!slot) {
       throw new AppError('Timetable slot not found', 404, 'NOT_FOUND');
     }

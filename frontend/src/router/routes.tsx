@@ -20,6 +20,9 @@ import { Phase13ParentDashboard } from '@pages/Phase13ParentDashboard';
 import { Phase13AccountantDashboard } from '@pages/Phase13AccountantDashboard';
 import { Phase13AdmissionsDashboard } from '@pages/Phase13AdmissionsDashboard';
 import SuperAdminDashboard from '@pages/SuperAdminDashboard';
+import { PlatformTenantsPage } from '@pages/PlatformTenantsPage';
+import { PlatformSubscriptionsPage } from '@pages/PlatformSubscriptionsPage';
+import { PlatformAnalyticsPage } from '@pages/PlatformAnalyticsPage';
 import { ComingSoonPage } from '@pages/ComingSoonPage';
 import { SettingsPage } from '@pages/SettingsPage';
 import SMSWhatsAppDashboard from '@pages/SMSWhatsAppDashboard';
@@ -308,19 +311,19 @@ const router = createBrowserRouter(
         // ── PLATFORM MANAGEMENT (super admin) ─────────────────────
         {
           path: 'platform/tenants',
-          element: <P requiredRoles={['super_admin']}><CS /></P>,
+          element: <P requiredRoles={['super_admin']}><PlatformTenantsPage /></P>,
         },
         {
           path: 'platform/tenants/:tenantId',
-          element: <P requiredRoles={['super_admin']}><CS /></P>,
+          element: <P requiredRoles={['super_admin']}><PlatformTenantsPage /></P>,
         },
         {
           path: 'platform/subscriptions',
-          element: <P requiredRoles={['super_admin']}><CS /></P>,
+          element: <P requiredRoles={['super_admin']}><PlatformSubscriptionsPage /></P>,
         },
         {
           path: 'platform/analytics',
-          element: <P requiredRoles={['super_admin']}><CS /></P>,
+          element: <P requiredRoles={['super_admin']}><PlatformAnalyticsPage /></P>,
         },
 
         // ── SYSTEM ─────────────────────────────────────────────────

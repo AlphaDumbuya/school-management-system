@@ -186,6 +186,7 @@ router.post(
       await authService.changePassword(userId, old_password, new_password);
 
       res.json({
+        success: true,
         message: 'Password changed successfully',
       });
 
@@ -416,8 +417,9 @@ router.put('/users/:id', authenticate, async (req: Request, res: Response, next:
     const user = await authService.updateUser(id, updatePayload, currentUserId);
 
     res.json({
+      success: true,
       message: 'User updated successfully',
-      user,
+      data: user,
     });
 
     logger.info(`User updated: ${id}`);

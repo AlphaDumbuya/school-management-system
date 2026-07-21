@@ -63,6 +63,6 @@ const config: Record<string, Knex.Config> = {
   },
 };
 
-export const db: Knex = knex(config[environment]);
+export const db: Knex = knex(config[environment] || config.development);
 
 export default db;

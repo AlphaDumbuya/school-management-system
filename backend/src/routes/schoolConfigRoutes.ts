@@ -106,6 +106,45 @@ router.post('/settings', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
       );
     }
 
+    // Sync to academic_sessions table if academic_year is updated
+    if (updates.academic_year) {
+      const name = updates.academic_year;
+      const startDate = updates.term_1_start || new Date().toISOString().split('T')[0];
+      const endDate = (updates.term_count === 2 ? updates.term_2_end : updates.term_3_end) || new Date(Date.now() + 300 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      // Mark other sessions for this tenant as inactive
+      await db('academic_sessions')
+        .where('tenant_id', tenantId)
+        .update({ is_active: false });
+
+      // Upsert academic session
+      const existing = await db('academic_sessions')
+        .where('tenant_id', tenantId)
+        .where('name', name)
+        .first();
+
+      if (existing) {
+        await db('academic_sessions')
+          .where('id', existing.id)
+          .update({
+            start_date: startDate,
+            end_date: endDate,
+            is_active: true,
+            updated_at: new Date(),
+          });
+      } else {
+        await db('academic_sessions').insert({
+          tenant_id: tenantId,
+          name: name,
+          start_date: startDate,
+          end_date: endDate,
+          is_active: true,
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+      }
+    }
+
     res.json({ success: true, message: 'Settings saved successfully' });
   } catch (error) {
     next(error);

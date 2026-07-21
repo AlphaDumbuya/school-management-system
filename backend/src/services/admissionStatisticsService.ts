@@ -15,22 +15,29 @@ import {
  * Get comprehensive admission statistics
  */
 export async function getAdmissionStatistics(
-  academicYear?: string
+  academicYear?: string,
+  tenantId?: string
 ): Promise<AdmissionStatistics> {
   let baseQuery = db('admission_applications');
   
+  if (tenantId) {
+    baseQuery = baseQuery
+      .join('users as creator', 'admission_applications.created_by', 'creator.id')
+      .where('creator.tenant_id', tenantId);
+  }
+  
   if (academicYear) {
-    baseQuery = baseQuery.where({ academic_year: academicYear });
+    baseQuery = baseQuery.where({ 'admission_applications.academic_year': academicYear });
   }
   
   // Total applications
-  const [{ count: totalApplications }] = await baseQuery.clone().count('* as count');
+  const [{ count: totalApplications }] = await baseQuery.clone().count('admission_applications.id as count');
   
   // By status
   const statusCounts = await baseQuery.clone()
-    .select('status')
-    .count('* as count')
-    .groupBy('status');
+    .select('admission_applications.status')
+    .count('admission_applications.id as count')
+    .groupBy('admission_applications.status');
   
   const byStatus: Record<string, number> = {};
   statusCounts.forEach((row: any) => {
@@ -39,10 +46,10 @@ export async function getAdmissionStatistics(
   
   // By source
   const sourceCounts = await baseQuery.clone()
-    .select('application_source')
-    .count('* as count')
-    .whereNotNull('application_source')
-    .groupBy('application_source');
+    .select('admission_applications.application_source')
+    .count('admission_applications.id as count')
+    .whereNotNull('admission_applications.application_source')
+    .groupBy('admission_applications.application_source');
   
   const bySource: Record<string, number> = {};
   sourceCounts.forEach((row: any) => {
@@ -64,23 +71,29 @@ export async function getAdmissionStatistics(
   
   // Average score
   const [{ avg: averageScore }] = await baseQuery.clone()
-    .avg('application_score as avg')
-    .whereNotNull('application_score');
+    .avg('admission_applications.application_score as avg')
+    .whereNotNull('admission_applications.application_score');
   
   // Interview statistics
   let interviewQuery = db('application_interviews');
+  if (tenantId) {
+    interviewQuery = interviewQuery
+      .join('admission_applications', 'application_interviews.application_id', 'admission_applications.id')
+      .join('users as creator', 'admission_applications.created_by', 'creator.id')
+      .where('creator.tenant_id', tenantId);
+  }
   if (academicYear) {
     interviewQuery = interviewQuery
-      .whereIn('application_id', baseQuery.clone().select('id'));
+      .whereIn('application_interviews.application_id', baseQuery.clone().select('admission_applications.id'));
   }
   
   const [{ count: interviewsPending }] = await interviewQuery.clone()
-    .where('status', InterviewStatus.SCHEDULED)
-    .count('* as count');
+    .where('application_interviews.status', InterviewStatus.SCHEDULED)
+    .count('application_interviews.id as count');
   
   const [{ count: interviewsCompleted }] = await interviewQuery.clone()
-    .where('status', InterviewStatus.COMPLETED)
-    .count('* as count');
+    .where('application_interviews.status', InterviewStatus.COMPLETED)
+    .count('application_interviews.id as count');
   
   // Acceptance rate
   const acceptedCount = byStatus[ApplicationStatus.ACCEPTED] || 0;
@@ -107,24 +120,31 @@ export async function getAdmissionStatistics(
 /**
  * Get application pipeline metrics
  */
-export async function getPipelineMetrics(): Promise<{
+export async function getPipelineMetrics(tenantId?: string): Promise<{
   stages: Array<{
     status: ApplicationStatus;
     count: number;
     percentage: number;
   }>;
 }> {
-  const [{ count: total }] = await db('admission_applications').count('* as count');
+  let query = db('admission_applications');
+  if (tenantId) {
+    query = query
+      .join('users as creator', 'admission_applications.created_by', 'creator.id')
+      .where('creator.tenant_id', tenantId);
+  }
+
+  const [{ count: total }] = await query.clone().count('admission_applications.id as count');
   const totalCount = parseInt(total as string);
   
   if (totalCount === 0) {
     return { stages: [] };
   }
   
-  const statusCounts = await db('admission_applications')
-    .select('status')
-    .count('* as count')
-    .groupBy('status');
+  const statusCounts = await query.clone()
+    .select('admission_applications.status')
+    .count('admission_applications.id as count')
+    .groupBy('admission_applications.status');
   
   const stages = statusCounts.map((row: any) => ({
     status: row.status as ApplicationStatus,
@@ -138,15 +158,22 @@ export async function getPipelineMetrics(): Promise<{
 /**
  * Get applications by month for trend analysis
  */
-export async function getApplicationTrends(months: number = 12): Promise<Array<{
+export async function getApplicationTrends(months: number = 12, tenantId?: string): Promise<Array<{
   month: string;
   count: number;
 }>> {
-  const results = await db('admission_applications')
-    .select(db.raw("TO_CHAR(application_date, 'YYYY-MM') as month"))
-    .count('* as count')
-    .where('application_date', '>=', db.raw(`NOW() - INTERVAL '${months} months'`))
-    .groupBy(db.raw("TO_CHAR(application_date, 'YYYY-MM')"))
+  let query = db('admission_applications');
+  if (tenantId) {
+    query = query
+      .join('users as creator', 'admission_applications.created_by', 'creator.id')
+      .where('creator.tenant_id', tenantId);
+  }
+
+  const results = await query
+    .select(db.raw("TO_CHAR(admission_applications.application_date, 'YYYY-MM') as month"))
+    .count('admission_applications.id as count')
+    .where('admission_applications.application_date', '>=', db.raw(`NOW() - INTERVAL '${months} months'`))
+    .groupBy(db.raw("TO_CHAR(admission_applications.application_date, 'YYYY-MM')"))
     .orderBy('month', 'asc');
   
   return results.map((row: any) => ({
@@ -158,21 +185,30 @@ export async function getApplicationTrends(months: number = 12): Promise<Array<{
 /**
  * Get top performing interviewers by average score
  */
-export async function getInterviewerPerformance(): Promise<Array<{
+export async function getInterviewerPerformance(tenantId?: string): Promise<Array<{
   interviewer_id: string;
   interviewer_name: string;
   total_interviews: number;
   average_score: number;
 }>> {
-  const results = await db('application_interviews')
-    .select('interviewer_id')
+  let query = db('application_interviews')
+    .select('application_interviews.interviewer_id')
     .select(db.raw("CONCAT(users.first_name, ' ', users.last_name) as interviewer_name"))
-    .count('* as total_interviews')
-    .avg('interview_score as average_score')
+    .count('application_interviews.id as total_interviews')
+    .avg('application_interviews.interview_score as average_score')
     .leftJoin('users', 'application_interviews.interviewer_id', 'users.id')
-    .whereNotNull('interviewer_id')
-    .whereNotNull('interview_score')
-    .groupBy('interviewer_id', 'users.first_name', 'users.last_name')
+    .whereNotNull('application_interviews.interviewer_id')
+    .whereNotNull('application_interviews.interview_score');
+
+  if (tenantId) {
+    query = query
+      .join('admission_applications', 'application_interviews.application_id', 'admission_applications.id')
+      .join('users as creator', 'admission_applications.created_by', 'creator.id')
+      .where('creator.tenant_id', tenantId);
+  }
+
+  const results = await query
+    .groupBy('application_interviews.interviewer_id', 'users.first_name', 'users.last_name')
     .orderBy('average_score', 'desc');
   
   return results.map((row: any) => ({
@@ -186,32 +222,39 @@ export async function getInterviewerPerformance(): Promise<Array<{
 /**
  * Get applications requiring action
  */
-export async function getActionableApplications(): Promise<{
+export async function getActionableApplications(tenantId?: string): Promise<{
   pendingReview: number;
   missingDocuments: number;
   pendingInterviews: number;
   pendingDecisions: number;
 }> {
-  const [{ count: pendingReview }] = await db('admission_applications')
-    .where('status', ApplicationStatus.SUBMITTED)
-    .count('* as count');
+  let baseQuery = db('admission_applications');
+  if (tenantId) {
+    baseQuery = baseQuery
+      .join('users as creator', 'admission_applications.created_by', 'creator.id')
+      .where('creator.tenant_id', tenantId);
+  }
+
+  const [{ count: pendingReview }] = await baseQuery.clone()
+    .where('admission_applications.status', ApplicationStatus.SUBMITTED)
+    .count('admission_applications.id as count');
   
-  const [{ count: pendingInterviews }] = await db('admission_applications')
-    .where('status', ApplicationStatus.INTERVIEW_SCHEDULED)
-    .count('* as count');
+  const [{ count: pendingInterviews }] = await baseQuery.clone()
+    .where('admission_applications.status', ApplicationStatus.INTERVIEW_SCHEDULED)
+    .count('admission_applications.id as count');
   
-  const [{ count: pendingDecisions }] = await db('admission_applications')
-    .where('status', ApplicationStatus.INTERVIEWED)
-    .count('* as count');
+  const [{ count: pendingDecisions }] = await baseQuery.clone()
+    .where('admission_applications.status', ApplicationStatus.INTERVIEWED)
+    .count('admission_applications.id as count');
   
   // Applications with unverified documents
-  const [{ count: missingDocuments }] = await db('admission_applications')
-    .whereIn('id', 
+  const [{ count: missingDocuments }] = await baseQuery.clone()
+    .whereIn('admission_applications.id', 
       db('application_documents')
         .select('application_id')
         .where('verification_status', 'pending')
     )
-    .count('* as count');
+    .count('admission_applications.id as count');
   
   return {
     pendingReview: parseInt(pendingReview as string),
@@ -224,24 +267,31 @@ export async function getActionableApplications(): Promise<{
 /**
  * Get conversion rate by source
  */
-export async function getConversionBySource(): Promise<Array<{
+export async function getConversionBySource(tenantId?: string): Promise<Array<{
   source: ApplicationSource;
   total: number;
   accepted: number;
   conversion_rate: number;
 }>> {
-  const results = await db('admission_applications')
-    .select('application_source as source')
-    .count('* as total')
+  let query = db('admission_applications');
+  if (tenantId) {
+    query = query
+      .join('users as creator', 'admission_applications.created_by', 'creator.id')
+      .where('creator.tenant_id', tenantId);
+  }
+
+  const results = await query
+    .select('admission_applications.application_source as source')
+    .count('admission_applications.id as total')
     .sum(
-      db.raw("CASE WHEN status = 'accepted' THEN 1 ELSE 0 END as accepted")
+      db.raw("CASE WHEN admission_applications.status = 'accepted' THEN 1 ELSE 0 END as accepted")
     )
-    .whereNotNull('application_source')
-    .groupBy('application_source');
+    .whereNotNull('admission_applications.application_source')
+    .groupBy('admission_applications.application_source');
   
   return results.map((row: any) => {
     const total = parseInt(row.total);
-    const accepted = parseInt(row.accepted);
+    const accepted = parseInt(row.accepted || '0');
     return {
       source: row.source,
       total,

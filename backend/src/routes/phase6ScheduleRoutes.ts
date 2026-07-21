@@ -1,11 +1,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, requirePermission } from '@middleware/authMiddleware';
+import { authenticate, requirePermission, attachUserContext } from '@middleware/authMiddleware';
 import { db } from '@utils/database';
 import { ScheduleService } from '@services/scheduleService';
 import { AuditService } from '@services/auditService';
 import { logger } from '@utils/logger';
+import { AppError } from '@middleware/errorHandler';
 
 const router = Router();
+router.use(authenticate);
+router.use(attachUserContext);
 const scheduleService = new ScheduleService(db);
 const auditService = new AuditService(db);
 
@@ -21,6 +24,47 @@ router.post(
     try {
       const { class_id, subject_id, teacher_id, day_of_week, start_time, end_time, room_number, academic_session_id } = req.body;
       const userId = (req as any).user.userId;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
+
+      // Verify class belongs to tenant
+      const classCheck = await db('classes')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('classes.id', class_id)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!classCheck) {
+        throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify subject belongs to tenant
+      const subjectCheck = await db('subjects')
+        .join('users', 'subjects.created_by', 'users.id')
+        .where('subjects.id', subject_id)
+        .where('users.tenant_id', tenantId)
+        .first();
+      if (!subjectCheck) {
+        throw new AppError('Subject not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify teacher belongs to tenant
+      const teacherCheck = await db('teachers')
+        .join('users', 'teachers.user_id', 'users.id')
+        .where('teachers.id', teacher_id)
+        .where('users.tenant_id', tenantId)
+        .first();
+      if (!teacherCheck) {
+        throw new AppError('Teacher not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify session belongs to tenant
+      const sessionCheck = await db('academic_sessions').where({ id: academic_session_id, tenant_id: tenantId }).first();
+      if (!sessionCheck) {
+        throw new AppError('Academic session not found or access denied', 404, 'NOT_FOUND');
+      }
 
       const schedule = await scheduleService.createSchedule(
         {
@@ -68,6 +112,22 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { scheduleId } = req.params;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
+
+      // Verify schedule belongs to tenant
+      const scheduleCheck = await db('schedules')
+        .join('classes', 'schedules.class_id', 'classes.id')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('schedules.id', scheduleId)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!scheduleCheck) {
+        throw new AppError('Schedule not found or access denied', 404, 'NOT_FOUND');
+      }
 
       const schedule = await scheduleService.getScheduleById(scheduleId);
 
@@ -92,12 +152,33 @@ router.get(
     try {
       const { classId } = req.params;
       const { academicSessionId } = req.query;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
 
       if (!academicSessionId) {
         return res.status(400).json({
           success: false,
           error: 'academicSessionId is required',
         });
+      }
+
+      // Verify class belongs to tenant
+      const classCheck = await db('classes')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('classes.id', classId)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!classCheck) {
+        throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify session belongs to tenant
+      const sessionCheck = await db('academic_sessions').where({ id: academicSessionId as string, tenant_id: tenantId }).first();
+      if (!sessionCheck) {
+        throw new AppError('Academic session not found or access denied', 404, 'NOT_FOUND');
       }
 
       const schedule = await scheduleService.getClassSchedule(classId, academicSessionId as string);
@@ -123,12 +204,33 @@ router.get(
     try {
       const { teacherId } = req.params;
       const { academicSessionId } = req.query;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
 
       if (!academicSessionId) {
         return res.status(400).json({
           success: false,
           error: 'academicSessionId is required',
         });
+      }
+
+      // Verify teacher belongs to tenant
+      const teacherCheck = await db('teachers')
+        .join('users', 'teachers.user_id', 'users.id')
+        .where('teachers.id', teacherId)
+        .where('users.tenant_id', tenantId)
+        .first();
+      if (!teacherCheck) {
+        throw new AppError('Teacher not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify session belongs to tenant
+      const sessionCheck = await db('academic_sessions').where({ id: academicSessionId as string, tenant_id: tenantId }).first();
+      if (!sessionCheck) {
+        throw new AppError('Academic session not found or access denied', 404, 'NOT_FOUND');
       }
 
       const schedule = await scheduleService.getTeacherSchedule(teacherId, academicSessionId as string);
@@ -154,12 +256,33 @@ router.get(
     try {
       const { classId } = req.params;
       const { academicSessionId } = req.query;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
 
       if (!academicSessionId) {
         return res.status(400).json({
           success: false,
           error: 'academicSessionId is required',
         });
+      }
+
+      // Verify class belongs to tenant
+      const classCheck = await db('classes')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('classes.id', classId)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!classCheck) {
+        throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify session belongs to tenant
+      const sessionCheck = await db('academic_sessions').where({ id: academicSessionId as string, tenant_id: tenantId }).first();
+      if (!sessionCheck) {
+        throw new AppError('Academic session not found or access denied', 404, 'NOT_FOUND');
       }
 
       const weeklySchedule = await scheduleService.getWeeklySchedule(
@@ -190,6 +313,22 @@ router.put(
       const { scheduleId } = req.params;
       const { start_time, end_time, room_number } = req.body;
       const userId = (req as any).user.userId;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
+
+      // Verify schedule belongs to tenant
+      const scheduleCheck = await db('schedules')
+        .join('classes', 'schedules.class_id', 'classes.id')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('schedules.id', scheduleId)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!scheduleCheck) {
+        throw new AppError('Schedule not found or access denied', 404, 'NOT_FOUND');
+      }
 
       const oldSchedule = await scheduleService.getScheduleById(scheduleId);
       const updatedSchedule = await scheduleService.updateSchedule(
@@ -233,6 +372,22 @@ router.delete(
     try {
       const { scheduleId } = req.params;
       const userId = (req as any).user.userId;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
+
+      // Verify schedule belongs to tenant
+      const scheduleCheck = await db('schedules')
+        .join('classes', 'schedules.class_id', 'classes.id')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('schedules.id', scheduleId)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!scheduleCheck) {
+        throw new AppError('Schedule not found or access denied', 404, 'NOT_FOUND');
+      }
 
       await scheduleService.deleteSchedule(scheduleId);
 
@@ -269,12 +424,33 @@ router.post(
       const { classId } = req.params;
       const { academicSessionId } = req.body;
       const userId = (req as any).user.userId;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
 
       if (!academicSessionId) {
         return res.status(400).json({
           success: false,
           error: 'academicSessionId is required',
         });
+      }
+
+      // Verify class belongs to tenant
+      const classCheck = await db('classes')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('classes.id', classId)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!classCheck) {
+        throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+      }
+
+      // Verify session belongs to tenant
+      const sessionCheck = await db('academic_sessions').where({ id: academicSessionId, tenant_id: tenantId }).first();
+      if (!sessionCheck) {
+        throw new AppError('Academic session not found or access denied', 404, 'NOT_FOUND');
       }
 
       const result = await scheduleService.publishSchedule(classId, academicSessionId, userId);
@@ -312,12 +488,23 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { academicSessionId } = req.query;
+      const tenantId = req.user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      }
 
       if (!academicSessionId) {
         return res.status(400).json({
           success: false,
           error: 'academicSessionId is required',
         });
+      }
+
+      // Verify session belongs to tenant
+      const sessionCheck = await db('academic_sessions').where({ id: academicSessionId as string, tenant_id: tenantId }).first();
+      if (!sessionCheck) {
+        throw new AppError('Academic session not found or access denied', 404, 'NOT_FOUND');
       }
 
       const report = await scheduleService.getScheduleReport(academicSessionId as string);

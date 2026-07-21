@@ -34,8 +34,13 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       throw new AppError(`Session type must be one of: ${validSessions.join(', ')}`, 400, 'VALIDATION_ERROR');
     }
 
-    // Verify student exists
-    const student = await db('students').where('id', student_id).first();
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    // Verify student exists and belongs to this tenant
+    const student = await db('students').where('id', student_id).andWhere('tenant_id', tenantId).first();
     if (!student) {
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
@@ -106,9 +111,15 @@ router.get('/', authenticate, attachUserContext, async (req: Request, res: Respo
     const session_type = req.query.session_type as string;
     const search = req.query.search as string;
 
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
     let query = db('attendance')
       .leftJoin('students', 'attendance.student_id', 'students.id')
-      .leftJoin('classes', 'attendance.class_id', 'classes.id');
+      .leftJoin('classes', 'attendance.class_id', 'classes.id')
+      .where('students.tenant_id', tenantId);
 
     if (studentId) {
       query = query.where('attendance.student_id', studentId);
@@ -183,8 +194,12 @@ router.get('/student/:studentId', authenticate, attachUserContext, async (req: R
   try {
     const { studentId } = req.params;
     const currentUser = (req as any).user;
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
-    const student = await db('students').where('id', studentId).orWhere('student_id', studentId).first();
+    const student = await db('students').where('id', studentId).orWhere('student_id', studentId).andWhere('tenant_id', tenantId).first();
     if (!student) {
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
@@ -234,8 +249,17 @@ router.put('/:attendanceId', authenticate, attachUserContext, authorize(UserRole
     const { attendanceId } = req.params;
     const { status, session_type, check_in_time, check_out_time, remarks } = req.body;
     const updatedBy = (req as any).user?.id || (req as any).auth?.userId;
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
-    const attendance = await db('attendance').where('id', attendanceId).first();
+    const attendance = await db('attendance')
+      .join('students', 'attendance.student_id', 'students.id')
+      .where('attendance.id', attendanceId)
+      .where('students.tenant_id', tenantId)
+      .select('attendance.*')
+      .first();
     if (!attendance) {
       throw new AppError('Attendance record not found', 404, 'NOT_FOUND');
     }
@@ -290,8 +314,18 @@ router.get('/class/:classId', authenticate, attachUserContext, async (req: Reque
     const { classId } = req.params;
     const date = req.query.date as string;
     const session_type = req.query.session_type as string;
+    const tenantId = req.user?.tenant_id;
 
-    const classData = await db('classes').where('id', classId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const classData = await db('classes')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .where('classes.id', classId)
+      .where('academic_sessions.tenant_id', tenantId)
+      .select('classes.*')
+      .first();
     if (!classData) {
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
@@ -339,6 +373,11 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
   try {
     const { class_id, date, session_type, records } = req.body;
     const recordedBy = (req as any).user?.id || (req as any).auth?.userId;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     if (!date || !records || !Array.isArray(records)) {
       throw new AppError('Missing required fields or invalid records format', 400, 'VALIDATION_ERROR');
@@ -350,6 +389,18 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
       throw new AppError(`Session type must be one of: ${validSessions.join(', ')}`, 400, 'VALIDATION_ERROR');
     }
 
+    // Verify class belongs to this tenant if class_id provided
+    if (class_id) {
+      const classCheck = await db('classes')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('classes.id', class_id)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!classCheck) {
+        throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+      }
+    }
+
     // Insert or update attendance records in a transaction
     await db.transaction(async (trx) => {
       for (const record of records) {
@@ -358,6 +409,10 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
         // Validations
         const validStatuses = ['present', 'absent', 'late', 'excused'];
         if (!validStatuses.includes(status)) continue;
+
+        // Verify student belongs to this tenant
+        const studentCheck = await trx('students').where({ id: student_id, tenant_id: tenantId }).first();
+        if (!studentCheck) continue;
 
         // Check if duplicate exists (same student, date, and session)
         const existing = await trx('attendance')

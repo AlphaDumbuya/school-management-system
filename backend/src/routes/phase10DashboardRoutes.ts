@@ -1,9 +1,11 @@
 import express, { Router, Request, Response } from 'express';
 import dashboardService from '@services/dashboardService';
 import { logger } from '@utils/logger';
-import { authenticate } from '@middleware/authMiddleware';
+import { authenticate, attachUserContext } from '@middleware/authMiddleware';
 
 const router: Router = express.Router();
+router.use(authenticate);
+router.use(attachUserContext);
 
 // ============================================================================
 // ADMIN DASHBOARD ROUTES
@@ -16,6 +18,11 @@ const router: Router = express.Router();
  */
 router.get('/dashboards/admin/metrics', authenticate, async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
     // Check authorization
     if (!['principal', 'super_admin'].includes(req.user?.role || '')) {
       return res.status(403).json({
@@ -24,7 +31,7 @@ router.get('/dashboards/admin/metrics', authenticate, async (req: Request, res: 
       });
     }
 
-    const metrics = await dashboardService.getAdminDashboardMetrics();
+    const metrics = await dashboardService.getAdminDashboardMetrics(tenantId);
     res.json({
       success: true,
       data: metrics,
@@ -44,11 +51,16 @@ router.get('/dashboards/admin/metrics', authenticate, async (req: Request, res: 
  */
 router.get('/dashboards/admin/pending-approvals', authenticate, async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
     if (!['principal', 'super_admin'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const approvals = await dashboardService.getPendingApprovals();
+    const approvals = await dashboardService.getPendingApprovals(tenantId);
     res.json({
       success: true,
       data: approvals,
@@ -68,11 +80,16 @@ router.get('/dashboards/admin/pending-approvals', authenticate, async (req: Requ
  */
 router.get('/dashboards/admin/financial-summary', authenticate, async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
     if (!['principal', 'super_admin', 'accountant'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const summary = await dashboardService.getFinancialSummary();
+    const summary = await dashboardService.getFinancialSummary(tenantId);
     res.json({
       success: true,
       data: summary,
@@ -92,11 +109,16 @@ router.get('/dashboards/admin/financial-summary', authenticate, async (req: Requ
  */
 router.get('/dashboards/admin/alerts', authenticate, async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
     if (!['principal', 'super_admin'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const alerts = await dashboardService.getDashboardAlerts();
+    const alerts = await dashboardService.getDashboardAlerts(tenantId);
     res.json({
       success: true,
       data: alerts,
@@ -118,12 +140,17 @@ router.get('/dashboards/admin/alerts', authenticate, async (req: Request, res: R
  */
 router.get('/dashboards/admin/recent-activities', authenticate, async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
     if (!['principal', 'super_admin'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
     const limit = parseInt(req.query.limit as string) || 20;
-    const activities = await dashboardService.getRecentActivities(limit);
+    const activities = await dashboardService.getRecentActivities(tenantId, limit);
 
     res.json({
       success: true,
@@ -146,12 +173,17 @@ router.get('/dashboards/admin/recent-activities', authenticate, async (req: Requ
  */
 router.get('/dashboards/admin/students-at-risk', authenticate, async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
     if (!['principal', 'super_admin', 'teacher'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
     const limit = parseInt(req.query.limit as string) || 10;
-    const atRiskStudents = await dashboardService.getStudentsAtRisk(limit);
+    const atRiskStudents = await dashboardService.getStudentsAtRisk(tenantId, limit);
 
     res.json({
       success: true,
@@ -173,11 +205,16 @@ router.get('/dashboards/admin/students-at-risk', authenticate, async (req: Reque
  */
 router.get('/dashboards/admin/system-health', authenticate, async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
     if (!['principal', 'super_admin'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const health = await dashboardService.getSystemHealth();
+    const health = await dashboardService.getSystemHealth(tenantId);
     res.json({
       success: true,
       data: health,
@@ -201,11 +238,16 @@ router.get('/dashboards/admin/system-health', authenticate, async (req: Request,
  */
 router.get('/dashboards/admin/chart/academic-performance', authenticate, async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
     if (!['principal', 'super_admin', 'teacher'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const chartData = await dashboardService.getAcademicPerformanceChart();
+    const chartData = await dashboardService.getAcademicPerformanceChart(tenantId);
     res.json({
       success: true,
       data: chartData,
@@ -225,11 +267,16 @@ router.get('/dashboards/admin/chart/academic-performance', authenticate, async (
  */
 router.get('/dashboards/admin/chart/attendance-trend', authenticate, async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
     if (!['principal', 'super_admin', 'teacher'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const chartData = await dashboardService.getAttendanceTrendChart();
+    const chartData = await dashboardService.getAttendanceTrendChart(tenantId);
     res.json({
       success: true,
       data: chartData,
@@ -249,11 +296,16 @@ router.get('/dashboards/admin/chart/attendance-trend', authenticate, async (req:
  */
 router.get('/dashboards/admin/chart/fee-collection', authenticate, async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
     if (!['principal', 'super_admin', 'accountant'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const chartData = await dashboardService.getFeeCollectionChart();
+    const chartData = await dashboardService.getFeeCollectionChart(tenantId);
     res.json({
       success: true,
       data: chartData,
@@ -273,11 +325,16 @@ router.get('/dashboards/admin/chart/fee-collection', authenticate, async (req: R
  */
 router.get('/dashboards/admin/chart/student-distribution', authenticate, async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
     if (!['principal', 'super_admin'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const chartData = await dashboardService.getStudentDistributionChart();
+    const chartData = await dashboardService.getStudentDistributionChart(tenantId);
     res.json({
       success: true,
       data: chartData,
@@ -302,21 +359,26 @@ router.get('/dashboards/admin/chart/student-distribution', authenticate, async (
  */
 router.get('/dashboards/admin/complete', authenticate, async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
     if (!['principal', 'super_admin'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
     // Fetch all dashboard data in parallel
     const [metrics, alerts, financialSummary, atRiskStudents, systemHealth, academicPerformanceChart, attendanceTrendChart, feeCollectionChart, studentDistributionChart] = await Promise.all([
-      dashboardService.getAdminDashboardMetrics(),
-      dashboardService.getDashboardAlerts(),
-      dashboardService.getFinancialSummary(),
-      dashboardService.getStudentsAtRisk(10),
-      dashboardService.getSystemHealth(),
-      dashboardService.getAcademicPerformanceChart(),
-      dashboardService.getAttendanceTrendChart(),
-      dashboardService.getFeeCollectionChart(),
-      dashboardService.getStudentDistributionChart(),
+      dashboardService.getAdminDashboardMetrics(tenantId),
+      dashboardService.getDashboardAlerts(tenantId),
+      dashboardService.getFinancialSummary(tenantId),
+      dashboardService.getStudentsAtRisk(tenantId, 10),
+      dashboardService.getSystemHealth(tenantId),
+      dashboardService.getAcademicPerformanceChart(tenantId),
+      dashboardService.getAttendanceTrendChart(tenantId),
+      dashboardService.getFeeCollectionChart(tenantId),
+      dashboardService.getStudentDistributionChart(tenantId),
     ]);
 
     res.json({

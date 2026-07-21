@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '@middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
@@ -7,6 +7,8 @@ import knex from 'knex';
 import knexConfig from '../../knexfile';
 
 const router = Router();
+router.use(authenticate);
+router.use(attachUserContext);
 const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
 const db = knex(knexConfig[env] || knexConfig.development);
 
@@ -29,9 +31,30 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
   try {
     const { student_id, subject_id, class_id, examination_id, academic_year, term, ca_score, exam_score } = req.body;
     const enteredBy = req.auth?.userId ?? null;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     if (!student_id || !subject_id || !class_id || !academic_year || !term) {
       throw new AppError('Missing required fields', 400, 'VALIDATION_ERROR');
+    }
+
+    // Verify student belongs to this tenant
+    const student = await db('students').where({ id: student_id, tenant_id: tenantId }).first();
+    if (!student) {
+      throw new AppError('Student not found or access denied', 404, 'NOT_FOUND');
+    }
+
+    // Verify class belongs to this tenant
+    const classCheck = await db('classes')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .where('classes.id', class_id)
+      .where('academic_sessions.tenant_id', tenantId)
+      .first();
+    if (!classCheck) {
+      throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
     }
 
     if (ca_score < 0 || ca_score > 30) throw new AppError('CA score must be 0-30', 400, 'VALIDATION_ERROR');
@@ -72,9 +95,24 @@ router.post('/bulk', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_
   try {
     const { class_id, subject_id, academic_year, term, examination_id, grades } = req.body;
     const enteredBy = req.auth?.userId ?? null;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     if (!class_id || !subject_id || !academic_year || !term || !grades || !Array.isArray(grades)) {
       throw new AppError('Missing required fields: class_id, subject_id, academic_year, term, grades[]', 400, 'VALIDATION_ERROR');
+    }
+
+    // Verify class belongs to this tenant
+    const classCheck = await db('classes')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .where('classes.id', class_id)
+      .where('academic_sessions.tenant_id', tenantId)
+      .first();
+    if (!classCheck) {
+      throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
     }
 
     const records = grades.map((g: { student_id: string; ca_score: number; exam_score: number }) => {
@@ -100,6 +138,10 @@ router.post('/bulk', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_
 
     // Upsert — update if exists, insert if not
     for (const record of records) {
+      // Verify student belongs to this tenant
+      const studentCheck = await db('students').where({ id: record.student_id, tenant_id: tenantId }).first();
+      if (!studentCheck) continue;
+
       const existing = await db('results')
         .where({ student_id: record.student_id, subject_id: record.subject_id, class_id: record.class_id, term: record.term, academic_year: record.academic_year })
         .first();
@@ -136,8 +178,18 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
     const offset = (page - 1) * limit;
     const { class_id, subject_id, student_id, term, academic_year, search } = req.query;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     let query = db('results')
+      .join('students', 'results.student_id', 'students.id')
+      .leftJoin('users', 'students.user_id', 'users.id')
+      .leftJoin('subjects', 'results.subject_id', 'subjects.id')
+      .leftJoin('classes', 'results.class_id', 'classes.id')
+      .where('students.tenant_id', tenantId)
       .select(
         'results.*',
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, 'Unknown') as student_name"),
@@ -145,11 +197,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         'subjects.name as subject_name',
         'subjects.code as subject_code',
         'classes.name as class_name'
-      )
-      .leftJoin('students', 'results.student_id', 'students.id')
-      .leftJoin('users', 'students.user_id', 'users.id')
-      .leftJoin('subjects', 'results.subject_id', 'subjects.id')
-      .leftJoin('classes', 'results.class_id', 'classes.id');
+      );
 
     if (class_id) query = query.where('results.class_id', class_id as string);
     if (subject_id) query = query.where('results.subject_id', subject_id as string);
@@ -166,12 +214,15 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     }
 
     // Count query
-    let countQuery = db('results').count('id as count');
-    if (class_id) countQuery = countQuery.where('class_id', class_id as string);
-    if (subject_id) countQuery = countQuery.where('subject_id', subject_id as string);
-    if (student_id) countQuery = countQuery.where('student_id', student_id as string);
-    if (term) countQuery = countQuery.where('term', term as string);
-    if (academic_year) countQuery = countQuery.where('academic_year', academic_year as string);
+    let countQuery = db('results')
+      .join('students', 'results.student_id', 'students.id')
+      .where('students.tenant_id', tenantId)
+      .count('results.id as count');
+    if (class_id) countQuery = countQuery.where('results.class_id', class_id as string);
+    if (subject_id) countQuery = countQuery.where('results.subject_id', subject_id as string);
+    if (student_id) countQuery = countQuery.where('results.student_id', student_id as string);
+    if (term) countQuery = countQuery.where('results.term', term as string);
+    if (academic_year) countQuery = countQuery.where('results.academic_year', academic_year as string);
 
     const totalResult = await countQuery.first();
     const total = Number(totalResult?.count ?? 0);
@@ -193,20 +244,27 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 router.get('/summary', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { class_id, subject_id, term, academic_year } = req.query;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     if (!class_id || !subject_id || !term || !academic_year) {
       throw new AppError('Required: class_id, subject_id, term, academic_year', 400, 'VALIDATION_ERROR');
     }
 
     const stats = await db('results')
-      .where({ class_id: class_id as string, subject_id: subject_id as string, term: term as string, academic_year: academic_year as string })
+      .join('students', 'results.student_id', 'students.id')
+      .where('students.tenant_id', tenantId)
+      .where({ 'results.class_id': class_id as string, 'results.subject_id': subject_id as string, 'results.term': term as string, 'results.academic_year': academic_year as string })
       .select(
         db.raw('COUNT(*) as total_students'),
-        db.raw('MAX(total_score) as highest_score'),
-        db.raw('MIN(total_score) as lowest_score'),
-        db.raw('AVG(total_score) as average_score'),
-        db.raw("SUM(CASE WHEN total_score >= 40 THEN 1 ELSE 0 END) as pass_count"),
-        db.raw("SUM(CASE WHEN total_score < 40 THEN 1 ELSE 0 END) as fail_count")
+        db.raw('MAX(results.total_score) as highest_score'),
+        db.raw('MIN(results.total_score) as lowest_score'),
+        db.raw('AVG(results.total_score) as average_score'),
+        db.raw("SUM(CASE WHEN results.total_score >= 40 THEN 1 ELSE 0 END) as pass_count"),
+        db.raw("SUM(CASE WHEN results.total_score < 40 THEN 1 ELSE 0 END) as fail_count")
       )
       .first();
 
@@ -234,8 +292,18 @@ router.put('/:resultId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
   try {
     const { resultId } = req.params;
     const { ca_score, exam_score } = req.body;
+    const tenantId = req.user?.tenant_id;
 
-    const result = await db('results').where('id', resultId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const result = await db('results')
+      .join('students', 'results.student_id', 'students.id')
+      .where('results.id', resultId)
+      .where('students.tenant_id', tenantId)
+      .select('results.*')
+      .first();
     if (!result) throw new AppError('Result not found', 404, 'NOT_FOUND');
 
     const newCa = ca_score !== undefined ? ca_score : result.ca_score;
@@ -265,7 +333,18 @@ router.put('/:resultId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
 router.delete('/:resultId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { resultId } = req.params;
-    const result = await db('results').where('id', resultId).first();
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const result = await db('results')
+      .join('students', 'results.student_id', 'students.id')
+      .where('results.id', resultId)
+      .where('students.tenant_id', tenantId)
+      .select('results.*')
+      .first();
     if (!result) throw new AppError('Result not found', 404, 'NOT_FOUND');
 
     await db('results').where('id', resultId).del();

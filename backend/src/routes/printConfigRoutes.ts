@@ -7,7 +7,7 @@
  */
 
 import express, { Request, Response } from 'express';
-import { authenticate, authorize } from '../middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext } from '../middleware/authMiddleware';
 import printConfigService from '../services/printConfigService';
 import { logger } from '../utils/logger';
 
@@ -15,6 +15,7 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(attachUserContext);
 
 /**
  * GET /api/v1/print-configs

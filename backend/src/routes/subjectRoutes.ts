@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '@middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
@@ -7,6 +7,8 @@ import knex from 'knex';
 import knexConfig from '../../knexfile';
 
 const router = Router();
+router.use(authenticate);
+router.use(attachUserContext);
 const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
 const db = knex(knexConfig[env] || knexConfig.development);
 
@@ -25,6 +27,11 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
   try {
     const { code, name, description, credit_points, max_marks, pass_marks, category, level, department, is_elective } = req.body;
     const createdBy = req.auth?.userId ?? null;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     if (!code || !name) {
       throw new AppError('Missing required fields: code, name', 400, 'VALIDATION_ERROR');
@@ -34,8 +41,12 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       throw new AppError('Max marks must be greater than pass marks', 400, 'VALIDATION_ERROR');
     }
 
-    // Check code uniqueness
-    const existing = await db('subjects').where('code', code).first();
+    // Check code uniqueness within this tenant
+    const existing = await db('subjects')
+      .join('users', 'subjects.created_by', 'users.id')
+      .where('subjects.code', code.toUpperCase())
+      .where('users.tenant_id', tenantId)
+      .first();
     if (existing) {
       throw new AppError('Subject code already exists', 409, 'CONFLICT');
     }
@@ -78,32 +89,40 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
     const offset = (page - 1) * limit;
     const { search, status, category, level } = req.query;
+    const tenantId = req.user?.tenant_id;
 
-    let query = db('subjects').select('*');
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    let query = db('subjects')
+      .join('users', 'subjects.created_by', 'users.id')
+      .where('users.tenant_id', tenantId)
+      .select('subjects.*');
 
     if (status) {
-      query = query.where('status', status as string);
+      query = query.where('subjects.status', status as string);
     }
 
     if (category) {
-      query = query.where('category', category as string);
+      query = query.where('subjects.category', category as string);
     }
 
     if (level) {
-      query = query.where('level', level as string);
+      query = query.where('subjects.level', level as string);
     }
 
     if (search) {
       const term = `%${(search as string).trim()}%`;
       query = query.where(function () {
-        this.where('name', 'ilike', term)
-          .orWhere('code', 'ilike', term);
+        this.where('subjects.name', 'ilike', term)
+          .orWhere('subjects.code', 'ilike', term);
       });
     }
 
-    const totalResult = await query.clone().clearSelect().clearOrder().count('id as count').first();
+    const totalResult = await query.clone().clearSelect().clearOrder().count('subjects.id as count').first();
     const total = Number(totalResult?.count ?? 0);
-    const subjects = await query.limit(limit).offset(offset).orderBy('code', 'asc');
+    const subjects = await query.limit(limit).offset(offset).orderBy('subjects.code', 'asc');
 
     res.json({
       data: subjects.map(mapSubject),
@@ -126,8 +145,19 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 router.get('/:subjectId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { subjectId } = req.params;
+    const tenantId = req.user?.tenant_id;
 
-    const subject = await db('subjects').where('id', subjectId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const subject = await db('subjects')
+      .join('users', 'subjects.created_by', 'users.id')
+      .where('subjects.id', subjectId)
+      .where('users.tenant_id', tenantId)
+      .select('subjects.*')
+      .first();
+
     if (!subject) {
       throw new AppError('Subject not found', 404, 'NOT_FOUND');
     }
@@ -147,15 +177,31 @@ router.put('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
     const { subjectId } = req.params;
     const { code, name, description, credit_points, max_marks, pass_marks, status, category, level, department, is_elective } = req.body;
     const updatedBy = req.auth?.userId ?? null;
+    const tenantId = req.user?.tenant_id;
 
-    const subject = await db('subjects').where('id', subjectId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const subject = await db('subjects')
+      .join('users', 'subjects.created_by', 'users.id')
+      .where('subjects.id', subjectId)
+      .where('users.tenant_id', tenantId)
+      .select('subjects.*')
+      .first();
+
     if (!subject) {
       throw new AppError('Subject not found', 404, 'NOT_FOUND');
     }
 
     const updateData: any = {};
     if (code) {
-      const existing = await db('subjects').where('code', code).whereNot('id', subjectId).first();
+      const existing = await db('subjects')
+        .join('users', 'subjects.created_by', 'users.id')
+        .where('subjects.code', code.toUpperCase())
+        .where('users.tenant_id', tenantId)
+        .whereNot('subjects.id', subjectId)
+        .first();
       if (existing) {
         throw new AppError('Subject code already exists', 409, 'CONFLICT');
       }
@@ -202,8 +248,18 @@ router.put('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
 router.delete('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { subjectId } = req.params;
+    const tenantId = req.user?.tenant_id;
 
-    const subject = await db('subjects').where('id', subjectId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const subject = await db('subjects')
+      .join('users', 'subjects.created_by', 'users.id')
+      .where('subjects.id', subjectId)
+      .where('users.tenant_id', tenantId)
+      .first();
+
     if (!subject) {
       throw new AppError('Subject not found', 404, 'NOT_FOUND');
     }
@@ -230,8 +286,18 @@ router.delete('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRol
 router.delete('/:subjectId/permanent', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { subjectId } = req.params;
+    const tenantId = req.user?.tenant_id;
 
-    const subject = await db('subjects').where('id', subjectId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const subject = await db('subjects')
+      .join('users', 'subjects.created_by', 'users.id')
+      .where('subjects.id', subjectId)
+      .where('users.tenant_id', tenantId)
+      .first();
+
     if (!subject) {
       throw new AppError('Subject not found', 404, 'NOT_FOUND');
     }

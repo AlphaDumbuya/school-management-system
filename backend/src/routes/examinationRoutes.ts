@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '@middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
@@ -7,6 +7,8 @@ import knex from 'knex';
 import knexConfig from '../../knexfile';
 
 const router = Router();
+router.use(authenticate);
+router.use(attachUserContext);
 const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
 const db = knex(knexConfig[env] || knexConfig.development);
 
@@ -17,9 +19,26 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
   try {
     const { title, description, type, term, academic_year, class_id, subject_id, start_date, end_date, total_marks, pass_marks, duration_minutes, venue, instructions, status } = req.body;
     const createdBy = req.auth?.userId ?? null;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     if (!title || !type || !term || !academic_year || !start_date) {
       throw new AppError('Missing required fields: title, type, term, academic_year, start_date', 400, 'VALIDATION_ERROR');
+    }
+
+    // Verify class belongs to this tenant if provided
+    if (class_id) {
+      const classCheck = await db('classes')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('classes.id', class_id)
+        .where('academic_sessions.tenant_id', tenantId)
+        .first();
+      if (!classCheck) {
+        throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+      }
     }
 
     const [inserted] = await db('examinations').insert({
@@ -59,8 +78,15 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
     const offset = (page - 1) * limit;
     const { type, term, academic_year, class_id, status, search } = req.query;
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     let query = db('examinations')
+      .join('users', 'examinations.created_by', 'users.id')
+      .where('users.tenant_id', tenantId)
       .select(
         'examinations.*',
         'classes.name as class_name',
@@ -85,12 +111,15 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     }
 
     // Separate count query
-    let countQuery = db('examinations').count('id as count');
-    if (type) countQuery = countQuery.where('type', type as string);
-    if (term) countQuery = countQuery.where('term', term as string);
-    if (academic_year) countQuery = countQuery.where('academic_year', academic_year as string);
-    if (class_id) countQuery = countQuery.where('class_id', class_id as string);
-    if (status) countQuery = countQuery.where('status', status as string);
+    let countQuery = db('examinations')
+      .join('users', 'examinations.created_by', 'users.id')
+      .where('users.tenant_id', tenantId)
+      .count('examinations.id as count');
+    if (type) countQuery = countQuery.where('examinations.type', type as string);
+    if (term) countQuery = countQuery.where('examinations.term', term as string);
+    if (academic_year) countQuery = countQuery.where('examinations.academic_year', academic_year as string);
+    if (class_id) countQuery = countQuery.where('examinations.class_id', class_id as string);
+    if (status) countQuery = countQuery.where('examinations.status', status as string);
 
     const totalResult = await countQuery.first();
     const total = Number(totalResult?.count ?? 0);
@@ -111,7 +140,19 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 router.get('/:examId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { examId } = req.params;
-    const exam = await db('examinations').where('id', examId).first();
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const exam = await db('examinations')
+      .join('users', 'examinations.created_by', 'users.id')
+      .where('examinations.id', examId)
+      .where('users.tenant_id', tenantId)
+      .select('examinations.*')
+      .first();
+
     if (!exam) throw new AppError('Examination not found', 404, 'NOT_FOUND');
     res.json(exam);
   } catch (error) {
@@ -127,8 +168,18 @@ router.put('/:examId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPE
     const { examId } = req.params;
     const { title, description, type, term, academic_year, class_id, subject_id, start_date, end_date, total_marks, pass_marks, duration_minutes, venue, instructions, status } = req.body;
     const updatedBy = req.auth?.userId ?? null;
+    const tenantId = req.user?.tenant_id;
 
-    const exam = await db('examinations').where('id', examId).first();
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const exam = await db('examinations')
+      .join('users', 'examinations.created_by', 'users.id')
+      .where('examinations.id', examId)
+      .where('users.tenant_id', tenantId)
+      .select('examinations.*')
+      .first();
     if (!exam) throw new AppError('Examination not found', 404, 'NOT_FOUND');
 
     const updateData: any = {};
@@ -166,7 +217,18 @@ router.put('/:examId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPE
 router.delete('/:examId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { examId } = req.params;
-    const exam = await db('examinations').where('id', examId).first();
+    const tenantId = req.user?.tenant_id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const exam = await db('examinations')
+      .join('users', 'examinations.created_by', 'users.id')
+      .where('examinations.id', examId)
+      .where('users.tenant_id', tenantId)
+      .select('examinations.*')
+      .first();
     if (!exam) throw new AppError('Examination not found', 404, 'NOT_FOUND');
 
     await db('examinations').where('id', examId).del();
