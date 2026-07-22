@@ -32,7 +32,7 @@
 - [ ] SuperAdmin Platform Dashboard ([SuperAdminDashboard.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/SuperAdminDashboard.tsx))
 
 ### 2. Student Administration
-- [x] Student Directory & Auto-Sync ([StudentDirectoryPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentDirectoryPage.tsx)) — *Resolved enrolled admissions auto-sync & tenant NULL backfill issue for permanent student persistence.*
+- [x] Student Directory & Auto-Sync ([StudentDirectoryPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentDirectoryPage.tsx)) — *Enforced strict tenant scoping for school roles & enabled platform-wide student visibility for SuperAdmins.*
 - [x] Admissions Application & Onboarding ([AdmissionsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/AdmissionsPage.tsx)) — *Real-time student conversion on approval.*
 - [x] Parent & Student Credential Provisioning ([StudentProfilesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentProfilesPage.tsx)) — *Auto-generates student portal demo login & supports multiple parents/guardians per student (e.g. parent abroad & local guardian) with multi-child portal linking.*
 - [x] Student Profiles ([StudentProfilesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentProfilesPage.tsx)) — *360° Profile view with masked-by-default Portal Login Credentials card and Eye toggle button.*
