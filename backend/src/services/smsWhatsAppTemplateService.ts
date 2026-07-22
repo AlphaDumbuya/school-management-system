@@ -147,6 +147,8 @@ class SMSWhatsAppTemplateService {
 
       if (updates.template_name) updateData.template_name = updates.template_name;
       if (updates.description) updateData.description = updates.description;
+      if (updates.template_type) updateData.template_type = updates.template_type;
+      if (updates.channel) updateData.channel = updates.channel;
       if (updates.sms_content) {
         updateData.sms_content = updates.sms_content;
         updateData.estimated_length = updates.sms_content.length;

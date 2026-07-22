@@ -21,11 +21,12 @@ class SMSWhatsAppProviderService {
     userId: string
   ): Promise<SMSWhatsAppProvider> {
     try {
-      // Check if primary provider already exists
-      if (request.provider_type?.includes('primary')) {
+      this.validateProviderRequest(request);
+
+      if (request.is_primary) {
         await db('sms_whatsapp_providers')
           .where({ tenant_id: tenantId, is_primary: true })
-          .update({ is_primary: false });
+          .update({ is_primary: false, updated_at: db.fn.now() });
       }
 
       const [provider] = await db('sms_whatsapp_providers')
@@ -33,7 +34,7 @@ class SMSWhatsAppProviderService {
           tenant_id: tenantId,
           provider_name: request.provider_name,
           provider_type: request.provider_type,
-          api_key: this.encryptSensitiveData(request.api_key),
+          api_key: this.encryptSensitiveData(request.api_key || ''),
           api_secret: request.api_secret ? this.encryptSensitiveData(request.api_secret) : null,
           account_sid: request.account_sid,
           auth_token: request.auth_token ? this.encryptSensitiveData(request.auth_token) : null,
@@ -41,8 +42,10 @@ class SMSWhatsAppProviderService {
           business_account_id: request.business_account_id,
           webhook_url: request.webhook_url,
           webhook_secret: request.webhook_secret ? this.encryptSensitiveData(request.webhook_secret) : null,
-          cost_per_sms: request.cost_per_sms || 0.01,
-          cost_per_whatsapp_message: request.cost_per_whatsapp_message || 0.02,
+          cost_per_sms: request.cost_per_sms ?? 0.01,
+          cost_per_whatsapp_message: request.cost_per_whatsapp_message ?? 0.02,
+          is_primary: request.is_primary ?? false,
+          enabled: request.enabled ?? true,
           configuration: request.configuration ? JSON.stringify(request.configuration) : null,
           created_by: userId,
           created_at: db.fn.now(),
@@ -103,11 +106,26 @@ class SMSWhatsAppProviderService {
       let query = db('sms_whatsapp_providers')
         .where({ tenant_id: tenantId, is_primary: true, enabled: true });
 
-      if (type) {
-        query = query.where('provider_type', 'like', `%${type}%`);
+      if (type && type !== 'both') {
+        query = query.whereIn('provider_type', [type, 'both']);
       }
 
       const provider = await query.first();
+      if (!provider) {
+        let fallbackQuery = db('sms_whatsapp_providers')
+          .where({ tenant_id: tenantId, enabled: true });
+
+        if (type && type !== 'both') {
+          fallbackQuery = fallbackQuery.whereIn('provider_type', [type, 'both']);
+        }
+
+        const fallbackProvider = await fallbackQuery
+          .orderBy('is_primary', 'desc')
+          .orderBy('created_at', 'desc')
+          .first();
+
+        return fallbackProvider ? this.decryptSensitiveFields(fallbackProvider) : null;
+      }
       return provider ? this.decryptSensitiveFields(provider) : null;
     } catch (error) {
       logger.error(`Error fetching primary provider for tenant ${tenantId}: ${error}`);
@@ -124,19 +142,41 @@ class SMSWhatsAppProviderService {
     userId: string
   ): Promise<SMSWhatsAppProvider> {
     try {
+      const providerRecord = await db('sms_whatsapp_providers')
+        .where({ provider_id: providerId })
+        .first();
+
+      if (!providerRecord) {
+        throw new Error('Provider not found');
+      }
+
       const updateData: Record<string, any> = {
         updated_at: db.fn.now(),
       };
 
+      this.validateProviderUpdateRequest(updates, providerRecord);
+
+      if (updates.provider_name) updateData.provider_name = updates.provider_name;
+      if (updates.provider_type) updateData.provider_type = updates.provider_type;
       if (updates.api_key) updateData.api_key = this.encryptSensitiveData(updates.api_key);
       if (updates.api_secret) updateData.api_secret = this.encryptSensitiveData(updates.api_secret);
+      if (updates.account_sid) updateData.account_sid = updates.account_sid;
       if (updates.auth_token) updateData.auth_token = this.encryptSensitiveData(updates.auth_token);
-      if (updates.webhook_secret) updateData.webhook_secret = this.encryptSensitiveData(updates.webhook_secret);
       if (updates.phone_number) updateData.phone_number = updates.phone_number;
+      if (updates.business_account_id) updateData.business_account_id = updates.business_account_id;
       if (updates.webhook_url) updateData.webhook_url = updates.webhook_url;
+      if (updates.webhook_secret) updateData.webhook_secret = this.encryptSensitiveData(updates.webhook_secret);
       if (updates.cost_per_sms !== undefined) updateData.cost_per_sms = updates.cost_per_sms;
       if (updates.cost_per_whatsapp_message !== undefined) updateData.cost_per_whatsapp_message = updates.cost_per_whatsapp_message;
+      if (updates.enabled !== undefined) updateData.enabled = updates.enabled;
       if (updates.configuration) updateData.configuration = JSON.stringify(updates.configuration);
+
+      if (updates.is_primary) {
+        await db('sms_whatsapp_providers')
+          .where({ tenant_id: providerRecord.tenant_id, is_primary: true })
+          .update({ is_primary: false, updated_at: db.fn.now() });
+        updateData.is_primary = true;
+      }
 
       const [provider] = await db('sms_whatsapp_providers')
         .where({ provider_id: providerId })
@@ -309,6 +349,68 @@ class SMSWhatsAppProviderService {
     }
   }
 
+  private validateProviderRequest(request: CreateProviderRequest): void {
+    if (!['twilio', 'brevo', 'messagebird', 'custom'].includes(request.provider_name)) {
+      throw new Error('Invalid provider name');
+    }
+
+    if (!['sms', 'whatsapp', 'both'].includes(request.provider_type)) {
+      throw new Error('Invalid provider type');
+    }
+
+    if (!request.phone_number) {
+      throw new Error('Provider phone number is required');
+    }
+
+    if (request.provider_name === 'twilio') {
+      if (!request.account_sid || !request.auth_token) {
+        throw new Error('Twilio requires account SID and auth token');
+      }
+    }
+
+    if (['brevo', 'messagebird'].includes(request.provider_name)) {
+      if (!request.api_key) {
+        throw new Error(`${request.provider_name} requires an API key`);
+      }
+    }
+  }
+
+  private validateProviderUpdateRequest(
+    updates: Partial<CreateProviderRequest>,
+    existingProvider: SMSWhatsAppProvider
+  ): void {
+    const providerName = updates.provider_name || existingProvider.provider_name;
+    const providerType = updates.provider_type || existingProvider.provider_type;
+    const phoneNumber = updates.phone_number || existingProvider.phone_number;
+
+    if (updates.provider_name && !['twilio', 'brevo', 'messagebird', 'custom'].includes(updates.provider_name)) {
+      throw new Error('Invalid provider name');
+    }
+
+    if (updates.provider_type && !['sms', 'whatsapp', 'both'].includes(updates.provider_type)) {
+      throw new Error('Invalid provider type');
+    }
+
+    if (phoneNumber === undefined || phoneNumber === null || String(phoneNumber).trim() === '') {
+      throw new Error('Provider phone number is required');
+    }
+
+    if (providerName === 'twilio') {
+      const accountSid = updates.account_sid || existingProvider.account_sid;
+      const authToken = updates.auth_token || existingProvider.auth_token;
+      if (!accountSid || !authToken) {
+        throw new Error('Twilio requires account SID and auth token');
+      }
+    }
+
+    if (['brevo', 'messagebird'].includes(providerName)) {
+      const apiKey = updates.api_key || existingProvider.api_key;
+      if (!apiKey) {
+        throw new Error(`${providerName} requires an API key`);
+      }
+    }
+  }
+
   private decryptSensitiveFields(provider: any): SMSWhatsAppProvider {
     return {
       ...provider,
@@ -321,20 +423,43 @@ class SMSWhatsAppProviderService {
   }
 
   private async testTwilioConnection(provider: SMSWhatsAppProvider): Promise<void> {
-    // Test Twilio connection
     const accountSid = provider.account_sid;
     const authToken = provider.auth_token;
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json`;
+    const authorization = 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+    const accountUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json`;
 
-    const response = await fetch(url, {
+    const response = await fetch(accountUrl, {
       method: 'GET',
       headers: {
-        Authorization: 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
+        Authorization: authorization,
       },
     });
 
     if (!response.ok) {
       throw new Error(`Twilio connection failed: ${response.statusText}`);
+    }
+
+    const senderUrl = new URL(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/IncomingPhoneNumbers.json`);
+    senderUrl.searchParams.set('PhoneNumber', provider.phone_number);
+    const senderResponse = await fetch(senderUrl, {
+      method: 'GET',
+      headers: { Authorization: authorization },
+    });
+
+    if (!senderResponse.ok) {
+      throw new Error(`Twilio sender-number check failed: ${senderResponse.statusText}`);
+    }
+
+    const senderData = await senderResponse.json() as {
+      incoming_phone_numbers?: Array<{ capabilities?: { sms?: boolean } }>;
+    };
+    const sender = senderData.incoming_phone_numbers?.[0];
+    if (!sender) {
+      throw new Error('The configured sender number is not owned by this Twilio account. Buy or select an SMS-capable Twilio number and update the provider.');
+    }
+
+    if (provider.provider_type !== 'whatsapp' && !sender.capabilities?.sms) {
+      throw new Error('The configured Twilio sender number is not SMS-capable. Choose a Twilio number with SMS enabled.');
     }
   }
 

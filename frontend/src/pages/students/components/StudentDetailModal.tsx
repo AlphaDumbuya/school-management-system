@@ -14,6 +14,7 @@ interface StudentDetailModalProps {
   onClose: () => void;
   student: StudentRecord | null;
   onEdit?: (student: StudentRecord) => void;
+  onCreateParentAccount?: (student: StudentRecord) => void;
 }
 
 function formatDate(dateStr: string | undefined): string {
@@ -36,6 +37,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   onClose,
   student,
   onEdit,
+  onCreateParentAccount,
 }) => {
   if (!student) return null;
   const s = student as any;
@@ -47,12 +49,23 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
       title="Student Profile"
       size="xl"
       footer={
-        onEdit && (
-          <div className="flex items-center gap-3 ml-auto">
-            <Button variant="ghost" onClick={onClose}>Close</Button>
-            <Button variant="default" onClick={() => { onEdit(student); onClose(); }}>Edit Student</Button>
+        <div className="flex items-center justify-between w-full">
+          <Button variant="ghost" onClick={onClose}>Close</Button>
+          <div className="flex items-center gap-3">
+            {onCreateParentAccount && (
+              <Button
+                variant="outline"
+                className="text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950 font-bold"
+                onClick={() => { onCreateParentAccount(student); onClose(); }}
+              >
+                <User size={14} className="mr-1.5" /> Create Parent Account
+              </Button>
+            )}
+            {onEdit && (
+              <Button variant="default" onClick={() => { onEdit(student); onClose(); }}>Edit Student</Button>
+            )}
           </div>
-        )
+        </div>
       }
     >
       <div className="space-y-6">
@@ -87,6 +100,37 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             )}
           </div>
         </div>
+
+        {/* ── Demo Portal Login Credentials ── */}
+        <Section title="Portal Login Credentials (Auto-Generated)">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-3.5 bg-blue-50 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-800/40 space-y-1">
+              <div className="flex items-center justify-between text-xs font-bold text-blue-800 dark:text-blue-300">
+                <span>Student Portal Demo Login</span>
+                <span className="font-mono text-[10px] bg-blue-200 dark:bg-blue-900 px-1.5 py-0.5 rounded">Role: student</span>
+              </div>
+              <p className="text-xs font-mono text-gray-700 dark:text-gray-300">
+                Email: <strong>{s.demo_login?.student_email || s.email || `${s.student_id?.toLowerCase()}@student.school.com`}</strong>
+              </p>
+              <p className="text-xs font-mono text-gray-700 dark:text-gray-300">
+                Default Pass: <strong className="text-green-600 dark:text-green-400">{s.demo_login?.student_password || 'Student123!'}</strong>
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-purple-50 dark:bg-purple-950/40 rounded-xl border border-purple-200 dark:border-purple-800/40 space-y-1">
+              <div className="flex items-center justify-between text-xs font-bold text-purple-800 dark:text-purple-300">
+                <span>Parent Portal Demo Login</span>
+                <span className="font-mono text-[10px] bg-purple-200 dark:bg-purple-900 px-1.5 py-0.5 rounded">Role: parent</span>
+              </div>
+              <p className="text-xs font-mono text-gray-700 dark:text-gray-300">
+                Email: <strong>{s.demo_login?.parent_email || (s.email || 'Not Created')}</strong>
+              </p>
+              <p className="text-xs font-mono text-gray-700 dark:text-gray-300">
+                Default Pass: <strong className="text-purple-600 dark:text-purple-400">{s.demo_login?.parent_password || 'Parent123!'}</strong>
+              </p>
+            </div>
+          </div>
+        </Section>
 
         {/* ── Personal Information ── */}
         <Section title="Personal Information">

@@ -250,8 +250,82 @@ export async function updateApplicationStatus(
       data.decision_notes,
       userId
     );
+
+    // Auto-create/sync student record if approved or enrolled
+    const autoCreateStatuses = ['accepted', 'approved', 'enrolled', ApplicationStatus.ACCEPTED, ApplicationStatus.ENROLLED];
+    if (autoCreateStatuses.includes(data.status)) {
+      try {
+        const app = application as any;
+        const firstName = (app.child_first_name || app.first_name || '').trim();
+        const lastName = (app.child_last_name || app.last_name || '').trim();
+        const appTenantId = tenantId || app.tenant_id;
+
+        if (firstName && lastName && appTenantId) {
+          const existing = await db('students')
+            .where('tenant_id', appTenantId)
+            .where(function (this: any) {
+              this.where(db.raw('LOWER(first_name) = ?', [firstName.toLowerCase()]))
+                .andWhere(db.raw('LOWER(last_name) = ?', [lastName.toLowerCase()]));
+            })
+            .first();
+
+          if (!existing) {
+            const { generateNextId } = await import('../utils/idGenerator');
+            const studentId = await generateNextId(db, appTenantId, 'student');
+            const dob = app.child_dob || app.date_of_birth || null;
+            const gender = app.child_gender || app.gender || null;
+            const email = app.guardian_email || app.email || null;
+            const phone = app.guardian_phone || app.phone_number || app.parent_phone || null;
+            const address = app.child_address || app.address || null;
+            const classId = app.class_applying_for || app.grade_id || null;
+
+            const [newStudent] = await db('students').insert({
+              tenant_id: appTenantId,
+              user_id: null,
+              student_id: studentId,
+              first_name: firstName,
+              last_name: lastName,
+              email: email ? email.toLowerCase() : null,
+              date_of_birth: dob,
+              gender: gender,
+              phone: phone,
+              address: address,
+              country: app.child_nationality || 'Sierra Leone',
+              enrollment_date: app.created_at ? new Date(app.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+              photo_url: app.child_photo_url || null,
+              religion: app.child_religion || null,
+              nationality: app.child_nationality || null,
+              place_of_birth: app.child_place_of_birth || null,
+              guardian_name: [app.guardian_first_name || app.parent_name, app.guardian_last_name].filter(Boolean).join(' ') || app.parent_name || null,
+              guardian_phone: app.guardian_phone || app.parent_phone || null,
+              guardian_relationship: app.guardian_relationship || null,
+              guardian_occupation: app.guardian_occupation || null,
+              emergency_contact: app.emergency_contact_phone || null,
+              previous_school: app.previous_school || null,
+              medical_conditions: [app.medication_details, app.allergy_details, app.chronic_illness_details].filter(Boolean).join('; ') || null,
+              status: 'active',
+              created_at: new Date(),
+              updated_at: new Date(),
+            }).returning('*');
+
+            if (classId && newStudent?.id) {
+              await db('enrollments').insert({
+                student_id: newStudent.id,
+                class_id: classId,
+                enrollment_date: new Date().toISOString().split('T')[0],
+                status: 'active',
+                created_at: new Date(),
+                updated_at: new Date(),
+              }).catch(() => {});
+            }
+          }
+        }
+      } catch (syncErr) {
+        console.error('Error auto-creating student from admission status update:', syncErr);
+      }
+    }
   }
-  
+
   return application || null;
 }
 

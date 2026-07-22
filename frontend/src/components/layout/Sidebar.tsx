@@ -38,6 +38,7 @@ interface NavItem {
   badge?: string;
   group?: string;
   module?: string;
+  version?: 'v1' | 'v2';
 }
 
 interface SidebarProps {
@@ -54,6 +55,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher'],
     module: 'Academic Management',
     group: 'Academic',
+    version: 'v1',
   },
   {
     label: 'Subjects',
@@ -62,6 +64,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal'],
     module: 'Academic Management',
     group: 'Academic',
+    version: 'v1',
   },
   {
     label: 'Timetables',
@@ -70,6 +73,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher'],
     module: 'Academic Management',
     group: 'Academic',
+    version: 'v1',
   },
   {
     label: 'Assignments',
@@ -78,6 +82,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'student'],
     module: 'Academic Management',
     group: 'Academic',
+    version: 'v1',
   },
   {
     label: 'Exam Timetable',
@@ -86,6 +91,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher'],
     module: 'Academic Management',
     group: 'Academic',
+    version: 'v1',
   },
   {
     label: 'Results & Grades',
@@ -94,6 +100,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'student', 'parent'],
     module: 'Academic Management',
     group: 'Academic',
+    version: 'v2',
   },
   {
     label: 'Report Cards',
@@ -102,6 +109,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'student', 'parent'],
     module: 'Academic Management',
     group: 'Academic',
+    version: 'v2',
   },
   {
     label: 'Promotions',
@@ -110,6 +118,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal'],
     module: 'Academic Management',
     group: 'Academic',
+    version: 'v2',
   },
 
   // ── STUDENT MANAGEMENT ──────────────────────────────────────────────
@@ -120,6 +129,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'admissions_officer'],
     module: 'Student Management',
     group: 'Students',
+    version: 'v1',
   },
   {
     label: 'Admissions',
@@ -128,6 +138,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'admissions_officer'],
     module: 'Student Management',
     group: 'Students',
+    version: 'v1',
   },
   {
     label: 'Student Profiles',
@@ -136,6 +147,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'admissions_officer'],
     module: 'Student Management',
     group: 'Students',
+    version: 'v1',
   },
   {
     label: 'Attendance',
@@ -144,6 +156,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
     module: 'Student Management',
     group: 'Students',
+    version: 'v1',
   },
   {
     label: 'Discipline & Conduct',
@@ -152,6 +165,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher'],
     module: 'Student Management',
     group: 'Students',
+    version: 'v1',
   },
 
   // ── STAFF MANAGEMENT ────────────────────────────────────────────────
@@ -162,6 +176,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal'],
     module: 'Staff Management',
     group: 'Staff',
+    version: 'v1',
   },
   {
     label: 'Non-Teaching Staff',
@@ -170,6 +185,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal'],
     module: 'Staff Management',
     group: 'Staff',
+    version: 'v2',
   },
   {
     label: 'Leave Management',
@@ -178,6 +194,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher'],
     module: 'Staff Management',
     group: 'Staff',
+    version: 'v2',
   },
   {
     label: 'Performance Reviews',
@@ -186,6 +203,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal'],
     module: 'Staff Management',
     group: 'Staff',
+    version: 'v2',
   },
 
   // ── FINANCIAL MANAGEMENT ────────────────────────────────────────────
@@ -196,6 +214,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'accountant'],
     module: 'Financial Management',
     group: 'Finance',
+    version: 'v2',
   },
   {
     label: 'Invoices',
@@ -204,6 +223,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'accountant', 'parent'],
     module: 'Financial Management',
     group: 'Finance',
+    version: 'v2',
   },
   {
     label: 'Payments & Receipts',
@@ -212,6 +232,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'accountant', 'parent'],
     module: 'Financial Management',
     group: 'Finance',
+    version: 'v2',
   },
   {
     label: 'Expenses',
@@ -220,6 +241,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'accountant'],
     module: 'Financial Management',
     group: 'Finance',
+    version: 'v2',
   },
   {
     label: 'Payroll',
@@ -228,6 +250,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'accountant'],
     module: 'Financial Management',
     group: 'Finance',
+    version: 'v2',
   },
   {
     label: 'Scholarships',
@@ -236,6 +259,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'accountant'],
     module: 'Financial Management',
     group: 'Finance',
+    version: 'v2',
   },
 
   // ── COMMUNICATION ───────────────────────────────────────────────────
@@ -246,6 +270,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
     module: 'Communication',
     group: 'Communication',
+    version: 'v2',
   },
   {
     label: 'Messages',
@@ -254,6 +279,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
     module: 'Communication',
     group: 'Communication',
+    version: 'v2',
   },
   {
     label: 'SMS & WhatsApp',
@@ -262,6 +288,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'accountant', 'admissions_officer'],
     module: 'Communication',
     group: 'Communication',
+    version: 'v2',
   },
   {
     label: 'Email Notifications',
@@ -270,6 +297,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'accountant', 'admissions_officer'],
     module: 'Communication',
     group: 'Communication',
+    version: 'v2',
   },
 
   // ── IDENTITY MANAGEMENT ────────────────────────────────────────────
@@ -280,6 +308,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'admissions_officer'],
     module: 'Identity Management',
     group: 'Identity',
+    version: 'v1',
   },
   {
     label: 'Card Templates',
@@ -288,6 +317,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal'],
     module: 'Identity Management',
     group: 'Identity',
+    version: 'v1',
   },
 
   // ── EVENTS MANAGEMENT ──────────────────────────────────────────────
@@ -298,6 +328,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
     module: 'Events Management',
     group: 'Events',
+    version: 'v1',
   },
   {
     label: 'Calendar',
@@ -306,6 +337,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
     module: 'Events Management',
     group: 'Events',
+    version: 'v1',
   },
   {
     label: 'My Events',
@@ -314,6 +346,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
     module: 'Events Management',
     group: 'Events',
+    version: 'v1',
   },
   {
     label: 'Event Analytics',
@@ -322,6 +355,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal'],
     module: 'Events Management',
     group: 'Events',
+    version: 'v1',
   },
 
   // ── REPORTS & ANALYTICS ────────────────────────────────────────────
@@ -332,6 +366,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher'],
     module: 'Reports & Analytics',
     group: 'Reports',
+    version: 'v2',
   },
   {
     label: 'Financial Reports',
@@ -340,6 +375,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'accountant'],
     module: 'Reports & Analytics',
     group: 'Reports',
+    version: 'v2',
   },
   {
     label: 'Attendance Reports',
@@ -348,6 +384,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher'],
     module: 'Reports & Analytics',
     group: 'Reports',
+    version: 'v2',
   },
   {
     label: 'Enrollment Reports',
@@ -356,6 +393,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'admissions_officer'],
     module: 'Reports & Analytics',
     group: 'Reports',
+    version: 'v2',
   },
   {
     label: 'Discipline Reports',
@@ -364,6 +402,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal'],
     module: 'Reports & Analytics',
     group: 'Reports',
+    version: 'v2',
   },
 
   // ── PLATFORM MANAGEMENT (SUPER ADMIN ONLY) ────────────────────────
@@ -374,6 +413,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin'],
     module: 'Platform Management',
     group: 'Platform',
+    version: 'v1',
   },
   {
     label: 'Subscriptions',
@@ -382,6 +422,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin'],
     module: 'Platform Management',
     group: 'Platform',
+    version: 'v1',
   },
   {
     label: 'Platform Analytics',
@@ -390,6 +431,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin'],
     module: 'Platform Management',
     group: 'Platform',
+    version: 'v1',
   },
 ];
 
@@ -409,10 +451,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     onClose?.();
   };
 
-  // Filter nav items based on user role
-  const filteredNavItems = navItems.filter((item) =>
-    canAccess(item.roles as any[])
-  );
+  // Flag to toggle v2 items. Set to false for Version 1.0.0 release.
+  const ENABLE_V2_FEATURES = false;
+
+  // Filter nav items based on user role & release version
+  const filteredNavItems = navItems.filter((item) => {
+    if (!ENABLE_V2_FEATURES && item.version === 'v2') return false;
+    return canAccess(item.roles as any[]);
+  });
 
   return (
     <>

@@ -24,6 +24,25 @@ class SMSWhatsAppSchedulingService {
     userId: string
   ): Promise<MessageSchedule> {
     try {
+      if (!request.recipient_id) {
+        throw new Error('Recipient is required');
+      }
+      if (!['sms', 'whatsapp'].includes(request.channel)) {
+        throw new Error('Channel must be sms or whatsapp');
+      }
+      if (!['once', 'daily', 'weekly', 'monthly'].includes(request.schedule_type)) {
+        throw new Error('Invalid schedule type');
+      }
+      if (!request.template_id && !request.message_content?.trim()) {
+        throw new Error('A template or message content is required');
+      }
+      if (!request.first_send_time || Number.isNaN(new Date(request.first_send_time).getTime())) {
+        throw new Error('A valid first send time is required');
+      }
+      if (new Date(request.first_send_time).getTime() <= Date.now()) {
+        throw new Error('First send time must be in the future');
+      }
+
       const [schedule] = await db('message_schedules')
         .insert({
           tenant_id: tenantId,
@@ -77,8 +96,7 @@ class SMSWhatsAppSchedulingService {
       const schedules = await db('message_schedules')
         .where({
           tenant_id: tenantId,
-          recipient_id: userId,
-          status: ['active', 'paused'],
+          created_by: userId,
         })
         .orderBy('next_send_time', 'asc');
 
@@ -277,14 +295,28 @@ class SMSWhatsAppSchedulingService {
     filter: AnalyticsFilterRequest
   ): Promise<MessagingAnalytics[]> {
     try {
-      let query = db('messaging_analytics').where({ tenant_id: tenantId });
+      // Query delivery records directly. The legacy messaging_analytics table is
+      // only populated by a manual aggregation method, so reading it here made
+      // the dashboard appear empty even after messages had been sent.
+      let query = db('sms_whatsapp_messages').where({ tenant_id: tenantId });
 
       if (filter.channel) query = query.where({ channel: filter.channel });
-      if (filter.provider_name) query = query.where({ provider_name: filter.provider_name });
-      if (filter.date_from) query = query.where('analytics_date', '>=', filter.date_from);
-      if (filter.date_to) query = query.where('analytics_date', '<=', filter.date_to);
+      if (filter.date_from) query = query.where('created_at', '>=', filter.date_from);
+      if (filter.date_to) query = query.where('created_at', '<=', filter.date_to);
 
-      const analytics = await query.orderBy('analytics_date', 'desc');
+      const analytics = await query
+        .select(
+          db.raw('DATE(created_at) as analytics_date'),
+          'channel',
+          db.raw('COUNT(*) as messages_sent'),
+          db.raw("SUM(CASE WHEN status IN ('delivered', 'read') THEN 1 ELSE 0 END) as messages_delivered"),
+          db.raw("SUM(CASE WHEN status IN ('failed', 'bounced', 'blocked') THEN 1 ELSE 0 END) as messages_failed"),
+          db.raw("SUM(CASE WHEN status = 'bounced' THEN 1 ELSE 0 END) as messages_bounced"),
+          db.raw('COALESCE(SUM(cost), 0) as total_cost'),
+          db.raw('COUNT(DISTINCT recipient_id) as distinct_recipients')
+        )
+        .groupByRaw('DATE(created_at), channel')
+        .orderBy('analytics_date', 'desc');
 
       return analytics.map(a => this.formatAnalytics(a));
     } catch (error) {

@@ -80,40 +80,16 @@ export const Phase13StudentDashboard: React.FC = () => {
           </p>
         </div>
 
-        {/* Quick Stats */}
+        {/* Quick Stats (Version 1.0.0) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-gray-600 text-sm">GPA</p>
-                  <p className="text-3xl font-bold text-blue-600">{mockStudentData.gpa}</p>
-                </div>
-                <TrendingUp className="w-10 h-10 text-blue-100" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-600 text-sm">Attendance</p>
+                  <p className="text-gray-600 text-sm">Attendance Rate</p>
                   <p className="text-3xl font-bold text-green-600">{mockStudentData.attendancePercentage}%</p>
                 </div>
                 <Calendar className="w-10 h-10 text-green-100" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-600 text-sm">Outstanding</p>
-                  <p className="text-3xl font-bold text-orange-600">Le{outstandingFees}</p>
-                </div>
-                <DollarSign className="w-10 h-10 text-orange-100" />
               </div>
             </CardContent>
           </Card>
@@ -129,15 +105,39 @@ export const Phase13StudentDashboard: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-600 text-sm">Assignments</p>
+                  <p className="text-3xl font-bold text-blue-600">Active</p>
+                </div>
+                <FileText className="w-10 h-10 text-blue-100" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-600 text-sm">School Events</p>
+                  <p className="text-3xl font-bold text-amber-600">Calendar</p>
+                </div>
+                <Calendar className="w-10 h-10 text-amber-100" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Tabs */}
         <div className="border-b">
           <div className="flex gap-4 overflow-x-auto">
-            {(['overview', 'grades', 'attendance', 'schedule', 'fees', 'records'] as const).map(tab => (
+            {(['overview', 'attendance', 'schedule', 'records'] as const).map(tab => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => setActiveTab(tab as any)}
                 className={`px-4 py-3 font-medium border-b-2 transition whitespace-nowrap ${
                   activeTab === tab
                     ? 'border-blue-600 text-blue-600'
@@ -152,62 +152,13 @@ export const Phase13StudentDashboard: React.FC = () => {
 
         {/* Content */}
         <div>
-          {/* Overview Tab */}
+          {/* Overview Tab (v1.0.0) */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              {/* Academic Standing */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Academic Standing</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4 text-center">
-                    <div className="p-4 bg-green-50 rounded-lg">
-                      <p className="text-sm text-gray-600">Grade Average</p>
-                      <p className="text-2xl font-bold text-green-600">A</p>
-                    </div>
-                    <div className="p-4 bg-blue-50 rounded-lg">
-                      <p className="text-sm text-gray-600">GPA</p>
-                      <p className="text-2xl font-bold text-blue-600">{mockStudentData.gpa}</p>
-                    </div>
-                    <div className="p-4 bg-purple-50 rounded-lg">
-                      <p className="text-sm text-gray-600">Status</p>
-                      <p className="text-2xl font-bold text-purple-600">Good</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Latest Grades */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Latest Grades</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {mockGrades.slice(0, 3).map((grade, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div>
-                          <p className="font-semibold">{grade.subject}</p>
-                          <p className="text-sm text-gray-600">{grade.marks}/{grade.maxMarks}</p>
-                        </div>
-                        <div className={`text-2xl font-bold ${
-                          grade.grade.startsWith('A') ? 'text-green-600' : 
-                          grade.grade.startsWith('B') ? 'text-blue-600' : 
-                          'text-orange-600'
-                        }`}>
-                          {grade.grade}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
               {/* Today's Classes */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Today's Classes</CardTitle>
+                  <CardTitle>Today's Classes & Timetable</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
@@ -222,6 +173,29 @@ export const Phase13StudentDashboard: React.FC = () => {
                         <div className="text-sm font-medium text-blue-600">{cls.time}</div>
                       </div>
                     ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Attendance Overview */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Attendance Summary</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="p-4 bg-green-50 rounded-lg">
+                      <p className="text-sm text-gray-600">Present Days</p>
+                      <p className="text-2xl font-bold text-green-600">{mockAttendance.present}</p>
+                    </div>
+                    <div className="p-4 bg-amber-50 rounded-lg">
+                      <p className="text-sm text-gray-600">Late Days</p>
+                      <p className="text-2xl font-bold text-amber-600">{mockAttendance.late}</p>
+                    </div>
+                    <div className="p-4 bg-red-50 rounded-lg">
+                      <p className="text-sm text-gray-600">Absences</p>
+                      <p className="text-2xl font-bold text-red-600">{mockAttendance.absent}</p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

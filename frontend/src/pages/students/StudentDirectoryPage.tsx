@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { Users, UserCheck, UserX, GraduationCap, X, ChevronDown, SlidersHorizontal } from 'lucide-react';
@@ -32,6 +33,7 @@ function formatDate(dateStr: string | undefined): string {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const StudentDirectoryPage: React.FC = () => {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');
@@ -298,6 +300,7 @@ export const StudentDirectoryPage: React.FC = () => {
         onClose={() => setViewingStudent(null)}
         student={viewingStudent}
         onEdit={(s) => { setEditingStudent(s); setFormOpen(true); }}
+        onCreateParentAccount={(s) => navigate('/students/profiles', { state: { studentId: s.id, openParentModal: true } })}
       />
     </MainLayout>
   );

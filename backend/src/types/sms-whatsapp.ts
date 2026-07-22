@@ -10,7 +10,7 @@ export interface SMSWhatsAppProvider {
   tenant_id: string;
   provider_name: 'twilio' | 'brevo' | 'messagebird' | 'custom';
   provider_type: 'sms' | 'whatsapp' | 'both';
-  api_key: string;
+  api_key?: string;
   api_secret?: string;
   account_sid?: string; // For Twilio
   auth_token?: string;
@@ -31,7 +31,9 @@ export interface SMSWhatsAppProvider {
 export interface CreateProviderRequest {
   provider_name: 'twilio' | 'brevo' | 'messagebird' | 'custom';
   provider_type: 'sms' | 'whatsapp' | 'both';
-  api_key: string;
+  is_primary?: boolean;
+  enabled?: boolean;
+  api_key?: string;
   api_secret?: string;
   account_sid?: string;
   auth_token?: string;
@@ -188,6 +190,7 @@ export interface PhoneNumber {
   verified_at?: Date;
   verification_attempts: number;
   active: boolean;
+  verification_delivery_error?: string;
   metadata?: Record<string, any>;
   created_at: Date;
   updated_at: Date;

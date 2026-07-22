@@ -4,7 +4,8 @@
  * Clicking a student transitions to their full 360° tabbed profile view.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   User, Mail, Phone, MapPin, Calendar, BookOpen, Heart, Shield, Hash, Globe,
@@ -50,9 +51,11 @@ function calculateAge(dob: string | null | undefined): string {
   }
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// Flag to toggle v2 profile tabs (Academics/Grades & Billing/Finance). Set to false for v1.0.0 release.
+const ENABLE_V2_FEATURES = false;
 
 export const StudentProfilesPage: React.FC = () => {
+  const location = useLocation();
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -60,6 +63,41 @@ export const StudentProfilesPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(12); // Grid of cards looks best in multiples of 3 or 4
   const [activeTab, setActiveTab] = useState<'overview' | 'academics' | 'attendance' | 'conduct' | 'billing'>('overview');
+
+  // Parent Account Modal State
+  const [parentModalOpen, setParentModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.studentId) {
+      setSelectedStudentId(location.state.studentId);
+      if (location.state?.openParentModal) {
+        setParentModalOpen(true);
+      }
+    }
+  }, [location.state]);
+  const [parentEmail, setParentEmail] = useState('');
+  const [parentFirstName, setParentFirstName] = useState('');
+  const [parentLastName, setParentLastName] = useState('');
+  const [parentPhone, setParentPhone] = useState('');
+  const [parentRelationship, setParentRelationship] = useState('Parent');
+  const [parentPassword, setParentPassword] = useState('');
+  const [isCreatingParent, setIsCreatingParent] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState<{ email: string; tempPass: string } | null>(null);
+
+  const availableTabs = useMemo(() => {
+    const tabs: Array<{ id: 'overview' | 'academics' | 'attendance' | 'conduct' | 'billing'; label: string }> = [
+      { id: 'overview', label: 'Overview' },
+    ];
+    if (ENABLE_V2_FEATURES) {
+      tabs.push({ id: 'academics', label: 'Academics' });
+    }
+    tabs.push({ id: 'attendance', label: 'Attendance' });
+    tabs.push({ id: 'conduct', label: 'Conduct' });
+    if (ENABLE_V2_FEATURES) {
+      tabs.push({ id: 'billing', label: 'Billing' });
+    }
+    return tabs;
+  }, []);
 
   // 1. Fetch Students list
   const { data: studentsData, isLoading: isStudentsLoading } = useQuery({
@@ -204,6 +242,52 @@ export const StudentProfilesPage: React.FC = () => {
     setSelectedStudentId(null);
   };
 
+  const handleOpenParentModal = () => {
+    if (!student) return;
+    const names = (student.guardian_name || '').trim().split(' ');
+    setParentFirstName(names[0] || '');
+    setParentLastName(names.slice(1).join(' ') || student.last_name || '');
+    setParentEmail(student.email || '');
+    setParentPhone(student.guardian_phone || student.phone || '');
+    setParentRelationship(student.guardian_relationship || 'Parent');
+    setParentPassword('');
+    setCreatedCredentials(null);
+    setParentModalOpen(true);
+  };
+
+  const handleCreateParentAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!student || !parentEmail) {
+      showToast.error('Please enter a valid parent email address.');
+      return;
+    }
+    setIsCreatingParent(true);
+    try {
+      const res = await studentsService.createParentAccount(student.id, {
+        email: parentEmail,
+        first_name: parentFirstName,
+        last_name: parentLastName,
+        phone: parentPhone,
+        relationship: parentRelationship,
+        password: parentPassword || undefined,
+      });
+      const responseData = (res as any).data || res;
+      if (responseData.success !== false) {
+        setCreatedCredentials({
+          email: parentEmail,
+          tempPass: responseData.temporary_password || '(Existing Account Linked)',
+        });
+        showToast.success('Parent account created & linked successfully!');
+      } else {
+        showToast.error(responseData.message || 'Failed to create parent account.');
+      }
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.message || err?.message || 'Error creating parent account.');
+    } finally {
+      setIsCreatingParent(false);
+    }
+  };
+
   return (
     <MainLayout>
       <PageShell
@@ -341,9 +425,17 @@ export const StudentProfilesPage: React.FC = () => {
           /* ── SCREEN 2: 360° PROFILE VIEW ─────────────────────────────────────── */
           <div className="space-y-6">
             {/* Header / Actions bar */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-800 p-3 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm">
               <Button variant="ghost" size="sm" onClick={handleBackToList} className="group">
                 <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" /> Back to Profiles
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleOpenParentModal}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+              >
+                <User size={15} /> Create Parent Account
               </Button>
             </div>
 
@@ -401,17 +493,17 @@ export const StudentProfilesPage: React.FC = () => {
 
                 {/* ── Tab Navigation ── */}
                 <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide py-1">
-                  {(['overview', 'academics', 'attendance', 'conduct', 'billing'] as const).map((tab) => (
+                  {availableTabs.map((tabObj) => (
                     <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
+                      key={tabObj.id}
+                      onClick={() => setActiveTab(tabObj.id)}
                       className={`whitespace-nowrap px-4 py-2.5 rounded-lg text-sm font-semibold tracking-wide transition-all duration-200 ${
-                        activeTab === tab
+                        activeTab === tabObj.id
                           ? 'bg-blue-500 text-white shadow-sm'
                           : 'text-gray-500 hover:text-gray-750 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800'
                       }`}
                     >
-                      {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                      {tabObj.label}
                     </button>
                   ))}
                 </div>
@@ -451,16 +543,101 @@ export const StudentProfilesPage: React.FC = () => {
 
                       {/* Guardian & Additional info */}
                       <div className="space-y-6">
-                        {/* Parent / Guardian */}
-                        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm">
-                          <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-100 dark:border-gray-700 pb-3 mb-4">Parent / Guardian</h3>
+                        {/* Parent / Guardian & Multi-Guardian Tracking */}
+                        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm space-y-4">
+                          <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3">
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest">Parents & Guardians</h3>
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800/40">
+                              Multi-Guardian Support
+                            </span>
+                          </div>
+
                           <div className="space-y-4">
-                            <InfoTile icon={<User />} label="Guardian Name" value={student.guardian_name || '—'} />
-                            <InfoTile icon={<Phone />} label="Guardian Phone" value={student.guardian_phone || '—'} />
+                            <InfoTile icon={<User />} label="Primary Guardian" value={student.guardian_name || '—'} />
+                            <InfoTile icon={<Phone />} label="Primary Contact Phone" value={student.guardian_phone || '—'} />
                             <InfoTile icon={<Heart />} label="Relationship" value={student.guardian_relationship || '—'} />
-                            <InfoTile icon={<Briefcase />} label="Occupation" value={student.guardian_occupation || '—'} />
                             <InfoTile icon={<Shield />} label="Emergency Contact" value={student.emergency_contact || '—'} color="red" />
                           </div>
+
+                          {/* Render Additional Guardians List if Present */}
+                          {student.guardians_list && student.guardians_list.length > 0 && (
+                            <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-2">
+                              <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Linked Guardians & Parent Accounts ({student.guardians_list.length})</p>
+                              <div className="space-y-2">
+                                {student.guardians_list.map((g: any) => (
+                                  <div key={g.id} className="p-2.5 bg-gray-50 dark:bg-gray-850 rounded-xl border border-gray-150 dark:border-gray-700/50 flex items-center justify-between text-xs">
+                                    <div>
+                                      <p className="font-bold text-gray-900 dark:text-white">{g.first_name} {g.last_name} <span className="text-[10px] font-normal text-gray-400">({g.relationship})</span></p>
+                                      <p className="text-[11px] text-gray-500 dark:text-gray-400">{g.email || g.phone_number}</p>
+                                    </div>
+                                    {g.is_primary_guardian && (
+                                      <span className="text-[9px] font-bold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded">Primary</span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
+                            <button
+                              type="button"
+                              onClick={handleOpenParentModal}
+                              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all shadow-sm"
+                            >
+                              <User size={14} /> + Add Another Parent / Guardian Account
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Portal Login Credentials Card */}
+                        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white p-5 rounded-2xl border border-indigo-900/50 shadow-lg space-y-4">
+                          <div className="flex items-center justify-between border-b border-indigo-800/50 pb-3">
+                            <h3 className="text-xs font-extrabold uppercase tracking-widest text-indigo-300 flex items-center gap-2">
+                              <Shield size={16} className="text-indigo-400" /> Portal Login Credentials
+                            </h3>
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full">
+                              Auto-Generated
+                            </span>
+                          </div>
+
+                          <div className="space-y-3 text-xs">
+                            {/* Student Credentials */}
+                            <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/60 space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-blue-400">Student Portal Login</span>
+                                <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-mono">Role: student</span>
+                              </div>
+                              <p className="text-slate-400 font-mono text-[11px] truncate">
+                                Email: <strong className="text-slate-100">{student.demo_login?.student_email || student.email || `${student.student_id.toLowerCase()}@student.school.com`}</strong>
+                              </p>
+                              <p className="text-slate-400 font-mono text-[11px]">
+                                Password: <strong className="text-emerald-400">{student.demo_login?.student_password || 'Student123!'}</strong>
+                              </p>
+                            </div>
+
+                            {/* Parent Credentials */}
+                            <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/60 space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-purple-400">Parent Portal Login</span>
+                                <span className="text-[10px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded font-mono">Role: parent</span>
+                              </div>
+                              <p className="text-slate-400 font-mono text-[11px] truncate">
+                                Email: <strong className="text-slate-100">{student.demo_login?.parent_email || (student.email || 'Not Created')}</strong>
+                              </p>
+                              <p className="text-slate-400 font-mono text-[11px]">
+                                Password: <strong className="text-purple-300">{student.demo_login?.parent_password || 'Parent123!'}</strong>
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleOpenParentModal}
+                            className="w-full py-2.5 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-all flex items-center justify-center gap-2 shadow-md"
+                          >
+                            <User size={14} /> Provision / Link Parent Account
+                          </button>
                         </div>
 
                         {/* Medical Conditions */}
@@ -845,6 +1022,124 @@ export const StudentProfilesPage: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── CREATE PARENT ACCOUNT MODAL ── */}
+        {parentModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-gray-850 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-150 dark:border-gray-750 relative space-y-5">
+              <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-750 pb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Create Parent Portal Account</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Link parent credentials to {student?.first_name} {student?.last_name}</p>
+                </div>
+                <button
+                  onClick={() => setParentModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                >
+                  <XCircle size={20} />
+                </button>
+              </div>
+
+              {createdCredentials ? (
+                <div className="space-y-4 py-2">
+                  <div className="p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/40 rounded-xl space-y-2">
+                    <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-bold text-sm">
+                      <CheckCircle size={18} /> Account Ready!
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-300">
+                      Parent can now log in using the following details:
+                    </p>
+                    <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 font-mono text-xs space-y-1">
+                      <p><span className="text-gray-400">Email:</span> <strong className="text-gray-900 dark:text-white">{createdCredentials.email}</strong></p>
+                      <p><span className="text-gray-400">Temporary Password:</span> <strong className="text-blue-600 dark:text-blue-400">{createdCredentials.tempPass}</strong></p>
+                    </div>
+                  </div>
+                  <Button onClick={() => setParentModalOpen(false)} className="w-full">
+                    Done
+                  </Button>
+                </div>
+              ) : (
+                <form onSubmit={handleCreateParentAccount} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">Parent Email *</label>
+                    <input
+                      type="email"
+                      required
+                      value={parentEmail}
+                      onChange={(e) => setParentEmail(e.target.value)}
+                      placeholder="parent@example.com"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-250 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">First Name</label>
+                      <input
+                        type="text"
+                        value={parentFirstName}
+                        onChange={(e) => setParentFirstName(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-250 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">Last Name</label>
+                      <input
+                        type="text"
+                        value={parentLastName}
+                        onChange={(e) => setParentLastName(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-250 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">Phone Number</label>
+                      <input
+                        type="text"
+                        value={parentPhone}
+                        onChange={(e) => setParentPhone(e.target.value)}
+                        placeholder="+232..."
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-250 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">Relationship</label>
+                      <input
+                        type="text"
+                        value={parentRelationship}
+                        onChange={(e) => setParentRelationship(e.target.value)}
+                        placeholder="Father, Mother..."
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-250 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">Custom Password (Optional)</label>
+                    <input
+                      type="password"
+                      value={parentPassword}
+                      onChange={(e) => setParentPassword(e.target.value)}
+                      placeholder="Leave blank to auto-generate"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-250 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-3 border-t border-gray-100 dark:border-gray-750">
+                    <Button type="button" variant="outline" onClick={() => setParentModalOpen(false)} className="flex-1">
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={isCreatingParent} className="flex-1">
+                      {isCreatingParent ? 'Creating...' : 'Create Account'}
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
         )}
       </PageShell>

@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
+import { PasswordService } from '../services/passwordService';
 import knex from 'knex';
 import knexConfig from '../../knexfile';
 
@@ -237,11 +238,118 @@ router.post('/:guardianId/set-primary', authenticate, authorize('admin', 'princi
     // Set this guardian as primary
     await db('guardians').where('id', guardianId).update({ is_primary_guardian: true });
 
-    res.json({
-      message: 'Guardian set as primary successfully',
+    logger.info(`Guardian set as primary: ${guardianId}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/students/:studentId/parent-account
+ * Create or link a parent user account for a student (principal/super_admin/admissions_officer)
+ */
+router.post('/:studentId/parent-account', authenticate, authorize('principal', 'super_admin', 'admissions_officer', 'admin'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { studentId } = req.params;
+    const { email, first_name, last_name, phone, relationship, password } = req.body;
+    const tenantId = req.user?.tenant_id;
+    const createdBy = (req as any).user.id;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const student = await db('students')
+      .where('tenant_id', tenantId)
+      .andWhere(function (this: any) {
+        this.where('id', studentId).orWhere('student_id', studentId);
+      })
+      .first();
+
+    if (!student) {
+      throw new AppError('Student not found', 404, 'NOT_FOUND');
+    }
+
+    const targetEmail = (email || student.email || '').trim().toLowerCase();
+    const targetFirstName = (first_name || (student.guardian_name ? student.guardian_name.split(' ')[0] : 'Parent')).trim();
+    const targetLastName = (last_name || (student.guardian_name ? student.guardian_name.split(' ').slice(1).join(' ') : student.last_name)).trim();
+
+    if (!targetEmail) {
+      throw new AppError('Parent email is required to create an account', 400, 'VALIDATION_ERROR');
+    }
+
+    // Check if user already exists
+    let user = await db('users').where('email', targetEmail).first();
+    let tempPassword = '';
+
+    if (!user) {
+      tempPassword = password || PasswordService.generateTemporaryPassword();
+      const passwordHash = await PasswordService.hashPassword(tempPassword);
+
+      const [insertedUser] = await db('users').insert({
+        tenant_id: tenantId,
+        email: targetEmail,
+        first_name: targetFirstName,
+        last_name: targetLastName,
+        password_hash: passwordHash,
+        role: 'parent',
+        status: 'active',
+        created_by: createdBy,
+        created_at: new Date(),
+        updated_at: new Date(),
+      }).returning('*');
+
+      user = insertedUser;
+    }
+
+    // Insert/link guardian entry in guardians table for multi-guardian tracking
+    const existingGuardian = await db('guardians')
+      .where('student_id', student.id)
+      .andWhere(function(this: any) {
+        this.where('email', targetEmail)
+            .orWhere(db.raw('LOWER(first_name) = ? AND LOWER(last_name) = ?', [targetFirstName.toLowerCase(), targetLastName.toLowerCase()]));
+      })
+      .first();
+
+    if (!existingGuardian) {
+      await db('guardians').insert({
+        student_id: student.id,
+        first_name: targetFirstName,
+        last_name: targetLastName,
+        email: targetEmail,
+        phone_number: phone || student.guardian_phone || '—',
+        relationship: relationship || 'Parent',
+        is_primary_guardian: false,
+        created_at: new Date(),
+        updated_at: new Date(),
+        created_by: createdBy,
+      }).catch(() => {});
+    }
+
+    // Update primary guardian info if not set
+    if (!student.guardian_name || student.guardian_name === '—') {
+      await db('students').where('id', student.id).update({
+        guardian_name: `${targetFirstName} ${targetLastName}`.trim(),
+        guardian_phone: phone || student.guardian_phone || null,
+        guardian_relationship: relationship || student.guardian_relationship || 'Parent',
+        updated_at: new Date(),
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Parent account created & linked successfully',
+      user: {
+        id: user.id,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        role: user.role,
+      },
+      temporary_password: tempPassword || '(Account already existed)',
     });
 
-    logger.info(`Guardian set as primary: ${guardianId}`);
+    logger.info(`Parent account ${targetEmail} created/linked for student ${student.student_id}`);
   } catch (error) {
     next(error);
   }

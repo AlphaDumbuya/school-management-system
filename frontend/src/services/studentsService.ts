@@ -93,6 +93,10 @@ export const studentsService = {
     return apiClient.delete(`/api/v1/students/${id}/permanent`);
   },
 
+  async createParentAccount(studentId: string, data: { email: string; first_name?: string; last_name?: string; phone?: string; relationship?: string; password?: string }) {
+    return apiClient.post<{ success: boolean; message: string; user: any; temporary_password?: string }>(`/api/v1/students/${studentId}/parent-account`, data);
+  },
+
   async reactivateStudent(id: string) {
     return apiClient.post(`/api/v1/students/${id}/reactivate`);
   },

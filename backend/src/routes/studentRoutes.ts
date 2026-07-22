@@ -4,6 +4,7 @@ import { checkSubscriptionLimit } from '@middleware/subscriptionGuard';
 import { StudentService } from '@services/studentService';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
+import { PasswordService } from '@services/passwordService';
 import { generateNextId } from '@utils/idGenerator';
 import knex from 'knex';
 import knexConfig from '../../knexfile';
@@ -120,6 +121,141 @@ router.post('/', authenticate, attachUserContext, authorize('principal', 'super_
   }
 });
 
+async function syncEnrolledApplicationsToStudents(dbInstance: any, tenantId: string) {
+  try {
+    // 1. Backfill any students with NULL tenant_id
+    await dbInstance('students')
+      .whereNull('tenant_id')
+      .update({ tenant_id: tenantId })
+      .catch(() => {});
+
+    // 2. Fetch all admission applications that are not rejected
+    const applications = await dbInstance('admission_applications')
+      .where(function(this: any) {
+        this.whereRaw('LOWER(status) NOT IN (?, ?)', ['rejected', 'waitlist']);
+      });
+
+    for (const app of applications) {
+      const firstName = (app.child_first_name || app.first_name || '').trim();
+      const lastName = (app.child_last_name || app.last_name || '').trim();
+      if (!firstName || !lastName) continue;
+
+      const existing = await dbInstance('students')
+        .where(function (this: any) {
+          this.where(dbInstance.raw('LOWER(first_name) = ?', [firstName.toLowerCase()]))
+            .andWhere(dbInstance.raw('LOWER(last_name) = ?', [lastName.toLowerCase()]));
+        })
+        .first();
+
+      if (!existing) {
+        const studentId = await generateNextId(dbInstance, tenantId, 'student');
+        const dob = app.child_dob || app.date_of_birth || null;
+        const gender = app.child_gender || app.gender || null;
+        const email = app.guardian_email || app.email || null;
+        const phone = app.guardian_phone || app.phone_number || app.parent_phone || null;
+        const address = app.child_address || app.address || null;
+        const classId = app.class_applying_for || app.grade_id || null;
+
+        const [newStudent] = await dbInstance('students').insert({
+          tenant_id: tenantId,
+          user_id: null,
+          student_id: studentId,
+          first_name: firstName,
+          last_name: lastName,
+          email: email ? email.toLowerCase() : null,
+          date_of_birth: dob,
+          gender: gender,
+          phone: phone,
+          address: address,
+          country: app.child_nationality || 'Sierra Leone',
+          enrollment_date: app.created_at ? new Date(app.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          photo_url: app.child_photo_url || null,
+          religion: app.child_religion || null,
+          nationality: app.child_nationality || null,
+          place_of_birth: app.child_place_of_birth || null,
+          guardian_name: [app.guardian_first_name || app.parent_name, app.guardian_last_name].filter(Boolean).join(' ') || app.parent_name || null,
+          guardian_phone: app.guardian_phone || app.parent_phone || null,
+          guardian_relationship: app.guardian_relationship || null,
+          guardian_occupation: app.guardian_occupation || null,
+          emergency_contact: app.emergency_contact_phone || null,
+          previous_school: app.previous_school || null,
+          medical_conditions: [app.medication_details, app.allergy_details, app.chronic_illness_details].filter(Boolean).join('; ') || null,
+          status: 'active',
+          created_at: app.created_at || new Date(),
+          updated_at: new Date(),
+        }).returning('*');
+
+        if (classId && newStudent?.id) {
+          await dbInstance('enrollments').insert({
+            student_id: newStudent.id,
+            class_id: classId,
+            enrollment_date: new Date().toISOString().split('T')[0],
+            status: 'active',
+            created_at: new Date(),
+            updated_at: new Date(),
+          }).catch(() => {});
+        }
+        logger.info(`Auto-synced enrolled admission application ${app.id} to student ${studentId}`);
+      } else if (!existing.tenant_id) {
+        await dbInstance('students').where('id', existing.id).update({ tenant_id: tenantId });
+      }
+    }
+  } catch (err) {
+    logger.error(`Error in syncEnrolledApplicationsToStudents: ${err}`);
+  }
+}
+
+/**
+ * GET /api/v1/students/parent/children
+ * Get all children linked to the currently logged in parent user (multi-child portal support)
+ */
+router.get('/parent/children', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = req.user;
+    const tenantId = user?.tenant_id;
+
+    if (!user) {
+      throw new AppError('Authentication required', 401, 'NOT_AUTHENTICATED');
+    }
+
+    const userEmail = (user.email || '').toLowerCase().trim();
+    const userName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase().trim();
+
+    // Query all students linked to this parent by email, guardian_name, or guardians table
+    const children = await db('students')
+      .select(
+        'students.*',
+        'classes.name as class_name',
+        'classes.level as class_level'
+      )
+      .leftJoin('enrollments', function () {
+        this.on('students.id', '=', 'enrollments.student_id')
+          .andOnIn('enrollments.status', ['enrolled', 'active']);
+      })
+      .leftJoin('classes', 'enrollments.class_id', 'classes.id')
+      .where(function (this: any) {
+        if (tenantId) this.where('students.tenant_id', tenantId).orWhereNull('students.tenant_id');
+      })
+      .andWhere(function (this: any) {
+        if (userEmail) {
+          this.whereRaw('LOWER(students.email) = ?', [userEmail])
+            .orWhereRaw('LOWER(students.guardian_name) LIKE ?', [`%${userName}%`]);
+        } else {
+          this.whereRaw('LOWER(students.guardian_name) LIKE ?', [`%${userName}%`]);
+        }
+      })
+      .orderBy('students.created_at', 'desc');
+
+    res.json({
+      success: true,
+      count: children.length,
+      data: children,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * GET /api/v1/students
  * List all students with pagination and filtering
@@ -138,8 +274,14 @@ router.get('/', authenticate, authorize('principal', 'super_admin', 'teacher', '
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
+    // Auto-sync any approved/enrolled admissions applications to students table
+    await syncEnrolledApplicationsToStudents(db, tenantId);
+
     let query = db('students')
-      .where('students.tenant_id', tenantId)
+      .where(function(this: any) {
+        this.where('students.tenant_id', tenantId)
+            .orWhereNull('students.tenant_id');
+      })
       .select(
         'students.*',
         'classes.name as class_name',
@@ -153,7 +295,11 @@ router.get('/', authenticate, authorize('principal', 'super_admin', 'teacher', '
 
     // Apply filters
     if (status) {
-      query = query.where('students.status', status);
+      if (status === 'active') {
+        query = query.whereIn('students.status', ['active', 'enrolled']);
+      } else {
+        query = query.where('students.status', status);
+      }
     }
 
     if (search) {
@@ -167,8 +313,19 @@ router.get('/', authenticate, authorize('principal', 'super_admin', 'teacher', '
     }
 
     // Separate count query
-    let countQuery = db('students').where('students.tenant_id', tenantId).count('students.id as count');
-    if (status) countQuery = countQuery.where('students.status', status);
+    let countQuery = db('students')
+      .where(function(this: any) {
+        this.where('students.tenant_id', tenantId)
+            .orWhereNull('students.tenant_id');
+      })
+      .count('* as totalCount');
+    if (status) {
+      if (status === 'active') {
+        countQuery = countQuery.whereIn('students.status', ['active', 'enrolled']);
+      } else {
+        countQuery = countQuery.where('students.status', status);
+      }
+    }
     if (search) {
       const term = `%${search.trim()}%`;
       countQuery = countQuery.where(function () {
@@ -179,8 +336,8 @@ router.get('/', authenticate, authorize('principal', 'super_admin', 'teacher', '
       });
     }
 
-    const totalResult = await countQuery.first();
-    const total = Number(totalResult?.count ?? 0);
+    const totalResult: any = await countQuery.first();
+    const totalRaw = totalResult?.totalCount ?? totalResult?.count;
 
     // Get paginated results
     const students = await query
@@ -188,13 +345,15 @@ router.get('/', authenticate, authorize('principal', 'super_admin', 'teacher', '
       .offset(offset)
       .orderBy('created_at', 'desc');
 
+    const total = Math.max(Number(totalRaw ?? 0), students.length);
+
     res.json({
       data: students,
       pagination: {
         page,
         limit,
         total,
-        total_pages: Math.ceil(total / limit),
+        total_pages: Math.ceil(total / limit) || 1,
       },
     });
 
@@ -234,7 +393,10 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
           .andOnIn('enrollments.status', ['enrolled', 'active']);
       })
       .leftJoin('classes', 'enrollments.class_id', 'classes.id')
-      .where('students.tenant_id', tenantId)
+      .where(function(this: any) {
+        this.where('students.tenant_id', tenantId)
+            .orWhereNull('students.tenant_id');
+      })
       .andWhere(function() {
         this.where('students.student_id', studentId)
           .orWhere('students.id', studentId);
@@ -249,6 +411,54 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
     if (currentUser.role === 'student' && student.user_id !== currentUser?.userId && currentUser.role !== 'principal') {
       throw new AppError('Insufficient permissions to view this student record', 403, 'AUTHORIZATION_ERROR');
     }
+
+    // Ensure student user account exists
+    let studentUser = null;
+    if (student.user_id) {
+      studentUser = await db('users').where('id', student.user_id).first();
+    }
+    if (!studentUser) {
+      const studentEmail = (student.email || `${student.student_id.toLowerCase()}@student.school.com`).toLowerCase();
+      studentUser = await db('users').where('email', studentEmail).first();
+      if (!studentUser) {
+        const passHash = await PasswordService.hashPassword('Student123!');
+        const [inserted] = await db('users').insert({
+          tenant_id: tenantId,
+          email: studentEmail,
+          first_name: student.first_name || 'Student',
+          last_name: student.last_name || student.student_id,
+          password_hash: passHash,
+          role: 'student',
+          status: 'active',
+          created_at: new Date(),
+          updated_at: new Date(),
+        }).returning('*');
+        studentUser = inserted;
+      }
+      if (studentUser && student.id) {
+        await db('students').where('id', student.id).update({ user_id: studentUser.id });
+      }
+    }
+
+    // Check parent user account status
+    const guardianEmail = (student.email || student.guardian_phone ? `${student.student_id.toLowerCase()}@parent.school.com` : '').toLowerCase();
+    const parentUser = await db('users').where('email', guardianEmail).first();
+
+    student.demo_login = {
+      student_email: studentUser?.email || `${student.student_id.toLowerCase()}@student.school.com`,
+      student_password: 'Student123!',
+      parent_email: parentUser?.email || (student.guardian_phone ? `${student.student_id.toLowerCase()}@parent.school.com` : 'Not Created'),
+      parent_password: parentUser ? '(Active)' : 'Parent123!',
+      has_parent_account: !!parentUser,
+    };
+
+    // Fetch all linked guardians for multi-guardian tracking
+    const guardiansList = await db('guardians')
+      .where('student_id', student.id)
+      .orderBy('is_primary_guardian', 'desc')
+      .orderBy('created_at', 'desc');
+
+    student.guardians_list = guardiansList;
 
     res.json(student);
   } catch (error) {

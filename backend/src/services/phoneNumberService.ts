@@ -36,6 +36,10 @@ class PhoneNumberService {
         return this.getPhoneNumberById(existing.phone_id);
       }
 
+      const existingPrimary = await db('phone_numbers')
+        .where({ tenant_id: tenantId, user_id: userId, active: true, is_primary: true })
+        .first();
+
       // If this is primary, unset other primaries
       if (request.is_primary) {
         await db('phone_numbers')
@@ -52,7 +56,7 @@ class PhoneNumberService {
           phone_number: request.phone_number,
           country_code: request.country_code,
           phone_type: request.phone_type,
-          is_primary: request.is_primary || false,
+          is_primary: request.is_primary || !existingPrimary,
           sms_enabled: request.sms_enabled !== false,
           whatsapp_enabled: request.whatsapp_enabled || false,
           verification_code: verificationCode,
@@ -64,10 +68,16 @@ class PhoneNumberService {
 
       logger.info(`Phone number added for user ${userId}: ${phoneNumber.phone_id}`);
 
-      // TODO: Send verification code via SMS/WhatsApp
-      logger.info(`Verification code generated: ${verificationCode}`);
-
-      return this.formatPhoneNumber(phoneNumber);
+      try {
+        await this.deliverVerificationCode(phoneNumber, verificationCode);
+        return this.formatPhoneNumber(phoneNumber);
+      } catch (error) {
+        logger.error(`Phone number saved but verification delivery failed: ${error}`);
+        return {
+          ...this.formatPhoneNumber(phoneNumber),
+          verification_delivery_error: String(error),
+        };
+      }
     } catch (error) {
       logger.error(`Error adding phone number: ${error}`);
       throw new Error(`Failed to add phone number: ${error}`);
@@ -149,6 +159,10 @@ class PhoneNumberService {
         throw new Error('Phone number not found');
       }
 
+      if (phoneNumber.verification_attempts > 3) {
+        throw new Error('Too many verification attempts. Please request a new code.');
+      }
+
       if (phoneNumber.verification_code !== request.verification_code) {
         // Increment failed attempts
         await db('phone_numbers')
@@ -156,11 +170,6 @@ class PhoneNumberService {
           .increment('verification_attempts', 1);
 
         throw new Error('Invalid verification code');
-      }
-
-      // Check if too many attempts
-      if (phoneNumber.verification_attempts > 3) {
-        throw new Error('Too many verification attempts. Please try again later.');
       }
 
       const [updated] = await db('phone_numbers')
@@ -211,8 +220,8 @@ class PhoneNumberService {
           updated_at: db.fn.now(),
         });
 
-      logger.info(`Verification code resent: ${verificationCode}`);
-      // TODO: Send verification code via SMS/WhatsApp
+      await this.deliverVerificationCode(phoneNumber, verificationCode);
+      logger.info(`Verification code resent: ${phoneId}`);
     } catch (error) {
       logger.error(`Error resending verification code: ${error}`);
       throw new Error(`Failed to resend verification code: ${error}`);
@@ -353,6 +362,66 @@ class PhoneNumberService {
   }
 
   /**
+   * Request resubscribe: generate verification code for opt-outs belonging to user.
+   * Returns channel + expiry only. The verification code itself is never returned to
+   * the caller — it must be delivered out-of-band via SMS/WhatsApp.
+   */
+  async requestResubscribe(
+    tenantId: string,
+    userId: string
+  ): Promise<{ optout_id: string; channel: string; verification_code: string; expires_at: Date }[]> {
+    try {
+      const activeOptOuts = await db('sms_whatsapp_opt_outs')
+        .where({ tenant_id: tenantId, user_id: userId, status: 'active' });
+
+      if (!activeOptOuts || activeOptOuts.length === 0) {
+        throw new Error('No active opt-outs found for user');
+      }
+
+      const codes: { optout_id: string; channel: string; verification_code: string; expires_at: Date }[] = [];
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+      for (const opt of activeOptOuts) {
+        const code = this.generateVerificationCode();
+        await db('sms_whatsapp_opt_outs')
+          .where({ optout_id: opt.optout_id })
+          .update({ verification_code: code, verification_expires_at: expiresAt, updated_at: db.fn.now() });
+        codes.push({ optout_id: opt.optout_id, channel: opt.channel, verification_code: code, expires_at: expiresAt });
+      }
+
+      return codes;
+    } catch (error) {
+      logger.error(`Error requesting resubscribe: ${error}`);
+      throw new Error(`Failed to request resubscribe: ${error}`);
+    }
+  }
+
+  /**
+   * Verify resubscribe code and remove opt-out
+   */
+  async verifyResubscribe(tenantId: string, userId: string, code: string, performedBy?: string): Promise<void> {
+    try {
+      const now = new Date();
+      const rows = await db('sms_whatsapp_opt_outs')
+        .where({ tenant_id: tenantId, user_id: userId, status: 'active', verification_code: code })
+        .andWhere('verification_expires_at', '>=', now);
+
+      if (!rows || rows.length === 0) {
+        throw new Error('Invalid or expired verification code');
+      }
+
+      for (const r of rows) {
+        await db('sms_whatsapp_opt_outs')
+          .where({ optout_id: r.optout_id })
+          .update({ status: 'removed', verified_at: db.fn.now(), verified_by: performedBy || null, verification_code: null, verification_expires_at: null, updated_at: db.fn.now() });
+      }
+    } catch (error) {
+      logger.error(`Error verifying resubscribe: ${error}`);
+      throw new Error(`Failed to verify resubscribe: ${error}`);
+    }
+  }
+
+  /**
    * Get user opt-outs
    */
   async getUserOptOuts(tenantId: string, userId: string): Promise<OptOut[]> {
@@ -368,6 +437,23 @@ class PhoneNumberService {
     } catch (error) {
       logger.error(`Error fetching user opt-outs: ${error}`);
       throw new Error(`Failed to fetch opt-outs: ${error}`);
+    }
+  }
+
+  /**
+   * Check if a user is opted out for a channel
+   */
+  async isUserOptedOut(tenantId: string, userId: string, channel: string): Promise<boolean> {
+    try {
+      const optOut = await db('sms_whatsapp_opt_outs')
+        .where({ tenant_id: tenantId, user_id: userId, status: 'active' })
+        .whereIn('channel', [channel, 'both'])
+        .first();
+
+      return !!optOut;
+    } catch (error) {
+      logger.error(`Error checking opt-out for user ${userId}: ${error}`);
+      throw new Error(`Failed to check opt-out: ${error}`);
     }
   }
 
@@ -396,6 +482,19 @@ class PhoneNumberService {
 
   private generateVerificationCode(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  private async deliverVerificationCode(phoneNumber: any, code: string): Promise<void> {
+    // Dynamic import avoids the otherwise circular static dependency:
+    // smsWhatsAppService already uses phoneNumberService for delivery checks.
+    const { default: smsWhatsAppService } = await import('./smsWhatsAppService');
+    await smsWhatsAppService.sendPhoneNumberVerificationCode(
+      phoneNumber.tenant_id,
+      phoneNumber.user_id,
+      phoneNumber.phone_number,
+      phoneNumber.country_code,
+      code
+    );
   }
 
   private formatPhoneNumber(phoneNumber: any): PhoneNumber {

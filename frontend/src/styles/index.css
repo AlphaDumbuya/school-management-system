@@ -1,17 +1,11 @@
-/**
- * Global Styles
- * Tailwind CSS and custom styles
- * Phase 11: Frontend Dashboard Implementation
- */
+/* Import responsive dashboard utilities & themes */
+@import './responsive-dashboard.css';
+@import './theme.css';
+@import './tokens.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Import responsive dashboard utilities */
-@import './responsive-dashboard.css';
-@import './theme.css';
-@import './tokens.css';
 
 /* Global Styles */
 * {

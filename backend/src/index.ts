@@ -48,11 +48,13 @@ import printConfigRoutes from '@routes/printConfigRoutes';
 import eventRoutes from '@routes/eventRoutes';
 import disciplineRoutes from '@routes/disciplineRoutes';
 import smsWhatsAppRoutes from '@routes/smsWhatsAppRoutes';
+import smsWhatsAppWebhooks from '@routes/smsWhatsAppWebhooks';
 import teacherRoutes from '@routes/teacherRoutes';
 import contactRoutes from '@routes/contactRoutes';
 import schoolConfigRoutes from '@routes/schoolConfigRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
 import { startEventManagementJobs } from './jobs/eventManagementJobs.js';
+import { startSmsDeliveryJobs } from './jobs/smsDeliveryJobs.js';
 
 // Load environment variables
 dotenv.config();
@@ -280,6 +282,9 @@ app.use('/api/v1/events', eventRoutes);
 app.use('/api/v1/discipline', disciplineRoutes);
 
 // SMS & WhatsApp Routes (Phase 2.4: SMS & WhatsApp Integration)
+// Webhooks (public) - mount before authenticated routes
+app.use('/api/v1/sms-whatsapp/webhooks', smsWhatsAppWebhooks);
+// Authenticated SMS & WhatsApp routes
 app.use('/api/v1/sms-whatsapp', smsWhatsAppRoutes);
 
 // Teachers Management Routes
@@ -305,5 +310,12 @@ app.use((req: Request, res: Response) => {
 
 // Error handler (must be last)
 app.use(errorHandler);
+
+// Start jobs that should run with the API (if process runs them)
+try {
+  startSmsDeliveryJobs();
+} catch (e) {
+  logger.warn('Could not start SMS delivery jobs at startup', { error: e });
+}
 
 export default app;

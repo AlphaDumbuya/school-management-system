@@ -83,6 +83,16 @@ const Unauthorized = () => (
 const P = ProtectedRoute;
 const CS = ComingSoonPage;
 
+// Version 2 Feature Gate (Set to true when rolling out v2.0.0)
+const V2_ENABLED = false;
+
+const V2Route: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  if (!V2_ENABLED) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
+};
+
 const router = createBrowserRouter(
   [
     {
@@ -155,15 +165,15 @@ const router = createBrowserRouter(
         },
         {
           path: 'academic/results',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent']}><ResultsPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent']}><V2Route><ResultsPage /></V2Route></P>,
         },
         {
           path: 'academic/report-cards',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'academic/promotions',
-          element: <P requiredRoles={['principal', 'super_admin']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin']}><V2Route><CS /></V2Route></P>,
         },
 
         // ── STUDENT MANAGEMENT ─────────────────────────────────────
@@ -195,59 +205,59 @@ const router = createBrowserRouter(
         },
         {
           path: 'staff/members',
-          element: <P requiredRoles={['principal', 'super_admin']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'staff/leave',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'staff/performance',
-          element: <P requiredRoles={['principal', 'super_admin']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin']}><V2Route><CS /></V2Route></P>,
         },
 
         // ── FINANCIAL MANAGEMENT ───────────────────────────────────
         {
           path: 'finance/fees',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'finance/invoices',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'parent']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'parent']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'finance/payments',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'parent']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'parent']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'finance/expenses',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'finance/payroll',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'finance/scholarships',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><V2Route><CS /></V2Route></P>,
         },
 
         // ── COMMUNICATION ──────────────────────────────────────────
         {
           path: 'communication/announcements',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'parent', 'student']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'parent', 'student']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'communication/messages',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'parent', 'student']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'parent', 'student']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'communication/sms',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'admissions_officer']}><SMSWhatsAppDashboard /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><V2Route><SMSWhatsAppDashboard /></V2Route></P>,
         },
         {
           path: 'communication/email',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'admissions_officer']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'admissions_officer']}><V2Route><CS /></V2Route></P>,
         },
 
         // ── IDENTITY MANAGEMENT ────────────────────────────────────
@@ -261,7 +271,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'identity/qr-codes',
-          element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><V2Route><CS /></V2Route></P>,
         },
 
         // ── EVENTS MANAGEMENT ──────────────────────────────────────
@@ -289,23 +299,23 @@ const router = createBrowserRouter(
         // ── REPORTS & ANALYTICS ────────────────────────────────────
         {
           path: 'reports/academic',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'reports/financial',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'reports/attendance',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'reports/enrollment',
-          element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'reports/discipline',
-          element: <P requiredRoles={['principal', 'super_admin']}><CS /></P>,
+          element: <P requiredRoles={['principal', 'super_admin']}><V2Route><CS /></V2Route></P>,
         },
 
         // ── PLATFORM MANAGEMENT (super admin) ─────────────────────
