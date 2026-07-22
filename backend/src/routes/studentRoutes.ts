@@ -285,16 +285,13 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     const status = req.query.status as string;
     const search = req.query.search as string;
     const tenantId = req.user?.tenant_id;
-
-    if (!tenantId) {
-      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
-    }
+    const userRole = req.user?.role;
+    const effectiveTenantId = (req.query.tenant_id as string) || tenantId || '';
 
     // Auto-sync any approved/enrolled admissions applications to students table
-    await syncEnrolledApplicationsToStudents(db, tenantId);
+    await syncEnrolledApplicationsToStudents(db, effectiveTenantId);
 
     let query = db('students')
-      .where('students.tenant_id', tenantId)
       .select(
         'students.*',
         'classes.name as class_name',
@@ -305,6 +302,12 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
           .andOnIn('enrollments.status', ['enrolled', 'active']);
       })
       .leftJoin('classes', 'enrollments.class_id', 'classes.id');
+
+    if (userRole !== 'super_admin') {
+      query = query.where('students.tenant_id', effectiveTenantId);
+    } else if (req.query.tenant_id) {
+      query = query.where('students.tenant_id', req.query.tenant_id as string);
+    }
 
     // Apply filters
     if (status) {
@@ -326,9 +329,12 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     }
 
     // Separate count query
-    let countQuery = db('students')
-      .where('students.tenant_id', tenantId)
-      .count('* as totalCount');
+    let countQuery = db('students').count('* as totalCount');
+    if (userRole !== 'super_admin') {
+      countQuery = countQuery.where('students.tenant_id', effectiveTenantId);
+    } else if (req.query.tenant_id) {
+      countQuery = countQuery.where('students.tenant_id', req.query.tenant_id as string);
+    }
     if (status) {
       if (status === 'active') {
         countQuery = countQuery.whereIn('students.status', ['active', 'enrolled']);

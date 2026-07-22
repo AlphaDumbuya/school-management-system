@@ -35,7 +35,7 @@
 - [x] Student Directory & Auto-Sync ([StudentDirectoryPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentDirectoryPage.tsx)) — *Resolved enrolled admissions auto-sync & tenant NULL backfill issue for permanent student persistence.*
 - [x] Admissions Application & Onboarding ([AdmissionsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/AdmissionsPage.tsx)) — *Real-time student conversion on approval.*
 - [x] Parent & Student Credential Provisioning ([StudentProfilesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentProfilesPage.tsx)) — *Auto-generates student portal demo login & supports multiple parents/guardians per student (e.g. parent abroad & local guardian) with multi-child portal linking.*
-- [x] Student Profiles ([StudentProfilesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentProfilesPage.tsx)) — *360° Profile view with Portal Login Credentials card.*
+- [x] Student Profiles ([StudentProfilesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentProfilesPage.tsx)) — *360° Profile view with masked-by-default Portal Login Credentials card and Eye toggle button.*
 - [ ] Attendance Marking & History ([AttendancePage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/AttendancePage.tsx))
 
 ### 3. Academic Core
