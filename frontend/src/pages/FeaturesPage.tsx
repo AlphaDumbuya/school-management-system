@@ -39,7 +39,7 @@ export const FeaturesPage: React.FC = () => {
 
 
       {/* ── Navigation ── */}
-      <PublicNavbar ctaText="Get Started" ctaAction="custom" onCtaClick={handleComingSoon} />
+      <PublicNavbar ctaText="Register School Free" />
 
       {/* ── Hero ── */}
       <section className="pt-32 pb-20 px-6 sm:px-10 relative overflow-hidden">

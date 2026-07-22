@@ -82,7 +82,7 @@ export const ContactPage: React.FC = () => {
     <div className="min-h-screen bg-[#0a0a14] text-white overflow-x-hidden font-sans">
 
       {/* Navigation */}
-      <PublicNavbar ctaText="Sign In" ctaAction="login" />
+      <PublicNavbar ctaText="Register School Free" />
 
       {/* Hero Section */}
       <section className="relative pt-32 pb-16 px-6 sm:px-10 overflow-hidden">

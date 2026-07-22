@@ -38,8 +38,8 @@ export const BenefitsPage: React.FC = () => {
       )}
 
 
-      {/* Navigation */}
-      <PublicNavbar ctaText="Get Started" ctaAction="custom" onCtaClick={handleComingSoon} />
+      {/* ── Navigation ── */}
+      <PublicNavbar ctaText="Register School Free" />
 
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 px-6 sm:px-10 overflow-hidden">

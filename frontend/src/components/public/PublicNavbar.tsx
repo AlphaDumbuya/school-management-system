@@ -66,8 +66,14 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
 
   const handleCta = () => {
     setOpen(false);
-    ctaAction === 'custom' && onCtaClick ? onCtaClick() : navigate('/login');
+    if (ctaAction === 'custom' && onCtaClick) {
+      onCtaClick();
+    } else {
+      navigate('/register');
+    }
   };
+
+  const isCtaSignIn = ctaText.toLowerCase().includes('sign in') || ctaText.toLowerCase().includes('login');
 
   return (
     <>
@@ -105,20 +111,21 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
           <Link
             to="/"
             aria-label="WiSkul home"
-            style={{ display:'flex', alignItems:'center', gap:'0.55rem', textDecoration:'none', flexShrink:0 }}
+            style={{ display:'flex', alignItems:'center', gap:'0.6rem', textDecoration:'none', flexShrink:0 }}
           >
-            <div style={{
-              width:'34px', height:'34px', borderRadius:'9px',
-              background:'linear-gradient(135deg,#00d4aa,#009e9a)',
-              display:'flex', alignItems:'center', justifyContent:'center',
-              boxShadow:'0 0 16px rgba(0,212,170,0.35)', flexShrink:0,
-            }}>
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                <path d="M3 5l3.5 10L10 8l3.5 7L17 5" stroke="#0d0d21"
-                  strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            <span style={{ fontSize:'1.15rem', fontWeight:900, color:'#fff', letterSpacing:'-0.02em', lineHeight:1 }}>
+            <img
+              src="/logo.png"
+              alt="WiSkul Logo"
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                objectFit: 'contain',
+                boxShadow: '0 0 16px rgba(0,212,170,0.35)',
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontSize:'1.2rem', fontWeight:900, color:'#fff', letterSpacing:'-0.02em', lineHeight:1 }}>
               Wi<span style={{ color:TEAL }}>Skul</span>
             </span>
           </Link>
@@ -161,16 +168,18 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
 
           {/* Desktop actions */}
           <div className="pn-desk-actions" style={{ display:'none', alignItems:'center', gap:'0.65rem', flexShrink:0 }}>
-            <button
-              onClick={() => navigate('/login')}
-              className="pn-btn-ghost"
-              style={{
-                padding:'0.45rem 1rem', borderRadius:'7px',
-                border:'1px solid rgba(255,255,255,0.15)', background:'transparent',
-                color:'rgba(255,255,255,0.8)', fontSize:'0.875rem', fontWeight:500,
-                cursor:'pointer', transition:'all 0.2s', whiteSpace:'nowrap',
-              }}
-            >Sign In</button>
+            {!isCtaSignIn && (
+              <button
+                onClick={() => navigate('/login')}
+                className="pn-btn-ghost"
+                style={{
+                  padding:'0.45rem 1rem', borderRadius:'7px',
+                  border:'1px solid rgba(255,255,255,0.15)', background:'transparent',
+                  color:'rgba(255,255,255,0.8)', fontSize:'0.875rem', fontWeight:500,
+                  cursor:'pointer', transition:'all 0.2s', whiteSpace:'nowrap',
+                }}
+              >Sign In</button>
+            )}
             <button
               onClick={handleCta}
               className="pn-btn-cta"
@@ -271,16 +280,18 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
 
             {/* Actions */}
             <div style={{ display:'flex', flexDirection:'column', gap:'0.6rem' }}>
-              <button
-                onClick={() => { navigate('/login'); setOpen(false); }}
-                style={{
-                  width:'100%', padding:'0.78rem',
-                  borderRadius:'9px', border:'1px solid rgba(255,255,255,0.15)',
-                  background:'transparent', color:'rgba(255,255,255,0.85)',
-                  fontSize:'0.9rem', fontWeight:600, cursor:'pointer',
-                  transition:'border-color 0.2s, background 0.2s',
-                }}
-              >Sign In</button>
+              {!isCtaSignIn && (
+                <button
+                  onClick={() => { navigate('/login'); setOpen(false); }}
+                  style={{
+                    width:'100%', padding:'0.78rem',
+                    borderRadius:'9px', border:'1px solid rgba(255,255,255,0.15)',
+                    background:'transparent', color:'rgba(255,255,255,0.85)',
+                    fontSize:'0.9rem', fontWeight:600, cursor:'pointer',
+                    transition:'border-color 0.2s, background 0.2s',
+                  }}
+                >Sign In</button>
+              )}
               <button
                 onClick={handleCta}
                 style={{

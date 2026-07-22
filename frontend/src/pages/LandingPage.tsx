@@ -41,7 +41,7 @@ export const LandingPage: React.FC = () => {
       )}
 
       {/* ── Navigation ── */}
-      <PublicNavbar ctaText="Get a free trial" ctaAction="custom" onCtaClick={handleComingSoon} />
+      <PublicNavbar ctaText="Register School Free" />
 
       {/* ── Hero Section ── */}
       <section className="relative pt-28 sm:pt-36 pb-20 sm:pb-28 px-6 sm:px-10 overflow-hidden">
@@ -63,12 +63,20 @@ export const LandingPage: React.FC = () => {
               financial data, and academic information secure while providing powerful tools for
               enrollment, grading, communication, and analytics — all in one unified system.
             </p>
-            <button
-              onClick={handleComingSoon}
-              className="bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,170,0.3)] active:scale-95"
-            >
-              Request a demo
-            </button>
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                onClick={() => navigate('/register')}
+                className="bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,170,0.3)] active:scale-95 cursor-pointer"
+              >
+                Register School Free →
+              </button>
+              <button
+                onClick={() => navigate('/pricing')}
+                className="border border-white/20 hover:border-white/40 text-white font-bold text-sm px-6 py-3.5 rounded-full transition-all duration-300 cursor-pointer"
+              >
+                View Plans
+              </button>
+            </div>
           </div>
 
           {/* Right: Isometric Data Illustration */}
@@ -323,44 +331,32 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ── Quick Contact / CTA ── */}
-      <section id="contact" className="px-6 sm:px-10 py-20 sm:py-28 bg-[#1a1a2e]">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          {/* Left */}
-          <div>
-            <span className="text-[#00d4aa] text-xs font-bold tracking-[0.2em] uppercase">Get Started</span>
-            <h2 className="text-2xl sm:text-3xl font-black mt-3 mb-4">Ready to Secure Your School?</h2>
-            <p className="text-gray-400 text-sm leading-relaxed mb-6">
-              Join hundreds of schools already using WiSkul to protect student data,
-              automate administration, and deliver insights that drive academic excellence.
-            </p>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate('/login')}
-                className="bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,170,0.3)]"
-              >
-                Sign In
-              </button>
-              <button
-                onClick={handleComingSoon}
-                className="border border-white/20 hover:border-white/40 text-white font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300"
-              >
-                Free Trial
-              </button>
-            </div>
-          </div>
-
-          {/* Right: Contact form style card */}
-          <div className="bg-[#16213e] border border-white/[0.06] rounded-2xl p-8">
-            <h4 className="text-lg font-bold mb-5">QUICK CONTACT</h4>
-            <div className="space-y-3">
-              <input placeholder="Name" className="w-full bg-[#1a1a2e] border border-white/[0.08] rounded-lg px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#00d4aa]/50 transition-colors" />
-              <input placeholder="Email address" className="w-full bg-[#1a1a2e] border border-white/[0.08] rounded-lg px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#00d4aa]/50 transition-colors" />
-              <textarea placeholder="Message" rows={3} className="w-full bg-[#1a1a2e] border border-white/[0.08] rounded-lg px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#00d4aa]/50 transition-colors resize-none" />
-              <button className="w-full bg-[#7c3aed] hover:bg-[#8b5cf6] text-white font-bold text-sm py-3.5 rounded-lg transition-all duration-300 hover:shadow-[0_0_20px_rgba(124,58,237,0.3)]">
-                Submit
-              </button>
-            </div>
+      {/* ── Ready to Start CTA Banner ── */}
+      <section className="px-6 sm:px-10 py-20 bg-[#16213e] border-y border-white/5 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-[#00d4aa]/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="max-w-4xl mx-auto text-center space-y-6 relative z-10">
+          <span className="text-[#00d4aa] text-xs font-bold tracking-[0.2em] uppercase bg-[#00d4aa]/10 px-3.5 py-1.5 rounded-full border border-[#00d4aa]/30">
+            Get Started Today
+          </span>
+          <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+            Ready to Transform Your School Management?
+          </h2>
+          <p className="text-gray-400 text-sm leading-relaxed max-w-xl mx-auto">
+            Join educational institutions already using WiSkul to streamline admissions, generate digital ID cards, track attendance, and empower educators.
+          </p>
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <button
+              onClick={() => navigate('/register')}
+              className="w-full sm:w-auto bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-black text-sm px-8 py-4 rounded-2xl transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,170,0.3)] cursor-pointer"
+            >
+              REGISTER YOUR SCHOOL FREE →
+            </button>
+            <button
+              onClick={() => navigate('/contact')}
+              className="w-full sm:w-auto border border-white/20 hover:border-white/40 text-white font-bold text-sm px-8 py-4 rounded-2xl transition-all duration-300 cursor-pointer"
+            >
+              Contact Support Team
+            </button>
           </div>
         </div>
       </section>
