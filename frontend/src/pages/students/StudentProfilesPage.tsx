@@ -612,7 +612,7 @@ export const StudentProfilesPage: React.FC = () => {
                                 <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-mono">Role: student</span>
                               </div>
                               <p className="text-slate-400 font-mono text-[11px] truncate">
-                                Email: <strong className="text-slate-100">{student.demo_login?.student_email || student.email || `${student.student_id.toLowerCase()}@student.school.com`}</strong>
+                                Email: <strong className="text-slate-100">{student.demo_login?.student_email || student.email || `${(student.student_id || 'student').toLowerCase()}@student.school.com`}</strong>
                               </p>
                               <p className="text-slate-400 font-mono text-[11px]">
                                 Password: <strong className="text-emerald-400">{student.demo_login?.student_password || 'Student123!'}</strong>
