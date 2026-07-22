@@ -123,29 +123,11 @@ router.post('/', authenticate, attachUserContext, authorize('principal', 'super_
 
 async function syncEnrolledApplicationsToStudents(dbInstance: any, tenantId: string) {
   try {
-    // 1. Re-associate students with NULL tenant_id to the tenant_id of their parent admission_application
-    const orphanStudents = await dbInstance('students').whereNull('tenant_id');
-    for (const student of orphanStudents) {
-      const app = await dbInstance('admission_applications')
-        .where(function(this: any) {
-          this.where(dbInstance.raw('LOWER(child_first_name) = ?', [(student.first_name || '').toLowerCase()]))
-            .andWhere(dbInstance.raw('LOWER(child_last_name) = ?', [(student.last_name || '').toLowerCase()]));
-        })
-        .whereNotNull('tenant_id')
-        .first();
+    if (!tenantId) return;
 
-      if (app?.tenant_id) {
-        await dbInstance('students').where('id', student.id).update({ tenant_id: app.tenant_id });
-      } else {
-        await dbInstance('students').where('id', student.id).update({ tenant_id: tenantId });
-      }
-    }
-
-    // 2. Fetch admission applications SPECIFIC TO THIS TENANT (or with NULL tenant_id)
+    // Fetch admission applications SPECIFIC TO THIS TENANT
     const applications = await dbInstance('admission_applications')
-      .where(function(this: any) {
-        this.where('tenant_id', tenantId).orWhereNull('tenant_id');
-      })
+      .where('tenant_id', tenantId)
       .andWhere(function(this: any) {
         this.whereRaw('LOWER(status) NOT IN (?, ?)', ['rejected', 'waitlist']);
       });
@@ -155,10 +137,8 @@ async function syncEnrolledApplicationsToStudents(dbInstance: any, tenantId: str
       const lastName = (app.child_last_name || app.last_name || '').trim();
       if (!firstName || !lastName) continue;
 
-      const appTenantId = app.tenant_id || tenantId;
-
       const existing = await dbInstance('students')
-        .where('tenant_id', appTenantId)
+        .where('tenant_id', tenantId)
         .andWhere(function (this: any) {
           this.where(dbInstance.raw('LOWER(first_name) = ?', [firstName.toLowerCase()]))
             .andWhere(dbInstance.raw('LOWER(last_name) = ?', [lastName.toLowerCase()]));
@@ -166,7 +146,7 @@ async function syncEnrolledApplicationsToStudents(dbInstance: any, tenantId: str
         .first();
 
       if (!existing) {
-        const studentId = await generateNextId(dbInstance, appTenantId, 'student');
+        const studentId = await generateNextId(dbInstance, tenantId, 'student');
         const dob = app.child_dob || app.date_of_birth || null;
         const gender = app.child_gender || app.gender || null;
         const email = app.guardian_email || app.email || null;
@@ -175,7 +155,7 @@ async function syncEnrolledApplicationsToStudents(dbInstance: any, tenantId: str
         const classId = app.class_applying_for || app.grade_id || null;
 
         const [newStudent] = await dbInstance('students').insert({
-          tenant_id: appTenantId,
+          tenant_id: tenantId,
           user_id: null,
           student_id: studentId,
           first_name: firstName,
@@ -213,7 +193,7 @@ async function syncEnrolledApplicationsToStudents(dbInstance: any, tenantId: str
             updated_at: new Date(),
           }).catch(() => {});
         }
-        logger.info(`Auto-synced enrolled admission application ${app.id} to student ${studentId} for tenant ${appTenantId}`);
+        logger.info(`Auto-synced enrolled admission application ${app.id} to student ${studentId} for tenant ${tenantId}`);
       }
     }
   } catch (err) {
@@ -238,7 +218,7 @@ router.get('/parent/children', authenticate, async (req: Request, res: Response,
     const userName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase().trim();
 
     // Query all students linked to this parent by email, guardian_name, or guardians table
-    const children = await db('students')
+    let childrenQuery = db('students')
       .select(
         'students.*',
         'classes.name as class_name',
@@ -248,10 +228,13 @@ router.get('/parent/children', authenticate, async (req: Request, res: Response,
         this.on('students.id', '=', 'enrollments.student_id')
           .andOnIn('enrollments.status', ['enrolled', 'active']);
       })
-      .leftJoin('classes', 'enrollments.class_id', 'classes.id')
-      .where(function (this: any) {
-        if (tenantId) this.where('students.tenant_id', tenantId);
-      })
+      .leftJoin('classes', 'enrollments.class_id', 'classes.id');
+
+    if (tenantId) {
+      childrenQuery = childrenQuery.where('students.tenant_id', tenantId);
+    }
+
+    const children = await childrenQuery
       .andWhere(function (this: any) {
         if (userEmail) {
           this.whereRaw('LOWER(students.email) = ?', [userEmail])
@@ -285,8 +268,11 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     const status = req.query.status as string;
     const search = req.query.search as string;
     const tenantId = req.user?.tenant_id;
-    const userRole = req.user?.role;
-    const effectiveTenantId = (req.query.tenant_id as string) || tenantId || '';
+    const effectiveTenantId = (req.query.tenant_id as string) || tenantId;
+
+    if (!effectiveTenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     // Auto-sync any approved/enrolled admissions applications to students table
     await syncEnrolledApplicationsToStudents(db, effectiveTenantId);
@@ -303,10 +289,8 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
       })
       .leftJoin('classes', 'enrollments.class_id', 'classes.id');
 
-    if (userRole !== 'super_admin') {
+    if (req.query.tenant_id !== 'all') {
       query = query.where('students.tenant_id', effectiveTenantId);
-    } else if (req.query.tenant_id) {
-      query = query.where('students.tenant_id', req.query.tenant_id as string);
     }
 
     // Apply filters
@@ -329,12 +313,11 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     }
 
     // Separate count query
-    let countQuery = db('students').count('* as totalCount');
-    if (userRole !== 'super_admin') {
+    let countQuery = db('students');
+    if (req.query.tenant_id !== 'all') {
       countQuery = countQuery.where('students.tenant_id', effectiveTenantId);
-    } else if (req.query.tenant_id) {
-      countQuery = countQuery.where('students.tenant_id', req.query.tenant_id as string);
     }
+    countQuery = countQuery.count('* as totalCount');
     if (status) {
       if (status === 'active') {
         countQuery = countQuery.whereIn('students.status', ['active', 'enrolled']);
@@ -409,10 +392,7 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
           .andOnIn('enrollments.status', ['enrolled', 'active']);
       })
       .leftJoin('classes', 'enrollments.class_id', 'classes.id')
-      .where(function(this: any) {
-        this.where('students.tenant_id', tenantId)
-            .orWhereNull('students.tenant_id');
-      })
+      .where('students.tenant_id', tenantId)
       .andWhere(function() {
         this.where('students.student_id', studentId)
           .orWhere('students.id', studentId);
