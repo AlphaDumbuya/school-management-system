@@ -7,7 +7,7 @@ import { Modal } from '@components/admin/feedback/Modal';
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { Button } from '@components/ui/button';
 import { StudentRecord } from '@services/studentsService';
-import { User, Mail, Phone, MapPin, Calendar, BookOpen, Heart, Shield, Hash, Globe, Briefcase } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, BookOpen, Heart, Shield, Hash, Globe, Briefcase, Eye, EyeOff } from 'lucide-react';
 
 interface StudentDetailModalProps {
   isOpen: boolean;
@@ -39,6 +39,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   onEdit,
   onCreateParentAccount,
 }) => {
+  const [showCreds, setShowCreds] = React.useState(false);
   if (!student) return null;
   const s = student as any;
 
@@ -178,6 +179,42 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             </div>
           </Section>
         )}
+
+        {/* ── Portal Login Credentials (Hidden by Default) ── */}
+        <div className="p-4 bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl border border-indigo-900/50 shadow-md space-y-3">
+          <div className="flex items-center justify-between border-b border-indigo-800/50 pb-2">
+            <h4 className="text-xs font-extrabold uppercase tracking-widest text-indigo-300 flex items-center gap-2">
+              <Shield size={15} className="text-indigo-400" /> Portal Login Credentials
+            </h4>
+            <button
+              type="button"
+              onClick={() => setShowCreds(!showCreds)}
+              className="text-[11px] text-indigo-300 hover:text-white flex items-center gap-1.5 px-2 py-0.5 rounded bg-indigo-900/60 border border-indigo-700/60 transition-all font-semibold"
+            >
+              {showCreds ? (
+                <>
+                  <EyeOff size={13} /> Hide Passwords
+                </>
+              ) : (
+                <>
+                  <Eye size={13} /> Show Passwords
+                </>
+              )}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 space-y-1">
+              <span className="font-bold text-blue-400 text-[11px]">Student Account</span>
+              <p className="text-slate-400 font-mono text-[10px] truncate">Email: <strong className="text-slate-100">{s.demo_login?.student_email || `${s.student_id?.toLowerCase()}@student.school.com`}</strong></p>
+              <p className="text-slate-400 font-mono text-[10px]">Password: <strong className="text-emerald-400">{showCreds ? (s.demo_login?.student_password || 'Student123!') : '••••••••'}</strong></p>
+            </div>
+            <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 space-y-1">
+              <span className="font-bold text-purple-400 text-[11px]">Parent Account</span>
+              <p className="text-slate-400 font-mono text-[10px] truncate">Email: <strong className="text-slate-100">{s.demo_login?.parent_email || 'Not Created'}</strong></p>
+              <p className="text-slate-400 font-mono text-[10px]">Password: <strong className="text-purple-300">{showCreds ? (s.demo_login?.parent_password || 'Parent123!') : '••••••••'}</strong></p>
+            </div>
+          </div>
+        </div>
 
         {/* ── Metadata ── */}
         <div className="pt-3 border-t border-gray-100 dark:border-gray-800">

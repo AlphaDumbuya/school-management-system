@@ -11,7 +11,7 @@ import {
   User, Mail, Phone, MapPin, Calendar, BookOpen, Heart, Shield, Hash, Globe,
   Briefcase, ChevronLeft, Search, SlidersHorizontal, Award, Clock,
   AlertTriangle, CreditCard, CheckCircle, XCircle, FileText, BarChart3,
-  TrendingUp, Activity, DollarSign, Receipt
+  TrendingUp, Activity, DollarSign, Receipt, Eye, EyeOff
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -83,6 +83,10 @@ export const StudentProfilesPage: React.FC = () => {
   const [parentPassword, setParentPassword] = useState('');
   const [isCreatingParent, setIsCreatingParent] = useState(false);
   const [createdCredentials, setCreatedCredentials] = useState<{ email: string; tempPass: string } | null>(null);
+
+  // Toggle password visibility (hidden by default for security)
+  const [showCredentials, setShowCredentials] = useState(false);
+  const [showModalPassword, setShowModalPassword] = useState(false);
 
   const availableTabs = useMemo(() => {
     const tabs: Array<{ id: 'overview' | 'academics' | 'attendance' | 'conduct' | 'billing'; label: string }> = [
@@ -382,7 +386,7 @@ export const StudentProfilesPage: React.FC = () => {
                         <p className="text-xs font-mono font-semibold text-gray-400 dark:text-gray-500 mt-1">
                           ID: {s.student_id}
                         </p>
-                        
+
                         <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
                           <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-0.5 rounded border border-blue-100 dark:border-blue-900/30">
                             {s.class_name || 'Unassigned'}
@@ -497,11 +501,10 @@ export const StudentProfilesPage: React.FC = () => {
                     <button
                       key={tabObj.id}
                       onClick={() => setActiveTab(tabObj.id)}
-                      className={`whitespace-nowrap px-4 py-2.5 rounded-lg text-sm font-semibold tracking-wide transition-all duration-200 ${
-                        activeTab === tabObj.id
+                      className={`whitespace-nowrap px-4 py-2.5 rounded-lg text-sm font-semibold tracking-wide transition-all duration-200 ${activeTab === tabObj.id
                           ? 'bg-blue-500 text-white shadow-sm'
                           : 'text-gray-500 hover:text-gray-750 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800'
-                      }`}
+                        }`}
                     >
                       {tabObj.label}
                     </button>
@@ -703,20 +706,19 @@ export const StudentProfilesPage: React.FC = () => {
                                     <td className="p-4 text-center font-mono font-medium text-gray-700 dark:text-gray-300">{g.exam_score}</td>
                                     <td className="p-4 text-center font-mono font-bold text-gray-900 dark:text-white">{g.total_score}</td>
                                     <td className="p-4 text-center">
-                                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${
-                                        g.grade_letter === 'A' ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400' :
-                                        ['B', 'C'].includes(g.grade_letter) ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' :
-                                        g.grade_letter === 'D' ? 'bg-yellow-100 text-yellow-750 dark:bg-yellow-950/40 dark:text-yellow-450' :
-                                        'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400'
-                                      }`}>
+                                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${g.grade_letter === 'A' ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400' :
+                                          ['B', 'C'].includes(g.grade_letter) ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' :
+                                            g.grade_letter === 'D' ? 'bg-yellow-100 text-yellow-750 dark:bg-yellow-950/40 dark:text-yellow-450' :
+                                              'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400'
+                                        }`}>
                                         {g.grade_letter}
                                       </span>
                                     </td>
                                     <td className="p-4 text-xs font-semibold">
                                       <span className={
                                         g.remark === 'Excellent' ? 'text-green-600' :
-                                        ['Very Good', 'Good'].includes(g.remark) ? 'text-blue-600' :
-                                        g.remark === 'Pass' ? 'text-yellow-600' : 'text-red-500'
+                                          ['Very Good', 'Good'].includes(g.remark) ? 'text-blue-600' :
+                                            g.remark === 'Pass' ? 'text-yellow-600' : 'text-red-500'
                                       }>
                                         {g.remark}
                                       </span>
@@ -776,17 +778,15 @@ export const StudentProfilesPage: React.FC = () => {
                                       {formatDate(r.date)}
                                     </td>
                                     <td className="p-4">
-                                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                                        r.status === 'present' ? 'bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-400' :
-                                        r.status === 'late' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400' :
-                                        r.status === 'absent' ? 'bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-400' :
-                                        'bg-blue-100 text-blue-800 dark:bg-blue-950/30 dark:text-blue-400'
-                                      }`}>
-                                        <span className={`w-1.5 h-1.5 rounded-full ${
-                                          r.status === 'present' ? 'bg-green-600' :
-                                          r.status === 'late' ? 'bg-amber-500' :
-                                          r.status === 'absent' ? 'bg-red-600' : 'bg-blue-500'
-                                        }`} />
+                                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${r.status === 'present' ? 'bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-400' :
+                                          r.status === 'late' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400' :
+                                            r.status === 'absent' ? 'bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-400' :
+                                              'bg-blue-100 text-blue-800 dark:bg-blue-950/30 dark:text-blue-400'
+                                        }`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${r.status === 'present' ? 'bg-green-600' :
+                                            r.status === 'late' ? 'bg-amber-500' :
+                                              r.status === 'absent' ? 'bg-red-600' : 'bg-blue-500'
+                                          }`} />
                                         {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
                                       </span>
                                     </td>
@@ -843,12 +843,11 @@ export const StudentProfilesPage: React.FC = () => {
                                         <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-1">{i.incident_description}</p>
                                       </td>
                                       <td className="p-4">
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${
-                                          i.severity_level === 'critical' ? 'bg-red-200 text-red-900 border border-red-300' :
-                                          i.severity_level === 'serious' ? 'bg-red-100 text-red-800 border border-red-250' :
-                                          i.severity_level === 'moderate' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
-                                          'bg-yellow-100 text-yellow-800 border border-yellow-200'
-                                        }`}>
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${i.severity_level === 'critical' ? 'bg-red-200 text-red-900 border border-red-300' :
+                                            i.severity_level === 'serious' ? 'bg-red-100 text-red-800 border border-red-250' :
+                                              i.severity_level === 'moderate' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
+                                                'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                                          }`}>
                                           {i.severity_level.toUpperCase()}
                                         </span>
                                       </td>
@@ -894,15 +893,13 @@ export const StudentProfilesPage: React.FC = () => {
                                         {formatDate(a.action_date)}
                                       </td>
                                       <td className="p-4">
-                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                                          a.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-400' :
-                                          a.status === 'active' ? 'bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-400' :
-                                          'bg-gray-100 text-gray-800 dark:bg-gray-950/30 dark:text-gray-400'
-                                        }`}>
-                                          <span className={`w-1.5 h-1.5 rounded-full ${
-                                            a.status === 'completed' ? 'bg-green-600' :
-                                            a.status === 'active' ? 'bg-red-600' : 'bg-gray-500'
-                                          }`} />
+                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${a.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-400' :
+                                            a.status === 'active' ? 'bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-400' :
+                                              'bg-gray-100 text-gray-800 dark:bg-gray-950/30 dark:text-gray-400'
+                                          }`}>
+                                          <span className={`w-1.5 h-1.5 rounded-full ${a.status === 'completed' ? 'bg-green-600' :
+                                              a.status === 'active' ? 'bg-red-600' : 'bg-gray-500'
+                                            }`} />
                                           {a.status.charAt(0).toUpperCase() + a.status.slice(1)}
                                         </span>
                                       </td>
@@ -959,15 +956,13 @@ export const StudentProfilesPage: React.FC = () => {
                                     <td className="p-4 text-right font-mono text-green-600 dark:text-green-400">SLE {Number(inv.paid_amount).toFixed(2)}</td>
                                     <td className="p-4 text-right font-mono font-bold text-gray-900 dark:text-white">SLE {Number(inv.amount - inv.paid_amount).toFixed(2)}</td>
                                     <td className="p-4">
-                                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                                        inv.status === 'paid' ? 'bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-400' :
-                                        inv.status === 'partially_paid' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400' :
-                                        'bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-400'
-                                      }`}>
-                                        <span className={`w-1.5 h-1.5 rounded-full ${
-                                          inv.status === 'paid' ? 'bg-green-600' :
-                                          inv.status === 'partially_paid' ? 'bg-amber-500' : 'bg-red-600'
-                                        }`} />
+                                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${inv.status === 'paid' ? 'bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-400' :
+                                          inv.status === 'partially_paid' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400' :
+                                            'bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-400'
+                                        }`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${inv.status === 'paid' ? 'bg-green-600' :
+                                            inv.status === 'partially_paid' ? 'bg-amber-500' : 'bg-red-600'
+                                          }`} />
                                         {inv.status === 'paid' ? 'Paid' : inv.status === 'partially_paid' ? 'Partially Paid' : 'Unpaid'}
                                       </span>
                                     </td>
@@ -1051,9 +1046,18 @@ export const StudentProfilesPage: React.FC = () => {
                     <p className="text-xs text-gray-600 dark:text-gray-300">
                       Parent can now log in using the following details:
                     </p>
-                    <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 font-mono text-xs space-y-1">
+                    <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 font-mono text-xs space-y-2">
                       <p><span className="text-gray-400">Email:</span> <strong className="text-gray-900 dark:text-white">{createdCredentials.email}</strong></p>
-                      <p><span className="text-gray-400">Temporary Password:</span> <strong className="text-blue-600 dark:text-blue-400">{createdCredentials.tempPass}</strong></p>
+                      <div className="flex items-center justify-between">
+                        <p><span className="text-gray-400">Temporary Password:</span> <strong className="text-blue-600 dark:text-blue-400 font-bold ml-1">{showModalPassword ? createdCredentials.tempPass : '••••••••'}</strong></p>
+                        <button
+                          type="button"
+                          onClick={() => setShowModalPassword(!showModalPassword)}
+                          className="text-[11px] text-gray-500 hover:text-gray-900 dark:hover:text-white flex items-center gap-1 font-sans"
+                        >
+                          {showModalPassword ? <><EyeOff size={13} /> Hide</> : <><Eye size={13} /> Show</>}
+                        </button>
+                      </div>
                     </div>
                   </div>
                   <Button onClick={() => setParentModalOpen(false)} className="w-full">
