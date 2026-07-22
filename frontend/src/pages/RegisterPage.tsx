@@ -41,8 +41,8 @@ import { showToast } from '@utils/toast';
 const registerSchema = z.object({
   // Step 1: School Profile & Ownership
   school_name: z.string().min(2, 'Official school name is required'),
-  school_type: z.string().default('Secondary'),
-  school_ownership: z.string().default('Private'),
+  school_type: z.string().default('Secondary (JSS & SSS)'),
+  school_ownership: z.string().default('Government-Assisted / Mission'),
   country: z.string().default('Sierra Leone'),
 
   // Step 2: Configuration & Capacity (Settings Fields)
@@ -87,8 +87,8 @@ export const RegisterPage: React.FC = () => {
     resolver: zodResolver(registerSchema),
     defaultValues: {
       school_name: '',
-      school_type: 'Secondary',
-      school_ownership: 'Private',
+      school_type: 'Secondary (JSS & SSS)',
+      school_ownership: 'Government-Assisted / Mission',
       country: 'Sierra Leone',
       estimated_students: '250-500',
       curriculum: 'WASSCE / National',
@@ -410,10 +410,12 @@ export const RegisterPage: React.FC = () => {
                                 {...register('school_ownership')}
                                 className="w-full bg-[#1a1a2e] border border-white/10 focus:border-[#00d4aa]/50 rounded-xl px-4 py-3.5 text-sm text-white outline-none cursor-pointer"
                               >
-                                <option value="Private">Private Institution</option>
-                                <option value="Public / Government">Public / Government-Assisted</option>
-                                <option value="Mission / Religious">Mission / Religious School</option>
-                                <option value="Community / NGO">Community / NGO Funded</option>
+                                <option value="Government-Assisted / Mission">Government-Assisted / Mission School</option>
+                                <option value="Government School">Government School (Public)</option>
+                                <option value="Private Independent">Private Independent School</option>
+                                <option value="Private International">Private International School</option>
+                                <option value="Community School">Community / Chiefdom School</option>
+                                <option value="Municipal / Council">Municipal / Local Council School</option>
                               </select>
                             </div>
 
@@ -426,10 +428,14 @@ export const RegisterPage: React.FC = () => {
                                 {...register('school_type')}
                                 className="w-full bg-[#1a1a2e] border border-white/10 focus:border-[#00d4aa]/50 rounded-xl px-4 py-3.5 text-sm text-white outline-none cursor-pointer"
                               >
-                                <option value="Secondary">Secondary / High School (JSS/SSS)</option>
-                                <option value="Primary">Primary / Elementary School</option>
-                                <option value="Mixed">Mixed K-12 (Primary & Secondary)</option>
-                                <option value="College">Technical Institute / College</option>
+                                <option value="Secondary (JSS & SSS)">Secondary School (JSS & SSS)</option>
+                                <option value="Primary">Primary School (Class 1 – Class 6)</option>
+                                <option value="Nursery & Primary">Nursery & Primary School (Combined)</option>
+                                <option value="Nursery / Early Childhood">Nursery / Early Childhood (Pre-School)</option>
+                                <option value="Junior Secondary">Junior Secondary School (JSS 1 – JSS 3)</option>
+                                <option value="Senior Secondary">Senior Secondary School (SSS 1 – SSS 3)</option>
+                                <option value="Primary & Secondary">Primary & Secondary (Full K-12)</option>
+                                <option value="Technical & Vocational">Technical & Vocational Institute / College</option>
                               </select>
                             </div>
                           </div>
