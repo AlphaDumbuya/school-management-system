@@ -108,6 +108,14 @@ export class AuthService {
     contact_email: string;
     contact_phone?: string;
     country?: string;
+    city?: string;
+    address?: string;
+    school_type?: string;
+    school_motto?: string;
+    id_student_prefix?: string;
+    id_staff_prefix?: string;
+    id_admission_prefix?: string;
+    id_student_start_from?: number;
     admin_first_name: string;
     admin_last_name: string;
     password: string;
@@ -135,14 +143,60 @@ export class AuthService {
       const slug = `${baseSlug}-${uniqueSuffix}`;
 
       // Insert Tenant
-      const [newTenant] = await this.db('tenants').insert({
+      const tenantPayload: any = {
         name: payload.school_name.trim(),
         slug,
         status: 'active',
         created_at: new Date(),
         updated_at: new Date(),
-      }).returning('*');
+      };
+
+      if (payload.contact_email) tenantPayload.contact_email = payload.contact_email;
+      if (payload.contact_phone) tenantPayload.contact_phone = payload.contact_phone;
+      if (payload.address) tenantPayload.address = payload.address;
+
+      const [newTenant] = await this.db('tenants').insert(tenantPayload).returning('*');
       const tenantId = newTenant.id;
+
+      // Save Initial School Info if table exists
+      try {
+        const hasSchoolInfo = await this.db.schema.hasTable('school_info');
+        if (hasSchoolInfo) {
+          await this.db('school_info').insert({
+            tenant_id: tenantId,
+            name: payload.school_name.trim(),
+            email: email,
+            phone: payload.contact_phone || null,
+            country: payload.country || 'Sierra Leone',
+            city: payload.city || null,
+            address: payload.address || null,
+            created_at: new Date(),
+            updated_at: new Date(),
+          });
+        }
+      } catch (_) {}
+
+      // Save Initial ID Format Settings if table exists
+      try {
+        const hasSettings = await this.db.schema.hasTable('school_settings');
+        if (hasSettings) {
+          const initialSettings = [
+            { tenant_id: tenantId, setting_key: 'id_student_prefix', setting_value: payload.id_student_prefix || 'STU' },
+            { tenant_id: tenantId, setting_key: 'id_staff_prefix', setting_value: payload.id_staff_prefix || 'TCH' },
+            { tenant_id: tenantId, setting_key: 'id_admission_prefix', setting_value: payload.id_admission_prefix || 'ADM' },
+            { tenant_id: tenantId, setting_key: 'school_motto', setting_value: payload.school_motto || '' },
+            { tenant_id: tenantId, setting_key: 'school_type', setting_value: payload.school_type || 'Mixed' },
+          ];
+          if (payload.id_student_start_from) {
+            initialSettings.push({
+              tenant_id: tenantId,
+              setting_key: 'id_student_start_from',
+              setting_value: String(payload.id_student_start_from),
+            });
+          }
+          await this.db('school_settings').insert(initialSettings);
+        }
+      } catch (_) {}
 
       // Create default Academic Session for this new school
       try {

@@ -66,7 +66,23 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
  */
 router.post('/register-school', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { school_name, contact_email, contact_phone, country, admin_first_name, admin_last_name, password } = req.body;
+    const {
+      school_name,
+      contact_email,
+      contact_phone,
+      country,
+      city,
+      address,
+      school_type,
+      school_motto,
+      id_student_prefix,
+      id_staff_prefix,
+      id_admission_prefix,
+      id_student_start_from,
+      admin_first_name,
+      admin_last_name,
+      password,
+    } = req.body;
 
     if (!school_name || !contact_email || !admin_first_name || !admin_last_name || !password) {
       throw new AppError('School name, contact email, admin name, and password are required', 400, 'VALIDATION_ERROR');
@@ -77,6 +93,14 @@ router.post('/register-school', async (req: Request, res: Response, next: NextFu
       contact_email,
       contact_phone,
       country,
+      city,
+      address,
+      school_type,
+      school_motto,
+      id_student_prefix,
+      id_staff_prefix,
+      id_admission_prefix,
+      id_student_start_from: id_student_start_from ? Number(id_student_start_from) : undefined,
       admin_first_name,
       admin_last_name,
       password,

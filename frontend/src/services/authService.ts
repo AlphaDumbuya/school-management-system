@@ -68,6 +68,14 @@ export const authService = {
     contact_email: string;
     contact_phone?: string;
     country?: string;
+    city?: string;
+    address?: string;
+    school_type?: string;
+    school_motto?: string;
+    id_student_prefix?: string;
+    id_staff_prefix?: string;
+    id_admission_prefix?: string;
+    id_student_start_from?: number;
     admin_first_name: string;
     admin_last_name: string;
     password: string;
