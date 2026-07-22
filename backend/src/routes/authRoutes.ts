@@ -61,6 +61,45 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
 });
 
 /**
+ * POST /api/v1/auth/register-school
+ * Self-service registration for new schools/tenants
+ */
+router.post('/register-school', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { school_name, contact_email, contact_phone, country, admin_first_name, admin_last_name, password } = req.body;
+
+    if (!school_name || !contact_email || !admin_first_name || !admin_last_name || !password) {
+      throw new AppError('School name, contact email, admin name, and password are required', 400, 'VALIDATION_ERROR');
+    }
+
+    const result = await authService.registerSchool({
+      school_name,
+      contact_email,
+      contact_phone,
+      country,
+      admin_first_name,
+      admin_last_name,
+      password,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'School registered successfully! Welcome to WiSkul.',
+      data: {
+        accessToken: result.access_token,
+        refreshToken: result.refresh_token,
+        expiresIn: 1800,
+        tokenType: 'Bearer',
+        user: result.user,
+        tenant: result.tenant,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * POST /api/v1/auth/login
  * Authenticate user with email and password
  */

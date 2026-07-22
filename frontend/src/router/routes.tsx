@@ -93,6 +93,8 @@ const V2Route: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>;
 };
 
+import RegisterPage from '@pages/RegisterPage';
+
 const router = createBrowserRouter(
   [
     {
@@ -105,6 +107,7 @@ const router = createBrowserRouter(
         { path: 'benefits', element: <BenefitsPage /> },
         { path: 'contact', element: <ContactPage /> },
         { path: 'login', element: <LoginPage /> },
+        { path: 'register', element: <RegisterPage /> },
 
         // ── Generic dashboard redirect ──────────────────────────────
         {

@@ -100,6 +100,112 @@ export class AuthService {
   }
 
   /**
+   * Self-service School & Tenant Registration
+   * Creates tenant, default academic session, and principal admin account in one flow.
+   */
+  async registerSchool(payload: {
+    school_name: string;
+    contact_email: string;
+    contact_phone?: string;
+    country?: string;
+    admin_first_name: string;
+    admin_last_name: string;
+    password: string;
+  }): Promise<{ user: UserResponse; tenant: any; access_token: string; refresh_token: string }> {
+    try {
+      const email = payload.contact_email.trim().toLowerCase();
+
+      // Check if user already exists
+      const existingUser = await this.db('users').where({ email }).first();
+      if (existingUser) {
+        throw new AppError('An account with this email already exists', 409, 'USER_EXISTS');
+      }
+
+      // Validate password policy
+      const passwordValidation = PasswordService.validatePasswordPolicy(payload.password);
+      if (!passwordValidation.valid) {
+        throw new AppError(passwordValidation.errors.join(', '), 400, 'INVALID_PASSWORD');
+      }
+
+      const hashedPassword = await PasswordService.hashPassword(payload.password);
+
+      // Create unique tenant slug
+      const baseSlug = payload.school_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'school';
+      const uniqueSuffix = Date.now().toString(36);
+      const slug = `${baseSlug}-${uniqueSuffix}`;
+
+      // Insert Tenant
+      const [newTenant] = await this.db('tenants').insert({
+        name: payload.school_name.trim(),
+        slug,
+        status: 'active',
+        created_at: new Date(),
+        updated_at: new Date(),
+      }).returning('*');
+      const tenantId = newTenant.id;
+
+      // Create default Academic Session for this new school
+      try {
+        const hasAcademicSessions = await this.db.schema.hasTable('academic_sessions');
+        if (hasAcademicSessions) {
+          await this.db('academic_sessions').insert({
+            tenant_id: tenantId,
+            name: '2026/2027 Academic Year',
+            start_date: '2026-09-01',
+            end_date: '2027-07-31',
+            is_current: true,
+            created_at: new Date(),
+            updated_at: new Date(),
+          });
+        }
+      } catch (_) {
+        // Ignored if table optional
+      }
+
+      // Create Principal User
+      const [userRow] = await this.db('users').insert({
+        tenant_id: tenantId,
+        email,
+        password_hash: hashedPassword,
+        first_name: payload.admin_first_name.trim(),
+        last_name: payload.admin_last_name.trim(),
+        role: UserRole.PRINCIPAL,
+        status: UserStatus.ACTIVE,
+        created_at: new Date(),
+        updated_at: new Date(),
+      }).returning('*');
+
+      logger.info(`Self-serve School Registered: "${payload.school_name}" by ${email}`);
+
+      const user = await this.getUserById(userRow.id);
+      const access_token = JWTService.generateAccessToken({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      });
+      const refresh_token = JWTService.generateRefreshToken(user.id);
+
+      await this.db('refresh_tokens').insert({
+        user_id: user.id,
+        token: refresh_token,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        created_at: new Date(),
+      });
+
+      return {
+        user: this.mapUserToResponse(user),
+        tenant: newTenant,
+        access_token,
+        refresh_token,
+      };
+    } catch (error: any) {
+      if (error instanceof AppError) throw error;
+      logger.error('Error in self-serve school registration', error);
+      throw new AppError(error?.message || 'Failed to register school', 500, 'SCHOOL_REGISTRATION_FAILED');
+    }
+  }
+
+  /**
    * Login user
    */
   async login(email: string, password: string): Promise<{ access_token: string; refresh_token: string; user: UserResponse }> {

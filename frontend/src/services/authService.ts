@@ -61,6 +61,32 @@ export const authService = {
   },
 
   /**
+   * Self-service School & Tenant Registration
+   */
+  registerSchool: async (payload: {
+    school_name: string;
+    contact_email: string;
+    contact_phone?: string;
+    country?: string;
+    admin_first_name: string;
+    admin_last_name: string;
+    password: string;
+  }): Promise<ApiResponse<AuthResponse>> => {
+    const response = await apiClient.post<AuthResponse>(
+      '/api/v1/auth/register-school',
+      payload
+    );
+
+    if (response.success && response.data) {
+      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.data.accessToken);
+      localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.data.refreshToken);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.data.user));
+    }
+
+    return response;
+  },
+
+  /**
    * Logout user
    */
   logout: async (): Promise<void> => {

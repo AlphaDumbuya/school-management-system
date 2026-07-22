@@ -59,3 +59,15 @@
 - [x] **Frontend Build**: Validated clean production compilation with zero errors (`npm run build -w frontend`).
 - [x] **Backend Build**: Validated backend compilation and ESM bundling with zero errors (`npm run build -w backend`).
 - [x] **PostCSS Cleanliness**: Verified CSS import ordering in `frontend/src/styles/index.css`.
+
+---
+
+## 🚀 Phase 4: Public Strategy & Self-Service School Onboarding
+
+- [x] **Self-Service School Registration Endpoint ([authRoutes.ts](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/backend/src/routes/authRoutes.ts))**:
+  - `POST /api/v1/auth/register-school` provisions a new isolated tenant, default academic session, and principal admin user in a single transaction.
+- [x] **Self-Service School Onboarding UI ([RegisterPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/RegisterPage.tsx))**:
+  - 2-Step onboarding wizard for school owners and principals to register their institution for free.
+- [x] **Marketing & Product-Led Growth (PLG) Strategy**:
+  - Public free-tier positioning (v1.0.0 core app 100% free to drive user adoption).
+  - Versioned roadmap strategy (v2.0 billing/report cards rollout once market adoption is established).

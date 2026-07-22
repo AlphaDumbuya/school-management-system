@@ -165,10 +165,19 @@ export const LoginPage: React.FC = () => {
             </form>
 
             {/* Divider */}
-            <div className="mt-6 pt-5 border-t border-white/[0.06] text-center">
-              <p className="text-gray-500 text-xs">
-                Don't have access?{' '}
-                <span className="text-[#00d4aa] font-semibold cursor-pointer hover:text-[#00e6b8] transition-colors">Contact your admin</span>
+            <div className="mt-6 pt-5 border-t border-white/[0.06] text-center space-y-2">
+              <p className="text-gray-400 text-xs">
+                Registering a new school?{' '}
+                <button
+                  type="button"
+                  onClick={() => navigate('/register')}
+                  className="text-[#00d4aa] font-semibold hover:text-[#00e6b8] transition-colors underline underline-offset-2"
+                >
+                  Register School Free
+                </button>
+              </p>
+              <p className="text-gray-500 text-[11px]">
+                Students & Staff: Contact your school principal for portal access.
               </p>
             </div>
           </div>
