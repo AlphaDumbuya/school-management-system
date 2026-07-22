@@ -140,7 +140,13 @@ export const StudentProfilesPage: React.FC = () => {
     staleTime: 30_000,
   });
 
-  const student = (studentDetails as any)?.data ?? studentDetails;
+  const student = useMemo(() => {
+    if (!studentDetails) return null;
+    const raw = studentDetails as any;
+    if (raw.first_name || raw.student_id || raw.id) return raw;
+    if (raw.data && (raw.data.first_name || raw.data.student_id || raw.data.id)) return raw.data;
+    return raw;
+  }, [studentDetails]);
 
   // 3. Fetch Selected Student Sub-resources
   // A. Academics (Grades)

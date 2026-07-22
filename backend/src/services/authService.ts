@@ -34,17 +34,22 @@ export class AuthService {
       // Hash password
       const hashedPassword = await PasswordService.hashPassword(payload.password);
 
-      // Get or create tenant
-      let tenant = await this.db('tenants').first();
-      if (!tenant) {
-        const [newTenant] = await this.db('tenants').insert({
-          name: 'Default School',
-          slug: 'default-school',
-          status: 'active'
-        }).returning('*');
-        tenant = newTenant;
-      }
-      const tenantId = tenant.id;
+      // Create a new tenant for this registration so each school is isolated.
+      // We derive a slug from the email domain or the user's name to keep it unique.
+      const emailDomain = payload.email.split('@')[1]?.replace(/\.[^.]+$/, '') || 'school';
+      const baseName = `${payload.first_name} ${payload.last_name}'s School`;
+      const baseSlug = emailDomain.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      const uniqueSuffix = Date.now();
+      const slug = `${baseSlug}-${uniqueSuffix}`;
+
+      const [newTenant] = await this.db('tenants').insert({
+        name: baseName,
+        slug,
+        status: 'active',
+        created_at: new Date(),
+        updated_at: new Date(),
+      }).returning('*');
+      const tenantId = newTenant.id;
 
       // Create user
       const [userRow] = await this.db('users').insert({

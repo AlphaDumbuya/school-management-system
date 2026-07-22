@@ -33,6 +33,7 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
     const applicationId = await generateNextId(db, tenantId, 'admission');
 
     const [inserted] = await db('admission_applications').insert({
+      tenant_id: tenantId,
       application_number: applicationId,
       academic_year: academicYear,
       // Legacy columns (from old schema - required NOT NULL)
@@ -170,8 +171,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     }
 
     let query = db('admission_applications')
-      .join('users', 'admission_applications.created_by', 'users.id')
-      .where('users.tenant_id', tenantId)
+      .where('admission_applications.tenant_id', tenantId)
       .select('admission_applications.*', 'classes.name as class_name')
       .leftJoin('classes', 'admission_applications.class_applying_for', 'classes.id');
 
@@ -188,8 +188,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     }
 
     let countQuery = db('admission_applications')
-      .join('users', 'admission_applications.created_by', 'users.id')
-      .where('users.tenant_id', tenantId)
+      .where('admission_applications.tenant_id', tenantId)
       .count('admission_applications.id as count');
     if (status) countQuery = countQuery.where('admission_applications.status', status as string);
     if (academic_year) countQuery = countQuery.where('admission_applications.academic_year', academic_year as string);
@@ -217,10 +216,9 @@ router.get('/:appId', authenticate, async (req: Request, res: Response, next: Ne
     }
 
     const app = await db('admission_applications')
-      .join('users', 'admission_applications.created_by', 'users.id')
       .select('admission_applications.*', 'classes.name as class_name')
       .leftJoin('classes', 'admission_applications.class_applying_for', 'classes.id')
-      .where('users.tenant_id', tenantId)
+      .where('admission_applications.tenant_id', tenantId)
       .andWhere(function() {
         this.where('admission_applications.id', appId)
           .orWhere('admission_applications.application_number', appId);
@@ -249,9 +247,8 @@ router.put('/:appId/status', authenticate, authorize(UserRole.PRINCIPAL, UserRol
     }
 
     const app = await db('admission_applications')
-      .join('users', 'admission_applications.created_by', 'users.id')
       .where('admission_applications.id', appId)
-      .where('users.tenant_id', tenantId)
+      .where('admission_applications.tenant_id', tenantId)
       .select('admission_applications.*')
       .first();
     if (!app) throw new AppError('Application not found', 404, 'NOT_FOUND');
@@ -347,9 +344,8 @@ router.delete('/:appId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
     }
 
     const app = await db('admission_applications')
-      .join('users', 'admission_applications.created_by', 'users.id')
       .where('admission_applications.id', appId)
-      .where('users.tenant_id', tenantId)
+      .where('admission_applications.tenant_id', tenantId)
       .select('admission_applications.*')
       .first();
     if (!app) throw new AppError('Application not found', 404, 'NOT_FOUND');

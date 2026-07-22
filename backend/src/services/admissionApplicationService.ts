@@ -18,19 +18,25 @@ import { v4 as uuidv4 } from 'uuid';
 /**
  * Generate unique application number
  */
-async function generateApplicationNumber(): Promise<string> {
+async function generateApplicationNumber(tenantId?: string): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `APP${year}`;
   
-  const lastApplication = await db('admission_applications')
+  let query = db('admission_applications')
     .where('application_number', 'like', `${prefix}%`)
-    .orderBy('application_number', 'desc')
-    .first();
+    .orderBy('application_number', 'desc');
+
+  // Scope to tenant when available to avoid cross-tenant number collisions
+  if (tenantId) {
+    query = query.where('tenant_id', tenantId);
+  }
+
+  const lastApplication = await query.first();
   
   let sequence = 1;
   if (lastApplication) {
     const lastNumber = parseInt(lastApplication.application_number.replace(prefix, ''));
-    sequence = lastNumber + 1;
+    sequence = isNaN(lastNumber) ? 1 : lastNumber + 1;
   }
   
   return `${prefix}${sequence.toString().padStart(5, '0')}`;
@@ -64,7 +70,8 @@ export async function createApplication(
   data: CreateApplicationDTO,
   userId?: string
 ): Promise<AdmissionApplication> {
-  const applicationNumber = await generateApplicationNumber();
+  const tenantId = (data as any).tenant_id as string | undefined;
+  const applicationNumber = await generateApplicationNumber(tenantId);
   
   const applicationData = {
     id: uuidv4(),
@@ -100,13 +107,11 @@ export async function getApplicationById(id: string, tenantId?: string): Promise
     .where('admission_applications.id', id);
 
   if (tenantId) {
-    query = query
-      .join('users', 'admission_applications.created_by', 'users.id')
-      .where('users.tenant_id', tenantId)
-      .select('admission_applications.*');
+    // Filter by the direct tenant_id column (more reliable than joining through users)
+    query = query.where('admission_applications.tenant_id', tenantId);
   }
 
-  const application = await query.first();
+  const application = await query.select('admission_applications.*').first();
   return application || null;
 }
 
@@ -119,15 +124,11 @@ export async function listApplications(
 ): Promise<{ applications: AdmissionApplication[]; total: number; page: number; limit: number }> {
   const { status, grade_id, assigned_to, date_from, date_to, search, page = 1, limit = 20 } = query;
   
-  let queryBuilder = db('admission_applications');
+  let queryBuilder = db('admission_applications').select('admission_applications.*');
 
   if (tenantId) {
-    queryBuilder = queryBuilder
-      .join('users', 'admission_applications.created_by', 'users.id')
-      .where('users.tenant_id', tenantId)
-      .select('admission_applications.*');
-  } else {
-    queryBuilder = queryBuilder.select('*');
+    // Filter directly by the tenant_id column stored on the application row
+    queryBuilder = queryBuilder.where('admission_applications.tenant_id', tenantId);
   }
   
   // Apply filters
@@ -258,6 +259,8 @@ export async function updateApplicationStatus(
         const app = application as any;
         const firstName = (app.child_first_name || app.first_name || '').trim();
         const lastName = (app.child_last_name || app.last_name || '').trim();
+        // Always prefer the tenantId passed from the route handler (from req.user.tenant_id).
+        // Fall back to app.tenant_id only as a safety net.
         const appTenantId = tenantId || app.tenant_id;
 
         if (firstName && lastName && appTenantId) {

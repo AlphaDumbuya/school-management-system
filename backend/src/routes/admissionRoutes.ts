@@ -65,7 +65,7 @@ router.post(
       }
 
       const application = await admissionApplicationService.createApplication(
-        data,
+        { ...data, tenant_id: tenantId },
         req.user?.id
       );
       

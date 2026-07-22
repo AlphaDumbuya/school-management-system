@@ -380,9 +380,10 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
   try {
     const { studentId } = req.params;
     const currentUser = req.auth;
+    const userRole = currentUser?.role;
     const tenantId = req.user?.tenant_id;
 
-    if (!tenantId) {
+    if (userRole !== 'super_admin' && !tenantId) {
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
@@ -390,7 +391,7 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
       throw new AppError('Not authenticated', 401, 'NOT_AUTHENTICATED');
     }
 
-    const student = await db('students')
+    let studentQuery = db('students')
       .select(
         'students.*',
         'classes.name as class_name',
@@ -400,8 +401,13 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
         this.on('students.id', '=', 'enrollments.student_id')
           .andOnIn('enrollments.status', ['enrolled', 'active']);
       })
-      .leftJoin('classes', 'enrollments.class_id', 'classes.id')
-      .where('students.tenant_id', tenantId)
+      .leftJoin('classes', 'enrollments.class_id', 'classes.id');
+
+    if (userRole !== 'super_admin') {
+      studentQuery = studentQuery.where('students.tenant_id', tenantId);
+    }
+
+    const student = await studentQuery
       .andWhere(function() {
         this.where('students.student_id', studentId)
           .orWhere('students.id', studentId);
@@ -459,11 +465,19 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
     };
 
     // Fetch all linked guardians for multi-guardian tracking
-    const guardiansList = await db('guardians')
-      .where('student_id', student.id)
-      .orderBy('is_primary_guardian', 'desc')
-      .orderBy('created_at', 'desc');
-
+    // Gracefully handle cases where the guardians table doesn't exist yet
+    let guardiansList: any[] = [];
+    try {
+      const tableExists = await db.schema.hasTable('guardians');
+      if (tableExists) {
+        guardiansList = await db('guardians')
+          .where('student_id', student.id)
+          .orderBy('is_primary_guardian', 'desc')
+          .orderBy('created_at', 'desc');
+      }
+    } catch (_) {
+      // guardians table not yet migrated — return empty list
+    }
     student.guardians_list = guardiansList;
 
     res.json(student);
