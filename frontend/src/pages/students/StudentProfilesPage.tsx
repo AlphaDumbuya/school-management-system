@@ -140,7 +140,7 @@ export const StudentProfilesPage: React.FC = () => {
     staleTime: 30_000,
   });
 
-  const student = studentDetails as any;
+  const student = (studentDetails as any)?.data ?? studentDetails;
 
   // 3. Fetch Selected Student Sub-resources
   // A. Academics (Grades)

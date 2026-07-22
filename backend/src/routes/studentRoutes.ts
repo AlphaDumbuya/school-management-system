@@ -267,15 +267,20 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     const offset = (page - 1) * limit;
     const status = req.query.status as string;
     const search = req.query.search as string;
+    const userRole = req.user?.role;
     const tenantId = req.user?.tenant_id;
-    const effectiveTenantId = (req.query.tenant_id as string) || tenantId;
+    const requestedTenantId = req.query.tenant_id as string;
 
-    if (!effectiveTenantId) {
+    if (userRole !== 'super_admin' && !tenantId) {
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
+    const effectiveTenantId = requestedTenantId || tenantId || '';
+
     // Auto-sync any approved/enrolled admissions applications to students table
-    await syncEnrolledApplicationsToStudents(db, effectiveTenantId);
+    if (effectiveTenantId) {
+      await syncEnrolledApplicationsToStudents(db, effectiveTenantId);
+    }
 
     let query = db('students')
       .select(
@@ -289,8 +294,10 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
       })
       .leftJoin('classes', 'enrollments.class_id', 'classes.id');
 
-    if (req.query.tenant_id !== 'all') {
-      query = query.where('students.tenant_id', effectiveTenantId);
+    if (userRole !== 'super_admin') {
+      query = query.where('students.tenant_id', tenantId);
+    } else if (requestedTenantId && requestedTenantId !== 'all') {
+      query = query.where('students.tenant_id', requestedTenantId);
     }
 
     // Apply filters
@@ -314,8 +321,10 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
 
     // Separate count query
     let countQuery = db('students');
-    if (req.query.tenant_id !== 'all') {
-      countQuery = countQuery.where('students.tenant_id', effectiveTenantId);
+    if (userRole !== 'super_admin') {
+      countQuery = countQuery.where('students.tenant_id', tenantId);
+    } else if (requestedTenantId && requestedTenantId !== 'all') {
+      countQuery = countQuery.where('students.tenant_id', requestedTenantId);
     }
     countQuery = countQuery.count('* as totalCount');
     if (status) {
@@ -437,13 +446,14 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
     }
 
     // Check parent user account status
-    const guardianEmail = (student.email || student.guardian_phone ? `${student.student_id.toLowerCase()}@parent.school.com` : '').toLowerCase();
+    const safeStudentId = (student.student_id || 'student').toLowerCase();
+    const guardianEmail = (student.email || student.guardian_phone ? `${safeStudentId}@parent.school.com` : '').toLowerCase();
     const parentUser = await db('users').where('email', guardianEmail).first();
 
     student.demo_login = {
-      student_email: studentUser?.email || `${student.student_id.toLowerCase()}@student.school.com`,
+      student_email: studentUser?.email || `${safeStudentId}@student.school.com`,
       student_password: 'Student123!',
-      parent_email: parentUser?.email || (student.guardian_phone ? `${student.student_id.toLowerCase()}@parent.school.com` : 'Not Created'),
+      parent_email: parentUser?.email || (student.guardian_phone ? `${safeStudentId}@parent.school.com` : 'Not Created'),
       parent_password: parentUser ? '(Active)' : 'Parent123!',
       has_parent_account: !!parentUser,
     };

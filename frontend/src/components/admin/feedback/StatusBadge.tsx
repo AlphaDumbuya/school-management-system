@@ -22,10 +22,11 @@ export interface StatusBadgeProps {
   showDot?: boolean;
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, showDot = false }) => {
-  const normalised = status.toLowerCase().trim();
+export const StatusBadge: React.FC<StatusBadgeProps> = ({ status = 'inactive', showDot = false }) => {
+  const safeStatus = (status || 'inactive').toString();
+  const normalised = safeStatus.toLowerCase().trim();
   const variant: BadgeVariant = STATUS_MAP[normalised] ?? 'secondary';
-  const label = normalised.charAt(0).toUpperCase() + normalised.slice(1);
+  const label = normalised ? (normalised.charAt(0).toUpperCase() + normalised.slice(1)) : 'Unknown';
 
   return (
     <Badge variant={variant}>
