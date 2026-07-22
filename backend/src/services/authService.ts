@@ -4,6 +4,7 @@ import { PasswordService } from './passwordService';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import { AuthResponse, UserResponse, UserRole, UserStatus } from '../types/auth';
+import { sendSchoolWelcomeEmail } from './emailService';
 
 export class AuthService {
   constructor(private db: Knex) {}
@@ -245,6 +246,13 @@ export class AuthService {
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         created_at: new Date(),
       });
+
+      // Dispatch welcome email asynchronously (non-blocking)
+      sendSchoolWelcomeEmail({
+        toEmail: email,
+        adminName: `${payload.admin_first_name} ${payload.admin_last_name}`,
+        schoolName: payload.school_name,
+      }).catch((err) => logger.warn(`Could not send welcome email to ${email}: ${err.message}`));
 
       return {
         user: this.mapUserToResponse(user),

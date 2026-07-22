@@ -568,4 +568,91 @@ export async function sendAutoResponse(email: string, name: string): Promise<Ema
   });
 }
 
+/**
+ * Send Professional Welcome Email on School Registration
+ */
+export async function sendSchoolWelcomeEmail(data: {
+  toEmail: string;
+  adminName: string;
+  schoolName: string;
+  loginUrl?: string;
+}): Promise<EmailResponse> {
+  const loginUrl = data.loginUrl || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
+  
+  const emailBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #1a1a2e; background-color: #f4f6f9; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #16213e 0%, #00d4aa 100%); padding: 35px 30px; text-align: center; color: #ffffff; }
+    .logo { font-size: 28px; font-weight: 900; letter-spacing: -0.5px; margin: 0; }
+    .content { padding: 35px 30px; }
+    .welcome-card { background: #f8fafc; border-left: 4px solid #00d4aa; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    .details-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    .details-table td { padding: 10px 14px; border-bottom: 1px solid #edf2f7; font-size: 14px; }
+    .button { display: inline-block; background: #00d4aa; color: #1a1a2e !important; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-weight: 800; font-size: 14px; margin: 20px 0; tracking: 0.5px; }
+    .footer { background: #1a1a2e; color: #a0aec0; padding: 25px 30px; text-align: center; font-size: 12px; }
+    .badge { display: inline-block; background: #e6fffa; color: #047857; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 class="logo">Wi<span style="color: #00d4aa;">Skul</span></h1>
+      <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">School Management System</p>
+    </div>
+    
+    <div class="content">
+      <h2 style="color: #1a1a2e; margin-top: 0;">Welcome to WiSkul, ${data.adminName}! 🎓</h2>
+      <p>Congratulations on successfully registering <strong>${data.schoolName}</strong> on WiSkul. Your isolated school workspace and administrator dashboard have been provisioned.</p>
+
+      <div class="welcome-card">
+        <span class="badge">v1.0.0 Free Launch Edition</span>
+        <h4 style="margin: 8px 0 4px 0; color: #1a1a2e;">Your Workspace Summary:</h4>
+        <table class="details-table">
+          <tr><td><strong>School Name:</strong></td><td>${data.schoolName}</td></tr>
+          <tr><td><strong>Administrator Email:</strong></td><td>${data.toEmail}</td></tr>
+          <tr><td><strong>Academic Session:</strong></td><td>2026/2027 Academic Year (Current)</td></tr>
+          <tr><td><strong>Included Modules:</strong></td><td>Admissions, Attendance, ID Cards, Staff, Portals</td></tr>
+        </table>
+      </div>
+
+      <div style="text-align: center;">
+        <a href="${loginUrl}" class="button">Access School Dashboard →</a>
+      </div>
+
+      <h3 style="color: #1a1a2e; font-size: 16px; margin-top: 25px;">🚀 Recommended Onboarding Steps:</h3>
+      <ol style="font-size: 14px; color: #4a5568; padding-left: 20px;">
+        <li style="margin-bottom: 8px;"><strong>Set up Classes & Streams:</strong> Add your grade levels under Academic Management.</li>
+        <li style="margin-bottom: 8px;"><strong>Add Teachers & Staff:</strong> Invite teaching staff to access their class registers.</li>
+        <li style="margin-bottom: 8px;"><strong>Process Admissions or Import Students:</strong> Enroll students to issue digital ID cards.</li>
+      </ol>
+
+      <p style="font-size: 13px; color: #718096; background: #fff5f5; border-left: 3px solid #f56565; padding: 12px; border-radius: 6px; margin-top: 20px;">
+        💡 <strong>Note:</strong> Your core v1.0.0 management features are 100% free. Upgrade announcements for v2.0 (Automated Report Cards & Fee Collection) will be shared directly in your admin portal.
+      </p>
+    </div>
+
+    <div class="footer">
+      <p style="margin: 0 0 8px 0; font-weight: bold; color: #ffffff;">WiSkul Customer Support</p>
+      <p style="margin: 0;">📧 alphadumbuya7@gmail.com | 📱 +232 78 261 892</p>
+      <p style="margin: 10px 0 0 0;">75 Main Road, Kossoh Town, Sierra Leone</p>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+
+  const emailService = new EmailService();
+  return emailService.sendEmail({
+    to: data.toEmail,
+    subject: `🎉 Welcome to WiSkul! Workspace Ready for ${data.schoolName}`,
+    body: emailBody,
+    isHtml: true,
+  });
+}
+
 export default new EmailService();
