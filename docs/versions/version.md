@@ -48,6 +48,17 @@ Version 1.0.0 focuses on everyday school operations, student enrollment, attenda
 ### 6. SuperAdmin & Platform Management
 - Tenant creation, subscription plan management, and platform configuration ([PlatformTenantsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/PlatformTenantsPage.tsx)).
 
+### 7. Public Marketing & Self-Service Onboarding Alignment
+To ensure market traction while maintaining complete honesty with school administrators:
+- **Self-Service Onboarding ([RegisterPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/RegisterPage.tsx))**: School principals can self-register their school workspace via `/register` without SuperAdmin manual intervention.
+- **Plan Hierarchy & Capacity Limits**:
+  - **Freetong (v1.0 Free Core)**: NLe 0 / Free Forever — Up to 250 Students & 20 Staff. Includes all operational v1.0.0 core features.
+  - **Combra (v2.0 Pro)**: NLe 500 / mo — Up to 1,000 Students & 75 Staff. Unlocks Fee Invoicing, PDF Report Cards, and Promotions Engine.
+  - **Bintumani (v3.0 Enterprise)**: NLe 1,200 / mo — Unlimited Students & Staff. Unlocks Bulk SMS, WhatsApp Business API, and Dedicated Support.
+- **Marketing Page Categorization ([FeaturesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/FeaturesPage.tsx), [PricingPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/PricingPage.tsx))**:
+  - Section 1 showcases **v1.0 Operational Modules (100% Free)**.
+  - Section 2 showcases **Upcoming Version Roadmap** items clearly labeled **"Coming in v2"** or **"Coming in v3"**.
+
 ---
 
 ## 🚫 Excluded from v1.0.0 (Deferred to Version 2.0.0)

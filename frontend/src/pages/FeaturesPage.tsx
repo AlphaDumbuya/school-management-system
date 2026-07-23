@@ -105,19 +105,23 @@ export const FeaturesPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ── All Modules ── */}
-      <section className="px-6 sm:px-10 py-16">
+      {/* ── SECTION 1: v1.0 OPERATIONAL MODULES (100% FREE CORE) ── */}
+      <section className="px-6 sm:px-10 py-16 bg-[#0a0a14]">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <span className="text-[#7c3aed] text-xs font-bold tracking-[0.3em] uppercase">Complete Toolkit</span>
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-black mt-3 mb-3">Every Module, Explained</h2>
-            <p className="text-gray-500 text-sm max-w-lg mx-auto">
-              Explore the full capabilities of every section in the WiSkul platform.
+          <div className="text-center mb-16 space-y-3">
+            <span className="inline-flex items-center gap-2 bg-[#00d4aa]/10 border border-[#00d4aa]/30 rounded-full px-4 py-1.5 text-[#00d4aa] text-xs font-bold uppercase tracking-widest">
+              ✓ v1.0 Operational Core · 100% Free for All Schools
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+              Operational v1.0 Core Modules
+            </h2>
+            <p className="text-gray-400 text-sm max-w-xl mx-auto leading-relaxed">
+              These features are fully operational, tested, and included free of charge in your school workspace today.
             </p>
           </div>
 
-          <div className="space-y-20">
-            {/* ═══ DASHBOARD ═══ */}
+          <div className="space-y-12">
+            {/* 01: DASHBOARD */}
             <ModuleSection
               num="01"
               title="Dashboard & Command Centers"
@@ -133,61 +137,155 @@ export const FeaturesPage: React.FC = () => {
               ]}
             />
 
-            {/* ═══ ACADEMIC ═══ */}
+            {/* 02: STUDENT DIRECTORY & PROFILES */}
             <ModuleSection
               num="02"
-              title="Academic Management"
-              color="#7c3aed"
-              versionBadge="v1"
-              desc="The complete operational academic backbone — class structures, timetables, and assignments."
-              features={[
-                'Classes & Streams — create classes by level (Nursery to SSS), assign streams (A, B, C), set capacity, assign class teachers',
-                'Subject Allocation — configure subjects with codes, departments, and map to classes and teachers',
-                'Timetable Builder — visual timetable builder with period slots, room assignment, and printable schedule output',
-                'Assignments & Homework — create assignments with descriptions, due dates, attachments; students submit online',
-                'Exam Timetable Scheduling — schedule exams by type (CA, Mid-term, Final), dates, venues, and supervisors',
-                'Gradebook & Report Cards — term mark sheets, grading scales, PDF report card generation (v2.0 Roadmap)',
-                'Promotions Engine — bulk student class advancement & retention criteria (v2.0 Roadmap)',
-              ]}
-            />
-
-            {/* ═══ STUDENTS ═══ */}
-            <ModuleSection
-              num="03"
-              title="Student Management"
+              title="Student Management & Profiles"
               color="#00d4aa"
               versionBadge="v1"
-              desc="Complete student lifecycle from first application to active student status."
+              desc="Complete student lifecycle from enrollment to graduation — every record digitized."
               features={[
                 'Student Directory — searchable database of all students with photos, personal info, guardian details, and class placement',
-                'Admissions Pipeline — multi-stage admission workflow (applied → reviewed → accepted → enrolled)',
                 'Student Profiles — 360° view: bio, class placement, guardian contact details, and attendance history',
-                'Daily Attendance — daily marking (present/absent/late/excused) by class with automatic percentage calculation',
+                'Multi-Guardian Linking — link parents/guardians to student records with contact info and relationship designations',
               ]}
             />
 
-            {/* ═══ STAFF ═══ */}
+            {/* 03: ADMISSIONS PIPELINE */}
+            <ModuleSection
+              num="03"
+              title="Admissions Workflow & Onboarding"
+              color="#00d4aa"
+              versionBadge="v1"
+              desc="Self-service student registration and multi-stage application processing."
+              features={[
+                'Admissions Pipeline — multi-stage application processing (applied → reviewed → accepted → enrolled)',
+                'Application Review — admissions officer approval dashboard with student conversion upon approval',
+                'Application History — full audit trail of applicant details, submission dates, and status changes',
+              ]}
+            />
+
+            {/* 04: DAILY ATTENDANCE */}
             <ModuleSection
               num="04"
-              title="Staff Directory & HR"
-              color="#7c3aed"
+              title="Daily Attendance Registers"
+              color="#00d4aa"
+              versionBadge="v1"
+              desc="Classroom attendance tracking with automatic statistics and history."
+              features={[
+                'Daily Class Marking — mark attendance (present/absent/late/excused) by class and section',
+                'Attendance Analytics — automatic class and individual student attendance percentage calculation',
+                'Attendance History — searchable historical attendance logs per class and per student profile',
+              ]}
+            />
+
+            {/* 05: ACADEMIC OPERATIONAL CORE */}
+            <ModuleSection
+              num="05"
+              title="Classes, Streams & Subject Allocation"
+              color="#00d4aa"
+              versionBadge="v1"
+              desc="Structure your academic framework — Nursery to SSS / K-12 levels."
+              features={[
+                'Classes & Streams — create classes by level (Nursery to SSS), assign streams (A, B, C), set capacity, assign class teachers',
+                'Subject Mapping — configure subjects with codes, credit hours, departments, and map to classes and teachers',
+              ]}
+            />
+
+            {/* 06: TIMETABLES & EXAM SCHEDULING */}
+            <ModuleSection
+              num="06"
+              title="Timetable Builder & Exam Schedules"
+              color="#00d4aa"
+              versionBadge="v1"
+              desc="Schedule weekly class timetables and examination dates."
+              features={[
+                'Visual Timetable Builder — builder with period slots, room assignment, and printable schedule output',
+                'Exam Timetable Scheduling — schedule exams by type (CA, Mid-term, Final), dates, venues, and supervisors',
+              ]}
+            />
+
+            {/* 07: IDENTITY & ID CARD GENERATOR */}
+            <ModuleSection
+              num="07"
+              title="Digital ID Card Design & Batch Printing"
+              color="#00d4aa"
+              versionBadge="v1"
+              desc="Professional identity management with digital card generation and QR verification."
+              features={[
+                'ID Card Generator — generate professional PVC cards and lanyard badges for students and staff with school branding',
+                'Card Template Customizer — custom designs with school logo, color schemes, and photo positions',
+                'QR Verification — unique QR code on cards for instant identity verification',
+                'Batch Card Printing — generate cards for entire classes or departments in one click and export to PDF',
+              ]}
+            />
+
+            {/* 08: STAFF & TEACHER DIRECTORY */}
+            <ModuleSection
+              num="08"
+              title="Staff & Teacher Directory"
+              color="#00d4aa"
               versionBadge="v1"
               desc="Manage your teaching team and staff profiles across departments."
               features={[
                 'Teacher Profiles — qualifications, specializations, experience, assigned classes and subjects',
                 'Support Staff Directory — staff profiles with roles, departments, and contact info',
-                'Digital Leave Management — staff leave applications and principal approval workflows (v2.0 Roadmap)',
-                'Performance Appraisals — annual goals, appraisals, and evaluation tracking (v2.0 Roadmap)',
               ]}
             />
 
-            {/* ═══ FINANCE ═══ */}
+            {/* 09: ASSIGNMENTS & HOMEWORK */}
             <ModuleSection
-              num="05"
-              title="Financial & Fee Management"
+              num="09"
+              title="Assignments & Homework Submissions"
               color="#00d4aa"
+              versionBadge="v1"
+              desc="Digital homework distribution and student submissions."
+              features={[
+                'Assignment Creation — create assignments with descriptions, instructions, due dates, and file attachments',
+                'Online Submissions — students view assignments and submit work digitally through their portal',
+              ]}
+            />
+
+            {/* 10: EVENTS & CALENDAR */}
+            <ModuleSection
+              num="10"
+              title="School Calendar & Events"
+              color="#00d4aa"
+              versionBadge="v1"
+              desc="Plan, publish, and notify parents of school activities."
+              features={[
+                'School Events — create single-day or multi-day events with location, description, and target audience',
+                'Interactive Calendar — monthly calendar showing school events color-coded by category',
+                'Portal Announcements — publish upcoming events directly to student and parent portals',
+              ]}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 2: UPCOMING VERSION ROADMAP (v2.0 & v3.0) ── */}
+      <section className="px-6 sm:px-10 py-16 bg-[#16213e]/60 border-t border-white/5">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16 space-y-3">
+            <span className="inline-flex items-center gap-2 bg-purple-500/10 border border-purple-500/30 rounded-full px-4 py-1.5 text-purple-300 text-xs font-bold uppercase tracking-widest">
+              🚀 Version Roadmap · Upcoming v2.0 & v3.0 Releases
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+              Upcoming Advanced Modules (v2.0 / v3.0)
+            </h2>
+            <p className="text-gray-400 text-sm max-w-xl mx-auto leading-relaxed">
+              These advanced financial, report card, and messaging modules are planned for future version releases.
+            </p>
+          </div>
+
+          <div className="space-y-12">
+            {/* V2-01: FINANCIAL MANAGEMENT */}
+            <ModuleSection
+              num="01"
+              title="Automated Fee Billing & Receipts (Coming in v2)"
+              color="#7c3aed"
               versionBadge="v2"
-              desc="Automated school billing, receipts, mobile payments, and expense tracking (v2.0 Release)."
+              desc="Automated tuition billing, receipts, mobile payments, and expense tracking."
               features={[
                 'Fee Structures — configure fees by class, term, and category (tuition, exam, library, transport)',
                 'Automated Invoicing — auto-generate digital fee invoices per student and track paid/unpaid status',
@@ -196,63 +294,69 @@ export const FeaturesPage: React.FC = () => {
               ]}
             />
 
-            {/* ═══ COMMUNICATION ═══ */}
+            {/* V2-02: GRADEBOOK & REPORT CARDS */}
             <ModuleSection
-              num="06"
-              title="Communication Hub"
+              num="02"
+              title="Digital Gradebook & PDF Report Cards (Coming in v2)"
               color="#7c3aed"
               versionBadge="v2"
-              desc="Automated SMS broadcasts, WhatsApp parent alerts, and email notifications (v2.0 / v3.0 Release)."
+              desc="Term mark sheets, grading scales, and terminal PDF report card generation."
               features={[
-                'School Announcements — school-wide or role-targeted announcements with rich text and attachments',
-                'SMS Parent Broadcasts — bulk SMS to parents for fee reminders, attendance alerts, and emergency updates',
-                'WhatsApp Business API — automated WhatsApp notifications for report cards, payment receipts, and alerts',
-                'Internal In-App Messaging — direct messaging between teachers, parents, and administrative staff',
+                'Gradebook & Mark Sheets — enter marks per student per subject with auto-calculated weighted grades',
+                'Term Report Card PDF Generator — auto-generated term report cards with subjects, grades, positions, and principal remarks',
+                'Grading Scale Customizer — configure WASSCE, BECE, or national letter grade boundaries',
               ]}
             />
 
-            {/* ═══ IDENTITY ═══ */}
+            {/* V2-03: PROMOTIONS ENGINE */}
             <ModuleSection
-              num="07"
-              title="Identity & ID Card Generator"
-              color="#00d4aa"
-              versionBadge="v1"
-              desc="Professional identity management with digital card generation and QR verification."
-              features={[
-                'ID Cards — generate professional PVC cards and lanyard badges for students and staff with school branding',
-                'Card Templates — customizable card designs with logo placement, color schemes, and photo positions',
-                'QR Verification — unique QR code on cards for identity verification and status validation',
-                'Batch Card Printing — generate cards for entire classes or departments in one click and export to PDF',
-              ]}
-            />
-
-            {/* ═══ EVENTS ═══ */}
-            <ModuleSection
-              num="08"
-              title="Events & School Calendar"
+              num="03"
+              title="End-of-Year Student Promotions Engine (Coming in v2)"
               color="#7c3aed"
-              versionBadge="v1"
-              desc="Plan, manage, and publish every school activity — sports day, parent meetings, and holidays."
+              versionBadge="v2"
+              desc="Automated class advancement and retention criteria."
               features={[
-                'School Events — create single-day or multi-day events with location, description, and target audience',
-                'Interactive Calendar — monthly calendar showing school events color-coded by category',
-                'Event Notices — publish upcoming events directly to student and parent portals',
+                'Bulk Student Promotion — bulk advance qualifying students to next grade level at end of academic year',
+                'Retention Criteria — set minimum pass percentage requirements for automatic promotion',
               ]}
             />
 
-            {/* ═══ REPORTS ═══ */}
+            {/* V2-04: STAFF HR LEAVE */}
             <ModuleSection
-              num="09"
-              title="Reports & Analytics"
-              color="#00d4aa"
-              desc="Data-driven insights across every dimension of school operations."
+              num="04"
+              title="Staff Digital Leave & Performance (Coming in v2)"
+              color="#7c3aed"
+              versionBadge="v2"
+              desc="Teacher leave requests and performance appraisals."
               features={[
-                'Academic Reports — student performance by term, subject-wise analysis, class rankings, grade distribution charts, comparison across terms',
-                'Financial Reports — revenue collected vs target, outstanding balances by class, payment method breakdown, expense summaries, budget utilization',
-                'Attendance Reports — daily/weekly/monthly attendance by class, chronic absentee identification, attendance trends over time, teacher attendance',
-                'Enrollment Reports — admission pipeline statistics, enrollment by class and gender, year-over-year growth, retention and dropout rates',
-                'Discipline Reports — incident frequency by type and severity, repeat offenders, resolution timelines, behavioral trend analysis',
-                'Custom Exports — all reports exportable to PDF and Excel with date range filters and role-based data scoping',
+                'Digital Leave Approvals — staff submit leave requests digitally for principal review and approval',
+                'Performance Appraisals — annual goals, evaluation criteria, and performance review records',
+              ]}
+            />
+
+            {/* V3-01: SMS BROADCASTS */}
+            <ModuleSection
+              num="05"
+              title="Automated SMS Parent Broadcasts (Coming in v3)"
+              color="#3b82f6"
+              versionBadge="v3"
+              desc="Bulk SMS notifications for fee reminders and emergency school alerts."
+              features={[
+                'Bulk SMS Messaging — send bulk SMS broadcasts to parents for fee reminders, attendance alerts, and notices',
+                'Automated Triggers — automatic SMS alerts sent upon student absence or urgent school announcement',
+              ]}
+            />
+
+            {/* V3-02: WHATSAPP BUSINESS API */}
+            <ModuleSection
+              num="06"
+              title="WhatsApp Business API Integration (Coming in v3)"
+              color="#3b82f6"
+              versionBadge="v3"
+              desc="Direct WhatsApp notifications and report card delivery."
+              features={[
+                'WhatsApp Parent Alerts — automated WhatsApp messages for report card releases, payment receipts, and alerts',
+                'Interactive Parent Bot — automated responses for parent fee balance inquiries and attendance checks',
               ]}
             />
           </div>
@@ -323,7 +427,7 @@ interface ModuleSectionProps {
   color: string;
   desc: string;
   features: string[];
-  versionBadge?: 'v1' | 'v2';
+  versionBadge?: 'v1' | 'v2' | 'v3';
 }
 
 const ModuleSection: React.FC<ModuleSectionProps> = ({ num, title, color, desc, features, versionBadge = 'v1' }) => (
@@ -346,23 +450,31 @@ const ModuleSection: React.FC<ModuleSectionProps> = ({ num, title, color, desc, 
         className={`text-[10px] font-black px-3.5 py-1 rounded-full uppercase tracking-wider ${
           versionBadge === 'v1'
             ? 'bg-[#00d4aa]/10 text-[#00d4aa] border border-[#00d4aa]/30'
-            : 'bg-purple-500/10 text-purple-300 border border-purple-500/30'
+            : versionBadge === 'v2'
+            ? 'bg-purple-500/10 text-purple-300 border border-purple-500/30'
+            : 'bg-blue-500/10 text-blue-300 border border-blue-500/30'
         }`}
       >
-        {versionBadge === 'v1' ? '✓ v1.0 FREE CORE RELEASE' : '🚀 UPCOMING v2.0 ROADMAP'}
+        {versionBadge === 'v1' ? '✓ v1.0 Operational (Free)' : versionBadge === 'v2' ? '🚀 Coming in v2' : '⚡ Coming in v3'}
       </span>
     </div>
 
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-6">
       {features.map((f) => {
         const parts = f.split(' — ');
+        const isV2 = f.includes('(Coming v2)');
+        const isV3 = f.includes('(Coming v3)');
         return (
-          <div key={f} className="flex items-start gap-3 bg-[#1a1a2e]/70 border border-white/[0.03] rounded-xl px-4 py-3">
+          <div key={f} className="flex items-start gap-3 bg-[#1a1a2e]/70 border border-white/[0.03] rounded-xl px-4 py-3 relative">
             <span className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{ background: color }} />
-            <div>
+            <div className="flex-1">
               {parts.length > 1 ? (
                 <>
-                  <span className="text-sm font-bold text-white">{parts[0]}</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-bold text-white">{parts[0]}</span>
+                    {isV2 && <span className="text-[9px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded font-mono font-bold">Coming in v2</span>}
+                    {isV3 && <span className="text-[9px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded font-mono font-bold">Coming in v3</span>}
+                  </div>
                   <span className="text-xs text-gray-400 block mt-0.5 leading-relaxed">{parts[1]}</span>
                 </>
               ) : (

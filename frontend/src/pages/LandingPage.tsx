@@ -202,20 +202,31 @@ export const LandingPage: React.FC = () => {
               </p>
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { label: 'Academics & Grading', icon: '📖' },
-                  { label: 'Student Directory', icon: '🎓' },
-                  { label: 'Staff & HR', icon: '👨‍🏫' },
-                  { label: 'Fee & Payments', icon: '💰' },
-                  { label: 'Attendance Tracking', icon: '📋' },
-                  { label: 'SMS & Notifications', icon: '📢' },
-                  { label: 'ID Cards & QR', icon: '💳' },
-                  { label: 'Events & Calendar', icon: '📅' },
-                  { label: 'Reports & Analytics', icon: '📊' },
-                  { label: 'Security & Access', icon: '🔐' },
+                  { label: 'Student Directory', icon: '🎓', badge: 'v1 Free' },
+                  { label: 'Daily Attendance', icon: '📋', badge: 'v1 Free' },
+                  { label: 'Classes & Timetables', icon: '📖', badge: 'v1 Free' },
+                  { label: 'ID Cards & Batch PDF', icon: '💳', badge: 'v1 Free' },
+                  { label: 'Staff & Teachers', icon: '👨‍🏫', badge: 'v1 Free' },
+                  { label: 'Admissions Pipeline', icon: '📋', badge: 'v1 Free' },
+                  { label: 'Fee & Billing', icon: '💰', badge: 'Coming v2' },
+                  { label: 'Gradebook & Report Cards', icon: '📊', badge: 'Coming v2' },
+                  { label: 'SMS & WhatsApp Alerts', icon: '📢', badge: 'Coming v2' },
+                  { label: 'Staff HR & Leave', icon: '🔐', badge: 'Coming v2' },
                 ].map((f) => (
-                  <div key={f.label} className="bg-[#16213e] border border-white/[0.04] rounded-lg p-3 flex items-center gap-2">
-                    <span className="text-lg">{f.icon}</span>
-                    <span className="text-xs text-gray-300 font-medium">{f.label}</span>
+                  <div key={f.label} className="bg-[#16213e] border border-white/[0.04] rounded-lg p-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{f.icon}</span>
+                      <span className="text-xs text-gray-300 font-medium">{f.label}</span>
+                    </div>
+                    <span
+                      className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded ${
+                        f.badge === 'v1 Free'
+                          ? 'bg-[#00d4aa]/10 text-[#00d4aa] border border-[#00d4aa]/30'
+                          : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                      }`}
+                    >
+                      {f.badge}
+                    </span>
                   </div>
                 ))}
               </div>
