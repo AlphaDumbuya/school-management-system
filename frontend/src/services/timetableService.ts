@@ -141,11 +141,107 @@ export const STANDARD_PERIODS = SSS_PERIODS;
 
 /** Determine school level from class level string */
 export function getSchoolLevel(classLevel: string): SchoolLevel {
-  if (classLevel.startsWith('NURSERY')) return 'nursery';
-  if (classLevel.startsWith('CLASS')) return 'primary';
-  if (classLevel.startsWith('JSS')) return 'jss';
-  if (classLevel.startsWith('SSS')) return 'sss';
+  if (!classLevel) return 'sss';
+  const upper = classLevel.toUpperCase();
+  if (upper.startsWith('NURSERY')) return 'nursery';
+  if (upper.startsWith('CLASS') || upper.startsWith('PRIMARY')) return 'primary';
+  if (upper.startsWith('JSS')) return 'jss';
+  if (upper.startsWith('SSS')) return 'sss';
   return 'sss'; // fallback
+}
+
+/** Get custom periods for level (or fallback to system defaults) */
+export function getCustomPeriods(level: SchoolLevel): PeriodDefinition[] {
+  try {
+    const raw = localStorage.getItem(`wiskul_period_config_${level}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    // fallback
+  }
+  return PERIOD_STRUCTURES[level] || SSS_PERIODS;
+}
+
+/** Save custom periods for level */
+export function saveCustomPeriods(level: SchoolLevel, periods: PeriodDefinition[]): void {
+  localStorage.setItem(`wiskul_period_config_${level}`, JSON.stringify(periods));
+}
+
+/** Reset custom periods for level */
+export function resetPeriodsToDefault(level: SchoolLevel): void {
+  localStorage.removeItem(`wiskul_period_config_${level}`);
+}
+
+/** Helper interface for period auto-generator */
+export interface GeneratePeriodsOptions {
+  startTime: string;
+  periodDuration: number;
+  totalPeriods: number;
+  includeBreak?: boolean;
+  breakAfterPeriod?: number;
+  breakDurationMinutes?: number;
+  includeLunch?: boolean;
+  lunchAfterPeriod?: number;
+  lunchDurationMinutes?: number;
+}
+
+/** Auto-generate consecutive period time slots */
+export function generatePeriodsSchedule(opts: GeneratePeriodsOptions): PeriodDefinition[] {
+  const result: PeriodDefinition[] = [];
+  const [startH, startM] = opts.startTime.split(':').map(Number);
+  let currentMinutes = startH * 60 + startM;
+
+  const formatTime = (totalM: number) => {
+    const h = Math.floor(totalM / 60) % 24;
+    const m = totalM % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  let teachingCount = 0;
+
+  for (let i = 1; i <= opts.totalPeriods; i++) {
+    teachingCount++;
+    const startStr = formatTime(currentMinutes);
+    currentMinutes += opts.periodDuration;
+    const endStr = formatTime(currentMinutes);
+
+    result.push({
+      label: `Period ${teachingCount}`,
+      start: startStr,
+      end: endStr,
+      isBreak: false,
+    });
+
+    // Check Morning Break
+    if (opts.includeBreak && teachingCount === (opts.breakAfterPeriod || 4)) {
+      const bStartStr = formatTime(currentMinutes);
+      currentMinutes += opts.breakDurationMinutes || 15;
+      const bEndStr = formatTime(currentMinutes);
+      result.push({
+        label: 'Short Break',
+        start: bStartStr,
+        end: bEndStr,
+        isBreak: true,
+      });
+    }
+
+    // Check Lunch Break
+    if (opts.includeLunch && teachingCount === (opts.lunchAfterPeriod || 6)) {
+      const lStartStr = formatTime(currentMinutes);
+      currentMinutes += opts.lunchDurationMinutes || 30;
+      const lEndStr = formatTime(currentMinutes);
+      result.push({
+        label: 'Lunch Break',
+        start: lStartStr,
+        end: lEndStr,
+        isBreak: true,
+      });
+    }
+  }
+
+  return result;
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────

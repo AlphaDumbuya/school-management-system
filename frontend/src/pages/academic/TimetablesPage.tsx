@@ -23,8 +23,11 @@ import {
   PeriodDefinition,
   getSchoolLevel,
   SchoolLevel,
+  getCustomPeriods,
 } from '@services/timetableService';
 import { TimetableSlotModal } from './components/TimetableSlotModal';
+import { PeriodSettingsModal } from './components/PeriodSettingsModal';
+import { Settings } from 'lucide-react';
 
 // ── Subject category colors ───────────────────────────────────────────────────
 
@@ -47,8 +50,9 @@ export const TimetablesPage: React.FC = () => {
   // Mobile day tab
   const [mobileDay, setMobileDay] = useState<string>('Monday');
 
-  // Modal state
+  // Modal states
   const [slotModalOpen, setSlotModalOpen] = useState(false);
+  const [periodSettingsOpen, setPeriodSettingsOpen] = useState(false);
   const [editingSlot, setEditingSlot] = useState<TimetableSlot | null>(null);
   const [prefillDay, setPrefillDay] = useState<string | undefined>();
   const [prefillPeriod, setPrefillPeriod] = useState<number | undefined>();
@@ -73,10 +77,10 @@ export const TimetablesPage: React.FC = () => {
   const weekly = (weeklyData as any)?.weekly ?? {};
   const totalSlots = Number((weeklyData as any)?.total_slots ?? 0);
 
-  // Determine period structure based on class level
+  // Determine period structure dynamically based on class level & custom settings
   const selectedClass = classes.find((c) => String(c.id) === selectedClassId);
   const schoolLevel: SchoolLevel = selectedClass ? getSchoolLevel(selectedClass.level) : 'sss';
-  const periods: PeriodDefinition[] = PERIOD_STRUCTURES[schoolLevel];
+  const periods: PeriodDefinition[] = getCustomPeriods(schoolLevel);
   const teachablePeriods = periods.filter((p) => !p.isBreak).length;
 
   // KPI calculations
@@ -235,6 +239,15 @@ export const TimetablesPage: React.FC = () => {
             </div>
 
             <RoleGuard roles={['principal', 'super_admin']}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPeriodSettingsOpen(true)}
+                className="whitespace-nowrap shadow-sm gap-1.5"
+                title="Customize daily periods, times, and break schedule"
+              >
+                <Settings size={14} /> Period Settings
+              </Button>
               <Button
                 variant="default"
                 size="sm"
@@ -458,6 +471,14 @@ export const TimetablesPage: React.FC = () => {
         title="Remove Period"
         message={`Remove ${deleteTarget?.subject_name ?? 'this period'} from ${deleteTarget?.day_of_week ?? 'the timetable'}?`}
         confirmLabel="Remove"
+      />
+
+      {/* Period Settings Modal */}
+      <PeriodSettingsModal
+        isOpen={periodSettingsOpen}
+        onClose={() => setPeriodSettingsOpen(false)}
+        currentLevel={schoolLevel}
+        onSaved={() => queryClient.invalidateQueries({ queryKey: ['timetable-weekly'] })}
       />
     </MainLayout>
   );
