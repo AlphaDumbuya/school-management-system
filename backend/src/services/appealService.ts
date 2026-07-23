@@ -534,6 +534,8 @@ class AppealService {
     } catch (error) {
       logger.error('Error logging appeal audit:', error);
     }
+  }
+
   /**
    * List all discipline appeals school-wide (tenant-isolated)
    */

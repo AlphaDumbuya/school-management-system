@@ -464,6 +464,8 @@ class BehavioralNoteService {
     } catch (error) {
       logger.error('Error logging note audit:', error);
     }
+  }
+
   /**
    * List all behavioral notes school-wide (tenant-isolated)
    */

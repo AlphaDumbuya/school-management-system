@@ -511,6 +511,8 @@ class DisciplineService {
     } catch (error) {
       logger.error('Error logging discipline audit:', error);
     }
+  }
+
   /**
    * List all discipline actions school-wide (tenant-isolated)
    */

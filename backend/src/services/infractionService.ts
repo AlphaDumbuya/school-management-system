@@ -485,6 +485,8 @@ class InfractionService {
     } catch (error) {
       logger.error('Error logging infraction audit:', error);
     }
+  }
+
   /**
    * List all infractions school-wide (tenant-isolated)
    */
