@@ -350,10 +350,44 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
     let schoolName = null;
     if (user.tenant_id) {
       try {
+        // 1. Try schools table
         const school = await db('schools').where('tenant_id', user.tenant_id).first();
         if (school) {
           schoolLogoUrl = school.logo_url;
           schoolName = school.name;
+        }
+
+        // 2. Try school_info table
+        if (!schoolName) {
+          const hasSchoolInfo = await db.schema.hasTable('school_info');
+          if (hasSchoolInfo) {
+            const schoolInfo = await db('school_info').where('tenant_id', user.tenant_id).first();
+            if (schoolInfo && schoolInfo.name) {
+              schoolName = schoolInfo.name;
+              schoolLogoUrl = schoolLogoUrl || schoolInfo.logo_url || null;
+            }
+          }
+        }
+
+        // 3. Try tenants table
+        if (!schoolName) {
+          const tenant = await db('tenants').where('id', user.tenant_id).first();
+          if (tenant && tenant.name) {
+            schoolName = tenant.name;
+          }
+        }
+
+        // 4. Try school_config_settings table
+        if (!schoolName) {
+          const hasSettings = await db.schema.hasTable('school_config_settings');
+          if (hasSettings) {
+            const setting = await db('school_config_settings')
+              .where({ tenant_id: user.tenant_id, key: 'school_name' })
+              .first();
+            if (setting && setting.value) {
+              schoolName = setting.value;
+            }
+          }
         }
       } catch (_) {}
     }

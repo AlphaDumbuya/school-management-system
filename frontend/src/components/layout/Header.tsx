@@ -4,11 +4,13 @@
  * Phase 11: Frontend Dashboard Implementation
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaBars, FaUser, FaCog } from 'react-icons/fa';
 import { FaBell, FaRightFromBracket } from 'react-icons/fa6';
 import useAuth from '@hooks/useAuth';
+import useAuthStore from '@store/authStore';
+import schoolConfigService from '@services/schoolConfigService';
 import clsx from 'clsx';
 
 interface HeaderProps {
@@ -21,6 +23,30 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
   const { user, logout } = useAuth();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  // Sync missing tenant school info
+  useEffect(() => {
+    if (user && (!user.schoolName || !user.schoolLogoUrl)) {
+      schoolConfigService
+        .getSchoolInfo()
+        .then((res) => {
+          if (res.success && res.data) {
+            const fetchedName = res.data.name;
+            const fetchedLogo = res.data.logo_url;
+            if (fetchedName && (user.schoolName !== fetchedName || user.schoolLogoUrl !== fetchedLogo)) {
+              const updatedUser = {
+                ...user,
+                schoolName: fetchedName || user.schoolName,
+                schoolLogoUrl: fetchedLogo ?? user.schoolLogoUrl,
+              };
+              useAuthStore.getState().setUser(updatedUser);
+              localStorage.setItem('user', JSON.stringify(updatedUser));
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [user]);
 
   const handleLogout = async () => {
     await logout();

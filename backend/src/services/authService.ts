@@ -87,7 +87,7 @@ export class AuthService {
       });
 
       return {
-        user: this.mapUserToResponse(user),
+        user: await this.mapUserToResponse(user),
         access_token,
         refresh_token,
       };
@@ -255,7 +255,7 @@ export class AuthService {
       }).catch((err) => logger.warn(`Could not send welcome email to ${email}: ${err.message}`));
 
       return {
-        user: this.mapUserToResponse(user),
+        user: await this.mapUserToResponse(user),
         tenant: newTenant,
         access_token,
         refresh_token,
@@ -545,12 +545,48 @@ export class AuthService {
 
     if (user.tenant_id) {
       try {
+        // 1. Try schools table
         const school = await this.db('schools').where('tenant_id', user.tenant_id).first();
         if (school) {
           schoolLogoUrl = school.logo_url;
           schoolName = school.name;
         }
-      } catch (_) {}
+
+        // 2. Try school_info table if schoolName not found
+        if (!schoolName) {
+          const hasSchoolInfo = await this.db.schema.hasTable('school_info');
+          if (hasSchoolInfo) {
+            const schoolInfo = await this.db('school_info').where('tenant_id', user.tenant_id).first();
+            if (schoolInfo && schoolInfo.name) {
+              schoolName = schoolInfo.name;
+              schoolLogoUrl = schoolLogoUrl || schoolInfo.logo_url || null;
+            }
+          }
+        }
+
+        // 3. Try tenants table if schoolName still not found
+        if (!schoolName) {
+          const tenant = await this.db('tenants').where('id', user.tenant_id).first();
+          if (tenant && tenant.name) {
+            schoolName = tenant.name;
+          }
+        }
+
+        // 4. Try school_config_settings table if schoolName still not found
+        if (!schoolName) {
+          const hasSettings = await this.db.schema.hasTable('school_config_settings');
+          if (hasSettings) {
+            const setting = await this.db('school_config_settings')
+              .where({ tenant_id: user.tenant_id, key: 'school_name' })
+              .first();
+            if (setting && setting.value) {
+              schoolName = setting.value;
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn(`Error mapping school info for tenant ${user.tenant_id}: ${err}`);
+      }
     }
 
     return {
@@ -709,7 +745,7 @@ export class AuthService {
       logger.info(`User updated: ${userId}`);
 
       const updatedUser = await this.getUserById(userId);
-      return this.mapUserToResponse(updatedUser);
+      return await this.mapUserToResponse(updatedUser);
     } catch (error) {
       if (error instanceof AppError) {
         throw error;
@@ -821,7 +857,7 @@ export class AuthService {
         .offset(options.offset || 0);
 
       return {
-        users: users.map((u) => this.mapUserToResponse(u)),
+        users: await Promise.all(users.map((u) => this.mapUserToResponse(u))),
         total: total?.count || 0,
       };
     } catch (error) {
@@ -839,7 +875,7 @@ export class AuthService {
       if (!user) {
         return null;
       }
-      return this.mapUserToResponse(user);
+      return await this.mapUserToResponse(user);
     } catch (error) {
       logger.error('Error fetching user by email', error);
       throw new AppError('Failed to fetch user', 500, 'FETCH_USER_FAILED');
