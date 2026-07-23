@@ -326,12 +326,22 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
             Schedule & Marks
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Type <span className="text-red-500">*</span></label>
-              <select {...register('type')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {ASSIGNMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
+            <Controller
+              name="type"
+              control={control}
+              render={({ field }) => (
+                <SearchableSelect
+                  label="Type"
+                  required
+                  options={ASSIGNMENT_TYPES}
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Select type..."
+                  searchPlaceholder="Search assignment type..."
+                  error={errors.type?.message}
+                />
+              )}
+            />
 
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Assigned <span className="text-red-500">*</span></label>

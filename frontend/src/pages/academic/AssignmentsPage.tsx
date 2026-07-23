@@ -1,12 +1,23 @@
 /**
  * AssignmentsPage — /academic/assignments
  * CRUD for class assignments with submission tracking.
+ * Features Searchable Filter Popovers with embedded search bars inside filters.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { ClipboardList, Clock, CheckCircle, AlertTriangle, X, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import {
+  ClipboardList,
+  Clock,
+  CheckCircle,
+  AlertTriangle,
+  X,
+  ChevronDown,
+  SlidersHorizontal,
+  Search,
+  Check,
+} from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -18,7 +29,11 @@ import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
-import { assignmentsService, AssignmentRecord, ASSIGNMENT_TYPES } from '@services/assignmentsService';
+import {
+  assignmentsService,
+  AssignmentRecord,
+  ASSIGNMENT_TYPES,
+} from '@services/assignmentsService';
 import { AssignmentFormModal } from './components/AssignmentFormModal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -48,6 +63,169 @@ const TYPE_LABELS: Record<string, string> = {
   exercise: 'Exercise',
 };
 
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Active', icon: '🟢' },
+  { value: 'closed', label: 'Closed', icon: '🔴' },
+  { value: 'draft', label: 'Draft', icon: '🟡' },
+];
+
+const TYPE_OPTIONS = ASSIGNMENT_TYPES.map((t) => ({
+  value: t.value,
+  label: t.label,
+  icon: '📝',
+}));
+
+// ── SEARCHABLE FILTER POPOVER COMPONENT ────────────────────────────────────────
+
+interface SearchableFilterPopoverProps {
+  title: string;
+  placeholder?: string;
+  options: { value: string; label: string; icon?: string }[];
+  value: string;
+  onChange: (val: string) => void;
+  allLabel?: string;
+}
+
+const SearchableFilterPopover: React.FC<SearchableFilterPopoverProps> = ({
+  title,
+  placeholder = 'Search options...',
+  options,
+  value,
+  onChange,
+  allLabel = 'All Options',
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [filterSearch, setFilterSearch] = useState('');
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isOpen]);
+
+  const filteredOptions = useMemo(() => {
+    if (!filterSearch) return options;
+    return options.filter((opt) =>
+      opt.label.toLowerCase().includes(filterSearch.toLowerCase())
+    );
+  }, [options, filterSearch]);
+
+  const handleSelect = (val: string) => {
+    onChange(val);
+    setIsOpen(false);
+    setFilterSearch('');
+  };
+
+  const selectedOption = options.find((o) => o.value === value);
+  const displayLabel = selectedOption ? selectedOption.label : allLabel;
+
+  return (
+    <div ref={popoverRef} className="relative flex-1 sm:flex-initial">
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full sm:w-auto flex items-center justify-between gap-2 pl-3 pr-2.5 py-2.5 sm:py-2 border rounded-lg text-sm font-medium transition-all cursor-pointer min-w-[140px] sm:min-w-[160px] ${
+          isOpen
+            ? 'border-blue-500 ring-2 ring-blue-500/20 bg-white dark:bg-gray-800'
+            : value
+              ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 font-semibold'
+              : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+        }`}
+      >
+        <span className="truncate">{displayLabel}</span>
+        <ChevronDown
+          size={14}
+          className={`flex-shrink-0 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {/* Popover Menu */}
+      {isOpen && (
+        <div className="absolute top-full left-0 sm:left-auto sm:right-0 mt-1.5 z-50 w-[260px] sm:w-[280px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+          {/* Header */}
+          <div className="px-3.5 py-2.5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              {title}
+            </span>
+            {value && (
+              <button
+                type="button"
+                onClick={() => handleSelect('')}
+                className="text-[11px] font-semibold text-red-500 hover:text-red-700 dark:hover:text-red-400 transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Shared SearchBar inside Filter Popover */}
+          <div className="p-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/30">
+            <SearchBar
+              placeholder={placeholder}
+              onSearch={(val) => setFilterSearch(val)}
+              defaultValue={filterSearch}
+              debounceMs={0}
+              className="w-full"
+            />
+          </div>
+
+          {/* Options list */}
+          <div className="p-1.5 max-h-[220px] overflow-y-auto space-y-1">
+            <button
+              type="button"
+              onClick={() => handleSelect('')}
+              className={`w-full flex items-center justify-between p-2 rounded-lg text-xs transition-all text-left font-medium ${
+                !value
+                  ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 font-bold'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/60'
+              }`}
+            >
+              <span>{allLabel}</span>
+              {!value && <Check size={14} className="text-blue-500 flex-shrink-0" />}
+            </button>
+
+            {filteredOptions.map((opt) => {
+              const isSelected = value === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleSelect(opt.value)}
+                  className={`w-full flex items-center justify-between p-2 rounded-lg text-xs transition-all text-left ${
+                    isSelected
+                      ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 font-bold'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/60'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    {opt.icon && <span>{opt.icon}</span>}
+                    <span>{opt.label}</span>
+                  </span>
+                  {isSelected && <Check size={14} className="text-blue-500 flex-shrink-0" />}
+                </button>
+              );
+            })}
+
+            {filteredOptions.length === 0 && (
+              <p className="text-[11px] text-center text-gray-400 py-3 font-medium">
+                No matching options found
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const AssignmentsPage: React.FC = () => {
@@ -65,7 +243,7 @@ export const AssignmentsPage: React.FC = () => {
   const [editingAssignment, setEditingAssignment] = useState<AssignmentRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AssignmentRecord | null>(null);
 
-  // Fetch
+  // Fetch assignments
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['assignments', { search, statusFilter, typeFilter, page, pageSize }],
     queryFn: () => assignmentsService.listAssignments({
@@ -203,7 +381,7 @@ export const AssignmentsPage: React.FC = () => {
           )}
         </div>
 
-        {/* Search & Filters */}
+        {/* Search & Searchable Filter Popovers */}
         <div className="flex flex-col gap-3 sm:gap-4 mb-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             {/* Search Bar — shared component */}
@@ -215,35 +393,27 @@ export const AssignmentsPage: React.FC = () => {
               className="w-full lg:max-w-md"
             />
 
-            {/* Filters */}
+            {/* Searchable Filter Popovers */}
             <div className="flex items-center gap-2 sm:gap-2.5 w-full lg:w-auto">
-              {/* Type filter */}
-              <div className="relative flex-1 sm:flex-initial sm:min-w-[130px]">
-                <select
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value)}
-                  className="w-full appearance-none pl-3 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                >
-                  <option value="">All Types</option>
-                  {ASSIGNMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
-              </div>
+              {/* Type Filter with internal Search Bar */}
+              <SearchableFilterPopover
+                title="Filter by Type"
+                placeholder="Search types (homework, quiz...)"
+                options={TYPE_OPTIONS}
+                value={typeFilter}
+                onChange={setTypeFilter}
+                allLabel="All Types"
+              />
 
-              {/* Status filter */}
-              <div className="relative flex-1 sm:flex-initial sm:min-w-[130px]">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full appearance-none pl-3 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                >
-                  <option value="">All Statuses</option>
-                  <option value="active">Active</option>
-                  <option value="closed">Closed</option>
-                  <option value="draft">Draft</option>
-                </select>
-                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
-              </div>
+              {/* Status Filter with internal Search Bar */}
+              <SearchableFilterPopover
+                title="Filter by Status"
+                placeholder="Search status..."
+                options={STATUS_OPTIONS}
+                value={statusFilter}
+                onChange={setStatusFilter}
+                allLabel="All Statuses"
+              />
             </div>
           </div>
 

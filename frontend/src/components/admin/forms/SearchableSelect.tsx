@@ -6,6 +6,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, ChevronDown, X, Check } from 'lucide-react';
+import { SearchBar } from '@components/admin/table/SearchBar';
 
 export interface SelectOption {
   value: string;
@@ -140,19 +141,15 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 width: containerRef.current ? containerRef.current.getBoundingClientRect().width : 'auto',
               }}
             >
-            {/* Search input */}
-            <div className="p-2 border-b border-gray-100 dark:border-gray-800">
-              <div className="relative">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={searchPlaceholder}
-                  className="w-full pl-8 pr-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
+            {/* Shared SearchBar inside Dropdown Popover */}
+            <div className="p-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/30">
+              <SearchBar
+                placeholder={searchPlaceholder}
+                onSearch={(val) => setSearch(val)}
+                defaultValue={search}
+                debounceMs={0}
+                className="w-full"
+              />
             </div>
 
             {/* Options list */}
