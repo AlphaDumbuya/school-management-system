@@ -120,15 +120,15 @@ export const FeaturesPage: React.FC = () => {
             {/* ═══ DASHBOARD ═══ */}
             <ModuleSection
               num="01"
-              title="Dashboard"
+              title="Dashboard & Command Centers"
               color="#00d4aa"
+              versionBadge="v1"
               desc="Role-specific command centers with real-time KPIs, quick actions, and data visualizations tailored to each user's responsibilities."
               features={[
-                'Principal Dashboard — school-wide KPIs: total students, teachers, attendance rate, revenue collected, upcoming events',
-                'Teacher Dashboard — my classes, today\'s schedule, pending assignments to grade, recent attendance',
-                'Student Dashboard — my timetable, upcoming assignments, latest grades, announcements',
-                'Parent Dashboard — child\'s attendance, recent grades, fee status, school events',
-                'Accountant Dashboard — revenue vs target, outstanding fees, recent payments, expense trends',
+                'Principal Dashboard — school-wide KPIs: total students, teachers, attendance rate, upcoming events',
+                'Teacher Dashboard — my classes, today\'s schedule, recent class attendance registers',
+                'Student Dashboard — my timetable, upcoming assignments, school calendar events',
+                'Parent Dashboard — child\'s attendance logs, class placements, school events',
                 'Admissions Dashboard — application pipeline, enrollment stats, pending approvals',
               ]}
             />
@@ -138,16 +138,16 @@ export const FeaturesPage: React.FC = () => {
               num="02"
               title="Academic Management"
               color="#7c3aed"
-              desc="The complete academic backbone — from class creation to result publishing."
+              versionBadge="v1"
+              desc="The complete operational academic backbone — class structures, timetables, and assignments."
               features={[
-                'Classes & Streams — create classes by level (Nursery to SSS), assign streams (A, B, C), set capacity, assign class teachers, track enrollment',
-                'Subjects — configure subjects with codes, credit hours, departments, and assign to classes with teacher mapping',
-                'Timetables — visual timetable builder with period slots, room assignment, teacher conflict detection, and printable output',
-                'Assignments — create assignments with descriptions, due dates, file attachments; students submit online; teachers grade digitally',
-                'Exam Timetable — schedule exams by type (CA, Mid-term, Final), set dates, venues, supervisors, and publish to students',
-                'Results & Grades — enter marks per student per subject, auto-calculate grades using configurable grading scales, rank students',
-                'Report Cards — auto-generated term report cards with subjects, marks, grades, positions, teacher comments, and principal remarks',
-                'Promotions — end-of-year bulk promotion with criteria (pass percentage), move students to next class, retain where needed',
+                'Classes & Streams — create classes by level (Nursery to SSS), assign streams (A, B, C), set capacity, assign class teachers',
+                'Subject Allocation — configure subjects with codes, departments, and map to classes and teachers',
+                'Timetable Builder — visual timetable builder with period slots, room assignment, and printable schedule output',
+                'Assignments & Homework — create assignments with descriptions, due dates, attachments; students submit online',
+                'Exam Timetable Scheduling — schedule exams by type (CA, Mid-term, Final), dates, venues, and supervisors',
+                'Gradebook & Report Cards — term mark sheets, grading scales, PDF report card generation (v2.0 Roadmap)',
+                'Promotions Engine — bulk student class advancement & retention criteria (v2.0 Roadmap)',
               ]}
             />
 
@@ -156,43 +156,43 @@ export const FeaturesPage: React.FC = () => {
               num="03"
               title="Student Management"
               color="#00d4aa"
-              desc="Complete student lifecycle from first application to graduation — every record digitized."
+              versionBadge="v1"
+              desc="Complete student lifecycle from first application to active student status."
               features={[
-                'Student Directory — searchable database of all students with photos, personal info, guardian details, class, and status',
-                'Admissions — multi-stage admission pipeline (applied → reviewed → accepted → enrolled) with document upload and fee payment tracking',
-                'Student Profiles — 360° view: academic history, attendance record, disciplinary notes, medical info, guardian contacts, and enrolled classes',
-                'Attendance — daily marking (present/absent/late/excused) by class, automatic percentage calculation, parent notifications for absences',
-                'Discipline & Conduct — record behavioral incidents with severity levels, assign actions (warning/detention/suspension), parent notification, appeal system, conduct reports',
+                'Student Directory — searchable database of all students with photos, personal info, guardian details, and class placement',
+                'Admissions Pipeline — multi-stage admission workflow (applied → reviewed → accepted → enrolled)',
+                'Student Profiles — 360° view: bio, class placement, guardian contact details, and attendance history',
+                'Daily Attendance — daily marking (present/absent/late/excused) by class with automatic percentage calculation',
               ]}
             />
 
             {/* ═══ STAFF ═══ */}
             <ModuleSection
               num="04"
-              title="Staff & HR"
+              title="Staff Directory & HR"
               color="#7c3aed"
-              desc="Manage your entire team — from recruitment to performance reviews."
+              versionBadge="v1"
+              desc="Manage your teaching team and staff profiles across departments."
               features={[
-                'Teachers — profiles with qualifications, specializations, experience years, assigned classes and subjects, workload tracking',
-                'Non-Teaching Staff — support staff directory with roles (security, admin, librarian, nurse), departments, and contact info',
-                'Leave Management — staff submit leave requests digitally, principals approve/reject, automatic substitute assignment, leave balance tracking',
-                'Performance Reviews — set annual goals, conduct periodic reviews, rate on criteria, generate performance reports, identify training needs',
+                'Teacher Profiles — qualifications, specializations, experience, assigned classes and subjects',
+                'Support Staff Directory — staff profiles with roles, departments, and contact info',
+                'Digital Leave Management — staff leave applications and principal approval workflows (v2.0 Roadmap)',
+                'Performance Appraisals — annual goals, appraisals, and evaluation tracking (v2.0 Roadmap)',
               ]}
             />
 
             {/* ═══ FINANCE ═══ */}
             <ModuleSection
               num="05"
-              title="Financial Management"
+              title="Financial & Fee Management"
               color="#00d4aa"
-              desc="Complete financial operations — fees, payments, expenses, payroll, and scholarships."
+              versionBadge="v2"
+              desc="Automated school billing, receipts, mobile payments, and expense tracking (v2.0 Release)."
               features={[
-                'Fee Structures — configure fees by class, term, and category (tuition, exam, library, transport) with amounts and due dates',
-                'Invoices — auto-generate invoices per student based on fee structure, send digitally to parents, track paid/unpaid status',
-                'Payments & Receipts — record payments by multiple methods (cash, bank, mobile money), auto-generate receipts, partial payment support',
-                'Expenses — track school expenditures by category (salaries, utilities, supplies), approve purchase requests, budget vs actual monitoring',
-                'Payroll — staff salary management with deductions, allowances, bank details, monthly payslip generation',
-                'Scholarships — define scholarship programs with criteria, assign to qualifying students, auto-apply fee discounts',
+                'Fee Structures — configure fees by class, term, and category (tuition, exam, library, transport)',
+                'Automated Invoicing — auto-generate digital fee invoices per student and track paid/unpaid status',
+                'Mobile Money & Bank Receipts — record payments by Orange Money / Bank transfer, auto-generate official receipts',
+                'School Expenses & Payroll — track school operational expenditures, purchase approvals, and staff payslips',
               ]}
             />
 
@@ -201,42 +201,42 @@ export const FeaturesPage: React.FC = () => {
               num="06"
               title="Communication Hub"
               color="#7c3aed"
-              desc="Keep everyone connected — parents, teachers, students, and staff — through every channel."
+              versionBadge="v2"
+              desc="Automated SMS broadcasts, WhatsApp parent alerts, and email notifications (v2.0 / v3.0 Release)."
               features={[
-                'Announcements — school-wide or role-targeted announcements with rich text, attachments, and read confirmation tracking',
-                'Messages — direct messaging between teachers and parents, staff internal messaging, threaded conversations',
-                'SMS & WhatsApp — bulk SMS to parents for fee reminders, attendance alerts, and event notifications; WhatsApp Business API integration',
-                'Email Notifications — automated email for important updates: report card ready, payment received, admission status change, event reminders',
+                'School Announcements — school-wide or role-targeted announcements with rich text and attachments',
+                'SMS Parent Broadcasts — bulk SMS to parents for fee reminders, attendance alerts, and emergency updates',
+                'WhatsApp Business API — automated WhatsApp notifications for report cards, payment receipts, and alerts',
+                'Internal In-App Messaging — direct messaging between teachers, parents, and administrative staff',
               ]}
             />
 
             {/* ═══ IDENTITY ═══ */}
             <ModuleSection
               num="07"
-              title="Identity & ID Cards"
+              title="Identity & ID Card Generator"
               color="#00d4aa"
+              versionBadge="v1"
               desc="Professional identity management with digital card generation and QR verification."
               features={[
-                'ID Cards — generate professional PVC cards and lanyard badges for students and staff with photos, names, roles, and school branding',
-                'Card Templates — customizable card designs with logo placement, color schemes, layout positions for photo, QR code, barcode, and text',
-                'QR Verification — each card has a unique QR code; scan to instantly verify identity, check card status, and validate membership',
-                'Bulk Generation — generate cards for entire classes or departments in one click; track generation progress',
-                'Card Lifecycle — issue, suspend, revoke, report lost, and reissue cards with full audit trail',
+                'ID Cards — generate professional PVC cards and lanyard badges for students and staff with school branding',
+                'Card Templates — customizable card designs with logo placement, color schemes, and photo positions',
+                'QR Verification — unique QR code on cards for identity verification and status validation',
+                'Batch Card Printing — generate cards for entire classes or departments in one click and export to PDF',
               ]}
             />
 
             {/* ═══ EVENTS ═══ */}
             <ModuleSection
               num="08"
-              title="Events & Calendar"
+              title="Events & School Calendar"
               color="#7c3aed"
-              desc="Plan, manage, and track every school activity — from sports day to parent meetings."
+              versionBadge="v1"
+              desc="Plan, manage, and publish every school activity — sports day, parent meetings, and holidays."
               features={[
-                'School Events — create events (single-day, multi-day, recurring) with descriptions, locations, capacity, and registration requirements',
-                'Calendar — interactive monthly calendar showing all events color-coded by type; click any day to see details or create new events',
-                'My Events — personal view of events you\'re registered for or organizing, with upcoming/past tabs',
-                'Event Analytics — track registrations, attendance rates, popular categories, and engagement trends with charts and reports',
-                'Registration & RSVP — students and parents register for events; approval workflow for limited-capacity events; waitlist support',
+                'School Events — create single-day or multi-day events with location, description, and target audience',
+                'Interactive Calendar — monthly calendar showing school events color-coded by category',
+                'Event Notices — publish upcoming events directly to student and parent portals',
               ]}
             />
 
@@ -323,22 +323,36 @@ interface ModuleSectionProps {
   color: string;
   desc: string;
   features: string[];
+  versionBadge?: 'v1' | 'v2';
 }
 
-const ModuleSection: React.FC<ModuleSectionProps> = ({ num, title, color, desc, features }) => (
-  <div className="bg-[#16213e]/50 border border-white/[0.04] rounded-2xl p-7 sm:p-9">
-    <div className="flex items-center gap-4 mb-5">
-      <span
-        className="inline-flex items-center justify-center w-11 h-11 rounded-full text-sm font-black flex-shrink-0"
-        style={{ background: `${color}15`, color, border: `1px solid ${color}30` }}
-      >
-        {num}
-      </span>
-      <div>
-        <h3 className="text-xl sm:text-2xl font-black text-white">{title}</h3>
-        <p className="text-gray-500 text-xs sm:text-sm mt-0.5">{desc}</p>
+const ModuleSection: React.FC<ModuleSectionProps> = ({ num, title, color, desc, features, versionBadge = 'v1' }) => (
+  <div className="bg-[#16213e]/50 border border-white/[0.04] rounded-2xl p-7 sm:p-9 relative overflow-hidden">
+    <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+      <div className="flex items-center gap-4">
+        <span
+          className="inline-flex items-center justify-center w-11 h-11 rounded-full text-sm font-black flex-shrink-0"
+          style={{ background: `${color}15`, color, border: `1px solid ${color}30` }}
+        >
+          {num}
+        </span>
+        <div>
+          <h3 className="text-xl sm:text-2xl font-black text-white">{title}</h3>
+          <p className="text-gray-500 text-xs sm:text-sm mt-0.5">{desc}</p>
+        </div>
       </div>
+
+      <span
+        className={`text-[10px] font-black px-3.5 py-1 rounded-full uppercase tracking-wider ${
+          versionBadge === 'v1'
+            ? 'bg-[#00d4aa]/10 text-[#00d4aa] border border-[#00d4aa]/30'
+            : 'bg-purple-500/10 text-purple-300 border border-purple-500/30'
+        }`}
+      >
+        {versionBadge === 'v1' ? '✓ v1.0 FREE CORE RELEASE' : '🚀 UPCOMING v2.0 ROADMAP'}
+      </span>
     </div>
+
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-6">
       {features.map((f) => {
         const parts = f.split(' — ');
