@@ -6,7 +6,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { BookOpen, Layers, ToggleRight, CheckCircle, LayoutGrid, List, Edit, Trash2, X, ChevronDown, ChevronRight, SlidersHorizontal, Check } from 'lucide-react';
+import { BookOpen, Layers, ToggleRight, CheckCircle, LayoutGrid, List, Edit, Trash2, X, ChevronDown, ChevronRight, SlidersHorizontal, Check, Power } from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -174,7 +174,7 @@ export const SubjectsPage: React.FC = () => {
   // Modal state
   const [formOpen, setFormOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<SubjectRecord | null>(null);
-  const [deactivateTarget, setDeactivateTarget] = useState<SubjectRecord | null>(null);
+  const [statusToggleTarget, setStatusToggleTarget] = useState<SubjectRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SubjectRecord | null>(null);
 
   // Fetch subjects
@@ -202,17 +202,21 @@ export const SubjectsPage: React.FC = () => {
     return { total, core, elective, active };
   }, [subjects, pagination]);
 
-  // Deactivate handler
-  const handleDeactivate = async () => {
-    if (!deactivateTarget) return;
-    const res = await subjectsService.deactivateSubject(deactivateTarget.id);
+  // Activate / Deactivate handler
+  const handleToggleStatus = async () => {
+    if (!statusToggleTarget) return;
+    const isActivating = statusToggleTarget.status === 'inactive';
+    const res = isActivating
+      ? await subjectsService.activateSubject(statusToggleTarget.id)
+      : await subjectsService.deactivateSubject(statusToggleTarget.id);
+
     if (res.success !== false) {
-      showToast.deleted('Subject');
+      showToast.success(`Subject ${isActivating ? 'activated' : 'deactivated'} successfully`);
       queryClient.invalidateQueries({ queryKey: ['subjects'] });
     } else {
       showToast.apiError(res.error);
     }
-    setDeactivateTarget(null);
+    setStatusToggleTarget(null);
   };
 
   // Permanent delete handler
@@ -549,12 +553,15 @@ export const SubjectsPage: React.FC = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            disabled={subj.status === 'inactive'}
-                            onClick={() => setDeactivateTarget(subj)}
-                            className="h-8 p-2 rounded-lg text-red-500 hover:text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 disabled:opacity-30"
-                            title="Deactivate Subject"
+                            onClick={() => setStatusToggleTarget(subj)}
+                            className={`h-8 p-2 rounded-lg transition-colors ${
+                              subj.status === 'inactive'
+                                ? 'text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20'
+                                : 'text-red-500 hover:text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20'
+                            }`}
+                            title={subj.status === 'inactive' ? 'Activate Subject' : 'Deactivate Subject'}
                           >
-                            <Trash2 size={16} />
+                            {subj.status === 'inactive' ? <CheckCircle size={16} /> : <Power size={16} />}
                           </Button>
                         </RoleGuard>
                       </div>
@@ -585,9 +592,9 @@ export const SubjectsPage: React.FC = () => {
                 onClick: (row) => { setEditingSubject(row); setFormOpen(true); },
               },
               {
-                label: 'Deactivate',
-                variant: 'destructive',
-                onClick: (row) => setDeactivateTarget(row),
+                label: subj.status === 'inactive' ? 'Activate' : 'Deactivate',
+                variant: subj.status === 'inactive' ? 'default' : 'destructive',
+                onClick: (row) => setStatusToggleTarget(row),
               },
               {
                 label: 'Delete',
@@ -607,14 +614,18 @@ export const SubjectsPage: React.FC = () => {
         editingSubject={editingSubject}
       />
 
-      {/* Deactivate Confirmation */}
+      {/* Activate / Deactivate Confirmation */}
       <ConfirmationDialog
-        isOpen={!!deactivateTarget}
-        onClose={() => setDeactivateTarget(null)}
-        onConfirm={handleDeactivate}
-        title="Deactivate Subject"
-        message={`Are you sure you want to deactivate "${deactivateTarget?.name}"? This will hide the subject from active listings.`}
-        confirmLabel="Deactivate"
+        isOpen={!!statusToggleTarget}
+        onClose={() => setStatusToggleTarget(null)}
+        onConfirm={handleToggleStatus}
+        title={statusToggleTarget?.status === 'inactive' ? 'Activate Subject' : 'Deactivate Subject'}
+        message={
+          statusToggleTarget?.status === 'inactive'
+            ? `Are you sure you want to activate "${statusToggleTarget?.name}"? It will become available across the school portal.`
+            : `Are you sure you want to deactivate "${statusToggleTarget?.name}"? This will hide the subject from active listings.`
+        }
+        confirmLabel={statusToggleTarget?.status === 'inactive' ? 'Activate' : 'Deactivate'}
       />
 
       {/* Delete Confirmation */}

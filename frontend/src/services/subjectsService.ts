@@ -70,8 +70,13 @@ export const subjectsService = {
   },
 
   /** PUT /api/v1/subjects/:id — update an existing subject */
-  async updateSubject(id: string | number, data: Partial<SubjectFormData>) {
+  async updateSubject(id: string | number, data: Partial<SubjectFormData> & { status?: 'active' | 'inactive' }) {
     return apiClient.put<SubjectRecord>(`/api/v1/subjects/${id}`, data);
+  },
+
+  /** PUT /api/v1/subjects/:id — activate subject */
+  async activateSubject(id: string | number) {
+    return apiClient.put<SubjectRecord>(`/api/v1/subjects/${id}`, { status: 'active' });
   },
 
   /** DELETE /api/v1/subjects/:id — soft-delete (sets status=inactive) */

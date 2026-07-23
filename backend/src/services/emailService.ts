@@ -340,7 +340,7 @@ class EmailService {
               deliveryAttempts: delivery.deliveryAttempts + 1,
               lastAttemptAt: db.fn.now(),
               nextRetryAt: nextRetry,
-              failureReason: error.toString(),
+              failureReason: error instanceof Error ? error.message : String(error),
             });
         }
       }
