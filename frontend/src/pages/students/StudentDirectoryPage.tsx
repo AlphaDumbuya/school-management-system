@@ -1,13 +1,19 @@
 /**
  * StudentDirectoryPage — /students/directory
  * Searchable directory of all students with CRUD.
+ * Supports grid / list view toggle (same pattern as ClassesPage).
  */
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { Users, UserCheck, UserX, GraduationCap, X, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import {
+  Users, UserCheck, UserX, GraduationCap,
+  X, ChevronDown, SlidersHorizontal,
+  LayoutGrid, List, Edit, Trash2, Eye,
+  Calendar, BookOpen, User,
+} from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -30,12 +36,31 @@ function formatDate(dateStr: string | undefined): string {
   return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function getInitials(first: string, last: string): string {
+  return `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase();
+}
+
+// Gender-based avatar gradient
+const GENDER_GRADIENT: Record<string, string> = {
+  male:   'from-blue-400 to-blue-600',
+  female: 'from-pink-400 to-rose-500',
+  other:  'from-purple-400 to-indigo-500',
+};
+
+const STATUS_PILL: Record<string, string> = {
+  active:    'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/30',
+  inactive:  'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700',
+  suspended: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800/30',
+  graduated: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800/30',
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const StudentDirectoryPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -111,7 +136,7 @@ export const StudentDirectoryPage: React.FC = () => {
     }
   };
 
-  // Columns
+  // ── Table columns ─────────────────────────────────────────────────────────
   const columns: ColumnDef<StudentRecord, any>[] = [
     {
       id: 'photo',
@@ -123,7 +148,7 @@ export const StudentDirectoryPage: React.FC = () => {
             <img src={(row.original as any).photo_url} alt="" className="w-full h-full object-cover" />
           ) : (
             <span className="text-xs font-bold text-gray-400 dark:text-gray-600">
-              {row.original.first_name?.[0]}{row.original.last_name?.[0]}
+              {getInitials(row.original.first_name, row.original.last_name)}
             </span>
           )}
         </div>
@@ -179,6 +204,96 @@ export const StudentDirectoryPage: React.FC = () => {
     },
   ];
 
+  // ── Grid card ─────────────────────────────────────────────────────────────
+  const renderStudentCard = (student: StudentRecord) => {
+    const gradient = GENDER_GRADIENT[student.gender?.toLowerCase() ?? ''] ?? 'from-gray-400 to-gray-600';
+    const hasPhoto = !!(student as any).photo_url && ((student as any).photo_url?.length ?? 0) > 10;
+
+    return (
+      <div
+        key={student.id}
+        className="group relative overflow-hidden bg-white dark:bg-gray-800 border border-gray-200/60 dark:border-gray-700/60 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1"
+      >
+        {/* Top accent bar */}
+        <div className={`h-1 w-full bg-gradient-to-r ${gradient}`} />
+
+        <div className="p-5">
+          {/* Avatar + Name + ID */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`w-12 h-12 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center bg-gradient-to-br ${gradient} shadow-sm`}>
+              {hasPhoto ? (
+                <img src={(student as any).photo_url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-sm font-bold text-white">
+                  {getInitials(student.first_name, student.last_name)}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                {student.first_name} {student.last_name}
+              </h3>
+              <span className="font-mono text-[10px] font-bold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                {student.student_id}
+              </span>
+            </div>
+            {/* Status badge */}
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize flex-shrink-0 ${STATUS_PILL[student.status] ?? STATUS_PILL.inactive}`}>
+              {student.status}
+            </span>
+          </div>
+
+          {/* Info grid */}
+          <div className="space-y-2 text-xs text-gray-600 dark:text-gray-400 mb-4">
+            <div className="flex items-center gap-2">
+              <BookOpen size={13} className="text-blue-400 flex-shrink-0" />
+              <span className="truncate">
+                {student.class_name
+                  ? <span className="font-semibold text-blue-600 dark:text-blue-400">{student.class_name}</span>
+                  : <span className="text-gray-400 italic">No class assigned</span>
+                }
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <User size={13} className="text-purple-400 flex-shrink-0" />
+              <span className="capitalize">{student.gender || 'Gender not set'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Calendar size={13} className="text-green-400 flex-shrink-0" />
+              <span>Enrolled {formatDate(student.enrollment_date)}</span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-between border-t border-gray-100 dark:border-gray-700/50 pt-3 gap-1">
+            <button
+              onClick={() => setViewingStudent(student)}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
+            >
+              <Eye size={13} /> View
+            </button>
+
+            <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
+              <button
+                onClick={() => { setEditingStudent(student); setFormOpen(true); }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                <Edit size={13} /> Edit
+              </button>
+              <button
+                onClick={() => student.status === 'active' ? setDeactivateTarget(student) : handleReactivate(student)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+              >
+                <Trash2 size={13} />
+                {student.status === 'active' ? 'Deactivate' : 'Reactivate'}
+              </button>
+            </RoleGuard>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <MainLayout>
       <PageShell
@@ -186,11 +301,33 @@ export const StudentDirectoryPage: React.FC = () => {
         subtitle="Manage all student records and enrollment"
         breadcrumbs={[{ label: 'Student Directory' }]}
         actions={
-          <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
-            <Button variant="default" size="sm" onClick={() => { setEditingStudent(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm">
-              + Add Student
-            </Button>
-          </RoleGuard>
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* View Mode Toggle */}
+            <div className="flex items-center border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg p-0.5 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-gray-100 dark:bg-gray-700 text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                title="Grid View"
+              >
+                <LayoutGrid size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-gray-100 dark:bg-gray-700 text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                title="List View"
+              >
+                <List size={18} />
+              </button>
+            </div>
+
+            <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
+              <Button variant="default" size="sm" onClick={() => { setEditingStudent(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm">
+                + Add Student
+              </Button>
+            </RoleGuard>
+          </div>
         }
       >
         {/* KPIs */}
@@ -240,30 +377,50 @@ export const StudentDirectoryPage: React.FC = () => {
           )}
         </div>
 
-        {/* Table */}
-        <DataTable
-          columns={columns}
-          data={students}
-          isLoading={isLoading}
-          error={error ? String(error) : null}
-          onRetry={refetch}
-          paginationMode="server"
-          pageIndex={page}
-          pageSize={pageSize}
-          totalRows={Number(pagination.total)}
-          onPageChange={setPage}
-          emptyMessage="No students found"
-          emptyAction={{ label: 'Add your first student', onClick: () => { setEditingStudent(null); setFormOpen(true); } }}
-          rowActions={(row) => [
-            { label: 'View Details', onClick: (r) => setViewingStudent(r) },
-            { label: 'Edit', onClick: (r) => { setEditingStudent(r); setFormOpen(true); } },
-            ...(row.status === 'active'
-              ? [{ label: 'Deactivate', variant: 'destructive' as const, onClick: (r: StudentRecord) => setDeactivateTarget(r) }]
-              : [{ label: 'Reactivate', onClick: (r: StudentRecord) => handleReactivate(r) }]
-            ),
-            { label: 'Delete', variant: 'destructive' as const, onClick: (r) => setDeleteTarget(r) },
-          ]}
-        />
+        {/* ── Grid View ── */}
+        {viewMode === 'grid' ? (
+          isLoading && !data ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              <SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard />
+            </div>
+          ) : students.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center">
+              <Users size={48} className="text-gray-300 dark:text-gray-600 mb-4" />
+              <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">No students found</p>
+              <p className="text-sm text-gray-500 mt-1 mb-4">Try adjusting your filters or search query.</p>
+              <Button onClick={() => { setEditingStudent(null); setFormOpen(true); }}>Add your first student</Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {students.map(renderStudentCard)}
+            </div>
+          )
+        ) : (
+          /* ── List / Table View ── */
+          <DataTable
+            columns={columns}
+            data={students}
+            isLoading={isLoading}
+            error={error ? String(error) : null}
+            onRetry={refetch}
+            paginationMode="server"
+            pageIndex={page}
+            pageSize={pageSize}
+            totalRows={Number(pagination.total)}
+            onPageChange={setPage}
+            emptyMessage="No students found"
+            emptyAction={{ label: 'Add your first student', onClick: () => { setEditingStudent(null); setFormOpen(true); } }}
+            rowActions={(row) => [
+              { label: 'View Details', onClick: (r) => setViewingStudent(r) },
+              { label: 'Edit', onClick: (r) => { setEditingStudent(r); setFormOpen(true); } },
+              ...(row.status === 'active'
+                ? [{ label: 'Deactivate', variant: 'destructive' as const, onClick: (r: StudentRecord) => setDeactivateTarget(r) }]
+                : [{ label: 'Reactivate', onClick: (r: StudentRecord) => handleReactivate(r) }]
+              ),
+              { label: 'Delete', variant: 'destructive' as const, onClick: (r) => setDeleteTarget(r) },
+            ]}
+          />
+        )}
       </PageShell>
 
       {/* Form Modal */}

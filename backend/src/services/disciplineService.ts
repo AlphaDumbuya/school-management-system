@@ -511,6 +511,68 @@ class DisciplineService {
     } catch (error) {
       logger.error('Error logging discipline audit:', error);
     }
+  /**
+   * List all discipline actions school-wide (tenant-isolated)
+   */
+  async listAllActions(
+    tenantId: string,
+    options?: {
+      search?: string;
+      status?: string;
+      action_type?: string;
+      page?: number;
+      limit?: number;
+    }
+  ) {
+    try {
+      const page = options?.page || 1;
+      const limit = options?.limit || 20;
+      const offset = (page - 1) * limit;
+
+      let query = db('discipline_actions as da')
+        .leftJoin('users as u', function() {
+          this.on('da.student_id', '=', 'u.id').andOn('u.tenant_id', '=', db.raw('?', [tenantId]));
+        })
+        .where('da.tenant_id', tenantId)
+        .select(
+          'da.*',
+          db.raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as student_name")
+        )
+        .orderBy('da.action_date', 'desc');
+
+      if (options?.status) {
+        query = query.where('da.status', options.status);
+      }
+
+      if (options?.action_type) {
+        query = query.where('da.action_type', options.action_type);
+      }
+
+      if (options?.search) {
+        const term = `%${options.search.toLowerCase()}%`;
+        query = query.where(builder => {
+          builder.whereRaw("LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE ?", [term])
+            .orWhereRaw("LOWER(u.student_id) LIKE ?", [term]);
+        });
+      }
+
+      const items = await query.clone().limit(limit).offset(offset);
+      const countRes = await query.clone().count('* as count').first();
+      const total = Number(countRes?.count || 0);
+
+      return {
+        data: items,
+        pagination: {
+          total,
+          page,
+          limit,
+          total_pages: Math.ceil(total / limit) || 1,
+        },
+      };
+    } catch (error) {
+      logger.error('Error listing all discipline actions:', error);
+      throw error;
+    }
   }
 }
 

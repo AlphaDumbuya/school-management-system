@@ -11,7 +11,8 @@ import {
   User, Mail, Phone, MapPin, Calendar, BookOpen, Heart, Shield, Hash, Globe,
   Briefcase, ChevronLeft, Search, SlidersHorizontal, Award, Clock,
   AlertTriangle, CreditCard, CheckCircle, XCircle, FileText, BarChart3,
-  TrendingUp, Activity, DollarSign, Receipt, Eye, EyeOff
+  TrendingUp, Activity, DollarSign, Receipt, Eye, EyeOff,
+  LayoutGrid, List,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -57,6 +58,7 @@ const ENABLE_V2_FEATURES = false;
 export const StudentProfilesPage: React.FC = () => {
   const location = useLocation();
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [classFilter, setClassFilter] = useState('');
@@ -323,7 +325,7 @@ export const StudentProfilesPage: React.FC = () => {
                 className="w-full sm:max-w-md"
               />
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <div className="relative">
                   <select
                     value={statusFilter}
@@ -350,12 +352,32 @@ export const StudentProfilesPage: React.FC = () => {
                     ))}
                   </select>
                 </div>
+
+                {/* View Mode Toggle */}
+                <div className="flex items-center border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg p-0.5 shadow-sm flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-gray-100 dark:bg-gray-700 text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                    title="Grid View"
+                  >
+                    <LayoutGrid size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('list')}
+                    className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-gray-100 dark:bg-gray-700 text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                    title="List View"
+                  >
+                    <List size={16} />
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Profiles Grid */}
+            {/* Profiles Grid / List */}
             {isStudentsLoading ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              <div className={viewMode === 'grid' ? 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6' : 'flex flex-col gap-2'}>
                 {[...Array(8)].map((_, idx) => <SkeletonCard key={idx} />)}
               </div>
             ) : filteredStudents.length === 0 ? (
@@ -366,47 +388,112 @@ export const StudentProfilesPage: React.FC = () => {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                  {filteredStudents.map((s: any) => (
-                    <div
-                      key={s.id}
-                      onClick={() => handleSelectStudent(s.id)}
-                      className="group flex flex-col items-center p-5 bg-white dark:bg-gray-800 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm hover:shadow-lg hover:border-blue-200 dark:hover:border-blue-900/50 cursor-pointer transition-all duration-300 transform hover:-translate-y-1"
-                    >
-                      {/* Avatar */}
-                      <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 overflow-hidden flex items-center justify-center flex-shrink-0 shadow-inner group-hover:scale-105 transition-transform duration-350">
-                        {s.photo_url && s.photo_url.length > 10 ? (
-                          <img src={s.photo_url} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-2xl font-bold text-white uppercase">
-                            {s.first_name?.[0]}{s.last_name?.[0]}
-                          </span>
-                        )}
-                      </div>
+                {/* ── GRID VIEW ── */}
+                {viewMode === 'grid' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                    {filteredStudents.map((s: any) => (
+                      <div
+                        key={s.id}
+                        onClick={() => handleSelectStudent(s.id)}
+                        className="group flex flex-col items-center p-5 bg-white dark:bg-gray-800 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm hover:shadow-lg hover:border-blue-200 dark:hover:border-blue-900/50 cursor-pointer transition-all duration-300 transform hover:-translate-y-1"
+                      >
+                        {/* Avatar */}
+                        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 overflow-hidden flex items-center justify-center flex-shrink-0 shadow-inner group-hover:scale-105 transition-transform duration-350">
+                          {s.photo_url && s.photo_url.length > 10 ? (
+                            <img src={s.photo_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-2xl font-bold text-white uppercase">
+                              {s.first_name?.[0]}{s.last_name?.[0]}
+                            </span>
+                          )}
+                        </div>
 
-                      {/* Info */}
-                      <div className="text-center mt-4 w-full">
-                        <h3 className="font-bold text-gray-900 dark:text-white truncate px-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                          {s.first_name} {s.last_name}
-                        </h3>
-                        <p className="text-xs font-mono font-semibold text-gray-400 dark:text-gray-500 mt-1">
-                          ID: {s.student_id}
-                        </p>
-
-                        <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-0.5 rounded border border-blue-100 dark:border-blue-900/30">
-                            {s.class_name || 'Unassigned'}
-                          </span>
-                          <StatusBadge status={s.status} showDot />
+                        {/* Info */}
+                        <div className="text-center mt-4 w-full">
+                          <h3 className="font-bold text-gray-900 dark:text-white truncate px-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                            {s.first_name} {s.last_name}
+                          </h3>
+                          <p className="text-xs font-mono font-semibold text-gray-400 dark:text-gray-500 mt-1">
+                            ID: {s.student_id}
+                          </p>
+                          <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-0.5 rounded border border-blue-100 dark:border-blue-900/30">
+                              {s.class_name || 'Unassigned'}
+                            </span>
+                            <StatusBadge status={s.status} showDot />
+                          </div>
                         </div>
                       </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── LIST VIEW ── */}
+                {viewMode === 'list' && (
+                  <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700/50 shadow-sm overflow-hidden">
+                    {/* List header */}
+                    <div className="hidden sm:grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-100 dark:border-gray-700/50">
+                      <span className="w-9" />
+                      <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Student</span>
+                      <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest w-28 text-center">Class</span>
+                      <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest w-24 text-center">Enrolled</span>
+                      <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest w-20 text-center">Status</span>
                     </div>
-                  ))}
-                </div>
+
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                      {filteredStudents.map((s: any) => (
+                        <div
+                          key={s.id}
+                          onClick={() => handleSelectStudent(s.id)}
+                          className="group flex sm:grid sm:grid-cols-[auto_1fr_auto_auto_auto] items-center gap-3 sm:gap-4 px-4 py-3 hover:bg-blue-50/40 dark:hover:bg-blue-950/10 cursor-pointer transition-colors"
+                        >
+                          {/* Avatar */}
+                          <div className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 bg-gradient-to-br ${
+                            s.gender?.toLowerCase() === 'female' ? 'from-pink-400 to-rose-500' :
+                            s.gender?.toLowerCase() === 'male' ? 'from-blue-400 to-blue-600' : 'from-gray-400 to-gray-600'
+                          }`}>
+                            {s.photo_url && s.photo_url.length > 10 ? (
+                              <img src={s.photo_url} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-xs font-bold text-white uppercase">{s.first_name?.[0]}{s.last_name?.[0]}</span>
+                            )}
+                          </div>
+
+                          {/* Name + ID */}
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                              {s.first_name} {s.last_name}
+                            </p>
+                            <p className="text-[11px] font-mono text-gray-400 dark:text-gray-500">{s.student_id}{s.email ? ` · ${s.email}` : ''}</p>
+                          </div>
+
+                          {/* Class */}
+                          <div className="w-28 text-center hidden sm:block">
+                            <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded border border-blue-100 dark:border-blue-900/30">
+                              {s.class_name || '—'}
+                            </span>
+                          </div>
+
+                          {/* Enrolled */}
+                          <div className="w-24 text-center hidden sm:block">
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {s.enrollment_date ? new Date(s.enrollment_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—'}
+                            </span>
+                          </div>
+
+                          {/* Status */}
+                          <div className="w-20 flex justify-center hidden sm:flex">
+                            <StatusBadge status={s.status} showDot />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Pagination */}
                 {pagination.total_pages > 1 && (
-                  <div className="flex items-center justify-between border-t border-gray-150 dark:border-gray-700/50 pt-5 mt-8">
+                  <div className="flex items-center justify-between border-t border-gray-150 dark:border-gray-700/50 pt-5 mt-4">
                     <button
                       type="button"
                       disabled={page === 1}
@@ -435,17 +522,21 @@ export const StudentProfilesPage: React.FC = () => {
           /* ── SCREEN 2: 360° PROFILE VIEW ─────────────────────────────────────── */
           <div className="space-y-6">
             {/* Header / Actions bar */}
-            <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-800 p-3 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-white dark:bg-gray-800 p-3 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm">
               <Button variant="ghost" size="sm" onClick={handleBackToList} className="group">
-                <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" /> Back to Profiles
+                <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
+                <span className="hidden xs:inline sm:inline">Back to Profiles</span>
+                <span className="xs:hidden sm:hidden">Back</span>
               </Button>
               <Button
                 variant="default"
                 size="sm"
                 onClick={handleOpenParentModal}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all"
               >
-                <User size={15} /> Create Parent Account
+                <User size={14} />
+                <span className="hidden sm:inline">Create Parent Account</span>
+                <span className="sm:hidden">Parent Account</span>
               </Button>
             </div>
 
@@ -463,38 +554,38 @@ export const StudentProfilesPage: React.FC = () => {
             ) : (
               <div className="space-y-6">
                 {/* ── Banner Header ── */}
-                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 p-6 bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-indigo-500/5 dark:from-blue-500/5 dark:to-transparent rounded-2xl border border-blue-500/20 shadow-sm relative overflow-hidden backdrop-blur-sm">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 p-4 sm:p-6 bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-indigo-500/5 dark:from-blue-500/5 dark:to-transparent rounded-2xl border border-blue-500/20 shadow-sm relative overflow-hidden backdrop-blur-sm">
                   {/* Decorative mesh */}
                   <div className="absolute right-0 top-0 -mt-6 -mr-6 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
 
                   {/* Avatar */}
-                  <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white dark:bg-gray-800 shadow-md overflow-hidden flex items-center justify-center flex-shrink-0 border-2 border-white dark:border-gray-700">
+                  <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl bg-white dark:bg-gray-800 shadow-md overflow-hidden flex items-center justify-center flex-shrink-0 border-2 border-white dark:border-gray-700">
                     {student.photo_url && student.photo_url.length > 10 ? (
                       <img src={student.photo_url} alt={`${student.first_name} ${student.last_name}`} className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-3xl font-extrabold text-blue-600 dark:text-blue-400 uppercase">
+                      <span className="text-2xl sm:text-3xl font-extrabold text-blue-600 dark:text-blue-400 uppercase">
                         {student.first_name?.[0]}{student.last_name?.[0]}
                       </span>
                     )}
                   </div>
 
                   {/* Details */}
-                  <div className="flex-1 text-center sm:text-left space-y-2.5">
+                  <div className="flex-1 text-center sm:text-left space-y-2">
                     <div>
-                      <h2 className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+                      <h2 className="text-xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight leading-tight">
                         {student.first_name} {student.last_name}
                       </h2>
-                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mt-0.5">
+                      <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mt-0.5">
                         {student.gender ? student.gender.charAt(0).toUpperCase() + student.gender.slice(1) : '—'} · Born {formatDate(student.date_of_birth)} ({calculateAge(student.date_of_birth)})
                       </p>
                     </div>
 
                     <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                      <span className="inline-flex items-center gap-1 text-xs font-mono font-bold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800/30">
-                        <Hash size={12} /> {student.student_id}
+                      <span className="inline-flex items-center gap-1 text-xs font-mono font-bold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-lg border border-blue-200 dark:border-blue-800/30">
+                        <Hash size={11} /> {student.student_id}
                       </span>
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800/30">
-                        <BookOpen size={12} /> {student.class_name || 'Unassigned'}
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-lg border border-indigo-200 dark:border-indigo-800/30">
+                        <BookOpen size={11} /> {student.class_name || 'Unassigned'}
                       </span>
                       <StatusBadge status={student.status} showDot />
                     </div>
@@ -665,7 +756,7 @@ export const StudentProfilesPage: React.FC = () => {
                   {activeTab === 'academics' && (
                     <div className="space-y-6">
                       {/* Academics KPI Overview */}
-                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <KPICard title="Total Classes" value="1" icon={<BookOpen size={20} />} color="blue" />
                         <KPICard title="Continuous Assessment Avg" value={isGradesLoading ? '...' : `${academicStats.avgCa} / 30`} icon={<Clock size={20} />} color="amber" />
                         <KPICard title="Exam Average" value={isGradesLoading ? '...' : `${academicStats.avgExam} / 70`} icon={<Award size={20} />} color="purple" />
@@ -743,7 +834,7 @@ export const StudentProfilesPage: React.FC = () => {
                   {activeTab === 'attendance' && (
                     <div className="space-y-6">
                       {/* Attendance KPIs */}
-                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <KPICard title="Attendance Rate" value={`${attendanceSummary.attendance_percentage}%`} icon={<Activity size={20} />} color={attendanceSummary.attendance_percentage >= 85 ? "green" : attendanceSummary.attendance_percentage >= 75 ? "amber" : "red"} />
                         <KPICard title="Days Present" value={attendanceSummary.present} icon={<CheckCircle size={20} />} color="green" />
                         <KPICard title="Days Late" value={attendanceSummary.late} icon={<Clock size={20} />} color="amber" />
@@ -813,7 +904,7 @@ export const StudentProfilesPage: React.FC = () => {
                   {activeTab === 'conduct' && (
                     <div className="space-y-6">
                       {/* Discipline Stats */}
-                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <KPICard title="Total Points" value={isDisciplineStatsLoading ? '...' : (disciplineStats?.total_points ?? 0)} icon={<Award size={20} />} color={(disciplineStats?.total_points ?? 0) >= 100 ? "green" : "blue"} />
                         <KPICard title="Active Actions" value={isDisciplineStatsLoading ? '...' : (disciplineStats?.active_actions ?? 0)} icon={<Clock size={20} />} color={(disciplineStats?.active_actions ?? 0) > 0 ? "red" : "green"} />
                         <KPICard title="Incidents" value={isDisciplineStatsLoading ? '...' : (disciplineStats?.total_infractions ?? 0)} icon={<AlertTriangle size={20} />} color={(disciplineStats?.total_infractions ?? 0) > 0 ? "red" : "green"} />

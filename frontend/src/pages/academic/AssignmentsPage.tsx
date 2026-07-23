@@ -35,6 +35,7 @@ import {
   ASSIGNMENT_TYPES,
 } from '@services/assignmentsService';
 import { AssignmentFormModal } from './components/AssignmentFormModal';
+import { AssignmentDetailModal } from './components/AssignmentDetailModal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -242,6 +243,7 @@ export const AssignmentsPage: React.FC = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState<AssignmentRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AssignmentRecord | null>(null);
+  const [viewingAssignment, setViewingAssignment] = useState<AssignmentRecord | null>(null);
 
   // Fetch assignments
   const { data, isLoading, error, refetch } = useQuery({
@@ -460,11 +462,20 @@ export const AssignmentsPage: React.FC = () => {
           emptyMessage="No assignments found"
           emptyAction={{ label: 'Create your first assignment', onClick: () => { setEditingAssignment(null); setFormOpen(true); } }}
           rowActions={(row) => [
+            { label: 'View', onClick: (r) => setViewingAssignment(r) },
             { label: 'Edit', onClick: (r) => { setEditingAssignment(r); setFormOpen(true); } },
             { label: 'Delete', variant: 'destructive', onClick: (r) => setDeleteTarget(r) },
           ]}
         />
       </PageShell>
+
+      {/* Detail Modal */}
+      <AssignmentDetailModal
+        isOpen={!!viewingAssignment}
+        onClose={() => setViewingAssignment(null)}
+        assignment={viewingAssignment}
+        onEdit={(a) => { setEditingAssignment(a); setFormOpen(true); }}
+      />
 
       {/* Form Modal */}
       <AssignmentFormModal

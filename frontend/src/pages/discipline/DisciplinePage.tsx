@@ -131,6 +131,10 @@ export const DisciplinePage: React.FC = () => {
     queryClient.invalidateQueries({ queryKey: ['discipline-dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['discipline-high-risk'] });
     queryClient.invalidateQueries({ queryKey: ['discipline-pending-appeals'] });
+    queryClient.invalidateQueries({ queryKey: ['discipline-infractions-list'] });
+    queryClient.invalidateQueries({ queryKey: ['discipline-actions-list'] });
+    queryClient.invalidateQueries({ queryKey: ['discipline-appeals-list'] });
+    queryClient.invalidateQueries({ queryKey: ['discipline-notes-list'] });
   };
 
 
@@ -680,7 +684,6 @@ export const DisciplinePage: React.FC = () => {
         {/* ── APPEALS TAB ─────────────────────────────────────────────── */}
         {activeTab === 'appeals' && (
           <AppealsTab
-            appeals={pendingAppeals}
             search={search}
             statusFilter={statusFilter}
             appealColumns={appealColumns}
@@ -698,7 +701,7 @@ export const DisciplinePage: React.FC = () => {
             onDelete={async (noteId) => {
               await disciplineService.deleteNote(noteId);
               showToast.deleted('Note');
-              queryClient.invalidateQueries({ queryKey: ['discipline-notes'] });
+              queryClient.invalidateQueries({ queryKey: ['discipline-notes-list'] });
             }}
           />
         )}
@@ -730,7 +733,7 @@ export const DisciplinePage: React.FC = () => {
       <BehavioralNoteModal
         isOpen={noteModal.open}
         onClose={() => setNoteModal({ open: false })}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['discipline-notes'] })}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['discipline-notes-list'] })}
         studentId={noteModal.studentId}
         studentName={noteModal.studentName}
         editingNote={noteModal.editing}
@@ -754,23 +757,24 @@ interface InfractionsTabProps {
 const InfractionsTab: React.FC<InfractionsTabProps> = ({
   search, statusFilter, severityFilter, infractionColumns, onAssignAction,
 }) => {
-  const PAGE_SIZE = 25;
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
 
-  // Fetch recent infractions via the analytics comprehensive report which includes recent_infractions
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['discipline-infractions-list', { search, statusFilter, severityFilter }],
-    queryFn: () => disciplineService.getComprehensiveReport(),
+    queryKey: ['discipline-infractions-list', { search, statusFilter, severityFilter, page }],
+    queryFn: () => disciplineService.listAllInfractions({
+      search: search || undefined,
+      status: statusFilter || undefined,
+      severity: severityFilter || undefined,
+      page,
+      limit: PAGE_SIZE,
+    }),
     staleTime: 30_000,
   });
 
-  const reportData = (data?.data as any) ?? {};
-  const allItems: StudentInfraction[] = reportData?.recent_infractions ?? [];
-
-  const filtered = allItems.filter(i =>
-    (!search || (i.student_name || i.student_id || '').toLowerCase().includes(search.toLowerCase())) &&
-    (!statusFilter || i.status === statusFilter) &&
-    (!severityFilter || i.severity_level === severityFilter)
-  );
+  const res = (data as any) ?? {};
+  const items: StudentInfraction[] = res?.data ?? [];
+  const pagination = res?.pagination ?? { total: 0, total_pages: 1 };
 
   return (
     <DataTable
@@ -796,11 +800,15 @@ const InfractionsTab: React.FC<InfractionsTabProps> = ({
           ),
         },
       ]}
-      data={filtered}
+      data={items}
       isLoading={isLoading}
       error={error ? String(error) : null}
       onRetry={refetch}
-      paginationMode="client"
+      paginationMode="server"
+      page={page}
+      totalPages={pagination.total_pages}
+      totalCount={pagination.total}
+      onPageChange={setPage}
       pageSize={PAGE_SIZE}
       emptyMessage="No infractions found"
     />
@@ -815,22 +823,26 @@ interface ActionsTabProps {
   statusFilter: string;
   actionColumns: ColumnDef<DisciplineAction, any>[];
 }
+
 const ActionsTab: React.FC<ActionsTabProps> = ({ search, statusFilter, actionColumns }) => {
   const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['discipline-actions-list', { search, statusFilter }],
-    queryFn: () => disciplineService.getComprehensiveReport(),
+    queryKey: ['discipline-actions-list', { search, statusFilter, page }],
+    queryFn: () => disciplineService.listAllActions({
+      search: search || undefined,
+      status: statusFilter || undefined,
+      page,
+      limit: PAGE_SIZE,
+    }),
     staleTime: 30_000,
   });
 
-  const reportData = (data?.data as any) ?? {};
-  const allItems: DisciplineAction[] = reportData?.recent_actions ?? [];
-
-  const filtered = allItems.filter(i =>
-    (!search || (i.student_name || i.student_id || '').toLowerCase().includes(search.toLowerCase())) &&
-    (!statusFilter || i.status === statusFilter)
-  );
+  const res = (data as any) ?? {};
+  const items: DisciplineAction[] = res?.data ?? [];
+  const pagination = res?.pagination ?? { total: 0, total_pages: 1 };
 
   return (
     <DataTable
@@ -848,7 +860,7 @@ const ActionsTab: React.FC<ActionsTabProps> = ({ search, statusFilter, actionCol
                   onClick={async () => {
                     await disciplineService.cancelAction(row.original.action_id, 'Cancelled by principal');
                     showToast.success('Action cancelled');
-                    queryClient.invalidateQueries({ queryKey: ['discipline-actions'] });
+                    queryClient.invalidateQueries({ queryKey: ['discipline-actions-list'] });
                   }}
                 >
                   Cancel
@@ -858,11 +870,16 @@ const ActionsTab: React.FC<ActionsTabProps> = ({ search, statusFilter, actionCol
           ),
         },
       ]}
-      data={filtered}
+      data={items}
       isLoading={isLoading}
       error={error ? String(error) : null}
       onRetry={refetch}
-      paginationMode="client"
+      paginationMode="server"
+      page={page}
+      totalPages={pagination.total_pages}
+      totalCount={pagination.total}
+      onPageChange={setPage}
+      pageSize={PAGE_SIZE}
       emptyMessage="No discipline actions found"
     />
   );
@@ -872,7 +889,6 @@ const ActionsTab: React.FC<ActionsTabProps> = ({ search, statusFilter, actionCol
 // ── AppealsTab ────────────────────────────────────────────────────────────────
 
 interface AppealsTabProps {
-  appeals: DisciplineAppeal[];
   search: string;
   statusFilter: string;
   appealColumns: ColumnDef<DisciplineAppeal, any>[];
@@ -880,12 +896,25 @@ interface AppealsTabProps {
 }
 
 const AppealsTab: React.FC<AppealsTabProps> = ({
-  appeals, search, statusFilter, appealColumns, onReview,
+  search, statusFilter, appealColumns, onReview,
 }) => {
-  const filtered = appeals.filter(a =>
-    (!search || (a.student_name || a.student_id).toLowerCase().includes(search.toLowerCase())) &&
-    (!statusFilter || a.status === statusFilter)
-  );
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['discipline-appeals-list', { search, statusFilter, page }],
+    queryFn: () => disciplineService.listAllAppeals({
+      search: search || undefined,
+      status: statusFilter || undefined,
+      page,
+      limit: PAGE_SIZE,
+    }),
+    staleTime: 30_000,
+  });
+
+  const res = (data as any) ?? {};
+  const items: DisciplineAppeal[] = res?.data ?? [];
+  const pagination = res?.pagination ?? { total: 0, total_pages: 1 };
 
   return (
     <DataTable
@@ -909,9 +938,16 @@ const AppealsTab: React.FC<AppealsTabProps> = ({
           ),
         },
       ]}
-      data={filtered}
-      isLoading={false}
-      error={null}
+      data={items}
+      isLoading={isLoading}
+      error={error ? String(error) : null}
+      onRetry={refetch}
+      paginationMode="server"
+      page={page}
+      totalPages={pagination.total_pages}
+      totalCount={pagination.total}
+      onPageChange={setPage}
+      pageSize={PAGE_SIZE}
       emptyMessage="No appeals found"
     />
   );
@@ -931,19 +967,23 @@ interface NotesTabProps {
 const NotesTab: React.FC<NotesTabProps> = ({
   search, statusFilter, noteColumns, onEdit, onDelete,
 }) => {
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['discipline-notes', { search, statusFilter }],
-    queryFn: () => disciplineService.getComprehensiveReport(),
+    queryKey: ['discipline-notes-list', { search, statusFilter, page }],
+    queryFn: () => disciplineService.listAllNotes({
+      search: search || undefined,
+      note_type: statusFilter || undefined,
+      page,
+      limit: PAGE_SIZE,
+    }),
     staleTime: 30_000,
   });
 
-  const reportData = (data?.data as any) ?? {};
-  const allItems: BehavioralNote[] = reportData?.recent_notes ?? [];
-
-  const filtered = allItems.filter(n =>
-    (!search || (n.student_name || n.student_id || '').toLowerCase().includes(search.toLowerCase())) &&
-    (!statusFilter || n.note_type === statusFilter)
-  );
+  const res = (data as any) ?? {};
+  const items: BehavioralNote[] = res?.data ?? [];
+  const pagination = res?.pagination ?? { total: 0, total_pages: 1 };
 
   return (
     <DataTable
@@ -971,11 +1011,16 @@ const NotesTab: React.FC<NotesTabProps> = ({
           ),
         },
       ]}
-      data={filtered}
+      data={items}
       isLoading={isLoading}
       error={error ? String(error) : null}
       onRetry={refetch}
-      paginationMode="client"
+      paginationMode="server"
+      page={page}
+      totalPages={pagination.total_pages}
+      totalCount={pagination.total}
+      onPageChange={setPage}
+      pageSize={PAGE_SIZE}
       emptyMessage="No behavioral notes found"
     />
   );

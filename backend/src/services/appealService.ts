@@ -534,6 +534,67 @@ class AppealService {
     } catch (error) {
       logger.error('Error logging appeal audit:', error);
     }
+  /**
+   * List all discipline appeals school-wide (tenant-isolated)
+   */
+  async listAllAppeals(
+    tenantId: string,
+    options?: {
+      search?: string;
+      status?: string;
+      page?: number;
+      limit?: number;
+    }
+  ) {
+    try {
+      const page = options?.page || 1;
+      const limit = options?.limit || 20;
+      const offset = (page - 1) * limit;
+
+      let query = db('discipline_appeals as ap')
+        .leftJoin('users as u', function() {
+          this.on('ap.student_id', '=', 'u.id').andOn('u.tenant_id', '=', db.raw('?', [tenantId]));
+        })
+        .leftJoin('discipline_actions as da', function() {
+          this.on('ap.action_id', '=', 'da.action_id').andOn('da.tenant_id', '=', db.raw('?', [tenantId]));
+        })
+        .where('ap.tenant_id', tenantId)
+        .select(
+          'ap.*',
+          db.raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as student_name"),
+          'da.action_type'
+        )
+        .orderBy('ap.submitted_date', 'desc');
+
+      if (options?.status) {
+        query = query.where('ap.status', options.status);
+      }
+
+      if (options?.search) {
+        const term = `%${options.search.toLowerCase()}%`;
+        query = query.where(builder => {
+          builder.whereRaw("LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE ?", [term])
+            .orWhereRaw("LOWER(u.student_id) LIKE ?", [term]);
+        });
+      }
+
+      const items = await query.clone().limit(limit).offset(offset);
+      const countRes = await query.clone().count('* as count').first();
+      const total = Number(countRes?.count || 0);
+
+      return {
+        data: items,
+        pagination: {
+          total,
+          page,
+          limit,
+          total_pages: Math.ceil(total / limit) || 1,
+        },
+      };
+    } catch (error) {
+      logger.error('Error listing all discipline appeals:', error);
+      throw error;
+    }
   }
 }
 

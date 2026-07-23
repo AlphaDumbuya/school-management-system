@@ -1,12 +1,11 @@
-/**
- * InfractionFormModal — record a new infraction for a student
- */
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Modal } from '@components/admin/feedback/Modal';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { disciplineService } from '@services/disciplineService';
+import { studentsService } from '@services/studentsService';
+import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
 
 interface Props {
   isOpen: boolean;
@@ -52,6 +51,23 @@ export const InfractionFormModal: React.FC<Props> = ({
   const [isConfidential, setIsConfidential] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Fetch students for dropdown if not prefilled
+  const { data: studentsData } = useQuery({
+    queryKey: ['students-discipline-modal'],
+    queryFn: () => studentsService.listStudents({ limit: 200 }),
+    enabled: isOpen && !prefilledStudentId,
+    staleTime: 60_000,
+  });
+
+  const studentOptions = useMemo(() => {
+    const list = (studentsData as any)?.data ?? [];
+    return list.map((s: any) => ({
+      value: s.id,
+      label: `${s.first_name} ${s.last_name}`,
+      sublabel: `ID: ${s.student_id}${s.class_name ? ` • ${s.class_name}` : ''}`,
+    }));
+  }, [studentsData]);
+
   useEffect(() => {
     if (isOpen) {
       setStudentId(prefilledStudentId);
@@ -67,7 +83,7 @@ export const InfractionFormModal: React.FC<Props> = ({
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!studentId.trim()) e.student_id = 'Student ID is required';
+    if (!studentId.trim()) e.student_id = 'Please select a student';
     if (!infractionType) e.infraction_type = 'Infraction type is required';
     if (!incidentDate) e.incident_date = 'Date is required';
     if (!description.trim()) e.description = 'Description is required';
@@ -102,20 +118,31 @@ export const InfractionFormModal: React.FC<Props> = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Record Infraction" size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Student ID */}
-        <div>
-          <label className={labelCls}>Student ID <span className="text-red-500">*</span></label>
-          <input
-            type="text"
+        {/* Student Selector */}
+        {prefilledStudentId ? (
+          <div>
+            <label className={labelCls}>Student <span className="text-red-500">*</span></label>
+            <input
+              type="text"
+              value={prefilledStudentName || prefilledStudentId}
+              className={fieldCls}
+              readOnly
+            />
+          </div>
+        ) : (
+          <SearchableSelect
+            label="Select Student"
+            required
+            options={studentOptions}
             value={studentId}
-            onChange={e => setStudentId(e.target.value)}
-            className={fieldCls}
-            placeholder={prefilledStudentName || 'Enter student ID'}
-            readOnly={!!prefilledStudentId}
+            onChange={(val) => {
+              setStudentId(val);
+              if (errors.student_id) setErrors(prev => ({ ...prev, student_id: '' }));
+            }}
+            placeholder="Search student by name or ID..."
+            error={errors.student_id}
           />
-          {prefilledStudentName && <p className="text-xs text-gray-500 mt-0.5">Student: {prefilledStudentName}</p>}
-          {errors.student_id && <p className={errorCls}>{errors.student_id}</p>}
-        </div>
+        )}
 
         {/* Infraction Type */}
         <div>

@@ -1,12 +1,19 @@
 /**
  * AdmissionsPage — /students/admissions
- * Manage admission applications following Sierra Leone school format.
+ * Manage student admission applications following Sierra Leone school format.
+ * Supports grid / list view toggle (same pattern as ClassesPage).
  */
 
 import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { FileText, Clock, CheckCircle, XCircle, X, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import {
+  FileText, Clock, CheckCircle, XCircle,
+  X, ChevronDown, SlidersHorizontal,
+  LayoutGrid, List,
+  User, BookOpen, Phone, Calendar,
+  CheckCircle2, XCircle as XCircleIcon, Trash2,
+} from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -28,13 +35,35 @@ function formatDate(dateStr: string | undefined): string {
   return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function getInitials(first: string, last: string): string {
+  return `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase();
+}
+
 const STATUS_LABELS: Record<string, string> = Object.fromEntries(ADMISSION_STATUSES.map((s) => [s.value, s.label]));
+
+// Status styling for cards
+const STATUS_CONFIG: Record<string, { pill: string; accent: string; dot: string }> = {
+  pending:              { pill: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/30',    accent: 'from-amber-400 to-orange-400',   dot: 'bg-amber-400' },
+  under_review:         { pill: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/30',           accent: 'from-blue-400 to-cyan-500',      dot: 'bg-blue-400' },
+  interview_scheduled:  { pill: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800/30', accent: 'from-purple-400 to-indigo-500',  dot: 'bg-purple-400' },
+  approved:             { pill: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/30', accent: 'from-emerald-400 to-green-500', dot: 'bg-emerald-400' },
+  rejected:             { pill: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800/30',                  accent: 'from-red-400 to-rose-500',       dot: 'bg-red-400' },
+  enrolled:             { pill: 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 border-teal-200 dark:border-teal-800/30',            accent: 'from-teal-400 to-cyan-500',      dot: 'bg-teal-400' },
+};
+
+// Gender avatar gradient
+const GENDER_GRADIENT: Record<string, string> = {
+  male:   'from-blue-400 to-blue-600',
+  female: 'from-pink-400 to-rose-500',
+  other:  'from-purple-400 to-indigo-500',
+};
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const AdmissionsPage: React.FC = () => {
   const queryClient = useQueryClient();
 
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -86,7 +115,29 @@ export const AdmissionsPage: React.FC = () => {
     }
   };
 
+  // ── Table columns ─────────────────────────────────────────────────────────
   const columns: ColumnDef<AdmissionRecord, any>[] = [
+    {
+      id: 'photo',
+      header: '',
+      size: 48,
+      cell: ({ row }) => {
+        const app = row.original;
+        const gradient = GENDER_GRADIENT[app.child_gender?.toLowerCase() ?? ''] ?? 'from-gray-400 to-gray-600';
+        const hasPhoto = !!app.child_photo_url && app.child_photo_url.length > 10;
+        return (
+          <div className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 bg-gradient-to-br ${gradient}`}>
+            {hasPhoto ? (
+              <img src={app.child_photo_url} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-xs font-bold text-white">
+                {getInitials(app.child_first_name, app.child_last_name)}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
     {
       id: 'application_number',
       accessorKey: 'application_number',
@@ -135,6 +186,120 @@ export const AdmissionsPage: React.FC = () => {
     },
   ];
 
+  // ── Grid card ─────────────────────────────────────────────────────────────
+  const renderApplicationCard = (app: AdmissionRecord) => {
+    const cfg = STATUS_CONFIG[app.status] ?? STATUS_CONFIG.pending;
+    const gradient = GENDER_GRADIENT[app.child_gender?.toLowerCase() ?? ''] ?? 'from-gray-400 to-gray-600';
+    const hasPhoto = !!app.child_photo_url && app.child_photo_url.length > 10;
+
+    return (
+      <div
+        key={app.id}
+        className="group relative overflow-hidden bg-white dark:bg-gray-800 border border-gray-200/60 dark:border-gray-700/60 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1"
+      >
+        {/* Accent bar */}
+        <div className={`h-1 w-full bg-gradient-to-r ${cfg.accent}`} />
+
+        <div className="p-5">
+          {/* Avatar + child name + App ID */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`w-12 h-12 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center bg-gradient-to-br ${gradient} shadow-sm`}>
+              {hasPhoto ? (
+                <img src={app.child_photo_url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-sm font-bold text-white">
+                  {getInitials(app.child_first_name, app.child_last_name)}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                {app.child_first_name} {app.child_last_name}
+              </h3>
+              <span className="font-mono text-[10px] font-bold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                {app.application_number}
+              </span>
+            </div>
+            {/* Status pill */}
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${cfg.pill}`}>
+              {STATUS_LABELS[app.status] ?? app.status}
+            </span>
+          </div>
+
+          {/* Info rows */}
+          <div className="space-y-2 text-xs text-gray-600 dark:text-gray-400 mb-4">
+            <div className="flex items-center gap-2">
+              <BookOpen size={13} className="text-blue-400 flex-shrink-0" />
+              <span>
+                {app.class_name
+                  ? <span className="font-semibold text-blue-600 dark:text-blue-400">{app.class_name}</span>
+                  : <span className="italic text-gray-400">No class assigned</span>
+                }
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <User size={13} className="text-indigo-400 flex-shrink-0" />
+              <span className="truncate">
+                {app.guardian_first_name} {app.guardian_last_name}
+                <span className="ml-1 text-gray-400 capitalize">({app.guardian_relationship})</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Phone size={13} className="text-green-400 flex-shrink-0" />
+              <span>{app.guardian_phone}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Calendar size={13} className="text-purple-400 flex-shrink-0" />
+              <span>Applied {formatDate(app.created_at)}</span>
+            </div>
+          </div>
+
+          {/* Academic year badge */}
+          {app.academic_year && (
+            <div className="mb-3">
+              <span className="text-[10px] font-bold bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full">
+                {app.academic_year}
+              </span>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-1 border-t border-gray-100 dark:border-gray-700/50 pt-3">
+            <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
+              {app.status === 'pending' || app.status === 'under_review' || app.status === 'interview_scheduled' ? (
+                <>
+                  <button
+                    onClick={() => handleStatusChange(app, 'approved')}
+                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors"
+                  >
+                    <CheckCircle2 size={13} /> Approve
+                  </button>
+                  <button
+                    onClick={() => handleStatusChange(app, 'rejected')}
+                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+                  >
+                    <XCircleIcon size={13} /> Reject
+                  </button>
+                </>
+              ) : (
+                <span className="flex-1 text-center text-[11px] font-semibold text-gray-400 py-1.5">
+                  {STATUS_LABELS[app.status]}
+                </span>
+              )}
+              <button
+                onClick={() => setDeleteTarget(app)}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors ml-auto"
+                title="Delete application"
+              >
+                <Trash2 size={13} />
+              </button>
+            </RoleGuard>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <MainLayout>
       <PageShell
@@ -142,11 +307,33 @@ export const AdmissionsPage: React.FC = () => {
         subtitle="Manage student admission applications"
         breadcrumbs={[{ label: 'Admissions' }]}
         actions={
-          <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
-            <Button variant="default" size="sm" onClick={() => setFormOpen(true)} className="whitespace-nowrap shadow-sm">
-              + New Application
-            </Button>
-          </RoleGuard>
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* View Mode Toggle */}
+            <div className="flex items-center border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg p-0.5 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-gray-100 dark:bg-gray-700 text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                title="Grid View"
+              >
+                <LayoutGrid size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-gray-100 dark:bg-gray-700 text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                title="List View"
+              >
+                <List size={18} />
+              </button>
+            </div>
+
+            <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
+              <Button variant="default" size="sm" onClick={() => setFormOpen(true)} className="whitespace-nowrap shadow-sm">
+                + New Application
+              </Button>
+            </RoleGuard>
+          </div>
         }
       >
         {/* KPIs */}
@@ -191,33 +378,53 @@ export const AdmissionsPage: React.FC = () => {
           )}
         </div>
 
-        {/* Table */}
-        <DataTable
-          columns={columns}
-          data={applications}
-          isLoading={isLoading}
-          error={error ? String(error) : null}
-          onRetry={refetch}
-          paginationMode="server"
-          pageIndex={page}
-          pageSize={pageSize}
-          totalRows={Number(pagination.total)}
-          onPageChange={setPage}
-          emptyMessage="No applications found"
-          emptyAction={{ label: 'Create first application', onClick: () => setFormOpen(true) }}
-          rowActions={(row) => {
-            const actions: any[] = [
-              { label: 'Delete', variant: 'destructive', onClick: (r: AdmissionRecord) => setDeleteTarget(r) },
-            ];
-            if (row.status === 'pending') {
-              actions.unshift(
-                { label: 'Approve', onClick: (r: AdmissionRecord) => handleStatusChange(r, 'approved') },
-                { label: 'Reject', variant: 'destructive', onClick: (r: AdmissionRecord) => handleStatusChange(r, 'rejected') },
-              );
-            }
-            return actions;
-          }}
-        />
+        {/* ── Grid View ── */}
+        {viewMode === 'grid' ? (
+          isLoading && !data ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              <SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard />
+            </div>
+          ) : applications.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center">
+              <FileText size={48} className="text-gray-300 dark:text-gray-600 mb-4" />
+              <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">No applications found</p>
+              <p className="text-sm text-gray-500 mt-1 mb-4">Try adjusting your filters or create a new application.</p>
+              <Button onClick={() => setFormOpen(true)}>Create first application</Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {applications.map(renderApplicationCard)}
+            </div>
+          )
+        ) : (
+          /* ── List / Table View ── */
+          <DataTable
+            columns={columns}
+            data={applications}
+            isLoading={isLoading}
+            error={error ? String(error) : null}
+            onRetry={refetch}
+            paginationMode="server"
+            pageIndex={page}
+            pageSize={pageSize}
+            totalRows={Number(pagination.total)}
+            onPageChange={setPage}
+            emptyMessage="No applications found"
+            emptyAction={{ label: 'Create first application', onClick: () => setFormOpen(true) }}
+            rowActions={(row) => {
+              const actions: any[] = [
+                { label: 'Delete', variant: 'destructive', onClick: (r: AdmissionRecord) => setDeleteTarget(r) },
+              ];
+              if (row.status === 'pending') {
+                actions.unshift(
+                  { label: 'Approve', onClick: (r: AdmissionRecord) => handleStatusChange(r, 'approved') },
+                  { label: 'Reject', variant: 'destructive', onClick: (r: AdmissionRecord) => handleStatusChange(r, 'rejected') },
+                );
+              }
+              return actions;
+            }}
+          />
+        )}
       </PageShell>
 
       <AdmissionFormModal

@@ -1,12 +1,11 @@
-/**
- * ActionFormModal — assign a discipline action to a student
- */
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Modal } from '@components/admin/feedback/Modal';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { disciplineService, ActionType } from '@services/disciplineService';
+import { studentsService } from '@services/studentsService';
+import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
 
 interface Props {
   isOpen: boolean;
@@ -46,6 +45,23 @@ export const ActionFormModal: React.FC<Props> = ({
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Fetch students for dropdown if not prefilled
+  const { data: studentsData } = useQuery({
+    queryKey: ['students-discipline-action-modal'],
+    queryFn: () => studentsService.listStudents({ limit: 200 }),
+    enabled: isOpen && !studentId,
+    staleTime: 60_000,
+  });
+
+  const studentOptions = useMemo(() => {
+    const list = (studentsData as any)?.data ?? [];
+    return list.map((s: any) => ({
+      value: s.id,
+      label: `${s.first_name} ${s.last_name}`,
+      sublabel: `ID: ${s.student_id}${s.class_name ? ` • ${s.class_name}` : ''}`,
+    }));
+  }, [studentsData]);
+
   useEffect(() => {
     if (isOpen) {
       setSid(studentId);
@@ -65,7 +81,7 @@ export const ActionFormModal: React.FC<Props> = ({
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!sid.trim()) e.student_id = 'Student ID is required';
+    if (!sid.trim()) e.student_id = 'Please select a student';
     if (!actionType) e.action_type = 'Action type is required';
     if (!actionDate) e.action_date = 'Action date is required';
     if (actionType === 'suspension' && !durationDays) e.duration_days = 'Duration required for suspensions';
@@ -107,12 +123,26 @@ export const ActionFormModal: React.FC<Props> = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Assign Discipline Action" size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Student */}
-        <div>
-          <label className={labelCls}>Student <span className="text-red-500">*</span></label>
-          <input type="text" value={studentName || sid} onChange={e => setSid(e.target.value)} className={fieldCls} readOnly={!!studentId} />
-          {errors.student_id && <p className={errorCls}>{errors.student_id}</p>}
-        </div>
+        {/* Student Selector */}
+        {studentId ? (
+          <div>
+            <label className={labelCls}>Student <span className="text-red-500">*</span></label>
+            <input type="text" value={studentName || sid} className={fieldCls} readOnly />
+          </div>
+        ) : (
+          <SearchableSelect
+            label="Select Student"
+            required
+            options={studentOptions}
+            value={sid}
+            onChange={(val) => {
+              setSid(val);
+              if (errors.student_id) setErrors(prev => ({ ...prev, student_id: '' }));
+            }}
+            placeholder="Search student by name or ID..."
+            error={errors.student_id}
+          />
+        )}
 
         {/* Linked infraction */}
         {infractionId && (

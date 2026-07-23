@@ -45,6 +45,33 @@ router.post(
 );
 
 /**
+ * GET /api/v1/discipline/infractions
+ * List all infractions (school-wide, tenant-isolated)
+ */
+router.get(
+  '/infractions',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await infractionService.listAllInfractions(
+        req.user.tenant_id,
+        {
+          search: req.query.search as string,
+          status: req.query.status as string,
+          severity: req.query.severity as string,
+          page: parseInt(req.query.page as string) || 1,
+          limit: parseInt(req.query.limit as string) || 20,
+        }
+      );
+
+      res.json(result);
+    } catch (error) {
+      logger.error('Error listing all infractions:', error);
+      next(error);
+    }
+  }
+);
+
+/**
  * GET /api/v1/discipline/infractions/:studentId
  * Get infractions for student
  */
@@ -234,6 +261,33 @@ router.post(
       res.status(201).json({ action });
     } catch (error) {
       logger.error('Error assigning action:', error);
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/v1/discipline/actions
+ * List all discipline actions (school-wide, tenant-isolated)
+ */
+router.get(
+  '/actions',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await disciplineService.listAllActions(
+        req.user.tenant_id,
+        {
+          search: req.query.search as string,
+          status: req.query.status as string,
+          action_type: req.query.action_type as string,
+          page: parseInt(req.query.page as string) || 1,
+          limit: parseInt(req.query.limit as string) || 20,
+        }
+      );
+
+      res.json(result);
+    } catch (error) {
+      logger.error('Error listing all actions:', error);
       next(error);
     }
   }
@@ -488,6 +542,55 @@ router.post(
 );
 
 /**
+ * GET /api/v1/discipline/appeals/pending
+ * Get pending appeals
+ */
+router.get(
+  '/appeals/pending',
+  authorize(['principal', 'super_admin']),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const appeals = await appealService.getPendingAppeals(
+        req.user.tenant_id,
+        parseInt(req.query.limit as string) || 10
+      );
+
+      res.json({ pending_appeals: appeals });
+    } catch (error) {
+      logger.error('Error getting pending appeals:', error);
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/v1/discipline/appeals
+ * List all discipline appeals (school-wide, tenant-isolated)
+ */
+router.get(
+  '/appeals',
+  authorize(['principal', 'super_admin']),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await appealService.listAllAppeals(
+        req.user.tenant_id,
+        {
+          search: req.query.search as string,
+          status: req.query.status as string,
+          page: parseInt(req.query.page as string) || 1,
+          limit: parseInt(req.query.limit as string) || 20,
+        }
+      );
+
+      res.json(result);
+    } catch (error) {
+      logger.error('Error listing all appeals:', error);
+      next(error);
+    }
+  }
+);
+
+/**
  * GET /api/v1/discipline/appeals/:studentId
  * Get student appeals
  */
@@ -652,6 +755,32 @@ router.post(
       res.status(201).json({ note });
     } catch (error) {
       logger.error('Error creating note:', error);
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/v1/discipline/notes
+ * List all behavioral notes (school-wide, tenant-isolated)
+ */
+router.get(
+  '/notes',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await behavioralNoteService.listAllNotes(
+        req.user.tenant_id,
+        {
+          search: req.query.search as string,
+          note_type: req.query.note_type as string,
+          page: parseInt(req.query.page as string) || 1,
+          limit: parseInt(req.query.limit as string) || 20,
+        }
+      );
+
+      res.json(result);
+    } catch (error) {
+      logger.error('Error listing all notes:', error);
       next(error);
     }
   }

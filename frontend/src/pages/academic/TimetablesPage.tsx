@@ -219,25 +219,6 @@ export const TimetablesPage: React.FC = () => {
         breadcrumbs={[{ label: 'Timetables' }]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Class Selector */}
-            <div className="relative">
-              <select
-                value={selectedClassId}
-                onChange={(e) => setSelectedClassId(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[160px] sm:min-w-[200px]"
-              >
-                <option value="">Select a class...</option>
-                {classes.map((cls) => (
-                  <option key={cls.id} value={cls.id}>
-                    {cls.name}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                <ChevronDown size={14} />
-              </div>
-            </div>
-
             <RoleGuard roles={['principal', 'super_admin']}>
               <Button
                 variant="outline"
@@ -261,12 +242,35 @@ export const TimetablesPage: React.FC = () => {
           </div>
         }
       >
+        {/* Class Selector bar — sits below header, above content */}
+        <div className="flex items-center gap-3 mb-6">
+          <label className="text-sm font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+            Class:
+          </label>
+          <div className="relative w-full max-w-xs">
+            <select
+              value={selectedClassId}
+              onChange={(e) => setSelectedClassId(e.target.value)}
+              className="w-full appearance-none pl-3 pr-8 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            >
+              <option value="">Select a class...</option>
+              {classes.map((cls) => (
+                <option key={cls.id} value={cls.id}>
+                  {cls.name}
+                </option>
+              ))}
+            </select>
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+              <ChevronDown size={14} />
+            </div>
+          </div>
+        </div>
         {/* No class selected state */}
         {!selectedClassId && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Calendar size={56} className="text-gray-300 dark:text-gray-600 mb-4" />
             <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">Select a class to view its timetable</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Choose a class from the dropdown above to manage its weekly schedule.</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Choose a class from the selector above to manage its weekly schedule.</p>
           </div>
         )}
 

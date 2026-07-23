@@ -23,9 +23,12 @@ class BehavioralNoteService {
     noteData: BehavioralNoteCreateInput
   ): Promise<BehavioralNote> {
     try {
-      // Verify student exists
+      // Verify student exists by id or student_id
       const student = await db('users')
-        .where({ id: noteData.student_id, tenant_id: tenantId })
+        .where({ tenant_id: tenantId })
+        .where(function () {
+          this.where('id', noteData.student_id).orWhere('student_id', noteData.student_id);
+        })
         .first();
 
       if (!student) {
@@ -460,6 +463,68 @@ class BehavioralNoteService {
       });
     } catch (error) {
       logger.error('Error logging note audit:', error);
+    }
+  /**
+   * List all behavioral notes school-wide (tenant-isolated)
+   */
+  async listAllNotes(
+    tenantId: string,
+    options?: {
+      search?: string;
+      note_type?: string;
+      page?: number;
+      limit?: number;
+    }
+  ) {
+    try {
+      const page = options?.page || 1;
+      const limit = options?.limit || 20;
+      const offset = (page - 1) * limit;
+
+      let query = db('behavioral_notes as bn')
+        .leftJoin('users as u', function() {
+          this.on('bn.student_id', '=', 'u.id').andOn('u.tenant_id', '=', db.raw('?', [tenantId]));
+        })
+        .leftJoin('users as rb', function() {
+          this.on('bn.recorded_by', '=', 'rb.id').andOn('rb.tenant_id', '=', db.raw('?', [tenantId]));
+        })
+        .where('bn.tenant_id', tenantId)
+        .select(
+          'bn.*',
+          db.raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as student_name"),
+          db.raw("CONCAT(COALESCE(rb.first_name, ''), ' ', COALESCE(rb.last_name, '')) as recorded_by_name")
+        )
+        .orderBy('bn.note_date', 'desc');
+
+      if (options?.note_type) {
+        query = query.where('bn.note_type', options.note_type);
+      }
+
+      if (options?.search) {
+        const term = `%${options.search.toLowerCase()}%`;
+        query = query.where(builder => {
+          builder.whereRaw("LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE ?", [term])
+            .orWhereRaw("LOWER(u.student_id) LIKE ?", [term])
+            .orWhereRaw("LOWER(bn.content) LIKE ?", [term]);
+        });
+      }
+
+      const items = await query.clone().limit(limit).offset(offset);
+      const countRes = await query.clone().count('* as count').first();
+      const total = Number(countRes?.count || 0);
+
+      return {
+        data: items,
+        pagination: {
+          total,
+          page,
+          limit,
+          total_pages: Math.ceil(total / limit) || 1,
+        },
+      };
+    } catch (error) {
+      logger.error('Error listing all behavioral notes:', error);
+      throw error;
     }
   }
 }
