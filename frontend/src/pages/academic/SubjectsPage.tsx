@@ -45,6 +45,7 @@ const LEVEL_LABELS: Record<string, string> = {
   primary: 'Primary',
   jss: 'JSS',
   sss: 'SSS',
+  technical: 'Technical / Voc',
 };
 
 const FILTER_CATEGORIES = [
@@ -264,12 +265,30 @@ export const SubjectsPage: React.FC = () => {
     {
       id: 'level',
       accessorKey: 'level',
-      header: 'Level',
-      cell: ({ row }) => (
-        <span className="text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-2.5 py-0.5 rounded-full border border-gray-200 dark:border-gray-700">
-          {LEVEL_LABELS[row.original.level || 'all'] || row.original.level || 'All'}
-        </span>
-      ),
+      header: 'Applicable Level(s)',
+      cell: ({ row }) => {
+        const rawLevel = row.original.level;
+        if (!rawLevel || rawLevel === 'all') {
+          return (
+            <span className="text-[11px] font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 px-2.5 py-0.5 rounded-full border border-blue-200 dark:border-blue-800">
+              All Levels
+            </span>
+          );
+        }
+        const levels = rawLevel.split(',').map((l) => l.trim().toLowerCase());
+        return (
+          <div className="flex flex-wrap gap-1">
+            {levels.map((lvl) => (
+              <span
+                key={lvl}
+                className="text-[10px] font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800 uppercase"
+              >
+                {LEVEL_LABELS[lvl] || lvl}
+              </span>
+            ))}
+          </div>
+        );
+      },
     },
     {
       id: 'department',
@@ -472,9 +491,20 @@ export const SubjectsPage: React.FC = () => {
                       <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${catColor}`}>
                         {CATEGORY_LABELS[cat] || cat}
                       </span>
-                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700">
-                        {LEVEL_LABELS[subj.level || 'all'] || 'All'}
-                      </span>
+                      {subj.level && subj.level !== 'all' ? (
+                        subj.level.split(',').map((lvl) => (
+                          <span
+                            key={lvl.trim()}
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-md border bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 uppercase"
+                          >
+                            {LEVEL_LABELS[lvl.trim().toLowerCase()] || lvl}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700">
+                          All Levels
+                        </span>
+                      )}
                       {subj.is_elective && (
                         <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/30">
                           Elective
