@@ -22,8 +22,8 @@ const schema = z.object({
   department: z.string().default('none'),
   employment_type: z.string().default('full_time'),
   form_class_id: z.string().optional().or(z.literal('')),
-  assigned_classes: z.array(z.string()).max(4, 'A teacher can be assigned to at most 4 classes').default([]),
-  assigned_subjects: z.array(z.string()).max(4, 'A teacher can be assigned to at most 4 subjects').default([]),
+  assigned_classes: z.array(z.string()).default([]),
+  assigned_subjects: z.array(z.string()).default([]),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -305,11 +305,11 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
                     <BookOpen size={14} className="text-blue-500" /> Class Assignments
                   </h4>
                   <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500">
-                    {watchedClasses.length}/4 selected
+                    {watchedClasses.length} selected
                   </span>
                 </div>
                 <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                  Select the classes this teacher will teach (max 4):
+                  Select the classes this teacher will teach:
                 </p>
                 
                 {/* Search input for classes */}
@@ -326,19 +326,16 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
                     <span className="text-xs text-gray-405">No classes found.</span>
                   ) : (
                     filteredClasses.map((c: any) => {
-                      const isChecked = watchedClasses.includes(c.id);
-                      const isDisabled = watchedClasses.length >= 4 && !isChecked;
                       return (
                         <label
                           key={c.id}
-                          className={`flex items-center gap-2.5 p-2 bg-white dark:bg-gray-800 border border-gray-150 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-800/60 transition-colors ${isDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                          className="flex items-center gap-2.5 p-2 bg-white dark:bg-gray-800 border border-gray-150 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-800/60 transition-colors"
                         >
                           <input
                             type="checkbox"
                             value={c.id}
                             {...register('assigned_classes')}
-                            disabled={isDisabled}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4 disabled:opacity-50"
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
                           />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold text-gray-800 dark:text-gray-100">{c.name}</p>
@@ -363,11 +360,11 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
                     <GraduationCap size={14} className="text-indigo-500" /> Subject Assignments
                   </h4>
                   <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500">
-                    {watchedSubjects.length}/4 selected
+                    {watchedSubjects.length} selected
                   </span>
                 </div>
                 <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                  Select the subjects this teacher will teach (max 4):
+                  Select the subjects this teacher will teach:
                 </p>
                 
                 {/* Search input for subjects */}
@@ -384,19 +381,16 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
                     <span className="text-xs text-gray-405">No subjects found.</span>
                   ) : (
                     filteredSubjects.map((s: any) => {
-                      const isChecked = watchedSubjects.includes(s.id);
-                      const isDisabled = watchedSubjects.length >= 4 && !isChecked;
                       return (
                         <label
                           key={s.id}
-                          className={`flex items-center gap-2.5 p-2 bg-white dark:bg-gray-800 border border-gray-150 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-800/60 transition-colors ${isDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                          className="flex items-center gap-2.5 p-2 bg-white dark:bg-gray-800 border border-gray-150 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-800/60 transition-colors"
                         >
                           <input
                             type="checkbox"
                             value={s.id}
                             {...register('assigned_subjects')}
-                            disabled={isDisabled}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4 disabled:opacity-50"
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
                           />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold text-gray-800 dark:text-gray-100">{s.name}</p>

@@ -196,6 +196,7 @@ export class Phase15SchoolConfigService {
         'state',
         'postal_code',
         'country',
+        'logo_url',
         'founded_year',
         'principal_name',
         'principal_email',

@@ -258,9 +258,14 @@ export const TeacherDetailModal: React.FC<TeacherDetailModalProps> = ({
                 <GraduationCap size={16} />
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Qualifications</span>
               </div>
-              <p className="text-sm font-medium text-gray-800 dark:text-gray-100 mt-1 whitespace-pre-line pl-6">
-                {currentTeacher.qualifications || '—'}
-              </p>
+              {currentTeacher.qualifications ? (
+                <div
+                  className="text-sm font-medium text-gray-800 dark:text-gray-100 mt-1 pl-6 prose dark:prose-invert max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                  dangerouslySetInnerHTML={{ __html: currentTeacher.qualifications }}
+                />
+              ) : (
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-100 mt-1 whitespace-pre-line pl-6">—</p>
+              )}
             </div>
           </div>
 

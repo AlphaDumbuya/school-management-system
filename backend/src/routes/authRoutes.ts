@@ -338,7 +338,7 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
     const userId = (req as any).auth.userId;
 
     const user = await db('users')
-      .select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'last_login', 'created_at')
+      .select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'tenant_id', 'last_login', 'created_at')
       .where('id', userId)
       .first();
 
@@ -346,7 +346,31 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
       throw new AppError('User not found', 404, 'NOT_FOUND');
     }
 
-    res.json(user);
+    let schoolLogoUrl = null;
+    let schoolName = null;
+    if (user.tenant_id) {
+      try {
+        const school = await db('schools').where('tenant_id', user.tenant_id).first();
+        if (school) {
+          schoolLogoUrl = school.logo_url;
+          schoolName = school.name;
+        }
+      } catch (_) {}
+    }
+
+    res.json({
+      id: user.id,
+      email: user.email,
+      firstName: user.first_name,
+      lastName: user.last_name,
+      role: user.role,
+      status: user.status,
+      tenantId: user.tenant_id,
+      schoolLogoUrl,
+      schoolName,
+      lastLogin: user.last_login,
+      createdAt: user.created_at,
+    });
   } catch (error) {
     next(error);
   }

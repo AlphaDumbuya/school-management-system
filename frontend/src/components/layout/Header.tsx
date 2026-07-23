@@ -50,10 +50,19 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
               <FaBars className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
           )}
-          <h1 className="text-sm sm:text-xl font-bold text-gray-900 whitespace-nowrap">
-            <span className="sm:hidden">SMS</span>
-            <span className="hidden sm:inline">{sidebarOpen ? 'School Management' : 'SMS'}</span>
-          </h1>
+          <div className="flex items-center gap-2">
+            {user?.schoolLogoUrl && (
+              <img
+                src={user.schoolLogoUrl}
+                alt={user.schoolName || 'School Logo'}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain bg-white p-0.5 border border-gray-200"
+              />
+            )}
+            <h1 className="text-sm sm:text-xl font-bold text-gray-900 whitespace-nowrap">
+              <span className="sm:hidden">{user?.schoolName || 'SMS'}</span>
+              <span className="hidden sm:inline">{user?.schoolName || (sidebarOpen ? 'School Management' : 'SMS')}</span>
+            </h1>
+          </div>
         </div>
 
         {/* Right side - Notifications and user menu */}

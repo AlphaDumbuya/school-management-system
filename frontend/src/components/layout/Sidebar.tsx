@@ -482,11 +482,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           {/* Logo section */}
           <div className="px-4 sm:px-6 py-4 sm:py-6 border-b border-gray-800 flex-shrink-0">
             <div className="flex items-center gap-2 sm:gap-3">
-              <div className="w-9 sm:w-10 h-9 sm:h-10 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-sm sm:text-lg">
-                SMS
-              </div>
-              <div className="min-w-0">
-                <h2 className="font-bold text-sm sm:text-lg truncate">School Management</h2>
+              {user?.schoolLogoUrl ? (
+                <img
+                  src={user.schoolLogoUrl}
+                  alt={user.schoolName || 'School Logo'}
+                  className="w-9 sm:w-10 h-9 sm:h-10 rounded-lg object-contain bg-white p-1 border border-gray-700 flex-shrink-0"
+                />
+              ) : (
+                <div className="w-9 sm:w-10 h-9 sm:h-10 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-sm sm:text-lg text-white flex-shrink-0">
+                  {user?.schoolName ? user.schoolName.substring(0, 2).toUpperCase() : 'SMS'}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <h2 className="font-bold text-sm sm:text-lg truncate">{user?.schoolName || 'School Management'}</h2>
                 <p className="text-gray-400 text-xs truncate capitalize">{user?.role?.replace('_', ' ')}</p>
               </div>
             </div>

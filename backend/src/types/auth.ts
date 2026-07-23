@@ -26,6 +26,9 @@ export interface UserResponse {
   lastName: string;
   role: UserRole;
   status: UserStatus;
+  tenantId?: string;
+  schoolLogoUrl?: string | null;
+  schoolName?: string | null;
   createdAt: Date;
 }
 

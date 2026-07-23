@@ -16,6 +16,7 @@ import { classesService } from '@services/classesService';
 import { subjectsService } from '@services/subjectsService';
 import { Clipboard, ClipboardCheck, KeyRound, Loader2, BookOpen, GraduationCap } from 'lucide-react';
 import { FileUploader } from '@components/admin/forms/FileUploader';
+import { RichTextarea } from '@components/admin/forms/RichTextarea';
 
 const schema = z.object({
   first_name: z.string().min(1, 'First name is required').max(100),
@@ -29,15 +30,15 @@ const schema = z.object({
     z.number().min(0, 'Experience cannot be negative').max(60, 'Maximum experience is 60 years').optional()
   ),
   office_location: z.string().max(100).optional().or(z.literal('')),
-  qualifications: z.string().max(550).optional().or(z.literal('')),
+  qualifications: z.string().max(2000).optional().or(z.literal('')),
   hire_date: z.string().optional().or(z.literal('')),
   status: z.string().default('active'),
   designation: z.string().default('subject_teacher'),
   department: z.string().default('none'),
   employment_type: z.string().default('full_time'),
   form_class_id: z.string().optional().or(z.literal('')),
-  assigned_classes: z.array(z.string()).max(4, 'A teacher can be assigned to at most 4 classes').default([]),
-  assigned_subjects: z.array(z.string()).max(4, 'A teacher can be assigned to at most 4 subjects').default([]),
+  assigned_classes: z.array(z.string()).default([]),
+  assigned_subjects: z.array(z.string()).default([]),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -473,12 +474,20 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
               />
             </div>
 
-            <FormField
-              label="Qualifications / Degrees"
-              type="textarea"
-              placeholder="e.g. B.Sc Mathematics from Fourah Bay College, Diploma in Education"
-              error={errors.qualifications?.message}
-              {...register('qualifications')}
+            <Controller
+              name="qualifications"
+              control={control}
+              render={({ field }) => (
+                <RichTextarea
+                  label="Qualifications / Degrees"
+                  placeholder="e.g. B.Sc Mathematics from Fourah Bay College, Diploma in Education"
+                  value={field.value || ''}
+                  onChange={field.onChange}
+                  error={errors.qualifications?.message}
+                  helperText="Use bolding, bullet points, and formatting to list degrees and certifications"
+                  minHeight="120px"
+                />
+              )}
             />
 
             {/* Sierra Leone School Roles & Status */}
@@ -544,11 +553,11 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
                   <BookOpen size={14} className="text-blue-500" /> Class Assignments
                 </h4>
                 <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500">
-                  {watchedClasses.length}/4 selected
+                  {watchedClasses.length} selected
                 </span>
               </div>
               <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                Select the classes this teacher will lead or teach (max 4):
+                Select the classes this teacher will lead or teach:
               </p>
               
               {/* Search input for classes */}
@@ -565,19 +574,16 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
                   <span className="text-xs text-gray-400">No classes found.</span>
                 ) : (
                   filteredClasses.map((c: any) => {
-                    const isChecked = watchedClasses.includes(c.id);
-                    const isDisabled = watchedClasses.length >= 4 && !isChecked;
                     return (
                       <label
                         key={c.id}
-                        className={`flex items-center gap-2.5 p-2 bg-white dark:bg-gray-800 border border-gray-150 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-800/60 transition-colors ${isDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        className="flex items-center gap-2.5 p-2 bg-white dark:bg-gray-800 border border-gray-150 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-800/60 transition-colors"
                       >
                         <input
                           type="checkbox"
                           value={c.id}
                           {...register('assigned_classes')}
-                          disabled={isDisabled}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4 disabled:opacity-50"
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
                         />
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold text-gray-800 dark:text-gray-100">{c.name}</p>
@@ -602,11 +608,11 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
                   <GraduationCap size={14} className="text-indigo-500" /> Subject Assignments
                 </h4>
                 <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500">
-                  {watchedSubjects.length}/4 selected
+                  {watchedSubjects.length} selected
                 </span>
               </div>
               <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                Select the subjects this teacher will be authorized to teach (max 4):
+                Select the subjects this teacher will be authorized to teach:
               </p>
               
               {/* Search input for subjects */}
@@ -623,19 +629,16 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
                   <span className="text-xs text-gray-400">No subjects found.</span>
                 ) : (
                   filteredSubjects.map((s: any) => {
-                    const isChecked = watchedSubjects.includes(s.id);
-                    const isDisabled = watchedSubjects.length >= 4 && !isChecked;
                     return (
                       <label
                         key={s.id}
-                        className={`flex items-center gap-2.5 p-2 bg-white dark:bg-gray-800 border border-gray-150 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-800/60 transition-colors ${isDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        className="flex items-center gap-2.5 p-2 bg-white dark:bg-gray-800 border border-gray-150 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-800/60 transition-colors"
                       >
                         <input
                           type="checkbox"
                           value={s.id}
                           {...register('assigned_subjects')}
-                          disabled={isDisabled}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4 disabled:opacity-50"
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
                         />
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold text-gray-800 dark:text-gray-100">{s.name}</p>

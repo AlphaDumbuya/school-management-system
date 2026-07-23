@@ -317,7 +317,7 @@ export class AuthService {
       return {
         access_token: accessToken,
         refresh_token: refreshToken,
-        user: this.mapUserToResponse(user),
+        user: await this.mapUserToResponse(user),
       };
     } catch (error) {
       if (error instanceof AppError) {
@@ -539,7 +539,20 @@ export class AuthService {
   /**
    * Map user to response format
    */
-  private mapUserToResponse(user: any): UserResponse {
+  private async mapUserToResponse(user: any): Promise<UserResponse> {
+    let schoolLogoUrl = null;
+    let schoolName = null;
+
+    if (user.tenant_id) {
+      try {
+        const school = await this.db('schools').where('tenant_id', user.tenant_id).first();
+        if (school) {
+          schoolLogoUrl = school.logo_url;
+          schoolName = school.name;
+        }
+      } catch (_) {}
+    }
+
     return {
       id: user.id,
       email: user.email,
@@ -547,6 +560,9 @@ export class AuthService {
       lastName: user.last_name,
       role: user.role,
       status: user.status,
+      tenantId: user.tenant_id,
+      schoolLogoUrl,
+      schoolName,
       createdAt: user.created_at,
     };
   }
@@ -617,7 +633,7 @@ export class AuthService {
       logger.info(`User created: ${payload.email} with role ${payload.role}`);
 
       const user = await this.getUserById(userId);
-      return this.mapUserToResponse(user);
+      return await this.mapUserToResponse(user);
     } catch (error) {
       if (error instanceof AppError) {
         throw error;

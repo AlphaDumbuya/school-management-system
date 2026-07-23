@@ -210,6 +210,13 @@ export const SettingsPage: React.FC = () => {
       const res = await schoolConfigService.updateSchoolInfo(schoolInfo);
       if (res.success) {
         showToast('School information updated successfully!');
+        if (user) {
+          setUser({
+            ...user,
+            schoolLogoUrl: schoolInfo.logo_url ?? user.schoolLogoUrl,
+            schoolName: schoolInfo.name ?? user.schoolName,
+          });
+        }
       } else {
         throw new Error(res.error || 'Failed to update school info');
       }
