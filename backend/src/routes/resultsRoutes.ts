@@ -1,16 +1,13 @@
+import { db } from '../utils/database.js';
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
-import knex from 'knex';
-import knexConfig from '../../knexfile';
 
 const router = Router();
 router.use(authenticate);
 router.use(attachUserContext);
-const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
-const db = knex(knexConfig[env] || knexConfig.development);
 
 // ── Grading Scale ─────────────────────────────────────────────────────────────
 

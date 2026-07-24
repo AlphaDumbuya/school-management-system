@@ -1,15 +1,12 @@
+import { db } from '../utils/database.js';
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize, attachUserContext, requirePermission } from '@middleware/authMiddleware';
 import { UserRole } from '../types/auth';
 import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
-import knex from 'knex';
-import knexConfig from '../../knexfile';
 
 const router = Router();
-const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
-const db = knex(knexConfig[env] || knexConfig.development);
 
 /**
  * POST /api/v1/users

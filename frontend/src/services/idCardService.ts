@@ -54,19 +54,68 @@ export interface CardTemplate {
     updatedAt: string;
 }
 
+export interface CanvasElement {
+    id: string;
+    type: 'text' | 'photo' | 'badge' | 'barcode' | 'qrCode' | 'shape';
+    label: string;
+    sublabel?: string;
+    x: number;
+    y: number;
+    width?: number;
+    height?: number;
+    fontSize?: number;
+    color?: string;
+    bgColor?: string;
+    side: 'front' | 'back';
+    isCustom?: boolean;
+}
+
 export interface TemplateConfig {
+    presetId?: string;
+    printSides?: 'single' | 'double';
+    headerStyle?: 'curved-wave' | 'dual-strip' | 'sidebar-left' | 'top-banner' | 'arch-frame' | 'minimal-clean' | 'angled-split';
+    primaryColor?: string;
+    secondaryColor?: string;
     backgroundColor: string;
     textColor: string;
     fontFamily: string;
     fontSize: number;
+    photoShape?: 'circle' | 'rounded' | 'square' | 'arch' | 'hexagon';
+    photoBorderWidth?: number;
+    photoBorderColor?: string;
+    cardTitle?: string;
+    idLabel?: string;
+    dobLabel?: string;
+    gradeLabel?: string;
+    expiryLabel?: string;
+    customSchoolName?: string;
+    logoUrl?: string;
+    logoEmblem?: 'graduation-cap' | 'building' | 'shield' | 'award' | 'book';
+    visibleFields?: {
+        showName?: boolean;
+        showTitle?: boolean;
+        showRole?: boolean;
+        showId?: boolean;
+        showDob?: boolean;
+        showGrade?: boolean;
+        showExpiry?: boolean;
+        showSchoolName?: boolean;
+        showLogo?: boolean;
+    };
+    showBarcode?: boolean;
+    showQrCode?: boolean;
     logoPosition: 'top-left' | 'top-center' | 'top-right';
     layoutConfig: {
-        photoPosition: { x: number; y: number; width: number; height: number };
-        namePosition: { x: number; y: number };
-        rolePosition: { x: number; y: number };
-        idPosition: { x: number; y: number };
-        qrCodePosition: { x: number; y: number; size: number };
-        barcodePosition: { x: number; y: number };
+        photoPosition: { x: number; y: number; width: number; height: number; side?: 'front' | 'back' };
+        namePosition: { x: number; y: number; side?: 'front' | 'back' };
+        titlePosition?: { x: number; y: number; side?: 'front' | 'back' };
+        schoolNamePosition?: { x: number; y: number; side?: 'front' | 'back' };
+        logoPositionConfig?: { x: number; y: number; side?: 'front' | 'back' };
+        rolePosition: { x: number; y: number; side?: 'front' | 'back' };
+        idPosition: { x: number; y: number; side?: 'front' | 'back' };
+        qrCodePosition: { x: number; y: number; size: number; side?: 'front' | 'back' };
+        barcodePosition: { x: number; y: number; side?: 'front' | 'back' };
+        customElements?: CanvasElement[];
     };
 }
 

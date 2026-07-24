@@ -16,9 +16,9 @@ import {
     Download,
     History,
     QrCode,
-    Barcode,
     Loader2,
 } from 'lucide-react';
+import { VisualIdCardRenderer } from './VisualIdCardRenderer';
 
 interface CardDetailsModalProps {
     isOpen: boolean;
@@ -64,7 +64,7 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
         enabled: isOpen && !!cardId,
     });
 
-    const card = cardData?.data;
+    const card: any = (cardData as any)?.card ?? (cardData as any)?.data;
 
     // Fetch card history
     const { data: historyData, isLoading: historyLoading } = useQuery({
@@ -73,7 +73,7 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
         enabled: isOpen && !!cardId,
     });
 
-    const history = historyData?.data ?? [];
+    const history = (historyData as any)?.data ?? [];
 
     if (!cardId) return null;
 
@@ -108,6 +108,35 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                     </div>
                 ) : (
                     <div className="space-y-6">
+                        {/* Visual Card Preview */}
+                        <div className="bg-slate-900 rounded-2xl p-4 flex flex-col items-center justify-center border border-gray-800 shadow-xl overflow-hidden">
+                            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Live Template Rendered Card</div>
+                            <VisualIdCardRenderer
+                                config={card.template?.config || {
+                                    headerStyle: 'curved-wave',
+                                    primaryColor: '#1E3A8A',
+                                    secondaryColor: '#EA580C',
+                                    backgroundColor: '#FFFFFF',
+                                    textColor: '#0F172A',
+                                    photoShape: 'circle',
+                                    cardTitle: 'IDENTIFICATION CARD',
+                                }}
+                                format={card.format || 'pvc'}
+                                user={{
+                                    name: card.user ? `${card.user.firstName} ${card.user.lastName}` : 'ID Holder',
+                                    idNumber: card.user?.memberId || card.cardNumber,
+                                    role: card.user?.role ? card.user.role.toUpperCase() : 'STUDENT',
+                                    photoUrl: card.user?.photoUrl,
+                                    expiresAt: formatDate(card.expiresAt),
+                                    dob: card.user?.dob ? formatDate(card.user.dob) : undefined,
+                                    departmentOrGrade: card.user?.departmentOrGrade,
+                                }}
+                                logoUrl={card.template?.logoUrl || card.template?.config?.logoUrl}
+                                side="front"
+                                widthPx={380}
+                            />
+                        </div>
+
                         {/* Card Information */}
                         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
                             <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-4">

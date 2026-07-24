@@ -31,12 +31,16 @@ export const authService = {
       credentials
     );
 
-    if (response.success && response.data) {
-      // Store tokens and user info
-      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.data.accessToken);
-      localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.data.refreshToken);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.data.user));
-    }
+    const resAny = response as any;
+    const dataAny = response?.data as any;
+
+    const accessToken = resAny?.token || resAny?.accessToken || dataAny?.accessToken || dataAny?.tokens?.accessToken || dataAny?.token;
+    const refreshToken = resAny?.refreshToken || dataAny?.refreshToken || dataAny?.tokens?.refreshToken;
+    const user = resAny?.user || dataAny?.user;
+
+    if (accessToken) localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+    if (refreshToken) localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+    if (user) localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
 
     return response;
   },
@@ -50,12 +54,16 @@ export const authService = {
       payload
     );
 
-    if (response.success && response.data) {
-      // Store tokens and user info
-      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.data.accessToken);
-      localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.data.refreshToken);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.data.user));
-    }
+    const resAny = response as any;
+    const dataAny = response?.data as any;
+
+    const accessToken = resAny?.token || resAny?.accessToken || dataAny?.accessToken || dataAny?.tokens?.accessToken || dataAny?.token;
+    const refreshToken = resAny?.refreshToken || dataAny?.refreshToken || dataAny?.tokens?.refreshToken;
+    const user = resAny?.user || dataAny?.user;
+
+    if (accessToken) localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+    if (refreshToken) localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+    if (user) localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
 
     return response;
   },
@@ -85,11 +93,16 @@ export const authService = {
       payload
     );
 
-    if (response.success && response.data) {
-      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.data.accessToken);
-      localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.data.refreshToken);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(response.data.user));
-    }
+    const resAny = response as any;
+    const dataAny = response?.data as any;
+
+    const accessToken = resAny?.token || resAny?.accessToken || dataAny?.accessToken || dataAny?.tokens?.accessToken || dataAny?.token;
+    const refreshToken = resAny?.refreshToken || dataAny?.refreshToken || dataAny?.tokens?.refreshToken;
+    const user = resAny?.user || dataAny?.user;
+
+    if (accessToken) localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+    if (refreshToken) localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+    if (user) localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
 
     return response;
   },

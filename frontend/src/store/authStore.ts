@@ -108,9 +108,20 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const response = await authService.login({ email, password });
 
-      if (response.success && response.data) {
-        setUser(response.data.user);
-        setAccessToken(response.data.accessToken);
+      const resAny = response as any;
+      const dataAny = response?.data as any;
+
+      const token = resAny?.token || resAny?.accessToken || dataAny?.accessToken || dataAny?.tokens?.accessToken || dataAny?.token;
+      const user = resAny?.user || dataAny?.user;
+
+      if (token && user) {
+        setUser(user);
+        setAccessToken(token);
+        setIsAuthenticated(true);
+        return true;
+      } else if (response.success && dataAny) {
+        if (dataAny.user) setUser(dataAny.user);
+        if (token) setAccessToken(token);
         setIsAuthenticated(true);
         return true;
       } else {

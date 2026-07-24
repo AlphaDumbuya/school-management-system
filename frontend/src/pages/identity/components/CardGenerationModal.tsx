@@ -133,12 +133,12 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
   });
 
   const templates: any[] = useMemo(() => {
-    // Backend returns { templates: [...], count } directly from apiClient
-    // On error returns { success: false, error: '...' }
     if (!templatesData || (templatesData as any)?.success === false) return [];
     const raw = templatesData as any;
     if (Array.isArray(raw?.templates)) return raw.templates;
+    if (Array.isArray(raw?.data?.templates)) return raw.data.templates;
     if (Array.isArray(raw?.data)) return raw.data;
+    if (Array.isArray(raw)) return raw;
     return [];
   }, [templatesData]);
 

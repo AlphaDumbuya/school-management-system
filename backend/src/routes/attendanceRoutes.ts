@@ -3,12 +3,9 @@ import { authenticate, authorize, attachUserContext } from '@middleware/authMidd
 import { AppError } from '@middleware/errorHandler';
 import { UserRole } from '../types/auth';
 import { logger } from '@utils/logger';
-import knex from 'knex';
-import knexConfig from '../../knexfile';
+import { db } from '@utils/database';
 
 const router = Router();
-const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
-const db = knex(knexConfig[env] || knexConfig.development);
 
 /**
  * POST /api/v1/attendance
@@ -163,6 +160,7 @@ router.get('/', authenticate, attachUserContext, async (req: Request, res: Respo
         'attendance.created_at',
         db.raw("students.first_name || ' ' || students.last_name as student_name"),
         'students.student_id as student_id_code',
+        'students.photo_url',
         'classes.name as class_name'
       )
       .limit(limit)

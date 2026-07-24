@@ -79,13 +79,36 @@ export class IdCardService {
         throw new Error(`User ${userId} already has an active card`);
       }
 
-      // Retrieve user information
-      const user = await this.db('users')
+      // Retrieve user information (checking both users table and students table)
+      let user = await this.db('users')
         .where({ id: userId, tenant_id: tenantId })
         .first();
 
       if (!user) {
-        throw new Error(`User ${userId} not found for tenant ${tenantId}`);
+        const student = await this.db('students')
+          .where({ id: userId, tenant_id: tenantId })
+          .first();
+
+        if (student) {
+          if (student.user_id) {
+            user = await this.db('users').where({ id: student.user_id }).first();
+            if (user) userId = student.user_id;
+          }
+          if (!user) {
+            user = {
+              id: student.id,
+              first_name: student.first_name,
+              last_name: student.last_name,
+              role: 'student',
+              photo_url: student.photo_url,
+              tenant_id: tenantId,
+            } as any;
+          }
+        }
+      }
+
+      if (!user) {
+        throw new Error(`User or Student ${userId} not found for tenant ${tenantId}`);
       }
 
       // Get user type-specific information (student_id or teacher_id)
@@ -120,22 +143,14 @@ export class IdCardService {
         expiresAt.setFullYear(expiresAt.getFullYear() + 1);
       }
 
-      // Generate QR code
-      const qrCodeData = await this.qrCodeService.generateQrCode(
-        userId,
-        tenantId,
-        expiresAt
-      );
-
-      // Generate barcode
-      const barcodeData = await this.barcodeService.generateBarcode(userIdentifier);
-
-      // Generate unique card number
+      // Generate card UUID & unique card number
+      const cardId = crypto.randomUUID();
       const cardNumber = this.generateCardNumber(tenantId);
 
-      // Create card record
+      // Create card record first
       const [card] = await this.db('id_cards')
         .insert({
+          id: cardId,
           tenant_id: tenantId,
           user_id: userId,
           template_id: template.templateId,
@@ -150,10 +165,24 @@ export class IdCardService {
         })
         .returning('*');
 
-      // Link QR code to card
+      const createdCard = card || { id: cardId };
+
+      // Generate QR code associated directly with cardId
+      const qrCodeData = await this.qrCodeService.generateQrCode(
+        userId,
+        tenantId,
+        expiresAt,
+        createdCard.id
+      );
+
+      // Generate barcode
+      const barcodeData = await this.barcodeService.generateBarcode(userIdentifier);
+
+      // Ensure QR code link
       await this.db('qr_codes')
         .where({ id: qrCodeData.qrCodeId })
-        .update({ card_id: card.id });
+        .update({ card_id: createdCard.id })
+        .catch(() => {});
 
       // Generate PDF
       const pdfBuffer = await this.generateCardPDF(
@@ -306,20 +335,79 @@ export class IdCardService {
     }
   }
 
-  /**
-   * Get card by ID
-   */
-  async getCardById(cardId: string): Promise<Card> {
+  async getCardById(cardId: string): Promise<any> {
     try {
       const card = await this.db('id_cards')
-        .where({ id: cardId })
+        .select(
+          'id_cards.*',
+          this.db.raw("COALESCE(users.first_name, students.first_name, 'Member') as first_name"),
+          this.db.raw("COALESCE(users.last_name, students.last_name, '') as last_name"),
+          this.db.raw("COALESCE(users.email, '') as email"),
+          this.db.raw("COALESCE(users.role, 'student') as user_role"),
+          this.db.raw("COALESCE(students.photo_url, users.photo_url, NULL) as photo_url"),
+          'students.date_of_birth as student_dob',
+          'students.student_id as student_reg_id',
+          'classes.level as student_grade',
+          'classes.name as class_name',
+          'teachers.teacher_id as teacher_code',
+          'teachers.department as teacher_department',
+          'card_templates.name as template_name',
+          'card_templates.config as template_config',
+          'card_templates.logo_url as template_logo_url'
+        )
+        .leftJoin('students', function () {
+          this.on('students.user_id', '=', 'id_cards.user_id')
+            .orOn('students.id', '=', 'id_cards.user_id');
+        })
+        .leftJoin('users', function () {
+          this.on('users.id', '=', 'id_cards.user_id')
+            .orOn('users.id', '=', 'students.user_id');
+        })
+        .leftJoin('enrollments', 'enrollments.student_id', 'students.id')
+        .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+        .leftJoin('teachers', function () {
+          this.on('teachers.user_id', '=', 'id_cards.user_id')
+            .orOn('teachers.id', '=', 'id_cards.user_id');
+        })
+        .leftJoin('card_templates', 'card_templates.id', 'id_cards.template_id')
+        .where('id_cards.id', cardId)
         .first();
 
       if (!card) {
         throw new Error(`Card ${cardId} not found`);
       }
 
-      return this.mapCardFromDb(card);
+      return {
+        id: card.id,
+        tenantId: card.tenant_id,
+        userId: card.user_id,
+        templateId: card.template_id,
+        cardNumber: card.card_number,
+        format: card.format,
+        status: card.status,
+        pdfUrl: card.pdf_url,
+        issuedAt: card.issued_at,
+        expiresAt: card.expires_at,
+        issuedBy: card.issued_by,
+        createdAt: card.created_at,
+        updatedAt: card.updated_at,
+        user: {
+          id: card.user_id,
+          firstName: card.first_name || 'Member',
+          lastName: card.last_name || '',
+          email: card.email || '',
+          role: card.user_role || 'student',
+          photoUrl: card.photo_url || null,
+          dob: card.student_dob || null,
+          memberId: card.student_reg_id || card.teacher_code || card.card_number,
+          departmentOrGrade: card.class_name || card.student_grade || card.teacher_department || null,
+        },
+        template: {
+          name: card.template_name || 'Unknown',
+          config: card.template_config || {},
+          logoUrl: card.template_logo_url || null,
+        }
+      };
     } catch (error) {
       logger.error('Failed to get card', { cardId, error });
       throw error;
@@ -425,8 +513,31 @@ export class IdCardService {
     barcodeData: any,
     tenantId: string
   ): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
+        // Fetch student details for DOB and Grade/Department
+        let dobValue = '';
+        let departmentOrGradeValue = '';
+
+        if (user.role === 'student') {
+          const student = await this.db('students').where({ user_id: user.id }).first();
+          if (student) {
+            dobValue = student.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString() : '';
+            const enrollment = await this.db('enrollments').where({ student_id: student.id }).first();
+            if (enrollment) {
+              const cls = await this.db('classes').where({ id: enrollment.class_id }).first();
+              if (cls) {
+                departmentOrGradeValue = cls.name || cls.level || '';
+              }
+            }
+          }
+        } else if (user.role === 'teacher') {
+          const teacher = await this.db('teachers').where({ user_id: user.id }).first();
+          if (teacher) {
+            departmentOrGradeValue = teacher.department || '';
+          }
+        }
+
         // Determine card dimensions
         const dimensions =
           card.format === 'pvc'
@@ -443,99 +554,358 @@ export class IdCardService {
         doc.on('end', () => resolve(Buffer.concat(buffers)));
         doc.on('error', reject);
 
+        // Conversion helper from mm to points (72 DPI)
+        const mmToPt = (mm: number) => mm * (72 / 25.4);
+
+        const fontName = template.config.fontFamily === 'Times-Roman' ? 'Times-Roman'
+                        : template.config.fontFamily === 'Courier' ? 'Courier'
+                        : 'Helvetica';
+
+        // Extractor helpers for element configs, supporting side setting fallbacks
+        const photoConf = template.config.layoutConfig?.photoPosition || { x: 5, y: 12, width: 25, height: 30, side: 'front' };
+        const nameConf = template.config.layoutConfig?.namePosition || { x: 34, y: 14, side: 'front' };
+        const roleConf = template.config.layoutConfig?.rolePosition || { x: 34, y: 24, side: 'front' };
+        const idConf = template.config.layoutConfig?.idPosition || { x: 34, y: 31, side: 'front' };
+        const qrConf = template.config.layoutConfig?.qrCodePosition || { x: 64, y: 14, size: 16, side: 'back' };
+        const barcodeConf = template.config.layoutConfig?.barcodePosition || { x: 34, y: 38, side: 'back' };
+
+        const titleConf = template.config.layoutConfig?.titlePosition || {
+          x: nameConf.x,
+          y: nameConf.y + (card.format === 'badge' ? 6 : 5.5),
+          side: nameConf.side || 'front',
+        };
+
+        const logoConf = template.config.layoutConfig?.logoPositionConfig || { x: 4, y: 3.5, side: 'front' };
+        const schoolNameConf = template.config.layoutConfig?.schoolNamePosition || { x: 15, y: 4, side: 'front' };
+
+        const idLabel = template.config.idLabel || 'ID NO';
+        const dobLabel = template.config.dobLabel || 'D.O.B';
+        const gradeLabel = template.config.gradeLabel || 'GRADE';
+        const expiryLabel = template.config.expiryLabel || 'EXPIRES';
+
+        const logoUrl = template.logoUrl || template.config?.logoUrl;
+        const schoolNameText = template.config?.customSchoolName || 'GINYARD ACADEMY';
+
+        const vf = {
+          showName: template.config.visibleFields?.showName !== false,
+          showTitle: template.config.visibleFields?.showTitle !== false,
+          showRole: template.config.visibleFields?.showRole !== false,
+          showId: template.config.visibleFields?.showId !== false,
+          showDob: template.config.visibleFields?.showDob !== false,
+          showGrade: template.config.visibleFields?.showGrade !== false,
+          showExpiry: template.config.visibleFields?.showExpiry !== false,
+          showSchoolName: template.config.visibleFields?.showSchoolName !== false,
+          showLogo: template.config.visibleFields?.showLogo !== false,
+        };
+
+        const isOnSide = (conf: any, defaultSide: 'front' | 'back', currentSide: 'front' | 'back') => {
+          const side = conf.side || defaultSide;
+          return side === currentSide;
+        };
+
+        // ── PAGE 1: FRONT SIDE ──
         // Apply background color
         doc
           .rect(0, 0, dimensions.width, dimensions.height)
-          .fill(template.config.backgroundColor);
-
-        // Add school logo (if available)
-        if (template.logoUrl) {
-          // In real implementation, load and draw the logo
-          // doc.image(logoPath, x, y, { width, height });
-        }
+          .fill(template.config.backgroundColor || '#FFFFFF');
 
         // Set text color
-        doc.fillColor(template.config.textColor);
+        doc.fillColor(template.config.textColor || '#0F172A');
 
-        // Add user photo or placeholder
-        const photoY = template.config.layoutConfig.photoPosition.y;
-        const photoX = template.config.layoutConfig.photoPosition.x;
-        
-        if (user.photo_url) {
-          // In real implementation, load and draw the photo
-          // doc.image(photoPath, photoX, photoY, { width, height });
-        } else {
-          // Draw placeholder
-          doc
-            .rect(photoX, photoY, 60, 80)
-            .stroke('#cccccc');
-          doc
-            .fontSize(8)
-            .text('No Photo', photoX, photoY + 35, { width: 60, align: 'center' });
+        // Front School branding / Logo
+        if (vf.showLogo && isOnSide(logoConf, 'front', 'front') && logoUrl && logoUrl.startsWith('data:image/')) {
+          try {
+            const base64Data = logoUrl.split(',')[1];
+            if (base64Data) {
+              const logoBuffer = Buffer.from(base64Data, 'base64');
+              doc.image(logoBuffer, mmToPt(logoConf.x), mmToPt(logoConf.y), { height: mmToPt(8) });
+            }
+          } catch (logoErr) {
+            logger.error('Failed to draw logo on front PDF', logoErr);
+          }
         }
 
-        // Add user name
-        const userName = `${user.first_name} ${user.last_name}`;
-        doc
-          .fontSize(template.config.fontSize || 12)
-          .font('Helvetica-Bold')
-          .text(
-            userName,
-            template.config.layoutConfig.namePosition.x,
-            template.config.layoutConfig.namePosition.y,
-            { width: 150 }
-          );
-
-        // Add role
-        doc
-          .fontSize((template.config.fontSize || 12) - 2)
-          .font('Helvetica')
-          .text(
-            user.role.toUpperCase(),
-            template.config.layoutConfig.rolePosition.x,
-            template.config.layoutConfig.rolePosition.y
-          );
-
-        // Add ID number
-        doc
-          .fontSize((template.config.fontSize || 12) - 2)
-          .text(
-            `ID: ${userIdentifier}`,
-            template.config.layoutConfig.idPosition.x,
-            template.config.layoutConfig.idPosition.y
-          );
-
-        // Add card number
-        doc
-          .fontSize(8)
-          .text(
-            `Card #: ${card.card_number}`,
-            10,
-            dimensions.height - 20
-          );
-
-        // Add QR code (if available as data URL)
-        if (qrCodeData.imageDataUrl) {
-          // In real implementation, decode base64 and draw QR code image
-          // const qrBuffer = Buffer.from(qrCodeData.imageDataUrl.split(',')[1], 'base64');
-          // doc.image(qrBuffer, qrX, qrY, { width: qrSize });
+        // Front School Name
+        if (vf.showSchoolName && isOnSide(schoolNameConf, 'front', 'front')) {
+          doc
+            .fontSize(template.config.fontSize || 10)
+            .font(`${fontName}-Bold`)
+            .text(schoolNameText, mmToPt(schoolNameConf.x), mmToPt(schoolNameConf.y));
         }
 
-        // Add barcode placeholder
+        // Draw Photo if on front
+        if (isOnSide(photoConf, 'front', 'front')) {
+          const photoX = mmToPt(photoConf.x);
+          const photoY = mmToPt(photoConf.y);
+          const photoW = mmToPt(photoConf.width || 25);
+          const photoH = mmToPt(photoConf.height || 30);
+          
+          if (user.photo_url && user.photo_url.startsWith('data:image/')) {
+            try {
+              const base64Data = user.photo_url.split(',')[1];
+              if (base64Data) {
+                const photoBuffer = Buffer.from(base64Data, 'base64');
+                doc.image(photoBuffer, photoX, photoY, { width: photoW, height: photoH });
+              }
+            } catch (photoErr) {
+              doc.rect(photoX, photoY, photoW, photoH).stroke('#cccccc');
+              doc.fontSize(6).text('Photo Error', photoX, photoY + photoH / 2 - 3, { width: photoW, align: 'center' });
+            }
+          } else {
+            doc.rect(photoX, photoY, photoW, photoH).stroke('#cccccc');
+            doc.fontSize(7).text('No Photo', photoX, photoY + photoH / 2 - 3, { width: photoW, align: 'center' });
+          }
+        }
+
+        // Draw Name if on front
+        if (vf.showName && isOnSide(nameConf, 'front', 'front')) {
+          const userName = `${user.first_name} ${user.last_name}`;
+          doc
+            .fontSize(template.config.fontSize || 12)
+            .font(`${fontName}-Bold`)
+            .text(userName, mmToPt(nameConf.x), mmToPt(nameConf.y), { width: mmToPt(50) });
+        }
+
+        // Draw Card Title if on front
+        if (vf.showTitle && isOnSide(titleConf, 'front', 'front')) {
+          const cardTitleText = template.config.cardTitle || (user.role === 'student' ? 'STUDENT ID CARD' : 'IDENTIFICATION CARD');
+          doc
+            .fontSize((template.config.fontSize || 12) - 2)
+            .font(`${fontName}-Bold`)
+            .text(cardTitleText, mmToPt(titleConf.x), mmToPt(titleConf.y));
+        }
+
+        // Draw Role if on front
+        if (vf.showRole && isOnSide(roleConf, 'front', 'front')) {
+          doc
+            .fontSize((template.config.fontSize || 12) - 2)
+            .font(fontName)
+            .text(user.role.toUpperCase(), mmToPt(roleConf.x), mmToPt(roleConf.y));
+        }
+
+        // Draw Details Table on front
+        let currentYFront = idConf.y;
+        const yStepFront = 3.5;
+
+        if (vf.showId && isOnSide(idConf, 'front', 'front')) {
+          doc
+            .fontSize((template.config.fontSize || 12) - 3)
+            .font(fontName)
+            .text(`${idLabel}: ${userIdentifier}`, mmToPt(idConf.x), mmToPt(currentYFront));
+          currentYFront += yStepFront;
+        }
+
+        if (vf.showDob && dobValue && isOnSide(idConf, 'front', 'front')) {
+          doc
+            .fontSize((template.config.fontSize || 12) - 3)
+            .font(fontName)
+            .text(`${dobLabel}: ${dobValue}`, mmToPt(idConf.x), mmToPt(currentYFront));
+          currentYFront += yStepFront;
+        }
+
+        if (vf.showGrade && departmentOrGradeValue && isOnSide(idConf, 'front', 'front')) {
+          doc
+            .fontSize((template.config.fontSize || 12) - 3)
+            .font(fontName)
+            .text(`${gradeLabel}: ${departmentOrGradeValue}`, mmToPt(idConf.x), mmToPt(currentYFront));
+          currentYFront += yStepFront;
+        }
+
+        if (vf.showExpiry && isOnSide(idConf, 'front', 'front')) {
+          doc
+            .fontSize((template.config.fontSize || 12) - 3)
+            .font(fontName)
+            .text(`${expiryLabel}: ${new Date(card.expires_at).toLocaleDateString()}`, mmToPt(idConf.x), mmToPt(currentYFront));
+        }
+
+        // Draw QR Code if on front
+        if (isOnSide(qrConf, 'back', 'front') && qrCodeData.imageDataUrl && qrCodeData.imageDataUrl.startsWith('data:image/')) {
+          try {
+            const base64Data = qrCodeData.imageDataUrl.split(',')[1];
+            if (base64Data) {
+              const qrBuffer = Buffer.from(base64Data, 'base64');
+              doc.image(qrBuffer, mmToPt(qrConf.x), mmToPt(qrConf.y), { width: mmToPt(qrConf.size) });
+            }
+          } catch (qrErr) {
+            logger.error('Failed to draw QR code on front', qrErr);
+          }
+        }
+
+        // Draw Barcode if on front
+        if (isOnSide(barcodeConf, 'back', 'front')) {
+          doc
+            .fontSize(7)
+            .font(fontName)
+            .text(barcodeData.content, mmToPt(barcodeConf.x), mmToPt(barcodeConf.y), { width: mmToPt(35), align: 'center' });
+        }
+
+        // Card number at bottom left of front page
         doc
-          .fontSize(8)
+          .fontSize(6)
+          .font(fontName)
+          .text(`Card #: ${card.card_number}`, 10, dimensions.height - 12);
+
+
+        // ── PAGE 2: BACK SIDE ──
+        doc.addPage({
+          size: [dimensions.width, dimensions.height],
+          margins: { top: 0, bottom: 0, left: 0, right: 0 }
+        });
+
+        // Apply background color to back side
+        doc
+          .rect(0, 0, dimensions.width, dimensions.height)
+          .fill(template.config.backgroundColor || '#FFFFFF');
+
+        // Set text color
+        doc.fillColor(template.config.textColor || '#0F172A');
+
+        // Back School branding / Logo
+        if (vf.showLogo && isOnSide(logoConf, 'front', 'back') && logoUrl && logoUrl.startsWith('data:image/')) {
+          try {
+            const base64Data = logoUrl.split(',')[1];
+            if (base64Data) {
+              const logoBuffer = Buffer.from(base64Data, 'base64');
+              doc.image(logoBuffer, mmToPt(logoConf.x), mmToPt(logoConf.y), { height: mmToPt(8) });
+            }
+          } catch (logoErr) {
+            logger.error('Failed to draw logo on back PDF', logoErr);
+          }
+        }
+
+        // Back School Name
+        if (vf.showSchoolName && isOnSide(schoolNameConf, 'front', 'back')) {
+          doc
+            .fontSize(template.config.fontSize || 10)
+            .font(`${fontName}-Bold`)
+            .text(schoolNameText, mmToPt(schoolNameConf.x), mmToPt(schoolNameConf.y));
+        }
+
+        // Draw Photo if on back
+        if (isOnSide(photoConf, 'front', 'back')) {
+          const photoX = mmToPt(photoConf.x);
+          const photoY = mmToPt(photoConf.y);
+          const photoW = mmToPt(photoConf.width || 25);
+          const photoH = mmToPt(photoConf.height || 30);
+          
+          if (user.photo_url && user.photo_url.startsWith('data:image/')) {
+            try {
+              const base64Data = user.photo_url.split(',')[1];
+              if (base64Data) {
+                const photoBuffer = Buffer.from(base64Data, 'base64');
+                doc.image(photoBuffer, photoX, photoY, { width: photoW, height: photoH });
+              }
+            } catch (photoErr) {
+              doc.rect(photoX, photoY, photoW, photoH).stroke('#cccccc');
+              doc.fontSize(6).text('Photo Error', photoX, photoY + photoH / 2 - 3, { width: photoW, align: 'center' });
+            }
+          } else {
+            doc.rect(photoX, photoY, photoW, photoH).stroke('#cccccc');
+            doc.fontSize(7).text('No Photo', photoX, photoY + photoH / 2 - 3, { width: photoW, align: 'center' });
+          }
+        }
+
+        // Draw Name if on back
+        if (vf.showName && isOnSide(nameConf, 'front', 'back')) {
+          const userName = `${user.first_name} ${user.last_name}`;
+          doc
+            .fontSize(template.config.fontSize || 12)
+            .font(`${fontName}-Bold`)
+            .text(userName, mmToPt(nameConf.x), mmToPt(nameConf.y), { width: mmToPt(50) });
+        }
+
+        // Draw Card Title if on back
+        if (vf.showTitle && isOnSide(titleConf, 'front', 'back')) {
+          const cardTitleText = template.config.cardTitle || (user.role === 'student' ? 'STUDENT ID CARD' : 'IDENTIFICATION CARD');
+          doc
+            .fontSize((template.config.fontSize || 12) - 2)
+            .font(`${fontName}-Bold`)
+            .text(cardTitleText, mmToPt(titleConf.x), mmToPt(titleConf.y));
+        }
+
+        // Draw Role if on back
+        if (vf.showRole && isOnSide(roleConf, 'front', 'back')) {
+          doc
+            .fontSize((template.config.fontSize || 12) - 2)
+            .font(fontName)
+            .text(user.role.toUpperCase(), mmToPt(roleConf.x), mmToPt(roleConf.y));
+        }
+
+        // Draw Details Table on back
+        let currentYBack = idConf.y;
+        const yStepBack = 3.5;
+
+        if (vf.showId && isOnSide(idConf, 'front', 'back')) {
+          doc
+            .fontSize((template.config.fontSize || 12) - 3)
+            .font(fontName)
+            .text(`${idLabel}: ${userIdentifier}`, mmToPt(idConf.x), mmToPt(currentYBack));
+          currentYBack += yStepBack;
+        }
+
+        if (vf.showDob && dobValue && isOnSide(idConf, 'front', 'back')) {
+          doc
+            .fontSize((template.config.fontSize || 12) - 3)
+            .font(fontName)
+            .text(`${dobLabel}: ${dobValue}`, mmToPt(idConf.x), mmToPt(currentYBack));
+          currentYBack += yStepBack;
+        }
+
+        if (vf.showGrade && departmentOrGradeValue && isOnSide(idConf, 'front', 'back')) {
+          doc
+            .fontSize((template.config.fontSize || 12) - 3)
+            .font(fontName)
+            .text(`${gradeLabel}: ${departmentOrGradeValue}`, mmToPt(idConf.x), mmToPt(currentYBack));
+          currentYBack += yStepBack;
+        }
+
+        if (vf.showExpiry && isOnSide(idConf, 'front', 'back')) {
+          doc
+            .fontSize((template.config.fontSize || 12) - 3)
+            .font(fontName)
+            .text(`${expiryLabel}: ${new Date(card.expires_at).toLocaleDateString()}`, mmToPt(idConf.x), mmToPt(currentYBack));
+        }
+
+        // Draw QR Code if on back
+        if (isOnSide(qrConf, 'back', 'back') && qrCodeData.imageDataUrl && qrCodeData.imageDataUrl.startsWith('data:image/')) {
+          try {
+            const base64Data = qrCodeData.imageDataUrl.split(',')[1];
+            if (base64Data) {
+              const qrBuffer = Buffer.from(base64Data, 'base64');
+              doc.image(qrBuffer, mmToPt(qrConf.x), mmToPt(qrConf.y), { width: mmToPt(qrConf.size) });
+            }
+          } catch (qrErr) {
+            logger.error('Failed to draw QR code on back', qrErr);
+          }
+        }
+
+        // Draw Barcode if on back
+        if (isOnSide(barcodeConf, 'back', 'back')) {
+          doc
+            .fontSize(7)
+            .font(fontName)
+            .text(barcodeData.content, mmToPt(barcodeConf.x), mmToPt(barcodeConf.y), { width: mmToPt(35), align: 'center' });
+        }
+
+        // Terms and Conditions text block at the bottom of the reverse page
+        const termsY = dimensions.height - (card.format === 'pvc' ? 45 : 85);
+        const termsW = dimensions.width - 24;
+        doc
+          .fontSize(5)
+          .font(fontName)
           .text(
-            barcodeData.content,
-            template.config.layoutConfig.barcodePosition.x,
-            template.config.layoutConfig.barcodePosition.y,
-            { width: 100, align: 'center' }
+            "TERMS AND CONDITIONS\nThis card is the property of the issuing institution. It is non-transferable and must be presented upon request. If found, please return to the administration office.",
+            12,
+            termsY,
+            { width: termsW, align: 'center', lineGap: 1 }
           );
 
-        // Add expiration date
+        // Expiration date at bottom right of reverse page
         const expiresText = `Expires: ${new Date(card.expires_at).toLocaleDateString()}`;
         doc
-          .fontSize(7)
-          .text(expiresText, dimensions.width - 80, dimensions.height - 15);
+          .fontSize(6)
+          .font(fontName)
+          .text(expiresText, dimensions.width - 80, dimensions.height - 12, { align: 'right', width: 70 });
 
         doc.end();
       } catch (error) {

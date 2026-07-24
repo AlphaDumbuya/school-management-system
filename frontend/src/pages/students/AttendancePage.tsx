@@ -727,8 +727,42 @@ export const AttendancePage: React.FC = () => {
                         {logs.map((log: any) => (
                           <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group">
                             <td className="px-5 py-3.5">
-                              <p className="font-semibold text-gray-900 dark:text-white">{log.student_name || '—'}</p>
-                              <p className="text-[11px] text-gray-400 font-mono mt-0.5">{log.student_id_code || '—'}</p>
+                              <div className="flex items-center gap-3">
+                                {/* Avatar */}
+                                <div className="relative w-9 h-9 rounded-full shadow-sm overflow-hidden flex-shrink-0">
+                                  {log.photo_url && log.photo_url.trim() ? (
+                                    <>
+                                      <img
+                                        src={log.photo_url.trim()}
+                                        alt={log.student_name || ''}
+                                        className="w-full h-full object-cover"
+                                        loading="lazy"
+                                        onError={(e) => {
+                                          const target = e.target as HTMLImageElement;
+                                          target.style.display = 'none';
+                                          const fallback = target.nextElementSibling as HTMLElement;
+                                          if (fallback) fallback.style.display = 'flex';
+                                        }}
+                                      />
+                                      <div
+                                        className="absolute inset-0 w-full h-full rounded-full flex items-center justify-center text-xs font-bold bg-blue-500 text-white"
+                                        style={{ display: 'none' }}
+                                      >
+                                        {(log.student_name || '?').split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className="w-full h-full rounded-full flex items-center justify-center text-xs font-bold bg-blue-500 text-white">
+                                      {(log.student_name || '?').split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                    </div>
+                                  )}
+                                </div>
+                                {/* Name + ID */}
+                                <div>
+                                  <p className="font-semibold text-gray-900 dark:text-white leading-tight">{log.student_name || '—'}</p>
+                                  <p className="text-[11px] text-gray-400 font-mono mt-0.5">{log.student_id_code || '—'}</p>
+                                </div>
+                              </div>
                             </td>
                             <td className="px-5 py-3.5 text-gray-600 dark:text-gray-300 font-medium">{log.class_name || '—'}</td>
                             <td className="px-5 py-3.5 text-[11px] font-mono text-gray-500 dark:text-gray-400">{fmt(log.date)}</td>
@@ -1052,10 +1086,10 @@ export const AttendancePage: React.FC = () => {
                                           }
                                         }}
                                       />
-                                      {/* Fallback initials div (hidden by default when image loads) */}
+                                      {/* Fallback initials div (hidden by default, shown only if image fails to load) */}
                                       <div 
                                         className={`absolute inset-0 w-full h-full rounded-full flex items-center justify-center text-lg font-bold ${getAvatarStyle(rec.status)}`}
-                                        style={{ display: 'flex' }}
+                                        style={{ display: 'none' }}
                                       >
                                         {`${st.first_name?.[0] || ''}${st.last_name?.[0] || ''}`.toUpperCase() || (idx + 1).toString()}
                                       </div>

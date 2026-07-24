@@ -75,34 +75,40 @@ export const TemplatesPage: React.FC = () => {
         staleTime: 30_000,
     });
 
-    const templates: CardTemplate[] = (data?.data as any)?.data ?? [];
+    const templates: CardTemplate[] =
+        (data as any)?.templates ??
+        (data?.data as any)?.templates ??
+        (data?.data as any)?.data ??
+        [];
 
     // Handle delete
     const handleDelete = async () => {
         if (!deleteTarget) return;
 
-        const res = await idCardService.deleteTemplate(deleteTarget.id);
-        if (res.success !== false) {
+        try {
+            await idCardService.deleteTemplate(deleteTarget.id);
             showToast.deleted('Template');
             queryClient.invalidateQueries({ queryKey: ['card-templates'] });
-        } else {
-            showToast.apiError(res.error);
+        } catch (err: any) {
+            showToast.error(err.response?.data?.message || err.message || 'Failed to delete template');
+        } finally {
+            setDeleteTarget(null);
         }
-        setDeleteTarget(null);
     };
 
     // Handle approve
     const handleApprove = async () => {
         if (!approveTarget) return;
 
-        const res = await idCardService.approveTemplate(approveTarget.id);
-        if (res.success !== false) {
+        try {
+            await idCardService.approveTemplate(approveTarget.id);
             showToast.success('Template approved successfully');
             queryClient.invalidateQueries({ queryKey: ['card-templates'] });
-        } else {
-            showToast.apiError(res.error);
+        } catch (err: any) {
+            showToast.error(err.response?.data?.message || err.message || 'Failed to approve template');
+        } finally {
+            setApproveTarget(null);
         }
-        setApproveTarget(null);
     };
 
     // Handle set as default
@@ -112,13 +118,13 @@ export const TemplatesPage: React.FC = () => {
             return;
         }
 
-        const role = template.defaultForRoles[0]; // Use first role for now
-        const res = await idCardService.setDefaultTemplate(template.id, role);
-        if (res.success !== false) {
+        try {
+            const role = template.defaultForRoles[0]; // Use first role for now
+            await idCardService.setDefaultTemplate(template.id, role);
             showToast.success('Template set as default');
             queryClient.invalidateQueries({ queryKey: ['card-templates'] });
-        } else {
-            showToast.apiError(res.error);
+        } catch (err: any) {
+            showToast.error(err.response?.data?.message || err.message || 'Failed to set template as default');
         }
     };
 
@@ -327,7 +333,6 @@ export const TemplatesPage: React.FC = () => {
 
                         actions.push({
                             label: 'Delete',
-                            variant: 'destructive' as const,
                             onClick: (row: CardTemplate) => setDeleteTarget(row),
                         });
 

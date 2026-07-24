@@ -1,16 +1,13 @@
+import { db } from '../utils/database.js';
 import { Router, Request, Response, NextFunction } from 'express';
 import { AuthService } from '@services/authService';
 import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
 import { authenticate, authorize, rateLimitLogin, clearLoginAttempts } from '@middleware/authMiddleware';
 import { logger } from '@utils/logger';
-import knex from 'knex';
-import knexConfig from '../../knexfile';
 import { UserRole, UserStatus } from '@types/auth';
 
 const router = Router();
-const env = (process.env.NODE_ENV || 'development') as keyof typeof knexConfig;
-const db = knex(knexConfig[env] || knexConfig.development);
 const authService = new AuthService(db);
 
 /**

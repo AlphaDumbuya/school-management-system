@@ -1,10 +1,9 @@
+import { db } from '../utils/database.js';
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize, attachUserContext } from '../middleware/authMiddleware.js';
 import { UserRole } from '../types/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
-import knex from 'knex';
-import knexConfig from '../../knexfile.js';
 import { TemplateService, TemplateCreateRequest, TemplateUpdateRequest } from '../services/templateService.js';
 import multer from 'multer';
 
@@ -17,8 +16,6 @@ import multer from 'multer';
  */
 
 const router = Router();
-const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
-const db = knex(knexConfig[env] || knexConfig.development);
 
 // Initialize service
 const templateService = new TemplateService(db);
@@ -61,12 +58,14 @@ router.post(
         name: req.body.name,
         description: req.body.description,
         format: req.body.format,
-        backgroundColor: req.body.backgroundColor,
-        textColor: req.body.textColor,
-        fontFamily: req.body.fontFamily,
-        fontSize: req.body.fontSize,
-        logoPosition: req.body.logoPosition,
-        layoutConfig: req.body.layoutConfig,
+        backgroundColor: req.body.backgroundColor || req.body.config?.backgroundColor,
+        textColor: req.body.textColor || req.body.config?.textColor,
+        fontFamily: req.body.fontFamily || req.body.config?.fontFamily,
+        fontSize: req.body.fontSize !== undefined ? req.body.fontSize : req.body.config?.fontSize,
+        logoPosition: req.body.logoPosition || req.body.config?.logoPosition,
+        layoutConfig: req.body.layoutConfig || req.body.config?.layoutConfig,
+        logoUrl: req.body.logoUrl || req.body.config?.logoUrl,
+        config: req.body.config,
         createdBy,
       };
 
@@ -105,15 +104,21 @@ router.put(
     try {
       const { templateId } = req.params;
 
+      if (!templateId || templateId === 'undefined' || !/^[0-9a-fA-F-]{36}$/.test(templateId)) {
+        throw new AppError('Invalid or missing template ID', 400);
+      }
+
       const updates: TemplateUpdateRequest = {
         name: req.body.name,
         description: req.body.description,
-        backgroundColor: req.body.backgroundColor,
-        textColor: req.body.textColor,
-        fontFamily: req.body.fontFamily,
-        fontSize: req.body.fontSize,
-        logoPosition: req.body.logoPosition,
-        layoutConfig: req.body.layoutConfig,
+        backgroundColor: req.body.backgroundColor || req.body.config?.backgroundColor,
+        textColor: req.body.textColor || req.body.config?.textColor,
+        fontFamily: req.body.fontFamily || req.body.config?.fontFamily,
+        fontSize: req.body.fontSize !== undefined ? req.body.fontSize : req.body.config?.fontSize,
+        logoPosition: req.body.logoPosition || req.body.config?.logoPosition,
+        layoutConfig: req.body.layoutConfig || req.body.config?.layoutConfig,
+        logoUrl: req.body.logoUrl || req.body.config?.logoUrl,
+        config: req.body.config,
       };
 
       const template = await templateService.updateTemplate(templateId, updates);
@@ -166,7 +171,8 @@ router.get(
       }
 
       try {
-        const templates = await templateService.getTemplatesByTenant(tenantId);
+        const format = req.query.format as string | undefined;
+        const templates = await templateService.getTemplatesByTenant(tenantId, format);
         res.json({ templates, count: templates.length });
       } catch (dbError: any) {
         // Table might not exist or be empty — return empty rather than crash
@@ -215,7 +221,10 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { templateId } = req.params;
-      const { roles } = req.body;
+      let roles = req.body.roles;
+      if (!roles && req.body.role) {
+        roles = [req.body.role];
+      }
 
       if (!roles || !Array.isArray(roles) || roles.length === 0) {
         throw new AppError('Roles array is required', 400);

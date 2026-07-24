@@ -1,9 +1,8 @@
+import { db } from '../utils/database.js';
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize } from '../middleware/authMiddleware.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
-import knex from 'knex';
-import knexConfig from '../../knexfile.js';
 import { IdCardReportingService } from '../services/idCardReportingService.js';
 
 /**
@@ -15,8 +14,6 @@ import { IdCardReportingService } from '../services/idCardReportingService.js';
  */
 
 const router = Router();
-const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
-const db = knex(knexConfig[env] || knexConfig.development);
 
 // Initialize service
 const reportingService = new IdCardReportingService(db);

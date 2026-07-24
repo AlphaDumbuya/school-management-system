@@ -22,6 +22,8 @@ export interface TemplateCreateRequest {
   logoPosition: 'top-left' | 'top-center' | 'top-right';
   layoutConfig: TemplateLayout;
   createdBy: string;
+  logoUrl?: string;
+  config?: any;
 }
 
 export interface TemplateUpdateRequest {
@@ -33,6 +35,8 @@ export interface TemplateUpdateRequest {
   fontSize?: number;
   logoPosition?: 'top-left' | 'top-center' | 'top-right';
   layoutConfig?: TemplateLayout;
+  logoUrl?: string;
+  config?: any;
 }
 
 export interface TemplateLayout {
@@ -64,7 +68,19 @@ export interface Template {
 export type UserRole = 'student' | 'teacher' | 'staff' | 'principal';
 
 export class TemplateService {
+  private schemaChecked = false;
+
   constructor(private db: Knex) {}
+
+  private async ensureColumnType() {
+    if (this.schemaChecked) return;
+    try {
+      await this.db.raw('ALTER TABLE card_templates ALTER COLUMN logo_url TYPE text').catch(() => {});
+      this.schemaChecked = true;
+    } catch {
+      this.schemaChecked = true;
+    }
+  }
 
   /**
    * Create a new card template
@@ -72,6 +88,8 @@ export class TemplateService {
    */
   async createTemplate(request: TemplateCreateRequest): Promise<Template> {
     try {
+      await this.ensureColumnType();
+
       // Validate color contrast
       const contrastRatio = this.calculateContrastRatio(
         request.backgroundColor,
@@ -87,8 +105,9 @@ export class TemplateService {
       // Validate layout configuration
       this.validateLayoutConfig(request.layoutConfig, request.format);
 
-      // Create template configuration
+      // Create template configuration preserving all custom frontend fields
       const config = {
+        ...(request.config || {}),
         backgroundColor: request.backgroundColor,
         textColor: request.textColor,
         fontFamily: request.fontFamily,
@@ -97,15 +116,16 @@ export class TemplateService {
         layoutConfig: request.layoutConfig,
       };
 
-      // Insert template
+      // Insert template - status approved by default for instant activation
       const [template] = await this.db('card_templates')
         .insert({
           tenant_id: request.tenantId,
           name: request.name,
           version: 1,
-          status: 'draft',
+          status: 'approved',
           format: request.format,
           config: JSON.stringify(config),
+          logo_url: request.logoUrl || config.logoUrl || null,
           is_default: false,
           default_for_roles: [],
           created_by: request.createdBy,
@@ -134,6 +154,8 @@ export class TemplateService {
     updates: TemplateUpdateRequest
   ): Promise<Template> {
     try {
+      await this.ensureColumnType();
+
       // Get existing template
       const existing = await this.db('card_templates')
         .where({ id: templateId })
@@ -143,9 +165,12 @@ export class TemplateService {
         throw new Error(`Template ${templateId} not found`);
       }
 
-      // Parse existing config
+      // Parse existing config and merge with updates
       const existingConfig = JSON.parse(existing.config);
-      const newConfig = { ...existingConfig };
+      const newConfig = {
+        ...existingConfig,
+        ...(updates.config || {}),
+      };
 
       // Update config fields
       if (updates.backgroundColor) {
@@ -193,6 +218,12 @@ export class TemplateService {
         updated_at: new Date(),
       };
 
+      if (updates.logoUrl !== undefined) {
+        updateData.logo_url = updates.logoUrl;
+      } else if (newConfig.logoUrl) {
+        updateData.logo_url = newConfig.logoUrl;
+      }
+
       if (updates.name) {
         updateData.name = updates.name;
       }
@@ -234,20 +265,145 @@ export class TemplateService {
   }
 
   /**
-   * Get all templates for a tenant
+   * Get all templates for a tenant (auto-seeds default templates if empty)
    * Requirements: 4.1
    */
-  async getTemplatesByTenant(tenantId: string): Promise<Template[]> {
+  async getTemplatesByTenant(tenantId: string, format?: string): Promise<Template[]> {
     try {
-      const templates = await this.db('card_templates')
+      let query = this.db('card_templates')
         .where({ tenant_id: tenantId })
-        .whereNot({ status: 'archived' })
-        .orderBy('created_at', 'desc');
+        .whereNot({ status: 'archived' });
+
+      if (format) {
+        query = query.where({ format });
+      }
+
+      let templates = await query.orderBy('created_at', 'desc');
+
+      // If no templates exist for this tenant, seed default templates automatically
+      if (templates.length === 0 && (!format || format === 'pvc' || format === 'badge')) {
+        await this.ensureDefaultTemplates(tenantId);
+        let reQuery = this.db('card_templates')
+          .where({ tenant_id: tenantId })
+          .whereNot({ status: 'archived' });
+        if (format) {
+          reQuery = reQuery.where({ format });
+        }
+        templates = await reQuery.orderBy('created_at', 'desc');
+      }
 
       return templates.map((t: any) => this.mapTemplateFromDb(t));
     } catch (error) {
       logger.error('Failed to get templates', { tenantId, error });
       throw error;
+    }
+  }
+
+  /**
+   * Auto-seed standard default templates for a tenant
+   */
+  async ensureDefaultTemplates(tenantId: string, createdByUserId?: string): Promise<void> {
+    try {
+      const count = await this.db('card_templates').where({ tenant_id: tenantId }).count('id as cnt').first();
+      if (Number(count?.cnt ?? 0) > 0) return;
+
+      let createdBy = createdByUserId;
+      if (!createdBy) {
+        const user = await this.db('users').where({ tenant_id: tenantId }).first();
+        createdBy = user?.id;
+      }
+      if (!createdBy) return;
+
+      const defaults = [
+        {
+          tenant_id: tenantId,
+          name: 'Standard Student PVC Card',
+          version: 1,
+          status: 'approved',
+          format: 'pvc',
+          config: JSON.stringify({
+            backgroundColor: '#1E293B',
+            textColor: '#FFFFFF',
+            fontFamily: 'Inter',
+            fontSize: 12,
+            logoPosition: 'top-left',
+            layoutConfig: {
+              photoPosition: { x: 5, y: 15, width: 25, height: 30 },
+              namePosition: { x: 35, y: 15 },
+              rolePosition: { x: 35, y: 25 },
+              idPosition: { x: 35, y: 32 },
+              qrCodePosition: { x: 65, y: 15, size: 18 },
+              barcodePosition: { x: 35, y: 40 },
+            },
+          }),
+          is_default: true,
+          default_for_roles: ['student'],
+          created_by: createdBy,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+        {
+          tenant_id: tenantId,
+          name: 'Professional Faculty & Staff PVC',
+          version: 1,
+          status: 'approved',
+          format: 'pvc',
+          config: JSON.stringify({
+            backgroundColor: '#4C1D95',
+            textColor: '#FFFFFF',
+            fontFamily: 'Inter',
+            fontSize: 12,
+            logoPosition: 'top-right',
+            layoutConfig: {
+              photoPosition: { x: 5, y: 15, width: 25, height: 30 },
+              namePosition: { x: 35, y: 15 },
+              rolePosition: { x: 35, y: 25 },
+              idPosition: { x: 35, y: 32 },
+              qrCodePosition: { x: 65, y: 15, size: 18 },
+              barcodePosition: { x: 35, y: 40 },
+            },
+          }),
+          is_default: true,
+          default_for_roles: ['teacher', 'staff', 'principal'],
+          created_by: createdBy,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+        {
+          tenant_id: tenantId,
+          name: 'Standard Event & Lanyard Badge',
+          version: 1,
+          status: 'approved',
+          format: 'badge',
+          config: JSON.stringify({
+            backgroundColor: '#0F172A',
+            textColor: '#FFFFFF',
+            fontFamily: 'Inter',
+            fontSize: 14,
+            logoPosition: 'top-center',
+            layoutConfig: {
+              photoPosition: { x: 25, y: 20, width: 50, height: 60 },
+              namePosition: { x: 10, y: 90 },
+              rolePosition: { x: 10, y: 105 },
+              idPosition: { x: 10, y: 115 },
+              qrCodePosition: { x: 38, y: 115, size: 25 },
+              barcodePosition: { x: 10, y: 145 },
+            },
+          }),
+          is_default: true,
+          default_for_roles: ['student', 'teacher', 'staff', 'principal'],
+          created_by: createdBy,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      ];
+
+      for (const t of defaults) {
+        await this.db('card_templates').insert(t);
+      }
+      logger.info(`Seeded ${defaults.length} default card templates for tenant ${tenantId}`);
+    } catch (error: any) {
+      logger.error('Failed to seed default templates', { tenantId, error: error.message });
     }
   }
 
@@ -293,23 +449,27 @@ export class TemplateService {
         throw new Error('Only approved templates can be set as default');
       }
 
-      // Remove default flag from other templates for these roles
-      await this.db('card_templates')
+      // Remove default flag/role from other templates for these roles
+      const otherTemplates = await this.db('card_templates')
         .where({ tenant_id: template.tenant_id })
         .whereNot({ id: templateId })
         .where(function() {
           roles.forEach(role => {
             this.orWhereRaw('? = ANY(default_for_roles)', [role]);
           });
-        })
-        .update({
-          is_default: false,
-          default_for_roles: this.db.raw(
-            `array_remove(default_for_roles, ?)`,
-            roles
-          ),
-          updated_at: new Date(),
         });
+
+      for (const other of otherTemplates) {
+        const currentRoles: string[] = other.default_for_roles || [];
+        const newRoles = currentRoles.filter(r => !roles.includes(r as any));
+        await this.db('card_templates')
+          .where({ id: other.id })
+          .update({
+            default_for_roles: newRoles,
+            is_default: newRoles.length > 0 ? other.is_default : false,
+            updated_at: new Date(),
+          });
+      }
 
       // Set this template as default
       await this.db('card_templates')
@@ -411,7 +571,7 @@ export class TemplateService {
 
       if (Number(activeCardsCount?.count || 0) > 0) {
         throw new Error(
-          `Cannot delete template ${templateId}: it is used by ${activeCardsCount?.count} active cards. Archive it instead.`
+          `Cannot delete or archive template: it is currently in use by ${activeCardsCount?.count} active cards. Please revoke or expire those cards first.`
         );
       }
 

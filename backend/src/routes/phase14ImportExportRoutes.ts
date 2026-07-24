@@ -1,3 +1,4 @@
+import { db } from '../utils/database.js';
 /**
  * Phase 14: Data Import/Export Routes
  * 
@@ -11,14 +12,10 @@ import { Phase14ImportExportService, ImportOptions, ExportOptions } from '@servi
 import { StudentService } from '@services/studentService';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
-import knex from 'knex';
-import knexConfig from '../../knexfile';
 import * as multer from 'multer';
 import * as path from 'path';
 
 const router = Router();
-const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
-const db = knex(knexConfig[env] || knexConfig.development);
 const importExportService = new Phase14ImportExportService(db);
 const studentService = new StudentService(db);
 

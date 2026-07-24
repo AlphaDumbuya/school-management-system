@@ -3,8 +3,7 @@ import { authenticate, authorize, attachUserContext } from '../middleware/authMi
 import { UserRole } from '../types/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
-import knex from 'knex';
-import knexConfig from '../../knexfile.js';
+import { db } from '../utils/database.js';
 import { IdCardService } from '../services/idCardService.js';
 import { TemplateService } from '../services/templateService.js';
 import { CardLifecycleService } from '../services/cardLifecycleService.js';
@@ -14,11 +13,10 @@ import { QrCodeService } from '../services/qrCodeService.js';
 /**
  * ID Card Management Routes
  * Phase 2.1: Identity Management Module
+ * Uses shared db singleton to avoid connection pool exhaustion.
  */
 
 const router = Router();
-const env = (process.env.NODE_ENV || "development") as keyof typeof knexConfig;
-const db = knex(knexConfig[env] || knexConfig.development);
 
 // Initialize services
 const idCardService = new IdCardService(db);
@@ -45,16 +43,41 @@ router.get(
       const { status, search } = req.query;
       const tenantId = (req as any).user?.tenant_id;
 
+      // Scoped to tenant — mandatory in multi-tenant system
+      if (!tenantId) {
+        throw new AppError('Tenant context required', 400, 'TENANT_REQUIRED');
+      }
+
       let query = db('id_cards')
         .select(
           'id_cards.*',
-          'users.first_name', 'users.last_name', 'users.email', 'users.role as user_role'
+          db.raw("COALESCE(users.first_name, students.first_name, 'Member') as first_name"),
+          db.raw("COALESCE(users.last_name, students.last_name, '') as last_name"),
+          db.raw("COALESCE(users.email, '') as email"),
+          db.raw("COALESCE(users.role, 'student') as user_role"),
+          db.raw("COALESCE(students.photo_url, users.photo_url, NULL) as photo_url"),
+          'students.date_of_birth as student_dob',
+          'students.student_id as student_reg_id',
+          'classes.level as student_grade',
+          'classes.name as class_name',
+          'teachers.teacher_id as teacher_code',
+          'teachers.department as teacher_department'
         )
-        .leftJoin('users', 'id_cards.user_id', 'users.id');
-
-      if (tenantId) {
-        query = query.where('id_cards.tenant_id', tenantId);
-      }
+        .leftJoin('students', function () {
+          this.on('students.user_id', '=', 'id_cards.user_id')
+            .orOn('students.id', '=', 'id_cards.user_id');
+        })
+        .leftJoin('users', function () {
+          this.on('users.id', '=', 'id_cards.user_id')
+            .orOn('users.id', '=', 'students.user_id');
+        })
+        .leftJoin('enrollments', 'enrollments.student_id', 'students.id')
+        .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+        .leftJoin('teachers', function () {
+          this.on('teachers.user_id', '=', 'id_cards.user_id')
+            .orOn('teachers.id', '=', 'id_cards.user_id');
+        })
+        .where('id_cards.tenant_id', tenantId);
 
       if (status) {
         query = query.where('id_cards.status', status as string);
@@ -66,7 +89,10 @@ router.get(
           this.where('id_cards.card_number', 'ilike', term)
             .orWhere('users.first_name', 'ilike', term)
             .orWhere('users.last_name', 'ilike', term)
-            .orWhere('users.email', 'ilike', term);
+            .orWhere('students.first_name', 'ilike', term)
+            .orWhere('students.last_name', 'ilike', term)
+            .orWhere('users.email', 'ilike', term)
+            .orWhere('students.student_id', 'ilike', term);
         });
       }
 
@@ -93,13 +119,17 @@ router.get(
         issuedBy: c.issued_by,
         createdAt: c.created_at,
         updatedAt: c.updated_at,
-        user: c.first_name ? {
+        user: {
           id: c.user_id,
-          firstName: c.first_name,
-          lastName: c.last_name,
-          email: c.email,
-          role: c.user_role,
-        } : null,
+          firstName: c.first_name || 'Member',
+          lastName: c.last_name || '',
+          email: c.email || '',
+          role: c.user_role || 'student',
+          photoUrl: c.photo_url || null,
+          dob: c.student_dob || null,
+          memberId: c.student_reg_id || c.teacher_code || c.card_number,
+          departmentOrGrade: c.class_name || c.student_grade || c.teacher_department || null,
+        },
       }));
 
       res.json({
@@ -164,10 +194,15 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { search, role } = req.query;
+      const tenantId = (req as any).user?.tenant_id;
+
+      if (!tenantId) {
+        throw new AppError('Tenant context required', 400, 'TENANT_REQUIRED');
+      }
 
       let results: any[] = [];
 
-      // Query students directly from students table (they have their own name fields)
+      // Students — scoped to tenant
       if (!role || role === 'student') {
         let studentsQuery = db('students')
           .select(
@@ -176,9 +211,11 @@ router.get(
             'students.first_name',
             'students.last_name',
             'students.student_id as member_id',
+            'students.photo_url',
             db.raw("'student' as role")
           )
-          .where('students.status', 'active');
+          .where('students.status', 'active')
+          .where('students.tenant_id', tenantId);
 
         if (search) {
           const term = `%${(search as string).trim()}%`;
@@ -193,21 +230,21 @@ router.get(
         results = results.concat(students);
       }
 
-      // Query teachers directly from teachers table
+      // Teachers — scoped to tenant via users join
       if (!role || role === 'teacher') {
         let teachersQuery = db('teachers')
           .select(
             'teachers.id',
             'teachers.user_id',
             'teachers.teacher_id as member_id',
+            'users.first_name',
+            'users.last_name',
+            'users.photo_url',
             db.raw("'teacher' as role")
           )
-          .where('teachers.status', 'active');
-
-        // Teachers may not have first_name directly — get from users table
-        teachersQuery = teachersQuery
-          .select('users.first_name', 'users.last_name')
-          .leftJoin('users', 'teachers.user_id', 'users.id');
+          .leftJoin('users', 'teachers.user_id', 'users.id')
+          .where('teachers.status', 'active')
+          .where('users.tenant_id', tenantId);
 
         if (search) {
           const term = `%${(search as string).trim()}%`;
@@ -222,13 +259,13 @@ router.get(
         results = results.concat(teachers);
       }
 
-      // Map to consistent format
       const data = results.map((r: any) => ({
         userId: r.user_id || r.id,
         firstName: r.first_name || '',
         lastName: r.last_name || '',
         memberId: r.member_id || '',
         role: r.role,
+        photoUrl: r.photo_url || null,
       }));
 
       res.json({ data });
@@ -316,7 +353,8 @@ router.get(
 
       const card = await idCardService.getCardById(cardId);
 
-      res.json({ card });
+      // Return both card and data for frontend robustness
+      res.json({ card, data: card });
     } catch (error) {
       next(error);
     }

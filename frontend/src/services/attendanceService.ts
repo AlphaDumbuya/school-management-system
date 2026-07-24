@@ -24,6 +24,7 @@ export interface AttendanceRecord {
   created_at?: string;
   student_name?: string;
   student_id_code?: string;
+  photo_url?: string;
   class_name?: string;
 }
 
