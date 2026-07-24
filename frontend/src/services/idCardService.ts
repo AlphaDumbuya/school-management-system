@@ -388,6 +388,13 @@ export const idCardService = {
     },
 
     /**
+     * Delete card
+     */
+    deleteCard: async (cardId: string) => {
+        return apiClient.delete(`/api/v1/id-cards/${cardId}`);
+    },
+
+    /**
      * Upload template logo
      */
     uploadLogo: async (file: File) => {

@@ -89,7 +89,7 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => window.open(card.pdfUrl, '_blank')}
+                            onClick={() => window.open(card.pdfUrl.startsWith('/uploads/') ? `/storage${card.pdfUrl}` : card.pdfUrl, '_blank')}
                             className="flex items-center gap-1.5"
                         >
                             <Download size={16} />
@@ -109,32 +109,33 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                 ) : (
                     <div className="space-y-6">
                         {/* Visual Card Preview */}
-                        <div className="bg-slate-900 rounded-2xl p-4 flex flex-col items-center justify-center border border-gray-800 shadow-xl overflow-hidden">
+                        <div className="w-full bg-slate-900 rounded-2xl p-3 sm:p-4 flex flex-col items-center justify-center border border-gray-800 shadow-xl overflow-hidden">
                             <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Live Template Rendered Card</div>
-                            <VisualIdCardRenderer
-                                config={card.template?.config || {
-                                    headerStyle: 'curved-wave',
-                                    primaryColor: '#1E3A8A',
-                                    secondaryColor: '#EA580C',
-                                    backgroundColor: '#FFFFFF',
-                                    textColor: '#0F172A',
-                                    photoShape: 'circle',
-                                    cardTitle: 'IDENTIFICATION CARD',
-                                }}
-                                format={card.format || 'pvc'}
-                                user={{
-                                    name: card.user ? `${card.user.firstName} ${card.user.lastName}` : 'ID Holder',
-                                    idNumber: card.user?.memberId || card.cardNumber,
-                                    role: card.user?.role ? card.user.role.toUpperCase() : 'STUDENT',
-                                    photoUrl: card.user?.photoUrl,
-                                    expiresAt: formatDate(card.expiresAt),
-                                    dob: card.user?.dob ? formatDate(card.user.dob) : undefined,
-                                    departmentOrGrade: card.user?.departmentOrGrade,
-                                }}
-                                logoUrl={card.template?.logoUrl || card.template?.config?.logoUrl}
-                                side="front"
-                                widthPx={380}
-                            />
+                            <div className="w-full max-w-[380px] flex justify-center">
+                                <VisualIdCardRenderer
+                                    config={card.template?.config || {
+                                        headerStyle: 'curved-wave',
+                                        primaryColor: '#1E3A8A',
+                                        secondaryColor: '#EA580C',
+                                        backgroundColor: '#FFFFFF',
+                                        textColor: '#0F172A',
+                                        photoShape: 'circle',
+                                        cardTitle: 'IDENTIFICATION CARD',
+                                    }}
+                                    format={card.format || 'pvc'}
+                                    user={{
+                                        name: card.user ? `${card.user.firstName} ${card.user.lastName}` : 'ID Holder',
+                                        idNumber: card.user?.memberId || card.cardNumber,
+                                        role: card.user?.role ? card.user.role.toUpperCase() : 'STUDENT',
+                                        photoUrl: card.user?.photoUrl,
+                                        expiresAt: formatDate(card.expiresAt),
+                                        dob: card.user?.dob ? formatDate(card.user.dob) : undefined,
+                                        departmentOrGrade: card.user?.departmentOrGrade,
+                                    }}
+                                    logoUrl={card.template?.logoUrl || card.template?.config?.logoUrl}
+                                    side="front"
+                                />
+                            </div>
                         </div>
 
                         {/* Card Information */}

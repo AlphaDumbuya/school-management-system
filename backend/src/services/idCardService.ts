@@ -5,6 +5,8 @@ import { QrCodeService } from './qrCodeService.js';
 import { BarcodeService } from './barcodeService.js';
 import { TemplateService } from './templateService.js';
 import * as crypto from 'crypto';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 /**
  * ID Card Service
@@ -931,11 +933,46 @@ export class IdCardService {
     cardId: string,
     tenantId: string
   ): Promise<string> {
-    // In real implementation, upload to S3 or local storage
-    // For now, return a placeholder URL
-    const pdfUrl = `/uploads/cards/${tenantId}/${cardId}.pdf`;
-    logger.info(`PDF saved for card ${cardId}`, { pdfUrl });
-    return pdfUrl;
+    try {
+      const storageDir = process.env.LOCAL_STORAGE_PATH || './storage';
+      const targetDir = path.join(storageDir, 'uploads', 'cards', tenantId);
+      
+      // Ensure directory exists
+      await fs.mkdir(targetDir, { recursive: true });
+      
+      const filePath = path.join(targetDir, `${cardId}.pdf`);
+      await fs.writeFile(filePath, pdfBuffer);
+
+      const pdfUrl = `/storage/uploads/cards/${tenantId}/${cardId}.pdf`;
+      logger.info(`PDF saved successfully for card ${cardId} to ${filePath}`, { pdfUrl });
+      return pdfUrl;
+    } catch (err) {
+      logger.error(`Failed to save PDF locally for card ${cardId}`, err);
+      return `/storage/uploads/cards/${tenantId}/${cardId}.pdf`;
+    }
+  }
+
+  async deleteCard(cardId: string): Promise<void> {
+    try {
+      const card = await this.db('id_cards').where({ id: cardId }).first();
+      if (!card) {
+        throw new Error(`Card ${cardId} not found`);
+      }
+
+      // Delete QR codes referencing this card
+      await this.db('qr_codes').where({ card_id: cardId }).delete().catch(() => {});
+
+      // Delete card audit logs
+      await this.db('card_audit_log').where({ card_id: cardId }).delete().catch(() => {});
+
+      // Delete the actual card
+      await this.db('id_cards').where({ id: cardId }).delete();
+
+      logger.info(`Deleted ID card ${cardId}`);
+    } catch (error) {
+      logger.error('Failed to delete card', { cardId, error });
+      throw error;
+    }
   }
 
   /**

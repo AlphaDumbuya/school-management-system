@@ -299,13 +299,20 @@ export class TemplateService {
     }
   }
 
+  private seedingPromiseMap = new Map<string, Promise<void>>();
+
   /**
    * Auto-seed standard default templates for a tenant
    */
   async ensureDefaultTemplates(tenantId: string, createdByUserId?: string): Promise<void> {
-    try {
-      const count = await this.db('card_templates').where({ tenant_id: tenantId }).count('id as cnt').first();
-      if (Number(count?.cnt ?? 0) > 0) return;
+    if (this.seedingPromiseMap.has(tenantId)) {
+      return this.seedingPromiseMap.get(tenantId)!;
+    }
+
+    const promise = (async () => {
+      try {
+        const count = await this.db('card_templates').where({ tenant_id: tenantId }).count('id as cnt').first();
+        if (Number(count?.cnt ?? 0) > 0) return;
 
       let createdBy = createdByUserId;
       if (!createdBy) {
@@ -404,8 +411,14 @@ export class TemplateService {
       logger.info(`Seeded ${defaults.length} default card templates for tenant ${tenantId}`);
     } catch (error: any) {
       logger.error('Failed to seed default templates', { tenantId, error: error.message });
+    } finally {
+      this.seedingPromiseMap.delete(tenantId);
     }
-  }
+  })();
+
+  this.seedingPromiseMap.set(tenantId, promise);
+  return promise;
+}
 
   /**
    * Get default template for a role

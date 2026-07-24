@@ -362,6 +362,29 @@ router.get(
 );
 
 /**
+ * DELETE /api/v1/id-cards/:cardId
+ * Delete card
+ */
+router.delete(
+  '/:cardId',
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { cardId } = req.params;
+
+      await idCardService.deleteCard(cardId);
+
+      res.json({
+        success: true,
+        message: 'ID card deleted successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
  * GET /api/v1/id-cards/user/:userId
  * Get all cards for a user
  */

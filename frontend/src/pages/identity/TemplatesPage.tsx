@@ -89,6 +89,7 @@ export const TemplatesPage: React.FC = () => {
             await idCardService.deleteTemplate(deleteTarget.id);
             showToast.deleted('Template');
             queryClient.invalidateQueries({ queryKey: ['card-templates'] });
+            refetch();
         } catch (err: any) {
             showToast.error(err.response?.data?.message || err.message || 'Failed to delete template');
         } finally {
@@ -104,6 +105,7 @@ export const TemplatesPage: React.FC = () => {
             await idCardService.approveTemplate(approveTarget.id);
             showToast.success('Template approved successfully');
             queryClient.invalidateQueries({ queryKey: ['card-templates'] });
+            refetch();
         } catch (err: any) {
             showToast.error(err.response?.data?.message || err.message || 'Failed to approve template');
         } finally {
@@ -348,7 +350,10 @@ export const TemplatesPage: React.FC = () => {
                     setFormModalOpen(false);
                     setEditingTemplate(null);
                 }}
-                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['card-templates'] })}
+                onSuccess={() => {
+                    queryClient.invalidateQueries({ queryKey: ['card-templates'] });
+                    refetch();
+                }}
                 editingTemplate={editingTemplate}
             />
 

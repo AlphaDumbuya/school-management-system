@@ -1116,7 +1116,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                 <div className="flex flex-col lg:flex-row flex-1 overflow-y-auto lg:overflow-hidden min-h-0">
                     {/* Left Pane (Settings Controls / Collapsible Menu Dock) */}
                     {isSettingsOpen ? (
-                        <div className="w-full lg:w-[380px] xl:w-[400px] border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-gray-700 flex flex-col bg-white dark:bg-gray-800 shrink-0 transition-all duration-300">
+                        <div className="w-full lg:w-[380px] xl:w-[400px] border-t lg:border-t-0 lg:border-r border-gray-200 dark:border-gray-700 flex flex-col bg-white dark:bg-gray-800 shrink-0 transition-all duration-300 order-2 lg:order-1">
                             {/* Settings Top Header Bar */}
                             <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
                                 <span className="text-[11px] font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wider flex items-center gap-1.5">
@@ -1742,7 +1742,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                 )}
 
                     {/* Right Pane (Live Visual Renderer Preview & Floating Canva Action Bar) */}
-                    <div className="flex-1 flex flex-col bg-slate-100 dark:bg-slate-950 p-4 sm:p-6 overflow-y-auto items-center justify-start relative w-full h-full min-h-[380px] lg:min-h-0">
+                    <div className="flex-1 flex flex-col bg-slate-100 dark:bg-slate-950 p-4 sm:p-6 overflow-y-auto items-center justify-start relative w-full h-full min-h-[380px] lg:min-h-0 order-1 lg:order-2">
                         {/* Front / Back View & Role Switcher Toolbar */}
                         <div className="mb-4 flex flex-wrap items-center justify-center gap-3 bg-white dark:bg-gray-800 p-2 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
                             {/* Card Sides Switcher */}
@@ -1993,128 +1993,131 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                             {formData.printSides === 'double' && previewSide === 'both' ? (
                                 <div className="flex flex-col lg:flex-row items-center justify-center gap-6 w-full max-w-4xl py-2">
                                     {/* Front Side Card */}
-                                    <div className="flex flex-col items-center gap-2">
+                                    <div className="flex flex-col items-center gap-2 w-full max-w-[380px]">
                                         <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/60 px-3 py-0.5 rounded-full border border-blue-300 dark:border-blue-700 shadow-xs">
                                             Front Face
                                         </span>
-                                        <VisualIdCardRenderer
-                                            config={{
-                                                presetId: formData.presetId,
-                                                printSides: formData.printSides,
-                                                headerStyle: formData.headerStyle,
-                                                primaryColor: formData.primaryColor,
-                                                secondaryColor: formData.secondaryColor,
-                                                backgroundColor: formData.backgroundColor,
-                                                textColor: formData.textColor,
-                                                photoShape: formData.photoShape,
-                                                photoBorderColor: formData.photoBorderColor,
-                                                photoBorderWidth: formData.photoBorderWidth,
-                                                cardTitle: formData.cardTitle,
-                                                idLabel: formData.idLabel,
-                                                dobLabel: formData.dobLabel,
-                                                gradeLabel: formData.gradeLabel,
-                                                expiryLabel: formData.expiryLabel,
-                                                customSchoolName: formData.customSchoolName,
-                                                logoEmblem: formData.logoEmblem,
-                                                visibleFields: formData.visibleFields,
-                                                fontFamily: formData.fontFamily,
-                                                fontSize: formData.fontSize,
-                                                showBarcode: formData.showBarcode,
-                                                showQrCode: formData.showQrCode,
-                                                logoPosition: formData.logoPosition,
-                                                layoutConfig: formData.layoutConfig,
-                                            }}
-                                            format={formData.format}
-                                            user={previewUser}
-                                            logoUrl={formData.logoUrl}
-                                            side="front"
-                                            widthPx={formData.format === 'pvc' ? 380 : 280}
-                                            selectedElement={selectedElement}
-                                            onClickElement={(key) => setSelectedElement(key)}
-                                            onPositionChange={handlePositionChange}
-                                        />
+                                        <div className="w-full flex justify-center">
+                                            <VisualIdCardRenderer
+                                                config={{
+                                                    presetId: formData.presetId,
+                                                    printSides: formData.printSides,
+                                                    headerStyle: formData.headerStyle,
+                                                    primaryColor: formData.primaryColor,
+                                                    secondaryColor: formData.secondaryColor,
+                                                    backgroundColor: formData.backgroundColor,
+                                                    textColor: formData.textColor,
+                                                    photoShape: formData.photoShape,
+                                                    photoBorderColor: formData.photoBorderColor,
+                                                    photoBorderWidth: formData.photoBorderWidth,
+                                                    cardTitle: formData.cardTitle,
+                                                    idLabel: formData.idLabel,
+                                                    dobLabel: formData.dobLabel,
+                                                    gradeLabel: formData.gradeLabel,
+                                                    expiryLabel: formData.expiryLabel,
+                                                    customSchoolName: formData.customSchoolName,
+                                                    logoEmblem: formData.logoEmblem,
+                                                    visibleFields: formData.visibleFields,
+                                                    fontFamily: formData.fontFamily,
+                                                    fontSize: formData.fontSize,
+                                                    showBarcode: formData.showBarcode,
+                                                    showQrCode: formData.showQrCode,
+                                                    logoPosition: formData.logoPosition,
+                                                    layoutConfig: formData.layoutConfig,
+                                                }}
+                                                format={formData.format}
+                                                user={previewUser}
+                                                logoUrl={formData.logoUrl}
+                                                side="front"
+                                                selectedElement={selectedElement}
+                                                onClickElement={(key) => setSelectedElement(key)}
+                                                onPositionChange={handlePositionChange}
+                                            />
+                                        </div>
                                     </div>
 
                                     {/* Back Side Card */}
-                                    <div className="flex flex-col items-center gap-2">
+                                    <div className="flex flex-col items-center gap-2 w-full max-w-[380px]">
                                         <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/60 px-3 py-0.5 rounded-full border border-purple-300 dark:border-purple-700 shadow-xs">
                                             Back Face
                                         </span>
-                                        <VisualIdCardRenderer
-                                            config={{
-                                                presetId: formData.presetId,
-                                                printSides: formData.printSides,
-                                                headerStyle: formData.headerStyle,
-                                                primaryColor: formData.primaryColor,
-                                                secondaryColor: formData.secondaryColor,
-                                                backgroundColor: formData.backgroundColor,
-                                                textColor: formData.textColor,
-                                                photoShape: formData.photoShape,
-                                                photoBorderColor: formData.photoBorderColor,
-                                                photoBorderWidth: formData.photoBorderWidth,
-                                                cardTitle: formData.cardTitle,
-                                                idLabel: formData.idLabel,
-                                                dobLabel: formData.dobLabel,
-                                                gradeLabel: formData.gradeLabel,
-                                                expiryLabel: formData.expiryLabel,
-                                                customSchoolName: formData.customSchoolName,
-                                                logoEmblem: formData.logoEmblem,
-                                                visibleFields: formData.visibleFields,
-                                                fontFamily: formData.fontFamily,
-                                                fontSize: formData.fontSize,
-                                                showBarcode: formData.showBarcode,
-                                                showQrCode: formData.showQrCode,
-                                                logoPosition: formData.logoPosition,
-                                                layoutConfig: formData.layoutConfig,
-                                            }}
-                                            format={formData.format}
-                                            user={previewUser}
-                                            logoUrl={formData.logoUrl}
-                                            side="back"
-                                            widthPx={formData.format === 'pvc' ? 380 : 280}
-                                            selectedElement={selectedElement}
-                                            onClickElement={(key) => setSelectedElement(key)}
-                                            onPositionChange={handlePositionChange}
-                                        />
+                                        <div className="w-full flex justify-center">
+                                            <VisualIdCardRenderer
+                                                config={{
+                                                    presetId: formData.presetId,
+                                                    printSides: formData.printSides,
+                                                    headerStyle: formData.headerStyle,
+                                                    primaryColor: formData.primaryColor,
+                                                    secondaryColor: formData.secondaryColor,
+                                                    backgroundColor: formData.backgroundColor,
+                                                    textColor: formData.textColor,
+                                                    photoShape: formData.photoShape,
+                                                    photoBorderColor: formData.photoBorderColor,
+                                                    photoBorderWidth: formData.photoBorderWidth,
+                                                    cardTitle: formData.cardTitle,
+                                                    idLabel: formData.idLabel,
+                                                    dobLabel: formData.dobLabel,
+                                                    gradeLabel: formData.gradeLabel,
+                                                    expiryLabel: formData.expiryLabel,
+                                                    customSchoolName: formData.customSchoolName,
+                                                    logoEmblem: formData.logoEmblem,
+                                                    visibleFields: formData.visibleFields,
+                                                    fontFamily: formData.fontFamily,
+                                                    fontSize: formData.fontSize,
+                                                    showBarcode: formData.showBarcode,
+                                                    showQrCode: formData.showQrCode,
+                                                    logoPosition: formData.logoPosition,
+                                                    layoutConfig: formData.layoutConfig,
+                                                }}
+                                                format={formData.format}
+                                                user={previewUser}
+                                                logoUrl={formData.logoUrl}
+                                                side="back"
+                                                selectedElement={selectedElement}
+                                                onClickElement={(key) => setSelectedElement(key)}
+                                                onPositionChange={handlePositionChange}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             ) : (
-                                <VisualIdCardRenderer
-                                    config={{
-                                        presetId: formData.presetId,
-                                        printSides: formData.printSides,
-                                        headerStyle: formData.headerStyle,
-                                        primaryColor: formData.primaryColor,
-                                        secondaryColor: formData.secondaryColor,
-                                        backgroundColor: formData.backgroundColor,
-                                        textColor: formData.textColor,
-                                        photoShape: formData.photoShape,
-                                        photoBorderColor: formData.photoBorderColor,
-                                        photoBorderWidth: formData.photoBorderWidth,
-                                        cardTitle: formData.cardTitle,
-                                        idLabel: formData.idLabel,
-                                        dobLabel: formData.dobLabel,
-                                        gradeLabel: formData.gradeLabel,
-                                        expiryLabel: formData.expiryLabel,
-                                        customSchoolName: formData.customSchoolName,
-                                        logoEmblem: formData.logoEmblem,
-                                        visibleFields: formData.visibleFields,
-                                        fontFamily: formData.fontFamily,
-                                        fontSize: formData.fontSize,
-                                        showBarcode: formData.showBarcode,
-                                        showQrCode: formData.showQrCode,
-                                        logoPosition: formData.logoPosition,
-                                        layoutConfig: formData.layoutConfig,
-                                    }}
-                                    format={formData.format}
-                                    user={previewUser}
-                                    logoUrl={formData.logoUrl}
-                                    side={previewSide === 'both' ? 'front' : previewSide}
-                                    widthPx={formData.format === 'pvc' ? 420 : 300}
-                                    selectedElement={selectedElement}
-                                    onClickElement={(key) => setSelectedElement(key)}
-                                    onPositionChange={handlePositionChange}
-                                />
+                                <div className={`w-full ${formData.format === 'pvc' ? 'max-w-[420px]' : 'max-w-[300px]'} flex justify-center`}>
+                                    <VisualIdCardRenderer
+                                        config={{
+                                            presetId: formData.presetId,
+                                            printSides: formData.printSides,
+                                            headerStyle: formData.headerStyle,
+                                            primaryColor: formData.primaryColor,
+                                            secondaryColor: formData.secondaryColor,
+                                            backgroundColor: formData.backgroundColor,
+                                            textColor: formData.textColor,
+                                            photoShape: formData.photoShape,
+                                            photoBorderColor: formData.photoBorderColor,
+                                            photoBorderWidth: formData.photoBorderWidth,
+                                            cardTitle: formData.cardTitle,
+                                            idLabel: formData.idLabel,
+                                            dobLabel: formData.dobLabel,
+                                            gradeLabel: formData.gradeLabel,
+                                            expiryLabel: formData.expiryLabel,
+                                            customSchoolName: formData.customSchoolName,
+                                            logoEmblem: formData.logoEmblem,
+                                            visibleFields: formData.visibleFields,
+                                            fontFamily: formData.fontFamily,
+                                            fontSize: formData.fontSize,
+                                            showBarcode: formData.showBarcode,
+                                            showQrCode: formData.showQrCode,
+                                            logoPosition: formData.logoPosition,
+                                            layoutConfig: formData.layoutConfig,
+                                        }}
+                                        format={formData.format}
+                                        user={previewUser}
+                                        logoUrl={formData.logoUrl}
+                                        side={previewSide === 'both' ? 'front' : previewSide}
+                                        selectedElement={selectedElement}
+                                        onClickElement={(key) => setSelectedElement(key)}
+                                        onPositionChange={handlePositionChange}
+                                    />
+                                </div>
                             )}
                         </div>
                     </div>

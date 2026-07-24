@@ -11,7 +11,7 @@ import {
   CreditCard, Users, AlertTriangle, CheckCircle, XCircle, Plus, Download,
   RefreshCw, X, Eye, Ban, RotateCcw, LayoutGrid, List,
   QrCode, Loader2, ShieldCheck, ShieldAlert, Clock, Zap,
-  Search, ChevronRight, AlertCircle, GraduationCap, BookOpen,
+  Search, ChevronRight, AlertCircle, GraduationCap, BookOpen, Trash2,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -82,8 +82,8 @@ function Avatar({ name, photoUrl, size = 'md' }: { name: string; photoUrl?: stri
 }
 
 // ── Visual ID Card Tile ───────────────────────────────────────────────────────
-function VisualIdCard({ card, onView, onRevoke, onRegenerate }: {
-  card: IdCard; onView: () => void; onRevoke: () => void; onRegenerate: () => void;
+function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete }: {
+  card: IdCard; onView: () => void; onRevoke: () => void; onRegenerate: () => void; onDelete: () => void;
 }) {
   const user = card.user;
   const name = user ? `${user.firstName} ${user.lastName}` : 'Unknown Member';
@@ -156,7 +156,7 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate }: {
           <Eye size={12} /> View
         </button>
         {card.pdfUrl && (
-          <button onClick={() => window.open(card.pdfUrl!, '_blank')} className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 bg-gray-50 dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700">
+          <button onClick={() => window.open(card.pdfUrl!.startsWith('/uploads/') ? `/storage${card.pdfUrl}` : card.pdfUrl!, '_blank')} className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 bg-gray-50 dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700">
             <Download size={12} /> PDF
           </button>
         )}
@@ -164,6 +164,7 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate }: {
         {card.status === 'active' && (
           <button onClick={onRevoke} className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 bg-gray-50 dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Revoke"><Ban size={12} /></button>
         )}
+        <button onClick={onDelete} className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 bg-gray-50 dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Delete"><Trash2 size={12} /></button>
       </div>
     </div>
   );
@@ -448,6 +449,7 @@ export const IdCardsPage: React.FC = () => {
   const [detailsModal, setDetailsModal] = useState<{ open: boolean; cardId: string | null }>({ open: false, cardId: null });
   const [revokeTarget, setRevokeTarget] = useState<IdCard | null>(null);
   const [regenerateTarget, setRegenerateTarget] = useState<IdCard | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<IdCard | null>(null);
 
   // Fetch cards (tenant-scoped by backend)
   const { data, isLoading, refetch } = useQuery({
@@ -491,6 +493,20 @@ export const IdCardsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['id-cards'] });
     } catch { showToast.error('Failed to regenerate card'); }
     setRegenerateTarget(null);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await idCardService.deleteCard(deleteTarget.id);
+      showToast.deleted('ID Card');
+      queryClient.invalidateQueries({ queryKey: ['id-cards'] });
+      queryClient.invalidateQueries({ queryKey: ['id-cards-stats'] });
+      refetch();
+    } catch (err: any) {
+      showToast.error(err.response?.data?.message || err.message || 'Failed to delete ID card');
+    }
+    setDeleteTarget(null);
   };
 
   const TABS = [
@@ -618,7 +634,8 @@ export const IdCardsPage: React.FC = () => {
                     <VisualIdCard key={card.id} card={card}
                       onView={() => setDetailsModal({ open: true, cardId: card.id })}
                       onRevoke={() => setRevokeTarget(card)}
-                      onRegenerate={() => setRegenerateTarget(card)} />
+                      onRegenerate={() => setRegenerateTarget(card)}
+                      onDelete={() => setDeleteTarget(card)} />
                   ))}
                 </div>
               ) : (
@@ -672,6 +689,7 @@ export const IdCardsPage: React.FC = () => {
                                   {card.pdfUrl && <button onClick={() => window.open(card.pdfUrl!, '_blank')} className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors" title="PDF"><Download size={14} /></button>}
                                   <button onClick={() => setRegenerateTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors" title="Regenerate"><RotateCcw size={14} /></button>
                                   {card.status === 'active' && <button onClick={() => setRevokeTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Revoke"><Ban size={14} /></button>}
+                                  <button onClick={() => setDeleteTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete"><Trash2 size={14} /></button>
                                 </div>
                               </td>
                             </tr>
@@ -711,6 +729,10 @@ export const IdCardsPage: React.FC = () => {
         title="Regenerate ID Card"
         message={`Regenerate card "${regenerateTarget?.cardNumber}"? A new card will be issued.`}
         confirmLabel="Regenerate" isDestructive={false} />
+      <ConfirmationDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
+        title="Delete ID Card"
+        message={`Are you sure you want to delete card "${deleteTarget?.cardNumber}"? This action is permanent and cannot be undone.`}
+        confirmLabel="Delete Card" />
     </MainLayout>
   );
 };
