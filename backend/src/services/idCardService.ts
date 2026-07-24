@@ -635,26 +635,80 @@ export class IdCardService {
             .text(schoolNameText, mmToPt(schoolNameConf.x), mmToPt(schoolNameConf.y));
         }
 
+        // Helper to get PDF path based on shape
+        const getPhotoPath = (x: number, y: number, w: number, h: number, shape: string) => {
+          if (shape === 'circle' || shape === 'rounded') {
+            const r = Math.min(w, h) / 2;
+            const cx = x + w / 2;
+            const cy = y + h / 2;
+            doc.circle(cx, cy, r);
+          } else if (shape === 'arch') {
+            const r = w / 2;
+            doc.moveTo(x, y + h)
+              .lineTo(x, y + r)
+              .arc(x + r, y + r, r, Math.PI, 2 * Math.PI, false)
+              .lineTo(x + w, y + h)
+              .closePath();
+          } else if (shape === 'hexagon') {
+            const cx = x + w / 2;
+            const cy = y + h / 2;
+            const r = Math.min(w, h) / 2;
+            doc.moveTo(cx, cy - r);
+            for (let i = 1; i <= 6; i++) {
+              const angle = (i * Math.PI) / 3 - Math.PI / 2;
+              doc.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+            }
+            doc.closePath();
+          } else {
+            doc.rect(x, y, w, h);
+          }
+        };
+
+        const photoBorderWidth = template.config.photoBorderWidth !== undefined ? template.config.photoBorderWidth : 2;
+        const photoBorderColor = template.config.photoBorderColor || template.config.primaryColor || '#cccccc';
+
         // Draw Photo if on front
         if (isOnSide(photoConf, 'front', 'front')) {
-          const photoX = mmToPt(photoConf.x);
-          const photoY = mmToPt(photoConf.y);
-          const photoW = mmToPt(photoConf.width || 25);
-          const photoH = mmToPt(photoConf.height || 30);
+          const isCircleOrRounded = template.config.photoShape === 'circle' || template.config.photoShape === 'rounded';
+          const rawW = mmToPt(photoConf.width || 25);
+          const rawH = mmToPt(photoConf.height || 30);
+          const photoW = isCircleOrRounded ? Math.min(rawW, rawH) : rawW;
+          const photoH = isCircleOrRounded ? Math.min(rawW, rawH) : rawH;
+          const photoX = isCircleOrRounded ? mmToPt(photoConf.x) + (rawW - photoW) / 2 : mmToPt(photoConf.x);
+          const photoY = isCircleOrRounded ? mmToPt(photoConf.y) + (rawH - photoH) / 2 : mmToPt(photoConf.y);
           
           if (user.photo_url && user.photo_url.startsWith('data:image/')) {
             try {
               const base64Data = user.photo_url.split(',')[1];
               if (base64Data) {
                 const photoBuffer = Buffer.from(base64Data, 'base64');
+                
+                // Draw clipped image
+                doc.save();
+                getPhotoPath(photoX, photoY, photoW, photoH, template.config.photoShape || 'circle');
+                doc.clip();
                 doc.image(photoBuffer, photoX, photoY, { width: photoW, height: photoH });
+                doc.restore();
+
+                // Draw border over clipped path
+                if (photoBorderWidth > 0) {
+                  doc.save();
+                  getPhotoPath(photoX, photoY, photoW, photoH, template.config.photoShape || 'circle');
+                  doc
+                    .lineWidth(photoBorderWidth)
+                    .stroke(photoBorderColor);
+                  doc.restore();
+                }
               }
             } catch (photoErr) {
               doc.rect(photoX, photoY, photoW, photoH).stroke('#cccccc');
               doc.fontSize(6).text('Photo Error', photoX, photoY + photoH / 2 - 3, { width: photoW, align: 'center' });
             }
           } else {
-            doc.rect(photoX, photoY, photoW, photoH).stroke('#cccccc');
+            doc.save();
+            getPhotoPath(photoX, photoY, photoW, photoH, template.config.photoShape || 'circle');
+            doc.stroke('#cccccc');
+            doc.restore();
             doc.fontSize(7).text('No Photo', photoX, photoY + photoH / 2 - 3, { width: photoW, align: 'center' });
           }
         }
@@ -785,24 +839,46 @@ export class IdCardService {
 
         // Draw Photo if on back
         if (isOnSide(photoConf, 'front', 'back')) {
-          const photoX = mmToPt(photoConf.x);
-          const photoY = mmToPt(photoConf.y);
-          const photoW = mmToPt(photoConf.width || 25);
-          const photoH = mmToPt(photoConf.height || 30);
+          const isCircleOrRounded = template.config.photoShape === 'circle' || template.config.photoShape === 'rounded';
+          const rawW = mmToPt(photoConf.width || 25);
+          const rawH = mmToPt(photoConf.height || 30);
+          const photoW = isCircleOrRounded ? Math.min(rawW, rawH) : rawW;
+          const photoH = isCircleOrRounded ? Math.min(rawW, rawH) : rawH;
+          const photoX = isCircleOrRounded ? mmToPt(photoConf.x) + (rawW - photoW) / 2 : mmToPt(photoConf.x);
+          const photoY = isCircleOrRounded ? mmToPt(photoConf.y) + (rawH - photoH) / 2 : mmToPt(photoConf.y);
           
           if (user.photo_url && user.photo_url.startsWith('data:image/')) {
             try {
               const base64Data = user.photo_url.split(',')[1];
               if (base64Data) {
                 const photoBuffer = Buffer.from(base64Data, 'base64');
+                
+                // Draw clipped image
+                doc.save();
+                getPhotoPath(photoX, photoY, photoW, photoH, template.config.photoShape || 'circle');
+                doc.clip();
                 doc.image(photoBuffer, photoX, photoY, { width: photoW, height: photoH });
+                doc.restore();
+
+                // Draw border over clipped path
+                if (photoBorderWidth > 0) {
+                  doc.save();
+                  getPhotoPath(photoX, photoY, photoW, photoH, template.config.photoShape || 'circle');
+                  doc
+                    .lineWidth(photoBorderWidth)
+                    .stroke(photoBorderColor);
+                  doc.restore();
+                }
               }
             } catch (photoErr) {
               doc.rect(photoX, photoY, photoW, photoH).stroke('#cccccc');
               doc.fontSize(6).text('Photo Error', photoX, photoY + photoH / 2 - 3, { width: photoW, align: 'center' });
             }
           } else {
-            doc.rect(photoX, photoY, photoW, photoH).stroke('#cccccc');
+            doc.save();
+            getPhotoPath(photoX, photoY, photoW, photoH, template.config.photoShape || 'circle');
+            doc.stroke('#cccccc');
+            doc.restore();
             doc.fontSize(7).text('No Photo', photoX, photoY + photoH / 2 - 3, { width: photoW, align: 'center' });
           }
         }

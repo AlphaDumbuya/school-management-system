@@ -85,8 +85,15 @@ export const TemplatesPage: React.FC = () => {
     const handleDelete = async () => {
         if (!deleteTarget) return;
 
+        const targetId = deleteTarget.id || (deleteTarget as any).templateId || (deleteTarget as any).template_id;
+        if (!targetId || targetId === 'undefined') {
+            showToast.error('Invalid template ID: template cannot be deleted.');
+            setDeleteTarget(null);
+            return;
+        }
+
         try {
-            await idCardService.deleteTemplate(deleteTarget.id);
+            await idCardService.deleteTemplate(targetId);
             showToast.deleted('Template');
             queryClient.invalidateQueries({ queryKey: ['card-templates'] });
             refetch();

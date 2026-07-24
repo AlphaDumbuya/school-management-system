@@ -197,14 +197,12 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
     y: 4,
     side: 'front',
   };
-
   // Photo shape helper
   const getPhotoShapeStyle = () => {
     switch (photoShape) {
       case 'circle':
+      case 'rounded': // if rounded, make it 100%
         return 'rounded-full';
-      case 'rounded':
-        return 'rounded-2xl';
       case 'arch':
         return 'rounded-t-full rounded-b-xl';
       case 'hexagon':
@@ -218,14 +216,17 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
   // Smart Alignment Guides State
   const [alignGuides, setAlignGuides] = useState<{ vLineX?: number; hLineY?: number }>({});
 
-  // Mouse Drag positioning state with Smart Alignment Magnetic Snap
+  // Pointer Drag positioning state with Smart Alignment Magnetic Snap
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const dragStartRef = useRef<{ startX: number; startY: number; initElemX: number; initElemY: number } | null>(null);
 
-  const handleMouseDownElement = (e: React.MouseEvent, key: string, currentX: number, currentY: number) => {
+  const handlePointerDownElement = (e: React.PointerEvent, key: string, currentX: number, currentY: number) => {
     e.stopPropagation();
     onClickElement?.(key);
     if (!onPositionChange) return;
+    try {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } catch (_) {}
     setDraggingKey(key);
     dragStartRef.current = {
       startX: e.clientX,
@@ -235,7 +236,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
     };
   };
 
-  const handleMouseMoveCanvas = (e: React.MouseEvent) => {
+  const handlePointerMoveCanvas = (e: React.PointerEvent) => {
     if (!draggingKey || !dragStartRef.current || !onPositionChange) return;
 
     const rawX = Math.max(0, Math.min(cardWidthMm - 10, dragStartRef.current.initElemX + (e.clientX - dragStartRef.current.startX) / scale));
@@ -301,7 +302,12 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
     onPositionChange(draggingKey, parseFloat(snappedX.toFixed(1)), parseFloat(snappedY.toFixed(1)));
   };
 
-  const handleMouseUpCanvas = () => {
+  const handlePointerUpCanvas = (e: React.PointerEvent) => {
+    if (draggingKey) {
+      try {
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch (_) {}
+    }
     setDraggingKey(null);
     dragStartRef.current = null;
     setAlignGuides({});
@@ -318,9 +324,9 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
   return (
     <div ref={containerRef} className="w-full flex justify-center items-center">
       <div
-        onMouseMove={handleMouseMoveCanvas}
-        onMouseUp={handleMouseUpCanvas}
-        onMouseLeave={handleMouseUpCanvas}
+        onPointerMove={handlePointerMoveCanvas}
+        onPointerUp={handlePointerUpCanvas}
+        onPointerLeave={handlePointerUpCanvas}
         className={`relative select-none overflow-hidden shadow-2xl transition-all duration-300 border border-black/10 dark:border-white/10 ${className}`}
         style={{
           width: `${actualWidth}px`,
@@ -329,6 +335,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
           color: textColor,
           fontFamily,
           borderRadius: isPortrait ? '20px' : '14px',
+          touchAction: 'none',
         }}
       >
         {/* ── SMART ALIGNMENT GUIDES & MARGIN BORDERS ── */}
@@ -456,7 +463,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
             {/* School Logo Element (Freely Draggable & Repositionable) */}
             {(!logoPos.side || logoPos.side === 'front') && vf.showLogo && (
               <div
-                onMouseDown={(e) => handleMouseDownElement(e, 'logo', logoPos.x, logoPos.y)}
+                onPointerDown={(e) => handlePointerDownElement(e, 'logo', logoPos.x, logoPos.y)}
                 onClick={() => onClickElement?.('logo')}
                 className={`absolute transition-all z-30 cursor-grab active:cursor-grabbing ${getSelectionBorder('logo')}`}
                 style={{
@@ -488,7 +495,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
             {/* School Name Title Element (Freely Draggable & Repositionable) */}
             {(!schoolNamePos.side || schoolNamePos.side === 'front') && vf.showSchoolName && (
               <div
-                onMouseDown={(e) => handleMouseDownElement(e, 'schoolName', schoolNamePos.x, schoolNamePos.y)}
+                onPointerDown={(e) => handlePointerDownElement(e, 'schoolName', schoolNamePos.x, schoolNamePos.y)}
                 onClick={() => onClickElement?.('schoolName')}
                 className={`absolute transition-all z-30 cursor-grab active:cursor-grabbing ${getSelectionBorder('schoolName')}`}
                 style={{
@@ -510,39 +517,49 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
             )}
 
             {/* Photo Frame */}
-            {(!layout.photoPosition.side || layout.photoPosition.side === 'front') && (
-              <div
-                onMouseDown={(e) => handleMouseDownElement(e, 'photo', layout.photoPosition.x, layout.photoPosition.y)}
-                onClick={() => onClickElement?.('photo')}
-                className={`absolute transition-all ${getSelectionBorder('photo')}`}
-                style={{
-                  left: `${layout.photoPosition.x * scale}px`,
-                  top: `${layout.photoPosition.y * scale}px`,
-                  width: `${layout.photoPosition.width * scale}px`,
-                  height: `${layout.photoPosition.height * scale}px`,
-                }}
-              >
+            {(!layout.photoPosition.side || layout.photoPosition.side === 'front') && (() => {
+              const photoW = layout.photoPosition.width;
+              const photoH = layout.photoPosition.height;
+              const isCircleOrRounded = photoShape === 'circle' || photoShape === 'rounded';
+              const displayW = isCircleOrRounded ? Math.min(photoW, photoH) : photoW;
+              const displayH = isCircleOrRounded ? Math.min(photoW, photoH) : photoH;
+              const displayX = isCircleOrRounded ? layout.photoPosition.x + (photoW - displayW) / 2 : layout.photoPosition.x;
+              const displayY = isCircleOrRounded ? layout.photoPosition.y + (photoH - displayH) / 2 : layout.photoPosition.y;
+
+              return (
                 <div
-                  className={`w-full h-full ${getPhotoShapeStyle()} overflow-hidden shadow-lg flex items-center justify-center bg-gray-100 dark:bg-gray-800`}
+                  onPointerDown={(e) => handlePointerDownElement(e, 'photo', layout.photoPosition.x, layout.photoPosition.y)}
+                  onClick={() => onClickElement?.('photo')}
+                  className={`absolute transition-all ${getSelectionBorder('photo')}`}
                   style={{
-                    border: `${photoBorderWidth}px solid ${photoBorderColor}`,
+                    left: `${displayX * scale}px`,
+                    top: `${displayY * scale}px`,
+                    width: `${displayW * scale}px`,
+                    height: `${displayH * scale}px`,
                   }}
                 >
-                  {user.photoUrl ? (
-                    <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center text-gray-400">
-                      <UserIcon size={Math.round(layout.photoPosition.width * scale * 0.4)} />
-                    </div>
-                  )}
+                  <div
+                    className={`w-full h-full ${getPhotoShapeStyle()} overflow-hidden shadow-lg flex items-center justify-center bg-gray-100 dark:bg-gray-800`}
+                    style={{
+                      border: `${photoBorderWidth}px solid ${photoBorderColor}`,
+                    }}
+                  >
+                    {user.photoUrl ? (
+                      <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-gray-400">
+                        <UserIcon size={Math.round(displayW * scale * 0.4)} />
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* User Name */}
             {(!layout.namePosition.side || layout.namePosition.side === 'front') && vf.showName && (
               <div
-                onMouseDown={(e) => handleMouseDownElement(e, 'name', layout.namePosition.x, layout.namePosition.y)}
+                onPointerDown={(e) => handlePointerDownElement(e, 'name', layout.namePosition.x, layout.namePosition.y)}
                 onClick={() => onClickElement?.('name')}
                 className={`absolute transition-all ${getSelectionBorder('name')} ${isPortrait ? 'text-center w-full px-4' : ''}`}
                 style={{
@@ -566,7 +583,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
             {/* Card Subtitle / Header Title */}
             {(!titlePos.side || titlePos.side === 'front') && vf.showTitle && (
               <div
-                onMouseDown={(e) => handleMouseDownElement(e, 'title', titlePos.x, titlePos.y)}
+                onPointerDown={(e) => handlePointerDownElement(e, 'title', titlePos.x, titlePos.y)}
                 onClick={() => onClickElement?.('title')}
                 className={`absolute transition-all ${getSelectionBorder('title')} ${isPortrait ? 'text-center w-full px-4' : ''}`}
                 style={{
@@ -590,7 +607,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
             {/* User Role Badge / Pill */}
             {(!layout.rolePosition.side || layout.rolePosition.side === 'front') && vf.showRole && (
               <div
-                onMouseDown={(e) => handleMouseDownElement(e, 'role', layout.rolePosition.x, layout.rolePosition.y)}
+                onPointerDown={(e) => handlePointerDownElement(e, 'role', layout.rolePosition.x, layout.rolePosition.y)}
                 onClick={() => onClickElement?.('role')}
                 className={`absolute transition-all ${getSelectionBorder('role')} ${isPortrait ? 'w-full flex justify-center' : ''}`}
                 style={{
@@ -615,7 +632,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
             {/* Details Table / Grid (ID, DOB, Address, Expiry) */}
             {(!layout.idPosition.side || layout.idPosition.side === 'front') && (vf.showId || vf.showDob || vf.showGrade || vf.showExpiry) && (
               <div
-                onMouseDown={(e) => handleMouseDownElement(e, 'id', layout.idPosition.x, layout.idPosition.y)}
+                onPointerDown={(e) => handlePointerDownElement(e, 'id', layout.idPosition.x, layout.idPosition.y)}
                 onClick={() => onClickElement?.('id')}
                 className={`absolute transition-all ${getSelectionBorder('id')} ${isPortrait ? 'w-full px-8' : ''}`}
                 style={{
@@ -663,7 +680,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
             {(layout.customElements || []).filter(el => el.side === 'front' || !el.side).map(el => (
               <div
                 key={el.id}
-                onMouseDown={(e) => handleMouseDownElement(e, el.id, el.x, el.y)}
+                onPointerDown={(e) => handlePointerDownElement(e, el.id, el.x, el.y)}
                 onClick={(e) => { e.stopPropagation(); onClickElement?.(el.id); }}
                 className={`absolute transition-all cursor-grab active:cursor-grabbing ${getSelectionBorder(el.id)}`}
                 style={{
@@ -694,7 +711,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
             {/* Barcode (If placed on Front or Single-Sided & Enabled) */}
             {(!layout.barcodePosition.side || layout.barcodePosition.side === 'front') && config.showBarcode === true && (
               <div
-                onMouseDown={(e) => handleMouseDownElement(e, 'barcode', layout.barcodePosition.x, layout.barcodePosition.y)}
+                onPointerDown={(e) => handlePointerDownElement(e, 'barcode', layout.barcodePosition.x, layout.barcodePosition.y)}
                 onClick={() => onClickElement?.('barcode')}
                 className={`absolute transition-all z-30 cursor-grab active:cursor-grabbing ${getSelectionBorder('barcode')}`}
                 style={{
@@ -746,7 +763,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
                 {/* Back QR Code (Draggable & Repositionable) */}
                 {config.showQrCode !== false && (
                   <div
-                    onMouseDown={(e) => handleMouseDownElement(e, 'qrCode', layout.qrCodePosition.x || 63, layout.qrCodePosition.y || 14)}
+                    onPointerDown={(e) => handlePointerDownElement(e, 'qrCode', layout.qrCodePosition.x || 63, layout.qrCodePosition.y || 14)}
                     onClick={() => onClickElement?.('qrCode')}
                     className={`transition-all flex-shrink-0 cursor-grab active:cursor-grabbing ${getSelectionBorder('qrCode')}`}
                   >
@@ -762,7 +779,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
               {(layout.customElements || []).filter(el => el.side === 'back').map(el => (
                 <div
                   key={el.id}
-                  onMouseDown={(e) => handleMouseDownElement(e, el.id, el.x, el.y)}
+                  onPointerDown={(e) => handlePointerDownElement(e, el.id, el.x, el.y)}
                   onClick={(e) => { e.stopPropagation(); onClickElement?.(el.id); }}
                   className={`absolute transition-all cursor-grab active:cursor-grabbing ${getSelectionBorder(el.id)}`}
                   style={{
@@ -793,7 +810,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
               {/* Back Barcode (Enabled Only When Explicitly Turned ON) */}
               {config.showBarcode === true && (
                 <div
-                  onMouseDown={(e) => handleMouseDownElement(e, 'barcode', layout.barcodePosition.x || 10, layout.barcodePosition.y || 40)}
+                  onPointerDown={(e) => handlePointerDownElement(e, 'barcode', layout.barcodePosition.x || 10, layout.barcodePosition.y || 40)}
                   onClick={() => onClickElement?.('barcode')}
                   className={`w-full flex flex-col items-center justify-center transition-all mt-2 cursor-grab active:cursor-grabbing ${getSelectionBorder('barcode')}`}
                 >

@@ -318,6 +318,10 @@ router.delete(
     try {
       const { templateId } = req.params;
 
+      if (!templateId || templateId === 'undefined' || !/^[0-9a-fA-F-]{36}$/.test(templateId)) {
+        throw new AppError('Invalid or missing template ID', 400);
+      }
+
       await templateService.deleteTemplate(templateId);
 
       res.json({
