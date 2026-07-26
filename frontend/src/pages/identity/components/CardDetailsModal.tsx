@@ -248,8 +248,8 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                                     </div>
                                 ) : (
                                     <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                                        {history.map((entry: any) => (
-                                            <div key={entry.id} className="px-5 py-3">
+                                        {history.map((entry: any, idx: number) => (
+                                            <div key={`hist-${entry.id || 'e'}-${idx}`} className="px-5 py-3">
                                                 <div className="flex items-start justify-between">
                                                     <div>
                                                         <div className="font-medium text-gray-900 dark:text-white capitalize">

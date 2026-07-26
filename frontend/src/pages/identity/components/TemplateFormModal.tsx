@@ -1105,8 +1105,8 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                             onChange={handleDropdownSelect}
                             className="w-full sm:w-auto max-w-[280px] text-xs font-bold px-2.5 py-1.5 border border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-lg shadow-xs focus:ring-2 focus:ring-blue-500 truncate"
                         >
-                            {CANVA_TEMPLATES.map(t => (
-                                <option key={t.id} value={t.id}>{t.shortName || t.name} ({t.format.toUpperCase()})</option>
+                            {CANVA_TEMPLATES.map((t, idx) => (
+                                <option key={`preset-${t.id}-${idx}`} value={t.id}>{t.shortName || t.name} ({t.format.toUpperCase()})</option>
                             ))}
                         </select>
                     </div>

@@ -114,13 +114,21 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
     if (!usersData || (usersData as any)?.success === false) return [];
     const raw = (usersData as any)?.data ?? [];
     if (!Array.isArray(raw)) return [];
-    return raw.map((u: any) => ({
-      id: u.userId || u.user_id || u.id,
-      firstName: u.firstName || u.first_name || '',
-      lastName: u.lastName || u.last_name || '',
-      email: u.email || '',
-      role: u.role || '',
-    }));
+    const seen = new Set();
+    return raw
+      .filter((u: any) => {
+        const uid = u.userId || u.user_id || u.id;
+        if (!uid || seen.has(uid)) return false;
+        seen.add(uid);
+        return true;
+      })
+      .map((u: any) => ({
+        id: u.userId || u.user_id || u.id,
+        firstName: u.firstName || u.first_name || '',
+        lastName: u.lastName || u.last_name || '',
+        email: u.email || '',
+        role: u.role || '',
+      }));
   }, [usersData]);
 
   // ── Fetch Templates ─────────────────────────────────────────────────────────
@@ -135,11 +143,19 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
   const templates: any[] = useMemo(() => {
     if (!templatesData || (templatesData as any)?.success === false) return [];
     const raw = templatesData as any;
-    if (Array.isArray(raw?.templates)) return raw.templates;
-    if (Array.isArray(raw?.data?.templates)) return raw.data.templates;
-    if (Array.isArray(raw?.data)) return raw.data;
-    if (Array.isArray(raw)) return raw;
-    return [];
+    let list: any[] = [];
+    if (Array.isArray(raw?.templates)) list = raw.templates;
+    else if (Array.isArray(raw?.data?.templates)) list = raw.data.templates;
+    else if (Array.isArray(raw?.data)) list = raw.data;
+    else if (Array.isArray(raw)) list = raw;
+
+    const seen = new Set();
+    return list.filter((t: any) => {
+      const tid = t.id || t.templateId;
+      if (!tid || seen.has(tid)) return false;
+      seen.add(tid);
+      return true;
+    });
   }, [templatesData]);
 
   // ── Toggle user selection for bulk mode ─────────────────────────────────────
@@ -314,8 +330,8 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
                   className={selectCls}
                 >
                   <option value="">— Choose a student or staff member —</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
+                  {users.map((user, idx) => (
+                    <option key={`usr-${user.id}-${idx}`} value={user.id}>
                       {user.firstName} {user.lastName} — {roleDisplayName(user.role)}
                     </option>
                   ))}
