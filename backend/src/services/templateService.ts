@@ -1,5 +1,6 @@
 import { Knex } from 'knex';
 import { logger } from '../utils/logger.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 /**
  * Template Service
@@ -97,8 +98,9 @@ export class TemplateService {
       );
 
       if (contrastRatio < 4.5) {
-        throw new Error(
-          `Insufficient color contrast ratio: ${contrastRatio.toFixed(2)}:1. Minimum required: 4.5:1`
+        throw new AppError(
+          `Insufficient color contrast ratio: ${contrastRatio.toFixed(2)}:1. Minimum required: 4.5:1`,
+          400
         );
       }
 
@@ -162,7 +164,7 @@ export class TemplateService {
         .first();
 
       if (!existing) {
-        throw new Error(`Template ${templateId} not found`);
+        throw new AppError(`Template ${templateId} not found`, 404);
       }
 
       // Parse existing config and merge with updates
@@ -200,8 +202,9 @@ export class TemplateService {
         );
 
         if (contrastRatio < 4.5) {
-          throw new Error(
-            `Insufficient color contrast ratio: ${contrastRatio.toFixed(2)}:1. Minimum required: 4.5:1`
+          throw new AppError(
+            `Insufficient color contrast ratio: ${contrastRatio.toFixed(2)}:1. Minimum required: 4.5:1`,
+            400
           );
         }
       }
@@ -254,7 +257,7 @@ export class TemplateService {
         .first();
 
       if (!template) {
-        throw new Error(`Template ${templateId} not found`);
+        throw new AppError(`Template ${templateId} not found`, 404);
       }
 
       return this.mapTemplateFromDb(template);
@@ -676,36 +679,58 @@ export class TemplateService {
   }
 
   /**
-   * Validate layout configuration
+   * Validate layout configuration with dynamic orientation support & safe clamping
    */
-  private validateLayoutConfig(layout: TemplateLayout, format: 'pvc' | 'badge'): void {
-    // PVC card dimensions: 85.6mm x 53.98mm
-    // Badge dimensions: 101.6mm x 152.4mm (4" x 6")
+  private validateLayoutConfig(layout?: TemplateLayout, format: 'pvc' | 'badge' = 'pvc'): void {
+    if (!layout) return;
 
-    const maxWidth = format === 'pvc' ? 85.6 : 101.6;
-    const maxHeight = format === 'pvc' ? 53.98 : 152.4;
+    // Detect layout orientation (portrait vs landscape)
+    const isPortrait =
+      (layout as any).orientation === 'portrait' ||
+      (format === 'badge' && (layout as any).orientation !== 'landscape') ||
+      (layout.photoPosition && layout.photoPosition.y > 50) ||
+      (layout.qrCodePosition && layout.qrCodePosition.y > 50);
 
-    // Validate photo position
-    if (
-      layout.photoPosition.x < 0 ||
-      layout.photoPosition.y < 0 ||
-      layout.photoPosition.x + layout.photoPosition.width > maxWidth ||
-      layout.photoPosition.y + layout.photoPosition.height > maxHeight
-    ) {
-      throw new Error('Photo position exceeds card dimensions');
+    // Dynamic max dimensions based on format and orientation:
+    // PVC Landscape: 85.6mm x 53.98mm | PVC Portrait: 53.98mm x 85.6mm
+    // Badge Portrait: 101.6mm x 152.4mm | Badge Landscape: 152.4mm x 101.6mm
+    const maxWidth = format === 'pvc' ? (isPortrait ? 53.98 : 85.6) : (isPortrait ? 101.6 : 152.4);
+    const maxHeight = format === 'pvc' ? (isPortrait ? 85.6 : 53.98) : (isPortrait ? 152.4 : 101.6);
+
+    // Validate and clamp photo position
+    if (layout.photoPosition) {
+      const p = layout.photoPosition;
+      p.width = Math.min(Math.max(1, p.width || 25), maxWidth);
+      p.height = Math.min(Math.max(1, p.height || 30), maxHeight);
+      p.x = Math.max(0, Math.min(p.x || 0, maxWidth - p.width));
+      p.y = Math.max(0, Math.min(p.y || 0, maxHeight - p.height));
     }
 
-    // Validate QR code position
-    if (
-      layout.qrCodePosition.x < 0 ||
-      layout.qrCodePosition.y < 0 ||
-      layout.qrCodePosition.x + layout.qrCodePosition.size > maxWidth ||
-      layout.qrCodePosition.y + layout.qrCodePosition.size > maxHeight
-    ) {
-      throw new Error('QR code position exceeds card dimensions');
+    // Validate and clamp QR code position
+    if (layout.qrCodePosition) {
+      const q = layout.qrCodePosition;
+      q.size = Math.min(Math.max(1, q.size || 16), Math.min(maxWidth, maxHeight));
+      q.x = Math.max(0, Math.min(q.x || 0, maxWidth - q.size));
+      q.y = Math.max(0, Math.min(q.y || 0, maxHeight - q.size));
     }
 
-    // Additional validations can be added here
+    // Clamp text and barcode positions if present
+    if (layout.namePosition) {
+      layout.namePosition.x = Math.max(0, Math.min(layout.namePosition.x || 0, maxWidth - 2));
+      layout.namePosition.y = Math.max(0, Math.min(layout.namePosition.y || 0, maxHeight - 2));
+    }
+    if (layout.rolePosition) {
+      layout.rolePosition.x = Math.max(0, Math.min(layout.rolePosition.x || 0, maxWidth - 2));
+      layout.rolePosition.y = Math.max(0, Math.min(layout.rolePosition.y || 0, maxHeight - 2));
+    }
+    if (layout.idPosition) {
+      layout.idPosition.x = Math.max(0, Math.min(layout.idPosition.x || 0, maxWidth - 2));
+      layout.idPosition.y = Math.max(0, Math.min(layout.idPosition.y || 0, maxHeight - 2));
+    }
+    if (layout.barcodePosition) {
+      layout.barcodePosition.x = Math.max(0, Math.min(layout.barcodePosition.x || 0, maxWidth - 2));
+      layout.barcodePosition.y = Math.max(0, Math.min(layout.barcodePosition.y || 0, maxHeight - 2));
+    }
   }
 
   /**
