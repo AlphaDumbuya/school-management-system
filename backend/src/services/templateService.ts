@@ -427,14 +427,32 @@ export class TemplateService {
    * Get default template for a role
    * Requirements: 4.6
    */
-  async getDefaultTemplate(tenantId: string, role: UserRole): Promise<Template> {
+  async getDefaultTemplate(tenantId: string, role: UserRole, format?: 'pvc' | 'badge'): Promise<Template> {
     try {
-      const template = await this.db('card_templates')
-        .where({ tenant_id: tenantId })
-        .where({ is_default: true })
-        .whereRaw('? = ANY(default_for_roles)', [role])
-        .where({ status: 'approved' })
-        .first();
+      const findTemplate = async () => {
+        const base = () =>
+          this.db('card_templates')
+            .where({ tenant_id: tenantId })
+            .where({ is_default: true })
+            .whereRaw('? = ANY(default_for_roles)', [role])
+            .where({ status: 'approved' });
+
+        // Prefer a default that matches the requested format (e.g. a badge
+        // template when generating a badge), otherwise fall back to any default.
+        if (format) {
+          const matched = await base().where({ format }).first();
+          if (matched) return matched;
+        }
+        return base().first();
+      };
+
+      let template = await findTemplate();
+
+      // Auto-provision standard defaults if the tenant has none yet, then retry.
+      if (!template) {
+        await this.ensureDefaultTemplates(tenantId);
+        template = await findTemplate();
+      }
 
       if (!template) {
         throw new Error(`No default template found for role ${role} in tenant ${tenantId}`);

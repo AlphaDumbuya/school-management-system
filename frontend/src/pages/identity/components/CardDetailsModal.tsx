@@ -11,6 +11,8 @@ import {
     RotateCcw, Ban, AlertTriangle, FlipHorizontal2,
 } from 'lucide-react';
 import { VisualIdCardRenderer } from './VisualIdCardRenderer';
+import { CardPdfExporter, buildCardExportData } from './cardExport';
+import type { CardPdfExporterHandle } from './cardExport';
 
 interface CardDetailsModalProps {
     isOpen: boolean;
@@ -52,6 +54,8 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
     const queryClient = useQueryClient();
     const [previewSide, setPreviewSide] = useState<'front' | 'back'>('front');
     const [isActioning, setIsActioning] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
+    const exporterRef = React.useRef<CardPdfExporterHandle>(null);
     // Fetch card details
     const { data: cardData, isLoading: cardLoading } = useQuery({
         queryKey: ['id-card', cardId],
@@ -80,14 +84,25 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                         <CreditCard size={24} className="text-blue-500" />
                         ID Card Details
                     </h2>
-                    {card?.pdfUrl && (
+                    {card && (
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => window.open(card.pdfUrl.startsWith('/uploads/') ? `/storage${card.pdfUrl}` : card.pdfUrl, '_blank')}
+                            disabled={isDownloading}
+                            onClick={async () => {
+                                setIsDownloading(true);
+                                try {
+                                    await exporterRef.current?.export(buildCardExportData(card));
+                                    showToast.success('Card PDF downloaded');
+                                } catch {
+                                    showToast.error('Failed to download card PDF');
+                                } finally {
+                                    setIsDownloading(false);
+                                }
+                            }}
                             className="flex items-center gap-1.5"
                         >
-                            <Download size={16} />
+                            {isDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                             Download PDF
                         </Button>
                     )}
@@ -367,6 +382,7 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                     </div>
                 )}
             </div>
+            <CardPdfExporter ref={exporterRef} />
         </Modal>
     );
 };

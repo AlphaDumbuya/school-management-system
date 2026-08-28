@@ -312,12 +312,10 @@ class DisciplineService {
 
       const olderInfractions = await db('student_infractions')
         .where({ student_id: studentId, tenant_id: tenantId })
-        .where(
-          'incident_date',
-          'between',
+        .whereBetween('incident_date', [
           new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
-          new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-        )
+          new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        ])
         .count('* as count')
         .first();
 

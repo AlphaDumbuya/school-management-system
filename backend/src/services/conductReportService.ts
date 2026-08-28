@@ -152,6 +152,76 @@ class ConductReportService {
   }
 
   /**
+   * List all conduct reports school-wide (tenant-isolated)
+   */
+  async listAllReports(
+    tenantId: string,
+    options?: {
+      search?: string;
+      report_period?: string;
+      shared?: string;
+      page?: number;
+      limit?: number;
+    }
+  ) {
+    try {
+      const page = options?.page || 1;
+      const limit = options?.limit || 20;
+      const offset = (page - 1) * limit;
+
+      let query = db('conduct_reports as cr')
+        .leftJoin('users as u', function () {
+          this.on('cr.student_id', '=', 'u.id').andOn('u.tenant_id', '=', db.raw('?', [tenantId]));
+        })
+        .leftJoin('users as g', function () {
+          this.on('cr.generated_by', '=', 'g.id').andOn('g.tenant_id', '=', db.raw('?', [tenantId]));
+        })
+        .where('cr.tenant_id', tenantId)
+        .select(
+          'cr.*',
+          db.raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as student_name"),
+          db.raw("CONCAT(COALESCE(g.first_name, ''), ' ', COALESCE(g.last_name, '')) as generated_by_name")
+        )
+        .orderBy('cr.created_at', 'desc');
+
+      if (options?.report_period) {
+        query = query.where('cr.report_period', options.report_period);
+      }
+
+      if (options?.shared === 'true') {
+        query = query.where('cr.parent_shared', true);
+      } else if (options?.shared === 'false') {
+        query = query.where('cr.parent_shared', false);
+      }
+
+      if (options?.search) {
+        const term = `%${options.search.toLowerCase()}%`;
+        query = query.whereRaw(
+          "LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE ?",
+          [term]
+        );
+      }
+
+      const items = await query.clone().limit(limit).offset(offset);
+      const countRes = await query.clone().clearSelect().clearOrder().count('* as count').first();
+      const total = Number(countRes?.count || 0);
+
+      return {
+        data: items,
+        pagination: {
+          total,
+          page,
+          limit,
+          total_pages: Math.ceil(total / limit) || 1,
+        },
+      };
+    } catch (error) {
+      logger.error('Error listing all conduct reports:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get single report
    */
   async getReport(reportId: string, tenantId: string): Promise<ConductReport> {

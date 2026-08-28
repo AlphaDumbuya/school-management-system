@@ -6,6 +6,24 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize } from '../middleware/authMiddleware.js';
+import { validate } from '../middleware/validate.js';
+import {
+  recordInfractionSchema,
+  updateInfractionSchema,
+  resolveInfractionSchema,
+  assignActionSchema,
+  updateActionStatusSchema,
+  cancelActionSchema,
+  scheduleDetentionSchema,
+  rescheduleDetentionSchema,
+  submitAppealSchema,
+  approveAppealSchema,
+  rejectAppealSchema,
+  escalateAppealSchema,
+  createNoteSchema,
+  updateNoteSchema,
+  generateReportSchema,
+} from '../validators/disciplineValidators.js';
 import { logger } from '../utils/logger.js';
 import disciplineService from '../services/disciplineService.js';
 import infractionService from '../services/infractionService.js';
@@ -29,6 +47,7 @@ router.use(authenticate);
 router.post(
   '/infractions',
   authorize(['principal', 'teacher', 'super_admin']),
+  validate(recordInfractionSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const infraction = await infractionService.recordInfraction(req.user.tenant_id, {
@@ -128,6 +147,7 @@ router.get(
 router.put(
   '/infractions/:infractionId',
   authorize(['principal', 'super_admin']),
+  validate(updateInfractionSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const infraction = await infractionService.updateInfraction(
@@ -174,6 +194,7 @@ router.post(
 router.post(
   '/infractions/:infractionId/resolve',
   authorize(['principal', 'super_admin']),
+  validate(resolveInfractionSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const infraction = await infractionService.resolveInfraction(
@@ -251,6 +272,7 @@ router.get(
 router.post(
   '/actions',
   authorize(['principal', 'super_admin']),
+  validate(assignActionSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const action = await disciplineService.assignDisciplineAction(req.user.tenant_id, {
@@ -329,6 +351,7 @@ router.get(
 router.put(
   '/actions/:actionId/status',
   authorize(['principal', 'super_admin']),
+  validate(updateActionStatusSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const action = await disciplineService.updateActionStatus(
@@ -354,6 +377,7 @@ router.put(
 router.post(
   '/actions/:actionId/cancel',
   authorize(['principal', 'super_admin']),
+  validate(cancelActionSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const action = await disciplineService.cancelAction(
@@ -380,6 +404,7 @@ router.post(
 router.post(
   '/detentions',
   authorize(['principal', 'super_admin']),
+  validate(scheduleDetentionSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const detention = await detentionService.scheduleDetention(req.user.tenant_id, req.body);
@@ -476,6 +501,7 @@ router.post(
 router.post(
   '/detentions/:detentionId/reschedule',
   authorize(['principal', 'super_admin']),
+  validate(rescheduleDetentionSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const detention = await detentionService.rescheduleDetention(
@@ -526,6 +552,7 @@ router.get(
  */
 router.post(
   '/appeals',
+  validate(submitAppealSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const appeal = await appealService.submitAppeal(req.user.tenant_id, {
@@ -648,6 +675,7 @@ router.post(
 router.post(
   '/appeals/:appealId/approve',
   authorize(['principal', 'super_admin']),
+  validate(approveAppealSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const appeal = await appealService.approveAppeal(
@@ -673,6 +701,7 @@ router.post(
 router.post(
   '/appeals/:appealId/reject',
   authorize(['principal', 'super_admin']),
+  validate(rejectAppealSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const appeal = await appealService.rejectAppeal(
@@ -697,6 +726,7 @@ router.post(
 router.post(
   '/appeals/:appealId/escalate',
   authorize(['principal', 'super_admin']),
+  validate(escalateAppealSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const appeal = await appealService.escalateAppeal(
@@ -714,28 +744,6 @@ router.post(
   }
 );
 
-/**
- * GET /api/v1/discipline/appeals/pending
- * Get pending appeals
- */
-router.get(
-  '/appeals/pending',
-  authorize(['principal', 'super_admin']),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const appeals = await appealService.getPendingAppeals(
-        req.user.tenant_id,
-        parseInt(req.query.limit as string) || 10
-      );
-
-      res.json({ pending_appeals: appeals });
-    } catch (error) {
-      logger.error('Error getting pending appeals:', error);
-      next(error);
-    }
-  }
-);
-
 // ==================== BEHAVIORAL NOTES ====================
 
 /**
@@ -745,6 +753,7 @@ router.get(
 router.post(
   '/notes',
   authorize(['principal', 'teacher', 'super_admin']),
+  validate(createNoteSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const note = await behavioralNoteService.createNote(req.user.tenant_id, {
@@ -842,6 +851,7 @@ router.get(
 router.put(
   '/notes/:noteId',
   authorize(['principal', 'teacher', 'super_admin']),
+  validate(updateNoteSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const note = await behavioralNoteService.updateNote(
@@ -910,6 +920,7 @@ router.post(
 router.post(
   '/reports/generate',
   authorize(['principal', 'super_admin']),
+  validate(generateReportSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const report = await conductReportService.generateReport(
@@ -924,6 +935,31 @@ router.post(
       res.status(201).json({ report });
     } catch (error) {
       logger.error('Error generating report:', error);
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/v1/discipline/reports
+ * List all conduct reports (school-wide, tenant-isolated)
+ */
+router.get(
+  '/reports',
+  authorize(['principal', 'teacher', 'super_admin']),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await conductReportService.listAllReports(req.user.tenant_id, {
+        search: req.query.search as string,
+        report_period: req.query.report_period as string,
+        shared: req.query.shared as string,
+        page: parseInt(req.query.page as string) || 1,
+        limit: parseInt(req.query.limit as string) || 20,
+      });
+
+      res.json(result);
+    } catch (error) {
+      logger.error('Error listing all conduct reports:', error);
       next(error);
     }
   }

@@ -134,7 +134,8 @@ export class IdCardService {
       } else {
         template = await this.templateService.getDefaultTemplate(
           tenantId,
-          user.role as any
+          user.role as any,
+          options.format
         );
       }
 
@@ -556,8 +557,13 @@ export class IdCardService {
         doc.on('end', () => resolve(Buffer.concat(buffers)));
         doc.on('error', reject);
 
-        // Conversion helper from mm to points (72 DPI)
-        const mmToPt = (mm: number) => mm * (72 / 25.4);
+        // Conversion helper from mm to points (72 DPI). Guard against
+        // undefined/NaN coordinates from incomplete template configs — a single
+        // bad value must never abort the whole PDF ("unsupported number: NaN").
+        const mmToPt = (mm: number) => {
+          const n = Number(mm);
+          return Number.isFinite(n) ? n * (72 / 25.4) : 0;
+        };
 
         const fontName = template.config.fontFamily === 'Times-Roman' ? 'Times-Roman'
                         : template.config.fontFamily === 'Courier' ? 'Courier'
@@ -569,6 +575,8 @@ export class IdCardService {
         const roleConf = template.config.layoutConfig?.rolePosition || { x: 34, y: 24, side: 'front' };
         const idConf = template.config.layoutConfig?.idPosition || { x: 34, y: 31, side: 'front' };
         const qrConf = template.config.layoutConfig?.qrCodePosition || { x: 64, y: 14, size: 16, side: 'back' };
+        // Templates may omit an explicit QR size — always fall back to a sane value.
+        const qrSize = Number.isFinite(Number(qrConf.size)) && Number(qrConf.size) > 0 ? Number(qrConf.size) : 16;
         const barcodeConf = template.config.layoutConfig?.barcodePosition || { x: 34, y: 38, side: 'back' };
 
         const titleConf = template.config.layoutConfig?.titlePosition || {
@@ -780,7 +788,7 @@ export class IdCardService {
             const base64Data = qrCodeData.imageDataUrl.split(',')[1];
             if (base64Data) {
               const qrBuffer = Buffer.from(base64Data, 'base64');
-              doc.image(qrBuffer, mmToPt(qrConf.x), mmToPt(qrConf.y), { width: mmToPt(qrConf.size) });
+              doc.image(qrBuffer, mmToPt(qrConf.x), mmToPt(qrConf.y), { width: mmToPt(qrSize) });
             }
           } catch (qrErr) {
             logger.error('Failed to draw QR code on front', qrErr);
@@ -802,7 +810,9 @@ export class IdCardService {
           .text(`Card #: ${card.card_number}`, 10, dimensions.height - 12);
 
 
-        // ── PAGE 2: BACK SIDE ──
+        // ── PAGE 2: BACK SIDE (only for double-sided templates) ──
+        const isDoubleSided = template.config?.printSides === 'double';
+        if (isDoubleSided) {
         doc.addPage({
           size: [dimensions.width, dimensions.height],
           margins: { top: 0, bottom: 0, left: 0, right: 0 }
@@ -950,7 +960,7 @@ export class IdCardService {
             const base64Data = qrCodeData.imageDataUrl.split(',')[1];
             if (base64Data) {
               const qrBuffer = Buffer.from(base64Data, 'base64');
-              doc.image(qrBuffer, mmToPt(qrConf.x), mmToPt(qrConf.y), { width: mmToPt(qrConf.size) });
+              doc.image(qrBuffer, mmToPt(qrConf.x), mmToPt(qrConf.y), { width: mmToPt(qrSize) });
             }
           } catch (qrErr) {
             logger.error('Failed to draw QR code on back', qrErr);
@@ -984,6 +994,7 @@ export class IdCardService {
           .fontSize(6)
           .font(fontName)
           .text(expiresText, dimensions.width - 80, dimensions.height - 12, { align: 'right', width: 70 });
+        } // end double-sided back page
 
         doc.end();
       } catch (error) {

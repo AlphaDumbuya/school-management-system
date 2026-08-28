@@ -122,6 +122,31 @@ export interface BehavioralNote {
   recorded_by_name?: string;
 }
 
+export type ReportPeriod = 'term' | 'semester' | 'year' | 'custom';
+
+export interface ConductReport {
+  report_id: string;
+  student_id: string;
+  generated_by?: string;
+  report_period: ReportPeriod;
+  period_start_date?: string;
+  period_end_date?: string;
+  total_infractions: number;
+  total_points: number;
+  behavioral_rating?: number;
+  strengths?: string;
+  areas_for_improvement?: string;
+  teacher_comments?: string;
+  overall_assessment?: string;
+  parent_shared: boolean;
+  parent_share_date?: string;
+  parent_acknowledged: boolean;
+  created_at: string;
+  // Joined fields
+  student_name?: string;
+  generated_by_name?: string;
+}
+
 export interface StudentDisciplineStats {
   student_id: string;
   total_infractions: number;
@@ -331,6 +356,9 @@ export const disciplineService = {
     apiClient.post(`/api/v1/discipline/notes/${noteId}/share`, {}),
 
   // Conduct Reports
+  listAllReports: (params?: { search?: string; report_period?: string; shared?: string; page?: number; limit?: number }) =>
+    apiClient.get<PaginatedResult<ConductReport>>('/api/v1/discipline/reports', { params }),
+
   generateReport: (data: {
     student_id: string;
     report_period: string;

@@ -1,4 +1,7 @@
 import { Knex } from 'knex';
+import { PDFDocument } from 'pdf-lib';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { logger } from '../utils/logger.js';
 import { IdCardService } from './idCardService.js';
 
@@ -17,6 +20,7 @@ export interface BulkCardRequest {
   filters?: BulkFilterCriteria;  // Or filter criteria
   templateId?: string;
   format: 'pvc' | 'badge';
+  expirationDate?: string;  // Optional ISO date; defaults to 1 year per card
   requestedBy: string;
 }
 
@@ -72,7 +76,6 @@ export interface FailureEntry {
 
 export class BulkCardOperationService {
   private readonly MAX_CONCURRENT_JOBS_PER_TENANT = 3;
-  private readonly ASYNC_THRESHOLD = 50;
   private idCardService: IdCardService;
 
   constructor(private db: Knex) {
@@ -111,19 +114,38 @@ export class BulkCardOperationService {
         throw new Error('Either userIds or filters must be provided');
       }
 
-      // Validate all users exist and are active
+      // Validate members exist and are active. A member id may reference the
+      // users table (staff/teachers) OR the students table (student-only
+      // records without a linked user). Both are valid targets for card
+      // generation, so accept an id present in either table for this tenant.
       const validUsers = await this.db('users')
         .where({ tenant_id: request.tenantId })
         .whereIn('id', userIds)
         .where({ status: 'active' })
         .select('id');
 
-      const validUserIds = validUsers.map((u: any) => u.id);
+      const validStudents = await this.db('students')
+        .where({ tenant_id: request.tenantId })
+        .whereIn('id', userIds)
+        .where({ status: 'active' })
+        .select('id');
+
+      const validIdSet = new Set<string>([
+        ...validUsers.map((u: any) => u.id),
+        ...validStudents.map((s: any) => s.id),
+      ]);
+
+      const validUserIds = userIds.filter((id) => validIdSet.has(id));
       const invalidCount = userIds.length - validUserIds.length;
 
+      if (validUserIds.length === 0) {
+        throw new Error('No active members found for the selected targets.');
+      }
+
       if (invalidCount > 0) {
-        throw new Error(
-          `${invalidCount} user(s) not found or inactive. All users must be active.`
+        logger.warn(
+          `Bulk job skipping ${invalidCount} member(s) not found or inactive`,
+          { tenantId: request.tenantId }
         );
       }
 
@@ -136,10 +158,13 @@ export class BulkCardOperationService {
           processed_cards: 0,
           successful_cards: 0,
           failed_cards: 0,
+          // request_params is a jsonb column — pass a plain object. Knex/pg
+          // serializes it correctly; stringifying here caused double-encoding.
           request_params: JSON.stringify({
             userIds: validUserIds,
-            templateId: request.templateId,
+            templateId: request.templateId ?? null,
             format: request.format,
+            expirationDate: request.expirationDate ?? null,
           }),
           requested_by: request.requestedBy,
           created_at: new Date(),
@@ -151,15 +176,14 @@ export class BulkCardOperationService {
         requestedBy: request.requestedBy,
       });
 
-      // Process asynchronously if over threshold
-      if (validUserIds.length > this.ASYNC_THRESHOLD) {
-        // In real implementation, queue this job for background processing
-        // For now, we'll process it immediately in a non-blocking way
-        setImmediate(() => this.processBulkJob(job.id));
-      } else {
-        // Process synchronously for small batches
-        await this.processBulkJob(job.id);
-      }
+      // Always process in the background (non-blocking) so the API responds
+      // immediately with a queued job and the client can poll for progress.
+      // Errors inside processBulkJob are captured and reflected in job status.
+      setImmediate(() => {
+        this.processBulkJob(job.id).catch((err) =>
+          logger.error(`Unhandled error processing bulk job ${job.id}`, { err })
+        );
+      });
 
       return {
         jobId: job.id,
@@ -196,8 +220,19 @@ export class BulkCardOperationService {
         throw new Error(`Job ${jobId} not found`);
       }
 
-      const params = JSON.parse(job.request_params);
-      const userIds: string[] = params.userIds;
+      // request_params is jsonb. Depending on how it was stored (object vs
+      // stringified), pg may return an object OR a JSON string (or even a
+      // double-encoded string). Normalise defensively.
+      let params: any = job.request_params;
+      if (typeof params === 'string') {
+        params = JSON.parse(params);
+        if (typeof params === 'string') params = JSON.parse(params);
+      }
+      const userIds: string[] = params.userIds || [];
+
+      if (userIds.length === 0) {
+        throw new Error('Bulk job has no target members to process');
+      }
 
       // Process each user
       let successCount = 0;
@@ -213,44 +248,45 @@ export class BulkCardOperationService {
               templateId: params.templateId,
               format: params.format,
               issuedBy: job.requested_by,
+              expirationDate: params.expirationDate ? new Date(params.expirationDate) : undefined,
             }
           );
 
-          // Record success
+          // Record success (best-effort — a logging failure must not abort the job)
           await this.db('bulk_card_results').insert({
             job_id: jobId,
             user_id: userId,
             card_id: result.cardId,
             status: 'success',
             processed_at: new Date(),
-          });
+          }).catch((e) => logger.warn(`Could not record success for ${userId}`, { e }));
 
           successCount++;
         } catch (error: any) {
-          // Record failure
+          // Record failure (best-effort)
           await this.db('bulk_card_results').insert({
             job_id: jobId,
             user_id: userId,
             status: 'failed',
-            error_code: error.code || 'GENERATION_ERROR',
-            error_message: error.message,
+            error_code: String(error.code || 'GENERATION_ERROR').slice(0, 100),
+            error_message: String(error.message || 'Unknown error').slice(0, 500),
             processed_at: new Date(),
-          });
+          }).catch((e) => logger.warn(`Could not record failure for ${userId}`, { e }));
 
           failCount++;
           logger.error(`Failed to generate card for user ${userId} in job ${jobId}`, {
-            error,
+            message: error?.message,
           });
         }
 
-        // Update progress
+        // Update progress (best-effort)
         await this.db('bulk_card_jobs')
           .where({ id: jobId })
           .update({
             processed_cards: successCount + failCount,
             successful_cards: successCount,
             failed_cards: failCount,
-          });
+          }).catch(() => {});
       }
 
       // Generate combined PDF if there are successful cards
@@ -366,21 +402,23 @@ export class BulkCardOperationService {
         throw new Error(`Job ${jobId} not found`);
       }
 
-      // Get all results
+      // Get all results. A member id can reference users OR students, so use
+      // LEFT joins to both and coalesce the name (never drop a result row).
       const results = await this.db('bulk_card_results')
         .where({ job_id: jobId })
-        .join('users', 'bulk_card_results.user_id', 'users.id')
+        .leftJoin('users', 'bulk_card_results.user_id', 'users.id')
+        .leftJoin('students', 'bulk_card_results.user_id', 'students.id')
         .select(
           'bulk_card_results.*',
-          'users.first_name',
-          'users.last_name'
+          this.db.raw("COALESCE(users.first_name, students.first_name, '') as first_name"),
+          this.db.raw("COALESCE(users.last_name, students.last_name, '') as last_name")
         );
 
       const successful: SuccessEntry[] = [];
       const failed: FailureEntry[] = [];
 
       for (const result of results) {
-        const userName = `${result.first_name} ${result.last_name}`;
+        const userName = `${result.first_name} ${result.last_name}`.trim() || 'Unknown';
 
         if (result.status === 'success') {
           // Get card details
@@ -444,10 +482,11 @@ export class BulkCardOperationService {
       }
 
       if (filters.departmentId) {
-        // Join with teachers to get teachers in a specific department
+        // Join with teachers to get teachers in a specific department.
+        // The teachers table stores department as a string column.
         query = query
           .join('teachers', 'users.id', 'teachers.user_id')
-          .where('teachers.department_id', filters.departmentId);
+          .where('teachers.department', filters.departmentId);
       }
 
       const users = await query.select('users.id');
@@ -462,24 +501,70 @@ export class BulkCardOperationService {
    * Generate combined PDF with multiple cards
    * Requirements: 5.4, 11.3
    */
-  private async generateCombinedPDF(jobId: string): Promise<string> {
+  private async generateCombinedPDF(jobId: string): Promise<string | undefined> {
     try {
-      // In real implementation:
-      // 1. Get all successful card PDFs
-      // 2. Combine them into a single PDF with multiple cards per page
-      // 3. Add crop marks and alignment guides
-      // 4. Upload to storage
-      // 5. Return URL
+      const job = await this.db('bulk_card_jobs').where({ id: jobId }).first();
+      if (!job) throw new Error(`Job ${jobId} not found`);
+      const tenantId = job.tenant_id;
 
-      // For now, return placeholder URL
-      const pdfUrl = `/uploads/bulk/${jobId}/combined.pdf`;
-      
-      logger.info(`Generated combined PDF for job ${jobId}`, { pdfUrl });
-      
+      // Collect the stored PDF paths for every successfully generated card.
+      const successResults = await this.db('bulk_card_results')
+        .where({ job_id: jobId, status: 'success' })
+        .whereNotNull('card_id')
+        .select('card_id');
+
+      const cardIds = successResults.map((r: any) => r.card_id);
+      if (cardIds.length === 0) return undefined;
+
+      const cards = await this.db('id_cards')
+        .whereIn('id', cardIds)
+        .select('id', 'pdf_url');
+
+      const storageRoot = process.env.LOCAL_STORAGE_PATH || './storage';
+
+      // Merge every card PDF into a single document (all pages preserved).
+      const merged = await PDFDocument.create();
+      let mergedCount = 0;
+
+      for (const card of cards) {
+        try {
+          if (!card.pdf_url) continue;
+          // pdf_url looks like /storage/uploads/cards/<tenant>/<cardId>.pdf
+          const relative = String(card.pdf_url).replace(/^\/storage\//, '');
+          const filePath = path.join(storageRoot, relative);
+
+          const bytes = await fs.readFile(filePath).catch(() => null);
+          if (!bytes) {
+            logger.warn(`Combined PDF: missing card file for ${card.id}`, { filePath });
+            continue;
+          }
+
+          const src = await PDFDocument.load(bytes);
+          const pages = await merged.copyPages(src, src.getPageIndices());
+          pages.forEach((p) => merged.addPage(p));
+          mergedCount++;
+        } catch (cardErr) {
+          logger.warn(`Combined PDF: failed to append card ${card.id}`, { cardErr });
+        }
+      }
+
+      if (mergedCount === 0) return undefined;
+
+      const mergedBytes = await merged.save();
+
+      // Persist alongside other tenant card assets and expose via /storage.
+      const targetDir = path.join(storageRoot, 'uploads', 'bulk', tenantId);
+      await fs.mkdir(targetDir, { recursive: true });
+      const filePath = path.join(targetDir, `${jobId}.pdf`);
+      await fs.writeFile(filePath, Buffer.from(mergedBytes));
+
+      const pdfUrl = `/storage/uploads/bulk/${tenantId}/${jobId}.pdf`;
+      logger.info(`Generated combined PDF for job ${jobId} (${mergedCount} cards)`, { pdfUrl });
       return pdfUrl;
     } catch (error) {
       logger.error('Failed to generate combined PDF', { jobId, error });
-      throw error;
+      // Non-fatal: the job still completes; the combined download just won't exist.
+      return undefined;
     }
   }
 }

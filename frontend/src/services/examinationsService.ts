@@ -7,7 +7,14 @@ import { apiClient } from '@lib/apiClient';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type ExamType = 'mid_term' | 'end_of_term' | 'mock' | 'promotion' | 'continuous_assessment';
+export type ExamType =
+  | 'test_1'
+  | 'test_2'
+  | 'mid_term'
+  | 'end_of_term'
+  | 'mock'
+  | 'promotion'
+  | 'continuous_assessment';
 export type ExamTerm = 'first_term' | 'second_term' | 'third_term';
 export type ExamStatus = 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
 
@@ -68,9 +75,13 @@ export interface ListExamsParams {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 export const EXAM_TYPES: { value: ExamType; label: string; description: string }[] = [
-  { value: 'continuous_assessment', label: 'Continuous Assessment', description: 'Ongoing CA tests (30% of final)' },
+  // Report-card aligned: each term has Test 1 (tests) + Test 2 (examination) → Mean
+  { value: 'test_1', label: 'Test 1 (Tests)', description: 'First test of the term — feeds Test 1 on the report card' },
+  { value: 'test_2', label: 'Test 2 (Examination)', description: 'Terminal examination — feeds Test 2 on the report card' },
+  // Generic types retained — different schools use different structures
+  { value: 'continuous_assessment', label: 'Continuous Assessment', description: 'Ongoing CA tests' },
   { value: 'mid_term', label: 'Mid-Term Exam', description: 'Halfway through the term' },
-  { value: 'end_of_term', label: 'End of Term Exam', description: 'Final exam for the term (70% of final)' },
+  { value: 'end_of_term', label: 'End of Term Exam', description: 'Final exam for the term' },
   { value: 'mock', label: 'Mock Exam', description: 'Practice exam before external exams' },
   { value: 'promotion', label: 'Promotion Exam', description: 'Determines advancement to next class' },
 ];
@@ -87,6 +98,61 @@ export const EXAM_STATUSES: { value: ExamStatus; label: string }[] = [
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
 ];
+
+// ── Exam Timetable (grid builder, like the normal timetable) ───────────────────
+
+/**
+ * Exam sessions — the "columns" of the exam-timetable grid (like time periods
+ * in the normal timetable). Each exam day has up to these sessions.
+ */
+export interface ExamSession {
+  key: string;
+  label: string;
+  start: string; // HH:MM
+  end: string;   // HH:MM
+}
+
+export const EXAM_SESSIONS: ExamSession[] = [
+  { key: 'morning', label: 'Morning', start: '09:00', end: '11:00' },
+  { key: 'afternoon', label: 'Afternoon', start: '12:00', end: '14:00' },
+];
+
+/** Map a start_date's time to a session key (morning/afternoon). */
+export function sessionForTime(startDateIso?: string): string {
+  if (!startDateIso) return 'morning';
+  const d = new Date(startDateIso);
+  if (isNaN(d.getTime())) return 'morning';
+  return d.getHours() < 12 ? 'morning' : 'afternoon';
+}
+
+/** Compose an ISO datetime from a YYYY-MM-DD date + HH:MM time. */
+export function composeExamDateTime(dateStr: string, time: string): string {
+  return `${dateStr}T${time}:00.000Z`;
+}
+
+/**
+ * Build the exam-timetable grid from a flat list of exams for a class+term+year.
+ * Rows = distinct exam dates (sorted); columns = sessions.
+ * Returns { dates, grid } where grid[date][sessionKey] = exam | undefined.
+ */
+export function buildExamGrid(exams: ExaminationRecord[]): {
+  dates: string[];
+  grid: Record<string, Record<string, ExaminationRecord>>;
+} {
+  const grid: Record<string, Record<string, ExaminationRecord>> = {};
+  const dateSet = new Set<string>();
+
+  for (const ex of exams) {
+    if (!ex.start_date) continue;
+    const dateKey = ex.start_date.substring(0, 10); // YYYY-MM-DD
+    dateSet.add(dateKey);
+    const session = sessionForTime(ex.start_date);
+    (grid[dateKey] ??= {})[session] = ex;
+  }
+
+  const dates = Array.from(dateSet).sort();
+  return { dates, grid };
+}
 
 // ── Service ───────────────────────────────────────────────────────────────────
 

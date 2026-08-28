@@ -32,7 +32,7 @@ import ClassesPage from '@pages/academic/ClassesPage';
 import SubjectsPage from '@pages/academic/SubjectsPage';
 import TimetablesPage from '@pages/academic/TimetablesPage';
 import AssignmentsPage from '@pages/academic/AssignmentsPage';
-import ExaminationsPage from '@pages/academic/ExaminationsPage';
+import ExamTimetablePage from '@pages/academic/ExamTimetablePage';
 import ResultsPage from '@pages/academic/ResultsPage';
 import ReportCardsPage from '@pages/academic/ReportCardsPage';
 import StudentDirectoryPage from '@pages/students/StudentDirectoryPage';
@@ -164,8 +164,8 @@ const router = createBrowserRouter(
           element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student']}><AssignmentsPage /></P>,
         },
         {
-          path: 'academic/examinations',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><ExaminationsPage /></P>,
+          path: 'academic/exam-timetable',
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><ExamTimetablePage /></P>,
         },
         {
           path: 'academic/results',
@@ -355,7 +355,7 @@ const router = createBrowserRouter(
         { path: 'classes', element: <P requiredRoles={['principal', 'teacher']}><Navigate to="/academic/classes" replace /></P> },
         { path: 'subjects', element: <P requiredRoles={['principal']}><Navigate to="/academic/subjects" replace /></P> },
         { path: 'timetable', element: <P requiredRoles={['principal', 'teacher']}><Navigate to="/academic/timetables" replace /></P> },
-        { path: 'examinations', element: <P requiredRoles={['principal', 'teacher']}><Navigate to="/academic/examinations" replace /></P> },
+        { path: 'examinations', element: <P requiredRoles={['principal', 'teacher']}><Navigate to="/academic/exam-timetable" replace /></P> },
         { path: 'grades', element: <P requiredRoles={['principal', 'teacher', 'student']}><Navigate to="/academic/results" replace /></P> },
         { path: 'attendance', element: <P requiredRoles={['principal', 'teacher', 'student']}><Navigate to="/students/attendance" replace /></P> },
         { path: 'teachers', element: <P requiredRoles={['principal']}><Navigate to="/staff/teachers" replace /></P> },

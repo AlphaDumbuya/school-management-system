@@ -135,6 +135,7 @@ export interface BulkCardRequest {
     };
     templateId?: string;
     format: CardFormat;
+    expirationDate?: string;
 }
 
 export interface BulkJob {

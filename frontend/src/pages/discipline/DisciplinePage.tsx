@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle, ShieldAlert, Gavel, MessageSquare, BarChart2,
   X, ChevronDown, Plus, TrendingUp, TrendingDown, Minus,
-  User, Calendar, CheckCircle2, Clock, XCircle,
+  User, Calendar, CheckCircle2, Clock, XCircle, FileText,
 } from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import MainLayout from '@components/layout/MainLayout';
@@ -24,7 +24,7 @@ import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import {
   disciplineService,
-  StudentInfraction, DisciplineAction, DisciplineAppeal, BehavioralNote,
+  StudentInfraction, DisciplineAction, DisciplineAppeal, BehavioralNote, ConductReport,
   InfractionSeverity, RiskLevel, BehaviorTrend,
   SEVERITY_COLORS, ACTION_TYPE_LABELS, RISK_COLORS,
 } from '@services/disciplineService';
@@ -32,11 +32,13 @@ import { InfractionFormModal } from './components/InfractionFormModal';
 import { ActionFormModal } from './components/ActionFormModal';
 import { AppealReviewModal } from './components/AppealReviewModal';
 import { BehavioralNoteModal } from './components/BehavioralNoteModal';
+import { ConductReportModal } from './components/ConductReportModal';
+import { ConductReportViewModal } from './components/ConductReportViewModal';
 import { ColumnDef } from '@tanstack/react-table';
 
 // ── Types & helpers ───────────────────────────────────────────────────────────
 
-type Tab = 'dashboard' | 'infractions' | 'actions' | 'appeals' | 'notes';
+type Tab = 'dashboard' | 'infractions' | 'actions' | 'appeals' | 'notes' | 'reports';
 
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
@@ -45,6 +47,7 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'actions', label: 'Actions', icon: <Gavel size={16} /> },
   { key: 'appeals', label: 'Appeals', icon: <ShieldAlert size={16} /> },
   { key: 'notes', label: 'Behavioral Notes', icon: <MessageSquare size={16} /> },
+  { key: 'reports', label: 'Conduct Reports', icon: <FileText size={16} /> },
 ];
 
 function severityBadge(severity: InfractionSeverity | undefined) {
@@ -99,6 +102,8 @@ export const DisciplinePage: React.FC = () => {
   const [actionModal, setActionModal] = useState<{ open: boolean; studentId?: string; studentName?: string; infractionId?: string }>({ open: false });
   const [appealModal, setAppealModal] = useState<{ open: boolean; appeal: DisciplineAppeal | null }>({ open: false, appeal: null });
   const [noteModal, setNoteModal] = useState<{ open: boolean; studentId?: string; studentName?: string; editing?: BehavioralNote | null }>({ open: false });
+  const [reportModal, setReportModal] = useState(false);
+  const [reportViewModal, setReportViewModal] = useState<{ open: boolean; report: ConductReport | null }>({ open: false, report: null });
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
@@ -135,6 +140,7 @@ export const DisciplinePage: React.FC = () => {
     queryClient.invalidateQueries({ queryKey: ['discipline-actions-list'] });
     queryClient.invalidateQueries({ queryKey: ['discipline-appeals-list'] });
     queryClient.invalidateQueries({ queryKey: ['discipline-notes-list'] });
+    queryClient.invalidateQueries({ queryKey: ['discipline-reports-list'] });
   };
 
 
@@ -373,6 +379,72 @@ export const DisciplinePage: React.FC = () => {
   ];
 
 
+  const reportColumns: ColumnDef<ConductReport, any>[] = [
+    {
+      id: 'student',
+      header: 'Student',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <User size={14} className="text-gray-400 flex-shrink-0" />
+          <span className="font-medium text-gray-900 dark:text-white">
+            {row.original.student_name || row.original.student_id}
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: 'period',
+      header: 'Period',
+      cell: ({ row }) => {
+        const labels: Record<string, string> = { term: 'Term', semester: 'Semester', year: 'Year', custom: 'Custom' };
+        return (
+          <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">
+            {labels[row.original.report_period] || row.original.report_period}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'range',
+      header: 'Date Range',
+      cell: ({ row }) => (
+        <span className="text-sm text-gray-500">
+          {fmt(row.original.period_start_date)} – {fmt(row.original.period_end_date)}
+        </span>
+      ),
+    },
+    {
+      id: 'rating',
+      header: 'Rating',
+      cell: ({ row }) => {
+        const r = row.original.behavioral_rating ?? 0;
+        const c = r >= 8 ? 'text-green-600' : r >= 5 ? 'text-amber-600' : 'text-red-600';
+        return <span className={`text-sm font-bold ${c}`}>{r}/10</span>;
+      },
+    },
+    {
+      id: 'infractions',
+      header: 'Infractions',
+      cell: ({ row }) => (
+        <span className="text-sm text-gray-700 dark:text-gray-300">{row.original.total_infractions}</span>
+      ),
+    },
+    {
+      id: 'shared',
+      header: 'Shared',
+      cell: ({ row }) => (
+        row.original.parent_shared ? (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+            <CheckCircle2 size={12} /> {row.original.parent_acknowledged ? 'Acknowledged' : 'Shared'}
+          </span>
+        ) : (
+          <span className="text-xs text-gray-400">Not shared</span>
+        )
+      ),
+    },
+  ];
+
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   const tabAction = () => {
@@ -394,6 +466,13 @@ export const DisciplinePage: React.FC = () => {
       <RoleGuard roles={['principal', 'teacher', 'super_admin']}>
         <Button size="sm" onClick={() => setNoteModal({ open: true })}>
           <Plus size={15} className="mr-1" /> Add Note
+        </Button>
+      </RoleGuard>
+    );
+    if (activeTab === 'reports') return (
+      <RoleGuard roles={['principal', 'super_admin']}>
+        <Button size="sm" onClick={() => setReportModal(true)}>
+          <Plus size={15} className="mr-1" /> Generate Report
         </Button>
       </RoleGuard>
     );
@@ -630,6 +709,14 @@ export const DisciplinePage: React.FC = () => {
                     <option value="observation">Observation</option>
                   </>
                 )}
+                {activeTab === 'reports' && (
+                  <>
+                    <option value="term">Term</option>
+                    <option value="semester">Semester</option>
+                    <option value="year">Academic Year</option>
+                    <option value="custom">Custom</option>
+                  </>
+                )}
               </select>
               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
                 <ChevronDown size={14} />
@@ -705,6 +792,16 @@ export const DisciplinePage: React.FC = () => {
             }}
           />
         )}
+
+        {/* ── CONDUCT REPORTS TAB ─────────────────────────────────────── */}
+        {activeTab === 'reports' && (
+          <ReportsTab
+            search={search}
+            periodFilter={statusFilter}
+            reportColumns={reportColumns}
+            onView={(report) => setReportViewModal({ open: true, report })}
+          />
+        )}
       </PageShell>
 
       {/* ── Modals ─────────────────────────────────────────────────────── */}
@@ -737,6 +834,19 @@ export const DisciplinePage: React.FC = () => {
         studentId={noteModal.studentId}
         studentName={noteModal.studentName}
         editingNote={noteModal.editing}
+      />
+
+      <ConductReportModal
+        isOpen={reportModal}
+        onClose={() => setReportModal(false)}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['discipline-reports-list'] })}
+      />
+
+      <ConductReportViewModal
+        isOpen={reportViewModal.open}
+        onClose={() => setReportViewModal({ open: false, report: null })}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['discipline-reports-list'] })}
+        report={reportViewModal.report}
       />
     </MainLayout>
   );
@@ -1022,6 +1132,64 @@ const NotesTab: React.FC<NotesTabProps> = ({
       onPageChange={setPage}
       pageSize={PAGE_SIZE}
       emptyMessage="No behavioral notes found"
+    />
+  );
+};
+
+
+// ── ReportsTab ────────────────────────────────────────────────────────────────
+
+interface ReportsTabProps {
+  search: string;
+  periodFilter: string;
+  reportColumns: ColumnDef<ConductReport, any>[];
+  onView: (report: ConductReport) => void;
+}
+
+const ReportsTab: React.FC<ReportsTabProps> = ({ search, periodFilter, reportColumns, onView }) => {
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['discipline-reports-list', { search, periodFilter, page }],
+    queryFn: () => disciplineService.listAllReports({
+      search: search || undefined,
+      report_period: periodFilter || undefined,
+      page,
+      limit: PAGE_SIZE,
+    }),
+    staleTime: 30_000,
+  });
+
+  const res = (data as any) ?? {};
+  const items: ConductReport[] = res?.data ?? [];
+  const pagination = res?.pagination ?? { total: 0, total_pages: 1 };
+
+  return (
+    <DataTable
+      columns={[
+        ...reportColumns,
+        {
+          id: '_actions',
+          header: '',
+          cell: ({ row }) => (
+            <Button variant="outline" size="sm" onClick={() => onView(row.original)}>
+              View
+            </Button>
+          ),
+        },
+      ]}
+      data={items}
+      isLoading={isLoading}
+      error={error ? String(error) : null}
+      onRetry={refetch}
+      paginationMode="server"
+      page={page}
+      totalPages={pagination.total_pages}
+      totalCount={pagination.total}
+      onPageChange={setPage}
+      pageSize={PAGE_SIZE}
+      emptyMessage="No conduct reports found"
     />
   );
 };
