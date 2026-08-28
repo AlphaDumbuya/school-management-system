@@ -216,8 +216,15 @@ router.post(
   authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await slReportCardService.setPublication(tenant(req), req.user!.id, req.body);
-      res.json({ success: true, message: req.body.published ? 'Results published' : 'Results unpublished' });
+      const result = await slReportCardService.setPublication(tenant(req), req.user!.id, req.body);
+      let message = req.body.published ? 'Results published' : 'Results unpublished';
+      const ap = result?.auto_promotion;
+      if (ap?.ran) {
+        message += ` — auto-promotion: ${ap.promoted} promoted, ${ap.repeated} repeating, ${ap.graduated} graduated`;
+      } else if (ap && ap.reason === 'no_next_class') {
+        message += ' — auto-promotion skipped: set a "next class" on this class first';
+      }
+      res.json({ success: true, message, auto_promotion: ap ?? null });
     } catch (error) {
       logger.error('Error publishing SL results:', error);
       next(error);

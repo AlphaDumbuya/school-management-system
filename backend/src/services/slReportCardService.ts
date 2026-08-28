@@ -17,6 +17,7 @@
 
 import db from '../utils/database.js';
 import { logger } from '../utils/logger.js';
+import promotionService from './promotionService.js';
 
 export const SL_TERMS = ['first_term', 'second_term', 'third_term'] as const;
 export type SLTerm = (typeof SL_TERMS)[number];
@@ -184,12 +185,14 @@ export class SLReportCardService {
     auto_lock_on_entry: boolean;
     allow_teacher_edit_after_lock: boolean;
     allow_teacher_view_results: boolean;
+    auto_promote_on_publish: boolean;
   }> {
     const row = await db('sl_report_settings').where({ tenant_id: tenantId }).first();
     return {
       auto_lock_on_entry: row?.auto_lock_on_entry ?? false,
       allow_teacher_edit_after_lock: row?.allow_teacher_edit_after_lock ?? false,
       allow_teacher_view_results: row?.allow_teacher_view_results ?? true,
+      auto_promote_on_publish: row?.auto_promote_on_publish ?? false,
     };
   }
 
@@ -200,6 +203,7 @@ export class SLReportCardService {
       auto_lock_on_entry: boolean;
       allow_teacher_edit_after_lock: boolean;
       allow_teacher_view_results: boolean;
+      auto_promote_on_publish: boolean;
     }>,
   ): Promise<void> {
     const existing = await db('sl_report_settings').where({ tenant_id: tenantId }).first();
@@ -207,6 +211,7 @@ export class SLReportCardService {
       auto_lock_on_entry: data.auto_lock_on_entry,
       allow_teacher_edit_after_lock: data.allow_teacher_edit_after_lock,
       allow_teacher_view_results: data.allow_teacher_view_results,
+      auto_promote_on_publish: data.auto_promote_on_publish,
       updated_by: userId,
       updated_at: db.fn.now(),
     };
@@ -258,7 +263,7 @@ export class SLReportCardService {
     tenantId: string,
     userId: string,
     payload: { class_id: string; academic_year: string; term?: string | null; published: boolean },
-  ): Promise<void> {
+  ): Promise<{ auto_promotion?: { ran: boolean; reason?: string; promoted: number; repeated: number; graduated: number; skipped: number } }> {
     await this.assertClassInTenant(payload.class_id, tenantId);
     const term = payload.term ?? null;
     const existing = await db('sl_report_publications')
@@ -283,6 +288,27 @@ export class SLReportCardService {
         ...fields,
       });
     }
+
+    // AUTO-PROMOTION: when a WHOLE-YEAR result set is published (term = null)
+    // and the tenant has enabled auto-promote, upgrade passing students to
+    // their class's configured next class (or graduate final-year students).
+    if (payload.published && term === null) {
+      const settings = await this.getSettings(tenantId);
+      if (settings.auto_promote_on_publish) {
+        try {
+          const result = await promotionService.autoPromoteClass(
+            tenantId, payload.class_id, payload.academic_year, userId,
+          );
+          logger.info(`Auto-promotion on publish for class ${payload.class_id}:`, result);
+          return { auto_promotion: result };
+        } catch (err) {
+          // Never block publishing because promotion failed.
+          logger.error('Auto-promotion on publish failed:', err);
+        }
+      }
+    }
+
+    return {};
   }
 
   /** Whether results for a class+year (optionally term) are published. */

@@ -15,7 +15,7 @@ router.use(attachUserContext);
  */
 router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, level, section, capacity, academic_session_id, class_teacher_id, room_number, floor, building } = req.body;
+    const { name, level, section, capacity, academic_session_id, class_teacher_id, room_number, floor, building, next_class_id, is_final_year } = req.body;
     const createdBy = req.auth?.userId ?? null;
     const tenantId = req.user?.tenant_id;
 
@@ -59,6 +59,8 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       room_number: room_number || null,
       floor: floor || null,
       building: building || null,
+      next_class_id: next_class_id || null,
+      is_final_year: is_final_year ?? false,
       status: 'active',
       created_at: new Date(),
       updated_at: new Date(),
@@ -117,6 +119,8 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         'classes.room_number',
         'classes.floor',
         'classes.building',
+        'classes.next_class_id',
+        'classes.is_final_year',
         'classes.created_at',
         db.raw('COALESCE(enrollment_counts.enrolled_students, 0) as enrolled_students')
       )
@@ -284,7 +288,7 @@ router.get('/:classId', authenticate, async (req: Request, res: Response, next: 
 router.put('/:classId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
-    const { name, level, section, capacity, class_teacher_id, room_number, floor, building, status } = req.body;
+    const { name, level, section, capacity, class_teacher_id, room_number, floor, building, status, next_class_id, is_final_year } = req.body;
     const updatedBy = req.auth?.userId ?? null;
     const tenantId = req.user?.tenant_id;
 
@@ -321,6 +325,8 @@ router.put('/:classId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUP
     }
     if (class_teacher_id) updateData.class_teacher_id = class_teacher_id;
     if (room_number !== undefined) updateData.room_number = room_number || null;
+    if (next_class_id !== undefined) updateData.next_class_id = next_class_id || null;
+    if (is_final_year !== undefined) updateData.is_final_year = !!is_final_year;
     if (floor !== undefined) updateData.floor = floor || null;
     if (building !== undefined) updateData.building = building || null;
     if (status) updateData.status = status;

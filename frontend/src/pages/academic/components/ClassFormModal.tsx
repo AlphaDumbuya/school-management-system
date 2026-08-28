@@ -86,6 +86,8 @@ const schema = z.object({
   room_number: z.string().optional(),
   floor:       z.string().optional(),
   building:    z.string().optional(),
+  next_class_id: z.string().optional(),
+  is_final_year: z.boolean().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -110,6 +112,17 @@ export const ClassFormModal: React.FC<ClassFormModalProps> = ({
   const isEditing = !!editingClass;
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [allClasses, setAllClasses] = React.useState<ClassRecord[]>([]);
+
+  // Load classes for the "next class" (promotion target) dropdown.
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    classesService.listClasses({ limit: 200 })
+      .then((res: any) => { if (active) setAllClasses(res?.data ?? []); })
+      .catch(() => { /* non-fatal */ });
+    return () => { active = false; };
+  }, [isOpen]);
 
   // Cascading selector state
   const [category, setCategory] = React.useState<Category | null>(null);
@@ -140,6 +153,7 @@ export const ClassFormModal: React.FC<ClassFormModalProps> = ({
     defaultValues: {
       name: '', level: undefined, section: '', capacity: 30,
       room_number: '', floor: '', building: '',
+      next_class_id: '', is_final_year: false,
     },
   });
 
@@ -176,12 +190,14 @@ export const ClassFormModal: React.FC<ClassFormModalProps> = ({
         room_number: editingClass.room_number ?? '',
         floor: editingClass.floor ?? '',
         building: editingClass.building ?? '',
+        next_class_id: (editingClass.next_class_id as any) ?? '',
+        is_final_year: !!editingClass.is_final_year,
       });
       const cat = getCategoryFromLevel(editingClass.level);
       setCategory(cat);
       setSubCategory(cat === 'secondary' ? getSubCategoryFromLevel(editingClass.level) : null);
     } else if (isOpen && !editingClass) {
-      reset({ name: '', level: undefined, section: '', capacity: 30, room_number: '', floor: '', building: '' });
+      reset({ name: '', level: undefined, section: '', capacity: 30, room_number: '', floor: '', building: '', next_class_id: '', is_final_year: false });
       setCategory(null);
       setSubCategory(null);
     }
@@ -253,6 +269,8 @@ export const ClassFormModal: React.FC<ClassFormModalProps> = ({
         room_number: values.room_number || undefined,
         floor: values.floor || undefined,
         building: values.building || undefined,
+        next_class_id: values.is_final_year ? null : (values.next_class_id || null),
+        is_final_year: !!values.is_final_year,
       };
 
       if (isEditing && editingClass) {
@@ -565,6 +583,38 @@ export const ClassFormModal: React.FC<ClassFormModalProps> = ({
                   error={errors.building?.message}
                   {...register('building')}
                 />
+              </div>
+
+              {/* Promotion mapping — used for automatic end-of-year promotion */}
+              <div className="mt-6 pt-5 border-t border-gray-200 dark:border-gray-700">
+                <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest">
+                  Promotion
+                </h3>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 mb-3">
+                  Where students go when they pass at year-end. Required for automatic promotion on result release.
+                </p>
+
+                <label className="flex items-center gap-2 mb-3 cursor-pointer select-none">
+                  <input type="checkbox" {...register('is_final_year')} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">This is a final year — passing students <b>graduate</b></span>
+                </label>
+
+                {!watch('is_final_year') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Next Class (on promotion)</label>
+                    <select
+                      {...register('next_class_id')}
+                      className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">— Not set (manual promotion only) —</option>
+                      {allClasses
+                        .filter((c) => String(c.id) !== String(editingClass?.id))
+                        .map((c) => (
+                          <option key={c.id} value={String(c.id)}>{c.name}{c.level ? ` (${c.level})` : ''}</option>
+                        ))}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
           </section>

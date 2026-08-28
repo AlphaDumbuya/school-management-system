@@ -35,6 +35,7 @@ import AssignmentsPage from '@pages/academic/AssignmentsPage';
 import ExamTimetablePage from '@pages/academic/ExamTimetablePage';
 import ResultsPage from '@pages/academic/ResultsPage';
 import ReportCardsPage from '@pages/academic/ReportCardsPage';
+import PromotionsPage from '@pages/academic/PromotionsPage';
 import StudentDirectoryPage from '@pages/students/StudentDirectoryPage';
 import AdmissionsPage from '@pages/students/AdmissionsPage';
 import { StudentProfilesPage } from '@pages/students/StudentProfilesPage';
@@ -177,7 +178,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'academic/promotions',
-          element: <P requiredRoles={['principal', 'super_admin']}><V2Route><CS /></V2Route></P>,
+          element: <P requiredRoles={['principal', 'super_admin']}><PromotionsPage /></P>,
         },
 
         // ── STUDENT MANAGEMENT ─────────────────────────────────────
