@@ -135,6 +135,34 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         'enrollment_counts.class_id'
       );
 
+    // Teacher scoping: teachers only see classes they are assigned to teach
+    // (via teacher_assignments) or lead as the class teacher. Staff-admins
+    // (principal / super_admin) see all tenant classes.
+    if (req.user?.role === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users', 'teachers.user_id', 'users.id')
+        .where('teachers.user_id', req.user.id)
+        .where('users.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+
+      if (!teacher) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+
+      const assigned = await db('teacher_assignments').where('teacher_id', teacher.id).distinct('class_id');
+      const led = await db('classes').where('class_teacher_id', teacher.id).select('id');
+      const classIds = Array.from(new Set<string>([
+        ...assigned.map((r: any) => r.class_id),
+        ...led.map((r: any) => r.id),
+      ]));
+
+      if (classIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      query = query.whereIn('classes.id', classIds);
+    }
+
     if (level) {
       query = query.where('classes.level', level);
     }
@@ -182,6 +210,30 @@ router.get('/:classId/students', authenticate, async (req: Request, res: Respons
 
     if (!tenantId) {
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    // Teacher scoping: a teacher may only view students of classes they teach/lead.
+    if (req.user?.role === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users', 'teachers.user_id', 'users.id')
+        .where('teachers.user_id', req.user.id)
+        .where('users.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+
+      let allowed = false;
+      if (teacher) {
+        const assigned = await db('teacher_assignments')
+          .where({ teacher_id: teacher.id, class_id: classId })
+          .first();
+        const led = await db('classes')
+          .where({ id: classId, class_teacher_id: teacher.id })
+          .first();
+        allowed = !!(assigned || led);
+      }
+      if (!allowed) {
+        throw new AppError('You are not assigned to this class', 403, 'FORBIDDEN');
+      }
     }
 
     const classData = await db('classes')

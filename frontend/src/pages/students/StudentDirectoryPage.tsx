@@ -25,6 +25,7 @@ import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
+import { useAuth } from '@hooks/useAuth';
 import { studentsService, StudentRecord } from '@services/studentsService';
 import { StudentFormModal } from './components/StudentFormModal';
 import { StudentDetailModal } from './components/StudentDetailModal';
@@ -59,6 +60,9 @@ const STATUS_PILL: Record<string, string> = {
 export const StudentDirectoryPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { canAccess } = useAuth();
+  // Teachers view a read-only, class-scoped directory; only these roles manage.
+  const canManage = canAccess(['principal', 'super_admin', 'admissions_officer']);
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
@@ -387,8 +391,12 @@ export const StudentDirectoryPage: React.FC = () => {
             <div className="flex flex-col items-center justify-center p-12 text-center">
               <Users size={48} className="text-gray-300 dark:text-gray-600 mb-4" />
               <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">No students found</p>
-              <p className="text-sm text-gray-500 mt-1 mb-4">Try adjusting your filters or search query.</p>
-              <Button onClick={() => { setEditingStudent(null); setFormOpen(true); }}>Add your first student</Button>
+              <p className="text-sm text-gray-500 mt-1 mb-4">
+                {canManage ? 'Try adjusting your filters or search query.' : 'No students in your classes match this view.'}
+              </p>
+              {canManage && (
+                <Button onClick={() => { setEditingStudent(null); setFormOpen(true); }}>Add your first student</Button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
@@ -408,16 +416,20 @@ export const StudentDirectoryPage: React.FC = () => {
             pageSize={pageSize}
             totalRows={Number(pagination.total)}
             onPageChange={setPage}
-            emptyMessage="No students found"
-            emptyAction={{ label: 'Add your first student', onClick: () => { setEditingStudent(null); setFormOpen(true); } }}
+            emptyMessage={canManage ? 'No students found' : 'No students in your classes match this view.'}
+            emptyAction={canManage ? { label: 'Add your first student', onClick: () => { setEditingStudent(null); setFormOpen(true); } } : undefined}
             rowActions={(row) => [
-              { label: 'View Details', onClick: (r) => setViewingStudent(r) },
-              { label: 'Edit', onClick: (r) => { setEditingStudent(r); setFormOpen(true); } },
-              ...(row.status === 'active'
-                ? [{ label: 'Deactivate', variant: 'destructive' as const, onClick: (r: StudentRecord) => setDeactivateTarget(r) }]
-                : [{ label: 'Reactivate', onClick: (r: StudentRecord) => handleReactivate(r) }]
-              ),
-              { label: 'Delete', variant: 'destructive' as const, onClick: (r) => setDeleteTarget(r) },
+              // View is available to everyone (read-only)
+              { label: 'View Details', onClick: (r: StudentRecord) => setViewingStudent(r) },
+              // Management actions are staff/admissions only
+              ...(canManage ? [
+                { label: 'Edit', onClick: (r: StudentRecord) => { setEditingStudent(r); setFormOpen(true); } },
+                ...(row.status === 'active'
+                  ? [{ label: 'Deactivate', variant: 'destructive' as const, onClick: (r: StudentRecord) => setDeactivateTarget(r) }]
+                  : [{ label: 'Reactivate', onClick: (r: StudentRecord) => handleReactivate(r) }]
+                ),
+                { label: 'Delete', variant: 'destructive' as const, onClick: (r: StudentRecord) => setDeleteTarget(r) },
+              ] : []),
             ]}
           />
         )}

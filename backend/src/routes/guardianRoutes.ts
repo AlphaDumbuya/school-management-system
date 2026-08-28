@@ -10,6 +10,92 @@ router.use(authenticate);
 router.use(attachUserContext);
 
 /**
+ * GET /api/v1/students/guardian-lookup?email=&phone=
+ * Smart parent detection: given a guardian email/phone, report whether a
+ * matching parent already exists in this tenant, and how many children are
+ * already linked. Used by the registration form to link instead of duplicate.
+ * NOTE: declared BEFORE /:studentId routes so it isn't captured as a param.
+ */
+router.get('/guardian-lookup', authenticate, authorize('principal', 'super_admin', 'admissions_officer', 'admin'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+
+    const email = (req.query.email as string || '').trim().toLowerCase();
+    const phone = (req.query.phone as string || '').trim();
+
+    if (!email && !phone) {
+      return res.json({ success: true, found: false });
+    }
+
+    // 1) Match an existing parent USER account (email is the strong key).
+    let parentUser: any = null;
+    if (email) {
+      parentUser = await db('users')
+        .where({ tenant_id: tenantId, email })
+        .whereIn('role', ['parent', 'guardian'])
+        .first();
+    }
+
+    // 2) Match existing guardian records (by linked user, email or phone).
+    let guardianQuery = db('guardians as g')
+      .join('students as s', 'g.student_id', 's.id')
+      .where('s.tenant_id', tenantId);
+    guardianQuery = guardianQuery.where(function (this: any) {
+      if (parentUser) this.orWhere('g.user_id', parentUser.id);
+      if (email) this.orWhereRaw('LOWER(g.email) = ?', [email]);
+      if (phone) this.orWhere('g.phone_number', phone);
+    });
+
+    const linked = await guardianQuery
+      .distinct('s.id as student_id', 's.first_name', 's.last_name', 's.student_id as reg_id')
+      .select();
+
+    const found = !!parentUser || linked.length > 0;
+    if (!found) {
+      return res.json({ success: true, found: false });
+    }
+
+    // Prefer the parent user's identity; else fall back to a guardian record.
+    const anyGuardian = !parentUser
+      ? await db('guardians as g')
+          .join('students as s', 'g.student_id', 's.id')
+          .where('s.tenant_id', tenantId)
+          .modify((qb: any) => {
+            qb.where(function (this: any) {
+              if (email) this.orWhereRaw('LOWER(g.email) = ?', [email]);
+              if (phone) this.orWhere('g.phone_number', phone);
+            });
+          })
+          .select('g.first_name', 'g.last_name', 'g.email', 'g.phone_number', 'g.user_id')
+          .first()
+      : null;
+
+    res.json({
+      success: true,
+      found: true,
+      parent: {
+        user_id: parentUser?.id ?? anyGuardian?.user_id ?? null,
+        has_account: !!parentUser,
+        first_name: parentUser?.first_name ?? anyGuardian?.first_name ?? null,
+        last_name: parentUser?.last_name ?? anyGuardian?.last_name ?? null,
+        email: parentUser?.email ?? anyGuardian?.email ?? email ?? null,
+        phone: anyGuardian?.phone_number ?? phone ?? null,
+      },
+      children: linked.map((c: any) => ({
+        student_id: c.student_id,
+        reg_id: c.reg_id,
+        name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(),
+      })),
+      children_count: linked.length,
+    });
+  } catch (error) {
+    logger.error('Error in guardian-lookup:', error);
+    next(error);
+  }
+});
+
+/**
  * POST /api/v1/students/:studentId/guardians
  * Add a guardian to a student
  */

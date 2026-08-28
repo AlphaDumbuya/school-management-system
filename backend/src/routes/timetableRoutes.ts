@@ -145,6 +145,20 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, 'Unknown') as teacher_name")
       );
 
+    // Teacher scoping: teachers only see their own timetable slots.
+    if (req.user?.role === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users', 'teachers.user_id', 'users.id')
+        .where('teachers.user_id', req.user.id)
+        .where('users.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+      if (!teacher) {
+        return res.json({ data: [], total: 0 });
+      }
+      query = query.where('schedules.teacher_id', teacher.id);
+    }
+
     if (class_id) query = query.where('schedules.class_id', class_id as string);
     if (teacher_id) query = query.where('schedules.teacher_id', teacher_id as string);
     if (day_of_week) query = query.where('schedules.day_of_week', day_of_week as string);
@@ -188,6 +202,26 @@ router.get('/weekly/:classId', authenticate, async (req: Request, res: Response,
       .first();
     if (!classData) {
       throw new AppError('Class not found', 404, 'NOT_FOUND');
+    }
+
+    // Teacher scoping: a teacher may only view the weekly grid of a class they
+    // teach (teacher_assignments) or lead (class_teacher_id).
+    if (req.user?.role === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users', 'teachers.user_id', 'users.id')
+        .where('teachers.user_id', req.user.id)
+        .where('users.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+      let allowed = false;
+      if (teacher) {
+        const assigned = await db('teacher_assignments').where({ teacher_id: teacher.id, class_id: classId }).first();
+        const led = classData.class_teacher_id === teacher.id;
+        allowed = !!(assigned || led);
+      }
+      if (!allowed) {
+        throw new AppError('You are not assigned to this class', 403, 'FORBIDDEN');
+      }
     }
 
     const slots = await db('schedules')
@@ -241,6 +275,7 @@ router.get('/teachers', authenticate, async (req: Request, res: Response, next: 
       .select(
         'teachers.id',
         'teachers.teacher_id as staff_id',
+        'teachers.user_id',
         'users.first_name',
         'users.last_name',
         'teachers.specialization'

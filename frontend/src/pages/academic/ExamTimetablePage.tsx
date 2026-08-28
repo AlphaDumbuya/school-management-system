@@ -7,7 +7,7 @@
  *  - Add exam-day rows on the fly
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Calendar, Clock, BookOpen, FileText, Plus, Trash2, ChevronDown, CalendarPlus } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
@@ -67,6 +67,14 @@ export const ExamTimetablePage: React.FC = () => {
   });
   const classes: ClassRecord[] = (classesData as any)?.data ?? [];
   const selectedClass = classes.find((c) => String(c.id) === selectedClassId);
+
+  // Auto-select the first class once loaded (teacher list is already scoped),
+  // so users see the exam grid without picking a class first.
+  useEffect(() => {
+    if (!selectedClassId && classes.length > 0) {
+      setSelectedClassId(String(classes[0].id));
+    }
+  }, [classes, selectedClassId]);
 
   // Exams for this class + term + year
   const canLoad = !!(selectedClassId && term && academicYear);

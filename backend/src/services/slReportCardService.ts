@@ -177,6 +177,29 @@ export class SLReportCardService {
     return Array.from(ids);
   }
 
+  /**
+   * Subject ids a teacher may enter scores for in a given class:
+   *  - subjects they're assigned to teach in that class, OR
+   *  - ALL of the class's subjects if they are the class teacher.
+   */
+  async getTeacherSubjectIdsForClass(userId: string, tenantId: string, classId: string): Promise<string[]> {
+    const teacherId = await this.getTeacherId(userId, tenantId);
+    if (!teacherId) return [];
+
+    // Class teacher → all subjects mapped to the class.
+    const isClassTeacher = await db('classes').where({ id: classId, class_teacher_id: teacherId }).first();
+    if (isClassTeacher) {
+      const rows = await db('class_subjects').where('class_id', classId).distinct('subject_id');
+      return rows.map((r: any) => r.subject_id);
+    }
+
+    // Otherwise, only the subjects they're assigned to teach in this class.
+    const rows = await db('teacher_assignments')
+      .where({ teacher_id: teacherId, class_id: classId })
+      .distinct('subject_id');
+    return rows.map((r: any) => r.subject_id);
+  }
+
   // ──────────────────────────────────────────────────────────────────────────
   // Report settings (per tenant — principal-managed)
   // ──────────────────────────────────────────────────────────────────────────

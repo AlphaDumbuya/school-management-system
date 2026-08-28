@@ -248,6 +248,26 @@ router.get('/my/classes', async (req: Request, res: Response, next: NextFunction
   }
 });
 
+// ── Teacher's assigned subjects for a class (scoped score-entry dropdown) ────
+
+router.get('/my/subjects', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const classId = req.query.class_id as string;
+    if (!classId) {
+      return res.status(400).json({ success: false, error: 'class_id is required' });
+    }
+    // Staff-admin: no restriction (null = all subjects allowed).
+    if (req.user!.role === 'principal' || req.user!.role === 'super_admin') {
+      return res.json({ success: true, data: null, scoped: false });
+    }
+    const ids = await slReportCardService.getTeacherSubjectIdsForClass(req.user!.id, tenant(req), classId);
+    res.json({ success: true, data: ids, scoped: true });
+  } catch (error) {
+    logger.error('Error getting teacher subjects for class:', error);
+    next(error);
+  }
+});
+
 // ── Server-side PDF (clean, no browser header/footer) ───────────────────────
 
 /**

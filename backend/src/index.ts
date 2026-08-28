@@ -173,8 +173,11 @@ app.use('/api/v1/roles', rbacRoutes);
 // Student Routes
 app.use('/api/v1/students', studentRoutes);
 
-// Guardian Routes
+// Guardian Routes — mounted under both /guardians and /students so student-
+// nested guardian actions (e.g. /students/:studentId/parent-account,
+// /students/guardian-lookup) resolve correctly.
 app.use('/api/v1/guardians', guardianRoutes);
+app.use('/api/v1/students', guardianRoutes);
 
 // Class Routes
 app.use('/api/v1/classes', classRoutes);

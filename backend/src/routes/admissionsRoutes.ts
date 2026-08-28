@@ -4,6 +4,7 @@ import { authenticate, authorize, attachUserContext } from '@middleware/authMidd
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { generateNextId } from '@utils/idGenerator';
+import { linkGuardianForStudent } from '@utils/guardianLinking';
 import { UserRole } from '../types/auth';
 
 const router = Router();
@@ -131,6 +132,24 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
           created_at: new Date(),
           updated_at: new Date(),
         }).catch(() => {});
+      }
+
+      // Smart parent/guardian linking — reuse an existing parent (sibling) if one matches.
+      if (newStudent?.id) {
+        await linkGuardianForStudent(
+          db,
+          tenantId,
+          newStudent.id,
+          inserted.child_last_name || inserted.last_name || '',
+          {
+            guardian_name: [inserted.guardian_first_name, inserted.guardian_last_name].filter(Boolean).join(' ') || null,
+            guardian_email: inserted.guardian_email || null,
+            guardian_phone: inserted.guardian_phone || null,
+            guardian_relationship: inserted.guardian_relationship || null,
+            guardian_occupation: inserted.guardian_occupation || null,
+          },
+          createdBy,
+        );
       }
 
       // Mark application as enrolled
@@ -307,6 +326,24 @@ router.put('/:appId/status', authenticate, authorize(UserRole.PRINCIPAL, UserRol
             created_at: new Date(),
             updated_at: new Date(),
           }).catch(() => {});
+        }
+
+        // Smart parent/guardian linking — reuse an existing parent (sibling) if one matches.
+        if (newStudent?.id) {
+          await linkGuardianForStudent(
+            db,
+            tenantId,
+            newStudent.id,
+            app.child_last_name || app.last_name || '',
+            {
+              guardian_name: [app.guardian_first_name, app.guardian_last_name].filter(Boolean).join(' ') || app.parent_name || null,
+              guardian_email: app.guardian_email || null,
+              guardian_phone: app.guardian_phone || app.parent_phone || null,
+              guardian_relationship: app.guardian_relationship || null,
+              guardian_occupation: app.guardian_occupation || null,
+            },
+            decidedBy,
+          );
         }
 
         // Update application status to 'enrolled'

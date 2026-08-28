@@ -1,5 +1,6 @@
 import express, { Router, Request, Response } from 'express';
 import dashboardService from '@services/dashboardService';
+import teacherDashboardService from '@services/teacherDashboardService';
 import { logger } from '@utils/logger';
 import { authenticate, attachUserContext } from '@middleware/authMiddleware';
 
@@ -422,17 +423,8 @@ router.get('/dashboards/teacher', authenticate, async (req: Request, res: Respon
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // Teacher dashboard would show their assigned classes, students, grades, etc.
-    res.json({
-      success: true,
-      message: 'Teacher dashboard data would be here',
-      data: {
-        assignedClasses: [],
-        studentCount: 0,
-        averagePerformance: 0,
-        attendanceOverview: {},
-      },
-    });
+    const data = await teacherDashboardService.getDashboard(req.user.id, req.user.tenant_id);
+    res.json({ success: true, data });
   } catch (error) {
     logger.error(`Error fetching teacher dashboard: ${error}`);
     res.status(500).json({

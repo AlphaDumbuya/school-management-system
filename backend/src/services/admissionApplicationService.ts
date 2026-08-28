@@ -321,6 +321,25 @@ export async function updateApplicationStatus(
                 updated_at: new Date(),
               }).catch(() => {});
             }
+
+            // Smart parent/guardian linking — reuse an existing parent (sibling) if one matches.
+            if (newStudent?.id) {
+              const { linkGuardianForStudent } = await import('../utils/guardianLinking');
+              await linkGuardianForStudent(
+                db,
+                appTenantId,
+                newStudent.id,
+                lastName,
+                {
+                  guardian_name: [app.guardian_first_name || app.parent_name, app.guardian_last_name].filter(Boolean).join(' ') || app.parent_name || null,
+                  guardian_email: app.guardian_email || app.email || null,
+                  guardian_phone: app.guardian_phone || app.parent_phone || null,
+                  guardian_relationship: app.guardian_relationship || null,
+                  guardian_occupation: app.guardian_occupation || null,
+                },
+                null,
+              );
+            }
           }
         }
       } catch (syncErr) {

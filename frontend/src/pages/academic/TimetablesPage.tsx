@@ -3,7 +3,7 @@
  * Weekly timetable grid for managing class schedules.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Calendar, Clock, Users, BookOpen, Plus, Trash2, Edit, ChevronDown } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
@@ -65,6 +65,15 @@ export const TimetablesPage: React.FC = () => {
     staleTime: 60_000,
   });
   const classes: ClassRecord[] = (classesData as any)?.data ?? [];
+
+  // Auto-select the first class once classes load so users (especially teachers,
+  // whose list is already scoped to their own classes) see a timetable
+  // immediately without picking a class first.
+  useEffect(() => {
+    if (!selectedClassId && classes.length > 0) {
+      setSelectedClassId(String(classes[0].id));
+    }
+  }, [classes, selectedClassId]);
 
   // Fetch weekly timetable for selected class
   const { data: weeklyData, isLoading } = useQuery({

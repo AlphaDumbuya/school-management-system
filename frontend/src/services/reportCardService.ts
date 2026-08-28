@@ -279,6 +279,16 @@ export const reportCardService = {
   async getMyClasses() {
     return apiClient.get<{ success: boolean; data: Array<{ id: string; name: string; level: string }> }>(`${BASE}/my/classes`);
   },
+
+  /**
+   * Subject ids the caller may enter scores for in a class.
+   * data === null means no restriction (staff-admin); otherwise an id list.
+   */
+  async getMySubjects(classId: string) {
+    return apiClient.get<{ success: boolean; data: string[] | null; scoped: boolean }>(
+      `${BASE}/my/subjects`, { params: { class_id: classId } },
+    );
+  },
 };
 
 export interface ReportSettings {

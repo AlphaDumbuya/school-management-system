@@ -77,6 +77,8 @@ router.get(
           search: req.query.search as string,
           status: req.query.status as string,
           severity: req.query.severity as string,
+          // Teachers only see infractions they recorded.
+          recordedBy: req.user.role === 'teacher' ? req.user.id : undefined,
           page: parseInt(req.query.page as string) || 1,
           limit: parseInt(req.query.limit as string) || 20,
         }
@@ -782,6 +784,8 @@ router.get(
         {
           search: req.query.search as string,
           note_type: req.query.note_type as string,
+          // Teachers only see notes they recorded.
+          recordedBy: req.user.role === 'teacher' ? req.user.id : undefined,
           page: parseInt(req.query.page as string) || 1,
           limit: parseInt(req.query.limit as string) || 20,
         }

@@ -43,6 +43,7 @@ const schema = z.object({
   photo_url: z.string().optional().or(z.literal('')),
   // Guardian
   guardian_name: z.string().max(200).optional().or(z.literal('')),
+  guardian_email: z.string().email('Enter a valid email').optional().or(z.literal('')),
   guardian_phone: z.string().max(20).optional().or(z.literal('')),
   guardian_relationship: z.string().max(50).optional().or(z.literal('')),
   guardian_occupation: z.string().max(100).optional().or(z.literal('')),
@@ -101,10 +102,41 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
       class_id: '', place_of_birth: '',
       religion: '', nationality: 'Sierra Leonean', blood_group: '', medical_conditions: '',
       previous_school: '', home_language: '', photo_url: '',
-      guardian_name: '', guardian_phone: '', guardian_relationship: '', guardian_occupation: '',
+      guardian_name: '', guardian_email: '', guardian_phone: '', guardian_relationship: '', guardian_occupation: '',
       emergency_contact: '',
     },
   });
+
+  // ── Smart parent detection: debounce guardian email/phone and look up ──────
+  const watchedGuardianEmail = watch('guardian_email');
+  const watchedGuardianPhone = watch('guardian_phone');
+  const [lookupKey, setLookupKey] = React.useState<{ email: string; phone: string }>({ email: '', phone: '' });
+
+  useEffect(() => {
+    // Only auto-detect for NEW students (linking siblings), not while editing.
+    if (editingStudent) return;
+    const email = (watchedGuardianEmail || '').trim();
+    const phone = (watchedGuardianPhone || '').trim();
+    const t = setTimeout(() => {
+      // Require a plausible email or a phone of reasonable length before querying.
+      const emailOk = /.+@.+\..+/.test(email);
+      setLookupKey({ email: emailOk ? email : '', phone: phone.length >= 6 ? phone : '' });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [watchedGuardianEmail, watchedGuardianPhone, editingStudent]);
+
+  const { data: guardianLookup } = useQuery({
+    queryKey: ['guardian-lookup', lookupKey.email, lookupKey.phone],
+    queryFn: () => studentsService.guardianLookup({
+      email: lookupKey.email || undefined,
+      phone: lookupKey.phone || undefined,
+    }),
+    enabled: isOpen && !editingStudent && (!!lookupKey.email || !!lookupKey.phone),
+    staleTime: 30_000,
+  });
+  const existingParent = (guardianLookup as any)?.data?.found
+    ? (guardianLookup as any).data
+    : ((guardianLookup as any)?.found ? (guardianLookup as any) : null);
 
   useEffect(() => {
     if (isOpen && editingStudent) {
@@ -130,6 +162,7 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
         home_language: (editingStudent as any).home_language ?? '',
         photo_url: (editingStudent as any).photo_url ?? '',
         guardian_name: (editingStudent as any).guardian_name ?? '',
+        guardian_email: (editingStudent as any).guardian_email ?? '',
         guardian_phone: (editingStudent as any).guardian_phone ?? '',
         guardian_relationship: (editingStudent as any).guardian_relationship ?? '',
         guardian_occupation: (editingStudent as any).guardian_occupation ?? '',
@@ -143,7 +176,7 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
         class_id: '', place_of_birth: '',
         religion: '', nationality: 'Sierra Leonean', blood_group: '', medical_conditions: '',
         previous_school: '', home_language: '', photo_url: '',
-        guardian_name: '', guardian_phone: '', guardian_relationship: '', guardian_occupation: '',
+        guardian_name: '', guardian_email: '', guardian_phone: '', guardian_relationship: '', guardian_occupation: '',
         emergency_contact: '',
       });
     }
@@ -171,6 +204,7 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
         nationality: (values as any).nationality || undefined,
         place_of_birth: (values as any).place_of_birth || undefined,
         guardian_name: (values as any).guardian_name || undefined,
+        guardian_email: (values as any).guardian_email || undefined,
         guardian_phone: (values as any).guardian_phone || undefined,
         guardian_relationship: (values as any).guardian_relationship || undefined,
         guardian_occupation: (values as any).guardian_occupation || undefined,
@@ -320,12 +354,42 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
         {/* Guardian / Parent */}
         <div className="border-t border-gray-100 dark:border-gray-800 pt-5">
           <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest mb-1">Parent / Guardian</h3>
-          <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-3">Primary contact person for the student</p>
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-3">Primary contact person for the student. If this parent already has children enrolled, we'll link this student to their existing account.</p>
+
+          {/* Smart parent-detection banner */}
+          {!isEditing && existingParent && (
+            <div className="mb-3 p-3 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/20 flex items-start gap-3">
+              <div className="mt-0.5 flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 text-sm font-bold">✓</div>
+              <div className="text-sm text-emerald-800 dark:text-emerald-300">
+                <p className="font-semibold">
+                  Existing parent found: {existingParent.parent?.first_name || ''} {existingParent.parent?.last_name || ''}
+                  {existingParent.parent?.email ? ` (${existingParent.parent.email})` : ''}
+                </p>
+                <p className="text-[12px] mt-0.5">
+                  {existingParent.parent?.has_account
+                    ? 'This parent already has a portal account.'
+                    : 'This parent is on record but has no portal account yet.'}
+                  {typeof existingParent.children_count === 'number' && existingParent.children_count > 0
+                    ? ` Currently linked to ${existingParent.children_count} student${existingParent.children_count === 1 ? '' : 's'}`
+                    : ''}
+                  {Array.isArray(existingParent.children) && existingParent.children.length > 0
+                    ? `: ${existingParent.children.map((c: any) => c.name).join(', ')}.`
+                    : '.'}
+                </p>
+                <p className="text-[12px] mt-1 font-medium">This new student will be automatically linked to the same parent.</p>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Guardian Name" placeholder="e.g. Mr. Abu Kamara" error={errors.guardian_name?.message} {...register('guardian_name')} />
-            <FormField label="Guardian Phone" type="tel" placeholder="+232 XX XXX XXXX" error={errors.guardian_phone?.message} {...register('guardian_phone')} />
+            <FormField label="Guardian Email" type="email" placeholder="parent@email.com" error={errors.guardian_email?.message} {...register('guardian_email')} />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+            <FormField label="Guardian Phone" type="tel" placeholder="+232 XX XXX XXXX" error={errors.guardian_phone?.message} {...register('guardian_phone')} />
+            <FormField label="Emergency Contact" type="tel" placeholder="+232 XX XXX XXXX" error={errors.emergency_contact?.message} {...register('emergency_contact')} />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Relationship</label>
               <select {...register('guardian_relationship')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -334,7 +398,6 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
               </select>
             </div>
             <FormField label="Occupation" placeholder="e.g. Teacher, Trader" error={errors.guardian_occupation?.message} {...register('guardian_occupation')} />
-            <FormField label="Emergency Contact" type="tel" placeholder="+232 XX XXX XXXX" error={errors.emergency_contact?.message} {...register('emergency_contact')} />
           </div>
         </div>
 
