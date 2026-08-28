@@ -2,6 +2,7 @@ import express, { Router, Request, Response } from 'express';
 import dashboardService from '@services/dashboardService';
 import teacherDashboardService from '@services/teacherDashboardService';
 import studentDashboardService from '@services/studentDashboardService';
+import parentDashboardService from '@services/parentDashboardService';
 import { logger } from '@utils/logger';
 import { authenticate, attachUserContext } from '@middleware/authMiddleware';
 
@@ -479,23 +480,46 @@ router.get('/dashboards/parent', authenticate, async (req: Request, res: Respons
     if (!['parent', 'guardian'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
 
-    // Parent dashboard would show their children's info, fees, performance
-    res.json({
-      success: true,
-      message: 'Parent dashboard data would be here',
-      data: {
-        children: [],
-        outstandingFees: 0,
-        averagePerformance: 0,
-      },
-    });
+    const data = await parentDashboardService.getDashboard(req.user!.id, tenantId);
+    res.json({ success: true, data });
   } catch (error) {
     logger.error(`Error fetching parent dashboard: ${error}`);
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to fetch parent dashboard',
     });
+  }
+});
+
+/**
+ * GET /api/v1/dashboards/parent/child/:studentId
+ * Detailed per-child view (grades/attendance/schedule/fees) for a parent's
+ * own child. Access is enforced against the parent's linked children.
+ */
+router.get('/dashboards/parent/child/:studentId', authenticate, async (req: Request, res: Response) => {
+  try {
+    if (!['parent', 'guardian'].includes(req.user?.role || '')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
+
+    const data = await parentDashboardService.getChildDetail(req.user!.id, tenantId, req.params.studentId);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    const msg = error?.message || 'Failed to fetch child details';
+    if (msg.includes('only view your own')) {
+      return res.status(403).json({ error: 'Forbidden', message: msg });
+    }
+    logger.error(`Error fetching parent child detail: ${error}`);
+    res.status(500).json({ error: 'Internal Server Error', message: 'Failed to fetch child details' });
   }
 });
 
