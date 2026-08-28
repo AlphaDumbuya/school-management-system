@@ -166,6 +166,29 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       query = query.where('assignments.teacher_id', teacherScopeId);
     }
 
+    // Student scoping: students only see assignments for the class(es) they are
+    // actively enrolled in. Resolve once and apply to data + count queries.
+    let studentClassIds: string[] | null = null;
+    if (req.user?.role === 'student') {
+      const student = await db('students')
+        .where('user_id', req.user.id)
+        .where('tenant_id', tenantId)
+        .select('id')
+        .first();
+      if (!student) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      const enrolled = await db('enrollments')
+        .where('student_id', student.id)
+        .whereIn('status', ['enrolled', 'active'])
+        .distinct('class_id');
+      studentClassIds = enrolled.map((r: any) => r.class_id);
+      if (studentClassIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      query = query.whereIn('assignments.class_id', studentClassIds);
+    }
+
     if (class_id) query = query.where('assignments.class_id', class_id as string);
     if (subject_id) query = query.where('assignments.subject_id', subject_id as string);
     if (teacher_id) query = query.where('assignments.teacher_id', teacher_id as string);
@@ -195,6 +218,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       .count('assignments.id as count');
 
     if (teacherScopeId) countQuery = countQuery.where('assignments.teacher_id', teacherScopeId);
+    if (studentClassIds) countQuery = countQuery.whereIn('assignments.class_id', studentClassIds);
     if (class_id) countQuery = countQuery.where('assignments.class_id', class_id as string);
     if (subject_id) countQuery = countQuery.where('assignments.subject_id', subject_id as string);
     if (teacher_id) countQuery = countQuery.where('assignments.teacher_id', teacher_id as string);

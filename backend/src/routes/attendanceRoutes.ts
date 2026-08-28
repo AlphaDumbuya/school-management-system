@@ -208,6 +208,61 @@ router.get('/', authenticate, attachUserContext, async (req: Request, res: Respo
 });
 
 /**
+ * GET /api/v1/attendance/my
+ * Attendance records & summary for the currently logged-in student.
+ * Resolves the student's own record from the auth context (no id needed).
+ */
+router.get('/my', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const currentUser = (req as any).user;
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const student = await db('students')
+      .where('user_id', currentUser.id)
+      .where('tenant_id', tenantId)
+      .first();
+    if (!student) {
+      return res.json({
+        student_id: null,
+        summary: { total_days: 0, present: 0, late: 0, absent: 0, excused: 0, attendance_percentage: 0, at_risk: false },
+        records: [],
+      });
+    }
+
+    const attendance = await db('attendance')
+      .select('id', 'class_id', 'attendance_date as date', 'status', 'remarks')
+      .where('student_id', student.id)
+      .orderBy('attendance_date', 'desc');
+
+    const total = attendance.length;
+    const present = attendance.filter((a: any) => a.status === 'present').length;
+    const late = attendance.filter((a: any) => a.status === 'late').length;
+    const absent = attendance.filter((a: any) => a.status === 'absent').length;
+    const excused = attendance.filter((a: any) => a.status === 'excused').length;
+    const attendancePercentage = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
+
+    res.json({
+      student_id: student.student_id,
+      summary: {
+        total_days: total,
+        present,
+        late,
+        absent,
+        excused,
+        attendance_percentage: attendancePercentage,
+        at_risk: attendancePercentage < 75,
+      },
+      records: attendance,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/v1/attendance/student/:studentId
  * Get attendance records & summary statistics for a specific student
  */

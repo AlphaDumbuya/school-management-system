@@ -20,11 +20,13 @@ import { ScoreEntryGrid } from './components/ScoreEntryGrid';
 import { DomainRatingsModal } from './components/DomainRatingsModal';
 import { ReportSettingsPanel } from './components/ReportSettingsPanel';
 import { SL_TERMS, SLTerm, SL_GRADING_METHOD, CONDUCT_CODES } from '@services/reportCardService';
+import { StudentResultsView } from './components/StudentResultsView';
 
 export const ResultsPage: React.FC = () => {
   const currentYear = new Date().getFullYear();
   const { user } = useAuth();
   const isPrincipal = user?.role === 'principal' || user?.role === 'super_admin';
+  const isStudent = user?.role === 'student';
   const [academicYear, setAcademicYear] = useState(`${currentYear}/${currentYear + 1}`);
   const [tab, setTab] = useState<'cognitive' | 'ratings' | 'settings'>('cognitive');
 
@@ -37,6 +39,7 @@ export const ResultsPage: React.FC = () => {
   const { data: classesData } = useQuery({
     queryKey: ['classes-dropdown'],
     queryFn: () => classesService.listClasses({ limit: 100 }),
+    enabled: !isStudent,
     staleTime: 60_000,
   });
   const classes = (classesData as any)?.data ?? [];
@@ -45,7 +48,7 @@ export const ResultsPage: React.FC = () => {
   const { data: studentsData } = useQuery({
     queryKey: ['class-students-ratings', ratingsClassId],
     queryFn: () => classesService.getClassStudents(ratingsClassId),
-    enabled: !!ratingsClassId,
+    enabled: !!ratingsClassId && !isStudent,
     staleTime: 30_000,
   });
   const students = (studentsData as any)?.data?.students ?? (studentsData as any)?.students ?? [];
@@ -62,6 +65,11 @@ export const ResultsPage: React.FC = () => {
     }
     return arr;
   }, [currentYear]);
+
+  // Students get a read-only view of ONLY their own published results.
+  if (isStudent) {
+    return <StudentResultsView />;
+  }
 
   return (
     <MainLayout>

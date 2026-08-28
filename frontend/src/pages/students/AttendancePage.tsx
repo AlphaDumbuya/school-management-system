@@ -109,9 +109,10 @@ const STATUS_ACTIVE: Record<AttendanceStatus, string> = {
 
 export const AttendancePage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { canAccess } = useAuth();
+  const { canAccess, user } = useAuth();
   // Only staff-admins can mark attendance across all students at once.
   const canMarkAllStudents = canAccess(['principal', 'super_admin']);
+  const isStudent = user?.role === 'student';
 
   // ── Tabs ──────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<ActiveTab>('logs');
@@ -558,6 +559,11 @@ export const AttendancePage: React.FC = () => {
   ] as const;
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Students see a read-only view of ONLY their own attendance.
+  if (isStudent) {
+    return <StudentAttendanceView />;
+  }
+
   return (
     <MainLayout>
       <PageShell
@@ -1490,6 +1496,80 @@ export const AttendancePage: React.FC = () => {
                   </Button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+      </PageShell>
+    </MainLayout>
+  );
+};
+
+// ── Student read-only "My Attendance" view ──────────────────────────────────
+
+const StudentAttendanceView: React.FC = () => {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['my-attendance'],
+    queryFn: () => attendanceService.getMyAttendance(),
+    staleTime: 60_000,
+  });
+
+  const resp = (data as any)?.data ?? (data as any);
+  const summary = resp?.summary ?? { total_days: 0, present: 0, late: 0, absent: 0, excused: 0, attendance_percentage: 0, at_risk: false };
+  const records: Array<{ id: string; date: string; status: string; remarks?: string }> = resp?.records ?? [];
+
+  return (
+    <MainLayout>
+      <PageShell title="My Attendance" subtitle="Your daily attendance record">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20 text-gray-500">
+            <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading…
+          </div>
+        ) : error ? (
+          <div className="py-16 text-center text-gray-500">Couldn't load your attendance. Please refresh.</div>
+        ) : (
+          <div className="space-y-6">
+            {/* KPIs */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <KPICard
+                title="Attendance Rate"
+                value={`${summary.attendance_percentage}%`}
+                icon={<UserCheck className="w-5 h-5" />}
+                color={summary.attendance_percentage >= 85 ? 'green' : summary.attendance_percentage >= 75 ? 'amber' : 'red'}
+              />
+              <KPICard title="Present" value={String(summary.present)} icon={<CheckCircle className="w-5 h-5" />} color="green" />
+              <KPICard title="Late" value={String(summary.late)} icon={<Clock className="w-5 h-5" />} color="amber" />
+              <KPICard title="Absent" value={String(summary.absent)} icon={<XCircle className="w-5 h-5" />} color="red" />
+            </div>
+
+            {summary.at_risk && (
+              <div className="flex items-center gap-2 p-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20 text-sm text-red-700 dark:text-red-400">
+                <AlertTriangle size={16} /> Your attendance is below 75%. Please speak with your class teacher.
+              </div>
+            )}
+
+            {/* Records */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="font-bold text-gray-900 dark:text-white">Attendance History</h3>
+              </div>
+              {records.length === 0 ? (
+                <div className="p-12 text-center text-gray-400">No attendance records yet.</div>
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-gray-700/50 max-h-[28rem] overflow-y-auto">
+                  {records.map((r) => (
+                    <div key={r.id} className="flex items-center justify-between px-5 py-3">
+                      <span className="text-sm text-gray-700 dark:text-gray-200">{fmt(r.date)}</span>
+                      <div className="flex items-center gap-3">
+                        {r.remarks && <span className="text-xs text-gray-400 truncate max-w-[10rem]">{r.remarks}</span>}
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${getDotColor(r.status)}`} />
+                          {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

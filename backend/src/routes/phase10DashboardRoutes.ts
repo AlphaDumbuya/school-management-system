@@ -1,6 +1,7 @@
 import express, { Router, Request, Response } from 'express';
 import dashboardService from '@services/dashboardService';
 import teacherDashboardService from '@services/teacherDashboardService';
+import studentDashboardService from '@services/studentDashboardService';
 import { logger } from '@utils/logger';
 import { authenticate, attachUserContext } from '@middleware/authMiddleware';
 
@@ -448,18 +449,13 @@ router.get('/dashboards/student', authenticate, async (req: Request, res: Respon
     if (req.user?.role !== 'student') {
       return res.status(403).json({ error: 'Forbidden' });
     }
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
 
-    // Student dashboard would show their grades, schedule, performance, etc.
-    res.json({
-      success: true,
-      message: 'Student dashboard data would be here',
-      data: {
-        enrolledClasses: [],
-        averageGrade: 0,
-        attendanceRate: 0,
-        upcomingClasses: [],
-      },
-    });
+    const data = await studentDashboardService.getDashboard(req.user!.id, tenantId);
+    res.json({ success: true, data });
   } catch (error) {
     logger.error(`Error fetching student dashboard: ${error}`);
     res.status(500).json({

@@ -131,17 +131,19 @@ export const studentsService = {
 
   async getStudentAttendance(studentId: string) {
     return apiClient.get<{
+      student_id: string;
       summary: {
         total_days: number;
-        present_count: number;
-        late_count: number;
-        absent_count: number;
-        excused_count: number;
+        present: number;
+        late: number;
+        absent: number;
+        excused: number;
         attendance_percentage: number;
         at_risk: boolean;
       };
       records: Array<{
         id: string;
+        class_id?: string;
         date: string;
         status: 'present' | 'absent' | 'late' | 'excused';
         remarks?: string;

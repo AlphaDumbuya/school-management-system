@@ -55,12 +55,31 @@ export interface BulkAttendancePayload {
   records: BulkAttendanceRecord[];
 }
 
+export interface MyAttendanceResponse {
+  student_id: string | null;
+  summary: {
+    total_days: number;
+    present: number;
+    late: number;
+    absent: number;
+    excused: number;
+    attendance_percentage: number;
+    at_risk: boolean;
+  };
+  records: Array<{ id: string; class_id?: string; date: string; status: string; remarks?: string }>;
+}
+
 export const attendanceService = {
   async listAttendance(params: ListAttendanceParams = {}) {
     return apiClient.get<{ data: AttendanceRecord[]; pagination: any }>(
       '/api/v1/attendance',
       { params }
     );
+  },
+
+  /** Attendance for the currently logged-in student (own records only). */
+  async getMyAttendance() {
+    return apiClient.get<MyAttendanceResponse>('/api/v1/attendance/my');
   },
 
   async submitBulkAttendance(payload: BulkAttendancePayload) {
