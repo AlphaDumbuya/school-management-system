@@ -29,6 +29,7 @@ import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
+import { useAuth } from '@hooks/useAuth';
 import {
   assignmentsService,
   AssignmentRecord,
@@ -231,6 +232,9 @@ const SearchableFilterPopover: React.FC<SearchableFilterPopoverProps> = ({
 
 export const AssignmentsPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const { canAccess } = useAuth();
+  // Students (and other non-staff) get a read-only view of their class assignments.
+  const canManage = canAccess(['principal', 'super_admin', 'teacher']);
 
   // Filter state
   const [search, setSearch] = useState('');
@@ -357,7 +361,7 @@ export const AssignmentsPage: React.FC = () => {
     <MainLayout>
       <PageShell
         title="Assignments"
-        subtitle="Create and manage student assignments"
+        subtitle={canManage ? 'Create and manage student assignments' : 'Your class assignments'}
         breadcrumbs={[{ label: 'Assignments' }]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
@@ -460,12 +464,18 @@ export const AssignmentsPage: React.FC = () => {
           totalRows={Number(pagination.total)}
           onPageChange={setPage}
           emptyMessage="No assignments found"
-          emptyAction={{ label: 'Create your first assignment', onClick: () => { setEditingAssignment(null); setFormOpen(true); } }}
-          rowActions={(row) => [
-            { label: 'View', onClick: (r) => setViewingAssignment(r) },
-            { label: 'Edit', onClick: (r) => { setEditingAssignment(r); setFormOpen(true); } },
-            { label: 'Delete', variant: 'destructive', onClick: (r) => setDeleteTarget(r) },
-          ]}
+          emptyAction={canManage ? { label: 'Create your first assignment', onClick: () => { setEditingAssignment(null); setFormOpen(true); } } : undefined}
+          rowActions={(row) => (
+            canManage
+              ? [
+                  { label: 'View', onClick: (r) => setViewingAssignment(r) },
+                  { label: 'Edit', onClick: (r) => { setEditingAssignment(r); setFormOpen(true); } },
+                  { label: 'Delete', variant: 'destructive', onClick: (r) => setDeleteTarget(r) },
+                ]
+              : [
+                  { label: 'View', onClick: (r) => setViewingAssignment(r) },
+                ]
+          )}
         />
       </PageShell>
 

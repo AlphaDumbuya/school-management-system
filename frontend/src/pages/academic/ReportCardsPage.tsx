@@ -22,15 +22,36 @@ import { showToast } from '@utils/toast';
 import { classesService } from '@services/classesService';
 import { schoolConfigService } from '@services/schoolConfigService';
 import { reportCardService, ReportCard } from '@services/reportCardService';
+import { studentDashboardService } from '@services/studentDashboardService';
+import { useAuth } from '@hooks/useAuth';
 import { BookletContent } from './components/BookletContent';
 import { Printer, Download } from 'lucide-react';
 
 export const ReportCardsPage: React.FC = () => {
   const currentYear = new Date().getFullYear();
+  const { user } = useAuth();
+  const isStudent = user?.role === 'student';
   const [academicYear, setAcademicYear] = useState(`${currentYear}/${currentYear + 1}`);
   const [classId, setClassId] = useState('');
   const [studentId, setStudentId] = useState('');
   const [spread, setSpread] = useState<'all' | 'cover' | 'inner'>('all');
+
+  // Students: auto-resolve their OWN student id, class and academic year from
+  // the dashboard endpoint so no selectors are needed (and they can only ever
+  // load their own report card — the backend also enforces this).
+  const { data: selfResp } = useQuery({
+    queryKey: ['report-card-self'],
+    queryFn: () => studentDashboardService.getDashboard(),
+    enabled: isStudent,
+    staleTime: 60_000,
+  });
+  const selfProfile = ((selfResp as any)?.data ?? (selfResp as any))?.profile ?? null;
+  React.useEffect(() => {
+    if (!isStudent || !selfProfile) return;
+    if (selfProfile.id) setStudentId(String(selfProfile.id));
+    if (selfProfile.class_id) setClassId(String(selfProfile.class_id));
+    if (selfProfile.academic_year) setAcademicYear(String(selfProfile.academic_year));
+  }, [isStudent, selfProfile]);
 
   const yearOptions = useMemo(() => {
     const arr = [];
@@ -49,6 +70,7 @@ export const ReportCardsPage: React.FC = () => {
   const { data: classesData } = useQuery({
     queryKey: ['report-card-classes'],
     queryFn: () => classesService.listClasses({ limit: 100 }),
+    enabled: !isStudent,
     staleTime: 60_000,
   });
   const classes = (classesData as any)?.data ?? [];
@@ -57,7 +79,7 @@ export const ReportCardsPage: React.FC = () => {
   const { data: studentsData } = useQuery({
     queryKey: ['report-card-students', classId],
     queryFn: () => classesService.getClassStudents(classId),
-    enabled: !!classId,
+    enabled: !!classId && !isStudent,
     staleTime: 30_000,
   });
   const students = (studentsData as any)?.data?.students ?? (studentsData as any)?.students ?? [];
@@ -171,11 +193,25 @@ export const ReportCardsPage: React.FC = () => {
       >
         {/* Selection toolbar (hidden on print) */}
         <div className="p-4 mb-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 print:hidden">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <SearchableSelect label="Class" options={classOptions} value={classId} onChange={(v) => { setClassId(v); setStudentId(''); }} placeholder="Select class..." />
-            <SearchableSelect label="Student" options={studentOptions} value={studentId} onChange={setStudentId} placeholder="Select student..." />
-            <SearchableSelect label="Academic Year" options={yearOptions} value={academicYear} onChange={setAcademicYear} placeholder="Academic year" />
-          </div>
+          {isStudent ? (
+            // Students: no class/student pickers — just choose the academic year.
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2 flex flex-col justify-center">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Report Card</span>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                  {selfProfile?.full_name || `${user?.first_name ?? ''} ${user?.last_name ?? ''}`.trim()}
+                  {selfProfile?.class_name ? ` — ${selfProfile.class_name}` : ''}
+                </span>
+              </div>
+              <SearchableSelect label="Academic Year" options={yearOptions} value={academicYear} onChange={setAcademicYear} placeholder="Academic year" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <SearchableSelect label="Class" options={classOptions} value={classId} onChange={(v) => { setClassId(v); setStudentId(''); }} placeholder="Select class..." />
+              <SearchableSelect label="Student" options={studentOptions} value={studentId} onChange={setStudentId} placeholder="Select student..." />
+              <SearchableSelect label="Academic Year" options={yearOptions} value={academicYear} onChange={setAcademicYear} placeholder="Academic year" />
+            </div>
+          )}
 
           {/* Spread toggle */}
           <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
@@ -196,7 +232,14 @@ export const ReportCardsPage: React.FC = () => {
           </div>
         </div>
 
-        {!canLoad && <EmptyState message="Select a student" description="Choose a class, student and academic year to generate the report booklet." />}
+        {!canLoad && (
+          <EmptyState
+            message={isStudent ? 'Report card unavailable' : 'Select a student'}
+            description={isStudent
+              ? 'Your report card will appear here once your results are published.'
+              : 'Choose a class, student and academic year to generate the report booklet.'}
+          />
+        )}
         {canLoad && isLoading && <div className="grid gap-3"><SkeletonCard /><SkeletonCard /></div>}
         {canLoad && error && <EmptyState message="Failed to load report" description="There was an error generating this report card." />}
 
