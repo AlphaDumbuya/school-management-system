@@ -229,14 +229,15 @@ export class EventService {
         return null;
       }
 
-      // Parse JSON fields
-      if (event.visible_to_roles) {
+      // Parse JSON fields — only call JSON.parse when Postgres returns a raw string
+      // (some drivers/versions auto-parse jsonb columns into objects already)
+      if (event.visible_to_roles && typeof event.visible_to_roles === 'string') {
         event.visible_to_roles = JSON.parse(event.visible_to_roles);
       }
-      if (event.reminder_intervals) {
+      if (event.reminder_intervals && typeof event.reminder_intervals === 'string') {
         event.reminder_intervals = JSON.parse(event.reminder_intervals);
       }
-      if (event.metadata) {
+      if (event.metadata && typeof event.metadata === 'string') {
         event.metadata = JSON.parse(event.metadata);
       }
 
@@ -318,6 +319,10 @@ export class EventService {
         query = query.where('events.status', filters.status);
       }
 
+      if ((filters as any).event_type) {
+        query = query.where('events.event_type', (filters as any).event_type);
+      }
+
       if (filters.organizer_id) {
         query = query.where('events.organizer_id', filters.organizer_id);
       }
@@ -353,27 +358,30 @@ export class EventService {
         });
       }
 
-      // Get total count
+      // Get total count — use db.raw to emit COUNT(DISTINCT ...) correctly
       const countQuery = query.clone();
-      const [{ count }] = await countQuery.count('DISTINCT events.event_id as count');
-      const total = parseInt(count as string);
+      const countResult = await countQuery
+        .countDistinct('events.event_id as count')
+        .first();
+      const total = parseInt(String(countResult?.count ?? '0'), 10);
 
       // Get paginated results
       const events = await query
-        .distinct('events.*')
+        .select('events.*')
         .orderBy('events.start_date', 'desc')
         .limit(limit)
         .offset(offset);
 
-      // Parse JSON fields
+      // Parse JSON fields — only call JSON.parse when Postgres returns a raw string
+      // (some drivers/versions auto-parse jsonb columns into objects already)
       events.forEach((event) => {
-        if (event.visible_to_roles) {
+        if (event.visible_to_roles && typeof event.visible_to_roles === 'string') {
           event.visible_to_roles = JSON.parse(event.visible_to_roles);
         }
-        if (event.reminder_intervals) {
+        if (event.reminder_intervals && typeof event.reminder_intervals === 'string') {
           event.reminder_intervals = JSON.parse(event.reminder_intervals);
         }
-        if (event.metadata) {
+        if (event.metadata && typeof event.metadata === 'string') {
           event.metadata = JSON.parse(event.metadata);
         }
       });
@@ -450,7 +458,9 @@ export class EventService {
 
       logger.info(`Event cancelled: ${eventId}`, { tenantId, userId, reason });
 
-      // TODO: Send cancellation notifications
+      // Send in-app notifications to all confirmed registrants (fire-and-forget)
+      this.notifyCancellation(eventId, tenantId, event.title, reason)
+        .catch((err) => logger.warn('Could not send cancellation notifications:', err));
 
       return event;
     } catch (error) {
@@ -513,6 +523,9 @@ export class EventService {
       const categories = await eventCategoryService.getEventCategories(eventId);
 
       // Create duplicate
+      // jsonb columns (reminder_intervals, visible_to_roles, metadata) are returned
+      // as parsed JS objects by the pg driver — re-serialize them before insert so
+      // Postgres receives valid JSON strings instead of [object Object].
       const duplicateData = {
         ...original,
         title: `${original.title} (Copy)`,
@@ -522,6 +535,18 @@ export class EventService {
         created_at: undefined,
         updated_at: undefined,
         event_id: undefined,
+        reminder_intervals:
+          original.reminder_intervals != null && typeof original.reminder_intervals !== 'string'
+            ? JSON.stringify(original.reminder_intervals)
+            : original.reminder_intervals,
+        visible_to_roles:
+          original.visible_to_roles != null && typeof original.visible_to_roles !== 'string'
+            ? JSON.stringify(original.visible_to_roles)
+            : original.visible_to_roles,
+        metadata:
+          original.metadata != null && typeof original.metadata !== 'string'
+            ? JSON.stringify(original.metadata)
+            : original.metadata,
       };
 
       delete duplicateData.event_id;
@@ -665,6 +690,47 @@ export class EventService {
       logger.error('Error getting calendar events:', error);
       throw new Error('Failed to get calendar events');
     }
+  }
+
+  /**
+   * Send in-app cancellation notifications to all confirmed registrants.
+   * Tenant-scoped: only users in this tenant receive the notification.
+   * Called fire-and-forget — must never throw to the caller.
+   */
+  private async notifyCancellation(
+    eventId: string,
+    tenantId: string,
+    eventTitle: string,
+    reason?: string,
+  ): Promise<void> {
+    const registrations = await db('event_registrations')
+      .where({ event_id: eventId, status: 'confirmed' })
+      .select('user_id');
+
+    if (registrations.length === 0) return;
+
+    const message = reason
+      ? `"${eventTitle}" has been cancelled. Reason: ${reason}`
+      : `"${eventTitle}" has been cancelled.`;
+
+    const notifications = registrations.map((r: any) => ({
+      user_id: r.user_id,
+      tenant_id: tenantId,
+      type: 'event_cancelled',
+      title: `Event cancelled: "${eventTitle}"`,
+      message,
+      is_read: false,
+      created_at: db.fn.now(),
+    }));
+
+    // Insert in batches of 100
+    for (let i = 0; i < notifications.length; i += 100) {
+      await db('in_app_notifications')
+        .insert(notifications.slice(i, i + 100))
+        .catch(() => null); // Table may not exist in all deployments
+    }
+
+    logger.info(`Sent cancellation notifications for event ${eventId} to ${registrations.length} users`);
   }
 }
 

@@ -86,8 +86,8 @@ const navItems: NavItem[] = [
   },
   {
     label: 'Exam Timetable',
-    icon: <FaFileImport className="w-4 sm:w-5 h-4 sm:h-5" />,
-    path: '/academic/examinations',
+    icon: <FaClock className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/academic/exam-timetable',
     roles: ['super_admin', 'principal', 'teacher'],
     module: 'Academic Management',
     group: 'Academic',
@@ -100,7 +100,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'student', 'parent'],
     module: 'Academic Management',
     group: 'Academic',
-    version: 'v2',
+    version: 'v1',
   },
   {
     label: 'Report Cards',
@@ -109,7 +109,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'student', 'parent'],
     module: 'Academic Management',
     group: 'Academic',
-    version: 'v2',
+    version: 'v1',
   },
   {
     label: 'Promotions',
@@ -118,7 +118,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal'],
     module: 'Academic Management',
     group: 'Academic',
-    version: 'v2',
+    version: 'v1',
   },
 
   // ── STUDENT MANAGEMENT ──────────────────────────────────────────────

@@ -81,25 +81,35 @@ export interface ClassResultSummary {
   fail_count: number;
 }
 
-// ── Default Grading Scale ─────────────────────────────────────────────────────
+// ── Grace School of Science Standard Sierra Leone Grading Scale ────────────────
 
 export const DEFAULT_GRADING_SCALE = [
-  { min: 75, max: 100, letter: 'A', remark: 'Excellent' },
-  { min: 65, max: 74, letter: 'B', remark: 'Very Good' },
-  { min: 50, max: 64, letter: 'C', remark: 'Good' },
-  { min: 40, max: 49, letter: 'D', remark: 'Pass' },
-  { min: 30, max: 39, letter: 'E', remark: 'Weak Pass' },
-  { min: 0, max: 29, letter: 'F', remark: 'Fail' },
+  { min: 85, max: 100, letter: 'A', remark: 'Excellent', isFail: false },
+  { min: 75, max: 84,  letter: 'B', remark: 'Very Good', isFail: false },
+  { min: 60, max: 74,  letter: 'C', remark: 'Good',      isFail: false },
+  { min: 50, max: 59,  letter: 'D', remark: 'Satisfying', isFail: false },
+  { min: 0,  max: 49,  letter: 'F', remark: 'Unsatisfying', isFail: true }, // Below 50 is Fail (Red)
 ];
 
-export function getGradeLetter(totalScore: number): { letter: string; remark: string } {
+export function getGradeLetter(totalScore: number): { letter: string; remark: string; isFail: boolean } {
   for (const grade of DEFAULT_GRADING_SCALE) {
     if (totalScore >= grade.min && totalScore <= grade.max) {
-      return { letter: grade.letter, remark: grade.remark };
+      return { letter: grade.letter, remark: grade.remark, isFail: grade.isFail };
     }
   }
-  return { letter: 'F', remark: 'Fail' };
+  return { letter: 'F', remark: 'Unsatisfying', isFail: true };
 }
+
+// ── Conduct Codes Legend (Sierra Leone Booklet Standard) ────────────────────
+
+export const CONDUCT_CODES = [
+  { code: 'V.G', label: 'Very Good', description: 'Very Good conduct' },
+  { code: 'G',   label: 'Good',      description: 'Good conduct' },
+  { code: 'S',   label: 'Satisfying', description: 'Satisfying conduct' },
+  { code: 'PT',  label: 'Play Truant', description: 'Play Truant (Must See Principal)', isAlert: true },
+  { code: 'N',   label: 'Neglected Work', description: 'Neglected Work', isAlert: true },
+  { code: 'ABS', label: 'Absent',    description: 'Absent from school', isAlert: true },
+];
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

@@ -17,13 +17,17 @@ import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
 import { Button } from '@components/ui/button';
+import { SearchBar } from '@components/admin/table/SearchBar';
 import { showToast } from '@utils/toast';
 import { idCardService, IdCard, CardStatus } from '@services/idCardService';
+import { classesService } from '@services/classesService';
 import { apiClient } from '@lib/apiClient';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { CardGenerationModal } from './components/CardGenerationModal';
 import { CardDetailsModal } from './components/CardDetailsModal';
 import { VisualIdCardRenderer } from './components/VisualIdCardRenderer';
+import { CardPdfExporter, buildCardExportData } from './components/cardExport';
+import type { CardPdfExporterHandle } from './components/cardExport';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ActiveTab = 'cards' | 'expiring' | 'bulk' | 'qr';
@@ -82,8 +86,8 @@ function Avatar({ name, photoUrl, size = 'md' }: { name: string; photoUrl?: stri
 }
 
 // ── Visual ID Card Tile ───────────────────────────────────────────────────────
-function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete }: {
-  card: IdCard; onView: () => void; onRevoke: () => void; onRegenerate: () => void; onDelete: () => void;
+function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReportLost, onReactivate, onDownload, downloading }: {
+  card: IdCard; onView: () => void; onRevoke: () => void; onRegenerate: () => void; onDelete: () => void; onReportLost: () => void; onReactivate: () => void; onDownload: () => void; downloading: boolean;
 }) {
   const user = card.user;
   const name = user ? `${user.firstName} ${user.lastName}` : 'Unknown Member';
@@ -150,19 +154,23 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete }: {
         )}
       </div>
 
-      {/* Hover actions */}
-      <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+      {/* Actions — always visible on touch/small screens, hover-reveal on large */}
+      <div className="flex items-center gap-1 mt-2 flex-wrap opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
         <button onClick={onView} className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-50 dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700">
           <Eye size={12} /> View
         </button>
-        {card.pdfUrl && (
-          <button onClick={() => window.open(card.pdfUrl!.startsWith('/uploads/') ? `/storage${card.pdfUrl}` : card.pdfUrl!, '_blank')} className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 bg-gray-50 dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700">
-            <Download size={12} /> PDF
-          </button>
-        )}
+        <button onClick={onDownload} disabled={downloading} className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 bg-gray-50 dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700 disabled:opacity-50">
+          {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} PDF
+        </button>
         <button onClick={onRegenerate} className="p-1.5 text-gray-500 hover:text-violet-600 dark:text-gray-400 dark:hover:text-violet-400 bg-gray-50 dark:bg-gray-800 hover:bg-violet-50 dark:hover:bg-violet-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Regenerate"><RotateCcw size={12} /></button>
         {card.status === 'active' && (
           <button onClick={onRevoke} className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 bg-gray-50 dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Revoke"><Ban size={12} /></button>
+        )}
+        {card.status === 'active' && (
+          <button onClick={onReportLost} className="p-1.5 text-gray-500 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400 bg-gray-50 dark:bg-gray-800 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Report Lost"><AlertTriangle size={12} /></button>
+        )}
+        {card.status === 'suspended' && (
+          <button onClick={onReactivate} className="p-1.5 text-gray-500 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400 bg-gray-50 dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Reactivate"><RotateCcw size={12} /></button>
         )}
         <button onClick={onDelete} className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 bg-gray-50 dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Delete"><Trash2 size={12} /></button>
       </div>
@@ -296,25 +304,89 @@ function ExpiringTab({ onGenerateNew }: { onGenerateNew: () => void }) {
 function BulkGenerateTab() {
   const queryClient = useQueryClient();
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [target, setTarget] = useState<'all_students' | 'all_teachers' | 'all'>('all_students');
+  const [target, setTarget] = useState<'all_students' | 'all_teachers' | 'all' | 'by_class'>('all_students');
+  const [classId, setClassId] = useState('');
   const [format, setFormat] = useState<'pvc' | 'badge'>('pvc');
   const [expiry, setExpiry] = useState('');
   const [jobResult, setJobResult] = useState<any>(null);
 
-  const role = target === 'all_students' ? 'student' : target === 'all_teachers' ? 'teacher' : undefined;
+  const role = target === 'all_students' || target === 'by_class' ? 'student'
+    : target === 'all_teachers' ? 'teacher' : undefined;
+
+  // Classes for the "By Class" target
+  const { data: classesData } = useQuery({
+    queryKey: ['bulk-classes-list'],
+    queryFn: () => classesService.listClasses({ limit: 200 }),
+    staleTime: 60_000,
+    enabled: target === 'by_class',
+  });
+  const classes: any[] = (classesData as any)?.data ?? (classesData as any)?.data?.data ?? [];
 
   const { data: eligibleData, isLoading: eligibleLoading } = useQuery({
-    queryKey: ['eligible-members-bulk', target],
-    queryFn: () => apiClient.get('/api/v1/id-cards/eligible-members', { params: role ? { role } : {} }),
+    queryKey: ['eligible-members-bulk', target, classId],
+    queryFn: () => apiClient.get('/api/v1/id-cards/eligible-members', {
+      params: {
+        ...(role ? { role } : {}),
+        ...(target === 'by_class' && classId ? { classId } : {}),
+      },
+    }),
     staleTime: 30_000,
+    // Don't fetch until a class is chosen in by_class mode.
+    enabled: target !== 'by_class' || !!classId,
   });
   const eligible: any[] = (eligibleData as any)?.data ?? [];
 
+  const [jobId, setJobId] = useState<string | null>(null);
+
   const bulkMutation = useMutation({
-    mutationFn: () => idCardService.createBulkJob({ userIds: eligible.map((u: any) => u.userId || u.id), format }),
-    onSuccess: (res) => { setJobResult(res); setStep(3); queryClient.invalidateQueries({ queryKey: ['id-cards'] }); queryClient.invalidateQueries({ queryKey: ['id-cards-stats'] }); },
-    onError: () => showToast.error('Bulk generation failed'),
+    mutationFn: () => idCardService.createBulkJob({ userIds: eligible.map((u: any) => u.userId || u.id), format, ...(expiry ? { expirationDate: expiry } : {}) } as any),
+    onSuccess: (res) => {
+      const job = (res as any)?.job ?? (res as any)?.data?.job ?? res;
+      const id = job?.jobId ?? job?.id ?? null;
+      setJobId(id);
+      setJobResult(job);
+      setStep(3);
+      queryClient.invalidateQueries({ queryKey: ['id-cards'] });
+      queryClient.invalidateQueries({ queryKey: ['id-cards-stats'] });
+    },
+    onError: (err: any) => showToast.error(err?.response?.data?.error?.message || 'Bulk generation failed'),
   });
+
+  // Poll job status until it reaches a terminal state.
+  const { data: statusData } = useQuery({
+    queryKey: ['bulk-job-status', jobId],
+    queryFn: () => idCardService.getBulkJobStatus(jobId!),
+    enabled: !!jobId && !!jobResult,
+    refetchInterval: (query) => {
+      const s = (query.state.data as any)?.status?.status ?? (query.state.data as any)?.data?.status?.status;
+      return s === 'completed' || s === 'failed' || s === 'cancelled' ? false : 1500;
+    },
+  });
+
+  const jobStatus: any = (statusData as any)?.status ?? (statusData as any)?.data?.status ?? null;
+  const isTerminal = jobStatus && ['completed', 'failed', 'cancelled'].includes(jobStatus.status);
+
+  const { data: reportData } = useQuery({
+    queryKey: ['bulk-job-report', jobId],
+    queryFn: () => idCardService.getBulkJobReport(jobId!),
+    enabled: !!jobId && jobStatus?.status === 'completed',
+    staleTime: 60_000,
+  });
+  const report: any = (reportData as any)?.report ?? (reportData as any)?.data ?? reportData ?? null;
+
+  const storageUrl = (u?: string) => {
+    if (!u) return '';
+    const base = ((import.meta as any).env?.VITE_API_URL as string || '').replace(/\/api\/?$/, '');
+    return u.startsWith('/storage') ? `${base}${u}` : u;
+  };
+
+  const cancelJob = async () => {
+    if (!jobId) return;
+    try {
+      await idCardService.cancelBulkJob(jobId);
+      showToast.success('Job cancelled');
+    } catch { showToast.error('Failed to cancel job'); }
+  };
 
   const STEPS = ['Target', 'Settings', 'Confirm'];
 
@@ -337,13 +409,14 @@ function BulkGenerateTab() {
         {step === 1 && (
           <div className="space-y-5">
             <h2 className="font-bold text-gray-900 dark:text-white">Choose Target Group</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { v: 'all_students', l: 'All Students', icon: <GraduationCap size={22} />, d: 'All active students in your school' },
-                { v: 'all_teachers', l: 'All Teachers', icon: <BookOpen size={22} />, d: 'All active teaching staff' },
-                { v: 'all', l: 'All Members', icon: <Users size={22} />, d: 'Students + teachers combined' },
+                { v: 'all_students', l: 'All Students', icon: <GraduationCap size={22} />, d: 'All active students' },
+                { v: 'by_class', l: 'By Class', icon: <BookOpen size={22} />, d: 'Students in one class' },
+                { v: 'all_teachers', l: 'All Teachers', icon: <Users size={22} />, d: 'All teaching staff' },
+                { v: 'all', l: 'All Members', icon: <Users size={22} />, d: 'Students + teachers' },
               ].map(opt => (
-                <button key={opt.v} onClick={() => setTarget(opt.v as any)}
+                <button key={opt.v} onClick={() => { setTarget(opt.v as any); if (opt.v !== 'by_class') setClassId(''); }}
                   className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-center ${target === opt.v ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-800'}`}>
                   <span className={target === opt.v ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}>{opt.icon}</span>
                   <span className="text-sm font-bold text-gray-900 dark:text-white">{opt.l}</span>
@@ -351,11 +424,36 @@ function BulkGenerateTab() {
                 </button>
               ))}
             </div>
-            {eligibleLoading
-              ? <p className="text-sm text-gray-400 flex items-center gap-2"><Loader2 size={13} className="animate-spin" /> Counting eligible members…</p>
-              : <p className="text-sm text-gray-600 dark:text-gray-400"><span className="font-bold text-blue-600 dark:text-blue-400">{eligible.length}</span> eligible members found</p>}
+
+            {/* Class selector — only for the "By Class" target */}
+            {target === 'by_class' && (
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Class</label>
+                <div className="relative">
+                  <select
+                    value={classId}
+                    onChange={(e) => setClassId(e.target.value)}
+                    className="w-full appearance-none pl-3 pr-8 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">— Choose a class —</option>
+                    {classes.map((c: any) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}{c.level ? ` (${c.level})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronRight size={14} className="absolute right-3 top-1/2 -translate-y-1/2 rotate-90 pointer-events-none text-gray-400" />
+                </div>
+              </div>
+            )}
+
+            {target === 'by_class' && !classId
+              ? <p className="text-sm text-gray-400">Select a class to see eligible students.</p>
+              : eligibleLoading
+                ? <p className="text-sm text-gray-400 flex items-center gap-2"><Loader2 size={13} className="animate-spin" /> Counting eligible members…</p>
+                : <p className="text-sm text-gray-600 dark:text-gray-400"><span className="font-bold text-blue-600 dark:text-blue-400">{eligible.length}</span> eligible members found</p>}
             <div className="flex justify-end">
-              <Button onClick={() => setStep(2)} disabled={eligible.length === 0}>Next <ChevronRight size={14} /></Button>
+              <Button onClick={() => setStep(2)} disabled={eligible.length === 0 || (target === 'by_class' && !classId)}>Next <ChevronRight size={14} /></Button>
             </div>
           </div>
         )}
@@ -400,7 +498,14 @@ function BulkGenerateTab() {
           <div className="space-y-5">
             <h2 className="font-bold text-gray-900 dark:text-white">Review & Confirm</h2>
             <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 space-y-3 text-sm">
-              {[['Target', target.replace('_', ' ')], ['Count', `${eligible.length} cards`], ['Format', format.toUpperCase()], ['Expiry', expiry ? fmt(expiry) : '1 year from today']].map(([k, v]) => (
+              {[
+                ['Target', target === 'by_class'
+                  ? `Class: ${classes.find((c: any) => String(c.id) === String(classId))?.name || '—'}`
+                  : target.replace('_', ' ')],
+                ['Count', `${eligible.length} cards`],
+                ['Format', format.toUpperCase()],
+                ['Expiry', expiry ? fmt(expiry) : '1 year from today'],
+              ].map(([k, v]) => (
                 <div key={k} className="flex justify-between"><span className="text-gray-500">{k}</span><span className="font-semibold text-gray-900 dark:text-white capitalize">{v}</span></div>
               ))}
             </div>
@@ -420,13 +525,74 @@ function BulkGenerateTab() {
         )}
 
         {step === 3 && jobResult && (
-          <div className="text-center py-6 space-y-4">
-            <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto">
-              <CheckCircle size={36} className="text-emerald-500" />
-            </div>
-            <h2 className="font-bold text-gray-900 dark:text-white text-lg">Bulk Job Created!</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Cards are generating in the background. They'll appear in the Cards tab shortly.</p>
-            <Button onClick={() => { setStep(1); setJobResult(null); }}>Start Another Batch</Button>
+          <div className="py-4 space-y-5">
+            {!isTerminal ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <Loader2 size={22} className="animate-spin text-blue-500" />
+                  <div>
+                    <h2 className="font-bold text-gray-900 dark:text-white">Generating cards…</h2>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {jobStatus ? `${jobStatus.processedCards} of ${jobStatus.totalCards} processed` : 'Starting job…'}
+                    </p>
+                  </div>
+                </div>
+                <div className="w-full h-2.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${jobStatus?.progress ?? 0}%` }} />
+                </div>
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" onClick={cancelJob}>Cancel Job</Button>
+                </div>
+              </>
+            ) : jobStatus?.status === 'completed' ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                    <CheckCircle size={30} className="text-emerald-500" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-gray-900 dark:text-white text-lg">Batch Complete</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      <span className="text-emerald-600 font-bold">{jobStatus.successfulCards}</span> generated
+                      {jobStatus.failedCards > 0 && <> · <span className="text-red-600 font-bold">{jobStatus.failedCards}</span> failed</>}
+                    </p>
+                  </div>
+                </div>
+
+                {jobStatus.pdfUrl && (
+                  <a href={storageUrl(jobStatus.pdfUrl)} target="_blank" rel="noopener noreferrer" download>
+                    <Button className="gap-1.5"><Download size={15} /> Download All Cards (PDF)</Button>
+                  </a>
+                )}
+
+                {report?.failed?.length > 0 && (
+                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
+                    <p className="text-sm font-bold text-red-700 dark:text-red-400 mb-2">{report.failed.length} card(s) failed</p>
+                    <ul className="space-y-1 max-h-40 overflow-y-auto">
+                      {report.failed.map((f: any, i: number) => (
+                        <li key={i} className="text-xs text-red-600 dark:text-red-400 flex justify-between gap-2">
+                          <span className="font-medium truncate">{f.userName || f.userId}</span>
+                          <span className="text-red-500/80 truncate">{f.errorMessage}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <Button variant="outline" onClick={() => { setStep(1); setJobResult(null); setJobId(null); }}>Start Another Batch</Button>
+              </>
+            ) : (
+              <div className="text-center py-6 space-y-4">
+                <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto">
+                  <XCircle size={36} className="text-red-500" />
+                </div>
+                <h2 className="font-bold text-gray-900 dark:text-white text-lg">Job {jobStatus?.status === 'cancelled' ? 'Cancelled' : 'Failed'}</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {jobStatus?.status === 'cancelled' ? 'The batch was cancelled.' : 'The batch could not be completed. Please try again.'}
+                </p>
+                <Button onClick={() => { setStep(1); setJobResult(null); setJobId(null); }}>Start Another Batch</Button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -450,6 +616,31 @@ export const IdCardsPage: React.FC = () => {
   const [revokeTarget, setRevokeTarget] = useState<IdCard | null>(null);
   const [regenerateTarget, setRegenerateTarget] = useState<IdCard | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<IdCard | null>(null);
+  const [reportLostTarget, setReportLostTarget] = useState<IdCard | null>(null);
+  const [reactivateTarget, setReactivateTarget] = useState<IdCard | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const exporterRef = React.useRef<CardPdfExporterHandle>(null);
+
+  const handleDownload = async (card: IdCard) => {
+    setDownloadingId(card.id);
+    try {
+      // Fetch the full card (template config + user details) so the exported
+      // PDF matches the on-screen card exactly.
+      let full: any = card;
+      try {
+        const res = await idCardService.getCard(card.id);
+        full = (res as any)?.card ?? (res as any)?.data ?? card;
+      } catch {
+        /* fall back to list card data */
+      }
+      await exporterRef.current?.export(buildCardExportData(full));
+      showToast.success('Card PDF downloaded');
+    } catch {
+      showToast.error('Failed to download card PDF');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   // Fetch cards (tenant-scoped by backend)
   const { data, isLoading, refetch } = useQuery({
@@ -507,6 +698,28 @@ export const IdCardsPage: React.FC = () => {
       showToast.error(err.response?.data?.message || err.message || 'Failed to delete ID card');
     }
     setDeleteTarget(null);
+  };
+
+  const handleReportLost = async () => {
+    if (!reportLostTarget) return;
+    try {
+      await idCardService.reportLost(reportLostTarget.id, 'Reported lost by administrator');
+      showToast.success('Card reported as lost');
+      queryClient.invalidateQueries({ queryKey: ['id-cards'] });
+      queryClient.invalidateQueries({ queryKey: ['id-cards-stats'] });
+    } catch { showToast.error('Failed to report card as lost'); }
+    setReportLostTarget(null);
+  };
+
+  const handleReactivate = async () => {
+    if (!reactivateTarget) return;
+    try {
+      await idCardService.reactivateCard(reactivateTarget.id);
+      showToast.success('Card reactivated');
+      queryClient.invalidateQueries({ queryKey: ['id-cards'] });
+      queryClient.invalidateQueries({ queryKey: ['id-cards-stats'] });
+    } catch { showToast.error('Failed to reactivate card'); }
+    setReactivateTarget(null);
   };
 
   const TABS = [
@@ -583,12 +796,14 @@ export const IdCardsPage: React.FC = () => {
             <div className="space-y-5">
               {/* Filters */}
               <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-                <div className="relative flex-1">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search card number, name or email…"
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  {search && <button onClick={() => { setSearch(''); setPage(1); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>}
-                </div>
+                <SearchBar
+                  placeholder="Search card number, name or email…"
+                  onSearch={(v) => { setSearch(v); setPage(1); }}
+                  isLoading={isLoading}
+                  resultCount={search ? cards.length : undefined}
+                  defaultValue={search}
+                  className="w-full sm:flex-1"
+                />
                 <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value as any); setPage(1); }}
                   className="px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer min-w-[140px]">
                   <option value="">All Statuses</option>
@@ -635,7 +850,11 @@ export const IdCardsPage: React.FC = () => {
                       onView={() => setDetailsModal({ open: true, cardId: card.id })}
                       onRevoke={() => setRevokeTarget(card)}
                       onRegenerate={() => setRegenerateTarget(card)}
-                      onDelete={() => setDeleteTarget(card)} />
+                      onDelete={() => setDeleteTarget(card)}
+                      onReportLost={() => setReportLostTarget(card)}
+                      onReactivate={() => setReactivateTarget(card)}
+                      onDownload={() => handleDownload(card)}
+                      downloading={downloadingId === card.id} />
                   ))}
                 </div>
               ) : (
@@ -684,11 +903,13 @@ export const IdCardsPage: React.FC = () => {
                                 </span>
                               </td>
                               <td className="px-5 py-3.5">
-                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="flex items-center justify-end gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                   <button onClick={() => setDetailsModal({ open: true, cardId: card.id })} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="View"><Eye size={14} /></button>
-                                  {card.pdfUrl && <button onClick={() => window.open(card.pdfUrl!, '_blank')} className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors" title="PDF"><Download size={14} /></button>}
+                                  <button onClick={() => handleDownload(card)} disabled={downloadingId === card.id} className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors disabled:opacity-50" title="Download PDF">{downloadingId === card.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}</button>
                                   <button onClick={() => setRegenerateTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors" title="Regenerate"><RotateCcw size={14} /></button>
                                   {card.status === 'active' && <button onClick={() => setRevokeTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Revoke"><Ban size={14} /></button>}
+                                  {card.status === 'active' && <button onClick={() => setReportLostTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors" title="Report Lost"><AlertTriangle size={14} /></button>}
+                                  {card.status === 'suspended' && <button onClick={() => setReactivateTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors" title="Reactivate"><RotateCcw size={14} /></button>}
                                   <button onClick={() => setDeleteTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete"><Trash2 size={14} /></button>
                                 </div>
                               </td>
@@ -718,6 +939,8 @@ export const IdCardsPage: React.FC = () => {
         </div>
       </PageShell>
 
+      <CardPdfExporter ref={exporterRef} />
+
       <CardGenerationModal isOpen={generationModalOpen} onClose={() => setGenerationModalOpen(false)}
         onSuccess={() => { queryClient.invalidateQueries({ queryKey: ['id-cards'] }); queryClient.invalidateQueries({ queryKey: ['id-cards-stats'] }); }} />
       <CardDetailsModal isOpen={detailsModal.open} onClose={() => setDetailsModal({ open: false, cardId: null })} cardId={detailsModal.cardId} />
@@ -733,6 +956,14 @@ export const IdCardsPage: React.FC = () => {
         title="Delete ID Card"
         message={`Are you sure you want to delete card "${deleteTarget?.cardNumber}"? This action is permanent and cannot be undone.`}
         confirmLabel="Delete Card" />
+      <ConfirmationDialog isOpen={!!reportLostTarget} onClose={() => setReportLostTarget(null)} onConfirm={handleReportLost}
+        title="Report Card as Lost"
+        message={`Mark card "${reportLostTarget?.cardNumber}" as lost? The holder will need a replacement card.`}
+        confirmLabel="Report Lost" isDestructive={false} />
+      <ConfirmationDialog isOpen={!!reactivateTarget} onClose={() => setReactivateTarget(null)} onConfirm={handleReactivate}
+        title="Reactivate Card"
+        message={`Reactivate suspended card "${reactivateTarget?.cardNumber}"? It will become active again.`}
+        confirmLabel="Reactivate" isDestructive={false} />
     </MainLayout>
   );
 };

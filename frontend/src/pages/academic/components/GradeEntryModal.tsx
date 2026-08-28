@@ -44,6 +44,13 @@ export const GradeEntryModal: React.FC<GradeEntryModalProps> = ({
   const [subjectId, setSubjectId] = useState('');
   const [term, setTerm] = useState('');
   const [academicYear] = useState(defaultAcademicYear);
+  const [assessmentScheme, setAssessmentScheme] = useState<'grace' | 'rising' | 'wassce'>('grace');
+
+  const schemeConfig = useMemo(() => {
+    if (assessmentScheme === 'grace') return { col1Label: 'Test 1 /100', col2Label: 'Test 2 /100', max1: 100, max2: 100, sumLabel: 'Mean (Mn)', isAverage: true };
+    if (assessmentScheme === 'rising') return { col1Label: 'MTT /100', col2Label: 'ETT /100', max1: 100, max2: 100, sumLabel: 'Mean (Mn)', isAverage: true };
+    return { col1Label: 'CA /30', col2Label: 'Exam /70', max1: 30, max2: 70, sumLabel: 'Total (100%)', isAverage: false };
+  }, [assessmentScheme]);
 
   // Grade entry state
   const [grades, setGrades] = useState<StudentGradeRow[]>([]);
@@ -186,7 +193,7 @@ export const GradeEntryModal: React.FC<GradeEntryModalProps> = ({
       <div className="min-h-[60vh] flex flex-col">
 
       {/* Selection Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
         <SearchableSelect
           label="Class"
           required
@@ -214,6 +221,18 @@ export const GradeEntryModal: React.FC<GradeEntryModalProps> = ({
           >
             <option value="">Select term...</option>
             {TERMS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Assessment Scheme</label>
+          <select
+            value={assessmentScheme}
+            onChange={(e) => setAssessmentScheme(e.target.value as any)}
+            className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-semibold text-blue-600 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="grace">Grace School: Test 1 /100 + Test 2 /100 (Mean = Average)</option>
+            <option value="rising">Rising Academy: MTT /100 + ETT /100 (Mean = Average)</option>
+            <option value="wassce">National Standard: CA /30 + Exam /70 (Total = Sum)</option>
           </select>
         </div>
       </div>
@@ -244,17 +263,19 @@ export const GradeEntryModal: React.FC<GradeEntryModalProps> = ({
               <tr>
                 <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase w-[40px]">#</th>
                 <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Student</th>
-                <th className="px-3 py-2.5 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase w-[90px]">CA /30</th>
-                <th className="px-3 py-2.5 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase w-[90px]">Exam /70</th>
-                <th className="px-3 py-2.5 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase w-[70px]">Total</th>
+                <th className="px-3 py-2.5 text-center text-xs font-bold text-blue-600 dark:text-blue-400 uppercase w-[110px]">{schemeConfig.col1Label}</th>
+                <th className="px-3 py-2.5 text-center text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase w-[110px]">{schemeConfig.col2Label}</th>
+                <th className="px-3 py-2.5 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase w-[80px]">{schemeConfig.sumLabel}</th>
                 <th className="px-3 py-2.5 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase w-[60px]">Grade</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
               {grades.map((row, i) => {
-                const total = row.ca_score + row.exam_score;
-                const { letter } = getGradeLetter(total);
-                const gradeColor = letter === 'A' ? 'text-green-600' : letter === 'B' ? 'text-blue-600' : letter === 'C' ? 'text-amber-600' : letter === 'D' ? 'text-orange-600' : 'text-red-600';
+                const total = schemeConfig.isAverage
+                  ? Math.round((row.ca_score + row.exam_score) / 2)
+                  : row.ca_score + row.exam_score;
+                const { letter, isFail } = getGradeLetter(total);
+                const gradeColor = letter === 'A' ? 'text-green-600' : letter === 'B' ? 'text-blue-600' : letter === 'C' ? 'text-cyan-600' : letter === 'D' ? 'text-amber-600' : 'text-red-600 font-extrabold';
 
                 return (
                   <tr key={row.student_id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
@@ -267,24 +288,26 @@ export const GradeEntryModal: React.FC<GradeEntryModalProps> = ({
                       <input
                         type="number"
                         min={0}
-                        max={30}
+                        max={schemeConfig.max1}
                         value={row.ca_score || ''}
-                        onChange={(e) => updateScore(i, 'ca_score', Math.min(30, Math.max(0, Number(e.target.value) || 0)))}
-                        className="w-[70px] px-2 py-1 text-center bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={(e) => updateScore(i, 'ca_score', Math.min(schemeConfig.max1, Math.max(0, Number(e.target.value) || 0)))}
+                        className="w-[75px] px-2 py-1 text-center bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
                       />
                     </td>
                     <td className="px-3 py-2 text-center">
                       <input
                         type="number"
                         min={0}
-                        max={70}
+                        max={schemeConfig.max2}
                         value={row.exam_score || ''}
-                        onChange={(e) => updateScore(i, 'exam_score', Math.min(70, Math.max(0, Number(e.target.value) || 0)))}
-                        className="w-[70px] px-2 py-1 text-center bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={(e) => updateScore(i, 'exam_score', Math.min(schemeConfig.max2, Math.max(0, Number(e.target.value) || 0)))}
+                        className="w-[75px] px-2 py-1 text-center bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
                       />
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <span className="text-sm font-bold font-mono text-gray-900 dark:text-white">{total}</span>
+                      <span className={`text-sm font-bold font-mono px-2 py-0.5 rounded ${isFail ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/40' : 'text-gray-900 dark:text-white'}`}>
+                        {total}%
+                      </span>
                     </td>
                     <td className="px-3 py-2 text-center">
                       <span className={`text-sm font-bold ${gradeColor}`}>{letter}</span>

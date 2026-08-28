@@ -12,6 +12,7 @@ import { SubscriptionService } from '../services/subscriptionService';
 import { AppError } from '../middleware/errorHandler';
 import { UserRole } from '../types/auth';
 import { db } from '../utils/database';
+import eventCategoryService from '../services/eventCategoryService';
 
 const router = Router();
 
@@ -118,6 +119,11 @@ router.post('/tenants', authenticate, authorize(UserRole.SUPER_ADMIN), async (re
         updated_at: new Date(),
       });
     }
+
+    // Seed system event categories for the new tenant (fire-and-forget — don't fail tenant creation)
+    eventCategoryService.initializeSystemCategories(tenant.id).catch((err: Error) => {
+      console.error(`[platformRoutes] Failed to seed event categories for tenant ${tenant.id}:`, err.message);
+    });
 
     res.status(201).json({ success: true, data: tenant });
   } catch (error) {

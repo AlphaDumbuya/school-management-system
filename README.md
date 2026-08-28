@@ -697,8 +697,4 @@ See [tasks.md](.kiro/specs/school-management-system/tasks.md) for complete task 
 
 
 
-## these are my notes am keeping as the app development is not yet reach there but i dont want to forget them
 
-1 the setting page where the tenant has to configure their school should include this.. they should first configure IN number format because the students directory should assign ID to all enrolled students
-
-2 

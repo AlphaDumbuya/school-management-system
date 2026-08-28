@@ -18,10 +18,12 @@ import {
     CheckCircle,
     Clock,
     Archive,
+    ChevronDown,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { DataTable } from '@components/admin/table/DataTable';
+import { SearchBar } from '@components/admin/table/SearchBar';
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { Button } from '@components/ui/button';
@@ -67,6 +69,8 @@ export const TemplatesPage: React.FC = () => {
     const [editingTemplate, setEditingTemplate] = useState<CardTemplate | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<CardTemplate | null>(null);
     const [approveTarget, setApproveTarget] = useState<CardTemplate | null>(null);
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
 
     // Fetch templates
     const { data, isLoading, error, refetch } = useQuery({
@@ -80,6 +84,19 @@ export const TemplatesPage: React.FC = () => {
         (data?.data as any)?.templates ??
         (data?.data as any)?.data ??
         [];
+
+    // Client-side search + status filter (list is not server-paginated).
+    const filteredTemplates = React.useMemo(() => {
+        const term = search.trim().toLowerCase();
+        return templates.filter((t) => {
+            const matchesSearch =
+                !term ||
+                t.name?.toLowerCase().includes(term) ||
+                t.format?.toLowerCase().includes(term);
+            const matchesStatus = !statusFilter || t.status === statusFilter;
+            return matchesSearch && matchesStatus;
+        });
+    }, [templates, search, statusFilter]);
 
     // Handle delete
     const handleDelete = async () => {
@@ -300,10 +317,36 @@ export const TemplatesPage: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Search + status filter */}
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center mb-4">
+                    <SearchBar
+                        placeholder="Search templates by name or format…"
+                        onSearch={setSearch}
+                        isLoading={isLoading}
+                        resultCount={search ? filteredTemplates.length : undefined}
+                        defaultValue={search}
+                        className="w-full sm:max-w-md"
+                    />
+                    <div className="relative w-full sm:w-44">
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="w-full appearance-none pl-3 pr-8 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                        >
+                            <option value="">All Statuses</option>
+                            <option value="approved">Approved</option>
+                            <option value="draft">Draft</option>
+                            <option value="pending_approval">Pending Approval</option>
+                            <option value="archived">Archived</option>
+                        </select>
+                        <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+                    </div>
+                </div>
+
                 {/* Data Table */}
                 <DataTable
                     columns={columns}
-                    data={templates}
+                    data={filteredTemplates}
                     isLoading={isLoading}
                     error={error ? String(error) : null}
                     onRetry={refetch}
@@ -326,6 +369,21 @@ export const TemplatesPage: React.FC = () => {
                             },
                         ];
 
+                        if (template.status === 'draft') {
+                            actions.push({
+                                label: 'Submit for Approval',
+                                onClick: async (row: CardTemplate) => {
+                                    try {
+                                        await idCardService.submitForApproval(row.id);
+                                        showToast.success('Template submitted for approval');
+                                        queryClient.invalidateQueries({ queryKey: ['card-templates'] });
+                                    } catch (err: any) {
+                                        showToast.error(err.response?.data?.message || 'Failed to submit');
+                                    }
+                                },
+                            });
+                        }
+
                         if (template.status === 'pending_approval') {
                             actions.push({
                                 label: 'Approve',
@@ -339,6 +397,24 @@ export const TemplatesPage: React.FC = () => {
                                 onClick: (row: CardTemplate) => handleSetDefault(row),
                             });
                         }
+
+                        actions.push({
+                            label: 'Duplicate',
+                            onClick: async (row: CardTemplate) => {
+                                try {
+                                    await idCardService.createTemplate({
+                                        ...row,
+                                        name: `${row.name} (Copy)`,
+                                        status: 'draft' as any,
+                                        isDefault: false,
+                                    } as any);
+                                    showToast.success('Template duplicated as draft');
+                                    queryClient.invalidateQueries({ queryKey: ['card-templates'] });
+                                } catch (err: any) {
+                                    showToast.error('Failed to duplicate template');
+                                }
+                            },
+                        });
 
                         actions.push({
                             label: 'Delete',

@@ -93,19 +93,27 @@ export const EventsPage: React.FC = () => {
     staleTime: 30_000,
   });
 
-  const events: Event[] = (data as any)?.data ?? [];
+  const events: Event[] = useMemo(() => {
+    if (!data) return [];
+    // Shape 1: { success, data: [...] }  (our new API format)
+    if (Array.isArray((data as any)?.data)) return (data as any).data;
+    // Shape 2: data is directly an array (legacy)
+    if (Array.isArray(data)) return data as Event[];
+    return [];
+  }, [data]);
+
   const pagination = {
     total: Number((data as any)?.total ?? (data as any)?.pagination?.total ?? 0),
     total_pages: Number((data as any)?.totalPages ?? (data as any)?.pagination?.total_pages ?? 1),
   };
-
   // ── KPIs ────────────────────────────────────────────────────────────────────
-
+  // Note: stats derived from current page; total uses server-provided count.
   const stats = useMemo(() => {
     const total = pagination.total || events.length;
     const upcoming = events.filter((e) => new Date(e.start_date) > new Date()).length;
     const published = events.filter((e) => e.status === 'published').length;
     const totalRegistrations = events.reduce((s, e) => s + Number(e.registrations_count ?? 0), 0);
+    // When filters are active the page data is scoped — reflect that clearly
     return { total, upcoming, published, totalRegistrations };
   }, [events, pagination]);
 
@@ -448,8 +456,7 @@ export const EventsPage: React.FC = () => {
             pageIndex={page}
             pageSize={pageSize}
             totalRows={pagination.total}
-            onPageChange={setPage}
-            emptyMessage="No events found"
+            onPageChange={setPage}            emptyMessage="No events found"
             emptyAction={{ label: 'Create your first event', onClick: () => { setEditingEvent(null); setFormOpen(true); } }}
             rowActions={(evt) => [
               {

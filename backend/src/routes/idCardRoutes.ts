@@ -48,7 +48,12 @@ router.get(
         throw new AppError('Tenant context required', 400, 'TENANT_REQUIRED');
       }
 
+      // NOTE: A student can have MULTIPLE enrollment rows (several classes /
+      // terms). A plain leftJoin to enrollments+classes fans out the result so
+      // one card appears once per enrollment (e.g. 4 duplicate rows). We use
+      // DISTINCT ON (id_cards.id) to collapse back to exactly one row per card.
       let query = db('id_cards')
+        .distinctOn('id_cards.id')
         .select(
           'id_cards.*',
           db.raw("COALESCE(users.first_name, students.first_name, 'Member') as first_name"),
@@ -71,7 +76,10 @@ router.get(
           this.on('users.id', '=', 'id_cards.user_id')
             .orOn('users.id', '=', 'students.user_id');
         })
-        .leftJoin('enrollments', 'enrollments.student_id', 'students.id')
+        .leftJoin('enrollments', function () {
+          this.on('enrollments.student_id', '=', 'students.id')
+            .andOn('enrollments.status', '=', db.raw('?', ['active']));
+        })
         .leftJoin('classes', 'classes.id', 'enrollments.class_id')
         .leftJoin('teachers', function () {
           this.on('teachers.user_id', '=', 'id_cards.user_id')
@@ -96,13 +104,26 @@ router.get(
         });
       }
 
-      const countResult = await query.clone().clearSelect().clearOrder().count('id_cards.id as count').first();
+      // Count DISTINCT cards (the join can still fan out before DISTINCT ON).
+      const countResult = await query
+        .clone()
+        .clearSelect()
+        .clearOrder()
+        .countDistinct('id_cards.id as count')
+        .first();
       const total = Number(countResult?.count ?? 0);
 
-      const cards = await query
-        .orderBy('id_cards.created_at', 'desc')
+      // DISTINCT ON requires the distinct expression to lead the ORDER BY.
+      // We order by id_cards.id (for DISTINCT ON) then created_at, and finally
+      // re-sort the collapsed rows by created_at for display.
+      const rows = await query
+        .orderByRaw('id_cards.id, id_cards.created_at DESC')
         .limit(limit)
         .offset(offset);
+
+      const cards = rows.sort((a: any, b: any) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
 
       // Map to frontend-friendly format
       const mappedCards = cards.map((c: any) => ({
@@ -193,7 +214,7 @@ router.get(
   '/eligible-members',
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { search, role } = req.query;
+      const { search, role, classId } = req.query;
       const tenantId = (req as any).user?.tenant_id;
 
       if (!tenantId) {
@@ -202,9 +223,13 @@ router.get(
 
       let results: any[] = [];
 
+      // A class filter only makes sense for students; if provided, teachers are excluded.
+      const classFilter = classId ? String(classId) : undefined;
+
       // Students — scoped to tenant
       if (!role || role === 'student') {
         let studentsQuery = db('students')
+          .distinctOn('students.id')
           .select(
             'students.id',
             'students.user_id',
@@ -217,6 +242,16 @@ router.get(
           .where('students.status', 'active')
           .where('students.tenant_id', tenantId);
 
+        // Optional class filter — restrict to students actively enrolled in the class.
+        if (classFilter) {
+          studentsQuery = studentsQuery
+            .join('enrollments', function () {
+              this.on('enrollments.student_id', '=', 'students.id')
+                .andOn('enrollments.status', '=', db.raw('?', ['active']));
+            })
+            .where('enrollments.class_id', classFilter);
+        }
+
         if (search) {
           const term = `%${(search as string).trim()}%`;
           studentsQuery = studentsQuery.where(function() {
@@ -226,12 +261,12 @@ router.get(
           });
         }
 
-        const students = await studentsQuery.limit(100);
+        const students = await studentsQuery.orderBy('students.id').limit(5000);
         results = results.concat(students);
       }
 
-      // Teachers — scoped to tenant via users join
-      if (!role || role === 'teacher') {
+      // Teachers — scoped to tenant via users join (skipped when filtering by class)
+      if (!classFilter && (!role || role === 'teacher')) {
         let teachersQuery = db('teachers')
           .select(
             'teachers.id',
@@ -255,7 +290,7 @@ router.get(
           });
         }
 
-        const teachers = await teachersQuery.limit(100);
+        const teachers = await teachersQuery.limit(5000);
         results = results.concat(teachers);
       }
 
@@ -556,7 +591,7 @@ router.post(
   authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { userIds, filters, templateId, format } = req.body;
+      const { userIds, filters, templateId, format, expirationDate } = req.body;
       const requestedBy = (req as any).user.id;
       const tenantId = (req as any).user.tenant_id;
 
@@ -574,6 +609,7 @@ router.post(
         filters,
         templateId,
         format,
+        expirationDate,
         requestedBy,
       });
 

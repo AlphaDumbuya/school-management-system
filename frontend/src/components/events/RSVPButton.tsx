@@ -46,8 +46,7 @@ export const RSVPButton: React.FC<RSVPButtonProps> = ({ event, onUpdate }) => {
                         }
                     );
                     toast.success(`RSVP updated to "${status}"`);
-                }
-            } else {
+                }            } else {
                 // New registration
                 await eventsService.registerForEvent(event.event_id, {
                     rsvp_status: status,
@@ -75,10 +74,18 @@ export const RSVPButton: React.FC<RSVPButtonProps> = ({ event, onUpdate }) => {
             return;
         }
 
+        if (!event.user_registration?.registration_id) {
+            toast.error('Registration ID not found');
+            return;
+        }
+
         setLoading(true);
 
         try {
-            await eventsService.cancelRegistration(event.event_id);
+            await eventsService.cancelRegistration(
+                event.event_id,
+                event.user_registration.registration_id,
+            );
             toast.success('Registration cancelled');
             onUpdate?.();
         } catch (error: any) {

@@ -3,12 +3,17 @@
  * Modal for creating/editing card templates with interactive visual canvas, Canva presets, and front/back support.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Modal } from '@components/admin/feedback/Modal';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { idCardService, CardTemplate, CardFormat, UserRole, CanvasElement } from '@services/idCardService';
-import { Loader2, Sparkles, Upload, Layout, Palette, Type, Eye, EyeOff, Plus, Copy, Trash2, Move, ArrowLeftRight, AlignCenter, AlignLeft, AlignRight, HelpCircle, Layers, ShieldCheck, CheckCircle2, UserCheck, BookOpen, ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react';
+import {
+  Loader2, Sparkles, Upload, Layout, Palette, Type, Eye, EyeOff, Plus, Copy, Trash2, Move,
+  AlignCenter, AlignLeft, AlignRight, HelpCircle, Layers, UserCheck, BookOpen,
+  ChevronLeft, ChevronRight, SlidersHorizontal, Undo2, Redo2, LayoutGrid, Sliders,
+  Image, RotateCcw, FlipHorizontal2, Maximize2
+} from 'lucide-react';
 import { VisualIdCardRenderer, VisualCardUserData } from './VisualIdCardRenderer';
 
 interface TemplateFormModalProps {
@@ -31,10 +36,28 @@ const PRESET_LIGHT_THEMES = [
 ];
 
 const PRESET_FONTS = [
-    { label: 'Helvetica / Arial', value: 'Helvetica, sans-serif' },
-    { label: 'Times New Roman', value: '"Times New Roman", serif' },
-    { label: 'Courier Monospace', value: '"Courier New", monospace' },
-    { label: 'Inter / Modern Sans', value: 'Inter, sans-serif' }
+    { label: 'Helvetica / Arial',    value: 'Helvetica, Arial, sans-serif' },
+    { label: 'Inter — Modern UI',    value: 'Inter, system-ui, sans-serif' },
+    { label: 'Roboto',               value: 'Roboto, sans-serif' },
+    { label: 'Open Sans',            value: '"Open Sans", sans-serif' },
+    { label: 'Lato',                 value: 'Lato, sans-serif' },
+    { label: 'Montserrat',           value: 'Montserrat, sans-serif' },
+    { label: 'Raleway',              value: 'Raleway, sans-serif' },
+    { label: 'Oswald — Condensed',   value: 'Oswald, sans-serif' },
+    { label: 'Source Sans Pro',      value: '"Source Sans Pro", sans-serif' },
+    { label: 'Times New Roman',      value: '"Times New Roman", Georgia, serif' },
+    { label: 'Georgia — Serif',      value: 'Georgia, serif' },
+    { label: 'Garamond — Classic',   value: 'Garamond, "EB Garamond", serif' },
+    { label: 'Playfair Display',     value: '"Playfair Display", serif' },
+    { label: 'Courier Monospace',    value: '"Courier New", monospace' },
+];
+
+const BG_PATTERNS = [
+    { label: 'None',       value: 'none' },
+    { label: 'Dots',       value: 'dots' },
+    { label: 'Crosshatch', value: 'crosshatch' },
+    { label: 'Diagonal',   value: 'diagonal' },
+    { label: 'Grid',       value: 'grid' },
 ];
 
 // Helper to get default coordinates depending on layout
@@ -473,19 +496,26 @@ const CANVA_TEMPLATES = [
     }
 ];
 
+// ── Undo / Redo stack ──────────────────────────────────────────────────────────
+const MAX_UNDO = 30;
+
 export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
     isOpen,
     onClose,
     onSuccess,
     editingTemplate,
 }) => {
+    // Undo/redo stacks
+    const undoStack = useRef<any[]>([]);
+    const redoStack = useRef<any[]>([]);
+
     // Form state with custom field labels & toggles
     const [formData, setFormData] = useState({
         name: '',
         presetId: 'freetown-model-executive',
         format: 'pvc' as CardFormat,
         printSides: 'single' as 'single' | 'double',
-        headerStyle: 'curved-wave' as 'curved-wave' | 'dual-strip' | 'sidebar-left' | 'top-banner' | 'arch-frame' | 'minimal-clean' | 'angled-split',
+        headerStyle: 'curved-wave' as 'curved-wave' | 'dual-strip' | 'sidebar-left' | 'top-banner' | 'arch-frame' | 'minimal-clean' | 'angled-split' | 'gradient-diagonal' | 'corner-ribbon' | 'split-color' | 'rounded-band' | 'wave-bottom',
         primaryColor: '#991B1B',
         secondaryColor: '#DC2626',
         backgroundColor: '#FFFFFF',
@@ -519,9 +549,13 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
         logoUrl: '',
         defaultForRoles: [] as UserRole[],
         layoutConfig: getDefaultLayout('pvc') as any,
+        description: '',
+        backgroundPattern: 'none' as string,
+        backgroundPatternColor: '#000000',
     });
 
-    const [activeTab, setActiveTab] = useState<'general' | 'style' | 'layout'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'style' | 'layout' | 'background'>('general');
+    const [showGrid, setShowGrid] = useState(false);
     const [selectedElement, setSelectedElement] = useState<string | null>(null);
     const [previewSide, setPreviewSide] = useState<'front' | 'back' | 'both'>('front');
     const [isGuideOpen, setIsGuideOpen] = useState(false);
@@ -671,7 +705,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                         currentY = el.y;
                     }
                 } else {
-                    const posKey = selectedElement === 'logo' ? 'logoPositionConfig' : selectedElement === 'title' ? 'titlePosition' : `${selectedElement}Position`;
+                    const posKey = selectedElement === 'logo' ? 'logoPositionConfig' : `${selectedElement}Position`;
                     const posObj = layout[posKey];
                     if (posObj) {
                         currentX = posObj.x;
@@ -689,28 +723,72 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isOpen, selectedElement, formData.layoutConfig]);
 
+    // Push to undo stack before every state mutation
+    const pushUndo = useCallback((prev: any) => {
+        undoStack.current = [...undoStack.current.slice(-MAX_UNDO + 1), JSON.parse(JSON.stringify(prev))];
+        redoStack.current = [];
+    }, []);
+
+    const handleUndo = useCallback(() => {
+        if (undoStack.current.length === 0) return;
+        const prev = undoStack.current.pop()!;
+        redoStack.current = [...redoStack.current, JSON.parse(JSON.stringify(formData))];
+        setFormData(prev);
+        showToast.success('Undone');
+    }, [formData]);
+
+    const handleRedo = useCallback(() => {
+        if (redoStack.current.length === 0) return;
+        const next = redoStack.current.pop()!;
+        undoStack.current = [...undoStack.current, JSON.parse(JSON.stringify(formData))];
+        setFormData(next);
+        showToast.success('Redone');
+    }, [formData]);
+
+    // Keyboard shortcuts
+    useEffect(() => {
+        if (!isOpen) return;
+        const handler = (e: KeyboardEvent) => {
+            const active = document.activeElement?.tagName.toLowerCase();
+            if (active === 'input' || active === 'textarea' || active === 'select') return;
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); }
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); handleRedo(); }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [isOpen, handleUndo, handleRedo]);
+
     // Dynamic position change handler during canvas drag
     const handlePositionChange = (key: string, newX: number, newY: number) => {
         setFormData(prev => {
+            pushUndo(prev);
             const nextLayout = { ...prev.layoutConfig } as any;
             if (key.startsWith('custom_')) {
-                const updatedCustoms = (nextLayout.customElements || []).map((el: CanvasElement) =>
+                nextLayout.customElements = (nextLayout.customElements || []).map((el: CanvasElement) =>
                     el.id === key ? { ...el, x: newX, y: newY } : el
                 );
-                nextLayout.customElements = updatedCustoms;
             } else {
-                const posKey = key === 'logo' ? 'logoPositionConfig' : key === 'title' ? 'titlePosition' : `${key}Position`;
-                nextLayout[posKey] = { ...(nextLayout[posKey] || { side: 'front' }), x: newX, y: newY };
+                // Back-side special keys
+                if (key === 'backStripe')     { nextLayout.backStripePosition    = { ...(nextLayout.backStripePosition    || {}), x: newX, y: newY }; }
+                else if (key === 'backInfo')  { nextLayout.backInfoPosition      = { ...(nextLayout.backInfoPosition      || {}), x: newX, y: newY }; }
+                else if (key === 'backQr')    { nextLayout.backQrPosition        = { ...(nextLayout.backQrPosition        || {}), x: newX, y: newY }; }
+                else if (key === 'backBarcode') { nextLayout.backBarcodePosition = { ...(nextLayout.backBarcodePosition   || {}), x: newX, y: newY }; }
+                else if (key === 'backSignature') { nextLayout.backSignaturePosition = { ...(nextLayout.backSignaturePosition || {}), x: newX, y: newY }; }
+                else {
+                    const posKey = key === 'logo' ? 'logoPositionConfig' : key === 'schoolName' ? 'schoolNamePosition' : `${key}Position`;
+                    nextLayout[posKey] = { ...(nextLayout[posKey] || { side: 'front' }), x: newX, y: newY };
+                }
             }
             return { ...prev, layoutConfig: nextLayout };
         });
     };
 
     // Dynamic element-specific styling handler
-    const handleUpdateElementStyle = (field: 'color' | 'bgColor' | 'fontSize' | 'fontFamily', value: any) => {
+    const handleUpdateElementStyle = (field: 'color' | 'bgColor' | 'fontSize' | 'fontFamily' | 'opacity', value: any) => {
         if (!selectedElement) return;
 
         setFormData(prev => {
+            pushUndo(prev);
             const nextLayout = { ...prev.layoutConfig } as any;
 
             if (selectedElement.startsWith('custom_')) {
@@ -718,7 +796,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                     el.id === selectedElement ? { ...el, [field]: value } : el
                 );
             } else {
-                const posKey = selectedElement === 'logo' ? 'logoPositionConfig' : selectedElement === 'title' ? 'titlePosition' : `${selectedElement}Position`;
+                const posKey = selectedElement === 'logo' ? 'logoPositionConfig' : `${selectedElement}Position`;
                 const currentPos = nextLayout[posKey] || { side: 'front' };
                 nextLayout[posKey] = { ...currentPos, [field]: value };
             }
@@ -727,13 +805,13 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
         });
     };
 
-    const getSelectedElementStyle = (field: 'color' | 'bgColor' | 'fontSize' | 'fontFamily') => {
+    const getSelectedElementStyle = (field: 'color' | 'bgColor' | 'fontSize' | 'fontFamily' | 'opacity') => {
         if (!selectedElement) return undefined;
         if (selectedElement.startsWith('custom_')) {
             const found = (formData.layoutConfig.customElements || []).find((el: CanvasElement) => el.id === selectedElement);
             return found ? (found as any)[field] : undefined;
         } else {
-            const posKey = selectedElement === 'logo' ? 'logoPositionConfig' : selectedElement === 'title' ? 'titlePosition' : `${selectedElement}Position`;
+            const posKey = selectedElement === 'logo' ? 'logoPositionConfig' : `${selectedElement}Position`;
             const posObj = (formData.layoutConfig as any)?.[posKey];
             return posObj ? posObj[field] : undefined;
         }
@@ -794,7 +872,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
             const cloned: CanvasElement = {
                 id: `custom_${Date.now()}`,
                 type: selectedElement === 'role' ? 'badge' : 'text',
-                label: selectedElement === 'name' ? 'Morgan Maxwell' : selectedElement === 'title' ? formData.cardTitle : 'EXTRA DETAILS',
+                label: selectedElement === 'name' ? 'Morgan Maxwell' : 'EXTRA DETAILS',
                 x: 35,
                 y: 45,
                 fontSize: 10,
@@ -831,7 +909,6 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
         } else {
             // Hide built-in field
             if (selectedElement === 'name') toggleFieldVisibility('showName');
-            else if (selectedElement === 'title') toggleFieldVisibility('showTitle');
             else if (selectedElement === 'role') toggleFieldVisibility('showRole');
             else if (selectedElement === 'id') toggleFieldVisibility('showId');
             else if (selectedElement === 'barcode') setFormData(prev => ({ ...prev, showBarcode: false }));
@@ -1021,6 +1098,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
         try {
             const templatePayload = {
                 name: formData.name,
+                description: formData.description,
                 format: formData.format,
                 logoUrl: formData.logoUrl || undefined,
                 config: {
@@ -1048,6 +1126,8 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                     showQrCode: formData.showQrCode,
                     logoPosition: formData.logoPosition,
                     layoutConfig: formData.layoutConfig,
+                    backgroundPattern: formData.backgroundPattern,
+                    backgroundPatternColor: formData.backgroundPatternColor,
                 },
                 defaultForRoles: formData.defaultForRoles,
             };
@@ -1084,8 +1164,8 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
         : null;
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} size="xl">
-            <div className="flex flex-col h-[85vh] max-h-[850px] overflow-hidden bg-gray-50 dark:bg-gray-900 rounded-xl">
+        <Modal isOpen={isOpen} onClose={onClose} size="fullscreen">
+            <div className="flex flex-col h-[90vh] overflow-hidden bg-gray-50 dark:bg-gray-900 rounded-xl">
                 {/* Modal Header */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-4 sm:px-6 py-3.5 sm:py-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                     <div>
@@ -1135,7 +1215,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
 
                             {/* Settings Tabs */}
                             <div className="flex border-b border-gray-200 dark:border-gray-700 text-xs font-bold">
-                                {(['general', 'style', 'layout'] as const).map(tab => (
+                                {(['general', 'style', 'layout', 'background'] as const).map(tab => (
                                     <button
                                         key={tab}
                                         type="button"
@@ -1146,10 +1226,11 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700'
                                         }`}
                                     >
-                                        {tab === 'general' && <Layout size={14} />}
-                                        {tab === 'style' && <Palette size={14} />}
-                                        {tab === 'layout' && <Type size={14} />}
-                                        <span>{tab === 'layout' ? 'Fields & Text' : tab}</span>
+                                        {tab === 'general'    && <Layout size={14} />}
+                                        {tab === 'style'      && <Palette size={14} />}
+                                        {tab === 'layout'     && <Type size={14} />}
+                                        {tab === 'background' && <Image size={14} />}
+                                        <span>{tab === 'layout' ? 'Fields' : tab === 'background' ? 'BG' : tab}</span>
                                     </button>
                                 ))}
                             </div>
@@ -1160,7 +1241,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                             {activeTab === 'general' && (
                                 <div className="space-y-4">
                                     <div>
-                                        <label htmlFor="name-input" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase">Template Name</label>
+                                        <label htmlFor="name-input" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase">Template Name *</label>
                                         <input
                                             id="name-input"
                                             type="text"
@@ -1169,6 +1250,17 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                             className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                                             placeholder="e.g., Crimson Director / Executive"
                                             required
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase">Description</label>
+                                        <textarea
+                                            value={formData.description}
+                                            onChange={e => setFormData({ ...formData, description: e.target.value })}
+                                            rows={2}
+                                            className="w-full px-3 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                            placeholder="Brief description of this template's purpose or target audience..."
                                         />
                                     </div>
 
@@ -1258,7 +1350,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                             <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer text-xs font-medium text-gray-600 dark:text-gray-300">
                                                 <Upload size={14} />
                                                 <span>Upload Logo</span>
-                                                <input type="file" onChange={handleLogoUpload} accept="image/png, image/jpeg" className="hidden" />
+                                                <input type="file" onChange={handleLogoUpload} accept="image/png, image/jpeg, image/svg+xml" className="hidden" />
                                             </label>
                                             {isUploadingLogo && <Loader2 size={16} className="animate-spin text-blue-500" />}
                                             {formData.logoUrl && (
@@ -1324,7 +1416,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                             {/* Element Specific Typography */}
                                             <div className="grid grid-cols-2 gap-3 pt-1">
                                                 <div>
-                                                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1 uppercase">Element Font Family</label>
+                                                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1 uppercase">Font Family</label>
                                                     <select
                                                         value={getSelectedElementStyle('fontFamily') || formData.fontFamily}
                                                         onChange={e => handleUpdateElementStyle('fontFamily', e.target.value)}
@@ -1347,6 +1439,20 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                                     />
                                                 </div>
                                             </div>
+
+                                            {/* Opacity */}
+                                            <div className="pt-1">
+                                                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1 uppercase flex justify-between">
+                                                    <span>Opacity / Transparency</span>
+                                                    <span className="font-mono">{getSelectedElementStyle('opacity') ?? 100}%</span>
+                                                </label>
+                                                <input
+                                                    type="range" min="10" max="100"
+                                                    value={getSelectedElementStyle('opacity') ?? 100}
+                                                    onChange={e => handleUpdateElementStyle('opacity', parseInt(e.target.value))}
+                                                    className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-200 dark:bg-gray-600"
+                                                />
+                                            </div>
                                         </div>
                                     ) : (
                                         /* ── GENERAL CARD CANVAS STYLING ── */
@@ -1363,13 +1469,18 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                                     onChange={e => setFormData({ ...formData, headerStyle: e.target.value as any })}
                                                     className="w-full text-xs px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none"
                                                 >
-                                                    <option value="curved-wave">Curved Wave & Bottom Arc (Crimson / Orbit)</option>
-                                                    <option value="dual-strip">Dual-Tone Curved Wave (Fauget Orange-Navy)</option>
-                                                    <option value="sidebar-left">Left Vertical Accent Bar (Farget Slate)</option>
-                                                    <option value="top-banner">Top Solid Banner (Academic Classic)</option>
-                                                    <option value="arch-frame">Curved Arch Frame (Teacher Green Arch)</option>
-                                                    <option value="angled-split">Angled Split Vectors (Salford Maroon)</option>
-                                                    <option value="minimal-clean">Minimalist Clean Line</option>
+                                                    <option value="curved-wave">① Curved Wave + Bottom Arc</option>
+                                                    <option value="dual-strip">② Dual-Tone Layered Wave</option>
+                                                    <option value="arch-frame">③ Arch / Drooping Curve Frame</option>
+                                                    <option value="angled-split">④ Angled Parallelogram Split</option>
+                                                    <option value="gradient-diagonal">⑤ Diagonal Gradient Fill</option>
+                                                    <option value="corner-ribbon">⑥ Corner Ribbon Triangles</option>
+                                                    <option value="split-color">⑦ Vertical Split Color Panel</option>
+                                                    <option value="rounded-band">⑧ Rounded Pill Band</option>
+                                                    <option value="wave-bottom">⑨ Wave Bottom Only</option>
+                                                    <option value="top-banner">⑩ Solid Top Banner</option>
+                                                    <option value="sidebar-left">⑪ Left Vertical Sidebar Accent</option>
+                                                    <option value="minimal-clean">⑫ Minimalist Clean Lines</option>
                                                 </select>
                                             </div>
 
@@ -1537,27 +1648,12 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                     <div className="p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl space-y-3">
                                         <label className="block text-xs font-bold text-gray-800 dark:text-gray-200 uppercase">Text Contents Customizer</label>
 
-                                        {/* Card Title Subhead */}
-                                        <div className="space-y-1 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700">
-                                            <div className="flex items-center justify-between text-xs font-semibold text-gray-800 dark:text-gray-200">
-                                                <span>Card Subtitle / Header</span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => toggleFieldVisibility('showTitle')}
-                                                    className={`p-1 rounded ${formData.visibleFields.showTitle ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`}
-                                                >
-                                                    {formData.visibleFields.showTitle ? <Eye size={15} /> : <EyeOff size={15} />}
-                                                </button>
-                                            </div>
-                                            {formData.visibleFields.showTitle && (
-                                                <input
-                                                    type="text"
-                                                    value={formData.cardTitle}
-                                                    onChange={e => setFormData({ ...formData, cardTitle: e.target.value })}
-                                                    className="w-full px-2.5 py-1 text-xs border rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none"
-                                                    placeholder="e.g. STUDENT ID CARD"
-                                                />
-                                            )}
+                                        {/* Info banner: card type is auto-derived from role */}
+                                        <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/40 rounded-lg p-2">
+                                            <span className="text-blue-500 mt-0.5 shrink-0">ℹ</span>
+                                            <p className="text-[10px] text-blue-700 dark:text-blue-300 leading-snug">
+                                                The card type label (e.g. <strong>Student Identity Card</strong>) is auto-generated from the holder's role — no manual title needed.
+                                            </p>
                                         </div>
 
                                         {/* Member Name */}
@@ -1572,9 +1668,12 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                             </button>
                                         </div>
 
-                                        {/* Role Badge */}
+                                        {/* Role Badge (also drives the card type label) */}
                                         <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold">
-                                            <span>Role Tag Badge</span>
+                                            <div>
+                                                <span>Role Badge &amp; Card Type Label</span>
+                                                <p className="text-[10px] text-gray-400 font-normal mt-0.5">Shows role pill + auto card title (e.g. Student Identity Card)</p>
+                                            </div>
                                             <button
                                                 type="button"
                                                 onClick={() => toggleFieldVisibility('showRole')}
@@ -1690,6 +1789,65 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                     </div>
                                 </div>
                             )}
+
+                            {/* BACKGROUND TAB */}
+                            {activeTab === 'background' && (
+                                <div className="space-y-4">
+                                    <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide bg-gray-100 dark:bg-gray-800 py-1.5 px-3 rounded-lg border dark:border-gray-700">
+                                        Background &amp; Texture Settings
+                                    </div>
+
+                                    {/* Background Color */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 mb-1 uppercase">Card Background Color</label>
+                                        <div className="flex gap-3 items-center">
+                                            <input type="color" value={formData.backgroundColor}
+                                                onChange={e => setFormData({ ...formData, backgroundColor: e.target.value })}
+                                                className="w-12 h-9 rounded-lg border border-gray-300 cursor-pointer" />
+                                            <input type="text" value={formData.backgroundColor}
+                                                onChange={e => setFormData({ ...formData, backgroundColor: e.target.value })}
+                                                className="flex-1 px-2.5 py-1.5 text-xs font-mono border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase" />
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5 mt-2">
+                                            {PRESET_LIGHT_THEMES.map(t => (
+                                                <button key={t.bg} type="button" title={t.name}
+                                                    onClick={() => setFormData({ ...formData, backgroundColor: t.bg, textColor: t.text })}
+                                                    className="w-6 h-6 rounded-md border-2 border-gray-300 hover:border-blue-500 transition-all shadow-xs"
+                                                    style={{ backgroundColor: t.bg }} />
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Background Pattern */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 mb-2 uppercase">Subtle Background Pattern</label>
+                                        <div className="grid grid-cols-3 gap-1.5">
+                                            {BG_PATTERNS.map(p => (
+                                                <button key={p.value} type="button"
+                                                    onClick={() => setFormData({ ...formData, backgroundPattern: p.value })}
+                                                    className={`py-2 text-xs border rounded-lg font-semibold transition-all ${
+                                                        formData.backgroundPattern === p.value
+                                                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                                            : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50'
+                                                    }`}>
+                                                    {p.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {formData.backgroundPattern !== 'none' && (
+                                            <div className="mt-2">
+                                                <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase">Pattern Color</label>
+                                                <div className="flex gap-2 items-center">
+                                                    <input type="color" value={formData.backgroundPatternColor}
+                                                        onChange={e => setFormData({ ...formData, backgroundPatternColor: e.target.value })}
+                                                        className="w-8 h-7 rounded border cursor-pointer" />
+                                                    <span className="font-mono text-xs uppercase">{formData.backgroundPatternColor}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 ) : (
@@ -1727,6 +1885,28 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                 }`}
                             >
                                 <Type size={18} />
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => { setActiveTab('background'); setIsSettingsOpen(true); }}
+                                title="Background & Texture Settings"
+                                className={`p-2.5 rounded-xl border transition-all ${
+                                    activeTab === 'background' ? 'bg-blue-600 text-white shadow-md border-blue-500' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                                }`}
+                            >
+                                <Image size={18} />
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => { setActiveTab('background'); setIsSettingsOpen(true); }}
+                                title="Background Settings (Pattern & Texture)"
+                                className={`p-2.5 rounded-xl border transition-all ${
+                                    activeTab === 'background' ? 'bg-blue-600 text-white shadow-md border-blue-500' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                                }`}
+                            >
+                                <Image size={18} />
                             </button>
                         </div>
 
@@ -1814,6 +1994,24 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                 <HelpCircle size={14} />
                                 <span>How-To Guide</span>
                             </button>
+
+                            {/* Undo / Redo */}
+                            <div className="flex items-center gap-1 border-l pl-2 border-gray-200 dark:border-gray-700">
+                                <button type="button" onClick={handleUndo} title="Undo (Ctrl+Z)"
+                                    disabled={undoStack.current.length === 0}
+                                    className="p-1.5 rounded-lg border text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-30">
+                                    <Undo2 size={14} />
+                                </button>
+                                <button type="button" onClick={handleRedo} title="Redo (Ctrl+Y)"
+                                    disabled={redoStack.current.length === 0}
+                                    className="p-1.5 rounded-lg border text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-30">
+                                    <Redo2 size={14} />
+                                </button>
+                                <button type="button" onClick={() => setShowGrid(g => !g)} title="Toggle grid overlay"
+                                    className={`p-1.5 rounded-lg border transition-colors ${showGrid ? 'bg-blue-600 text-white border-blue-600' : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}>
+                                    <LayoutGrid size={14} />
+                                </button>
+                            </div>
                         </div>
 
                         {/* Floating Canva Object Action Bar (Appears when any element is clicked/selected) */}
@@ -1886,20 +2084,6 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                                 </button>
                                             )}
                                         </div>
-                                    </div>
-                                )}
-
-                                {/* Card Subtitle Inline Editor */}
-                                {selectedElement === 'title' && (
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 w-24 flex-shrink-0">Card Subtitle:</span>
-                                        <input
-                                            type="text"
-                                            value={formData.cardTitle || ''}
-                                            onChange={e => setFormData(prev => ({ ...prev, cardTitle: e.target.value }))}
-                                            className="flex-1 px-2.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                                            placeholder="Card header subtitle..."
-                                        />
                                     </div>
                                 )}
 
@@ -2024,13 +2208,15 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                                     showQrCode: formData.showQrCode,
                                                     logoPosition: formData.logoPosition,
                                                     layoutConfig: formData.layoutConfig,
-                                                }}
+                                                    backgroundPattern: formData.backgroundPattern,
+                                                    backgroundPatternColor: formData.backgroundPatternColor,
+                                                } as any}
                                                 format={formData.format}
                                                 user={previewUser}
                                                 logoUrl={formData.logoUrl}
                                                 side="front"
                                                 selectedElement={selectedElement}
-                                                onClickElement={(key) => setSelectedElement(key)}
+                                                onClickElement={(key) => { setSelectedElement(key); setActiveTab('style'); setIsSettingsOpen(true); }}
                                                 onPositionChange={handlePositionChange}
                                             />
                                         </div>
@@ -2068,13 +2254,15 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                                     showQrCode: formData.showQrCode,
                                                     logoPosition: formData.logoPosition,
                                                     layoutConfig: formData.layoutConfig,
-                                                }}
+                                                    backgroundPattern: formData.backgroundPattern,
+                                                    backgroundPatternColor: formData.backgroundPatternColor,
+                                                } as any}
                                                 format={formData.format}
                                                 user={previewUser}
                                                 logoUrl={formData.logoUrl}
                                                 side="back"
                                                 selectedElement={selectedElement}
-                                                onClickElement={(key) => setSelectedElement(key)}
+                                                onClickElement={(key) => { setSelectedElement(key); setActiveTab('style'); setIsSettingsOpen(true); }}
                                                 onPositionChange={handlePositionChange}
                                             />
                                         </div>
@@ -2108,13 +2296,15 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                             showQrCode: formData.showQrCode,
                                             logoPosition: formData.logoPosition,
                                             layoutConfig: formData.layoutConfig,
-                                        }}
+                                            backgroundPattern: formData.backgroundPattern,
+                                            backgroundPatternColor: formData.backgroundPatternColor,
+                                        } as any}
                                         format={formData.format}
                                         user={previewUser}
                                         logoUrl={formData.logoUrl}
                                         side={previewSide === 'both' ? 'front' : previewSide}
                                         selectedElement={selectedElement}
-                                        onClickElement={(key) => setSelectedElement(key)}
+                                        onClickElement={(key) => { setSelectedElement(key); setActiveTab('style'); setIsSettingsOpen(true); }}
                                         onPositionChange={handlePositionChange}
                                     />
                                 </div>

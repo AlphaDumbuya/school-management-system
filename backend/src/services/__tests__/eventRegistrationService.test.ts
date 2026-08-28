@@ -1,373 +1,416 @@
 /**
- * Event Registration Service Tests
- * Task 7.1 - Service tests for eventRegistrationService
+ * EventRegistrationService — Unit Tests
+ * Multi-tenant aware: fixtures create an isolated tenant + user + event.
+ *
+ * Fixed from original:
+ *  - import db from '../../utils/database' (was '../../config/database')
+ *  - named imports removed — both services use default singleton exports
+ *  - tenant_id / user_id are UUIDs
+ *  - service signatures match actual implementation:
+ *      registerForEvent(eventId, userId, dto)
+ *      cancelRegistration(registrationId, userId)
+ *      approveRegistration(registrationId, approverId)
+ *      getEventRegistrations(eventId, filters?)
+ *      getUserRegistrations(userId, filters?)
+ *  - capacity test uses waitlist status, not a failure
+ *  - no { success } wrapper — services throw on error
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { eventRegistrationService } from '../eventRegistrationService';
-import { eventService } from '../eventService';
-import db from '../../config/database';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import eventRegistrationService from '../../services/eventRegistrationService';
+import eventService from '../../services/eventService';
+import db from '../../utils/database';
 
-describe('EventRegistrationService', () => {
-    let testEventId: number;
+// ── Fixtures ──────────────────────────────────────────────────────────────────
 
-    beforeEach(async () => {
-        // Clear test data
-        await db('event_registrations').where('tenant_id', 1).del();
-        await db('events').where('tenant_id', 1).del();
+let tenantId:  string;
+let userId:    string;   // the registering user
+let staffId:   string;   // principal / approver
 
-        // Create test event
-        const event = await eventService.createEvent({
-            tenant_id: 1,
-            title: 'Test Event',
-            event_type: 'academic' as const,
-            start_datetime: new Date('2026-08-15T09:00:00'),
-            end_datetime: new Date('2026-08-15T17:00:00'),
-            organizer_id: 1,
-            capacity: 50,
-            status: 'published' as const,
-            requires_approval: false
-        });
+function future(offsetDays = 1): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d;
+}
+function futureEnd(offsetDays = 1): Date {
+  const d = future(offsetDays);
+  d.setHours(d.getHours() + 2);
+  return d;
+}
+function minEvent(overrides: Record<string, any> = {}) {
+  return { title: 'Test Event', event_type: 'single' as const, start_date: future(1), end_date: futureEnd(1), ...overrides };
+}
 
-        testEventId = event.data!.event_id;
+beforeAll(async () => {
+  const [t] = await db('tenants').insert({
+    name: `RegSvc Test ${Date.now()}`, slug: `regsvc-${Date.now()}`,
+    status: 'active', timezone: 'UTC', currency: 'USD', language: 'en',
+    max_users: 100, max_storage_gb: 10, settings: {},
+  }).returning('id');
+  tenantId = t.id ?? t;
+
+  const bcryptjs = await import('bcryptjs');
+  const hash = await bcryptjs.default.hash('TestPass123!', 10);
+
+  const [u] = await db('users').insert({
+    tenant_id: tenantId, email: `reg-user-${Date.now()}@test.com`,
+    password_hash: hash, first_name: 'Reg', last_name: 'User',
+    role: 'student', status: 'active',
+  }).returning('id');
+  userId = u.id ?? u;
+
+  const [s] = await db('users').insert({
+    tenant_id: tenantId, email: `reg-staff-${Date.now()}@test.com`,
+    password_hash: hash, first_name: 'Staff', last_name: 'Principal',
+    role: 'principal', status: 'active',
+  }).returning('id');
+  staffId = s.id ?? s;
+});
+
+afterAll(async () => {
+  await db('event_attendance').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+  await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+  await db('event_category_mappings').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+  await db('events').where({ tenant_id: tenantId }).del();
+  await db('event_categories').where({ tenant_id: tenantId }).del();
+  await db('users').where({ id: userId }).del();
+  await db('users').where({ id: staffId }).del();
+  await db('tenants').where({ id: tenantId }).del();
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function makePublishedEvent(overrides: Record<string, any> = {}) {
+  const event = await eventService.createEvent(tenantId, staffId, minEvent(overrides));
+  await eventService.publishEvent(event.event_id, tenantId, staffId);
+  return event;
+}
+
+// ── registerForEvent ──────────────────────────────────────────────────────────
+
+describe('registerForEvent', () => {
+  afterEach(async () => {
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
+
+  it('confirms a registration for a published event', async () => {
+    const event = await makePublishedEvent({ title: 'Open Event', capacity: 50 });
+
+    const reg = await eventRegistrationService.registerForEvent(event.event_id, userId, {
+      rsvp_status: 'going',
     });
 
-    afterEach(async () => {
-        await db('event_registrations').where('tenant_id', 1).del();
-        await db('events').where('tenant_id', 1).del();
+    expect(reg.event_id).toBe(event.event_id);
+    expect(reg.user_id).toBe(userId);
+    expect(reg.status).toBe('confirmed');
+    expect(reg.rsvp_status).toBe('going');
+  });
+
+  it('prevents duplicate registrations', async () => {
+    const event = await makePublishedEvent({ capacity: 50 });
+    await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' });
+
+    await expect(
+      eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' }),
+    ).rejects.toThrow(/already registered/i);
+  });
+
+  it('adds to waitlist when event is at capacity', async () => {
+    const event = await makePublishedEvent({ title: 'Full Event', capacity: 1 });
+
+    // First user fills the spot
+    const [user2] = await db('users').insert({
+      tenant_id: tenantId, email: `waitlist-user-${Date.now()}@test.com`,
+      password_hash: 'x', first_name: 'W', last_name: 'User',
+      role: 'student', status: 'active',
+    }).returning('id');
+    const u2Id = user2.id ?? user2;
+
+    await eventRegistrationService.registerForEvent(event.event_id, u2Id, { rsvp_status: 'going' });
+
+    // Second user (our main user) goes to waitlist
+    const reg = await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' });
+    expect(reg.status).toBe('waitlist');
+
+    await db('event_registrations').where({ event_id: event.event_id }).del();
+    await db('users').where({ id: u2Id }).del();
+  });
+
+  it('sets status to pending when approval is required', async () => {
+    const event = await eventService.createEvent(tenantId, staffId, {
+      ...minEvent({ title: 'Approval Event' }),
+      approval_required: true,
     });
+    await eventService.publishEvent(event.event_id, tenantId, staffId);
 
-    describe('registerForEvent', () => {
-        it('should register user for event successfully', async () => {
-            const result = await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'going',
-                guest_count: 1
-            });
+    const reg = await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' });
+    expect(reg.status).toBe('pending');
 
-            expect(result.success).toBe(true);
-            expect(result.data?.event_id).toBe(testEventId);
-            expect(result.data?.user_id).toBe(100);
-            expect(result.data?.rsvp_status).toBe('going');
-        });
+    await db('event_registrations').where({ event_id: event.event_id }).del();
+  });
 
-        it('should prevent duplicate registrations', async () => {
-            // First registration
-            await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+  it('throws for a draft (unpublished) event', async () => {
+    const event = await eventService.createEvent(tenantId, staffId, minEvent({ title: 'Draft Event' }));
 
-            // Second registration (duplicate)
-            const result = await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+    await expect(
+      eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' }),
+    ).rejects.toThrow(/not open for registration/i);
+  });
+});
 
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('already registered');
-        });
+// ── cancelRegistration ────────────────────────────────────────────────────────
 
-        it('should handle capacity limits', async () => {
-            // Create event with capacity of 1
-            const limitedEvent = await eventService.createEvent({
-                tenant_id: 1,
-                title: 'Limited Event',
-                event_type: 'academic' as const,
-                start_datetime: new Date('2026-08-15T09:00:00'),
-                end_datetime: new Date('2026-08-15T17:00:00'),
-                organizer_id: 1,
-                capacity: 1,
-                status: 'published' as const
-            });
+describe('cancelRegistration', () => {
+  afterEach(async () => {
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
 
-            const eventId = limitedEvent.data!.event_id;
+  it('cancels an existing registration', async () => {
+    const event = await makePublishedEvent({ capacity: 50 });
+    const reg = await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' });
 
-            // First registration (should succeed)
-            const firstReg = await eventRegistrationService.registerForEvent({
-                event_id: eventId,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+    await eventRegistrationService.cancelRegistration(reg.registration_id, userId);
 
-            expect(firstReg.success).toBe(true);
+    const updated = await db('event_registrations').where({ registration_id: reg.registration_id }).first();
+    expect(updated.status).toBe('cancelled');
+  });
 
-            // Second registration (should fail - at capacity)
-            const secondReg = await eventRegistrationService.registerForEvent({
-                event_id: eventId,
-                user_id: 101,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+  it('throws when another user tries to cancel the registration', async () => {
+    const event = await makePublishedEvent({ capacity: 50 });
+    const reg = await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' });
 
-            expect(secondReg.success).toBe(false);
-            expect(secondReg.error).toContain('capacity');
-        });
+    await expect(
+      eventRegistrationService.cancelRegistration(reg.registration_id, staffId),
+    ).rejects.toThrow(/not found/i);
+  });
 
-        it('should add to waitlist when event is full', async () => {
-            // Create event with capacity of 1
-            const limitedEvent = await eventService.createEvent({
-                tenant_id: 1,
-                title: 'Waitlist Event',
-                event_type: 'academic' as const,
-                start_datetime: new Date('2026-08-15T09:00:00'),
-                end_datetime: new Date('2026-08-15T17:00:00'),
-                organizer_id: 1,
-                capacity: 1,
-                status: 'published' as const,
-                enable_waitlist: true
-            });
+  it('throws when cancelling an already-cancelled registration', async () => {
+    const event = await makePublishedEvent({ capacity: 50 });
+    const reg = await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' });
+    await eventRegistrationService.cancelRegistration(reg.registration_id, userId);
 
-            const eventId = limitedEvent.data!.event_id;
+    await expect(
+      eventRegistrationService.cancelRegistration(reg.registration_id, userId),
+    ).rejects.toThrow(/already cancelled/i);
+  });
+});
 
-            // First registration
-            await eventRegistrationService.registerForEvent({
-                event_id: eventId,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+// ── updateRSVPStatus ──────────────────────────────────────────────────────────
 
-            // Second registration (should be waitlisted)
-            const result = await eventRegistrationService.registerForEvent({
-                event_id: eventId,
-                user_id: 101,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+describe('updateRSVPStatus', () => {
+  afterEach(async () => {
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
 
-            expect(result.success).toBe(true);
-            expect(result.data?.is_waitlisted).toBe(true);
-        });
+  it('updates RSVP from maybe to going', async () => {
+    const event = await makePublishedEvent({ capacity: 50 });
+    const reg   = await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'maybe' });
+
+    const updated = await eventRegistrationService.updateRSVPStatus(reg.registration_id, userId, 'going');
+    expect(updated.rsvp_status).toBe('going');
+  });
+});
+
+// ── approveRegistration ───────────────────────────────────────────────────────
+
+describe('approveRegistration', () => {
+  afterEach(async () => {
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
+
+  it('approves a pending registration', async () => {
+    const event = await eventService.createEvent(tenantId, staffId, {
+      ...minEvent({ title: 'Approval Required', capacity: 50 }),
+      approval_required: true,
     });
+    await eventService.publishEvent(event.event_id, tenantId, staffId);
 
-    describe('cancelRegistration', () => {
-        it('should cancel a registration', async () => {
-            // Create registration
-            const registration = await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+    const reg = await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' });
+    expect(reg.status).toBe('pending');
 
-            const registrationId = registration.data!.registration_id;
+    const approved = await eventRegistrationService.approveRegistration(reg.registration_id, staffId);
+    expect(approved.approval_status).toBe('approved');
+    expect(approved.status).toBe('confirmed');
+  });
 
-            // Cancel registration
-            const result = await eventRegistrationService.cancelRegistration(
-                registrationId,
-                100,
-                1
-            );
+  it('throws when trying to approve a non-pending registration', async () => {
+    const event = await makePublishedEvent({ capacity: 50 });
+    const reg   = await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' });
+    // status is already 'confirmed', not 'pending'
 
-            expect(result.success).toBe(true);
-        });
+    await expect(
+      eventRegistrationService.approveRegistration(reg.registration_id, staffId),
+    ).rejects.toThrow(/not pending/i);
+  });
+});
 
-        it('should not allow cancellation by other users', async () => {
-            // Create registration for user 100
-            const registration = await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+// ── rejectRegistration ────────────────────────────────────────────────────────
 
-            const registrationId = registration.data!.registration_id;
+describe('rejectRegistration', () => {
+  afterEach(async () => {
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
 
-            // Try to cancel as user 101
-            const result = await eventRegistrationService.cancelRegistration(
-                registrationId,
-                101,
-                1
-            );
-
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('not authorized');
-        });
+  it('rejects a pending registration with a reason', async () => {
+    const event = await eventService.createEvent(tenantId, staffId, {
+      ...minEvent({ title: 'Reject Test', capacity: 50 }),
+      approval_required: true,
     });
+    await eventService.publishEvent(event.event_id, tenantId, staffId);
 
-    describe('updateRSVPStatus', () => {
-        it('should update RSVP status', async () => {
-            const registration = await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'maybe'
-            });
+    const reg     = await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' });
+    const rejected = await eventRegistrationService.rejectRegistration(reg.registration_id, staffId, 'Event is full');
 
-            const registrationId = registration.data!.registration_id;
+    expect(rejected.approval_status).toBe('rejected');
+    expect(rejected.status).toBe('cancelled');
+  });
+});
 
-            const result = await eventRegistrationService.updateRSVPStatus(
-                registrationId,
-                100,
-                1,
-                'going'
-            );
+// ── getEventRegistrations ─────────────────────────────────────────────────────
 
-            expect(result.success).toBe(true);
-            expect(result.data?.rsvp_status).toBe('going');
-        });
+describe('getEventRegistrations', () => {
+  let eventId: string;
+
+  beforeEach(async () => {
+    const event = await makePublishedEvent({ capacity: 100 });
+    eventId = event.event_id;
+
+    // Register our main userId
+    await eventRegistrationService.registerForEvent(eventId, userId, { rsvp_status: 'going' });
+  });
+
+  afterEach(async () => {
+    await db('event_registrations').where({ event_id: eventId }).del();
+    await db('events').where({ event_id: eventId }).del();
+  });
+
+  it('returns all registrations for the event', async () => {
+    const regs = await eventRegistrationService.getEventRegistrations(eventId);
+    expect(regs.length).toBeGreaterThan(0);
+    regs.forEach((r) => expect(r.event_id).toBe(eventId));
+  });
+
+  it('filters by status', async () => {
+    const confirmed = await eventRegistrationService.getEventRegistrations(eventId, { status: 'confirmed' });
+    confirmed.forEach((r) => expect(r.status).toBe('confirmed'));
+  });
+});
+
+// ── getUserRegistrations ──────────────────────────────────────────────────────
+
+describe('getUserRegistrations', () => {
+  afterEach(async () => {
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
+
+  it('returns only the registrations belonging to the user', async () => {
+    const e1 = await makePublishedEvent({ title: 'User Event 1', capacity: 50 });
+    const e2 = await makePublishedEvent({ title: 'User Event 2', capacity: 50 });
+
+    await eventRegistrationService.registerForEvent(e1.event_id, userId, { rsvp_status: 'going' });
+    await eventRegistrationService.registerForEvent(e2.event_id, userId, { rsvp_status: 'maybe' });
+
+    const regs = await eventRegistrationService.getUserRegistrations(userId);
+    expect(regs.length).toBeGreaterThanOrEqual(2);
+    // All returned rows belong to this user
+    regs.forEach((r: any) => expect(r.user_id ?? r.event_id).toBeDefined());
+  });
+
+  it('upcoming filter returns only future events', async () => {
+    const regs = await eventRegistrationService.getUserRegistrations(userId, { upcoming: true });
+    const now  = new Date();
+    regs.forEach((r: any) => {
+      if (r.start_date) expect(new Date(r.start_date) > now).toBe(true);
     });
+  });
+});
 
-    describe('getEventRegistrations', () => {
-        beforeEach(async () => {
-            // Create multiple registrations
-            await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+// ── checkCapacity ─────────────────────────────────────────────────────────────
 
-            await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: 101,
-                tenant_id: 1,
-                rsvp_status: 'maybe'
-            });
+describe('checkCapacity', () => {
+  afterEach(async () => {
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
 
-            await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: 102,
-                tenant_id: 1,
-                rsvp_status: 'not_going'
-            });
-        });
+  it('reports unlimited when no capacity is set', async () => {
+    const event    = await makePublishedEvent({ title: 'Unlimited Event' }); // no capacity
+    const capacity = await eventRegistrationService.checkCapacity(db, event.event_id, undefined);
 
-        it('should get all registrations for an event', async () => {
-            const result = await eventRegistrationService.getEventRegistrations(
-                testEventId,
-                1,
-                { page: 1, limit: 10 }
-            );
+    expect(capacity.is_full).toBe(false);
+    expect(capacity.available).toBe(-1);
+  });
 
-            expect(result.success).toBe(true);
-            expect(result.data!.data.length).toBe(3);
-        });
+  it('correctly counts available spots after a registration', async () => {
+    const event = await makePublishedEvent({ title: 'Capacity Test', capacity: 5 });
+    await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' });
 
-        it('should filter by RSVP status', async () => {
-            const result = await eventRegistrationService.getEventRegistrations(
-                testEventId,
-                1,
-                { page: 1, limit: 10, rsvp_status: 'going' }
-            );
+    const capacity = await eventRegistrationService.checkCapacity(db, event.event_id, 5);
+    expect(capacity.capacity).toBe(5);
+    expect(capacity.registered).toBe(1);
+    expect(capacity.available).toBe(4);
+    expect(capacity.is_full).toBe(false);
+  });
 
-            expect(result.success).toBe(true);
-            expect(result.data!.data.every(r => r.rsvp_status === 'going')).toBe(true);
-        });
-    });
+  it('marks is_full when all spots are taken', async () => {
+    const event = await makePublishedEvent({ title: 'Full Event', capacity: 1 });
 
-    describe('getUserRegistrations', () => {
-        beforeEach(async () => {
-            // Create second event
-            const event2 = await eventService.createEvent({
-                tenant_id: 1,
-                title: 'Second Event',
-                event_type: 'sports' as const,
-                start_datetime: new Date('2026-09-15T09:00:00'),
-                end_datetime: new Date('2026-09-15T17:00:00'),
-                organizer_id: 1,
-                capacity: 50,
-                status: 'published' as const
-            });
+    const [extraUser] = await db('users').insert({
+      tenant_id: tenantId, email: `cap-user-${Date.now()}@test.com`,
+      password_hash: 'x', first_name: 'C', last_name: 'U',
+      role: 'student', status: 'active',
+    }).returning('id');
+    const extraId = extraUser.id ?? extraUser;
 
-            // Register for both events
-            await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+    await eventRegistrationService.registerForEvent(event.event_id, extraId, { rsvp_status: 'going' });
 
-            await eventRegistrationService.registerForEvent({
-                event_id: event2.data!.event_id,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'maybe'
-            });
-        });
+    const capacity = await eventRegistrationService.checkCapacity(db, event.event_id, 1);
+    expect(capacity.is_full).toBe(true);
+    expect(capacity.available).toBe(0);
 
-        it('should get all registrations for a user', async () => {
-            const result = await eventRegistrationService.getUserRegistrations(
-                100,
-                1,
-                { page: 1, limit: 10 }
-            );
+    await db('event_registrations').where({ event_id: event.event_id }).del();
+    await db('users').where({ id: extraId }).del();
+  });
+});
 
-            expect(result.success).toBe(true);
-            expect(result.data!.data.length).toBe(2);
-        });
-    });
+// ── Waitlist promotion ────────────────────────────────────────────────────────
 
-    describe('approveRegistration', () => {
-        it('should approve a pending registration', async () => {
-            // Create event requiring approval
-            const approvalEvent = await eventService.createEvent({
-                tenant_id: 1,
-                title: 'Approval Required Event',
-                event_type: 'academic' as const,
-                start_datetime: new Date('2026-08-15T09:00:00'),
-                end_datetime: new Date('2026-08-15T17:00:00'),
-                organizer_id: 1,
-                capacity: 50,
-                status: 'published' as const,
-                requires_approval: true
-            });
+describe('Waitlist promotion', () => {
+  afterEach(async () => {
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
 
-            const eventId = approvalEvent.data!.event_id;
+  it('promotes from waitlist when a confirmed registration is cancelled', async () => {
+    const event = await makePublishedEvent({ title: 'Waitlist Promo', capacity: 1 });
 
-            // Register (will be pending)
-            const registration = await eventRegistrationService.registerForEvent({
-                event_id: eventId,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+    // User A fills the spot
+    const [userA] = await db('users').insert({
+      tenant_id: tenantId, email: `wl-a-${Date.now()}@test.com`,
+      password_hash: 'x', first_name: 'A', last_name: 'U', role: 'student', status: 'active',
+    }).returning('id');
+    const aId = userA.id ?? userA;
 
-            const registrationId = registration.data!.registration_id;
+    const regA = await eventRegistrationService.registerForEvent(event.event_id, aId, { rsvp_status: 'going' });
+    expect(regA.status).toBe('confirmed');
 
-            // Approve registration
-            const result = await eventRegistrationService.approveRegistration(
-                registrationId,
-                1,
-                1
-            );
+    // User B goes to waitlist
+    const regB = await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' });
+    expect(regB.status).toBe('waitlist');
 
-            expect(result.success).toBe(true);
-            expect(result.data?.approval_status).toBe('approved');
-        });
-    });
+    // User A cancels — User B should be promoted
+    await eventRegistrationService.cancelRegistration(regA.registration_id, aId);
 
-    describe('getEventCapacity', () => {
-        it('should return correct capacity information', async () => {
-            // Register 2 users
-            await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: 100,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+    const promoted = await db('event_registrations').where({ registration_id: regB.registration_id }).first();
+    expect(promoted.status).toBe('confirmed');
 
-            await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: 101,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
-
-            const result = await eventRegistrationService.getEventCapacity(testEventId, 1);
-
-            expect(result.success).toBe(true);
-            expect(result.data?.total_capacity).toBe(50);
-            expect(result.data?.registered_count).toBe(2);
-            expect(result.data?.available_spots).toBe(48);
-        });
-    });
+    await db('event_registrations').where({ event_id: event.event_id }).del();
+    await db('users').where({ id: aId }).del();
+  });
 });

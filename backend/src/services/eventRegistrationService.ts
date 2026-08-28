@@ -24,7 +24,7 @@ export class EventRegistrationService {
     const trx = await db.transaction();
 
     try {
-      // Get event details
+      // Get event details — must include tenant_id so we can scope further queries
       const event = await trx('events')
         .where({ event_id: eventId })
         .first();
@@ -100,7 +100,16 @@ export class EventRegistrationService {
         status,
       });
 
-      // TODO: Send confirmation notification
+      // Send in-app confirmation notification (fire-and-forget — don't fail the registration)
+      this.sendEventNotification(eventId, userId, 'event_registration_confirmed', {
+        title: `Registration confirmed: "${event.title}"`,
+        message: status === 'waitlist'
+          ? `You have been added to the waitlist for "${event.title}".`
+          : status === 'pending'
+          ? `Your registration for "${event.title}" is pending approval.`
+          : `You are registered for "${event.title}" on ${new Date(event.start_date).toLocaleDateString()}.`,
+        tenantId: event.tenant_id,
+      }).catch((err) => logger.warn('Could not send registration notification:', err));
 
       return registration;
     } catch (error) {
@@ -147,7 +156,15 @@ export class EventRegistrationService {
 
       logger.info(`Registration cancelled: ${registrationId}`, { userId });
 
-      // TODO: Send cancellation notification
+      // Send in-app cancellation notification (fire-and-forget)
+      const event = await db('events').where({ event_id: registration.event_id }).first();
+      if (event) {
+        this.sendEventNotification(registration.event_id, userId, 'event_registration_cancelled', {
+          title: `Registration cancelled: "${event.title}"`,
+          message: `Your registration for "${event.title}" has been cancelled.`,
+          tenantId: event.tenant_id,
+        }).catch((err) => logger.warn('Could not send cancellation notification:', err));
+      }
     } catch (error) {
       await trx.rollback();
       logger.error('Error cancelling registration:', error);
@@ -241,7 +258,15 @@ export class EventRegistrationService {
 
       logger.info(`Registration approved: ${registrationId}`, { approverId });
 
-      // TODO: Send approval notification
+      // Send in-app approval notification (fire-and-forget)
+      const approvedEvent = await db('events').where({ event_id: registration.event_id }).first();
+      if (approvedEvent) {
+        this.sendEventNotification(registration.event_id, registration.user_id, 'event_registration_approved', {
+          title: `Registration approved: "${approvedEvent.title}"`,
+          message: `Your registration for "${approvedEvent.title}" has been approved. See you there!`,
+          tenantId: approvedEvent.tenant_id,
+        }).catch((err) => logger.warn('Could not send approval notification:', err));
+      }
 
       return updated;
     } catch (error) {
@@ -281,7 +306,17 @@ export class EventRegistrationService {
         reason,
       });
 
-      // TODO: Send rejection notification
+      // Send in-app rejection notification (fire-and-forget)
+      const event = await db('events').where({ event_id: updated.event_id }).first();
+      if (event) {
+        this.sendEventNotification(updated.event_id, updated.user_id, 'event_registration_rejected', {
+          title: `Registration not approved: "${event.title}"`,
+          message: reason
+            ? `Your registration for "${event.title}" was not approved. Reason: ${reason}`
+            : `Your registration for "${event.title}" was not approved.`,
+          tenantId: event.tenant_id,
+        }).catch((err) => logger.warn('Could not send rejection notification:', err));
+      }
 
       return updated;
     } catch (error) {
@@ -471,7 +506,15 @@ export class EventRegistrationService {
           `Moved from waitlist to confirmed: ${registration.registration_id}`
         );
 
-        // TODO: Send notification
+        // Send in-app promotion notification (fire-and-forget)
+        const event = await db('events').where({ event_id: eventId }).first();
+        if (event) {
+          this.sendEventNotification(eventId, registration.user_id, 'event_waitlist_promoted', {
+            title: `Spot available: "${event.title}"`,
+            message: `Good news! A spot opened up for "${event.title}" and your registration has been confirmed.`,
+            tenantId: event.tenant_id,
+          }).catch((err) => logger.warn('Could not send waitlist promotion notification:', err));
+        }
       }
     } catch (error) {
       logger.error('Error processing waitlist:', error);
@@ -522,6 +565,29 @@ export class EventRegistrationService {
       logger.error('Error getting registration stats:', error);
       throw new Error('Failed to get registration statistics');
     }
+  }
+
+  /**
+   * Send an in-app notification for an event action.
+   * This is a fire-and-forget helper — callers must .catch() it themselves.
+   * Inserts directly into in_app_notifications to avoid coupling to the
+   * full notificationService (which uses a different schema).
+   */
+  private async sendEventNotification(
+    eventId: string,
+    userId: string,
+    type: string,
+    payload: { title: string; message: string; tenantId: string },
+  ): Promise<void> {
+    await db('in_app_notifications').insert({
+      user_id: userId,
+      tenant_id: payload.tenantId,
+      type,
+      title: payload.title,
+      message: payload.message,
+      is_read: false,
+      created_at: db.fn.now(),
+    });
   }
 }
 

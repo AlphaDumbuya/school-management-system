@@ -73,7 +73,7 @@ export interface CanvasElement {
 export interface TemplateConfig {
     presetId?: string;
     printSides?: 'single' | 'double';
-    headerStyle?: 'curved-wave' | 'dual-strip' | 'sidebar-left' | 'top-banner' | 'arch-frame' | 'minimal-clean' | 'angled-split';
+    headerStyle?: 'curved-wave' | 'dual-strip' | 'sidebar-left' | 'top-banner' | 'arch-frame' | 'minimal-clean' | 'angled-split' | 'gradient-diagonal' | 'corner-ribbon' | 'split-color' | 'rounded-band' | 'wave-bottom';
     primaryColor?: string;
     secondaryColor?: string;
     backgroundColor: string;
@@ -135,6 +135,7 @@ export interface BulkCardRequest {
     };
     templateId?: string;
     format: CardFormat;
+    expirationDate?: string;
 }
 
 export interface BulkJob {
@@ -309,7 +310,7 @@ export const idCardService = {
      * Verify QR code
      */
     verifyQrCode: async (qrCodeContent: string) => {
-        return apiClient.post('/api/v1/qr-codes/verify', { content: qrCodeContent });
+        return apiClient.post('/api/v1/id-cards/qr-codes/verify', { qrCodeContent, scanningDeviceId: 'web-portal' });
     },
 
     /**

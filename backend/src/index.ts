@@ -46,6 +46,7 @@ import templateRoutes from '@routes/templateRoutes';
 import idCardReportingRoutes from '@routes/idCardReportingRoutes';
 import printConfigRoutes from '@routes/printConfigRoutes';
 import eventRoutes from '@routes/eventRoutes';
+import slReportCardRoutes from '@routes/slReportCardRoutes';
 import disciplineRoutes from '@routes/disciplineRoutes';
 import smsWhatsAppRoutes from '@routes/smsWhatsAppRoutes';
 import smsWhatsAppWebhooks from '@routes/smsWhatsAppWebhooks';
@@ -116,37 +117,32 @@ app.get('/health', (req: Request, res: Response) => {
   });
 });
 
-// Debug endpoint — shows env and DB connectivity (remove after fixing)
-app.get('/api/v1/debug', async (req: Request, res: Response) => {
-  const info: Record<string, any> = {
-    node_env: NODE_ENV,
-    has_database_url: !!process.env.DATABASE_URL,
-    has_jwt_secret: !!process.env.JWT_SECRET,
-    has_refresh_secret: !!process.env.REFRESH_TOKEN_SECRET,
-    jwt_secret_length: process.env.JWT_SECRET?.length ?? 0,
-    database_url_prefix: process.env.DATABASE_URL?.substring(0, 30) + '...',
-    cwd: process.cwd(),
-    env_keys: Object.keys(process.env).filter(k => k.includes('DB') || k.includes('URL') || k.includes('SECRET')),
-  };
-  try {
-    await db.raw('SELECT 1');
-    info.db_connected = true;
-  } catch (e: any) {
-    info.db_connected = false;
-    info.db_error = {
-      message: e.message,
-      code: e.code,
-      stack: e.stack,
-      errors: e.errors ? e.errors.map((err: any) => ({
-        message: err.message,
-        code: err.code,
-        address: err.address,
-        port: err.port
-      })) : undefined
+// Debug endpoint — only available in development, never in production
+if (NODE_ENV !== 'production') {
+  app.get('/api/v1/debug', async (req: Request, res: Response) => {
+    const info: Record<string, any> = {
+      node_env: NODE_ENV,
+      has_database_url: !!process.env.DATABASE_URL,
+      has_jwt_secret: !!process.env.JWT_SECRET,
+      has_refresh_secret: !!process.env.REFRESH_TOKEN_SECRET,
+      jwt_secret_length: process.env.JWT_SECRET?.length ?? 0,
+      database_url_prefix: process.env.DATABASE_URL?.substring(0, 30) + '...',
+      cwd: process.cwd(),
+      env_keys: Object.keys(process.env).filter(k => k.includes('DB') || k.includes('URL') || k.includes('SECRET')),
     };
-  }
-  res.json(info);
-});
+    try {
+      await db.raw('SELECT 1');
+      info.db_connected = true;
+    } catch (e: any) {
+      info.db_connected = false;
+      info.db_error = {
+        message: e.message,
+        code: e.code,
+      };
+    }
+    res.json(info);
+  });
+}
 
 // Serve static files from storage directory (local storage only)
 if (process.env.STORAGE_PROVIDER === 'local' || !process.env.STORAGE_PROVIDER) {
@@ -278,6 +274,9 @@ app.use('/api/v1/print-configs', printConfigRoutes);
 // Event Management Routes (Phase 2.2: Events Management Module)
 app.use('/api/v1/events', eventRoutes);
 
+// Sierra Leone Report Card / Booklet Routes
+app.use('/api/v1/report-cards', slReportCardRoutes);
+
 // Discipline & Conduct Routes (Phase 2.3: Discipline & Conduct Module)
 app.use('/api/v1/discipline', disciplineRoutes);
 
@@ -316,6 +315,12 @@ try {
   startSmsDeliveryJobs();
 } catch (e) {
   logger.warn('Could not start SMS delivery jobs at startup', { error: e });
+}
+
+try {
+  startEventManagementJobs();
+} catch (e) {
+  logger.warn('Could not start event management jobs at startup', { error: e });
 }
 
 export default app;

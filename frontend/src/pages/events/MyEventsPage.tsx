@@ -1,6 +1,7 @@
 /**
  * MyEventsPage — /events/my-events
- * Production-ready page showing events the user registered for or organized.
+ * Shows events the current user is registered for.
+ * Uses GET /user/registrations which returns each registration joined with its event.
  * Follows admin page pattern: KPIs, tabs, card grid, dark mode, proper service.
  */
 
@@ -8,8 +9,8 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
-  Calendar, Clock, MapPin, Users, CheckCircle, XCircle,
-  CalendarCheck, LayoutGrid, List, X,
+  Calendar, Clock, MapPin, CheckCircle,
+  CalendarCheck, LayoutGrid, List,
 } from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import MainLayout from '@components/layout/MainLayout';
@@ -21,14 +22,40 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { DataTable } from '@components/admin/table/DataTable';
 import { Button } from '@components/ui/button';
 import { eventsService } from '@services/eventsService';
-import type { Event } from '@appTypes/events';
 import { ColumnDef } from '@tanstack/react-table';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Shape returned by GET /user/registrations
+ * Each row is an event_registration joined with the parent event's fields.
+ */
+interface MyRegistration {
+  registration_id: string;
+  event_id: string;
+  user_id: string;
+  status: string;
+  rsvp_status?: string;
+  guests_count: number;
+  attendance_status?: string;
+  created_at: string;
+  updated_at: string;
+  // joined event columns
+  title: string;
+  start_date: string;
+  end_date: string;
+  location?: string;
+  event_status: string;
+  event_type?: string;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDate(dateStr: string | undefined): string {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(dateStr).toLocaleDateString('en-GB', {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+  });
 }
 
 function formatTime(dateStr: string | undefined): string {
@@ -42,21 +69,21 @@ function isUpcoming(dateStr: string): boolean {
   return new Date(dateStr) >= new Date();
 }
 
-function eventTypeLabel(t: string): string {
-  switch (t) {
-    case 'single': return 'Single Day';
-    case 'multi_day': return 'Multi-Day';
-    case 'recurring': return 'Recurring';
-    default: return t;
+function rsvpLabel(s?: string): string {
+  switch (s) {
+    case 'going': return 'Going';
+    case 'maybe': return 'Maybe';
+    case 'not_going': return 'Not Going';
+    default: return '—';
   }
 }
 
-function eventTypeColor(t: string): string {
-  switch (t) {
-    case 'single': return 'border-blue-400 bg-blue-50 dark:bg-blue-950/20';
-    case 'multi_day': return 'border-purple-400 bg-purple-50 dark:bg-purple-950/20';
-    case 'recurring': return 'border-amber-400 bg-amber-50 dark:bg-amber-950/20';
-    default: return 'border-gray-400 bg-gray-50 dark:bg-gray-800/50';
+function rsvpColor(s?: string): string {
+  switch (s) {
+    case 'going':     return 'text-green-600 dark:text-green-400';
+    case 'maybe':     return 'text-amber-600 dark:text-amber-400';
+    case 'not_going': return 'text-red-600 dark:text-red-400';
+    default:          return 'text-gray-500 dark:text-gray-400';
   }
 }
 
@@ -68,29 +95,36 @@ export const MyEventsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [search, setSearch] = useState('');
 
-  // ── Fetch Events ────────────────────────────────────────────────────────────
+  // ── Fetch user's own registrations ──────────────────────────────────────────
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['my-events'],
-    queryFn: () => eventsService.listEvents({ limit: 100 }),
+    queryKey: ['my-registrations'],
+    queryFn: () => eventsService.getMyRegistrations(),
     staleTime: 30_000,
   });
 
-  const allEvents: Event[] = (data as any)?.data ?? [];
+  const allRegistrations: MyRegistration[] = useMemo(() => {
+    if (!data) return [];
+    // Shape: { success, data: [...] }
+    if (Array.isArray((data as any)?.data)) return (data as any).data as MyRegistration[];
+    if (Array.isArray(data)) return data as MyRegistration[];
+    return [];
+  }, [data]);
 
   // ── Derived state ───────────────────────────────────────────────────────────
   const { upcoming, past, filtered, stats } = useMemo(() => {
-    const up = allEvents.filter((e) => isUpcoming(e.start_date));
-    const pa = allEvents.filter((e) => !isUpcoming(e.start_date));
+    const up = allRegistrations.filter((r) => isUpcoming(r.start_date));
+    const pa = allRegistrations.filter((r) => !isUpcoming(r.start_date));
 
-    let base: Event[];
+    let base: MyRegistration[];
     if (tab === 'upcoming') base = up;
     else if (tab === 'past') base = pa;
-    else base = allEvents;
+    else base = allRegistrations;
 
     const filt = search
-      ? base.filter((e) =>
-          e.title.toLowerCase().includes(search.toLowerCase()) ||
-          (e.location || '').toLowerCase().includes(search.toLowerCase())
+      ? base.filter(
+          (r) =>
+            r.title.toLowerCase().includes(search.toLowerCase()) ||
+            (r.location || '').toLowerCase().includes(search.toLowerCase()),
         )
       : base;
 
@@ -99,16 +133,16 @@ export const MyEventsPage: React.FC = () => {
       past: pa,
       filtered: filt,
       stats: {
-        total: allEvents.length,
+        total: allRegistrations.length,
         upcoming: up.length,
         past: pa.length,
-        published: allEvents.filter((e) => e.status === 'published').length,
+        confirmed: allRegistrations.filter((r) => r.status === 'confirmed').length,
       },
     };
-  }, [allEvents, tab, search]);
+  }, [allRegistrations, tab, search]);
 
   // ── Table Columns ───────────────────────────────────────────────────────────
-  const columns: ColumnDef<Event, any>[] = [
+  const columns: ColumnDef<MyRegistration, any>[] = [
     {
       id: 'title',
       accessorKey: 'title',
@@ -116,7 +150,7 @@ export const MyEventsPage: React.FC = () => {
       cell: ({ row }) => (
         <div className="min-w-[160px]">
           <p className="font-medium text-gray-900 dark:text-white truncate">{row.original.title}</p>
-          <p className="text-[11px] text-gray-500 dark:text-gray-400 capitalize">{eventTypeLabel(row.original.event_type)}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 capitalize">{row.original.event_type || '—'}</p>
         </div>
       ),
     },
@@ -128,9 +162,9 @@ export const MyEventsPage: React.FC = () => {
           <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
             {formatDate(row.original.start_date)}
           </span>
-          {!row.original.all_day && (
-            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{formatTime(row.original.start_date)}</p>
-          )}
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+            {formatTime(row.original.start_date)}
+          </p>
         </div>
       ),
     },
@@ -138,14 +172,29 @@ export const MyEventsPage: React.FC = () => {
       id: 'location',
       header: 'Location',
       cell: ({ row }) => (
-        <span className="text-xs text-gray-600 dark:text-gray-400 truncate">{row.original.location || '—'}</span>
+        <span className="text-xs text-gray-600 dark:text-gray-400 truncate">
+          {row.original.location || '—'}
+        </span>
+      ),
+    },
+    {
+      id: 'rsvp',
+      header: 'RSVP',
+      cell: ({ row }) => (
+        <span className={`text-xs font-semibold ${rsvpColor(row.original.rsvp_status)}`}>
+          {rsvpLabel(row.original.rsvp_status)}
+        </span>
       ),
     },
     {
       id: 'status',
-      accessorKey: 'status',
-      header: 'Status',
+      header: 'Registration',
       cell: ({ row }) => <StatusBadge status={row.original.status} showDot />,
+    },
+    {
+      id: 'event_status',
+      header: 'Event',
+      cell: ({ row }) => <StatusBadge status={row.original.event_status} showDot />,
     },
   ];
 
@@ -154,7 +203,7 @@ export const MyEventsPage: React.FC = () => {
     <MainLayout>
       <PageShell
         title="My Events"
-        subtitle="Events you're registered for or organizing"
+        subtitle="Events you are registered for"
         breadcrumbs={[{ label: 'Events', href: '/events/school' }, { label: 'My Events' }]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
@@ -186,10 +235,10 @@ export const MyEventsPage: React.FC = () => {
             <><SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard /></>
           ) : (
             <>
-              <KPICard title="Total Events" value={stats.total} icon={<div className="p-2 rounded-xl bg-blue-500 text-white shadow-sm flex items-center justify-center"><Calendar size={20} /></div>} color="blue" />
+              <KPICard title="Registered" value={stats.total} icon={<div className="p-2 rounded-xl bg-blue-500 text-white shadow-sm flex items-center justify-center"><Calendar size={20} /></div>} color="blue" />
               <KPICard title="Upcoming" value={stats.upcoming} icon={<div className="p-2 rounded-xl bg-amber-500 text-white shadow-sm flex items-center justify-center"><Clock size={20} /></div>} color="amber" />
-              <KPICard title="Completed" value={stats.past} icon={<div className="p-2 rounded-xl bg-green-500 text-white shadow-sm flex items-center justify-center"><CheckCircle size={20} /></div>} color="green" />
-              <KPICard title="Published" value={stats.published} icon={<div className="p-2 rounded-xl bg-purple-500 text-white shadow-sm flex items-center justify-center"><CalendarCheck size={20} /></div>} color="purple" />
+              <KPICard title="Attended" value={stats.past} icon={<div className="p-2 rounded-xl bg-green-500 text-white shadow-sm flex items-center justify-center"><CheckCircle size={20} /></div>} color="green" />
+              <KPICard title="Confirmed" value={stats.confirmed} icon={<div className="p-2 rounded-xl bg-purple-500 text-white shadow-sm flex items-center justify-center"><CalendarCheck size={20} /></div>} color="purple" />
             </>
           )}
         </div>
@@ -198,11 +247,11 @@ export const MyEventsPage: React.FC = () => {
         <div className="flex flex-col gap-4 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             {/* Tabs */}
-            <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700 sm:border-0">
+            <div className="flex gap-1">
               {([
                 { key: 'upcoming', label: 'Upcoming', count: upcoming.length },
-                { key: 'past', label: 'Past', count: past.length },
-                { key: 'all', label: 'All', count: allEvents.length },
+                { key: 'past',     label: 'Past',     count: past.length },
+                { key: 'all',      label: 'All',      count: allRegistrations.length },
               ] as const).map((t) => (
                 <button
                   key={t.key}
@@ -218,7 +267,6 @@ export const MyEventsPage: React.FC = () => {
               ))}
             </div>
 
-            {/* Search Bar — shared component */}
             <SearchBar
               placeholder="Search events..."
               onSearch={setSearch}
@@ -230,72 +278,80 @@ export const MyEventsPage: React.FC = () => {
         {/* Content */}
         {viewMode === 'grid' ? (
           <>
-            {/* Loading */}
             {isLoading && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <SkeletonCard /><SkeletonCard /><SkeletonCard />
               </div>
             )}
 
-            {/* Empty */}
             {!isLoading && filtered.length === 0 && (
               <EmptyState
-                message={search ? 'No matching events' : tab === 'upcoming' ? 'No upcoming events' : tab === 'past' ? 'No past events' : 'No events found'}
-                description={search ? 'Try a different search term' : 'Events you register for will appear here'}
+                message={
+                  search
+                    ? 'No matching events'
+                    : tab === 'upcoming'
+                    ? 'No upcoming registrations'
+                    : tab === 'past'
+                    ? 'No past events'
+                    : 'No registrations yet'
+                }
+                description={
+                  search
+                    ? 'Try a different search term'
+                    : 'Events you register for will appear here'
+                }
               />
             )}
 
-            {/* Event Cards */}
             {!isLoading && filtered.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filtered.map((event) => {
-                  const typeColor = eventTypeColor(event.event_type);
-                  const upcoming = isUpcoming(event.start_date);
-
+                {filtered.map((reg) => {
+                  const upcoming = isUpcoming(reg.start_date);
                   return (
                     <div
-                      key={event.event_id}
-                      onClick={() => navigate(`/events/school/${event.event_id}`)}
-                      className={`group rounded-xl border-l-4 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer hover:-translate-y-0.5 ${typeColor.split(' ')[0]}`}
+                      key={reg.registration_id}
+                      onClick={() => navigate(`/events/school/${reg.event_id}`)}
+                      className="group rounded-xl border-l-4 border-blue-400 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer hover:-translate-y-0.5"
                     >
                       {/* Header */}
                       <div className="flex items-start justify-between gap-2 mb-3">
                         <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-tight line-clamp-2 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">
-                          {event.title}
+                          {reg.title}
                         </h3>
-                        <StatusBadge status={event.status} showDot />
+                        <StatusBadge status={reg.event_status} showDot />
                       </div>
 
                       {/* Details */}
                       <div className="space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
                         <div className="flex items-center gap-2">
                           <Calendar size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
-                          <span className="font-medium text-gray-700 dark:text-gray-300">{formatDate(event.start_date)}</span>
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{formatDate(reg.start_date)}</span>
                         </div>
-                        {!event.all_day && (
-                          <div className="flex items-center gap-2">
-                            <Clock size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
-                            <span>{formatTime(event.start_date)}{event.end_date ? ` – ${formatTime(event.end_date)}` : ''}</span>
-                          </div>
-                        )}
-                        {event.location && (
+                        <div className="flex items-center gap-2">
+                          <Clock size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                          <span>{formatTime(reg.start_date)}</span>
+                        </div>
+                        {reg.location && (
                           <div className="flex items-center gap-2">
                             <MapPin size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
-                            <span className="truncate">{event.location}</span>
+                            <span className="truncate">{reg.location}</span>
                           </div>
                         )}
                       </div>
 
                       {/* Footer */}
                       <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700/50 flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 capitalize">
-                          {eventTypeLabel(event.event_type)}
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${rsvpColor(reg.rsvp_status)}`}>
+                          {rsvpLabel(reg.rsvp_status)}
                         </span>
-                        {upcoming && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200/50 dark:border-amber-800/30">
-                            Upcoming
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={reg.status} showDot />
+                          {upcoming && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200/50 dark:border-amber-800/30">
+                              Upcoming
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -310,10 +366,10 @@ export const MyEventsPage: React.FC = () => {
             isLoading={isLoading}
             error={error ? String(error) : null}
             onRetry={refetch}
-            emptyMessage={tab === 'upcoming' ? 'No upcoming events' : 'No events found'}
-            rowActions={(evt) => [
+            emptyMessage={tab === 'upcoming' ? 'No upcoming registrations' : 'No registrations found'}
+            rowActions={(reg) => [
               {
-                label: 'View Details',
+                label: 'View Event',
                 onClick: (row) => navigate(`/events/school/${row.event_id}`),
               },
             ]}

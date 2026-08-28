@@ -10,11 +10,14 @@ import { Modal } from '@components/admin/feedback/Modal';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { idCardService, CardFormat } from '@services/idCardService';
+import { classesService } from '@services/classesService';
 import { apiClient } from '@lib/apiClient';
+import { SearchBar } from '@components/admin/table/SearchBar';
 import {
-  CreditCard, BadgeCheck, Search, X, User, Users, CheckSquare,
-  ChevronDown, AlertCircle,
+  CreditCard, BadgeCheck, User, Users,
+  ChevronDown, AlertCircle, Loader2, CheckCircle, XCircle, Download,
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -76,10 +79,16 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [classId, setClassId] = useState('');
   const [templateId, setTemplateId] = useState('');
   const [format, setFormat] = useState<CardFormat>('pvc');
   const [expirationDate, setExpirationDate] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [bulkJobId, setBulkJobId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  // A class filter only applies to students.
+  const classApplies = roleFilter === '' || roleFilter === 'student';
 
   // Reset form when modal opens
   useEffect(() => {
@@ -89,26 +98,78 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
       setSelectedUsers([]);
       setUserSearch('');
       setRoleFilter('');
+      setClassId('');
       setTemplateId('');
       setFormat('pvc');
       setExpirationDate('');
+      setBulkJobId(null);
     }
   }, [isOpen, preselectedUserId]);
 
+  // Clear the class filter if the role switches to a non-student role.
+  useEffect(() => {
+    if (!classApplies && classId) setClassId('');
+  }, [classApplies, classId]);
+
+  // ── Fetch classes for the class filter ───────────────────────────────────────
+  const { data: classesData } = useQuery({
+    queryKey: ['card-modal-classes'],
+    queryFn: () => classesService.listClasses({ limit: 200 }),
+    enabled: isOpen && !preselectedUserId,
+    staleTime: 60_000,
+  });
+  const classOptions: any[] = (classesData as any)?.data ?? (classesData as any)?.data?.data ?? [];
+
   // ── Fetch Students & Staff ───────────────────────────────────────────────────
   const { data: usersData, isLoading: usersLoading, error: usersError } = useQuery({
-    queryKey: ['school-members-for-cards', userSearch, roleFilter],
+    queryKey: ['school-members-for-cards', userSearch, roleFilter, classId],
     queryFn: async () => {
       // Fetch students and teachers from their respective directory tables
       const params: any = { limit: 100 };
       if (userSearch) params.search = userSearch;
       if (roleFilter) params.role = roleFilter;
+      if (classId && classApplies) params.classId = classId;
       return apiClient.get('/api/v1/id-cards/eligible-members', { params });
     },
     enabled: isOpen && !preselectedUserId,
     staleTime: 15_000,
     retry: 1,
   });
+
+  // ── Poll bulk job progress (once a bulk job is created) ──────────────────────
+  const { data: bulkStatusData } = useQuery({
+    queryKey: ['card-modal-bulk-status', bulkJobId],
+    queryFn: () => idCardService.getBulkJobStatus(bulkJobId!),
+    enabled: !!bulkJobId,
+    refetchInterval: (query) => {
+      const s = (query.state.data as any)?.status?.status ?? (query.state.data as any)?.data?.status?.status;
+      return s === 'completed' || s === 'failed' || s === 'cancelled' ? false : 1500;
+    },
+  });
+  const bulkStatus: any = (bulkStatusData as any)?.status ?? (bulkStatusData as any)?.data?.status ?? null;
+  const bulkTerminal = bulkStatus && ['completed', 'failed', 'cancelled'].includes(bulkStatus.status);
+
+  const { data: bulkReportData } = useQuery({
+    queryKey: ['card-modal-bulk-report', bulkJobId],
+    queryFn: () => idCardService.getBulkJobReport(bulkJobId!),
+    enabled: !!bulkJobId && bulkStatus?.status === 'completed',
+    staleTime: 60_000,
+  });
+  const bulkReport: any = (bulkReportData as any)?.report ?? (bulkReportData as any)?.data ?? bulkReportData ?? null;
+
+  const storageUrl = (u?: string) => {
+    if (!u) return '';
+    const base = ((import.meta as any).env?.VITE_API_URL as string || '').replace(/\/api\/?$/, '');
+    return u.startsWith('/storage') ? `${base}${u}` : u;
+  };
+
+  // Refresh the cards list as the job progresses / completes.
+  useEffect(() => {
+    if (bulkStatus) {
+      queryClient.invalidateQueries({ queryKey: ['id-cards'] });
+      queryClient.invalidateQueries({ queryKey: ['id-cards-stats'] });
+    }
+  }, [bulkStatus?.processedCards, bulkStatus?.status, queryClient]);
 
   const users: UserOption[] = useMemo(() => {
     if (!usersData || (usersData as any)?.success === false) return [];
@@ -195,24 +256,36 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
         });
         if ((res as any).success === false) throw new Error((res as any).error ?? 'Generation failed');
         showToast.success('ID card generated successfully');
+        onSuccess();
+        onClose();
       } else {
-        // Bulk generation
+        // Bulk generation — keep the modal open and show live progress.
         const res = await idCardService.createBulkJob({
           userIds: selectedUsers,
           format,
           templateId: templateId || undefined,
+          ...(expirationDate ? { expirationDate } : {}),
         });
         if ((res as any).success === false) throw new Error((res as any).error ?? 'Bulk generation failed');
-        showToast.success(`Bulk job created for ${selectedUsers.length} cards`);
+        const job = (res as any)?.job ?? (res as any)?.data?.job ?? res;
+        const id = job?.jobId ?? job?.id ?? null;
+        if (!id) throw new Error('Bulk job did not return an id');
+        setBulkJobId(id);
+        onSuccess();
       }
-
-      onSuccess();
-      onClose();
     } catch (error: any) {
-      showToast.error(error.message || 'Failed to generate card');
+      showToast.error(error?.response?.data?.error?.message || error.message || 'Failed to generate card');
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const cancelBulkJob = async () => {
+    if (!bulkJobId) return;
+    try {
+      await idCardService.cancelBulkJob(bulkJobId);
+      showToast.success('Job cancelled');
+    } catch { showToast.error('Failed to cancel job'); }
   };
 
   // Default expiration: 1 year
@@ -225,6 +298,7 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
       title="Generate ID Card"
       size="xl"
       footer={
+        bulkJobId ? undefined : (
         <div className="flex items-center justify-between w-full">
           <div className="text-xs text-gray-500 dark:text-gray-400">
             {mode === 'bulk' && selectedUsers.length > 0 && (
@@ -242,10 +316,87 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
             </Button>
           </div>
         </div>
+        )
       }
     >
       <div className="space-y-6 max-h-[65vh] overflow-y-auto px-1 -mx-1">
-        {/* ── Mode Toggle ── */}
+        {/* ── Bulk Progress (replaces form once a job is running) ── */}
+        {bulkJobId ? (
+          <div className="py-4 space-y-5 min-h-[200px]">
+            {!bulkTerminal ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <Loader2 size={22} className="animate-spin text-blue-500 flex-shrink-0" />
+                  <div>
+                    <h3 className="font-bold text-gray-900 dark:text-white">Generating cards…</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {bulkStatus ? `${bulkStatus.processedCards} of ${bulkStatus.totalCards} processed` : 'Starting job…'}
+                    </p>
+                  </div>
+                </div>
+                <div className="w-full h-2.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${bulkStatus?.progress ?? 0}%` }} />
+                </div>
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" onClick={cancelBulkJob}>Cancel Job</Button>
+                </div>
+              </>
+            ) : bulkStatus?.status === 'completed' ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle size={26} className="text-emerald-500" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 dark:text-white text-base">Batch Complete</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      <span className="text-emerald-600 font-bold">{bulkStatus.successfulCards}</span> generated
+                      {bulkStatus.failedCards > 0 && <> · <span className="text-red-600 font-bold">{bulkStatus.failedCards}</span> failed</>}
+                    </p>
+                  </div>
+                </div>
+
+                {bulkStatus.pdfUrl && (
+                  <a href={storageUrl(bulkStatus.pdfUrl)} target="_blank" rel="noopener noreferrer" download>
+                    <Button className="gap-1.5 w-full"><Download size={15} /> Download All Cards (PDF)</Button>
+                  </a>
+                )}
+
+                {bulkReport?.failed?.length > 0 && (
+                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
+                    <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-2">{bulkReport.failed.length} card(s) failed</p>
+                    <ul className="space-y-1 max-h-32 overflow-y-auto text-xs">
+                      {bulkReport.failed.map((f: any, i: number) => (
+                        <li key={i} className="flex justify-between gap-2 text-red-600 dark:text-red-400">
+                          <span className="font-medium truncate">{f.userName || f.userId}</span>
+                          <span className="opacity-80 truncate">{f.errorMessage}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3">
+                  <Button variant="outline" onClick={onClose}>Close</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center space-y-3">
+                <XCircle size={40} className="text-red-500 mx-auto" />
+                <h3 className="font-bold text-gray-900 dark:text-white">
+                  Job {bulkStatus?.status === 'cancelled' ? 'Cancelled' : 'Failed'}
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {bulkStatus?.status === 'cancelled' ? 'The batch was cancelled.' : 'The batch could not be completed.'}
+                </p>
+                <div className="flex justify-center gap-3">
+                  <Button variant="outline" onClick={() => setBulkJobId(null)}>Try Again</Button>
+                  <Button variant="ghost" onClick={onClose}>Close</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (<>
         {!preselectedUserId && (
           <div>
             <label className={labelCls}>Generation Mode</label>
@@ -292,22 +443,14 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
             </label>
 
             {/* Search + Role filter row */}
-            <div className="flex gap-2 mb-2">
-              <div className="relative flex-1">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <input
-                  type="text"
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                  placeholder="Search by name or email..."
-                  className="w-full pl-8 pr-8 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {userSearch && (
-                  <button onClick={() => setUserSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
+            <div className="flex flex-wrap gap-2 mb-2">
+              <SearchBar
+                placeholder="Search by name or email..."
+                onSearch={setUserSearch}
+                isLoading={usersLoading}
+                defaultValue={userSearch}
+                className="flex-1 min-w-[180px]"
+              />
               <div className="relative w-[140px]">
                 <select
                   value={roleFilter}
@@ -318,6 +461,24 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
                 </select>
                 <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
+
+              {/* Class filter — students only */}
+              {classApplies && (
+                <div className="relative w-[160px]">
+                  <select
+                    value={classId}
+                    onChange={(e) => setClassId(e.target.value)}
+                    className="w-full appearance-none pl-3 pr-7 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    title="Filter students by class"
+                  >
+                    <option value="">All Classes</option>
+                    {classOptions.map((c: any) => (
+                      <option key={c.id} value={c.id}>{c.name}{c.level ? ` (${c.level})` : ''}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              )}
             </div>
 
             {/* Single mode: dropdown */}
@@ -490,6 +651,7 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
             The generated card will include: full name, role, photo (if available), unique card number, QR code for verification, barcode, issue and expiry dates, and school branding.
           </p>
         </div>
+        </>)}
       </div>
     </Modal>
   );

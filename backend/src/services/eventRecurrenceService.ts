@@ -5,6 +5,7 @@
  */
 
 import { Knex } from 'knex';
+import db from '../utils/database.js';
 import { Event, RecurrencePatternDTO } from '../types/event.js';
 import { logger } from '../utils/logger.js';
 
@@ -148,30 +149,81 @@ export class EventRecurrenceService {
   }
 
   /**
-   * Update single instance
+   * Update a single recurring event instance (by its own event_id).
+   * Applies only title, description, location, venue_details, and reminder fields
+   * — date/time fields are intentionally excluded to preserve the schedule.
    */
   private async updateSingleInstance(eventId: string, updateData: any): Promise<void> {
-    // Implementation would update single event
-    // Placeholder for now
+    const allowedFields = [
+      'title', 'description', 'location', 'location_type', 'venue_details',
+      'capacity', 'image_url', 'external_link', 'reminder_enabled',
+      'reminder_intervals', 'metadata', 'updated_by', 'updated_at',
+    ];
+
+    const safeUpdate: Record<string, any> = { updated_at: db.fn.now() };
+    for (const field of allowedFields) {
+      if (field in updateData) {
+        safeUpdate[field] = updateData[field];
+      }
+    }
+
+    await db('events').where({ event_id: eventId }).update(safeUpdate);
   }
 
   /**
-   * Get all instances of recurring event
+   * Fetch all child instances of a recurring series (tenant-safe).
+   * Returns events that have a parent_event_id pointing to the given parent.
    */
   private async getRecurringInstances(parentEventId: string): Promise<Event[]> {
-    // Implementation would fetch all child events
-    // Placeholder for now
-    return [];
+    // Look up the parent to get its tenant_id for scoping
+    const parent = await db('events').where({ event_id: parentEventId }).first();
+    if (!parent) return [];
+
+    const children = await db('events')
+      .join('event_recurrence', 'events.event_id', 'event_recurrence.event_id')
+      .where('event_recurrence.parent_event_id', parentEventId)
+      .where('events.tenant_id', parent.tenant_id) // tenant isolation
+      .select('events.*');
+
+    return children;
   }
 
   /**
-   * Delete recurring series
+   * Delete a recurring series — removes all future child instances and the
+   * parent event.  Past instances (already completed) are left in place.
    */
   async deleteRecurringSeries(parentEventId: string): Promise<void> {
+    const trx = await db.transaction();
     try {
-      // Would delete parent and all child events
-      logger.info(`Deleted recurring series: ${parentEventId}`);
+      // Look up tenant for scoping
+      const parent = await trx('events').where({ event_id: parentEventId }).first();
+      if (!parent) throw new Error('Recurring series not found');
+
+      const now = new Date();
+
+      // Delete future child instances (and their recurrence records cascade-delete via FK)
+      const futureChildren = await trx('events')
+        .join('event_recurrence', 'events.event_id', 'event_recurrence.event_id')
+        .where('event_recurrence.parent_event_id', parentEventId)
+        .where('events.tenant_id', parent.tenant_id)
+        .where('events.start_date', '>', now)
+        .select('events.event_id');
+
+      for (const child of futureChildren) {
+        await trx('events')
+          .where({ event_id: child.event_id, tenant_id: parent.tenant_id })
+          .delete();
+      }
+
+      // Cancel (rather than hard-delete) the parent so historical references are preserved
+      await trx('events')
+        .where({ event_id: parentEventId, tenant_id: parent.tenant_id })
+        .update({ status: 'cancelled', updated_at: trx.fn.now() });
+
+      await trx.commit();
+      logger.info(`Deleted recurring series: ${parentEventId} (${futureChildren.length} future instances removed)`);
     } catch (error) {
+      await trx.rollback();
       logger.error('Error deleting recurring series:', error);
       throw error;
     }
