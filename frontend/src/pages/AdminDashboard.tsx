@@ -4,7 +4,7 @@
  * Route: /admin/dashboard  (ProtectedRoute requiredRoles={['principal']})
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import {
   RefreshCw,
   Download,
@@ -42,22 +42,12 @@ import {
   attendanceColor,
 } from './adminDashboardHelpers';
 
-// ── Severity badge colour map ─────────────────────────────────────────────────
-
-const ALERT_SEVERITY_CLASSES: Record<string, string> = {
-  info:     'border-blue-500 bg-blue-50',
-  warning:  'border-amber-500 bg-amber-50',
-  error:    'border-red-500 bg-red-50',
-  critical: 'border-red-500 bg-red-50',
-};
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { dashboard, loading, error, refreshDashboard } = useDashboard();
-  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
 
   // Initial load + 5-minute auto-refresh
   useEffect(() => {
@@ -67,15 +57,6 @@ export const AdminDashboard: React.FC = () => {
   }, [refreshDashboard]);
 
   const isInitialLoad = loading && dashboard === null;
-
-  const handleDismissAlert = (id: string) =>
-    setDismissedAlerts((prev) => new Set([...prev, id]));
-
-  const visibleAlerts = (dashboard?.alerts ?? []).filter(
-    (a) => !dismissedAlerts.has(a.id)
-  );
-  const shownAlerts = visibleAlerts.slice(0, 3);
-  const hasMoreAlerts = visibleAlerts.length > 3;
 
   // Page actions for PageShell
   const actions = (
@@ -169,49 +150,7 @@ export const AdminDashboard: React.FC = () => {
           )}
         </div>
 
-        {/* ── Alerts Panel ── */}
-        {!isInitialLoad && visibleAlerts.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">System Alerts</h2>
-            <div className="space-y-3">
-              {shownAlerts.map((alert) => (
-                <div
-                  key={alert.id}
-                  className={`border-l-4 rounded-lg p-4 flex items-start justify-between gap-3 ${
-                    ALERT_SEVERITY_CLASSES[alert.severity] ?? ALERT_SEVERITY_CLASSES.info
-                  }`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900">{alert.title}</p>
-                    <p className="text-sm text-gray-600 mt-0.5">{alert.message}</p>
-                    {alert.actionUrl && (
-                      <a
-                        href={alert.actionUrl}
-                        className="text-sm text-blue-600 hover:underline mt-1 inline-block"
-                      >
-                        View details →
-                      </a>
-                    )}
-                  </div>
-                  {alert.dismissible && (
-                    <button
-                      aria-label="Dismiss alert"
-                      onClick={() => handleDismissAlert(alert.id)}
-                      className="flex-shrink-0 text-gray-400 hover:text-gray-600 text-lg leading-none"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-            {hasMoreAlerts && (
-              <p className="mt-3 text-sm text-blue-600 hover:underline cursor-pointer">
-                View all {visibleAlerts.length} alerts
-              </p>
-            )}
-          </div>
-        )}
+        {/* System alerts now surface via the header notification bell. */}
 
         {/* ── Financial Summary + System Health ── */}
         {!isInitialLoad && (
