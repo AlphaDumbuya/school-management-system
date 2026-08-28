@@ -37,6 +37,7 @@ import { attendanceService, AttendanceRecord, SessionType, AttendanceStatus } fr
 import { classesService } from '@services/classesService';
 import { useAuth } from '@hooks/useAuth';
 import { studentsService, StudentRecord } from '@services/studentsService';
+import { parentDashboardService } from '@services/parentDashboardService';
 import { SearchBar } from '@components/admin/table/SearchBar';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -113,6 +114,7 @@ export const AttendancePage: React.FC = () => {
   // Only staff-admins can mark attendance across all students at once.
   const canMarkAllStudents = canAccess(['principal', 'super_admin']);
   const isStudent = user?.role === 'student';
+  const isParent = user?.role === 'parent' || user?.role === 'guardian';
 
   // ── Tabs ──────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<ActiveTab>('logs');
@@ -562,6 +564,10 @@ export const AttendancePage: React.FC = () => {
   // Students see a read-only view of ONLY their own attendance.
   if (isStudent) {
     return <StudentAttendanceView />;
+  }
+  // Parents see a read-only view of their children's attendance (with selector).
+  if (isParent) {
+    return <ParentAttendanceView />;
   }
 
   return (
@@ -1571,6 +1577,97 @@ const StudentAttendanceView: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+        )}
+      </PageShell>
+    </MainLayout>
+  );
+};
+
+// ── Parent read-only "children's attendance" view ───────────────────────────
+
+const ParentAttendanceView: React.FC = () => {
+  const [childId, setChildId] = useState('');
+
+  const { data: dashResp } = useQuery({
+    queryKey: ['parent-dashboard'],
+    queryFn: () => parentDashboardService.getDashboard(),
+    staleTime: 60_000,
+  });
+  const children = ((dashResp as any)?.data ?? (dashResp as any))?.children ?? [];
+  const currentId = childId || children[0]?.id || '';
+
+  const { data: childResp, isLoading } = useQuery({
+    queryKey: ['parent-child-detail', currentId],
+    queryFn: () => parentDashboardService.getChildDetail(currentId),
+    enabled: !!currentId,
+    staleTime: 60_000,
+  });
+  const detail = (childResp as any)?.data ?? (childResp as any);
+  const summary = detail?.attendance ?? { total: 0, present: 0, late: 0, absent: 0, excused: 0, percentage: 0 };
+  const records: Array<{ id: string; date: string; status: string; remarks?: string }> = detail?.attendance?.records ?? [];
+
+  return (
+    <MainLayout>
+      <PageShell title="Children's Attendance" subtitle="View your children's attendance records">
+        {children.length === 0 ? (
+          <div className="py-16 text-center text-gray-500">No children linked to your account.</div>
+        ) : (
+          <div className="space-y-6">
+            {/* Child selector */}
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {children.map((c: any) => (
+                <button
+                  key={c.id}
+                  onClick={() => setChildId(c.id)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
+                    currentId === c.id
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="font-medium">{c.name}</span>
+                  {c.class_name && <span className="text-xs text-gray-400">· {c.class_name}</span>}
+                </button>
+              ))}
+            </div>
+
+            {isLoading ? (
+              <div className="flex items-center justify-center py-16 text-gray-500"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <KPICard title="Attendance Rate" value={`${summary.percentage}%`} icon={<UserCheck className="w-5 h-5" />} color={summary.percentage >= 85 ? 'green' : summary.percentage >= 75 ? 'amber' : 'red'} />
+                  <KPICard title="Present" value={String(summary.present)} icon={<CheckCircle className="w-5 h-5" />} color="green" />
+                  <KPICard title="Late" value={String(summary.late)} icon={<Clock className="w-5 h-5" />} color="amber" />
+                  <KPICard title="Absent" value={String(summary.absent)} icon={<XCircle className="w-5 h-5" />} color="red" />
+                </div>
+
+                <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                    <h3 className="font-bold text-gray-900 dark:text-white">Attendance History</h3>
+                  </div>
+                  {records.length === 0 ? (
+                    <div className="p-12 text-center text-gray-400">No attendance records yet.</div>
+                  ) : (
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700/50 max-h-[28rem] overflow-y-auto">
+                      {records.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between px-5 py-3">
+                          <span className="text-sm text-gray-700 dark:text-gray-200">{fmt(r.date)}</span>
+                          <div className="flex items-center gap-3">
+                            {r.remarks && <span className="text-xs text-gray-400 truncate max-w-[10rem]">{r.remarks}</span>}
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${getDotColor(r.status)}`} />
+                              {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </PageShell>

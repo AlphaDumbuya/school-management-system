@@ -268,6 +268,22 @@ router.get('/my/subjects', async (req: Request, res: Response, next: NextFunctio
   }
 });
 
+/**
+ * GET /student/:studentId/summary
+ * All SL subject results for a student (Test1/Test2/Mean + grade), for the
+ * student-profile "Academics" tab. Declared BEFORE /:studentId so "student"
+ * isn't captured as a studentId param.
+ */
+router.get('/student/:studentId/summary', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await slReportCardService.getStudentResultsSummary(tenant(req), req.params.studentId);
+    res.json({ success: true, data });
+  } catch (error) {
+    logger.error('Error getting student results summary:', error);
+    next(error);
+  }
+});
+
 // ── Server-side PDF (clean, no browser header/footer) ───────────────────────
 
 /**

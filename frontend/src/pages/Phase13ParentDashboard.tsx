@@ -1,468 +1,378 @@
 /**
- * Parent Dashboard Page
- * Main dashboard for parents with multi-child support and monitoring
- * Phase 13: Specialized Dashboards
+ * Parent Dashboard — /parent/dashboard
+ * Real, tenant + parent-scoped hub. Shows ONLY the logged-in parent's own
+ * children with per-child grades, attendance, timetable and fees.
  */
 
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { apiClient } from '@lib/apiClient';
-import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
-import { Button } from '@components/ui/button';
+import {
+  Users, TrendingUp, Calendar, DollarSign, Clock, MapPin, GraduationCap,
+  Loader2, AlertTriangle, CheckCircle2, XCircle, UserCircle2,
+} from 'lucide-react';
 import { MainLayout } from '@components/layout/MainLayout';
-import { AlertCircle, Home, Users, Bell, Settings } from 'lucide-react';
-import useAuthStore from '@store/authStore';
-import { ChildSelector } from '@components/parent/ChildSelector';
-import { ChildMonitoring } from '@components/parent/ChildMonitoring';
-import { ChildFeeStatus } from '@components/parent/ChildFeeStatus';
-import { CommunicationCenter } from '@components/parent/CommunicationCenter';
-import { RecordsAccess } from '@components/parent/RecordsAccess';
+import { PageShell } from '@components/admin/layout/PageShell';
+import { KPICard } from '@components/dashboard/KPICard';
+import { EmptyState } from '@components/admin/feedback/EmptyState';
+import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
+import { parentDashboardService } from '@services/parentDashboardService';
 
-// Mock data
-const mockChildren = [
-  {
-    id: 'child-1',
-    name: 'Mohamed Kamara',
-    class: '10th Grade A',
-    gpa: 3.8,
-    attendance: 92,
-    outstandingFees: 5000,
-  },
-  {
-    id: 'child-2',
-    name: 'Fatmata Kamara',
-    class: '8th Grade B',
-    gpa: 3.6,
-    attendance: 95,
-    outstandingFees: 2000,
-  },
-];
+const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
-const mockGrades = [
-  { subject: 'Mathematics', marks: 92, maxMarks: 100, trend: 'up' as const },
-  { subject: 'English', marks: 85, maxMarks: 100, trend: 'stable' as const },
-  { subject: 'Science', marks: 88, maxMarks: 100, trend: 'up' as const },
-  { subject: 'Social Studies', marks: 90, maxMarks: 100, trend: 'up' as const },
-];
+function fmtTime(t?: string): string {
+  if (!t) return '';
+  const [h, m] = t.split(':');
+  const hour = parseInt(h, 10);
+  if (isNaN(hour)) return t;
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const h12 = hour % 12 || 12;
+  return `${h12}:${m} ${ampm}`;
+}
 
-const mockSchedule = [
-  { subject: 'Mathematics', teacher: 'Mr. Bangura', time: '9:00 AM', room: '101' },
-  { subject: 'English', teacher: 'Ms. Koroma', time: '10:00 AM', room: '102' },
-  { subject: 'Science', teacher: 'Mr. Sesay', time: '11:00 AM', room: '201' },
-];
+function fmtMoney(n: number | string | undefined): string {
+  const v = Number(n || 0);
+  return `Le ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
-const mockFees = [
-  { type: 'Tuition', amount: 50000, paid: 50000, status: 'paid' as const },
-  { type: 'Activities', amount: 5000, paid: 0, status: 'pending' as const },
-  { type: 'Transport', amount: 10000, paid: 10000, status: 'paid' as const },
-  { type: 'Library', amount: 2000, paid: 2000, status: 'paid' as const },
-];
+function cap(s?: string): string {
+  if (!s) return '';
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
-const mockMessages = [
-  {
-    id: '1',
-    sender: 'Mr. Bangura (Math Teacher)',
-    subject: 'Mohamed is doing well in class',
-    preview: 'Mohamed has shown improvement in problem-solving. Keep encouraging him to practice more.',
-    timestamp: 'Today at 2:30 PM',
-    read: false,
-  },
-  {
-    id: '2',
-    sender: 'Principal Office',
-    subject: 'Annual Day Celebrations',
-    preview: 'Our school will be celebrating the Annual Day on July 15. Your child will be participating.',
-    timestamp: 'Yesterday at 10:00 AM',
-    read: true,
-  },
-  {
-    id: '3',
-    sender: 'Finance Office',
-    subject: 'Fee Payment Reminder',
-    preview: 'This is a friendly reminder that the activities fee for Term 2 is pending.',
-    timestamp: '2 days ago',
-    read: true,
-  },
-];
-
-const mockAnnouncements = [
-  {
-    id: '1',
-    title: 'Summer Holiday Extended',
-    content: 'The school will remain closed on July 4-5 for maintenance. Classes will resume on July 6.',
-    priority: 'high' as const,
-    timestamp: 'Today at 9:00 AM',
-  },
-  {
-    id: '2',
-    title: 'Parent-Teacher Meeting',
-    content: 'Parent-Teacher meetings are scheduled for July 10-12. Slots are available for booking.',
-    priority: 'medium' as const,
-    timestamp: 'Yesterday at 3:00 PM',
-  },
-  {
-    id: '3',
-    title: 'Sports Day Registration',
-    content: 'Sports day is on July 20. Registration for events closes on July 8.',
-    priority: 'low' as const,
-    timestamp: '2 days ago',
-  },
-];
-
-const mockMeetings = [
-  {
-    id: '1',
-    title: 'Parent-Teacher Conference - Mathematics',
-    date: 'July 10, 2026',
-    time: '3:00 PM',
-    organizer: 'Mr. Bangura',
-    status: 'pending' as const,
-  },
-  {
-    id: '2',
-    title: 'General Academic Progress Review',
-    date: 'July 11, 2026',
-    time: '4:00 PM',
-    organizer: 'Class Teacher',
-    status: 'confirmed' as const,
-  },
-];
-
-const mockDocuments = [
-  {
-    id: '1',
-    name: 'Academic Record - Term 1',
-    type: 'academic' as const,
-    status: 'available' as const,
-    lastModified: '2 days ago',
-    size: '2.3 MB',
-  },
-  {
-    id: '2',
-    name: 'Fee Statement - June 2026',
-    type: 'financial' as const,
-    status: 'available' as const,
-    lastModified: '1 day ago',
-    size: '1.1 MB',
-  },
-  {
-    id: '3',
-    name: 'Attendance Report - Q2',
-    type: 'attendance' as const,
-    status: 'available' as const,
-    lastModified: 'Today',
-    size: '0.8 MB',
-  },
-  {
-    id: '4',
-    name: 'Academic Excellence Certificate',
-    type: 'certificate' as const,
-    status: 'available' as const,
-    lastModified: '5 days ago',
-    size: '0.5 MB',
-  },
-];
-
-type TabType = 'overview' | 'monitoring' | 'fees' | 'communication' | 'records';
+type TabType = 'overview' | 'grades' | 'attendance' | 'schedule' | 'fees';
 
 export const Phase13ParentDashboard: React.FC = () => {
-  const { user } = useAuthStore();
-
-  // Fetch real children linked to this parent account
-  const { data: parentChildrenData } = useQuery({
-    queryKey: ['parent-children', user?.email],
-    queryFn: () => apiClient.get<{ success: boolean; data: any[] }>('/api/v1/students/parent/children'),
-    enabled: !!user,
-    staleTime: 30_000,
-  });
-
-  const childrenList = useMemo(() => {
-    const fetched = (parentChildrenData as any)?.data?.data ?? (parentChildrenData as any)?.data;
-    if (Array.isArray(fetched) && fetched.length > 0) {
-      return fetched.map((c: any) => ({
-        id: c.id,
-        name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.student_id,
-        class: c.class_name || 'Class Unassigned',
-        gpa: 3.8,
-        attendance: 95,
-        outstandingFees: 0,
-      }));
-    }
-    return mockChildren;
-  }, [parentChildrenData]);
-
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<TabType>('overview');
-  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
 
-  const currentSelectedChildId = selectedChildId || childrenList[0]?.id || mockChildren[0].id;
-  const selectedChild = childrenList.find(c => c.id === currentSelectedChildId) || childrenList[0];
+  const { data: dashResp, isLoading, error } = useQuery({
+    queryKey: ['parent-dashboard'],
+    queryFn: () => parentDashboardService.getDashboard(),
+    staleTime: 60_000,
+  });
 
-  // Calculate fee stats
-  const totalFees = mockFees.reduce((sum, f) => sum + f.amount, 0);
-  const totalPaid = mockFees.reduce((sum, f) => sum + f.paid, 0);
-  const totalOutstanding = totalFees - totalPaid;
+  const dash = (dashResp as any)?.data ?? (dashResp as any);
+  const children = dash?.children ?? [];
+  const stats = dash?.stats ?? { total_children: 0, total_outstanding: 0, average_attendance: 0, average_grade: 0 };
 
-  const toggleAlert = (alertId: string) => {
-    const newDismissed = new Set(dismissedAlerts);
-    if (newDismissed.has(alertId)) {
-      newDismissed.delete(alertId);
-    } else {
-      newDismissed.add(alertId);
-    }
-    setDismissedAlerts(newDismissed);
-  };
+  const currentChildId = selectedChildId || children[0]?.id || '';
+
+  const { data: childResp, isLoading: childLoading } = useQuery({
+    queryKey: ['parent-child-detail', currentChildId],
+    queryFn: () => parentDashboardService.getChildDetail(currentChildId),
+    enabled: !!currentChildId,
+    staleTime: 60_000,
+  });
+  const detail = (childResp as any)?.data ?? (childResp as any);
+
+  const profile = detail?.profile ?? null;
+  const grades = detail?.grades ?? [];
+  const attendance = detail?.attendance ?? { present: 0, absent: 0, late: 0, excused: 0, total: 0, percentage: 0, records: [] };
+  const schedule = detail?.schedule ?? [];
+  const fees = detail?.fees ?? { total: 0, paid: 0, outstanding: 0, invoices: [] };
+
+  const scheduleByDay = useMemo(() =>
+    DAY_ORDER
+      .map((day) => ({
+        day,
+        slots: schedule
+          .filter((s: any) => (s.day_of_week || '').toLowerCase() === day)
+          .sort((a: any, b: any) => (a.start_time || '').localeCompare(b.start_time || '')),
+      }))
+      .filter((d) => d.slots.length > 0),
+  [schedule]);
+
+  const tabs: TabType[] = ['overview', 'grades', 'attendance', 'schedule', 'fees'];
+
+  if (isLoading) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center py-24 text-gray-500">
+          <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading your dashboard…
+        </div>
+      </MainLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <MainLayout>
+        <div className="py-16">
+          <EmptyState message="Couldn't load dashboard" description="There was a problem fetching your data. Please refresh and try again." />
+        </div>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Parent Portal</h1>
-            <p className="text-gray-600 mt-1 text-sm sm:mt-2">Welcome! Monitor your children's academic progress</p>
-          </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <Button variant="outline" className="text-gray-700 text-sm px-3 py-1.5 sm:px-4 sm:py-2">
-              <Bell className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Notifications</span>
-            </Button>
-            <Button variant="outline" className="text-gray-700 text-sm px-3 py-1.5 sm:px-4 sm:py-2">
-              <Settings className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Settings</span>
-            </Button>
-          </div>
-        </div>
-
-        {/* Child Selector */}
-        <ChildSelector
-          children={childrenList}
-          selectedChildId={currentSelectedChildId}
-          onChildSelect={setSelectedChildId}
-          compact={false}
-        />
-
-        {selectedChild && (
+      <PageShell title="Parent Portal" subtitle="Monitor your children's progress">
+        {children.length === 0 ? (
+          <EmptyState
+            message="No children linked"
+            description="Your account isn't linked to any student yet. Please contact the school office."
+          />
+        ) : (
           <>
-            {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-600 text-sm">GPA</p>
-                      <p className="text-3xl font-bold text-blue-600">{selectedChild.gpa}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-600 text-sm">Attendance</p>
-                      <p className={`text-3xl font-bold ${
-                        selectedChild.attendance >= 80 ? 'text-green-600' : 'text-orange-600'
-                      }`}>
-                        {selectedChild.attendance}%
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-600 text-sm">Outstanding</p>
-                      <p className={`text-3xl font-bold ${
-                        selectedChild.outstandingFees === 0 ? 'text-green-600' : 'text-orange-600'
-                      }`}>
-                        Le{selectedChild.outstandingFees}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-600 text-sm">Class</p>
-                      <p className="text-2xl font-bold text-purple-600">{selectedChild.class}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+            {/* Aggregate KPIs */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <KPICard title="Children" value={String(stats.total_children)} icon={<Users className="w-5 h-5" />} color="blue" />
+              <KPICard title="Avg Attendance" value={`${stats.average_attendance}%`} icon={<Calendar className="w-5 h-5" />} color={stats.average_attendance >= 85 ? 'green' : 'amber'} />
+              <KPICard title="Avg Score" value={stats.average_grade ? `${stats.average_grade}%` : '—'} icon={<TrendingUp className="w-5 h-5" />} color="purple" />
+              <KPICard title="Total Outstanding" value={fmtMoney(stats.total_outstanding)} icon={<DollarSign className="w-5 h-5" />} color={stats.total_outstanding > 0 ? 'amber' : 'green'} />
             </div>
 
-            {/* Important Alerts */}
-            <div className="space-y-2">
-              {selectedChild.outstandingFees > 0 && !dismissedAlerts.has('fees') && (
-                <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0" />
-                    <div>
-                      <p className="font-semibold text-orange-900">Outstanding Fees</p>
-                      <p className="text-sm text-orange-800">
-                        Le{selectedChild.outstandingFees} due. Please make payment to avoid late fees.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => toggleAlert('fees')}
-                    className="text-orange-600 hover:text-orange-700 font-medium text-sm"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
-
-              {selectedChild.attendance < 80 && !dismissedAlerts.has('attendance') && (
-                <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0" />
-                    <div>
-                      <p className="font-semibold text-yellow-900">Attendance Below Target</p>
-                      <p className="text-sm text-yellow-800">
-                        Current attendance is {selectedChild.attendance}%. Target is 80%.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => toggleAlert('attendance')}
-                    className="text-yellow-600 hover:text-yellow-700 font-medium text-sm"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
-
-              {!dismissedAlerts.has('meeting') && (
-                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Users className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                    <div>
-                      <p className="font-semibold text-blue-900">Parent-Teacher Meeting</p>
-                      <p className="text-sm text-blue-800">Scheduled for July 10. Click to confirm your attendance.</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => toggleAlert('meeting')}
-                    className="text-blue-600 hover:text-blue-700 font-medium text-sm"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
+            {/* Child selector */}
+            <div className="flex gap-2 overflow-x-auto mt-6 pb-1">
+              {children.map((c: any) => (
+                <button
+                  key={c.id}
+                  onClick={() => { setSelectedChildId(c.id); setActiveTab('overview'); }}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
+                    currentChildId === c.id
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300'
+                  }`}
+                >
+                  {c.photo_url
+                    ? <img src={c.photo_url} alt="" className="w-6 h-6 rounded-full object-cover" />
+                    : <UserCircle2 className="w-6 h-6" />}
+                  <span className="font-medium">{c.name}</span>
+                  {c.class_name && <span className="text-xs text-gray-400">· {c.class_name}</span>}
+                </button>
+              ))}
             </div>
 
-            {/* Tabs */}
-            <div className="border-b">
-              <div className="flex gap-4 overflow-x-auto">
-                {(['overview', 'monitoring', 'fees', 'communication', 'records'] as const).map(tab => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-3 font-medium border-b-2 transition whitespace-nowrap ${
-                      activeTab === tab
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </button>
-                ))}
+            {childLoading ? (
+              <div className="flex items-center justify-center py-16 text-gray-500">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
               </div>
-            </div>
+            ) : !profile ? (
+              <div className="py-12"><EmptyState message="Select a child to view details" /></div>
+            ) : (
+              <>
+                {/* Per-child header + tabs */}
+                <div className="border-b border-gray-200 dark:border-gray-800 mt-6">
+                  <div className="flex gap-2 sm:gap-4 overflow-x-auto">
+                    {tabs.map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-3 sm:px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+                          activeTab === tab
+                            ? 'border-blue-600 text-blue-600'
+                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                        }`}
+                      >
+                        {cap(tab)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-            {/* Tab Content */}
-            <div>
-              {activeTab === 'overview' && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Academic Overview - {selectedChild.name}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <h4 className="font-semibold text-gray-900 mb-3">Quick Summary</h4>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between p-2 bg-gray-50 rounded">
-                          <span>Overall Status</span>
-                          <span className="font-semibold text-green-600">Excellent</span>
+                <div className="mt-5">
+                  {/* Overview */}
+                  {activeTab === 'overview' && (
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                        <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                          <p className="text-xs text-gray-500">Present</p>
+                          <p className="text-2xl font-bold text-green-600">{attendance.present}</p>
                         </div>
-                        <div className="flex justify-between p-2 bg-gray-50 rounded">
-                          <span>Performance Trend</span>
-                          <span className="font-semibold text-green-600">↑ Improving</span>
+                        <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg">
+                          <p className="text-xs text-gray-500">Late</p>
+                          <p className="text-2xl font-bold text-amber-600">{attendance.late}</p>
                         </div>
-                        <div className="flex justify-between p-2 bg-gray-50 rounded">
-                          <span>Next Review Date</span>
-                          <span className="font-semibold text-gray-900">July 15, 2026</span>
+                        <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                          <p className="text-xs text-gray-500">Absent</p>
+                          <p className="text-2xl font-bold text-red-600">{attendance.absent}</p>
+                        </div>
+                        <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                          <p className="text-xs text-gray-500">Outstanding</p>
+                          <p className="text-lg font-bold text-blue-600">{fmtMoney(fees.outstanding)}</p>
                         </div>
                       </div>
-                    </div>
 
-                    <div>
-                      <h4 className="font-semibold text-gray-900 mb-3">Recent Activities</h4>
-                      <div className="space-y-2 text-sm border-l-2 border-blue-300 pl-3">
-                        <div>
-                          <p className="font-medium text-gray-900">Grades Posted</p>
-                          <p className="text-gray-600">Today - Term 1 grades are now available</p>
+                      {!detail?.results_published && (
+                        <div className="flex items-center gap-2 p-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 text-sm text-amber-700 dark:text-amber-400">
+                          <AlertTriangle size={16} /> Results for {profile.name} have not been published yet.
                         </div>
-                        <div>
-                          <p className="font-medium text-gray-900">Attendance Updated</p>
-                          <p className="text-gray-600">Yesterday - Current attendance: 92%</p>
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">Message from Teacher</p>
-                          <p className="text-gray-600">2 days ago - {selectedChild.name} is doing well</p>
-                        </div>
+                      )}
+
+                      <Card>
+                        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Clock className="w-4 h-4" /> Today &amp; Weekly Timetable</CardTitle></CardHeader>
+                        <CardContent>
+                          {scheduleByDay.length === 0 ? (
+                            <p className="text-sm text-gray-500 py-4 text-center">No timetable published for this class yet.</p>
+                          ) : (
+                            <p className="text-sm text-gray-500">See the Schedule tab for the full weekly timetable.</p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
+
+                  {/* Grades */}
+                  {activeTab === 'grades' && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base flex items-center gap-2"><GraduationCap className="w-4 h-4" /> Results</CardTitle></CardHeader>
+                      <CardContent>
+                        {!detail?.results_published ? (
+                          <p className="text-sm text-gray-500 py-6 text-center">Results have not been published yet.</p>
+                        ) : grades.length === 0 ? (
+                          <p className="text-sm text-gray-500 py-6 text-center">No results recorded.</p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left text-xs text-gray-500 border-b border-gray-100 dark:border-gray-800">
+                                  <th className="py-2 pr-3">Subject</th>
+                                  <th className="py-2 px-3">Term</th>
+                                  <th className="py-2 px-3 text-center">Test 1</th>
+                                  <th className="py-2 px-3 text-center">Test 2</th>
+                                  <th className="py-2 px-3 text-center">Mean</th>
+                                  <th className="py-2 px-3 text-center">Rank</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {grades.map((g: any) => (
+                                  <tr key={g.id} className="border-b border-gray-50 dark:border-gray-800/50">
+                                    <td className="py-2 pr-3 font-medium">{g.subject_name}</td>
+                                    <td className="py-2 px-3 text-gray-500">{g.term}</td>
+                                    <td className="py-2 px-3 text-center">{g.test1 ?? '—'}</td>
+                                    <td className="py-2 px-3 text-center">{g.test2 ?? '—'}</td>
+                                    <td className="py-2 px-3 text-center font-semibold">{g.mean ?? '—'}</td>
+                                    <td className="py-2 px-3 text-center">{g.subject_rank ? `#${g.subject_rank}` : '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Attendance */}
+                  {activeTab === 'attendance' && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base">Attendance ({attendance.percentage}%)</CardTitle></CardHeader>
+                      <CardContent>
+                        {attendance.records.length === 0 ? (
+                          <p className="text-sm text-gray-500 py-6 text-center">No attendance records yet.</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {attendance.records.map((r: any) => {
+                              const s = (r.status || '').toLowerCase();
+                              const icon = s === 'present' ? <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                : s === 'absent' ? <XCircle className="w-4 h-4 text-red-600" />
+                                : <AlertTriangle className="w-4 h-4 text-amber-600" />;
+                              return (
+                                <div key={r.id} className="flex items-center justify-between p-2.5 border border-gray-100 dark:border-gray-800 rounded-lg text-sm">
+                                  <span className="text-gray-600 dark:text-gray-300">{new Date(r.date).toLocaleDateString()}</span>
+                                  <span className="flex items-center gap-1.5 font-medium">{icon} {cap(s)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Schedule */}
+                  {activeTab === 'schedule' && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base">Weekly Timetable</CardTitle></CardHeader>
+                      <CardContent>
+                        {scheduleByDay.length === 0 ? (
+                          <p className="text-sm text-gray-500 py-6 text-center">No timetable published for this class yet.</p>
+                        ) : (
+                          <div className="space-y-5">
+                            {scheduleByDay.map(({ day, slots }) => (
+                              <div key={day}>
+                                <h4 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-2">{cap(day)}</h4>
+                                <div className="space-y-2">
+                                  {slots.map((cls: any) => (
+                                    <div key={cls.id} className="flex items-center justify-between p-3 border border-gray-100 dark:border-gray-800 rounded-lg">
+                                      <div>
+                                        <p className="font-semibold text-sm">{cls.subject_name || 'Subject'}</p>
+                                        <p className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
+                                          {cls.teacher_name && <span>{cls.teacher_name}</span>}
+                                          {cls.room && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {cls.room}</span>}
+                                        </p>
+                                      </div>
+                                      <div className="text-xs font-medium text-blue-600 whitespace-nowrap">
+                                        {fmtTime(cls.start_time)}{cls.end_time ? ` – ${fmtTime(cls.end_time)}` : ''}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Fees */}
+                  {activeTab === 'fees' && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <Card><CardContent className="pt-5"><p className="text-xs text-gray-500">Total Billed</p><p className="text-xl font-bold">{fmtMoney(fees.total)}</p></CardContent></Card>
+                        <Card><CardContent className="pt-5"><p className="text-xs text-gray-500">Paid</p><p className="text-xl font-bold text-green-600">{fmtMoney(fees.paid)}</p></CardContent></Card>
+                        <Card><CardContent className="pt-5"><p className="text-xs text-gray-500">Outstanding</p><p className={`text-xl font-bold ${fees.outstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>{fmtMoney(fees.outstanding)}</p></CardContent></Card>
                       </div>
+                      <Card>
+                        <CardHeader><CardTitle className="text-base">Invoices</CardTitle></CardHeader>
+                        <CardContent>
+                          {fees.invoices.length === 0 ? (
+                            <p className="text-sm text-gray-500 py-6 text-center">No invoices on record.</p>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="text-left text-xs text-gray-500 border-b border-gray-100 dark:border-gray-800">
+                                    <th className="py-2 pr-3">Invoice #</th>
+                                    <th className="py-2 px-3 text-right">Amount</th>
+                                    <th className="py-2 px-3 text-right">Paid</th>
+                                    <th className="py-2 px-3 text-right">Balance</th>
+                                    <th className="py-2 px-3">Due</th>
+                                    <th className="py-2 px-3">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {fees.invoices.map((inv: any) => (
+                                    <tr key={inv.id} className="border-b border-gray-50 dark:border-gray-800/50">
+                                      <td className="py-2 pr-3 font-mono text-xs">{inv.invoice_number}</td>
+                                      <td className="py-2 px-3 text-right">{fmtMoney(inv.total_amount)}</td>
+                                      <td className="py-2 px-3 text-right text-green-600">{fmtMoney(inv.total_paid)}</td>
+                                      <td className="py-2 px-3 text-right font-semibold">{fmtMoney(inv.balance)}</td>
+                                      <td className="py-2 px-3 text-gray-500">{inv.due_date ? new Date(inv.due_date).toLocaleDateString() : '—'}</td>
+                                      <td className="py-2 px-3">
+                                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                                          inv.status === 'paid' ? 'bg-green-100 text-green-700'
+                                            : inv.status === 'overdue' ? 'bg-red-100 text-red-700'
+                                            : 'bg-amber-100 text-amber-700'
+                                        }`}>{cap(inv.status)}</span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {activeTab === 'monitoring' && (
-                <ChildMonitoring
-                  childName={selectedChild.name}
-                  grades={mockGrades}
-                  attendance={selectedChild.attendance}
-                  schedule={mockSchedule}
-                />
-              )}
-
-              {activeTab === 'fees' && (
-                <ChildFeeStatus
-                  childName={selectedChild.name}
-                  fees={mockFees}
-                  totalAmount={totalFees}
-                  totalPaid={totalPaid}
-                  totalOutstanding={totalOutstanding}
-                />
-              )}
-
-              {activeTab === 'communication' && (
-                <CommunicationCenter
-                  messages={mockMessages}
-                  announcements={mockAnnouncements}
-                  meetings={mockMeetings}
-                />
-              )}
-
-              {activeTab === 'records' && (
-                <RecordsAccess
-                  childName={selectedChild.name}
-                  documents={mockDocuments}
-                />
-              )}
-            </div>
+                  )}
+                </div>
+              </>
+            )}
           </>
         )}
-      </div>
+      </PageShell>
     </MainLayout>
   );
 };

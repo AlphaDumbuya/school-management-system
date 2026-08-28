@@ -1285,6 +1285,87 @@ export class SLReportCardService {
       outcome,
     };
   }
+
+  /**
+   * Student results summary for the profile "Academics" tab.
+   * Returns every SL subject result for the student (all classes/terms/years),
+   * using the CORRECT SL semantics: Test 1, Test 2, Mean (0–100) + grade.
+   * This is the single source of truth (same data as the report booklet) —
+   * NOT the legacy `results` table (CA/Exam) which is no longer used.
+   */
+  async getStudentResultsSummary(
+    tenantId: string,
+    studentId: string,
+  ): Promise<{
+    stats: { subjects: number; avg_test1: number; avg_test2: number; avg_mean: number };
+    results: Array<{
+      id: string;
+      subject_name: string;
+      subject_code: string | null;
+      academic_year: string;
+      term: string;
+      test1: number | null;
+      test2: number | null;
+      mean: number | null;
+      subject_rank: number | null;
+      grade_letter: string;
+      remark: string;
+    }>;
+  }> {
+    await this.assertStudentInTenant(studentId, tenantId);
+
+    const rows = await db('sl_subject_results as sr')
+      .join('subjects as s', 'sr.subject_id', 's.id')
+      .where('sr.tenant_id', tenantId)
+      .where('sr.student_id', studentId)
+      .select(
+        'sr.id',
+        's.name as subject_name',
+        's.code as subject_code',
+        'sr.academic_year',
+        'sr.term',
+        'sr.test1',
+        'sr.test2',
+        'sr.mean',
+        'sr.subject_rank',
+      )
+      .orderBy('sr.academic_year', 'desc')
+      .orderBy('sr.term', 'asc')
+      .orderBy('s.name', 'asc');
+
+    const results = rows.map((r: any) => {
+      const mean = r.mean != null ? Number(r.mean) : null;
+      const g = mean != null ? getGrade(mean) : { letter: '—', remark: '—' };
+      return {
+        id: r.id,
+        subject_name: r.subject_name,
+        subject_code: r.subject_code ?? null,
+        academic_year: r.academic_year,
+        term: r.term,
+        test1: r.test1 != null ? Number(r.test1) : null,
+        test2: r.test2 != null ? Number(r.test2) : null,
+        mean,
+        subject_rank: r.subject_rank ?? null,
+        grade_letter: g.letter,
+        remark: g.remark,
+      };
+    });
+
+    const t1s = results.map((r) => r.test1).filter((n): n is number => n != null);
+    const t2s = results.map((r) => r.test2).filter((n): n is number => n != null);
+    const means = results.map((r) => r.mean).filter((n): n is number => n != null);
+    const avg = (arr: number[]) => (arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : 0);
+
+    return {
+      stats: {
+        subjects: results.length,
+        avg_test1: avg(t1s),
+        avg_test2: avg(t2s),
+        avg_mean: avg(means),
+      },
+      results,
+    };
+  }
 }
 
 export default new SLReportCardService();
