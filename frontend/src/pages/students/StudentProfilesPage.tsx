@@ -93,12 +93,10 @@ export const StudentProfilesPage: React.FC = () => {
   const availableTabs = useMemo(() => {
     const tabs: Array<{ id: 'overview' | 'academics' | 'attendance' | 'conduct' | 'billing'; label: string }> = [
       { id: 'overview', label: 'Overview' },
+      { id: 'academics', label: 'Academics' },
+      { id: 'attendance', label: 'Attendance' },
+      { id: 'conduct', label: 'Conduct' },
     ];
-    if (ENABLE_V2_FEATURES) {
-      tabs.push({ id: 'academics', label: 'Academics' });
-    }
-    tabs.push({ id: 'attendance', label: 'Attendance' });
-    tabs.push({ id: 'conduct', label: 'Conduct' });
     if (ENABLE_V2_FEATURES) {
       tabs.push({ id: 'billing', label: 'Billing' });
     }
@@ -790,38 +788,48 @@ export const StudentProfilesPage: React.FC = () => {
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-150 dark:divide-gray-700">
-                                {grades.map((g: any) => (
-                                  <tr key={g.id} className="hover:bg-gray-50 dark:hover:bg-gray-850 transition-colors">
-                                    <td className="p-4">
-                                      <p className="font-bold text-gray-900 dark:text-white">{g.subject_name}</p>
-                                      <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">{g.subject_code}</p>
-                                    </td>
-                                    <td className="p-4 text-xs font-semibold text-gray-600 dark:text-gray-400">
-                                      {g.term === 'first_term' ? 'First Term' : g.term === 'second_term' ? 'Second Term' : 'Third Term'}
-                                    </td>
-                                    <td className="p-4 text-center font-mono font-medium text-gray-700 dark:text-gray-300">{g.ca_score}</td>
-                                    <td className="p-4 text-center font-mono font-medium text-gray-700 dark:text-gray-300">{g.exam_score}</td>
-                                    <td className="p-4 text-center font-mono font-bold text-gray-900 dark:text-white">{g.total_score}</td>
-                                    <td className="p-4 text-center">
-                                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${g.grade_letter === 'A' ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400' :
-                                          ['B', 'C'].includes(g.grade_letter) ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' :
-                                            g.grade_letter === 'D' ? 'bg-yellow-100 text-yellow-750 dark:bg-yellow-950/40 dark:text-yellow-450' :
-                                              'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400'
-                                        }`}>
-                                        {g.grade_letter}
-                                      </span>
-                                    </td>
-                                    <td className="p-4 text-xs font-semibold">
-                                      <span className={
-                                        g.remark === 'Excellent' ? 'text-green-600' :
-                                          ['Very Good', 'Good'].includes(g.remark) ? 'text-blue-600' :
-                                            g.remark === 'Pass' ? 'text-yellow-600' : 'text-red-500'
-                                      }>
-                                        {g.remark}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))}
+                                {grades.map((g: any) => {
+                                  const score = Number(g.total_score ?? 0);
+                                  const isFail = score < 50;
+                                  return (
+                                    <tr key={g.id} className="hover:bg-gray-50 dark:hover:bg-gray-850 transition-colors">
+                                      <td className="p-4">
+                                        <p className="font-bold text-gray-900 dark:text-white">{g.subject_name}</p>
+                                        <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">{g.subject_code}</p>
+                                      </td>
+                                      <td className="p-4 text-xs font-semibold text-gray-600 dark:text-gray-400">
+                                        {g.term === 'first_term' ? 'First Term' : g.term === 'second_term' ? 'Second Term' : 'Third Term'}
+                                      </td>
+                                      <td className="p-4 text-center font-mono font-medium text-gray-700 dark:text-gray-300">{g.ca_score}</td>
+                                      <td className="p-4 text-center font-mono font-medium text-gray-700 dark:text-gray-300">{g.exam_score}</td>
+                                      <td className="p-4 text-center font-mono font-bold">
+                                        <span className={`px-2 py-0.5 rounded ${isFail ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/40 font-bold' : 'text-gray-900 dark:text-white'}`}>
+                                          {score}% {isFail ? '(Fail)' : ''}
+                                        </span>
+                                      </td>
+                                      <td className="p-4 text-center">
+                                        <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${g.grade_letter === 'A' ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400' :
+                                            g.grade_letter === 'B' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' :
+                                              g.grade_letter === 'C' ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-400' :
+                                                g.grade_letter === 'D' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' :
+                                                  'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400 border border-red-300 font-extrabold'
+                                          }`}>
+                                          {g.grade_letter}
+                                        </span>
+                                      </td>
+                                      <td className="p-4 text-xs font-semibold">
+                                        <span className={
+                                          g.remark === 'Excellent' ? 'text-green-600 font-bold' :
+                                            g.remark === 'Very Good' ? 'text-blue-600 font-bold' :
+                                              g.remark === 'Good' ? 'text-cyan-600 font-bold' :
+                                                g.remark === 'Satisfying' ? 'text-amber-600 font-bold' : 'text-red-600 dark:text-red-400 font-bold'
+                                        }>
+                                          {g.remark}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </div>

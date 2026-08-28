@@ -34,6 +34,7 @@ import TimetablesPage from '@pages/academic/TimetablesPage';
 import AssignmentsPage from '@pages/academic/AssignmentsPage';
 import ExaminationsPage from '@pages/academic/ExaminationsPage';
 import ResultsPage from '@pages/academic/ResultsPage';
+import ReportCardsPage from '@pages/academic/ReportCardsPage';
 import StudentDirectoryPage from '@pages/students/StudentDirectoryPage';
 import AdmissionsPage from '@pages/students/AdmissionsPage';
 import { StudentProfilesPage } from '@pages/students/StudentProfilesPage';
@@ -168,11 +169,11 @@ const router = createBrowserRouter(
         },
         {
           path: 'academic/results',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent']}><V2Route><ResultsPage /></V2Route></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent']}><ResultsPage /></P>,
         },
         {
           path: 'academic/report-cards',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent']}><V2Route><CS /></V2Route></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent']}><ReportCardsPage /></P>,
         },
         {
           path: 'academic/promotions',

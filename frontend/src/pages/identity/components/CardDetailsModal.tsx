@@ -1,22 +1,14 @@
-/**
- * Card Details Modal
- * Modal for viewing ID card details and history
- */
-
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Modal } from '@components/admin/feedback/Modal';
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { Button } from '@components/ui/button';
 import { idCardService, CardStatus } from '@services/idCardService';
+import { showToast } from '@utils/toast';
+import { useQueryClient } from '@tanstack/react-query';
 import {
-    CreditCard,
-    User,
-    Calendar,
-    Download,
-    History,
-    QrCode,
-    Loader2,
+    CreditCard, User, Calendar, Download, History, QrCode, Loader2,
+    RotateCcw, Ban, AlertTriangle, FlipHorizontal2,
 } from 'lucide-react';
 import { VisualIdCardRenderer } from './VisualIdCardRenderer';
 
@@ -57,6 +49,9 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
     onClose,
     cardId,
 }) => {
+    const queryClient = useQueryClient();
+    const [previewSide, setPreviewSide] = useState<'front' | 'back'>('front');
+    const [isActioning, setIsActioning] = useState(false);
     // Fetch card details
     const { data: cardData, isLoading: cardLoading } = useQuery({
         queryKey: ['id-card', cardId],
@@ -108,9 +103,23 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                     </div>
                 ) : (
                     <div className="space-y-6">
-                        {/* Visual Card Preview */}
+                        {/* Visual Card Preview with front/back toggle */}
                         <div className="w-full bg-slate-900 rounded-2xl p-3 sm:p-4 flex flex-col items-center justify-center border border-gray-800 shadow-xl overflow-hidden">
-                            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Live Template Rendered Card</div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Live Rendered Card</div>
+                                {card.template?.config?.printSides === 'double' && (
+                                    <div className="flex items-center gap-1 ml-2">
+                                        <button onClick={() => setPreviewSide('front')}
+                                            className={`px-2 py-0.5 text-[10px] font-bold rounded-full border transition-all ${previewSide === 'front' ? 'bg-blue-600 text-white border-blue-600' : 'text-gray-400 border-gray-600 hover:text-white'}`}>
+                                            Front
+                                        </button>
+                                        <button onClick={() => setPreviewSide('back')}
+                                            className={`px-2 py-0.5 text-[10px] font-bold rounded-full border transition-all ${previewSide === 'back' ? 'bg-purple-600 text-white border-purple-600' : 'text-gray-400 border-gray-600 hover:text-white'}`}>
+                                            Back
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             <div className="w-full max-w-[380px] flex justify-center">
                                 <VisualIdCardRenderer
                                     config={card.template?.config || {
@@ -121,7 +130,7 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                                         textColor: '#0F172A',
                                         photoShape: 'circle',
                                         cardTitle: 'IDENTIFICATION CARD',
-                                    }}
+                                    } as any}
                                     format={card.format || 'pvc'}
                                     user={{
                                         name: card.user ? `${card.user.firstName} ${card.user.lastName}` : 'ID Holder',
@@ -133,7 +142,8 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                                         departmentOrGrade: card.user?.departmentOrGrade,
                                     }}
                                     logoUrl={card.template?.logoUrl || card.template?.config?.logoUrl}
-                                    side="front"
+                                    side={previewSide}
+                                    readonly
                                 />
                             </div>
                         </div>
@@ -280,10 +290,79 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                         </div>
 
                         {/* Action Buttons */}
-                        <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <Button type="button" variant="outline" onClick={onClose}>
-                                Close
-                            </Button>
+                        <div className="flex items-center justify-between gap-3 pt-4 border-t border-gray-200 dark:border-gray-700 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                {/* Regenerate */}
+                                <Button type="button" variant="outline" size="sm" disabled={isActioning}
+                                    onClick={async () => {
+                                        setIsActioning(true);
+                                        try {
+                                            await idCardService.regenerateCard(card.id);
+                                            showToast.success('Card regenerated');
+                                            queryClient.invalidateQueries({ queryKey: ['id-card', cardId] });
+                                            queryClient.invalidateQueries({ queryKey: ['id-cards'] });
+                                        } catch { showToast.error('Failed to regenerate card'); }
+                                        finally { setIsActioning(false); }
+                                    }}
+                                    className="flex items-center gap-1.5 text-violet-600 border-violet-300 hover:bg-violet-50">
+                                    <RotateCcw size={13} /> Regenerate
+                                </Button>
+
+                                {/* Report Lost */}
+                                {card.status === 'active' && (
+                                    <Button type="button" variant="outline" size="sm" disabled={isActioning}
+                                        onClick={async () => {
+                                            setIsActioning(true);
+                                            try {
+                                                await idCardService.reportLost(card.id, 'Reported via card details');
+                                                showToast.success('Card reported as lost');
+                                                queryClient.invalidateQueries({ queryKey: ['id-card', cardId] });
+                                                queryClient.invalidateQueries({ queryKey: ['id-cards'] });
+                                            } catch { showToast.error('Failed to report lost'); }
+                                            finally { setIsActioning(false); }
+                                        }}
+                                        className="flex items-center gap-1.5 text-amber-600 border-amber-300 hover:bg-amber-50">
+                                        <AlertTriangle size={13} /> Report Lost
+                                    </Button>
+                                )}
+
+                                {/* Revoke */}
+                                {card.status === 'active' && (
+                                    <Button type="button" variant="outline" size="sm" disabled={isActioning}
+                                        onClick={async () => {
+                                            setIsActioning(true);
+                                            try {
+                                                await idCardService.revokeCard(card.id, 'Revoked via card details panel');
+                                                showToast.success('Card revoked');
+                                                queryClient.invalidateQueries({ queryKey: ['id-card', cardId] });
+                                                queryClient.invalidateQueries({ queryKey: ['id-cards'] });
+                                            } catch { showToast.error('Failed to revoke card'); }
+                                            finally { setIsActioning(false); }
+                                        }}
+                                        className="flex items-center gap-1.5 text-red-600 border-red-300 hover:bg-red-50">
+                                        <Ban size={13} /> Revoke
+                                    </Button>
+                                )}
+
+                                {/* Reactivate */}
+                                {card.status === 'suspended' && (
+                                    <Button type="button" variant="outline" size="sm" disabled={isActioning}
+                                        onClick={async () => {
+                                            setIsActioning(true);
+                                            try {
+                                                await idCardService.reactivateCard(card.id);
+                                                showToast.success('Card reactivated');
+                                                queryClient.invalidateQueries({ queryKey: ['id-card', cardId] });
+                                                queryClient.invalidateQueries({ queryKey: ['id-cards'] });
+                                            } catch { showToast.error('Failed to reactivate'); }
+                                            finally { setIsActioning(false); }
+                                        }}
+                                        className="flex items-center gap-1.5 text-emerald-600 border-emerald-300 hover:bg-emerald-50">
+                                        <RotateCcw size={13} /> Reactivate
+                                    </Button>
+                                )}
+                            </div>
+                            <Button type="button" variant="outline" onClick={onClose}>Close</Button>
                         </div>
                     </div>
                 )}

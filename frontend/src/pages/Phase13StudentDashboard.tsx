@@ -134,7 +134,7 @@ export const Phase13StudentDashboard: React.FC = () => {
         {/* Tabs */}
         <div className="border-b">
           <div className="flex gap-4 overflow-x-auto">
-            {(['overview', 'attendance', 'schedule', 'records'] as const).map(tab => (
+            {(['overview', 'grades', 'attendance', 'schedule', 'records'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab as any)}

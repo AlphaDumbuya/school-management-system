@@ -517,63 +517,71 @@ class DashboardService {
    * Get system health status
    */
   async getSystemHealth(tenantId: string): Promise<SystemHealth> {
+    // Each metric is independent — a failure in one must NEVER cascade and
+    // mislabel the database as "error". The DB status reflects only the ping.
+    let databaseStatus: 'healthy' | 'warning' | 'error' = 'error';
+    let apiResponseTime = 0;
+
+    // 1. Database ping (this alone determines databaseStatus)
+    const startTime = Date.now();
     try {
-      let databaseStatus: 'healthy' | 'warning' | 'error' = 'healthy';
-      const startTime = Date.now();
-
-      try {
-        await db.raw('SELECT 1');
-      } catch {
-        databaseStatus = 'error';
-      }
-
-      // Measure actual API response time from the DB ping
-      const apiResponseTime = Date.now() - startTime;
-
-      // Get storage usage (approximate from DB size)
-      let storageUsage = 0;
-      try {
-        const dbSize = await db.raw(`
-          SELECT pg_database_size(current_database()) as size
-        `);
-        // Convert to percentage of a nominal 1GB limit
-        const sizeBytes = Number(dbSize?.rows?.[0]?.size) || 0;
-        storageUsage = Math.min(Math.round((sizeBytes / (1024 * 1024 * 1024)) * 100), 100);
-      } catch {
-        storageUsage = 0;
-      }
-
-      // Count active users (users who logged in within last 24 hours)
-      // users table has 'last_login' column, not 'lastActivity'
-      let activeUserCount = 0;
-      try {
-        const activeUsers = await db('users')
-          .where('last_login', '>', new Date(Date.now() - 24 * 60 * 60 * 1000))
-          .where('tenant_id', tenantId)
-          .count('* as count')
-          .first();
-        activeUserCount = Number(activeUsers?.count) || 0;
-      } catch {
-        // last_login column might not exist - default to 0
-      }
-
-      return {
-        databaseStatus,
-        lastBackup: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-        apiResponseTime,
-        storageUsage,
-        activeUsers: activeUserCount,
-      };
-    } catch (error) {
-      logger.error(`Error getting system health: ${error}`);
-      return {
-        databaseStatus: 'error',
-        lastBackup: new Date().toISOString(),
-        apiResponseTime: 0,
-        storageUsage: 0,
-        activeUsers: 0,
-      };
+      await db.raw('SELECT 1');
+      databaseStatus = 'healthy';
+      apiResponseTime = Date.now() - startTime;
+    } catch (err) {
+      logger.error(`System health DB ping failed: ${err}`);
+      databaseStatus = 'error';
+      apiResponseTime = Date.now() - startTime;
     }
+
+    // 2. Storage usage (best-effort; failure here does NOT affect DB status)
+    let storageUsage = 0;
+    try {
+      const dbSize = await db.raw('SELECT pg_database_size(current_database()) as size');
+      const sizeBytes = Number(dbSize?.rows?.[0]?.size) || 0;
+      storageUsage = Math.min(Math.round((sizeBytes / (1024 * 1024 * 1024)) * 100), 100);
+    } catch (err) {
+      logger.warn(`System health storage check failed: ${err}`);
+      storageUsage = 0;
+    }
+
+    // 3. Active users in the last 24h (best-effort)
+    let activeUserCount = 0;
+    try {
+      const activeUsers = await db('users')
+        .where('last_login', '>', new Date(Date.now() - 24 * 60 * 60 * 1000))
+        .where('tenant_id', tenantId)
+        .count('* as count')
+        .first();
+      activeUserCount = Number(activeUsers?.count) || 0;
+    } catch (err) {
+      logger.warn(`System health active-users check failed: ${err}`);
+      activeUserCount = 0;
+    }
+
+    // 4. Last backup (best-effort — read the most recent backup record if present)
+    let lastBackup = new Date().toISOString();
+    try {
+      const hasBackups = await db.schema.hasTable('backups');
+      if (hasBackups) {
+        const latest = await db('backups')
+          .where('tenant_id', tenantId)
+          .orderBy('created_at', 'desc')
+          .select('created_at')
+          .first();
+        if (latest?.created_at) lastBackup = new Date(latest.created_at).toISOString();
+      }
+    } catch {
+      /* keep default */
+    }
+
+    return {
+      databaseStatus,
+      lastBackup,
+      apiResponseTime,
+      storageUsage,
+      activeUsers: activeUserCount,
+    };
   }
 
   /**

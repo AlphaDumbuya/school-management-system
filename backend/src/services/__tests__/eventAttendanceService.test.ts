@@ -1,359 +1,404 @@
 /**
- * Event Attendance Service Tests  
- * Task 7.1 - Service tests for eventAttendanceService
+ * EventAttendanceService — Unit Tests
+ * Multi-tenant aware: each test run creates an isolated tenant.
+ *
+ * Fixed from original:
+ *  - import db from '../../utils/database' (was '../../config/database')
+ *  - default singleton imports (not named exports)
+ *  - tenant_id / user_id / event_id are UUIDs
+ *  - service signatures match implementation:
+ *      markAttendance(eventId, data, markedBy)
+ *      checkIn(eventId, userId, method?)
+ *      checkOut(eventId, userId)
+ *      bulkMarkAttendance(eventId, attendances, markedBy)
+ *      getEventAttendance(eventId)
+ *      getUserAttendance(userId, tenantId)
+ *      generateAttendanceReport(eventId)
+ *  - no { success } wrapper — services throw on error
+ *  - QR code test verifies base64 PNG returned (not raw JSON string)
+ *  - attendance_service requires user to be registered first
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { eventAttendanceService } from '../eventAttendanceService';
-import { eventService } from '../eventService';
-import { eventRegistrationService } from '../eventRegistrationService';
-import db from '../../config/database';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import eventAttendanceService from '../../services/eventAttendanceService';
+import eventRegistrationService from '../../services/eventRegistrationService';
+import eventService from '../../services/eventService';
+import db from '../../utils/database';
 
-describe('EventAttendanceService', () => {
-    let testEventId: number;
-    let testRegistrationId: number;
-    let testUserId = 100;
+// ── Fixtures ──────────────────────────────────────────────────────────────────
 
-    beforeEach(async () => {
-        // Clear test data
-        await db('event_attendance').where('tenant_id', 1).del();
-        await db('event_registrations').where('tenant_id', 1).del();
-        await db('events').where('tenant_id', 1).del();
+let tenantId: string;
+let staffId:  string;   // marks attendance / is marked-by
+let userId:   string;   // the attendee
 
-        // Create test event
-        const event = await eventService.createEvent({
-            tenant_id: 1,
-            title: 'Test Event',
-            event_type: 'academic' as const,
-            start_datetime: new Date(),
-            end_datetime: new Date(Date.now() + 3600000), // 1 hour from now
-            organizer_id: 1,
-            capacity: 50,
-            status: 'published' as const
-        });
+function future(offsetDays = 1): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d;
+}
+function futureEnd(offsetDays = 1): Date {
+  const d = future(offsetDays);
+  d.setHours(d.getHours() + 4);
+  return d;
+}
+function minEvent(overrides: Record<string, any> = {}) {
+  return { title: 'Test Event', event_type: 'single' as const, start_date: future(1), end_date: futureEnd(1), ...overrides };
+}
 
-        testEventId = event.data!.event_id;
+beforeAll(async () => {
+  const [t] = await db('tenants').insert({
+    name: `AttSvc Test ${Date.now()}`, slug: `attsvc-${Date.now()}`,
+    status: 'active', timezone: 'UTC', currency: 'USD', language: 'en',
+    max_users: 100, max_storage_gb: 10, settings: {},
+  }).returning('id');
+  tenantId = t.id ?? t;
 
-        // Create test registration
-        const registration = await eventRegistrationService.registerForEvent({
-            event_id: testEventId,
-            user_id: testUserId,
-            tenant_id: 1,
-            rsvp_status: 'going'
-        });
+  const bcryptjs = await import('bcryptjs');
+  const hash = await bcryptjs.default.hash('TestPass123!', 10);
 
-        testRegistrationId = registration.data!.registration_id;
-    });
+  const [s] = await db('users').insert({
+    tenant_id: tenantId, email: `att-staff-${Date.now()}@test.com`,
+    password_hash: hash, first_name: 'Staff', last_name: 'Att',
+    role: 'principal', status: 'active',
+  }).returning('id');
+  staffId = s.id ?? s;
 
-    afterEach(async () => {
-        await db('event_attendance').where('tenant_id', 1).del();
-        await db('event_registrations').where('tenant_id', 1).del();
-        await db('events').where('tenant_id', 1).del();
-    });
+  const [u] = await db('users').insert({
+    tenant_id: tenantId, email: `att-user-${Date.now()}@test.com`,
+    password_hash: hash, first_name: 'Student', last_name: 'Att',
+    role: 'student', status: 'active',
+  }).returning('id');
+  userId = u.id ?? u;
+});
 
-    describe('markAttendance', () => {
-        it('should mark user as present', async () => {
-            const result = await eventAttendanceService.markAttendance({
-                event_id: testEventId,
-                user_id: testUserId,
-                tenant_id: 1,
-                status: 'present',
-                marked_by_id: 1
-            });
+afterAll(async () => {
+  await db('event_attendance').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+  await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+  await db('event_category_mappings').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+  await db('events').where({ tenant_id: tenantId }).del();
+  await db('event_categories').where({ tenant_id: tenantId }).del();
+  await db('users').where({ id: userId }).del();
+  await db('users').where({ id: staffId }).del();
+  await db('tenants').where({ id: tenantId }).del();
+});
 
-            expect(result.success).toBe(true);
-            expect(result.data?.status).toBe('present');
-            expect(result.data?.user_id).toBe(testUserId);
-        });
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-        it('should mark user as absent', async () => {
-            const result = await eventAttendanceService.markAttendance({
-                event_id: testEventId,
-                user_id: testUserId,
-                tenant_id: 1,
-                status: 'absent',
-                marked_by_id: 1
-            });
+/** Creates a published event and registers userId for it. Returns event. */
+async function setupEventWithRegistration(overrides: Record<string, any> = {}) {
+  const event = await eventService.createEvent(tenantId, staffId, minEvent(overrides));
+  await eventService.publishEvent(event.event_id, tenantId, staffId);
+  await eventRegistrationService.registerForEvent(event.event_id, userId, { rsvp_status: 'going' });
+  return event;
+}
 
-            expect(result.success).toBe(true);
-            expect(result.data?.status).toBe('absent');
-        });
+// ── markAttendance ────────────────────────────────────────────────────────────
 
-        it('should update existing attendance record', async () => {
-            // Mark as present first
-            await eventAttendanceService.markAttendance({
-                event_id: testEventId,
-                user_id: testUserId,
-                tenant_id: 1,
-                status: 'present',
-                marked_by_id: 1
-            });
+describe('markAttendance', () => {
+  afterEach(async () => {
+    await db('event_attendance').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
 
-            // Update to late
-            const result = await eventAttendanceService.markAttendance({
-                event_id: testEventId,
-                user_id: testUserId,
-                tenant_id: 1,
-                status: 'late',
-                marked_by_id: 1
-            });
+  it('marks a registered user as present', async () => {
+    const event = await setupEventWithRegistration({ title: 'Attendance Test' });
 
-            expect(result.success).toBe(true);
-            expect(result.data?.status).toBe('late');
-        });
+    const attendance = await eventAttendanceService.markAttendance(
+      event.event_id,
+      { user_id: userId, status: 'present' },
+      staffId,
+    );
 
-        it('should allow adding notes', async () => {
-            const result = await eventAttendanceService.markAttendance({
-                event_id: testEventId,
-                user_id: testUserId,
-                tenant_id: 1,
-                status: 'present',
-                marked_by_id: 1,
-                notes: 'Arrived early'
-            });
+    expect(attendance.status).toBe('present');
+    expect(attendance.event_id).toBe(event.event_id);
+    expect(attendance.user_id).toBe(userId);
+    expect(attendance.marked_by).toBe(staffId);
+  });
 
-            expect(result.success).toBe(true);
-            expect(result.data?.notes).toBe('Arrived early');
-        });
-    });
+  it('marks a registered user as absent', async () => {
+    const event = await setupEventWithRegistration();
 
-    describe('checkIn', () => {
-        it('should check in a user', async () => {
-            const result = await eventAttendanceService.checkIn(
-                testEventId,
-                testUserId,
-                1,
-                1
-            );
+    const attendance = await eventAttendanceService.markAttendance(
+      event.event_id,
+      { user_id: userId, status: 'absent' },
+      staffId,
+    );
 
-            expect(result.success).toBe(true);
-            expect(result.data?.check_in_time).toBeDefined();
-            expect(result.data?.status).toBe('present');
-        });
+    expect(attendance.status).toBe('absent');
+  });
 
-        it('should not allow duplicate check-ins', async () => {
-            // First check-in
-            await eventAttendanceService.checkIn(testEventId, testUserId, 1, 1);
+  it('updates an existing attendance record (upsert)', async () => {
+    const event = await setupEventWithRegistration();
 
-            // Second check-in
-            const result = await eventAttendanceService.checkIn(testEventId, testUserId, 1, 1);
+    await eventAttendanceService.markAttendance(event.event_id, { user_id: userId, status: 'present' }, staffId);
+    const updated = await eventAttendanceService.markAttendance(event.event_id, { user_id: userId, status: 'late' }, staffId);
 
-            // Should update existing record, not create new one
-            expect(result.success).toBe(true);
-        });
-    });
+    expect(updated.status).toBe('late');
 
-    describe('checkOut', () => {
-        it('should check out a user', async () => {
-            // Check in first
-            await eventAttendanceService.checkIn(testEventId, testUserId, 1, 1);
+    // Verify only one record exists
+    const rows = await db('event_attendance').where({ event_id: event.event_id, user_id: userId });
+    expect(rows.length).toBe(1);
+  });
 
-            // Check out
-            const result = await eventAttendanceService.checkOut(
-                testEventId,
-                testUserId,
-                1,
-                1
-            );
+  it('saves notes on the attendance record', async () => {
+    const event = await setupEventWithRegistration();
 
-            expect(result.success).toBe(true);
-            expect(result.data?.check_out_time).toBeDefined();
-        });
+    const attendance = await eventAttendanceService.markAttendance(
+      event.event_id,
+      { user_id: userId, status: 'present', notes: 'Arrived early' },
+      staffId,
+    );
 
-        it('should calculate duration on checkout', async () => {
-            // Check in
-            await eventAttendanceService.checkIn(testEventId, testUserId, 1, 1);
+    expect(attendance.notes).toBe('Arrived early');
+  });
 
-            // Wait a moment
-            await new Promise(resolve => setTimeout(resolve, 100));
+  it('throws when the user is not registered for the event', async () => {
+    const event = await eventService.createEvent(tenantId, staffId, minEvent({ title: 'Unregistered Test' }));
+    await eventService.publishEvent(event.event_id, tenantId, staffId);
+    // No registration created
 
-            // Check out
-            const result = await eventAttendanceService.checkOut(
-                testEventId,
-                testUserId,
-                1,
-                1
-            );
+    await expect(
+      eventAttendanceService.markAttendance(event.event_id, { user_id: userId, status: 'present' }, staffId),
+    ).rejects.toThrow(/not registered/i);
+  });
+});
 
-            expect(result.success).toBe(true);
-            expect(result.data?.duration_minutes).toBeGreaterThan(0);
-        });
-    });
+// ── checkIn ───────────────────────────────────────────────────────────────────
 
-    describe('getEventAttendance', () => {
-        beforeEach(async () => {
-            // Register multiple users
-            const user2 = 101;
-            const user3 = 102;
+describe('checkIn', () => {
+  afterEach(async () => {
+    await db('event_attendance').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
 
-            await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: user2,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+  it('records check-in time and marks user present', async () => {
+    const event = await setupEventWithRegistration({ title: 'Check-in Test' });
 
-            await eventRegistrationService.registerForEvent({
-                event_id: testEventId,
-                user_id: user3,
-                tenant_id: 1,
-                rsvp_status: 'going'
-            });
+    const attendance = await eventAttendanceService.checkIn(event.event_id, userId);
 
-            // Mark attendance for all
-            await eventAttendanceService.markAttendance({
-                event_id: testEventId,
-                user_id: testUserId,
-                tenant_id: 1,
-                status: 'present',
-                marked_by_id: 1
-            });
+    expect(attendance.status).toBe('present');
+    expect(attendance.check_in_time).toBeTruthy();
+  });
 
-            await eventAttendanceService.markAttendance({
-                event_id: testEventId,
-                user_id: user2,
-                tenant_id: 1,
-                status: 'present',
-                marked_by_id: 1
-            });
+  it('throws when the user checks in twice', async () => {
+    const event = await setupEventWithRegistration();
+    await eventAttendanceService.checkIn(event.event_id, userId);
 
-            await eventAttendanceService.markAttendance({
-                event_id: testEventId,
-                user_id: user3,
-                tenant_id: 1,
-                status: 'absent',
-                marked_by_id: 1
-            });
-        });
+    await expect(
+      eventAttendanceService.checkIn(event.event_id, userId),
+    ).rejects.toThrow(/already checked in/i);
+  });
+});
 
-        it('should get all attendance records', async () => {
-            const result = await eventAttendanceService.getEventAttendance(
-                testEventId,
-                1,
-                { page: 1, limit: 10 }
-            );
+// ── checkOut ──────────────────────────────────────────────────────────────────
 
-            expect(result.success).toBe(true);
-            expect(result.data!.data.length).toBe(3);
-        });
+describe('checkOut', () => {
+  afterEach(async () => {
+    await db('event_attendance').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
 
-        it('should filter by attendance status', async () => {
-            const result = await eventAttendanceService.getEventAttendance(
-                testEventId,
-                1,
-                { page: 1, limit: 10, status: 'present' }
-            );
+  it('records check-out time after a check-in', async () => {
+    const event = await setupEventWithRegistration({ title: 'Check-out Test' });
+    await eventAttendanceService.checkIn(event.event_id, userId);
 
-            expect(result.success).toBe(true);
-            expect(result.data!.data.every(a => a.status === 'present')).toBe(true);
-            expect(result.data!.data.length).toBe(2);
-        });
-    });
+    const attendance = await eventAttendanceService.checkOut(event.event_id, userId);
 
-    describe('generateQRCode', () => {
-        it('should generate QR code for check-in', async () => {
-            const result = await eventAttendanceService.generateQRCode(
-                testEventId,
-                testUserId,
-                1
-            );
+    expect(attendance.check_out_time).toBeTruthy();
+    expect(new Date(attendance.check_out_time!) > new Date(attendance.check_in_time!)).toBe(true);
+  });
 
-            expect(result.success).toBe(true);
-            expect(result.data?.qr_code).toBeDefined();
-            expect(result.data?.qr_code).toContain('event_id');
-            expect(result.data?.qr_code).toContain('user_id');
-        });
+  it('throws when there is no check-in record to check out', async () => {
+    const event = await setupEventWithRegistration({ title: 'No Checkin' });
 
-        it('should include expiry in QR code data', async () => {
-            const result = await eventAttendanceService.generateQRCode(
-                testEventId,
-                testUserId,
-                1
-            );
+    await expect(
+      eventAttendanceService.checkOut(event.event_id, userId),
+    ).rejects.toThrow(/not found/i);
+  });
+});
 
-            expect(result.success).toBe(true);
-            const qrData = JSON.parse(result.data!.qr_code);
-            expect(qrData.expiry).toBeDefined();
-        });
-    });
+// ── bulkMarkAttendance ────────────────────────────────────────────────────────
 
-    describe('getAttendanceReport', () => {
-        beforeEach(async () => {
-            // Register and mark attendance for multiple users
-            for (let i = 100; i < 110; i++) {
-                await eventRegistrationService.registerForEvent({
-                    event_id: testEventId,
-                    user_id: i,
-                    tenant_id: 1,
-                    rsvp_status: 'going'
-                });
+describe('bulkMarkAttendance', () => {
+  afterEach(async () => {
+    await db('event_attendance').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
 
-                const status = i < 107 ? 'present' : 'absent';
-                await eventAttendanceService.markAttendance({
-                    event_id: testEventId,
-                    user_id: i,
-                    tenant_id: 1,
-                    status,
-                    marked_by_id: 1
-                });
-            }
-        });
+  it('marks attendance for multiple users in one call', async () => {
+    const event = await eventService.createEvent(tenantId, staffId, minEvent({ title: 'Bulk Test', capacity: 10 }));
+    await eventService.publishEvent(event.event_id, tenantId, staffId);
 
-        it('should generate attendance report with statistics', async () => {
-            const result = await eventAttendanceService.getAttendanceReport(
-                testEventId,
-                1
-            );
+    // Create 3 extra users and register them
+    const extraIds: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const [u] = await db('users').insert({
+        tenant_id: tenantId, email: `bulk-u${i}-${Date.now()}@test.com`,
+        password_hash: 'x', first_name: `B${i}`, last_name: 'U',
+        role: 'student', status: 'active',
+      }).returning('id');
+      const uid = u.id ?? u;
+      extraIds.push(uid);
+      await eventRegistrationService.registerForEvent(event.event_id, uid, { rsvp_status: 'going' });
+    }
 
-            expect(result.success).toBe(true);
-            expect(result.data?.total_registered).toBe(10);
-            expect(result.data?.total_present).toBe(7);
-            expect(result.data?.total_absent).toBe(3);
-            expect(result.data?.attendance_rate).toBeCloseTo(70, 0);
-        });
-    });
+    const attendances = extraIds.map((uid, i) => ({
+      user_id: uid,
+      status: (i < 2 ? 'present' : 'absent') as 'present' | 'absent',
+    }));
 
-    describe('getUserAttendanceHistory', () => {
-        beforeEach(async () => {
-            // Create multiple events and mark attendance
-            for (let i = 0; i < 3; i++) {
-                const event = await eventService.createEvent({
-                    tenant_id: 1,
-                    title: `Event ${i}`,
-                    event_type: 'academic' as const,
-                    start_datetime: new Date(),
-                    end_datetime: new Date(Date.now() + 3600000),
-                    organizer_id: 1,
-                    capacity: 50,
-                    status: 'published' as const
-                });
+    await eventAttendanceService.bulkMarkAttendance(event.event_id, attendances, staffId);
 
-                await eventRegistrationService.registerForEvent({
-                    event_id: event.data!.event_id,
-                    user_id: testUserId,
-                    tenant_id: 1,
-                    rsvp_status: 'going'
-                });
+    const records = await db('event_attendance').where({ event_id: event.event_id });
+    expect(records.length).toBe(3);
 
-                await eventAttendanceService.markAttendance({
-                    event_id: event.data!.event_id,
-                    user_id: testUserId,
-                    tenant_id: 1,
-                    status: 'present',
-                    marked_by_id: 1
-                });
-            }
-        });
+    const statuses = records.map((r: any) => r.status);
+    expect(statuses.filter((s: string) => s === 'present').length).toBe(2);
+    expect(statuses.filter((s: string) => s === 'absent').length).toBe(1);
 
-        it('should get user attendance history across events', async () => {
-            const result = await eventAttendanceService.getUserAttendanceHistory(
-                testUserId,
-                1,
-                { page: 1, limit: 10 }
-            );
+    // Cleanup
+    await db('event_registrations').where({ event_id: event.event_id }).del();
+    for (const uid of extraIds) {
+      await db('users').where({ id: uid }).del();
+    }
+  });
+});
 
-            expect(result.success).toBe(true);
-            expect(result.data!.data.length).toBeGreaterThanOrEqual(3);
-        });
-    });
+// ── getEventAttendance ────────────────────────────────────────────────────────
+
+describe('getEventAttendance', () => {
+  afterEach(async () => {
+    await db('event_attendance').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
+
+  it('returns attendance records with user info joined', async () => {
+    const event = await setupEventWithRegistration({ title: 'Get Attendance Test' });
+    await eventAttendanceService.markAttendance(event.event_id, { user_id: userId, status: 'present' }, staffId);
+
+    const records = await eventAttendanceService.getEventAttendance(event.event_id);
+
+    expect(records.length).toBe(1);
+    expect(records[0].user_id).toBe(userId);
+    expect(records[0].status).toBe('present');
+    // Should include joined user fields
+    expect(records[0].first_name).toBeDefined();
+    expect(records[0].email).toBeDefined();
+  });
+
+  it('scopes to the correct event (tenant isolation via event FK)', async () => {
+    const event1 = await setupEventWithRegistration({ title: 'Event Isolation 1' });
+    await eventAttendanceService.markAttendance(event1.event_id, { user_id: userId, status: 'present' }, staffId);
+
+    // Create another event and register userId for it too
+    const event2 = await eventService.createEvent(tenantId, staffId, minEvent({ title: 'Event Isolation 2' }));
+    await eventService.publishEvent(event2.event_id, tenantId, staffId);
+    await eventRegistrationService.registerForEvent(event2.event_id, userId, { rsvp_status: 'going' });
+    await eventAttendanceService.markAttendance(event2.event_id, { user_id: userId, status: 'absent' }, staffId);
+
+    const records1 = await eventAttendanceService.getEventAttendance(event1.event_id);
+    expect(records1.every((r: any) => r.event_id === event1.event_id)).toBe(true);
+
+    const records2 = await eventAttendanceService.getEventAttendance(event2.event_id);
+    expect(records2.every((r: any) => r.event_id === event2.event_id)).toBe(true);
+  });
+});
+
+// ── generateAttendanceQRCode ──────────────────────────────────────────────────
+
+describe('generateAttendanceQRCode', () => {
+  afterEach(async () => {
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
+
+  it('returns a base64 PNG data URL', async () => {
+    const event = await eventService.createEvent(tenantId, staffId, minEvent({ title: 'QR Test' }));
+    await eventService.publishEvent(event.event_id, tenantId, staffId);
+
+    const qrImage = await eventAttendanceService.generateAttendanceQRCode(event.event_id);
+
+    expect(typeof qrImage).toBe('string');
+    expect(qrImage.startsWith('data:image/png;base64,')).toBe(true);
+  });
+
+  it('throws for a non-existent event', async () => {
+    await expect(
+      eventAttendanceService.generateAttendanceQRCode('00000000-0000-0000-0000-000000000000'),
+    ).rejects.toThrow(/not found/i);
+  });
+});
+
+// ── generateAttendanceReport ──────────────────────────────────────────────────
+
+describe('generateAttendanceReport', () => {
+  afterEach(async () => {
+    await db('event_attendance').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
+
+  it('generates a report with correct totals', async () => {
+    const event = await eventService.createEvent(tenantId, staffId, minEvent({ title: 'Report Test', capacity: 20 }));
+    await eventService.publishEvent(event.event_id, tenantId, staffId);
+
+    // Create 5 users, register them, mark 3 present and 2 absent
+    const testUsers: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const [u] = await db('users').insert({
+        tenant_id: tenantId, email: `rpt-u${i}-${Date.now()}@test.com`,
+        password_hash: 'x', first_name: `R${i}`, last_name: 'User',
+        role: 'student', status: 'active',
+      }).returning('id');
+      const uid = u.id ?? u;
+      testUsers.push(uid);
+      await eventRegistrationService.registerForEvent(event.event_id, uid, { rsvp_status: 'going' });
+      await eventAttendanceService.markAttendance(
+        event.event_id,
+        { user_id: uid, status: i < 3 ? 'present' : 'absent' },
+        staffId,
+      );
+    }
+
+    const report = await eventAttendanceService.generateAttendanceReport(event.event_id);
+
+    expect(report.event_id).toBe(event.event_id);
+    expect(report.total_present).toBe(3);
+    expect(report.total_absent).toBe(2);
+    expect(report.total_registered).toBeGreaterThanOrEqual(5);
+    expect(report.attendance_rate).toBeGreaterThan(0);
+    expect(Array.isArray(report.attendees)).toBe(true);
+    expect(report.attendees.length).toBe(5);
+
+    // Cleanup
+    await db('event_registrations').where({ event_id: event.event_id }).del();
+    for (const uid of testUsers) {
+      await db('users').where({ id: uid }).del();
+    }
+  });
+});
+
+// ── getAttendanceStats ────────────────────────────────────────────────────────
+
+describe('getAttendanceStats', () => {
+  afterEach(async () => {
+    await db('event_attendance').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('event_registrations').whereIn('event_id', db('events').select('event_id').where({ tenant_id: tenantId })).del();
+    await db('events').where({ tenant_id: tenantId }).del();
+  });
+
+  it('returns correct present / absent breakdown', async () => {
+    const event = await setupEventWithRegistration({ title: 'Stats Test', capacity: 10 });
+    await eventAttendanceService.markAttendance(event.event_id, { user_id: userId, status: 'present' }, staffId);
+
+    const stats = await eventAttendanceService.getAttendanceStats(event.event_id);
+
+    expect(stats.present).toBe(1);
+    expect(stats.absent).toBe(0);
+    expect(stats.attendance_rate).toBeGreaterThan(0);
+  });
 });

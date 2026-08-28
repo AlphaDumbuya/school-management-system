@@ -100,7 +100,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'student', 'parent'],
     module: 'Academic Management',
     group: 'Academic',
-    version: 'v2',
+    version: 'v1',
   },
   {
     label: 'Report Cards',
@@ -109,7 +109,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'teacher', 'student', 'parent'],
     module: 'Academic Management',
     group: 'Academic',
-    version: 'v2',
+    version: 'v1',
   },
   {
     label: 'Promotions',
@@ -118,7 +118,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal'],
     module: 'Academic Management',
     group: 'Academic',
-    version: 'v2',
+    version: 'v1',
   },
 
   // ── STUDENT MANAGEMENT ──────────────────────────────────────────────

@@ -1,23 +1,22 @@
 import { db } from '../utils/database.js';
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
-import { AppError } from '@middleware/errorHandler';
-import { logger } from '@utils/logger';
-import { UserRole } from '../types/auth';
+import { authenticate, authorize, attachUserContext } from '../middleware/authMiddleware.js';
+import { AppError } from '../middleware/errorHandler.js';
+import { logger } from '../utils/logger.js';
+import { UserRole } from '../types/auth.js';
 
 const router = Router();
 router.use(authenticate);
 router.use(attachUserContext);
 
-// ── Grading Scale ─────────────────────────────────────────────────────────────
+// ── Grace School of Science Standard Sierra Leone Grading Scale ────────────────
 
 function getGrade(totalScore: number): { letter: string; remark: string } {
-  if (totalScore >= 75) return { letter: 'A', remark: 'Excellent' };
-  if (totalScore >= 65) return { letter: 'B', remark: 'Very Good' };
-  if (totalScore >= 50) return { letter: 'C', remark: 'Good' };
-  if (totalScore >= 40) return { letter: 'D', remark: 'Pass' };
-  if (totalScore >= 30) return { letter: 'E', remark: 'Weak Pass' };
-  return { letter: 'F', remark: 'Fail' };
+  if (totalScore >= 85) return { letter: 'A', remark: 'Excellent' };
+  if (totalScore >= 75) return { letter: 'B', remark: 'Very Good' };
+  if (totalScore >= 60) return { letter: 'C', remark: 'Good' };
+  if (totalScore >= 50) return { letter: 'D', remark: 'Satisfying' };
+  return { letter: 'F', remark: 'Unsatisfying' };
 }
 
 /**
@@ -37,8 +36,6 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
     if (!student_id || !subject_id || !class_id || !academic_year || !term) {
       throw new AppError('Missing required fields', 400, 'VALIDATION_ERROR');
     }
-
-    // Verify student belongs to this tenant
     const student = await db('students').where({ id: student_id, tenant_id: tenantId }).first();
     if (!student) {
       throw new AppError('Student not found or access denied', 404, 'NOT_FOUND');
@@ -274,8 +271,8 @@ router.get('/summary', authenticate, async (req: Request, res: Response, next: N
         db.raw('MAX(results.total_score) as highest_score'),
         db.raw('MIN(results.total_score) as lowest_score'),
         db.raw('AVG(results.total_score) as average_score'),
-        db.raw("SUM(CASE WHEN results.total_score >= 40 THEN 1 ELSE 0 END) as pass_count"),
-        db.raw("SUM(CASE WHEN results.total_score < 40 THEN 1 ELSE 0 END) as fail_count")
+        db.raw("SUM(CASE WHEN results.total_score >= 50 THEN 1 ELSE 0 END) as pass_count"),
+        db.raw("SUM(CASE WHEN results.total_score < 50 THEN 1 ELSE 0 END) as fail_count")
       )
       .first();
 

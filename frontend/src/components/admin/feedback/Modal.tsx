@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { X } from 'lucide-react';
 import clsx from 'clsx';
 
-export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
+export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'fullscreen';
 
 export interface ModalProps {
   isOpen: boolean;
@@ -15,10 +15,12 @@ export interface ModalProps {
 }
 
 const SIZE_CLASSES: Record<ModalSize, string> = {
-  sm: 'sm:max-w-[448px]',
-  md: 'sm:max-w-[576px]',
-  lg: 'sm:max-w-[768px]',
-  xl: 'sm:max-w-[900px]',
+  sm:         'sm:max-w-[448px]',
+  md:         'sm:max-w-[576px]',
+  lg:         'sm:max-w-[768px]',
+  xl:         'sm:max-w-[900px]',
+  '2xl':      'sm:max-w-[1200px]',
+  fullscreen: 'sm:max-w-[98vw]',
 };
 
 export const Modal: React.FC<ModalProps> = ({

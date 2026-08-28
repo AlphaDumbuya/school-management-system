@@ -119,9 +119,10 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         {/* ── KPI Stat Row ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           {isInitialLoad ? (
             <>
+              <SkeletonCard />
               <SkeletonCard />
               <SkeletonCard />
               <SkeletonCard />
@@ -148,6 +149,13 @@ export const AdminDashboard: React.FC = () => {
                 value={dashboard ? dashboard.metrics.totalClasses : '—'}
                 icon={<BookOpen size={32} />}
                 color="purple"
+                isLoading={loading && !dashboard}
+              />
+              <KPICard
+                title="Academic Pass Avg"
+                value={dashboard ? `${dashboard.metrics.averageGrade || 0}%` : '—'}
+                icon={<BarChart2 size={32} />}
+                color="amber"
                 isLoading={loading && !dashboard}
               />
               <KPICard
@@ -428,7 +436,7 @@ export const AdminDashboard: React.FC = () => {
               { label: 'Create Class',      icon: <BookOpen size={18} />,       route: '/academic/classes' },
               { label: 'Add Teacher',       icon: <Briefcase size={18} />,      route: '/staff/teachers' },
               { label: 'Manage Timetable',  icon: <CalendarDays size={18} />,   route: '/academic/timetables' },
-              { label: 'Publish Results',   icon: <ClipboardCheck size={18} />, route: '/academic/examinations' },
+              { label: 'Publish Results',   icon: <ClipboardCheck size={18} />, route: '/academic/results' },
               { label: 'Generate Report',   icon: <BarChart2 size={18} />,      route: '/reports/academic' },
               { label: 'Send Announcement', icon: <Megaphone size={18} />,      route: '/communication/announcements' },
               { label: 'Import / Export',   icon: <ArrowLeftRight size={18} />, route: '/import-export' },

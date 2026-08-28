@@ -326,6 +326,21 @@ export const TemplatesPage: React.FC = () => {
                             },
                         ];
 
+                        if (template.status === 'draft') {
+                            actions.push({
+                                label: 'Submit for Approval',
+                                onClick: async (row: CardTemplate) => {
+                                    try {
+                                        await idCardService.submitForApproval(row.id);
+                                        showToast.success('Template submitted for approval');
+                                        queryClient.invalidateQueries({ queryKey: ['card-templates'] });
+                                    } catch (err: any) {
+                                        showToast.error(err.response?.data?.message || 'Failed to submit');
+                                    }
+                                },
+                            });
+                        }
+
                         if (template.status === 'pending_approval') {
                             actions.push({
                                 label: 'Approve',
@@ -339,6 +354,24 @@ export const TemplatesPage: React.FC = () => {
                                 onClick: (row: CardTemplate) => handleSetDefault(row),
                             });
                         }
+
+                        actions.push({
+                            label: 'Duplicate',
+                            onClick: async (row: CardTemplate) => {
+                                try {
+                                    await idCardService.createTemplate({
+                                        ...row,
+                                        name: `${row.name} (Copy)`,
+                                        status: 'draft' as any,
+                                        isDefault: false,
+                                    } as any);
+                                    showToast.success('Template duplicated as draft');
+                                    queryClient.invalidateQueries({ queryKey: ['card-templates'] });
+                                } catch (err: any) {
+                                    showToast.error('Failed to duplicate template');
+                                }
+                            },
+                        });
 
                         actions.push({
                             label: 'Delete',

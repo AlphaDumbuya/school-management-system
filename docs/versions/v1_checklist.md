@@ -11,14 +11,14 @@
   - [x] Tagged all v2 navigation items with `version: 'v2'`
   - [x] Filtered out all v2 items when `ENABLE_V2_FEATURES = false`
 - [x] **Student Profile Tab Filtering ([StudentProfilesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentProfilesPage.tsx))**:
-  - [x] Restricted `Academics` (Grades/Results) tab for v1.0.0 release.
+  - [x] Enabled `Academics` (Grades/Results & Transcript) tab for v1.0.0 release.
   - [x] Restricted `Billing` (Invoices/Fees) tab for v1.0.0 release.
-  - [x] Active v1.0.0 profile tabs: `Overview`, `Attendance`, and `Conduct`.
+  - [x] Active v1.0.0 profile tabs: `Overview`, `Academics`, `Attendance`, and `Conduct`.
 - [x] **Student Dashboard Tab Filtering ([Phase13StudentDashboard.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/Phase13StudentDashboard.tsx))**:
-  - [x] Restricted `Grades` and `Fees` tabs for v1.0.0 release.
+  - [x] Enabled `Grades/Results` tab for v1.0.0 release. Restricted `Fees` tab for v2.
 - [x] **Router Protection ([routes.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/router/routes.tsx))**:
-  - [x] Added `V2Route` guard component.
-  - [x] Wrapped all v2 paths with `V2Route` so typing direct URLs redirects to `/dashboard` when `V2_ENABLED = false`.
+  - [x] Added `V2Route` guard component for v2-only features.
+  - [x] Unrestricted `/academic/results` for v1.0.0 while guarding v2 routes (e.g. `/academic/report-cards`, `/finance/*`).
 
 ---
 
@@ -44,6 +44,7 @@
 - [ ] Timetables Scheduling ([TimetablesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/TimetablesPage.tsx))
 - [ ] Homework & Assignments ([AssignmentsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/AssignmentsPage.tsx))
 - [ ] Examination Timetables & Venues ([ExaminationsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/ExaminationsPage.tsx))
+- [x] Result & Gradebook Management ([ResultsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/ResultsPage.tsx), [ReportCardsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/ReportCardsPage.tsx)) — *Single & bulk grade entry (Grace School Test 1/Test 2 100% Mean, Rising Academy MTT/ETT, WASSCE CA 30%/Exam 70%), failing mark red highlights (<50%), conduct legend, 4-Page Fold Booklet PDF Report Cards generator, Affective & Psychomotor rating grids, automated attendance aggregation, guidance comments, and promotion decisions.*
 
 ### 4. Staff Directory
 - [ ] Teacher Directory & Profiles ([TeachersPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/staff/TeachersPage.tsx))

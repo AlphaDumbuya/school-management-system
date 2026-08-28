@@ -182,7 +182,7 @@ export const ExaminationsPage: React.FC = () => {
               placeholder="Search exam title or subject..."
               onSearch={setSearch}
               isLoading={isLoading}
-              resultCount={search ? exams.length : undefined}
+              resultCount={search ? examinations.length : undefined}
               className="w-full lg:max-w-md"
             />
             <div className="flex items-center gap-2 w-full lg:w-auto flex-wrap">

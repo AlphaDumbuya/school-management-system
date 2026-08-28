@@ -312,7 +312,7 @@ export class EventAnalyticsService {
         )
         .orderBy('date', 'asc');
 
-      return trends.map((trend) => {
+      return trends.map((trend: any) => {
         const registrations = parseInt(trend.total_registrations || '0');
         const attendance = parseInt(trend.total_attendance || '0');
         const rate = registrations > 0 ? (attendance / registrations) * 100 : 0;
@@ -413,7 +413,10 @@ export class EventAnalyticsService {
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-      const [overallStats, categoryStats, popularEvents, noShowRate] =
+      // Trends: last 30 days for the dashboard chart
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      const [overallStats, categoryStats, popularEvents, noShowRate, trends] =
         await Promise.all([
           this.getOverallStats(tenantId, {
             start_date: startOfMonth,
@@ -422,6 +425,7 @@ export class EventAnalyticsService {
           this.getCategoryStats(tenantId),
           this.getPopularEvents(tenantId, 5),
           this.getNoShowRate(undefined, tenantId),
+          this.getAttendanceTrends(tenantId, thirtyDaysAgo, now),
         ]);
 
       return {
@@ -433,11 +437,46 @@ export class EventAnalyticsService {
         categories: categoryStats,
         popular_events: popularEvents,
         no_show_rate: noShowRate,
+        // Flatten fields so front-end can read them directly from the root
+        total_events: overallStats.total_events,
+        upcoming_events: overallStats.upcoming_events,
+        past_events: overallStats.total_events - overallStats.upcoming_events,
+        total_registrations: overallStats.total_registrations,
+        total_attendees: overallStats.total_attendance,
+        average_attendance_rate: overallStats.average_attendance_rate,
+        popular_categories: categoryStats.map((c) => ({
+          category_id: c.category_id,
+          category_name: c.category_name,
+          total_events: c.event_count,
+          upcoming_events: 0,
+          completed_events: 0,
+          total_registrations: c.total_registrations,
+          average_attendance_rate: c.average_attendance,
+        })),
+        // Real trends data from the last 30 days
+        trends: trends.map((t) => ({
+          date: t.date,
+          events_count: t.events_count,
+          registrations_count: t.total_attendance, // reuse field — attendance trends
+          attendance_count: t.total_attendance,
+        })),
       };
     } catch (error) {
       logger.error('Error getting dashboard summary:', error);
       throw new Error('Failed to get dashboard summary');
     }
+  }
+
+  /**
+   * Generate a comprehensive report for a single event.
+   * Called by the event reports scheduled job.
+   */
+  async generateEventReport(eventId: string): Promise<any> {
+    const [stats, noShowRate] = await Promise.all([
+      this.getEventStats(eventId),
+      this.getNoShowRate(eventId),
+    ]);
+    return { event_id: eventId, ...stats, no_show_rate: noShowRate };
   }
 }
 

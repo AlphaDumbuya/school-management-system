@@ -26,9 +26,22 @@ Version 2.0.0 is the **Expansion Phase** for the School Management System. While
 - **Student Profile Academics Tab**: Academic transcript view embedded in student profile cards ([StudentProfilesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentProfilesPage.tsx)).
 - **Class Ranking & GPA Calculation**: Automated term GPA and position-in-class rankings.
 
-### 3. 📄 Terminal Report Cards & Student Promotions
-- **PDF Report Card Generator**: Printable term report cards featuring subject marks, teacher remarks, attendance summaries, and principal signature block.
-- **End-of-Year Promotion Engine**: Bulk advancement of students from one grade level to the next based on passing criteria.
+### 3. 📄 Booklet-Style Terminal PDF Report Cards & Student Promotions
+- **Sierra Leone Standard Booklet-Style PDF Generator (Grace School of Science Model)**:
+  - **Outer Cover Page (Front & Back)**:
+    - Custom School Name, Address, Crest/Logo, and Header (e.g. *Senior Secondary / Junior Secondary School Report Card*).
+    - Student Name, Admission Number, Form/Class, Academic Year, Principal Signature Box, and Official Rubber Stamp Seal Box.
+    - **Affective Domain Rating Keys (1–12)**: *Class Participation, Sociability, Helpfulness, Honesty, Effort, Initiative, Self-Discipline, Demeanor, Sportsmanship, Dependability, Punctuality, School/Community Involvement*.
+    - **Psychomotor Domain Rating Keys (1–12)**: *Physical Dexterity, Stamina, Agility, Ball Game Prowess, Team Player, Athletics, Drawing/Painting, Voice Control, Musical Instruments, Bodily Control, Sense of Balance*.
+    - **5-Point Rating Scale**: *5 = Great/Exceptional, 4 = Good/Often, 3 = Fair/Reasonable, 2 = Little/Rarely, 1 = Negligible/Never*.
+    - **Cognitive Rating Guidelines** and Note to Parents.
+  - **Inner 2-Page Spread / Booklet Grid**:
+    - **Cognitive Domain Table**: Subjects listed down rows; Terms 1, 2, and 3 columns split into Test 1, Test 2, Mean (Mn), and Rank (Rnk) + **Yearly Summary** (Mean & Rank).
+    - **Affective & Psychomotor Domain Tables**: Test 1, Test 2, Term 3 rating, and Yearly Mean & Rank per category.
+    - **Automated Attendance Log**: Automatically calculates On Time, Late, Absent, and Excused days across Terms 1, 2, and 3 directly from daily attendance roll calls (`/attendance`).
+    - **Conduct & Continuous Assessment Comments**: Term 1, Term 2, Term 3 teacher comments.
+    - **Principal Remarks & Promotion Decision**: Principal End-of-Year Comments, **Promoted To / To Repeat** decision checkbox/status, Principal Signature & Date, Parent/Guardian Signature & Date.
+- **End-of-Year Promotion Engine**: Bulk advancement of students from one grade level to the next based on passing criteria and promotion rules.
 
 ### 4. 💳 Financial & Fee Management
 - **Fee Structures**: Termly tuition, activity, transportation, and registration fee schedules (`/finance/fees`).

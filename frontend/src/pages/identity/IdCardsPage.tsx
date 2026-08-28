@@ -82,8 +82,8 @@ function Avatar({ name, photoUrl, size = 'md' }: { name: string; photoUrl?: stri
 }
 
 // ── Visual ID Card Tile ───────────────────────────────────────────────────────
-function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete }: {
-  card: IdCard; onView: () => void; onRevoke: () => void; onRegenerate: () => void; onDelete: () => void;
+function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReportLost, onReactivate }: {
+  card: IdCard; onView: () => void; onRevoke: () => void; onRegenerate: () => void; onDelete: () => void; onReportLost: () => void; onReactivate: () => void;
 }) {
   const user = card.user;
   const name = user ? `${user.firstName} ${user.lastName}` : 'Unknown Member';
@@ -163,6 +163,12 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete }: {
         <button onClick={onRegenerate} className="p-1.5 text-gray-500 hover:text-violet-600 dark:text-gray-400 dark:hover:text-violet-400 bg-gray-50 dark:bg-gray-800 hover:bg-violet-50 dark:hover:bg-violet-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Regenerate"><RotateCcw size={12} /></button>
         {card.status === 'active' && (
           <button onClick={onRevoke} className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 bg-gray-50 dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Revoke"><Ban size={12} /></button>
+        )}
+        {card.status === 'active' && (
+          <button onClick={onReportLost} className="p-1.5 text-gray-500 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400 bg-gray-50 dark:bg-gray-800 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Report Lost"><AlertTriangle size={12} /></button>
+        )}
+        {card.status === 'suspended' && (
+          <button onClick={onReactivate} className="p-1.5 text-gray-500 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400 bg-gray-50 dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Reactivate"><RotateCcw size={12} /></button>
         )}
         <button onClick={onDelete} className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 bg-gray-50 dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Delete"><Trash2 size={12} /></button>
       </div>
@@ -450,6 +456,8 @@ export const IdCardsPage: React.FC = () => {
   const [revokeTarget, setRevokeTarget] = useState<IdCard | null>(null);
   const [regenerateTarget, setRegenerateTarget] = useState<IdCard | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<IdCard | null>(null);
+  const [reportLostTarget, setReportLostTarget] = useState<IdCard | null>(null);
+  const [reactivateTarget, setReactivateTarget] = useState<IdCard | null>(null);
 
   // Fetch cards (tenant-scoped by backend)
   const { data, isLoading, refetch } = useQuery({
@@ -507,6 +515,28 @@ export const IdCardsPage: React.FC = () => {
       showToast.error(err.response?.data?.message || err.message || 'Failed to delete ID card');
     }
     setDeleteTarget(null);
+  };
+
+  const handleReportLost = async () => {
+    if (!reportLostTarget) return;
+    try {
+      await idCardService.reportLost(reportLostTarget.id, 'Reported lost by administrator');
+      showToast.success('Card reported as lost');
+      queryClient.invalidateQueries({ queryKey: ['id-cards'] });
+      queryClient.invalidateQueries({ queryKey: ['id-cards-stats'] });
+    } catch { showToast.error('Failed to report card as lost'); }
+    setReportLostTarget(null);
+  };
+
+  const handleReactivate = async () => {
+    if (!reactivateTarget) return;
+    try {
+      await idCardService.reactivateCard(reactivateTarget.id);
+      showToast.success('Card reactivated');
+      queryClient.invalidateQueries({ queryKey: ['id-cards'] });
+      queryClient.invalidateQueries({ queryKey: ['id-cards-stats'] });
+    } catch { showToast.error('Failed to reactivate card'); }
+    setReactivateTarget(null);
   };
 
   const TABS = [
@@ -635,7 +665,9 @@ export const IdCardsPage: React.FC = () => {
                       onView={() => setDetailsModal({ open: true, cardId: card.id })}
                       onRevoke={() => setRevokeTarget(card)}
                       onRegenerate={() => setRegenerateTarget(card)}
-                      onDelete={() => setDeleteTarget(card)} />
+                      onDelete={() => setDeleteTarget(card)}
+                      onReportLost={() => setReportLostTarget(card)}
+                      onReactivate={() => setReactivateTarget(card)} />
                   ))}
                 </div>
               ) : (
@@ -689,6 +721,8 @@ export const IdCardsPage: React.FC = () => {
                                   {card.pdfUrl && <button onClick={() => window.open(card.pdfUrl!, '_blank')} className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors" title="PDF"><Download size={14} /></button>}
                                   <button onClick={() => setRegenerateTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors" title="Regenerate"><RotateCcw size={14} /></button>
                                   {card.status === 'active' && <button onClick={() => setRevokeTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Revoke"><Ban size={14} /></button>}
+                                  {card.status === 'active' && <button onClick={() => setReportLostTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors" title="Report Lost"><AlertTriangle size={14} /></button>}
+                                  {card.status === 'suspended' && <button onClick={() => setReactivateTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors" title="Reactivate"><RotateCcw size={14} /></button>}
                                   <button onClick={() => setDeleteTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete"><Trash2 size={14} /></button>
                                 </div>
                               </td>
@@ -733,6 +767,14 @@ export const IdCardsPage: React.FC = () => {
         title="Delete ID Card"
         message={`Are you sure you want to delete card "${deleteTarget?.cardNumber}"? This action is permanent and cannot be undone.`}
         confirmLabel="Delete Card" />
+      <ConfirmationDialog isOpen={!!reportLostTarget} onClose={() => setReportLostTarget(null)} onConfirm={handleReportLost}
+        title="Report Card as Lost"
+        message={`Mark card "${reportLostTarget?.cardNumber}" as lost? The holder will need a replacement card.`}
+        confirmLabel="Report Lost" isDestructive={false} />
+      <ConfirmationDialog isOpen={!!reactivateTarget} onClose={() => setReactivateTarget(null)} onConfirm={handleReactivate}
+        title="Reactivate Card"
+        message={`Reactivate suspended card "${reactivateTarget?.cardNumber}"? It will become active again.`}
+        confirmLabel="Reactivate" isDestructive={false} />
     </MainLayout>
   );
 };

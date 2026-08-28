@@ -85,7 +85,12 @@ export const CalendarPage: React.FC = () => {
     staleTime: 60_000,
   });
 
-  const events: Event[] = (data as any)?.data ?? [];
+  const events: Event[] = useMemo(() => {
+    if (!data) return [];
+    if (Array.isArray((data as any)?.data)) return (data as any).data;
+    if (Array.isArray(data)) return data as Event[];
+    return [];
+  }, [data]);
 
   // ── Group events by date ────────────────────────────────────────────────────
   const eventsByDate = useMemo(() => {

@@ -162,6 +162,7 @@ export interface MarkAttendanceDTO {
 
 export interface EventFilters {
   status?: string;
+  event_type?: string;
   category?: string;
   start_date?: Date;
   end_date?: Date;
@@ -204,6 +205,7 @@ export interface AttendanceReport {
   total_present: number;
   total_absent: number;
   total_late: number;
+  total_excused: number;
   attendance_rate: number;
   attendees: Array<{
     user_id: string;
