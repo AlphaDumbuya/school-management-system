@@ -289,6 +289,32 @@ export const reportCardService = {
       `${BASE}/my/subjects`, { params: { class_id: classId } },
     );
   },
+
+  /**
+   * All SL subject results for a student (Test1/Test2/Mean + grade) for the
+   * profile Academics tab — the correct SL source, not the legacy CA/Exam table.
+   */
+  async getStudentResultsSummary(studentId: string) {
+    return apiClient.get<{
+      success: boolean;
+      data: {
+        stats: { subjects: number; avg_test1: number; avg_test2: number; avg_mean: number };
+        results: Array<{
+          id: string;
+          subject_name: string;
+          subject_code: string | null;
+          academic_year: string;
+          term: string;
+          test1: number | null;
+          test2: number | null;
+          mean: number | null;
+          subject_rank: number | null;
+          grade_letter: string;
+          remark: string;
+        }>;
+      };
+    }>(`${BASE}/student/${studentId}/summary`);
+  },
 };
 
 export interface ReportSettings {

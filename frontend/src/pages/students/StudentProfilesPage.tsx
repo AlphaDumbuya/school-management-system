@@ -24,7 +24,7 @@ import { Button } from '@components/ui/button';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { studentsService, StudentRecord } from '@services/studentsService';
 import { classesService } from '@services/classesService';
-import { resultsService } from '@services/resultsService';
+import { reportCardService } from '@services/reportCardService';
 import { disciplineService } from '@services/disciplineService';
 import { showToast } from '@utils/toast';
 
@@ -153,30 +153,25 @@ export const StudentProfilesPage: React.FC = () => {
   }, [studentDetails]);
 
   // 3. Fetch Selected Student Sub-resources
-  // A. Academics (Grades)
+  // A. Academics (SL subject results — Test 1 / Test 2 / Mean, the correct source)
   const { data: gradesData, isLoading: isGradesLoading } = useQuery({
-    queryKey: ['student-profile-grades', selectedStudentId],
-    queryFn: () => resultsService.listGrades({ student_id: selectedStudentId! }),
+    queryKey: ['student-profile-results', selectedStudentId],
+    queryFn: () => reportCardService.getStudentResultsSummary(selectedStudentId!),
     enabled: !!selectedStudentId && activeTab === 'academics',
     staleTime: 30_000,
   });
-  const grades = (gradesData as any)?.data ?? [];
+  const gradesPayload = (gradesData as any)?.data ?? {};
+  const grades = gradesPayload.results ?? [];
 
   const academicStats = useMemo(() => {
-    if (!grades.length) return { avgCa: 0, avgExam: 0, avgTotal: 0, count: 0 };
-    let sumCa = 0, sumExam = 0, sumTotal = 0;
-    grades.forEach((g: any) => {
-      sumCa += Number(g.ca_score ?? 0);
-      sumExam += Number(g.exam_score ?? 0);
-      sumTotal += Number(g.total_score ?? 0);
-    });
+    const s = gradesPayload.stats ?? { subjects: 0, avg_test1: 0, avg_test2: 0, avg_mean: 0 };
     return {
-      avgCa: Math.round((sumCa / grades.length) * 10) / 10,
-      avgExam: Math.round((sumExam / grades.length) * 10) / 10,
-      avgTotal: Math.round((sumTotal / grades.length) * 10) / 10,
-      count: grades.length,
+      avgTest1: s.avg_test1 ?? 0,
+      avgTest2: s.avg_test2 ?? 0,
+      avgMean: s.avg_mean ?? 0,
+      count: s.subjects ?? grades.length,
     };
-  }, [grades]);
+  }, [gradesPayload, grades.length]);
 
   // B. Attendance
   const { data: attendanceData, isLoading: isAttendanceLoading } = useQuery({
@@ -763,10 +758,10 @@ export const StudentProfilesPage: React.FC = () => {
                     <div className="space-y-6">
                       {/* Academics KPI Overview */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                        <KPICard title="Total Classes" value="1" icon={<BookOpen size={20} />} color="blue" />
-                        <KPICard title="Continuous Assessment Avg" value={isGradesLoading ? '...' : `${academicStats.avgCa} / 30`} icon={<Clock size={20} />} color="amber" />
-                        <KPICard title="Exam Average" value={isGradesLoading ? '...' : `${academicStats.avgExam} / 70`} icon={<Award size={20} />} color="purple" />
-                        <KPICard title="Overall Average Score" value={isGradesLoading ? '...' : `${academicStats.avgTotal}%`} icon={<BarChart3 size={20} />} color="green" />
+                        <KPICard title="Subjects Recorded" value={isGradesLoading ? '...' : String(academicStats.count)} icon={<BookOpen size={20} />} color="blue" />
+                        <KPICard title="Test 1 Avg" value={isGradesLoading ? '...' : `${academicStats.avgTest1} / 100`} icon={<Clock size={20} />} color="amber" />
+                        <KPICard title="Test 2 Avg" value={isGradesLoading ? '...' : `${academicStats.avgTest2} / 100`} icon={<Award size={20} />} color="purple" />
+                        <KPICard title="Overall Average (Mean)" value={isGradesLoading ? '...' : `${academicStats.avgMean}%`} icon={<BarChart3 size={20} />} color="green" />
                       </div>
 
                       {/* Grades Table */}
@@ -787,17 +782,18 @@ export const StudentProfilesPage: React.FC = () => {
                               <thead className="bg-gray-50 dark:bg-gray-700 text-gray-750 dark:text-gray-350 text-xs font-bold uppercase tracking-wider">
                                 <tr>
                                   <th className="p-4">Subject</th>
+                                  <th className="p-4">Year</th>
                                   <th className="p-4">Term</th>
-                                  <th className="p-4 text-center">CA (30)</th>
-                                  <th className="p-4 text-center">Exam (70)</th>
-                                  <th className="p-4 text-center">Total (100)</th>
+                                  <th className="p-4 text-center">Test 1 (100)</th>
+                                  <th className="p-4 text-center">Test 2 (100)</th>
+                                  <th className="p-4 text-center">Mean (100)</th>
                                   <th className="p-4 text-center">Grade</th>
                                   <th className="p-4">Remark</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-150 dark:divide-gray-700">
                                 {grades.map((g: any) => {
-                                  const score = Number(g.total_score ?? 0);
+                                  const score = g.mean != null ? Number(g.mean) : 0;
                                   const isFail = score < 50;
                                   return (
                                     <tr key={g.id} className="hover:bg-gray-50 dark:hover:bg-gray-850 transition-colors">
@@ -805,14 +801,15 @@ export const StudentProfilesPage: React.FC = () => {
                                         <p className="font-bold text-gray-900 dark:text-white">{g.subject_name}</p>
                                         <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">{g.subject_code}</p>
                                       </td>
+                                      <td className="p-4 text-xs font-semibold text-gray-600 dark:text-gray-400">{g.academic_year}</td>
                                       <td className="p-4 text-xs font-semibold text-gray-600 dark:text-gray-400">
                                         {g.term === 'first_term' ? 'First Term' : g.term === 'second_term' ? 'Second Term' : 'Third Term'}
                                       </td>
-                                      <td className="p-4 text-center font-mono font-medium text-gray-700 dark:text-gray-300">{g.ca_score}</td>
-                                      <td className="p-4 text-center font-mono font-medium text-gray-700 dark:text-gray-300">{g.exam_score}</td>
+                                      <td className="p-4 text-center font-mono font-medium text-gray-700 dark:text-gray-300">{g.test1 ?? '—'}</td>
+                                      <td className="p-4 text-center font-mono font-medium text-gray-700 dark:text-gray-300">{g.test2 ?? '—'}</td>
                                       <td className="p-4 text-center font-mono font-bold">
                                         <span className={`px-2 py-0.5 rounded ${isFail ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/40 font-bold' : 'text-gray-900 dark:text-white'}`}>
-                                          {score}% {isFail ? '(Fail)' : ''}
+                                          {g.mean != null ? `${score}%` : '—'} {isFail && g.mean != null ? '(Fail)' : ''}
                                         </span>
                                       </td>
                                       <td className="p-4 text-center">
