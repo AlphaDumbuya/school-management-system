@@ -21,12 +21,14 @@ import { DomainRatingsModal } from './components/DomainRatingsModal';
 import { ReportSettingsPanel } from './components/ReportSettingsPanel';
 import { SL_TERMS, SLTerm, SL_GRADING_METHOD, CONDUCT_CODES } from '@services/reportCardService';
 import { StudentResultsView } from './components/StudentResultsView';
+import { ParentResultsView } from './components/ParentResultsView';
 
 export const ResultsPage: React.FC = () => {
   const currentYear = new Date().getFullYear();
   const { user } = useAuth();
   const isPrincipal = user?.role === 'principal' || user?.role === 'super_admin';
   const isStudent = user?.role === 'student';
+  const isParent = user?.role === 'parent' || user?.role === 'guardian';
   const [academicYear, setAcademicYear] = useState(`${currentYear}/${currentYear + 1}`);
   const [tab, setTab] = useState<'cognitive' | 'ratings' | 'settings'>('cognitive');
 
@@ -39,7 +41,7 @@ export const ResultsPage: React.FC = () => {
   const { data: classesData } = useQuery({
     queryKey: ['classes-dropdown'],
     queryFn: () => classesService.listClasses({ limit: 100 }),
-    enabled: !isStudent,
+    enabled: !isStudent && !isParent,
     staleTime: 60_000,
   });
   const classes = (classesData as any)?.data ?? [];
@@ -48,7 +50,7 @@ export const ResultsPage: React.FC = () => {
   const { data: studentsData } = useQuery({
     queryKey: ['class-students-ratings', ratingsClassId],
     queryFn: () => classesService.getClassStudents(ratingsClassId),
-    enabled: !!ratingsClassId && !isStudent,
+    enabled: !!ratingsClassId && !isStudent && !isParent,
     staleTime: 30_000,
   });
   const students = (studentsData as any)?.data?.students ?? (studentsData as any)?.students ?? [];
@@ -69,6 +71,10 @@ export const ResultsPage: React.FC = () => {
   // Students get a read-only view of ONLY their own published results.
   if (isStudent) {
     return <StudentResultsView />;
+  }
+  // Parents get a read-only view of their children's published results.
+  if (isParent) {
+    return <ParentResultsView />;
   }
 
   return (

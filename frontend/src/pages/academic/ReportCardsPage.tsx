@@ -23,6 +23,7 @@ import { classesService } from '@services/classesService';
 import { schoolConfigService } from '@services/schoolConfigService';
 import { reportCardService, ReportCard } from '@services/reportCardService';
 import { studentDashboardService } from '@services/studentDashboardService';
+import { parentDashboardService } from '@services/parentDashboardService';
 import { useAuth } from '@hooks/useAuth';
 import { BookletContent } from './components/BookletContent';
 import { Printer, Download } from 'lucide-react';
@@ -31,6 +32,7 @@ export const ReportCardsPage: React.FC = () => {
   const currentYear = new Date().getFullYear();
   const { user } = useAuth();
   const isStudent = user?.role === 'student';
+  const isParent = user?.role === 'parent' || user?.role === 'guardian';
   const [academicYear, setAcademicYear] = useState(`${currentYear}/${currentYear + 1}`);
   const [classId, setClassId] = useState('');
   const [studentId, setStudentId] = useState('');
@@ -53,6 +55,25 @@ export const ReportCardsPage: React.FC = () => {
     if (selfProfile.academic_year) setAcademicYear(String(selfProfile.academic_year));
   }, [isStudent, selfProfile]);
 
+  // Parents: resolve their children (with class) and let them pick one.
+  const { data: parentResp } = useQuery({
+    queryKey: ['report-card-parent-children'],
+    queryFn: () => parentDashboardService.getDashboard(),
+    enabled: isParent,
+    staleTime: 60_000,
+  });
+  const parentChildren = ((parentResp as any)?.data ?? (parentResp as any))?.children ?? [];
+  const [selectedChildId, setSelectedChildId] = useState('');
+  const activeChildId = selectedChildId || parentChildren[0]?.id || '';
+  React.useEffect(() => {
+    if (!isParent || parentChildren.length === 0) return;
+    const child = parentChildren.find((c: any) => String(c.id) === String(activeChildId)) || parentChildren[0];
+    if (!child) return;
+    if (child.id) setStudentId(String(child.id));
+    if (child.class_id) setClassId(String(child.class_id));
+    // parent summary doesn't carry academic_year; keep the currently selected year.
+  }, [isParent, parentChildren, activeChildId]);
+
   const yearOptions = useMemo(() => {
     const arr = [];
     for (let y = currentYear + 1; y >= currentYear - 3; y--) arr.push({ value: `${y}/${y + 1}`, label: `${y}/${y + 1}` });
@@ -70,7 +91,7 @@ export const ReportCardsPage: React.FC = () => {
   const { data: classesData } = useQuery({
     queryKey: ['report-card-classes'],
     queryFn: () => classesService.listClasses({ limit: 100 }),
-    enabled: !isStudent,
+    enabled: !isStudent && !isParent,
     staleTime: 60_000,
   });
   const classes = (classesData as any)?.data ?? [];
@@ -79,7 +100,7 @@ export const ReportCardsPage: React.FC = () => {
   const { data: studentsData } = useQuery({
     queryKey: ['report-card-students', classId],
     queryFn: () => classesService.getClassStudents(classId),
-    enabled: !!classId && !isStudent,
+    enabled: !!classId && !isStudent && !isParent,
     staleTime: 30_000,
   });
   const students = (studentsData as any)?.data?.students ?? (studentsData as any)?.students ?? [];
@@ -205,6 +226,32 @@ export const ReportCardsPage: React.FC = () => {
               </div>
               <SearchableSelect label="Academic Year" options={yearOptions} value={academicYear} onChange={setAcademicYear} placeholder="Academic year" />
             </div>
+          ) : isParent ? (
+            // Parents: pick a child + academic year (no class/student staff pickers).
+            <div className="space-y-3">
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {parentChildren.map((c: any) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelectedChildId(c.id)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
+                      activeChildId === c.id
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
+                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="font-medium">{c.name}</span>
+                    {c.class_name && <span className="text-xs text-gray-400">· {c.class_name}</span>}
+                  </button>
+                ))}
+                {parentChildren.length === 0 && (
+                  <span className="text-sm text-gray-500">No children linked to your account.</span>
+                )}
+              </div>
+              <div className="sm:max-w-xs">
+                <SearchableSelect label="Academic Year" options={yearOptions} value={academicYear} onChange={setAcademicYear} placeholder="Academic year" />
+              </div>
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <SearchableSelect label="Class" options={classOptions} value={classId} onChange={(v) => { setClassId(v); setStudentId(''); }} placeholder="Select class..." />
@@ -234,10 +281,12 @@ export const ReportCardsPage: React.FC = () => {
 
         {!canLoad && (
           <EmptyState
-            message={isStudent ? 'Report card unavailable' : 'Select a student'}
+            message={isStudent || isParent ? 'Report card unavailable' : 'Select a student'}
             description={isStudent
               ? 'Your report card will appear here once your results are published.'
-              : 'Choose a class, student and academic year to generate the report booklet.'}
+              : isParent
+                ? 'Select a child. The report card appears once results are published.'
+                : 'Choose a class, student and academic year to generate the report booklet.'}
           />
         )}
         {canLoad && isLoading && <div className="grid gap-3"><SkeletonCard /><SkeletonCard /></div>}
