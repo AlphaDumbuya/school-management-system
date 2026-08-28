@@ -10,6 +10,7 @@ import { Button } from '@components/ui/button';
 import { RSVPButton } from './RSVPButton';
 import { EventDetailsProps, Event } from '@appTypes/events';
 import { eventsService } from '@services/eventsService';
+import { EventFormModal } from '@pages/events/components/EventFormModal';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import {
@@ -28,6 +29,7 @@ import { useAuth } from '@hooks/useAuth';
 export const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onUpdate }) => {
     const [event, setEvent] = useState<Event | null>(null);
     const [loading, setLoading] = useState(true);
+    const [editOpen, setEditOpen] = useState(false);
     const { user } = useAuth();
 
     useEffect(() => {
@@ -51,7 +53,7 @@ export const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onUpdate })
     };
 
     const handleShare = async () => {
-        const url = `${window.location.origin}/events/${eventId}`;
+        const url = `${window.location.origin}/events/school/${eventId}`;
 
         if (navigator.share) {
             try {
@@ -143,7 +145,7 @@ export const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onUpdate })
                                 </Button>
                                 {canEdit && (
                                     <>
-                                        <Button variant="outline" size="sm">
+                                        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
                                             <Edit className="w-4 h-4" />
                                         </Button>
                                         <Button variant="destructive" size="sm" onClick={handleDelete}>
@@ -313,6 +315,16 @@ export const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onUpdate })
                         </p>
                     </CardContent>
                 </Card>
+            )}
+
+            {/* Edit modal */}
+            {canEdit && (
+                <EventFormModal
+                    isOpen={editOpen}
+                    onClose={() => setEditOpen(false)}
+                    onSuccess={() => { setEditOpen(false); fetchEventDetails(); onUpdate?.(); }}
+                    editingEvent={event}
+                />
             )}
         </div>
     );

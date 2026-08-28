@@ -407,31 +407,42 @@ export class EventAnalyticsService {
   /**
    * Get dashboard summary
    */
-  async getDashboardSummary(tenantId: string): Promise<any> {
+  async getDashboardSummary(
+    tenantId: string,
+    dateRange?: { start_date?: Date | string; end_date?: Date | string }
+  ): Promise<any> {
     try {
       const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      // Respect a caller-supplied range; otherwise default to the current month.
+      const periodStart = dateRange?.start_date
+        ? new Date(dateRange.start_date)
+        : new Date(now.getFullYear(), now.getMonth(), 1);
+      const periodEnd = dateRange?.end_date
+        ? new Date(dateRange.end_date)
+        : new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-      // Trends: last 30 days for the dashboard chart
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      // Trends span the selected period (fallback: last 30 days).
+      const trendsStart = dateRange?.start_date
+        ? periodStart
+        : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const trendsEnd = periodEnd;
 
       const [overallStats, categoryStats, popularEvents, noShowRate, trends] =
         await Promise.all([
           this.getOverallStats(tenantId, {
-            start_date: startOfMonth,
-            end_date: endOfMonth,
+            start_date: periodStart,
+            end_date: periodEnd,
           }),
           this.getCategoryStats(tenantId),
           this.getPopularEvents(tenantId, 5),
           this.getNoShowRate(undefined, tenantId),
-          this.getAttendanceTrends(tenantId, thirtyDaysAgo, now),
+          this.getAttendanceTrends(tenantId, trendsStart, trendsEnd),
         ]);
 
       return {
         period: {
-          start: startOfMonth,
-          end: endOfMonth,
+          start: periodStart,
+          end: periodEnd,
         },
         overall: overallStats,
         categories: categoryStats,

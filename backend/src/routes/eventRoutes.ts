@@ -29,6 +29,25 @@ const router = Router();
 router.use(authenticate);
 router.use(attachUserContext);
 
+/**
+ * Multi-tenant guard for any route with an :eventId param.
+ * Verifies the referenced event belongs to the caller's tenant BEFORE the
+ * handler touches registration/attendance/stats sub-resources. Prevents
+ * cross-tenant access to an event's data via a leaked/guessed event id.
+ */
+const assertEventTenant = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const event = await eventService.getEvent(req.params.eventId, req.user!.tenant_id);
+    if (!event) {
+      return res.status(404).json({ success: false, error: 'Event not found' });
+    }
+    (req as any).event = event;
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
 // =====================================================================
 // STATIC / PREFIX ROUTES — must come before /:eventId
 // =====================================================================
@@ -98,8 +117,13 @@ router.get(
   authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const { start_date, end_date } = req.query;
       const analytics = await eventAnalyticsService.getDashboardSummary(
         req.user!.tenant_id,
+        {
+          start_date: start_date ? new Date(start_date as string) : undefined,
+          end_date: end_date ? new Date(end_date as string) : undefined,
+        },
       );
       res.json({ success: true, data: analytics });
     } catch (error) {
@@ -340,6 +364,7 @@ router.get(
       const event = await eventService.getEventDetails(
         req.params.eventId,
         req.user!.tenant_id,
+        req.user!.id,
       );
 
       if (!event) {
@@ -488,6 +513,7 @@ router.post(
  */
 router.post(
   '/:eventId/register',
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const registration = await eventRegistrationService.registerForEvent(
@@ -519,6 +545,7 @@ router.post(
  */
 router.delete(
   '/:eventId/register',
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { registration_id } = req.body;
@@ -553,6 +580,7 @@ router.delete(
  */
 router.put(
   '/:eventId/register',
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { registration_id, rsvp_status, guests_count } = req.body;
@@ -587,6 +615,7 @@ router.put(
 router.get(
   '/:eventId/registrations',
   authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const page  = Math.max(1, parseInt(req.query.page  as string) || 1);
@@ -624,6 +653,7 @@ router.get(
 router.post(
   '/:eventId/registrations/:regId/approve',
   authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const registration = await eventRegistrationService.approveRegistration(
@@ -644,6 +674,7 @@ router.post(
 router.post(
   '/:eventId/registrations/:regId/reject',
   authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const registration = await eventRegistrationService.rejectRegistration(
@@ -694,6 +725,7 @@ router.get(
 router.post(
   '/:eventId/attendance',
   authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.body.user_id || !req.body.status) {
@@ -719,6 +751,7 @@ router.post(
 router.post(
   '/:eventId/attendance/bulk',
   authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { attendances } = req.body;
@@ -745,6 +778,7 @@ router.post(
 router.get(
   '/:eventId/attendance',
   authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const page  = Math.max(1, parseInt(req.query.page  as string) || 1);
@@ -778,6 +812,7 @@ router.get(
 router.get(
   '/:eventId/attendance/report',
   authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const report = await eventAttendanceService.generateAttendanceReport(req.params.eventId);
@@ -796,6 +831,7 @@ router.get(
 router.post(
   '/:eventId/attendance/qr-code',
   authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const qrCode = await eventAttendanceService.generateAttendanceQRCode(req.params.eventId);
@@ -813,6 +849,7 @@ router.post(
  */
 router.post(
   '/:eventId/attendance/check-in',
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const method = req.body.qr_data ? 'qr_code' : 'manual';
@@ -844,6 +881,7 @@ router.post(
  */
 router.post(
   '/:eventId/attendance/check-out',
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const attendance = await eventAttendanceService.checkOut(
@@ -865,6 +903,7 @@ router.post(
 router.get(
   '/:eventId/stats',
   authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
+  assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const stats = await eventAnalyticsService.getEventStats(req.params.eventId);

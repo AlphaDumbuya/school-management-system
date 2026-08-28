@@ -372,6 +372,7 @@ export class EventRegistrationService {
         .select(
           'event_registrations.*',
           'events.title',
+          'events.event_type',
           'events.start_date',
           'events.end_date',
           'events.location',
