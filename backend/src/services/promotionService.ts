@@ -37,10 +37,21 @@ export interface PromotionCandidate {
 
 class PromotionService {
   private async assertClassInTenant(classId: string, tenantId: string): Promise<void> {
+    // A class belongs to this tenant if its session belongs to the tenant OR it
+    // has no session but was created by a user of this tenant (matches the
+    // canonical resolution used by the class list, which is why such classes
+    // appear in the dropdown).
     const c = await db('classes')
       .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
       .where('classes.id', classId)
-      .where('academic_sessions.tenant_id', tenantId)
+      .where(function (this: any) {
+        this.where('academic_sessions.tenant_id', tenantId)
+          .orWhere(function (this: any) {
+            this.whereNull('classes.academic_session_id')
+              .where('class_creator.tenant_id', tenantId);
+          });
+      })
       .first('classes.id');
     if (!c) throw new Error('Class not found for this tenant');
   }
