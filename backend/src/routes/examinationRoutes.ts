@@ -101,6 +101,31 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       .leftJoin('classes', 'examinations.class_id', 'classes.id')
       .leftJoin('subjects', 'examinations.subject_id', 'subjects.id');
 
+    // Teacher scoping: only see exams for classes/subjects they teach or lead.
+    let teacherClassIds: string[] | null = null;
+    if (req.user?.role === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users as u', 'teachers.user_id', 'u.id')
+        .where('teachers.user_id', req.user.id)
+        .where('u.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+      if (!teacher) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      // Classes the teacher teaches (any subject) plus classes they lead
+      const assigned = await db('teacher_assignments').where('teacher_id', teacher.id).distinct('class_id');
+      const led = await db('classes').where('class_teacher_id', teacher.id).select('id');
+      teacherClassIds = Array.from(new Set<string>([
+        ...assigned.map((r: any) => r.class_id),
+        ...led.map((r: any) => r.id),
+      ]));
+      if (teacherClassIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      query = query.whereIn('examinations.class_id', teacherClassIds);
+    }
+
     if (type) query = query.where('examinations.type', type as string);
     if (term) query = query.where('examinations.term', term as string);
     if (academic_year) query = query.where('examinations.academic_year', academic_year as string);
@@ -119,6 +144,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       .join('users', 'examinations.created_by', 'users.id')
       .where('users.tenant_id', tenantId)
       .count('examinations.id as count');
+    if (teacherClassIds) countQuery = countQuery.whereIn('examinations.class_id', teacherClassIds);
     if (type) countQuery = countQuery.where('examinations.type', type as string);
     if (term) countQuery = countQuery.where('examinations.term', term as string);
     if (academic_year) countQuery = countQuery.where('examinations.academic_year', academic_year as string);

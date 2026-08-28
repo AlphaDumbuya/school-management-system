@@ -22,6 +22,7 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
+import { useAuth } from '@hooks/useAuth';
 import {
   disciplineService,
   StudentInfraction, DisciplineAction, DisciplineAppeal, BehavioralNote, ConductReport,
@@ -41,12 +42,12 @@ import { ColumnDef } from '@tanstack/react-table';
 type Tab = 'dashboard' | 'infractions' | 'actions' | 'appeals' | 'notes' | 'reports';
 
 
-const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
+const ALL_TABS: { key: Tab; label: string; icon: React.ReactNode; teacher?: boolean }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: <BarChart2 size={16} /> },
-  { key: 'infractions', label: 'Infractions', icon: <AlertTriangle size={16} /> },
+  { key: 'infractions', label: 'Infractions', icon: <AlertTriangle size={16} />, teacher: true },
   { key: 'actions', label: 'Actions', icon: <Gavel size={16} /> },
   { key: 'appeals', label: 'Appeals', icon: <ShieldAlert size={16} /> },
-  { key: 'notes', label: 'Behavioral Notes', icon: <MessageSquare size={16} /> },
+  { key: 'notes', label: 'Behavioral Notes', icon: <MessageSquare size={16} />, teacher: true },
   { key: 'reports', label: 'Conduct Reports', icon: <FileText size={16} /> },
 ];
 
@@ -90,7 +91,15 @@ function statusIcon(status: string) {
 
 export const DisciplinePage: React.FC = () => {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const { canAccess } = useAuth();
+  // Teachers only record & view infractions and notes; the analytics dashboard,
+  // actions, appeals and conduct-report management are principal-domain.
+  const isStaffAdmin = canAccess(['principal', 'super_admin']);
+  const TABS = React.useMemo(
+    () => ALL_TABS.filter((t) => isStaffAdmin || t.teacher),
+    [isStaffAdmin],
+  );
+  const [activeTab, setActiveTab] = useState<Tab>(isStaffAdmin ? 'dashboard' : 'infractions');
 
   // Search & filter state shared across tabs
   const [search, setSearch] = useState('');

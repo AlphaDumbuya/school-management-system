@@ -118,6 +118,29 @@ router.get('/', authenticate, attachUserContext, async (req: Request, res: Respo
       .leftJoin('classes', 'attendance.class_id', 'classes.id')
       .where('students.tenant_id', tenantId);
 
+    // Teacher scoping: teachers only see attendance for classes they teach or lead.
+    if (req.user?.role === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users as u', 'teachers.user_id', 'u.id')
+        .where('teachers.user_id', req.user.id)
+        .where('u.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+      if (!teacher) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      const assigned = await db('teacher_assignments').where('teacher_id', teacher.id).distinct('class_id');
+      const led = await db('classes').where('class_teacher_id', teacher.id).select('id');
+      const classIds = Array.from(new Set<string>([
+        ...assigned.map((r: any) => r.class_id),
+        ...led.map((r: any) => r.id),
+      ]));
+      if (classIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      query = query.whereIn('attendance.class_id', classIds);
+    }
+
     if (studentId) {
       query = query.where('attendance.student_id', studentId);
     }
@@ -392,6 +415,29 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
     const validSessions = ['morning', 'afternoon', 'full_day'];
     if (!validSessions.includes(sessionTypeValue)) {
       throw new AppError(`Session type must be one of: ${validSessions.join(', ')}`, 400, 'VALIDATION_ERROR');
+    }
+
+    // Teachers must mark attendance for a specific class they teach/lead —
+    // they cannot use the all-students (no class_id) bulk mode.
+    if (req.user?.role === 'teacher') {
+      if (!class_id) {
+        throw new AppError('Teachers must select a class to mark attendance', 400, 'CLASS_REQUIRED');
+      }
+      const teacher = await db('teachers')
+        .join('users as u', 'teachers.user_id', 'u.id')
+        .where('teachers.user_id', req.user.id)
+        .where('u.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+      let allowed = false;
+      if (teacher) {
+        const assigned = await db('teacher_assignments').where({ teacher_id: teacher.id, class_id }).first();
+        const led = await db('classes').where({ id: class_id, class_teacher_id: teacher.id }).first();
+        allowed = !!(assigned || led);
+      }
+      if (!allowed) {
+        throw new AppError('You are not assigned to this class', 403, 'FORBIDDEN');
+      }
     }
 
     // Verify class belongs to this tenant if class_id provided

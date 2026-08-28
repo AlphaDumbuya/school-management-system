@@ -60,10 +60,32 @@ export const ScoreEntryGrid: React.FC<Props> = ({ academicYear }) => {
     staleTime: 60_000,
   });
   const subjects = (subjectsData as any)?.data ?? [];
-  const subjectOptions = useMemo(
-    () => subjects.map((s: any) => ({ value: String(s.id), label: s.name, sublabel: s.code })),
-    [subjects],
-  );
+
+  // Restrict subjects to what the teacher may enter for the selected class.
+  // For staff-admins the endpoint returns null (no restriction).
+  const { data: mySubjectsData } = useQuery({
+    queryKey: ['my-subjects', classId],
+    queryFn: () => reportCardService.getMySubjects(classId),
+    enabled: !!classId,
+    staleTime: 60_000,
+  });
+  const allowedSubjectIds: string[] | null = (mySubjectsData as any)?.data?.data
+    ?? (mySubjectsData as any)?.data
+    ?? null;
+
+  const subjectOptions = useMemo(() => {
+    const list = Array.isArray(allowedSubjectIds)
+      ? subjects.filter((s: any) => allowedSubjectIds.map(String).includes(String(s.id)))
+      : subjects;
+    return list.map((s: any) => ({ value: String(s.id), label: s.name, sublabel: s.code }));
+  }, [subjects, allowedSubjectIds]);
+
+  // If the chosen subject isn't valid for the current class, clear it.
+  useEffect(() => {
+    if (subjectId && subjectOptions.length > 0 && !subjectOptions.some((o: any) => o.value === subjectId)) {
+      setSubjectId('');
+    }
+  }, [subjectOptions, subjectId]);
 
   // Grid data
   const canLoad = !!(classId && subjectId && term && academicYear);

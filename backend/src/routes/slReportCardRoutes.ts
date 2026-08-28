@@ -216,8 +216,15 @@ router.post(
   authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await slReportCardService.setPublication(tenant(req), req.user!.id, req.body);
-      res.json({ success: true, message: req.body.published ? 'Results published' : 'Results unpublished' });
+      const result = await slReportCardService.setPublication(tenant(req), req.user!.id, req.body);
+      let message = req.body.published ? 'Results published' : 'Results unpublished';
+      const ap = result?.auto_promotion;
+      if (ap?.ran) {
+        message += ` — auto-promotion: ${ap.promoted} promoted, ${ap.repeated} repeating, ${ap.graduated} graduated`;
+      } else if (ap && ap.reason === 'no_next_class') {
+        message += ' — auto-promotion skipped: set a "next class" on this class first';
+      }
+      res.json({ success: true, message, auto_promotion: ap ?? null });
     } catch (error) {
       logger.error('Error publishing SL results:', error);
       next(error);
@@ -237,6 +244,26 @@ router.get('/my/classes', async (req: Request, res: Response, next: NextFunction
     res.json({ success: true, data: ids, scoped: true });
   } catch (error) {
     logger.error('Error getting teacher classes:', error);
+    next(error);
+  }
+});
+
+// ── Teacher's assigned subjects for a class (scoped score-entry dropdown) ────
+
+router.get('/my/subjects', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const classId = req.query.class_id as string;
+    if (!classId) {
+      return res.status(400).json({ success: false, error: 'class_id is required' });
+    }
+    // Staff-admin: no restriction (null = all subjects allowed).
+    if (req.user!.role === 'principal' || req.user!.role === 'super_admin') {
+      return res.json({ success: true, data: null, scoped: false });
+    }
+    const ids = await slReportCardService.getTeacherSubjectIdsForClass(req.user!.id, tenant(req), classId);
+    res.json({ success: true, data: ids, scoped: true });
+  } catch (error) {
+    logger.error('Error getting teacher subjects for class:', error);
     next(error);
   }
 });

@@ -8,21 +8,25 @@
 
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardList, Star, BookOpen } from 'lucide-react';
+import { ClipboardList, Star, BookOpen, Settings } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
 import { Button } from '@components/ui/button';
+import { useAuth } from '@hooks/useAuth';
 import { classesService } from '@services/classesService';
 import { ScoreEntryGrid } from './components/ScoreEntryGrid';
 import { DomainRatingsModal } from './components/DomainRatingsModal';
+import { ReportSettingsPanel } from './components/ReportSettingsPanel';
 import { SL_TERMS, SLTerm, SL_GRADING_METHOD, CONDUCT_CODES } from '@services/reportCardService';
 
 export const ResultsPage: React.FC = () => {
   const currentYear = new Date().getFullYear();
+  const { user } = useAuth();
+  const isPrincipal = user?.role === 'principal' || user?.role === 'super_admin';
   const [academicYear, setAcademicYear] = useState(`${currentYear}/${currentYear + 1}`);
-  const [tab, setTab] = useState<'cognitive' | 'ratings'>('cognitive');
+  const [tab, setTab] = useState<'cognitive' | 'ratings' | 'settings'>('cognitive');
 
   // Ratings tab state
   const [ratingsClassId, setRatingsClassId] = useState('');
@@ -121,6 +125,18 @@ export const ResultsPage: React.FC = () => {
           >
             <Star size={15} className="inline mr-1.5" /> Affective & Psychomotor
           </button>
+          {isPrincipal && (
+            <button
+              onClick={() => setTab('settings')}
+              className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                tab === 'settings'
+                  ? 'border-blue-600 text-blue-700 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              <Settings size={15} className="inline mr-1.5" /> Settings & Release
+            </button>
+          )}
         </div>
 
         {/* Cognitive tab */}
@@ -162,6 +178,13 @@ export const ResultsPage: React.FC = () => {
                 </div>
               )}
             </div>
+          </RoleGuard>
+        )}
+
+        {/* Settings tab (principal only) */}
+        {tab === 'settings' && (
+          <RoleGuard roles={['principal', 'super_admin']} fallback={<p className="text-sm text-gray-500">You do not have permission to manage settings.</p>}>
+            <ReportSettingsPanel academicYear={academicYear} />
           </RoleGuard>
         )}
       </PageShell>

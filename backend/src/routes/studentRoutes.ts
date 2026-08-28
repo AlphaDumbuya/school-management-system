@@ -7,6 +7,7 @@ import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { PasswordService } from '@services/passwordService';
 import { generateNextId } from '@utils/idGenerator';
+import { linkGuardianForStudent } from '@utils/guardianLinking';
 
 const router = Router();
 router.use(authenticate);
@@ -18,9 +19,9 @@ const studentService = new StudentService(db);
  * Create a new student
  * @requires admin, principal, teacher
  */
-router.post('/', authenticate, attachUserContext, authorize('principal', 'super_admin', 'teacher', 'admissions_officer'), checkSubscriptionLimit('students'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, attachUserContext, authorize('principal', 'super_admin', 'admissions_officer'), checkSubscriptionLimit('students'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { first_name, last_name, date_of_birth, gender, email, phone, address, city, state, postal_code, country, enrollment_date, status, photo_url, religion, nationality, place_of_birth, guardian_name, guardian_phone, guardian_relationship, guardian_occupation, emergency_contact, previous_school, medical_conditions, class_id } = req.body;
+    const { first_name, last_name, date_of_birth, gender, email, phone, address, city, state, postal_code, country, enrollment_date, status, photo_url, religion, nationality, place_of_birth, guardian_name, guardian_email, guardian_phone, guardian_relationship, guardian_occupation, emergency_contact, previous_school, medical_conditions, class_id } = req.body;
     const createdBy = req.auth?.userId ?? null;
     const tenantId = (req as any).user.tenant_id;
 
@@ -107,9 +108,29 @@ router.post('/', authenticate, attachUserContext, authorize('principal', 'super_
       }).catch(() => { /* ignore if enrollment fails */ });
     }
 
+    // ── Smart parent/guardian linking ─────────────────────────────────────────
+    // If guardian details are provided, create a guardians row for this new
+    // student and — if a parent already exists in this tenant (matched by email
+    // or phone) — link it to that same parent user so the parent portal shows
+    // all their children. This lets one parent be reused across siblings.
+    let linkedParent: any = null;
+    if (inserted.id) {
+      linkedParent = await linkGuardianForStudent(
+        db,
+        tenantId,
+        inserted.id,
+        last_name,
+        { guardian_name, guardian_email, guardian_phone, guardian_relationship, guardian_occupation },
+        createdBy,
+      );
+    }
+
     res.status(201).json({
-      message: 'Student created successfully',
+      message: linkedParent
+        ? `Student created and linked to existing parent ${linkedParent.name}`
+        : 'Student created successfully',
       student: inserted,
+      linked_parent: linkedParent,
     });
 
     logger.info(`Student created: ${inserted.student_id} (${first_name} ${last_name})`);
@@ -189,6 +210,24 @@ async function syncEnrolledApplicationsToStudents(dbInstance: any, tenantId: str
             created_at: new Date(),
             updated_at: new Date(),
           }).catch(() => {});
+        }
+
+        // Smart parent/guardian linking — reuse an existing parent (sibling) if one matches.
+        if (newStudent?.id) {
+          await linkGuardianForStudent(
+            dbInstance,
+            tenantId,
+            newStudent.id,
+            lastName,
+            {
+              guardian_name: [app.guardian_first_name || app.parent_name, app.guardian_last_name].filter(Boolean).join(' ') || app.parent_name || null,
+              guardian_email: app.guardian_email || app.email || null,
+              guardian_phone: app.guardian_phone || app.parent_phone || null,
+              guardian_relationship: app.guardian_relationship || null,
+              guardian_occupation: app.guardian_occupation || null,
+            },
+            null,
+          );
         }
         logger.info(`Auto-synced enrolled admission application ${app.id} to student ${studentId} for tenant ${tenantId}`);
       }
@@ -297,6 +336,40 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
       query = query.where('students.tenant_id', requestedTenantId);
     }
 
+    // Teacher scoping: teachers only see students enrolled in classes they
+    // teach (teacher_assignments) or lead (class_teacher_id). Resolve the
+    // eligible student ids once and constrain both data + count queries.
+    let teacherStudentIds: string[] | null = null;
+    if (userRole === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users as u', 'teachers.user_id', 'u.id')
+        .where('teachers.user_id', req.user!.id)
+        .where('u.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+      if (!teacher) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      const assigned = await db('teacher_assignments').where('teacher_id', teacher.id).distinct('class_id');
+      const led = await db('classes').where('class_teacher_id', teacher.id).select('id');
+      const classIds = Array.from(new Set<string>([
+        ...assigned.map((r: any) => r.class_id),
+        ...led.map((r: any) => r.id),
+      ]));
+      if (classIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      const enrolled = await db('enrollments')
+        .whereIn('class_id', classIds)
+        .whereIn('status', ['enrolled', 'active'])
+        .distinct('student_id');
+      teacherStudentIds = enrolled.map((r: any) => r.student_id);
+      if (teacherStudentIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      query = query.whereIn('students.id', teacherStudentIds);
+    }
+
     // Apply filters
     if (status) {
       if (status === 'active') {
@@ -322,6 +395,9 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
       countQuery = countQuery.where('students.tenant_id', tenantId);
     } else if (requestedTenantId && requestedTenantId !== 'all') {
       countQuery = countQuery.where('students.tenant_id', requestedTenantId);
+    }
+    if (teacherStudentIds) {
+      countQuery = countQuery.whereIn('students.id', teacherStudentIds);
     }
     countQuery = countQuery.count('* as totalCount');
     if (status) {

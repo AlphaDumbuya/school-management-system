@@ -72,15 +72,19 @@ export const CalendarPage: React.FC = () => {
   const [prefillDate, setPrefillDate] = useState<string | null>(null);
 
   // ── Fetch events for current month ──────────────────────────────────────────
-  const startDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
-  const endDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${getDaysInMonth(currentYear, currentMonth)}`;
+  // Use the purpose-built calendar endpoint: it returns only published events,
+  // applies visibility rules (public + the user's own registrations), and
+  // correctly includes multi-day events that span into the month. Boundaries
+  // cover the full first/last day so time-of-day components aren't excluded.
+  const startDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01T00:00:00`;
+  const lastDay = getDaysInMonth(currentYear, currentMonth);
+  const endDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59`;
 
   const { data, isLoading } = useQuery({
     queryKey: ['calendar-events', currentYear, currentMonth],
-    queryFn: () => eventsService.listEvents({
+    queryFn: () => eventsService.getCalendarEvents({
       start_date: startDate,
       end_date: endDate,
-      limit: 100,
     }),
     staleTime: 60_000,
   });

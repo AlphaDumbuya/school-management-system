@@ -15,7 +15,7 @@ router.use(attachUserContext);
  */
 router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, level, section, capacity, academic_session_id, class_teacher_id, room_number, floor, building } = req.body;
+    const { name, level, section, capacity, academic_session_id, class_teacher_id, room_number, floor, building, next_class_id, is_final_year } = req.body;
     const createdBy = req.auth?.userId ?? null;
     const tenantId = req.user?.tenant_id;
 
@@ -59,6 +59,8 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       room_number: room_number || null,
       floor: floor || null,
       building: building || null,
+      next_class_id: next_class_id || null,
+      is_final_year: is_final_year ?? false,
       status: 'active',
       created_at: new Date(),
       updated_at: new Date(),
@@ -117,6 +119,8 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         'classes.room_number',
         'classes.floor',
         'classes.building',
+        'classes.next_class_id',
+        'classes.is_final_year',
         'classes.created_at',
         db.raw('COALESCE(enrollment_counts.enrolled_students, 0) as enrolled_students')
       )
@@ -130,6 +134,34 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         'classes.id',
         'enrollment_counts.class_id'
       );
+
+    // Teacher scoping: teachers only see classes they are assigned to teach
+    // (via teacher_assignments) or lead as the class teacher. Staff-admins
+    // (principal / super_admin) see all tenant classes.
+    if (req.user?.role === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users', 'teachers.user_id', 'users.id')
+        .where('teachers.user_id', req.user.id)
+        .where('users.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+
+      if (!teacher) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+
+      const assigned = await db('teacher_assignments').where('teacher_id', teacher.id).distinct('class_id');
+      const led = await db('classes').where('class_teacher_id', teacher.id).select('id');
+      const classIds = Array.from(new Set<string>([
+        ...assigned.map((r: any) => r.class_id),
+        ...led.map((r: any) => r.id),
+      ]));
+
+      if (classIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      query = query.whereIn('classes.id', classIds);
+    }
 
     if (level) {
       query = query.where('classes.level', level);
@@ -178,6 +210,30 @@ router.get('/:classId/students', authenticate, async (req: Request, res: Respons
 
     if (!tenantId) {
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    // Teacher scoping: a teacher may only view students of classes they teach/lead.
+    if (req.user?.role === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users', 'teachers.user_id', 'users.id')
+        .where('teachers.user_id', req.user.id)
+        .where('users.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+
+      let allowed = false;
+      if (teacher) {
+        const assigned = await db('teacher_assignments')
+          .where({ teacher_id: teacher.id, class_id: classId })
+          .first();
+        const led = await db('classes')
+          .where({ id: classId, class_teacher_id: teacher.id })
+          .first();
+        allowed = !!(assigned || led);
+      }
+      if (!allowed) {
+        throw new AppError('You are not assigned to this class', 403, 'FORBIDDEN');
+      }
     }
 
     const classData = await db('classes')
@@ -284,7 +340,7 @@ router.get('/:classId', authenticate, async (req: Request, res: Response, next: 
 router.put('/:classId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
-    const { name, level, section, capacity, class_teacher_id, room_number, floor, building, status } = req.body;
+    const { name, level, section, capacity, class_teacher_id, room_number, floor, building, status, next_class_id, is_final_year } = req.body;
     const updatedBy = req.auth?.userId ?? null;
     const tenantId = req.user?.tenant_id;
 
@@ -321,6 +377,8 @@ router.put('/:classId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUP
     }
     if (class_teacher_id) updateData.class_teacher_id = class_teacher_id;
     if (room_number !== undefined) updateData.room_number = room_number || null;
+    if (next_class_id !== undefined) updateData.next_class_id = next_class_id || null;
+    if (is_final_year !== undefined) updateData.is_final_year = !!is_final_year;
     if (floor !== undefined) updateData.floor = floor || null;
     if (building !== undefined) updateData.building = building || null;
     if (status) updateData.status = status;

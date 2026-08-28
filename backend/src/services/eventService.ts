@@ -251,7 +251,7 @@ export class EventService {
   /**
    * Get event with full details (including categories, registration stats)
    */
-  async getEventDetails(eventId: string, tenantId: string): Promise<any> {
+  async getEventDetails(eventId: string, tenantId: string, userId?: string): Promise<any> {
     try {
       const event = await this.getEvent(eventId, tenantId);
 
@@ -281,18 +281,42 @@ export class EventService {
         )
         .first();
 
+      const confirmed = parseInt(registrationStats?.confirmed_count || '0');
+      const waitlist = parseInt(registrationStats?.waitlist_count || '0');
+      const totalRegistrations = parseInt(registrationStats?.total_registrations || '0');
+
+      // Look up the current user's own registration (for RSVP state on the UI)
+      let userRegistration: any = null;
+      if (userId) {
+        const reg = await db('event_registrations')
+          .where({ event_id: eventId, user_id: userId })
+          .whereNot('status', 'cancelled')
+          .first();
+        if (reg) {
+          if (reg.registration_data && typeof reg.registration_data === 'string') {
+            try { reg.registration_data = JSON.parse(reg.registration_data); } catch { /* ignore */ }
+          }
+          userRegistration = reg;
+        }
+      }
+
       return {
         ...event,
         categories,
+        // Flat count used by list/detail UI components
+        registrations_count: totalRegistrations,
         registration_stats: {
-          confirmed: parseInt(registrationStats?.confirmed_count || '0'),
-          waitlist: parseInt(registrationStats?.waitlist_count || '0'),
-          total: parseInt(registrationStats?.total_registrations || '0'),
+          confirmed,
+          waitlist,
+          total: totalRegistrations,
         },
         attendance_stats: {
           present: parseInt(attendanceStats?.present_count || '0'),
           total: parseInt(attendanceStats?.total_attendance || '0'),
         },
+        // RSVP state for the requesting user
+        is_registered: !!userRegistration,
+        user_registration: userRegistration,
       };
     } catch (error) {
       logger.error('Error getting event details:', error);
@@ -365,12 +389,22 @@ export class EventService {
         .first();
       const total = parseInt(String(countResult?.count ?? '0'), 10);
 
-      // Get paginated results
+      // Get paginated results — include a confirmed-registration count per event
+      // so the UI list/KPIs can show real numbers instead of always 0.
       const events = await query
-        .select('events.*')
+        .select(
+          'events.*',
+          db.raw(
+            "(SELECT COUNT(*) FROM event_registrations er WHERE er.event_id = events.event_id AND er.status = 'confirmed') as registrations_count"
+          )
+        )
         .orderBy('events.start_date', 'desc')
         .limit(limit)
         .offset(offset);
+
+      events.forEach((event: any) => {
+        event.registrations_count = parseInt(event.registrations_count || '0', 10);
+      });
 
       // Parse JSON fields — only call JSON.parse when Postgres returns a raw string
       // (some drivers/versions auto-parse jsonb columns into objects already)

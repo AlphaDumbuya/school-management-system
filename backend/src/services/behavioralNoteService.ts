@@ -474,6 +474,7 @@ class BehavioralNoteService {
     options?: {
       search?: string;
       note_type?: string;
+      recordedBy?: string;
       page?: number;
       limit?: number;
     }
@@ -497,6 +498,11 @@ class BehavioralNoteService {
           db.raw("CONCAT(COALESCE(rb.first_name, ''), ' ', COALESCE(rb.last_name, '')) as recorded_by_name")
         )
         .orderBy('bn.note_date', 'desc');
+
+      // Teacher scope: only notes they recorded.
+      if (options?.recordedBy) {
+        query = query.where('bn.recorded_by', options.recordedBy);
+      }
 
       if (options?.note_type) {
         query = query.where('bn.note_type', options.note_type);

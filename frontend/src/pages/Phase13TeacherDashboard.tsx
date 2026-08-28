@@ -1,319 +1,206 @@
 /**
- * Teacher Dashboard Page
- * Main dashboard for teachers with class management, grading, and attendance
- * Phase 13: Specialized Dashboards
+ * Teacher Dashboard — /teacher/dashboard
+ * Real, tenant + teacher-scoped hub. Shows only the teacher's assigned classes,
+ * today's schedule, KPIs, and recent activity. Actions route to the existing
+ * scoped tools (SL grade entry, attendance, report cards).
  */
 
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
-import { Button } from '@components/ui/button';
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import {
+  Users, BookOpen, BarChart3, Calendar, ClipboardList, ClipboardCheck,
+  Star, FileText, Loader2, MapPin, Clock, GraduationCap,
+} from 'lucide-react';
 import { MainLayout } from '@components/layout/MainLayout';
-import AssignedClassesPanel from '@components/teacher/AssignedClassesPanel';
-import QuickAttendanceMarking from '@components/teacher/QuickAttendanceMarking';
-import BulkGradeEntry from '@components/teacher/BulkGradeEntry';
-import { Users, BookOpen, BarChart3, AlertCircle, Calendar } from 'lucide-react';
+import { PageShell } from '@components/admin/layout/PageShell';
+import { KPICard } from '@components/dashboard/KPICard';
+import { EmptyState } from '@components/admin/feedback/EmptyState';
+import { Button } from '@components/ui/button';
 import useAuthStore from '@store/authStore';
+import { teacherDashboardService, TeacherDashboardData } from '@services/teacherDashboardService';
 
-// Mock data - replace with API calls
-const mockClasses = [
-  {
-    id: 'class-1',
-    name: 'Mathematics - 10th Grade',
-    subject: 'Mathematics',
-    level: '10th Grade',
-    section: 'A',
-    studentCount: 35,
-    status: 'active' as const,
-    room: '101',
-    schedule: 'Mon, Wed, Fri 9:00-10:00',
-  },
-  {
-    id: 'class-2',
-    name: 'Mathematics - 10th Grade',
-    subject: 'Mathematics',
-    level: '10th Grade',
-    section: 'B',
-    studentCount: 32,
-    status: 'active' as const,
-    room: '102',
-    schedule: 'Tue, Thu 9:00-10:00',
-  },
-  {
-    id: 'class-3',
-    name: 'Advanced Calculus - 12th Grade',
-    subject: 'Mathematics',
-    level: '12th Grade',
-    section: 'A',
-    studentCount: 28,
-    status: 'active' as const,
-    room: '201',
-    schedule: 'Mon, Wed, Fri 10:00-11:00',
-  },
-];
+function fmtTime(t?: string): string {
+  if (!t) return '';
+  // t is HH:MM:SS — show HH:MM (12h)
+  const [h, m] = t.split(':');
+  const hour = parseInt(h, 10);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const h12 = hour % 12 || 12;
+  return `${h12}:${m} ${ampm}`;
+}
 
-const mockStudents = [
-  { id: 'std-1', name: 'Mohamed Kamara', rollNumber: '001', email: 'mkamara@example.com' },
-  { id: 'std-2', name: 'Fatmata Sesay', rollNumber: '002', email: 'fsesay@example.com' },
-  { id: 'std-3', name: 'Ibrahim Koroma', rollNumber: '003', email: 'ikoroma@example.com' },
-  { id: 'std-4', name: 'Aminata Bangura', rollNumber: '004', email: 'abangura@example.com' },
-  { id: 'std-5', name: 'Abdul Conteh', rollNumber: '005', email: 'aconteh@example.com' },
-];
-
-type TabType = 'overview' | 'classes' | 'grading' | 'attendance';
+function timeAgo(ts?: string): string {
+  if (!ts) return '';
+  const d = new Date(ts).getTime();
+  const diff = Date.now() - d;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
 
 export const Phase13TeacherDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
 
-  // Get selected class data
-  const selectedClass = selectedClassId ? mockClasses.find(c => c.id === selectedClassId) : null;
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['teacher-dashboard'],
+    queryFn: () => teacherDashboardService.getDashboard(),
+    staleTime: 60_000,
+  });
 
-  // Statistics
-  const stats = {
-    totalClasses: mockClasses.length,
-    totalStudents: mockClasses.reduce((sum, c) => sum + c.studentCount, 0),
-    activeClasses: mockClasses.filter(c => c.status === 'active').length,
-    pendingGrades: 3,
-  };
+  const dash: TeacherDashboardData | undefined =
+    (data as any)?.data ?? (data as any);
 
-  const handleSelectClass = (classId: string) => {
-    setSelectedClassId(classId);
-    setActiveTab('classes');
-  };
+  const stats = dash?.stats ?? { total_classes: 0, total_students: 0, total_subjects: 0, classes_today: 0 };
+  const classes = dash?.classes ?? [];
+  const schedule = dash?.today_schedule ?? [];
+  const activity = dash?.recent_activity ?? [];
 
-  const handleGradeEntry = (classId: string) => {
-    setSelectedClassId(classId);
-    setActiveTab('grading');
-  };
-
-  const handleMarkAttendance = (classId: string) => {
-    setSelectedClassId(classId);
-    setActiveTab('attendance');
-  };
-
-  const handleGradeSubmit = async (grades: Array<{ studentId: string; grade: number }>) => {
-    try {
-      setIsLoading(true);
-      // TODO: Call API to submit grades
-      console.log('Submitting grades:', grades);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleAttendanceSubmit = async (records: Array<{ studentId: string; status: string }>) => {
-    try {
-      setIsLoading(true);
-      // TODO: Call API to submit attendance
-      console.log('Submitting attendance:', records);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const quickActions = [
+    { label: 'Enter Scores', icon: <ClipboardList size={18} />, route: '/academic/results' },
+    { label: 'Mark Attendance', icon: <ClipboardCheck size={18} />, route: '/students/attendance' },
+    { label: 'Ratings', icon: <Star size={18} />, route: '/academic/results' },
+    { label: 'Report Cards', icon: <FileText size={18} />, route: '/academic/report-cards' },
+  ];
 
   return (
     <MainLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Teacher Dashboard</h1>
-          <p className="text-gray-600 mt-2">Welcome, {user?.firstName || 'Teacher'}! Manage your classes and students.</p>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-600 text-sm">Total Classes</p>
-                  <p className="text-3xl font-bold text-blue-600">{stats.totalClasses}</p>
-                </div>
-                <BookOpen className="w-10 h-10 text-blue-100" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-600 text-sm">Total Students</p>
-                  <p className="text-3xl font-bold text-green-600">{stats.totalStudents}</p>
-                </div>
-                <Users className="w-10 h-10 text-green-100" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-600 text-sm">Active Classes</p>
-                  <p className="text-3xl font-bold text-purple-600">{stats.activeClasses}</p>
-                </div>
-                <BarChart3 className="w-10 h-10 text-purple-100" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-600 text-sm">Pending Grades</p>
-                  <p className="text-3xl font-bold text-orange-600">{stats.pendingGrades}</p>
-                </div>
-                <AlertCircle className="w-10 h-10 text-orange-100" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b">
-          <div className="flex gap-4">
-            {(['overview', 'classes', 'grading', 'attendance'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-3 font-medium border-b-2 transition ${
-                  activeTab === tab
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
+      <PageShell
+        title="Teacher Dashboard"
+        subtitle={`Welcome back, ${user?.firstName ?? 'Teacher'} — here are your classes`}
+      >
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 size={32} className="animate-spin text-blue-500" />
           </div>
-        </div>
+        ) : error ? (
+          <EmptyState message="Failed to load dashboard" description="Please refresh and try again." />
+        ) : dash?.teacher_profile_missing ? (
+          <EmptyState
+            message="No teacher profile found"
+            description="Your account isn't linked to a teacher profile yet. Ask your principal to set up your teaching assignments."
+          />
+        ) : (
+          <div className="space-y-8">
+            {/* KPIs */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+              <KPICard title="My Classes" value={stats.total_classes} icon={<div className="p-2 rounded-xl bg-blue-500 text-white"><BookOpen size={20} /></div>} color="blue" />
+              <KPICard title="Students Taught" value={stats.total_students} icon={<div className="p-2 rounded-xl bg-green-500 text-white"><Users size={20} /></div>} color="green" />
+              <KPICard title="Subjects" value={stats.total_subjects} icon={<div className="p-2 rounded-xl bg-purple-500 text-white"><BarChart3 size={20} /></div>} color="purple" />
+              <KPICard title="Classes Today" value={stats.classes_today} icon={<div className="p-2 rounded-xl bg-amber-500 text-white"><Calendar size={20} /></div>} color="amber" />
+            </div>
 
-        {/* Content */}
-        <div>
-          {/* Overview Tab */}
-          {activeTab === 'overview' && (
-            <div className="space-y-6">
-              {/* Today's Schedule */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="w-5 h-5" />
-                    Today's Schedule
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {mockClasses.slice(0, 3).map(cls => (
-                      <div key={cls.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                        <div>
-                          <p className="font-semibold">{cls.name}</p>
-                          <p className="text-sm text-gray-600">{cls.schedule} • Room {cls.room}</p>
+            {/* Quick actions */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Quick Actions</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {quickActions.map((a) => (
+                  <Button key={a.label} variant="outline" className="flex flex-col items-center gap-2 h-auto py-4" onClick={() => navigate(a.route)}>
+                    {a.icon}
+                    <span className="text-xs font-medium">{a.label}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Today's schedule */}
+              <div className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <Calendar size={16} className="text-blue-500" /> Today's Schedule
+                </h3>
+                {schedule.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">No classes scheduled for today.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {schedule.map((s) => (
+                      <div key={s.id} className="flex items-start justify-between gap-3 p-3 rounded-lg border border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{s.subject_name || s.class_name}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.class_name}</p>
+                          {s.room && <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5"><MapPin size={10} /> {s.room}</p>}
                         </div>
-                        <div className="text-sm text-gray-600">{cls.studentCount} students</div>
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap flex items-center gap-1">
+                          <Clock size={11} /> {fmtTime(s.start_time)}
+                        </span>
                       </div>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
+                )}
+              </div>
 
-              {/* Recent Activities */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Activities</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex items-center gap-3 p-2 bg-blue-50 rounded">
-                      <div className="w-2 h-2 bg-blue-600 rounded-full" />
-                      <div>Grade submission deadline: 2 days remaining</div>
-                    </div>
-                    <div className="flex items-center gap-3 p-2 bg-green-50 rounded">
-                      <div className="w-2 h-2 bg-green-600 rounded-full" />
-                      <div>Attendance marked for 10th Grade A</div>
-                    </div>
-                    <div className="flex items-center gap-3 p-2 bg-yellow-50 rounded">
-                      <div className="w-2 h-2 bg-yellow-600 rounded-full" />
-                      <div>New assignment posted by admin</div>
-                    </div>
+              {/* Assigned classes */}
+              <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <BookOpen size={16} className="text-purple-500" /> My Classes
+                </h3>
+                {classes.length === 0 ? (
+                  <EmptyState message="No classes assigned" description="Your principal hasn't assigned you to any classes or subjects yet." />
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {classes.map((c) => (
+                      <div key={c.id} className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 transition-colors">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{c.name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{c.level}{c.section ? ` · ${c.section}` : ''}{c.room ? ` · Room ${c.room}` : ''}</p>
+                          </div>
+                          {c.is_class_teacher && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 whitespace-nowrap">
+                              <GraduationCap size={11} /> Class Teacher
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mb-2">
+                          <span className="flex items-center gap-1"><Users size={12} /> {c.student_count} students</span>
+                        </div>
+                        {c.subjects.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {c.subjects.map((s, i) => (
+                              <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{s}</span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => navigate('/academic/results')}>
+                            <ClipboardList size={13} className="mr-1" /> Scores
+                          </Button>
+                          <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => navigate('/students/attendance')}>
+                            <ClipboardCheck size={13} className="mr-1" /> Attendance
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </CardContent>
-              </Card>
+                )}
+              </div>
             </div>
-          )}
 
-          {/* Classes Tab */}
-          {activeTab === 'classes' && (
-            <AssignedClassesPanel
-              classes={mockClasses}
-              onSelectClass={handleSelectClass}
-              onGradeEntry={handleGradeEntry}
-              onMarkAttendance={handleMarkAttendance}
-              isLoading={isLoading}
-            />
-          )}
-
-          {/* Grading Tab */}
-          {activeTab === 'grading' && (
-            <div className="space-y-4">
-              {selectedClass ? (
-                <BulkGradeEntry
-                  classId={selectedClass.id}
-                  className={selectedClass.name}
-                  subject={selectedClass.subject}
-                  students={mockStudents.map(s => ({
-                    studentId: s.id,
-                    name: s.name,
-                    rollNumber: s.rollNumber,
-                    grade: '' as any,
-                    maxMarks: 100,
-                    passMark: 40,
-                  }))}
-                  maxMarks={100}
-                  passMark={40}
-                  onSubmit={handleGradeSubmit}
-                  isLoading={isLoading}
-                />
+            {/* Recent activity */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
+              {activity.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">No recent activity yet. Entered scores and marked attendance will show here.</p>
               ) : (
-                <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-gray-600 text-center">Select a class to enter grades</p>
-                  </CardContent>
-                </Card>
+                <div className="space-y-2">
+                  {activity.map((a, i) => (
+                    <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-700/30">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${a.type === 'attendance' ? 'bg-green-500' : 'bg-blue-500'}`} />
+                      <span className="text-sm text-gray-700 dark:text-gray-300 flex-1">{a.message}</span>
+                      <span className="text-xs text-gray-400 whitespace-nowrap">{timeAgo(a.timestamp)}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-          )}
-
-          {/* Attendance Tab */}
-          {activeTab === 'attendance' && (
-            <div className="space-y-4">
-              {selectedClass ? (
-                <QuickAttendanceMarking
-                  classId={selectedClass.id}
-                  className={selectedClass.name}
-                  date={new Date()}
-                  students={mockStudents}
-                  onSubmit={handleAttendanceSubmit}
-                  isLoading={isLoading}
-                />
-              ) : (
-                <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-gray-600 text-center">Select a class to mark attendance</p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
+      </PageShell>
     </MainLayout>
   );
 };

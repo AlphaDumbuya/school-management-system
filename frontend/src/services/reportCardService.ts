@@ -252,6 +252,50 @@ export const reportCardService = {
     if (!type.includes('application/pdf')) return null;
     return res.blob();
   },
+
+  // ── Principal-managed report settings ──────────────────────────────────────
+
+  /** Get the tenant's report settings (locking / visibility / auto-promote). */
+  async getSettings() {
+    return apiClient.get<{ success: boolean; data: ReportSettings }>(`${BASE}/settings/config`);
+  },
+
+  /** Save (partial) report settings. */
+  async saveSettings(data: Partial<ReportSettings>) {
+    return apiClient.post(`${BASE}/settings/config`, data);
+  },
+
+  /** Lock / unlock scores for a class+subject+term (prevents edits). */
+  async setLock(payload: { class_id: string; subject_id: string; term: SLTerm; academic_year: string; locked: boolean }) {
+    return apiClient.post(`${BASE}/lock`, payload);
+  },
+
+  /** Publish / unpublish results for a class (gates parent/student visibility). */
+  async setPublication(payload: { class_id: string; academic_year: string; term?: SLTerm | null; published: boolean }) {
+    return apiClient.post(`${BASE}/publish`, payload);
+  },
+
+  /** Classes the caller may act on (all for staff-admin, assigned for teachers). */
+  async getMyClasses() {
+    return apiClient.get<{ success: boolean; data: Array<{ id: string; name: string; level: string }> }>(`${BASE}/my/classes`);
+  },
+
+  /**
+   * Subject ids the caller may enter scores for in a class.
+   * data === null means no restriction (staff-admin); otherwise an id list.
+   */
+  async getMySubjects(classId: string) {
+    return apiClient.get<{ success: boolean; data: string[] | null; scoped: boolean }>(
+      `${BASE}/my/subjects`, { params: { class_id: classId } },
+    );
+  },
 };
+
+export interface ReportSettings {
+  auto_lock_on_entry: boolean;
+  allow_teacher_edit_after_lock: boolean;
+  allow_teacher_view_results: boolean;
+  auto_promote_on_publish: boolean;
+}
 
 export default reportCardService;

@@ -47,6 +47,7 @@ import idCardReportingRoutes from '@routes/idCardReportingRoutes';
 import printConfigRoutes from '@routes/printConfigRoutes';
 import eventRoutes from '@routes/eventRoutes';
 import slReportCardRoutes from '@routes/slReportCardRoutes';
+import promotionRoutes from '@routes/promotionRoutes';
 import disciplineRoutes from '@routes/disciplineRoutes';
 import smsWhatsAppRoutes from '@routes/smsWhatsAppRoutes';
 import smsWhatsAppWebhooks from '@routes/smsWhatsAppWebhooks';
@@ -172,8 +173,11 @@ app.use('/api/v1/roles', rbacRoutes);
 // Student Routes
 app.use('/api/v1/students', studentRoutes);
 
-// Guardian Routes
+// Guardian Routes — mounted under both /guardians and /students so student-
+// nested guardian actions (e.g. /students/:studentId/parent-account,
+// /students/guardian-lookup) resolve correctly.
 app.use('/api/v1/guardians', guardianRoutes);
+app.use('/api/v1/students', guardianRoutes);
 
 // Class Routes
 app.use('/api/v1/classes', classRoutes);
@@ -276,6 +280,9 @@ app.use('/api/v1/events', eventRoutes);
 
 // Sierra Leone Report Card / Booklet Routes
 app.use('/api/v1/report-cards', slReportCardRoutes);
+
+// Student Promotion Routes
+app.use('/api/v1/promotions', promotionRoutes);
 
 // Discipline & Conduct Routes (Phase 2.3: Discipline & Conduct Module)
 app.use('/api/v1/discipline', disciplineRoutes);

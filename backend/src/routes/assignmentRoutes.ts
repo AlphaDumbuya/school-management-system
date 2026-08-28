@@ -10,6 +10,22 @@ router.use(authenticate);
 router.use(attachUserContext);
 
 /**
+ * If the caller is a teacher, ensure the assignment belongs to them.
+ * Staff-admins (principal / super_admin) bypass this check.
+ * Returns true when access is allowed.
+ */
+async function teacherOwnsAssignment(req: Request, assignmentTeacherId: string): Promise<boolean> {
+  if (req.user?.role !== 'teacher') return true;
+  const teacher = await db('teachers')
+    .join('users', 'teachers.user_id', 'users.id')
+    .where('teachers.user_id', req.user.id)
+    .where('users.tenant_id', req.user.tenant_id)
+    .select('teachers.id')
+    .first();
+  return !!teacher && teacher.id === assignmentTeacherId;
+}
+
+/**
  * POST /api/v1/assignments
  * Create a new assignment
  */
@@ -23,7 +39,28 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
-    if (!title || !class_id || !subject_id || !teacher_id || !assigned_date || !due_date) {
+    // Teachers can only create assignments as themselves for classes they teach.
+    let effectiveTeacherId = teacher_id;
+    if (req.user?.role === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users', 'teachers.user_id', 'users.id')
+        .where('teachers.user_id', req.user.id)
+        .where('users.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+      if (!teacher) {
+        throw new AppError('Teacher profile not found', 403, 'FORBIDDEN');
+      }
+      effectiveTeacherId = teacher.id; // force own id
+      // Must be assigned to (or lead) the target class
+      const assigned = await db('teacher_assignments').where({ teacher_id: teacher.id, class_id }).first();
+      const led = await db('classes').where({ id: class_id, class_teacher_id: teacher.id }).first();
+      if (!assigned && !led) {
+        throw new AppError('You are not assigned to this class', 403, 'FORBIDDEN');
+      }
+    }
+
+    if (!title || !class_id || !subject_id || !effectiveTeacherId || !assigned_date || !due_date) {
       throw new AppError('Missing required fields: title, class_id, subject_id, teacher_id, assigned_date, due_date', 400, 'VALIDATION_ERROR');
     }
 
@@ -49,7 +86,7 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       description: description || null,
       class_id,
       subject_id,
-      teacher_id,
+      teacher_id: effectiveTeacherId,
       type: type || 'homework',
       assigned_date,
       due_date,
@@ -112,6 +149,23 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, 'Unknown') as teacher_name")
       );
 
+    // Teacher scoping: teachers only see assignments they created/own. Resolve
+    // once and apply to both the data and count queries.
+    let teacherScopeId: string | null = null;
+    if (req.user?.role === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users', 'teachers.user_id', 'users.id')
+        .where('teachers.user_id', req.user.id)
+        .where('users.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+      if (!teacher) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      teacherScopeId = teacher.id;
+      query = query.where('assignments.teacher_id', teacherScopeId);
+    }
+
     if (class_id) query = query.where('assignments.class_id', class_id as string);
     if (subject_id) query = query.where('assignments.subject_id', subject_id as string);
     if (teacher_id) query = query.where('assignments.teacher_id', teacher_id as string);
@@ -140,6 +194,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       })
       .count('assignments.id as count');
 
+    if (teacherScopeId) countQuery = countQuery.where('assignments.teacher_id', teacherScopeId);
     if (class_id) countQuery = countQuery.where('assignments.class_id', class_id as string);
     if (subject_id) countQuery = countQuery.where('assignments.subject_id', subject_id as string);
     if (teacher_id) countQuery = countQuery.where('assignments.teacher_id', teacher_id as string);
@@ -194,6 +249,9 @@ router.get('/:assignmentId', authenticate, async (req: Request, res: Response, n
       .first();
 
     if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
+    if (!(await teacherOwnsAssignment(req, assignment.teacher_id))) {
+      throw new AppError('You can only view your own assignments', 403, 'FORBIDDEN');
+    }
     res.json(assignment);
   } catch (error) {
     next(error);
@@ -229,6 +287,9 @@ router.put('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, UserRol
       .select('assignments.*')
       .first();
     if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
+    if (!(await teacherOwnsAssignment(req, assignment.teacher_id))) {
+      throw new AppError('You can only edit your own assignments', 403, 'FORBIDDEN');
+    }
 
     const updateData: any = {};
     if (title) updateData.title = title.trim();
@@ -279,6 +340,9 @@ router.delete('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, User
       .select('assignments.*')
       .first();
     if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
+    if (!(await teacherOwnsAssignment(req, assignment.teacher_id))) {
+      throw new AppError('You can only delete your own assignments', 403, 'FORBIDDEN');
+    }
 
     // Check for submissions
     const submissions = await db('assignment_submissions').where('assignment_id', assignmentId).count('* as count').first();

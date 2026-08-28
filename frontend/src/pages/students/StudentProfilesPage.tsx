@@ -6,6 +6,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useAuth } from '@hooks/useAuth';
 import { useQuery } from '@tanstack/react-query';
 import {
   User, Mail, Phone, MapPin, Calendar, BookOpen, Heart, Shield, Hash, Globe,
@@ -57,6 +58,9 @@ const ENABLE_V2_FEATURES = false;
 
 export const StudentProfilesPage: React.FC = () => {
   const location = useLocation();
+  const { canAccess } = useAuth();
+  // Parent-account provisioning is an admin/admissions function, not teachers'.
+  const canManage = canAccess(['principal', 'super_admin', 'admissions_officer']);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
@@ -526,16 +530,18 @@ export const StudentProfilesPage: React.FC = () => {
                 <span className="hidden xs:inline sm:inline">Back to Profiles</span>
                 <span className="xs:hidden sm:hidden">Back</span>
               </Button>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleOpenParentModal}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all"
-              >
-                <User size={14} />
-                <span className="hidden sm:inline">Create Parent Account</span>
-                <span className="sm:hidden">Parent Account</span>
-              </Button>
+              {canManage && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleOpenParentModal}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all"
+                >
+                  <User size={14} />
+                  <span className="hidden sm:inline">Create Parent Account</span>
+                  <span className="sm:hidden">Parent Account</span>
+                </Button>
+              )}
             </div>
 
             {isDetailsLoading || !student ? (
@@ -729,13 +735,15 @@ export const StudentProfilesPage: React.FC = () => {
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={handleOpenParentModal}
-                            className="w-full py-2.5 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-all flex items-center justify-center gap-2 shadow-md"
-                          >
-                            <User size={14} /> Provision / Link Parent Account
-                          </button>
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={handleOpenParentModal}
+                              className="w-full py-2.5 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-all flex items-center justify-center gap-2 shadow-md"
+                            >
+                              <User size={14} /> Provision / Link Parent Account
+                            </button>
+                          )}
                         </div>
 
                         {/* Medical Conditions */}

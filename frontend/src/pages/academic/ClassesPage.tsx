@@ -20,6 +20,7 @@ import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
+import { useAuth } from '@hooks/useAuth';
 import { classesService, ClassRecord } from '@services/classesService';
 import { ClassFormModal } from './components/ClassFormModal';
 import { ClassStudentsModal } from './components/ClassStudentsModal';
@@ -74,16 +75,27 @@ function capacityColor(pct: number): 'green' | 'amber' | 'red' {
 interface LevelFilterPopoverProps {
   value: string;
   onChange: (val: string) => void;
+  /** When provided, only these levels are shown (e.g. a teacher's own levels). */
+  availableLevels?: string[];
 }
 
-const FILTER_CATEGORIES = [
+const ALL_FILTER_CATEGORIES = [
   { key: 'nursery', label: 'Nursery', icon: '💒', levels: ['NURSERY1', 'NURSERY2', 'NURSERY3'] },
   { key: 'primary', label: 'Primary', icon: '📚', levels: ['CLASS1', 'CLASS2', 'CLASS3', 'CLASS4', 'CLASS5', 'CLASS6'] },
   { key: 'jss', label: 'JSS', icon: '📖', levels: ['JSS1', 'JSS2', 'JSS3'] },
   { key: 'sss', label: 'SSS', icon: '🎓', levels: ['SSS1', 'SSS2', 'SSS3'] },
 ];
 
-const LevelFilterPopover: React.FC<LevelFilterPopoverProps> = ({ value, onChange }) => {
+const LevelFilterPopover: React.FC<LevelFilterPopoverProps> = ({ value, onChange, availableLevels }) => {
+  // Scope categories/levels to the available set when provided.
+  const FILTER_CATEGORIES = React.useMemo(() => {
+    if (!availableLevels) return ALL_FILTER_CATEGORIES;
+    const set = new Set(availableLevels);
+    return ALL_FILTER_CATEGORIES
+      .map((c) => ({ ...c, levels: c.levels.filter((l) => set.has(l)) }))
+      .filter((c) => c.levels.length > 0);
+  }, [availableLevels]);
+
   const [isOpen, setIsOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -158,7 +170,9 @@ const LevelFilterPopover: React.FC<LevelFilterPopoverProps> = ({ value, onChange
 
           {/* Content */}
           <div className="p-2.5">
-            {!activeCategory ? (
+            {FILTER_CATEGORIES.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-3">No levels available.</p>
+            ) : !activeCategory ? (
               /* ── Step 1: Category selection ── */
               <div className="grid grid-cols-2 gap-2">
                 {FILTER_CATEGORIES.map((cat) => {
@@ -230,6 +244,10 @@ const LevelFilterPopover: React.FC<LevelFilterPopoverProps> = ({ value, onChange
 
 export const ClassesPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const { canAccess } = useAuth();
+  // Only principals/super-admins manage classes. Teachers get a read-only,
+  // assignment-scoped view.
+  const canManage = canAccess(['principal', 'super_admin']);
 
   // Filter state
   const [search, setSearch] = useState('');
@@ -265,6 +283,19 @@ export const ClassesPage: React.FC = () => {
 
   const classes: ClassRecord[] = (data as any)?.data ?? [];
   const pagination = (data as any)?.pagination ?? { total: 0, total_pages: 1 };
+
+  // Distinct levels a teacher actually teaches — fetched WITHOUT the level
+  // filter so switching levels stays possible. Skipped for managers.
+  const { data: teacherLevelsData } = useQuery({
+    queryKey: ['classes-teacher-levels'],
+    queryFn: () => classesService.listClasses({ limit: 100 }),
+    enabled: !canManage,
+    staleTime: 300_000,
+  });
+  const teacherLevels = useMemo(
+    () => Array.from(new Set(((teacherLevelsData as any)?.data ?? []).map((c: ClassRecord) => c.level).filter(Boolean))) as string[],
+    [teacherLevelsData],
+  );
 
   // KPI calculations
   const stats = useMemo(() => {
@@ -377,7 +408,9 @@ export const ClassesPage: React.FC = () => {
     <MainLayout>
       <PageShell
         title="Classes & Streams"
-        subtitle="Manage school classes, streams, and enrolment capacity"
+        subtitle={canManage
+          ? 'Manage school classes, streams, and enrolment capacity'
+          : 'Your assigned classes and their students'}
         breadcrumbs={[{ label: 'Classes & Streams' }]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
@@ -448,10 +481,11 @@ export const ClassesPage: React.FC = () => {
 
             {/* Filter Dropdowns */}
             <div className="flex items-center gap-2 sm:gap-2.5 w-full lg:w-auto">
-              {/* Level Filter — cascading popover */}
+              {/* Level Filter — cascading popover (scoped to teacher's levels) */}
               <LevelFilterPopover
                 value={levelFilter[0] || ''}
                 onChange={(val) => setLevelFilter(val ? [val] : [])}
+                availableLevels={canManage ? undefined : teacherLevels}
               />
 
               {/* Status Select */}
@@ -558,8 +592,12 @@ export const ClassesPage: React.FC = () => {
             <div className="flex flex-col items-center justify-center p-12 bg-transparent dark:bg-transparent text-center">
               <BookOpen size={48} className="text-gray-400 dark:text-gray-500 mb-4" />
               <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">No classes found</p>
-              <p className="text-sm text-gray-500 mt-1 mb-4">Try adjusting your filters or search query.</p>
-              <Button onClick={() => { setEditingClass(null); setFormOpen(true); }}>Add your first class</Button>
+              <p className="text-sm text-gray-500 mt-1 mb-4">
+                {canManage ? 'Try adjusting your filters or search query.' : 'You have not been assigned to any classes yet.'}
+              </p>
+              {canManage && (
+                <Button onClick={() => { setEditingClass(null); setFormOpen(true); }}>Add your first class</Button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -706,29 +744,33 @@ export const ClassesPage: React.FC = () => {
             pageSize={pageSize}
             totalRows={pagination.total}
             onPageChange={setPage}
-            enableRowSelection
+            enableRowSelection={canManage}
             onSelectionChange={setSelectedRows}
-            emptyMessage="No classes found"
-            emptyAction={{ label: 'Add your first class', onClick: () => { setEditingClass(null); setFormOpen(true); } }}
+            emptyMessage={canManage ? 'No classes found' : 'You have not been assigned to any classes yet.'}
+            emptyAction={canManage ? { label: 'Add your first class', onClick: () => { setEditingClass(null); setFormOpen(true); } } : undefined}
             rowActions={(cls) => [
-              {
-                label: 'Edit',
-                onClick: (row) => { setEditingClass(row); setFormOpen(true); },
-              },
+              // View Students is available to everyone (read-only)
               {
                 label: 'View Students',
                 onClick: (row) => setStudentsModal({ open: true, classId: row.id, className: row.name }),
               },
-              {
-                label: 'Deactivate',
-                variant: 'destructive',
-                onClick: (row) => setDeactivateTarget(row),
-              },
-              {
-                label: 'Delete',
-                variant: 'destructive',
-                onClick: (row) => setDeleteTarget(row),
-              },
+              // Management actions are principal / super_admin only
+              ...(canManage ? [
+                {
+                  label: 'Edit',
+                  onClick: (row: ClassRecord) => { setEditingClass(row); setFormOpen(true); },
+                },
+                {
+                  label: 'Deactivate',
+                  variant: 'destructive' as const,
+                  onClick: (row: ClassRecord) => setDeactivateTarget(row),
+                },
+                {
+                  label: 'Delete',
+                  variant: 'destructive' as const,
+                  onClick: (row: ClassRecord) => setDeleteTarget(row),
+                },
+              ] : []),
             ]}
           />
         )}

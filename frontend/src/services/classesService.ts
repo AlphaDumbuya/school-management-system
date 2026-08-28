@@ -20,6 +20,8 @@ export interface ClassRecord {
   building?: string;
   academic_session_id?: string;
   enrolled_students?: number;
+  next_class_id?: string | null;
+  is_final_year?: boolean;
   created_at: string;
 }
 
@@ -50,6 +52,8 @@ export interface ClassFormData {
   building?: string;
   class_teacher_id?: string;
   academic_session_id?: string;
+  next_class_id?: string | null;
+  is_final_year?: boolean;
 }
 
 export interface ListClassesParams {

@@ -54,6 +54,27 @@ export interface StudentFormData {
   status?: string;
   enrollment_date?: string;
   photo_url?: string;
+  // Guardian / parent
+  guardian_name?: string;
+  guardian_email?: string;
+  guardian_phone?: string;
+  guardian_relationship?: string;
+  guardian_occupation?: string;
+}
+
+export interface GuardianLookupResult {
+  success: boolean;
+  found: boolean;
+  parent?: {
+    user_id: string | null;
+    has_account: boolean;
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    phone: string | null;
+  };
+  children?: Array<{ student_id: string; reg_id: string; name: string }>;
+  children_count?: number;
 }
 
 export interface ListStudentsParams {
@@ -75,6 +96,13 @@ export const studentsService = {
 
   async getStudent(id: string) {
     return apiClient.get<StudentRecord>(`/api/v1/students/${id}`);
+  },
+
+  /** Detect whether a parent already exists for the given guardian email/phone. */
+  async guardianLookup(params: { email?: string; phone?: string }) {
+    // Routed via /guardians mount (not /students) to avoid the /:studentId
+    // param route in studentRoutes capturing "guardian-lookup".
+    return apiClient.get<GuardianLookupResult>('/api/v1/guardians/guardian-lookup', { params });
   },
 
   async createStudent(data: StudentFormData) {

@@ -35,6 +35,7 @@ import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { attendanceService, AttendanceRecord, SessionType, AttendanceStatus } from '@services/attendanceService';
 import { classesService } from '@services/classesService';
+import { useAuth } from '@hooks/useAuth';
 import { studentsService, StudentRecord } from '@services/studentsService';
 import { SearchBar } from '@components/admin/table/SearchBar';
 
@@ -108,6 +109,9 @@ const STATUS_ACTIVE: Record<AttendanceStatus, string> = {
 
 export const AttendancePage: React.FC = () => {
   const queryClient = useQueryClient();
+  const { canAccess } = useAuth();
+  // Only staff-admins can mark attendance across all students at once.
+  const canMarkAllStudents = canAccess(['principal', 'super_admin']);
 
   // ── Tabs ──────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<ActiveTab>('logs');
@@ -850,7 +854,9 @@ export const AttendancePage: React.FC = () => {
                       className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">— Select a class —</option>
-                      <option value="all-students" className="font-semibold text-cyan-600">🌐 All Enrolled Students</option>
+                      {canMarkAllStudents && (
+                        <option value="all-students" className="font-semibold text-cyan-600">🌐 All Enrolled Students</option>
+                      )}
                       <optgroup label="Classes">
                         {classes.map((c: any) => (
                           <option key={c.id} value={c.id}>{c.name}</option>

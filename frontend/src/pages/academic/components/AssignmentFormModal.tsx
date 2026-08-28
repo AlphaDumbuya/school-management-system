@@ -19,6 +19,7 @@ import { assignmentsService, AssignmentRecord, AssignmentFormData, ASSIGNMENT_TY
 import { classesService } from '@services/classesService';
 import { subjectsService } from '@services/subjectsService';
 import { timetableService } from '@services/timetableService';
+import { useAuth } from '@hooks/useAuth';
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
@@ -73,6 +74,7 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
   editingAssignment,
 }) => {
   const isEditing = !!editingAssignment;
+  const { user } = useAuth();
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [levelFilter, setLevelFilter] = useState('');
@@ -90,6 +92,15 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
     if (!levelFilter) return allClasses;
     return allClasses.filter((c: any) => getClassLevelCategory(c.level) === levelFilter);
   }, [allClasses, levelFilter]);
+
+  // Level-filter options limited to the categories actually present in the
+  // (already scoped) class list — so a teacher only sees their own levels.
+  const levelOptions = useMemo(() => {
+    const present = new Set(
+      allClasses.map((c: any) => getClassLevelCategory(c.level)).filter(Boolean),
+    );
+    return CLASS_LEVELS.filter((l) => l.value === '' || present.has(l.value));
+  }, [allClasses]);
 
   // Class options for SearchableSelect
   const classOptions = useMemo(() =>
@@ -122,6 +133,13 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
     staleTime: 60_000,
   });
   const teachers = (teachersData as any)?.data ?? [];
+  // A teacher can only create assignments as themselves — lock the selector.
+  const isTeacher = user?.role === 'teacher';
+  const ownTeacherId = useMemo(() => {
+    if (!isTeacher) return '';
+    const me = teachers.find((t: any) => String(t.user_id) === String(user?.id));
+    return me ? String(me.id) : '';
+  }, [teachers, isTeacher, user?.id]);
   const teacherOptions = useMemo(() =>
     teachers.map((t: any) => ({
       value: String(t.id),
@@ -136,6 +154,7 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
     handleSubmit,
     reset,
     control,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -174,7 +193,15 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
       setLevelFilter('');
     }
     setServerError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, editingAssignment, reset]);
+
+  // Teachers can only assign as themselves — force the field to their own id.
+  useEffect(() => {
+    if (isOpen && isTeacher && ownTeacherId) {
+      setValue('teacher_id', ownTeacherId);
+    }
+  }, [isOpen, isTeacher, ownTeacherId, setValue]);
 
   const onSubmit = async (values: FormValues) => {
     setServerError(null);
@@ -249,7 +276,7 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
               Filter classes by level
             </label>
             <div className="flex flex-wrap gap-1.5">
-              {CLASS_LEVELS.map((lvl) => (
+              {levelOptions.map((lvl) => (
                 <button
                   key={lvl.value}
                   type="button"
@@ -301,22 +328,26 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
               )}
             />
 
-            <Controller
-              name="teacher_id"
-              control={control}
-              render={({ field }) => (
-                <SearchableSelect
-                  label="Teacher"
-                  required
-                  options={teacherOptions}
-                  value={field.value}
-                  onChange={field.onChange}
-                  placeholder="Select teacher..."
-                  searchPlaceholder="Search teachers..."
-                  error={errors.teacher_id?.message}
-                />
-              )}
-            />
+            {/* Teachers assign as themselves — no teacher selector needed.
+                The teacher_id is set automatically from the logged-in teacher. */}
+            {!isTeacher && (
+              <Controller
+                name="teacher_id"
+                control={control}
+                render={({ field }) => (
+                  <SearchableSelect
+                    label="Teacher"
+                    required
+                    options={teacherOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Select teacher..."
+                    searchPlaceholder="Search teachers..."
+                    error={errors.teacher_id?.message}
+                  />
+                )}
+              />
+            )}
           </div>
         </div>
 

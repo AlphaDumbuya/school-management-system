@@ -167,12 +167,23 @@ class DashboardService {
       const presentAtt = Number(presentCount?.count) || 0;
       const attendanceRate = totalAtt > 0 ? (presentAtt / totalAtt) * 100 : 0;
 
-      // Get average grade — grades table has 'grade_value' column
-      const averageGrade = await db('grades')
-        .join('students', 'grades.student_id', 'students.id')
-        .where('students.tenant_id', tenantId)
-        .avg('grades.grade_value as avg')
+      // Average grade — prefer the SL report-card results (sl_subject_results.mean),
+      // which is the active grading system. Fall back to the legacy grades table
+      // for tenants/data not yet migrated to the SL booklet.
+      const slAvg = await db('sl_subject_results')
+        .where({ tenant_id: tenantId })
+        .whereNotNull('mean')
+        .avg('mean as avg')
         .first();
+
+      let averageGrade: { avg: any } | undefined = slAvg as any;
+      if (!slAvg?.avg) {
+        averageGrade = await db('grades')
+          .join('students', 'grades.student_id', 'students.id')
+          .where('students.tenant_id', tenantId)
+          .avg('grades.grade_value as avg')
+          .first();
+      }
 
       return {
         totalStudents: Number(totalStudents?.count) || 0,
@@ -589,21 +600,35 @@ class DashboardService {
    */
   async getAcademicPerformanceChart(tenantId: string): Promise<ChartData> {
     try {
-      // classes table doesn't have 'isActive' — just get all classes matching tenantId
-      const performance = await db('classes')
-        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
-        .join('enrollments', function () {
-          this.on('enrollments.class_id', '=', 'classes.id')
-            .andOn('enrollments.academic_session_id', '=', 'classes.academic_session_id')
-            .andOnVal('enrollments.status', '=', 'active');
-        })
-        .join('grades', 'grades.student_id', 'enrollments.student_id')
-        .where('academic_sessions.tenant_id', tenantId)
+      // Prefer SL report-card results (the active grading system): average
+      // subject mean per class.
+      let performance = await db('sl_subject_results')
+        .join('classes', 'sl_subject_results.class_id', 'classes.id')
+        .where('sl_subject_results.tenant_id', tenantId)
+        .whereNotNull('sl_subject_results.mean')
         .select('classes.name')
-        .avg('grades.grade_value as average_grade')
+        .avg('sl_subject_results.mean as average_grade')
         .groupBy('classes.id', 'classes.name')
         .orderBy('classes.name')
         .limit(20);
+
+      // Fallback to the legacy grades table if there are no SL results yet.
+      if (performance.length === 0) {
+        performance = await db('classes')
+          .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+          .join('enrollments', function () {
+            this.on('enrollments.class_id', '=', 'classes.id')
+              .andOn('enrollments.academic_session_id', '=', 'classes.academic_session_id')
+              .andOnVal('enrollments.status', '=', 'active');
+          })
+          .join('grades', 'grades.student_id', 'enrollments.student_id')
+          .where('academic_sessions.tenant_id', tenantId)
+          .select('classes.name')
+          .avg('grades.grade_value as average_grade')
+          .groupBy('classes.id', 'classes.name')
+          .orderBy('classes.name')
+          .limit(20);
+      }
 
       if (performance.length === 0) {
         return { labels: [], datasets: [] };
@@ -776,9 +801,18 @@ class DashboardService {
         JOIN current_enrollments e ON s.id = e.student_id
         JOIN classes c ON e.class_id = c.id
         LEFT JOIN (
-          SELECT student_id, AVG(grade_value) as average_grade
-          FROM grades
+          -- Prefer SL report-card means; fall back to legacy grades per student.
+          SELECT student_id, AVG(mean) as average_grade
+          FROM sl_subject_results
+          WHERE mean IS NOT NULL
           GROUP BY student_id
+          UNION ALL
+          SELECT g.student_id, AVG(g.grade_value) as average_grade
+          FROM grades g
+          WHERE NOT EXISTS (
+            SELECT 1 FROM sl_subject_results sr WHERE sr.student_id = g.student_id
+          )
+          GROUP BY g.student_id
         ) grade_stats ON grade_stats.student_id = s.id
         LEFT JOIN (
           SELECT

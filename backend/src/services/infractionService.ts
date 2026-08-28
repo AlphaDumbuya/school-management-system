@@ -496,6 +496,7 @@ class InfractionService {
       search?: string;
       status?: string;
       severity?: string;
+      recordedBy?: string;
       page?: number;
       limit?: number;
     }
@@ -512,7 +513,14 @@ class InfractionService {
         .leftJoin('infraction_types as it', function() {
           this.on('si.infraction_type_id', '=', 'it.infraction_type_id').andOn('it.tenant_id', '=', db.raw('?', [tenantId]));
         })
-        .where('si.tenant_id', tenantId)
+        .where('si.tenant_id', tenantId);
+
+      // Teacher scope: only infractions they recorded.
+      if (options?.recordedBy) {
+        query = query.where('si.recorded_by', options.recordedBy);
+      }
+
+      query = query
         .select(
           'si.*',
           db.raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as student_name"),
