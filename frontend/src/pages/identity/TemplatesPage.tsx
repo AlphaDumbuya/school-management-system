@@ -31,6 +31,7 @@ import { showToast } from '@utils/toast';
 import { idCardService, CardTemplate, TemplateStatus } from '@services/idCardService';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { TemplateFormModal } from './components/TemplateFormModal';
+import { TemplatePreviewModal } from './components/TemplatePreviewModal';
 
 // ── Utility Functions ─────────────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ export const TemplatesPage: React.FC = () => {
     // State
     const [formModalOpen, setFormModalOpen] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<CardTemplate | null>(null);
+    const [viewTarget, setViewTarget] = useState<CardTemplate | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<CardTemplate | null>(null);
     const [approveTarget, setApproveTarget] = useState<CardTemplate | null>(null);
     const [search, setSearch] = useState('');
@@ -182,16 +184,6 @@ export const TemplatesPage: React.FC = () => {
             cell: ({ row }) => (
                 <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">
                     {row.original.format}
-                </span>
-            ),
-        },
-        {
-            id: 'version',
-            accessorKey: 'version',
-            header: 'Version',
-            cell: ({ row }) => (
-                <span className="font-mono text-sm text-gray-600 dark:text-gray-400">
-                    v{row.original.version}
                 </span>
             ),
         },
@@ -361,6 +353,10 @@ export const TemplatesPage: React.FC = () => {
                     rowActions={(template) => {
                         const actions = [
                             {
+                                label: 'View',
+                                onClick: (row: CardTemplate) => setViewTarget(row),
+                            },
+                            {
                                 label: 'Edit',
                                 onClick: (row: CardTemplate) => {
                                     setEditingTemplate(row);
@@ -438,6 +434,17 @@ export const TemplatesPage: React.FC = () => {
                     refetch();
                 }}
                 editingTemplate={editingTemplate}
+            />
+
+            <TemplatePreviewModal
+                isOpen={!!viewTarget}
+                onClose={() => setViewTarget(null)}
+                template={viewTarget}
+                onEdit={(t) => {
+                    setViewTarget(null);
+                    setEditingTemplate(t);
+                    setFormModalOpen(true);
+                }}
             />
 
             <ConfirmationDialog
