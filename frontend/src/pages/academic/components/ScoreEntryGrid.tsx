@@ -186,14 +186,14 @@ export const ScoreEntryGrid: React.FC<Props> = ({ academicYear }) => {
 
           <p className="sm:hidden text-[11px] text-gray-400">Swipe sideways if the table is wider than your screen.</p>
           <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl">
-            <table className="w-full text-sm min-w-[420px]">
+            <table className="w-full text-sm min-w-[500px]">
               <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="text-left py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">Student</th>
-                  <th className="text-center py-2.5 px-2 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-[76px]">Test 1</th>
-                  <th className="text-center py-2.5 px-2 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-[76px]">Test 2</th>
-                  <th className="text-center py-2.5 px-2 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">Mean</th>
-                  <th className="text-center py-2.5 px-2 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-14">Grade</th>
+                  <th className="text-left py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[140px]">Student</th>
+                  <th className="text-center py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-28 sm:w-32">Test 1</th>
+                  <th className="text-center py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-28 sm:w-32">Test 2</th>
+                  <th className="text-center py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Mean</th>
+                  <th className="text-center py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">Grade</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -206,20 +206,20 @@ export const ScoreEntryGrid: React.FC<Props> = ({ academicYear }) => {
                         <p className="font-medium text-gray-900 dark:text-white">{r.student_name}</p>
                         <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">{r.roll_number}</p>
                       </td>
-                      <td className="py-2 px-2 text-center">
+                      <td className="py-2 px-3 text-center">
                         <input
                           type="number" min={0} max={100} inputMode="numeric"
                           value={r._t1}
                           onChange={(e) => updateCell(r.student_id, '_t1', e.target.value)}
-                          className="w-full max-w-[64px] text-center px-1.5 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full max-w-[96px] mx-auto text-center px-2 py-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
-                      <td className="py-2 px-2 text-center">
+                      <td className="py-2 px-3 text-center">
                         <input
                           type="number" min={0} max={100} inputMode="numeric"
                           value={r._t2}
                           onChange={(e) => updateCell(r.student_id, '_t2', e.target.value)}
-                          className="w-full max-w-[64px] text-center px-1.5 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full max-w-[96px] mx-auto text-center px-2 py-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
                       <td className="py-2 px-2 text-center">

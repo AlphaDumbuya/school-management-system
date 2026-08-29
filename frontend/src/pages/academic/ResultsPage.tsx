@@ -117,11 +117,11 @@ export const ResultsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Tabs — scrollable on mobile, short labels on xs */}
+        {/* Tabs — evenly fill the row; scrollable if they exceed the width */}
         <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide">
           <button
             onClick={() => setTab('cognitive')}
-            className={`flex-shrink-0 px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
+            className={`flex-1 min-w-max text-center px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
               tab === 'cognitive'
                 ? 'border-blue-600 text-blue-700 dark:text-blue-400'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
@@ -133,7 +133,7 @@ export const ResultsPage: React.FC = () => {
           </button>
           <button
             onClick={() => setTab('ratings')}
-            className={`flex-shrink-0 px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
+            className={`flex-1 min-w-max text-center px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
               tab === 'ratings'
                 ? 'border-blue-600 text-blue-700 dark:text-blue-400'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
@@ -146,7 +146,7 @@ export const ResultsPage: React.FC = () => {
           {isPrincipal && (
             <button
               onClick={() => setTab('settings')}
-              className={`flex-shrink-0 px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
+              className={`flex-1 min-w-max text-center px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
                 tab === 'settings'
                   ? 'border-blue-600 text-blue-700 dark:text-blue-400'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
