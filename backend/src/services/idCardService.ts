@@ -645,13 +645,22 @@ export class IdCardService {
         // Set text color
         doc.fillColor(template.config.textColor || '#0F172A');
 
-        // Front School branding / Logo
+        // Front School branding / Logo (on a white rounded chip so it stays
+        // visible when the header background is dark).
         if (vf.showLogo && isOnSide(logoConf, 'front', 'front') && logoUrl && logoUrl.startsWith('data:image/')) {
           try {
             const base64Data = logoUrl.split(',')[1];
             if (base64Data) {
               const logoBuffer = Buffer.from(base64Data, 'base64');
-              doc.image(logoBuffer, mmToPt(logoConf.x), mmToPt(logoConf.y), { height: mmToPt(8) });
+              const logoH = mmToPt(8);
+              const pad = mmToPt(1);
+              const cx = mmToPt(logoConf.x);
+              const cy = mmToPt(logoConf.y);
+              const chip = logoH + pad * 2;
+              doc.save();
+              doc.roundedRect(cx - pad, cy - pad, chip, chip, chip / 2).fill('#FFFFFF');
+              doc.restore();
+              doc.image(logoBuffer, cx, cy, { height: logoH });
             }
           } catch (logoErr) {
             logger.error('Failed to draw logo on front PDF', logoErr);
@@ -849,13 +858,21 @@ export class IdCardService {
         // Set text color
         doc.fillColor(template.config.textColor || '#0F172A');
 
-        // Back School branding / Logo
+        // Back School branding / Logo (white rounded chip for dark headers)
         if (vf.showLogo && isOnSide(logoConf, 'front', 'back') && logoUrl && logoUrl.startsWith('data:image/')) {
           try {
             const base64Data = logoUrl.split(',')[1];
             if (base64Data) {
               const logoBuffer = Buffer.from(base64Data, 'base64');
-              doc.image(logoBuffer, mmToPt(logoConf.x), mmToPt(logoConf.y), { height: mmToPt(8) });
+              const logoH = mmToPt(8);
+              const pad = mmToPt(1);
+              const cx = mmToPt(logoConf.x);
+              const cy = mmToPt(logoConf.y);
+              const chip = logoH + pad * 2;
+              doc.save();
+              doc.roundedRect(cx - pad, cy - pad, chip, chip, chip / 2).fill('#FFFFFF');
+              doc.restore();
+              doc.image(logoBuffer, cx, cy, { height: logoH });
             }
           } catch (logoErr) {
             logger.error('Failed to draw logo on back PDF', logoErr);

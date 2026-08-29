@@ -576,7 +576,9 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
         {!suppressHeader && vf.logo && (
           <div {...abs('logo', 4, 4)}>
             {activeLogoUrl && !logoFailed
-              ? <img src={resolveImageUrl(activeLogoUrl)} alt="Logo" style={{ height: `${Math.max(14, scale * 6.5)}px`, maxWidth: `${scale * 18}px`, objectFit: 'contain' }} onError={onLogoError} />
+              ? <div className="flex items-center justify-center bg-white rounded-full shadow-sm" style={{ padding: `${Math.max(2, scale * 0.8)}px` }}>
+                  <img src={resolveImageUrl(activeLogoUrl)} alt="Logo" style={{ height: `${Math.max(14, scale * 6.5)}px`, maxWidth: `${scale * 18}px`, objectFit: 'contain' }} onError={onLogoError} />
+                </div>
               : <div className="rounded-full flex items-center justify-center text-white" style={{ width: `${Math.max(16, scale * 6)}px`, height: `${Math.max(16, scale * 6)}px`, backgroundColor: `${primary}dd` }}><GraduationCap size={Math.max(10, scale * 3.5)} /></div>}
           </div>
         )}
@@ -845,7 +847,9 @@ function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primar
         {!suppressHeader && vf.logo && (
           <div {...abs('logo', 6, 6)}>
             {activeLogoUrl && !logoFailed
-              ? <img src={resolveImageUrl(activeLogoUrl)} alt="Logo" style={{ height: `${Math.max(20, scale * 10)}px`, maxWidth: `${scale * 22}px`, objectFit: 'contain' }} onError={onLogoError} />
+              ? <div className="flex items-center justify-center bg-white rounded-full shadow-sm" style={{ padding: `${Math.max(3, scale * 1)}px` }}>
+                  <img src={resolveImageUrl(activeLogoUrl)} alt="Logo" style={{ height: `${Math.max(20, scale * 10)}px`, maxWidth: `${scale * 22}px`, objectFit: 'contain' }} onError={onLogoError} />
+                </div>
               : <div className="rounded-full flex items-center justify-center text-white" style={{ width: `${Math.max(22, scale * 10)}px`, height: `${Math.max(22, scale * 10)}px`, backgroundColor: `${primary}dd` }}><GraduationCap size={Math.max(13, scale * 5.5)} /></div>}
           </div>
         )}
