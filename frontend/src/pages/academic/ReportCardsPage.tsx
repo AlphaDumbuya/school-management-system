@@ -139,6 +139,12 @@ export const ReportCardsPage: React.FC = () => {
    * toggle, we temporarily switch the spread to 'all' for the print, then
    * restore it afterwards.
    */
+  /**
+   * Last-resort browser print. Only used if client-side PDF capture fails.
+   * The @page { margin: 0 } rule minimises browser chrome, but some browsers
+   * still add a header/footer here — which is exactly why the PDF/print flows
+   * below prefer the chrome-free canvas→PDF path.
+   */
   const printBooklet = () => {
     if (!card) return;
     setExporting(true);
@@ -146,7 +152,6 @@ export const ReportCardsPage: React.FC = () => {
     const prevSpread = spread;
     setSpread('all');
 
-    // Wait a tick for the DOM to reflect the 'all' spread, then print.
     setTimeout(() => {
       const restore = () => {
         setSpread(prevSpread);
@@ -155,28 +160,58 @@ export const ReportCardsPage: React.FC = () => {
       };
       window.addEventListener('afterprint', restore);
       window.print();
-      // Safety restore in case afterprint doesn't fire (some browsers)
       setTimeout(restore, 1500);
     }, 150);
   };
 
-  const handlePrint = () => printBooklet();
+  /**
+   * Print: build the clean, chrome-free PDF and open it in a new tab. We do NOT
+   * auto-trigger the browser print dialog — the native PDF viewer renders the
+   * COMPLETE multi-page document, and the user prints/saves from there with its
+   * own controls. (Auto window.print() on a freshly-opened PDF often previews
+   * before the document finishes rendering, cutting off pages.)
+   */
+  const handlePrint = async () => {
+    if (!card) return;
+    setExporting(true);
+    const prevSpread = spread;
+    setSpread('all');
+    await new Promise((r) => setTimeout(r, 200));
+    try {
+      const blob = await buildBookletPdfBlob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      // Revoke later so the new tab can load it first.
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    } catch {
+      printBooklet();
+      return;
+    } finally {
+      setSpread(prevSpread);
+      setExporting(false);
+    }
+  };
 
   /**
-   * Download PDF: try the server-side generator first (clean, no browser
-   * header/footer, guaranteed 2 pages). If it's unavailable (e.g. serverless
-   * without Chromium), fall back to the client-side print flow.
+   * Download PDF. Order of preference:
+   *  1. Server-side Chromium PDF (cleanest, true vector). May be unavailable on
+   *     serverless hosts (no Chromium) → returns null.
+   *  2. Client-side PDF built from the on-page booklet sheets via html-to-image
+   *     + jsPDF. This produces a clean A4-landscape PDF with NO browser
+   *     header/footer or site URL — the robust cross-browser fallback.
+   *  3. window.print() only as a last resort if capture fails.
    */
   const handleExportPdf = async () => {
     if (!card) return;
     setExporting(true);
+    const fileName = `Report_${(card.student.name || 'student').replace(/\s+/g, '_')}_${card.academic_year.replace('/', '-')}.pdf`;
     try {
       const blob = await reportCardService.downloadPdf(studentId, { class_id: classId, academic_year: academicYear });
       if (blob) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Report_${(card.student.name || 'student').replace(/\s+/g, '_')}_${card.academic_year.replace('/', '-')}.pdf`;
+        a.download = fileName;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -184,12 +219,152 @@ export const ReportCardsPage: React.FC = () => {
         setExporting(false);
         return;
       }
-      // Fallback: browser print (user chooses Save as PDF)
+    } catch {
+      /* fall through to client-side generation */
+    }
+
+    // Client-side clean PDF (no browser chrome). Force both sheets to render.
+    const prevSpread = spread;
+    setSpread('all');
+    // Wait for the DOM to reflect the full spread.
+    await new Promise((r) => setTimeout(r, 200));
+    try {
+      const blob = await buildBookletPdfBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast.success('Report PDF downloaded');
+    } catch (err) {
+      // Absolute last resort — browser print (may add header/footer).
       showToast.info('Preparing printable version...');
       printBooklet();
-    } catch {
-      printBooklet();
+    } finally {
+      setSpread(prevSpread);
+      setExporting(false);
     }
+  };
+
+  /**
+   * Capture each .booklet-sheet as a high-res PNG and place one per A4-landscape
+   * page in a jsPDF document. Returns the PDF as a Blob — pixel-faithful and
+   * completely free of any browser header/footer or site URL.
+   */
+  const buildBookletPdfBlob = async (): Promise<Blob> => {
+    const root = bookletRef.current;
+    if (!root) throw new Error('Booklet not rendered');
+
+    const sheets = Array.from(root.querySelectorAll<HTMLElement>('.booklet-sheet'));
+    if (sheets.length === 0) throw new Error('No booklet sheets found');
+
+    const [{ toPng }, { jsPDF }] = await Promise.all([
+      import('html-to-image'),
+      import('jspdf'),
+    ]);
+
+    // A4 landscape in mm.
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+
+    // A4 landscape aspect at ~96dpi. We force every sheet to exactly these
+    // dimensions before capture so the WHOLE sheet is rendered — never just the
+    // portion visible inside the mobile horizontal-scroll wrapper.
+    const SHEET_W = 1123; // 297mm
+    const SHEET_H = 794;  // 210mm
+
+    for (let i = 0; i < sheets.length; i++) {
+      const node = sheets[i];
+
+      // Wait for any images inside the sheet (logos etc.) to finish loading.
+      const imgs = Array.from(node.querySelectorAll('img'));
+      await Promise.all(
+        imgs.map((img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise<void>((resolve) => { img.onload = () => resolve(); img.onerror = () => resolve(); })
+        )
+      );
+
+      // Temporarily pin the sheet to full A4-landscape size and lift any
+      // clipping so html-to-image measures and captures the ENTIRE sheet, not
+      // just the on-screen visible region.
+      const prev = {
+        width: node.style.width,
+        maxWidth: node.style.maxWidth,
+        minHeight: node.style.minHeight,
+        height: node.style.height,
+        boxShadow: node.style.boxShadow,
+        borderRadius: node.style.borderRadius,
+        margin: node.style.margin,
+        overflow: node.style.overflow,
+      };
+      node.style.width = `${SHEET_W}px`;
+      node.style.maxWidth = 'none';
+      node.style.minHeight = `${SHEET_H}px`;
+      node.style.boxShadow = 'none';
+      node.style.borderRadius = '0';
+      node.style.margin = '0';
+      node.style.overflow = 'visible';
+
+      // Reflow, then measure the full rendered size (content may exceed A4-H).
+      const fullW = Math.max(SHEET_W, node.scrollWidth);
+      const fullH = Math.max(SHEET_H, node.scrollHeight);
+
+      // High-resolution capture: pixelRatio 3 ≈ 300 DPI at A4, giving crisp
+      // print output. Guard against browser canvas limits (~16k px per side /
+      // ~268MP total) on very tall sheets by scaling the ratio down if needed.
+      const MAX_SIDE = 16000;
+      const MAX_AREA = 260_000_000;
+      let pixelRatio = 3;
+      const wouldExceed = (r: number) =>
+        fullW * r > MAX_SIDE || fullH * r > MAX_SIDE || fullW * r * fullH * r > MAX_AREA;
+      while (pixelRatio > 1 && wouldExceed(pixelRatio)) pixelRatio -= 0.5;
+
+      let dataUrl: string;
+      try {
+        // pixelRatio scales the output canvas up for crisp, high-DPI print
+        // quality. width/height define the CSS capture box (the full sheet).
+        dataUrl = await toPng(node, {
+          cacheBust: true,
+          pixelRatio,
+          backgroundColor: '#ffffff',
+          width: fullW,
+          height: fullH,
+        });
+      } finally {
+        // Restore the on-screen styles.
+        node.style.width = prev.width;
+        node.style.maxWidth = prev.maxWidth;
+        node.style.minHeight = prev.minHeight;
+        node.style.height = prev.height;
+        node.style.boxShadow = prev.boxShadow;
+        node.style.borderRadius = prev.borderRadius;
+        node.style.margin = prev.margin;
+        node.style.overflow = prev.overflow;
+      }
+
+      if (i > 0) pdf.addPage('a4', 'landscape');
+      // Fit the full captured sheet onto the A4-landscape page, preserving
+      // aspect ratio so nothing is cropped.
+      const imgRatio = fullW / fullH;
+      const pageRatio = pageW / pageH;
+      let drawW = pageW, drawH = pageH;
+      if (imgRatio > pageRatio) {
+        drawH = pageW / imgRatio;
+      } else {
+        drawW = pageH * imgRatio;
+      }
+      const offX = (pageW - drawW) / 2;
+      const offY = (pageH - drawH) / 2;
+      pdf.addImage(dataUrl, 'PNG', offX, offY, drawW, drawH, undefined, 'FAST');
+    }
+
+    return pdf.output('blob');
   };
 
   const showCover = spread === 'all' || spread === 'cover';

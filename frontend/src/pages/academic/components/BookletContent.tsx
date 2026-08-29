@@ -152,7 +152,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
             <div className="grid grid-cols-3 gap-2 text-[12px] border-b-2 border-gray-900 pb-2 mb-2">
               <div className="space-y-1">
                 <div><span className="font-bold">Name:</span> {card.student.name}</div>
-                <div><span className="font-bold">No. in Form:</span> {card.student.admission_no}</div>
+                <div><span className="font-bold">No. in Form:</span> {card.student.number_in_form ?? card.yearly_summary?.class_size ?? '—'}</div>
               </div>
               <div className="text-center space-y-1">
                 <div><span className="font-bold">Average Age:</span> {card.student.class_average_age ?? '—'}</div>
