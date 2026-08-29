@@ -51,9 +51,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         {/* Sidebar */}
         <Sidebar isOpen={sidebarOpen} onClose={handleSidebarClose} />
 
-        {/* Content area */}
+        {/* Content area — tight horizontal gutter on mobile so content isn't
+            choked; comfortable padding from sm upwards. */}
         <main className="flex-1 overflow-y-auto">
-          <div className="p-3 sm:p-6">{children}</div>
+          <div className="px-2 py-3 sm:p-6">{children}</div>
         </main>
       </div>
     </div>

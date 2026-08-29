@@ -185,22 +185,22 @@ export const PromotionsPage: React.FC = () => {
         </div>
 
         {/* Pickers */}
-        <div className="flex flex-col md:flex-row md:items-end gap-3 mb-6">
-          <div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-row md:items-end gap-3 mb-6">
+          <div className="w-full md:w-auto">
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Academic Year</label>
             <div className="relative">
-              <select value={academicYear} onChange={(e) => setAcademicYear(e.target.value)} className={`${selectCls} w-40`}>
+              <select value={academicYear} onChange={(e) => setAcademicYear(e.target.value)} className={`${selectCls} w-full md:w-40`}>
                 {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
             </div>
           </div>
-          <div>
+          <div className="w-full md:w-auto">
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
               {tab === 'promote' ? 'Class to Promote' : 'Filter by Class'}
             </label>
             <div className="relative">
-              <select value={classId} onChange={(e) => { setClassId(e.target.value); setOverrides({}); }} className={`${selectCls} w-56`}>
+              <select value={classId} onChange={(e) => { setClassId(e.target.value); setOverrides({}); }} className={`${selectCls} w-full md:w-56`}>
                 <option value="">{tab === 'promote' ? '— Select a class —' : 'All classes'}</option>
                 {classes.map((c) => <option key={c.id} value={String(c.id)}>{c.name}{c.level ? ` (${c.level})` : ''}</option>)}
               </select>
@@ -209,28 +209,26 @@ export const PromotionsPage: React.FC = () => {
           </div>
 
           {tab === 'promote' && (
-            <>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Promote To</label>
-                <div className="relative">
-                  <select
-                    value={graduate ? '__graduate__' : targetClassId}
-                    onChange={(e) => {
-                      if (e.target.value === '__graduate__') { setGraduate(true); setTargetClassId(''); }
-                      else { setGraduate(false); setTargetClassId(e.target.value); }
-                    }}
-                    className={`${selectCls} w-56`}
-                  >
-                    <option value="">— Select target class —</option>
-                    {classes.filter((c) => String(c.id) !== classId).map((c) => (
-                      <option key={c.id} value={String(c.id)}>{c.name}{c.level ? ` (${c.level})` : ''}</option>
-                    ))}
-                    <option value="__graduate__">🎓 Graduate (final year)</option>
-                  </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
-                </div>
+            <div className="w-full sm:col-span-2 md:col-auto md:w-auto">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Promote To</label>
+              <div className="relative">
+                <select
+                  value={graduate ? '__graduate__' : targetClassId}
+                  onChange={(e) => {
+                    if (e.target.value === '__graduate__') { setGraduate(true); setTargetClassId(''); }
+                    else { setGraduate(false); setTargetClassId(e.target.value); }
+                  }}
+                  className={`${selectCls} w-full md:w-56`}
+                >
+                  <option value="">— Select target class —</option>
+                  {classes.filter((c) => String(c.id) !== classId).map((c) => (
+                    <option key={c.id} value={String(c.id)}>{c.name}{c.level ? ` (${c.level})` : ''}</option>
+                  ))}
+                  <option value="__graduate__">🎓 Graduate (final year)</option>
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
               </div>
-            </>
+            </div>
           )}
         </div>
 
@@ -261,6 +259,7 @@ export const PromotionsPage: React.FC = () => {
               )}
 
               {/* Candidate table */}
+              <p className="sm:hidden text-[11px] text-gray-400 mb-1.5">Swipe sideways to see all columns.</p>
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm text-left">
@@ -319,10 +318,11 @@ export const PromotionsPage: React.FC = () => {
 
               {/* Execute */}
               <RoleGuard roles={['principal', 'super_admin']}>
-                <div className="flex justify-end mt-5">
+                <div className="flex justify-stretch sm:justify-end mt-5">
                   <Button
                     onClick={() => setConfirmOpen(true)}
                     disabled={pending.length === 0 || (needsTarget && !targetClassId && !graduate)}
+                    className="w-full sm:w-auto"
                   >
                     <ArrowUpCircle size={16} className="mr-1.5" />
                     Process {pending.length} Student{pending.length !== 1 ? 's' : ''}
@@ -341,6 +341,7 @@ export const PromotionsPage: React.FC = () => {
             <EmptyState message="No promotion records" description="Processed promotions will appear here." />
           ) : (
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+              <p className="sm:hidden text-[11px] text-gray-400 px-4 pt-3">Swipe sideways to see all columns.</p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
                   <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">

@@ -202,12 +202,14 @@ export const ReportCardsPage: React.FC = () => {
         subtitle="Sierra Leone terminal report booklet — A4 landscape, folds into a 4-page booklet"
         breadcrumbs={[{ label: 'Report Cards' }]}
         actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleExportPdf} disabled={!card || exporting}>
-              <Download size={15} className="mr-1.5" /> {exporting ? 'Preparing...' : 'Download PDF'}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportPdf} disabled={!card || exporting} className="px-2 sm:px-3">
+              <Download size={15} className="sm:mr-1.5" />
+              <span className="hidden sm:inline">{exporting ? 'Preparing...' : 'Download PDF'}</span>
             </Button>
-            <Button variant="default" size="sm" onClick={handlePrint} disabled={!card || exporting} className="bg-blue-600 hover:bg-blue-700 text-white">
-              <Printer size={15} className="mr-1.5" /> Print
+            <Button variant="default" size="sm" onClick={handlePrint} disabled={!card || exporting} className="bg-blue-600 hover:bg-blue-700 text-white px-2 sm:px-3">
+              <Printer size={15} className="sm:mr-1.5" />
+              <span className="hidden sm:inline">Print</span>
             </Button>
           </div>
         }
@@ -261,19 +263,20 @@ export const ReportCardsPage: React.FC = () => {
           )}
 
           {/* Spread toggle */}
-          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Booklet view:</span>
+          <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider w-full sm:w-auto">Booklet view:</span>
             {([
-              { key: 'all', label: 'Full Booklet (2 sheets)' },
-              { key: 'cover', label: 'Sheet 1 — Covers' },
-              { key: 'inner', label: 'Sheet 2 — Results' },
+              { key: 'all', short: 'Full', label: 'Full Booklet (2 sheets)' },
+              { key: 'cover', short: 'Covers', label: 'Sheet 1 — Covers' },
+              { key: 'inner', short: 'Results', label: 'Sheet 2 — Results' },
             ] as const).map((o) => (
               <button
                 key={o.key}
                 onClick={() => setSpread(o.key)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${spread === o.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200'}`}
               >
-                {o.label}
+                <span className="sm:hidden">{o.short}</span>
+                <span className="hidden sm:inline">{o.label}</span>
               </button>
             ))}
           </div>
@@ -365,18 +368,27 @@ export const ReportCardsPage: React.FC = () => {
         )}
 
         {canLoad && card && (
-          <div id="booklet-print-root" ref={bookletRef} className="space-y-6 print:space-y-0">
-            <BookletContent
-              card={card}
-              school={school}
-              schoolName={schoolName}
-              schoolAddress={schoolAddress}
-              schoolLogo={schoolLogo}
-              shortName={shortName}
-              showCover={showCover}
-              showInner={showInner}
-            />
-          </div>
+          <>
+            {/* On small screens the A4-landscape booklet is wider than the
+                viewport, so allow horizontal scroll (disabled on print). */}
+            <p className="sm:hidden text-[11px] text-gray-400 mb-2 print:hidden">
+              Tip: swipe sideways to view the full booklet, or use Download PDF.
+            </p>
+            <div className="overflow-x-auto -mx-2 px-2 print:overflow-visible print:mx-0 print:px-0">
+              <div id="booklet-print-root" ref={bookletRef} className="space-y-6 print:space-y-0 w-max mx-auto print:w-auto">
+                <BookletContent
+                  card={card}
+                  school={school}
+                  schoolName={schoolName}
+                  schoolAddress={schoolAddress}
+                  schoolLogo={schoolLogo}
+                  shortName={shortName}
+                  showCover={showCover}
+                  showInner={showInner}
+                />
+              </div>
+            </div>
+          </>
         )}
       </PageShell>
     </MainLayout>

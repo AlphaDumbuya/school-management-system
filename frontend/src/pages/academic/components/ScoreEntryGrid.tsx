@@ -174,25 +174,26 @@ export const ScoreEntryGrid: React.FC<Props> = ({ academicYear }) => {
 
       {canLoad && !isLoading && rows.length > 0 && (
         <>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <p className="text-xs text-gray-500 dark:text-gray-400">
               <Calculator size={12} className="inline mr-1" />
               Mean = (Test 1 + Test 2) ÷ 2 · <span className="text-red-600 dark:text-red-400 font-semibold">Below 50 = Fail</span> · {enteredCount}/{rows.length} entered
             </p>
-            <Button variant="default" size="sm" onClick={handleSave} disabled={saving}>
+            <Button variant="default" size="sm" onClick={handleSave} disabled={saving} className="w-full sm:w-auto flex-shrink-0">
               <Save size={15} className="mr-1.5" /> {saving ? 'Saving...' : 'Save Scores'}
             </Button>
           </div>
 
+          <p className="sm:hidden text-[11px] text-gray-400">Swipe sideways if the table is wider than your screen.</p>
           <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[420px]">
               <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="text-left py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Student</th>
-                  <th className="text-center py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-24">Test 1</th>
-                  <th className="text-center py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-24">Test 2</th>
-                  <th className="text-center py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Mean</th>
-                  <th className="text-center py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Grade</th>
+                  <th className="text-left py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">Student</th>
+                  <th className="text-center py-2.5 px-2 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-[76px]">Test 1</th>
+                  <th className="text-center py-2.5 px-2 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-[76px]">Test 2</th>
+                  <th className="text-center py-2.5 px-2 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">Mean</th>
+                  <th className="text-center py-2.5 px-2 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-14">Grade</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -205,28 +206,28 @@ export const ScoreEntryGrid: React.FC<Props> = ({ academicYear }) => {
                         <p className="font-medium text-gray-900 dark:text-white">{r.student_name}</p>
                         <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">{r.roll_number}</p>
                       </td>
-                      <td className="py-2 px-3 text-center">
+                      <td className="py-2 px-2 text-center">
                         <input
-                          type="number" min={0} max={100}
+                          type="number" min={0} max={100} inputMode="numeric"
                           value={r._t1}
                           onChange={(e) => updateCell(r.student_id, '_t1', e.target.value)}
-                          className="w-16 text-center px-2 py-1.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full max-w-[64px] text-center px-1.5 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
-                      <td className="py-2 px-3 text-center">
+                      <td className="py-2 px-2 text-center">
                         <input
-                          type="number" min={0} max={100}
+                          type="number" min={0} max={100} inputMode="numeric"
                           value={r._t2}
                           onChange={(e) => updateCell(r.student_id, '_t2', e.target.value)}
-                          className="w-16 text-center px-2 py-1.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full max-w-[64px] text-center px-1.5 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
-                      <td className="py-2 px-3 text-center">
+                      <td className="py-2 px-2 text-center">
                         <span className={`font-mono font-bold ${mean != null && mean < 50 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
                           {mean ?? '—'}
                         </span>
                       </td>
-                      <td className="py-2 px-3 text-center">
+                      <td className="py-2 px-2 text-center">
                         {mean != null && (
                           <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${g.isFail ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
                             {g.letter}
