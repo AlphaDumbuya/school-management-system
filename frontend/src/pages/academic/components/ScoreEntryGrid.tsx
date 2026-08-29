@@ -174,12 +174,12 @@ export const ScoreEntryGrid: React.FC<Props> = ({ academicYear }) => {
 
       {canLoad && !isLoading && rows.length > 0 && (
         <>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <p className="text-xs text-gray-500 dark:text-gray-400">
               <Calculator size={12} className="inline mr-1" />
               Mean = (Test 1 + Test 2) ÷ 2 · <span className="text-red-600 dark:text-red-400 font-semibold">Below 50 = Fail</span> · {enteredCount}/{rows.length} entered
             </p>
-            <Button variant="default" size="sm" onClick={handleSave} disabled={saving}>
+            <Button variant="default" size="sm" onClick={handleSave} disabled={saving} className="w-full sm:w-auto flex-shrink-0">
               <Save size={15} className="mr-1.5" /> {saving ? 'Saving...' : 'Save Scores'}
             </Button>
           </div>
