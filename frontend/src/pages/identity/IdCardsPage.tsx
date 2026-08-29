@@ -115,11 +115,17 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReport
     }
   };
 
+  // Keep every tile the same height so the action rows line up across the grid
+  // (PVC is landscape, badge is portrait — without a fixed aspect the buttons
+  // would sit at different heights per card and look scattered).
+  const isBadge = (card.format || 'pvc') === 'badge';
+
   return (
-    <div className="group relative flex flex-col gap-0">
-      {/* Card face */}
+    <div className="group relative flex flex-col h-full">
+      {/* Card face — fixed aspect ratio per format so all tiles align */}
       <div
         className="relative w-full shadow-xl overflow-hidden cursor-pointer transition-all duration-300 group-hover:shadow-2xl group-hover:-translate-y-1 flex items-center justify-center bg-gray-900 rounded-2xl p-1"
+        style={{ aspectRatio: isBadge ? '2 / 3' : '85.6 / 53.98' }}
         onClick={onView}
       >
         <VisualIdCardRenderer
@@ -159,8 +165,9 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReport
         )}
       </div>
 
-      {/* Actions — View plus a single tidy overflow menu (keeps the tile clean) */}
-      <div className="flex items-center gap-1.5 mt-2">
+      {/* Actions — pinned to the bottom (mt-auto) so every tile's action row
+          lines up across the grid, even when PVC/badge faces differ in height. */}
+      <div className="flex items-center gap-1.5 mt-auto pt-2">
         <button onClick={onView} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-50 dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700">
           <Eye size={13} /> View
         </button>
