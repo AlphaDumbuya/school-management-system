@@ -18,6 +18,26 @@ import { QrCodeService } from '../services/qrCodeService.js';
 
 const router = Router();
 
+/**
+ * Determine the public origin the QR verification URL should point to.
+ * Priority: explicit env (canonical prod URL) → request's forwarded host
+ * (works automatically behind Vercel/proxies) → request host. This ensures a
+ * scanned QR opens a REACHABLE page rather than a baked-in localhost URL.
+ */
+function resolveRequestOrigin(req: Request): string | undefined {
+  const envBase = process.env.PUBLIC_APP_URL || process.env.APP_URL || process.env.FRONTEND_URL;
+  if (envBase && !/localhost|127\.0\.0\.1/.test(envBase)) {
+    return envBase.replace(/\/+$/, '');
+  }
+  const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim() || req.protocol || 'https';
+  const host = (req.headers['x-forwarded-host'] as string)?.split(',')[0]?.trim() || req.get('host');
+  if (host && !/localhost|127\.0\.0\.1/.test(host)) {
+    return `${proto}://${host}`;
+  }
+  // Local dev — fall back to env (even if localhost) so behaviour is unchanged.
+  return envBase ? envBase.replace(/\/+$/, '') : undefined;
+}
+
 // Initialize services
 const idCardService = new IdCardService(db);
 const templateService = new TemplateService(db);
@@ -358,6 +378,7 @@ router.post(
         format,
         expirationDate: expirationDate ? new Date(expirationDate) : undefined,
         issuedBy,
+        baseUrl: resolveRequestOrigin(req),
       });
 
       res.status(201).json({
@@ -383,7 +404,7 @@ router.post(
     try {
       const { cardId } = req.params;
 
-      const result = await idCardService.regenerateCard(cardId);
+      const result = await idCardService.regenerateCard(cardId, resolveRequestOrigin(req));
 
       res.json({
         message: 'ID card regenerated successfully',

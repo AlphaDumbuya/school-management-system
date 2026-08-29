@@ -77,7 +77,8 @@ export class QrCodeService {
     userId: string,
     tenantId: string,
     expirationDate: Date,
-    cardId?: string
+    cardId?: string,
+    baseUrl?: string
   ): Promise<QrCodeData> {
     try {
       await this.ensureColumnType();
@@ -138,7 +139,7 @@ export class QrCodeService {
         .returning('*');
 
       // Build the compact scan URL from the stored id.
-      const scanTarget = this.buildVerificationUrl(qrCode.id);
+      const scanTarget = this.buildVerificationUrl(qrCode.id, baseUrl);
 
       // Generate QR code image with error correction level H (30% damage recovery)
       const imageDataUrl = await QRCode.toDataURL(scanTarget, {
@@ -501,8 +502,11 @@ export class QrCodeService {
    * Reads APP_URL / FRONTEND_URL for the base, falling back to a relative path
    * so it still resolves when served from the same origin.
    */
-  private buildVerificationUrl(qrId: string): string {
+  private buildVerificationUrl(qrId: string, baseUrl?: string): string {
+    // Prefer an explicitly-provided origin (derived from the request, so the QR
+    // points to wherever the app is actually served). Fall back to env config.
     const base = (
+      baseUrl ||
       process.env.PUBLIC_APP_URL ||
       process.env.APP_URL ||
       process.env.FRONTEND_URL ||
