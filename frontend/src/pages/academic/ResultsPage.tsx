@@ -182,12 +182,12 @@ export const ResultsPage: React.FC = () => {
               </div>
 
               {ratingsStudentId ? (
-                <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                  <div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900 dark:text-white">{selectedStudent ? `${selectedStudent.first_name} ${selectedStudent.last_name}` : ''}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Enter 12 affective + 12 psychomotor ratings, attendance & conduct for {ratingsTerm.replace('_', ' ')}.</p>
                   </div>
-                  <Button variant="default" size="sm" onClick={() => setRatingsModalOpen(true)}>
+                  <Button variant="default" size="sm" onClick={() => setRatingsModalOpen(true)} className="w-full sm:w-auto flex-shrink-0 whitespace-nowrap">
                     <Star size={15} className="mr-1.5" /> Enter Ratings
                   </Button>
                 </div>
