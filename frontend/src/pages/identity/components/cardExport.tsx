@@ -32,7 +32,7 @@ function fmt(d?: string | null) {
  * Build export data from a card object. Accepts both the lightweight list
  * shape and the richer getCardById shape.
  */
-export function buildCardExportData(card: any): CardExportData {
+export function buildCardExportData(card: any, output: 'pdf' | 'png' | 'jpg' = 'pdf'): CardExportData {
   const user = card.user || {};
   const name = user.firstName || user.lastName
     ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
@@ -42,11 +42,14 @@ export function buildCardExportData(card: any): CardExportData {
     ? card.template.config
     : DEFAULT_CONFIG) as TemplateConfig;
 
+  const ext = output === 'pdf' ? 'pdf' : output === 'jpg' ? 'jpg' : 'png';
+
   return {
     config,
     format: card.format || 'pvc',
     logoUrl: card.template?.logoUrl || card.template?.config?.logoUrl,
-    fileName: `id-card-${card.cardNumber || card.id}.pdf`,
+    fileName: `id-card-${(name || card.cardNumber || card.id).replace(/\s+/g, '_')}.${ext}`,
+    output,
     user: {
       name,
       idNumber: user.memberId || card.cardNumber,
@@ -57,6 +60,7 @@ export function buildCardExportData(card: any): CardExportData {
       expiresAt: fmt(card.expiresAt),
       issuedAt: fmt(card.issuedAt),
       schoolName: card.template?.config?.customSchoolName,
+      qrImageUrl: card.qrImageUrl || undefined,
     },
   };
 }

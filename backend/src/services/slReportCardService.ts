@@ -1161,6 +1161,9 @@ export class SLReportCardService {
     // ── Yearly summary + class position + promotion recommendation ──────────
     const yearlySummary = await this.computeYearlySummary(tenantId, classId, academicYear, studentId);
 
+    // Total number of pupils in the form (class) — active enrollments.
+    const numberInForm = await this.countStudentsInClass(tenantId, classId);
+
     // Meta
     const meta = await db('sl_report_card_meta')
       .where({ tenant_id: tenantId, student_id: studentId, class_id: classId, academic_year: academicYear })
@@ -1174,6 +1177,7 @@ export class SLReportCardService {
         form_teacher_name: cls?.form_teacher_name ?? null,
         pupil_age: pupilAge,
         class_average_age: averageAge,
+        number_in_form: numberInForm,
       },
       academic_year: academicYear,
       subjects,
@@ -1201,6 +1205,22 @@ export class SLReportCardService {
    *   - 50% to 55%     → Promoted (Needs More Effort)
    *   - Above 55%      → Promoted
    */
+  /**
+   * Count the total number of pupils in a class ("No. in Form") — based on
+   * active enrollments, so it reflects the real class roster size regardless of
+   * whether results have been entered.
+   */
+  private async countStudentsInClass(tenantId: string, classId: string): Promise<number> {
+    const row = await db('enrollments')
+      .join('students', 'enrollments.student_id', 'students.id')
+      .where('enrollments.class_id', classId)
+      .where('enrollments.status', 'active')
+      .where('students.tenant_id', tenantId)
+      .countDistinct('students.id as count')
+      .first();
+    return Number(row?.count ?? 0);
+  }
+
   private async computeYearlySummary(
     tenantId: string,
     classId: string,

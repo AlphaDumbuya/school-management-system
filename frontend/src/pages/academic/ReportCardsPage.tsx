@@ -26,7 +26,7 @@ import { studentDashboardService } from '@services/studentDashboardService';
 import { parentDashboardService } from '@services/parentDashboardService';
 import { useAuth } from '@hooks/useAuth';
 import { BookletContent } from './components/BookletContent';
-import { Printer, Download } from 'lucide-react';
+import { Printer, Download, Users } from 'lucide-react';
 
 export const ReportCardsPage: React.FC = () => {
   const currentYear = new Date().getFullYear();
@@ -126,6 +126,17 @@ export const ReportCardsPage: React.FC = () => {
   const bookletRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
 
+  // ── Whole-class batch export state ──────────────────────────────────────────
+  const batchRef = useRef<HTMLDivElement>(null);
+  const [batchCard, setBatchCard] = useState<ReportCard | null>(null);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  // Roster of students in the selected class (staff only), used by the batch.
+  const batchRoster = useMemo(
+    () => (isStudent || isParent ? [] : students),
+    [isStudent, isParent, students],
+  );
+
   /**
    * Print/export the booklet.
    *
@@ -139,6 +150,12 @@ export const ReportCardsPage: React.FC = () => {
    * toggle, we temporarily switch the spread to 'all' for the print, then
    * restore it afterwards.
    */
+  /**
+   * Last-resort browser print. Only used if client-side PDF capture fails.
+   * The @page { margin: 0 } rule minimises browser chrome, but some browsers
+   * still add a header/footer here — which is exactly why the PDF/print flows
+   * below prefer the chrome-free canvas→PDF path.
+   */
   const printBooklet = () => {
     if (!card) return;
     setExporting(true);
@@ -146,7 +163,6 @@ export const ReportCardsPage: React.FC = () => {
     const prevSpread = spread;
     setSpread('all');
 
-    // Wait a tick for the DOM to reflect the 'all' spread, then print.
     setTimeout(() => {
       const restore = () => {
         setSpread(prevSpread);
@@ -155,28 +171,58 @@ export const ReportCardsPage: React.FC = () => {
       };
       window.addEventListener('afterprint', restore);
       window.print();
-      // Safety restore in case afterprint doesn't fire (some browsers)
       setTimeout(restore, 1500);
     }, 150);
   };
 
-  const handlePrint = () => printBooklet();
+  /**
+   * Print: build the clean, chrome-free PDF and open it in a new tab. We do NOT
+   * auto-trigger the browser print dialog — the native PDF viewer renders the
+   * COMPLETE multi-page document, and the user prints/saves from there with its
+   * own controls. (Auto window.print() on a freshly-opened PDF often previews
+   * before the document finishes rendering, cutting off pages.)
+   */
+  const handlePrint = async () => {
+    if (!card) return;
+    setExporting(true);
+    const prevSpread = spread;
+    setSpread('all');
+    await new Promise((r) => setTimeout(r, 200));
+    try {
+      const blob = await buildBookletPdfBlob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      // Revoke later so the new tab can load it first.
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    } catch {
+      printBooklet();
+      return;
+    } finally {
+      setSpread(prevSpread);
+      setExporting(false);
+    }
+  };
 
   /**
-   * Download PDF: try the server-side generator first (clean, no browser
-   * header/footer, guaranteed 2 pages). If it's unavailable (e.g. serverless
-   * without Chromium), fall back to the client-side print flow.
+   * Download PDF. Order of preference:
+   *  1. Server-side Chromium PDF (cleanest, true vector). May be unavailable on
+   *     serverless hosts (no Chromium) → returns null.
+   *  2. Client-side PDF built from the on-page booklet sheets via html-to-image
+   *     + jsPDF. This produces a clean A4-landscape PDF with NO browser
+   *     header/footer or site URL — the robust cross-browser fallback.
+   *  3. window.print() only as a last resort if capture fails.
    */
   const handleExportPdf = async () => {
     if (!card) return;
     setExporting(true);
+    const fileName = `Report_${(card.student.name || 'student').replace(/\s+/g, '_')}_${card.academic_year.replace('/', '-')}.pdf`;
     try {
       const blob = await reportCardService.downloadPdf(studentId, { class_id: classId, academic_year: academicYear });
       if (blob) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Report_${(card.student.name || 'student').replace(/\s+/g, '_')}_${card.academic_year.replace('/', '-')}.pdf`;
+        a.download = fileName;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -184,11 +230,193 @@ export const ReportCardsPage: React.FC = () => {
         setExporting(false);
         return;
       }
-      // Fallback: browser print (user chooses Save as PDF)
+    } catch {
+      /* fall through to client-side generation */
+    }
+
+    // Client-side clean PDF (no browser chrome). Force both sheets to render.
+    const prevSpread = spread;
+    setSpread('all');
+    // Wait for the DOM to reflect the full spread.
+    await new Promise((r) => setTimeout(r, 200));
+    try {
+      const blob = await buildBookletPdfBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast.success('Report PDF downloaded');
+    } catch (err) {
+      // Absolute last resort — browser print (may add header/footer).
       showToast.info('Preparing printable version...');
       printBooklet();
-    } catch {
-      printBooklet();
+    } finally {
+      setSpread(prevSpread);
+      setExporting(false);
+    }
+  };
+
+  /**
+   * Capture each .booklet-sheet as a high-res PNG and place one per A4-landscape
+   * page in a jsPDF document. Returns the PDF as a Blob — pixel-faithful and
+   * completely free of any browser header/footer or site URL.
+   */
+  const buildBookletPdfBlob = async (): Promise<Blob> => {
+    const root = bookletRef.current;
+    if (!root) throw new Error('Booklet not rendered');
+
+    const { jsPDF } = await import('jspdf');
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const added = await appendBookletSheetsToPdf(root, pdf, true);
+    if (added === 0) throw new Error('No booklet sheets found');
+    return pdf.output('blob');
+  };
+
+  /**
+   * Capture every .booklet-sheet inside `root` as a high-res PNG and add one per
+   * A4-landscape page to the given jsPDF. Reused for both single-student and
+   * whole-class batch export. Returns the number of sheets added.
+   */
+  const appendBookletSheetsToPdf = async (root: HTMLElement, pdf: any, isFirst: boolean): Promise<number> => {
+    const { toPng } = await import('html-to-image');
+
+    const sheets = Array.from(root.querySelectorAll<HTMLElement>('.booklet-sheet'));
+    if (sheets.length === 0) return 0;
+
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+
+    // A4 landscape aspect at ~96dpi — pin sheets to full size before capture so
+    // the WHOLE sheet renders (not just the visible region in a scroll wrapper).
+    const SHEET_W = 1123; // 297mm
+    const SHEET_H = 794;  // 210mm
+
+    let added = 0;
+    for (let i = 0; i < sheets.length; i++) {
+      const node = sheets[i];
+
+      const imgs = Array.from(node.querySelectorAll('img'));
+      await Promise.all(
+        imgs.map((img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise<void>((resolve) => { img.onload = () => resolve(); img.onerror = () => resolve(); })
+        )
+      );
+
+      const prev = {
+        width: node.style.width, maxWidth: node.style.maxWidth, minHeight: node.style.minHeight,
+        height: node.style.height, boxShadow: node.style.boxShadow, borderRadius: node.style.borderRadius,
+        margin: node.style.margin, overflow: node.style.overflow,
+      };
+      node.style.width = `${SHEET_W}px`;
+      node.style.maxWidth = 'none';
+      node.style.minHeight = `${SHEET_H}px`;
+      node.style.boxShadow = 'none';
+      node.style.borderRadius = '0';
+      node.style.margin = '0';
+      node.style.overflow = 'visible';
+
+      const fullW = Math.max(SHEET_W, node.scrollWidth);
+      const fullH = Math.max(SHEET_H, node.scrollHeight);
+
+      const MAX_SIDE = 16000;
+      const MAX_AREA = 260_000_000;
+      let pixelRatio = 3;
+      const wouldExceed = (r: number) =>
+        fullW * r > MAX_SIDE || fullH * r > MAX_SIDE || fullW * r * fullH * r > MAX_AREA;
+      while (pixelRatio > 1 && wouldExceed(pixelRatio)) pixelRatio -= 0.5;
+
+      let dataUrl: string;
+      try {
+        dataUrl = await toPng(node, {
+          cacheBust: true,
+          pixelRatio,
+          backgroundColor: '#ffffff',
+          width: fullW,
+          height: fullH,
+        });
+      } finally {
+        node.style.width = prev.width;
+        node.style.maxWidth = prev.maxWidth;
+        node.style.minHeight = prev.minHeight;
+        node.style.height = prev.height;
+        node.style.boxShadow = prev.boxShadow;
+        node.style.borderRadius = prev.borderRadius;
+        node.style.margin = prev.margin;
+        node.style.overflow = prev.overflow;
+      }
+
+      if (!(isFirst && i === 0)) pdf.addPage('a4', 'landscape');
+
+      const imgRatio = fullW / fullH;
+      const pageRatio = pageW / pageH;
+      let drawW = pageW, drawH = pageH;
+      if (imgRatio > pageRatio) drawH = pageW / imgRatio;
+      else drawW = pageH * imgRatio;
+      const offX = (pageW - drawW) / 2;
+      const offY = (pageH - drawH) / 2;
+      pdf.addImage(dataUrl, 'PNG', offX, offY, drawW, drawH, undefined, 'FAST');
+      added++;
+    }
+    return added;
+  };
+
+  /**
+   * WHOLE-CLASS batch: generate one combined PDF containing every student's
+   * booklet (2 landscape pages each). Fetches each student's report card,
+   * renders it into a hidden off-screen node, captures it, and appends.
+   */
+  const handleClassBatch = async () => {
+    if (!classId) { showToast.error('Select a class first'); return; }
+    if (batchRoster.length === 0) { showToast.error('No students found in this class'); return; }
+
+    setBatchRunning(true);
+    setBatchProgress({ done: 0, total: batchRoster.length });
+    const { jsPDF } = await import('jspdf');
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    let first = true;
+    let ok = 0;
+
+    try {
+      const className = classOptions.find((c: any) => String(c.value) === String(classId))?.label || 'Class';
+      for (let idx = 0; idx < batchRoster.length; idx++) {
+        const stu = batchRoster[idx];
+        try {
+          const resp: any = await reportCardService.getReportCard(String(stu.id), { class_id: classId, academic_year: academicYear });
+          const stuCard: ReportCard | null = resp?.data ?? null;
+          if (stuCard) {
+            // Render into the hidden batch node and wait for a commit.
+            setBatchCard(stuCard);
+            await new Promise((r) => setTimeout(r, 250));
+            const node = batchRef.current;
+            if (node) {
+              const added = await appendBookletSheetsToPdf(node, pdf, first);
+              if (added > 0) { first = false; ok++; }
+            }
+          }
+        } catch { /* skip a student who has no data, continue the batch */ }
+        setBatchProgress({ done: idx + 1, total: batchRoster.length });
+      }
+
+      if (ok === 0) { showToast.error('No report cards could be generated for this class'); return; }
+      const blob = pdf.output('blob');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Report_Cards_${className.replace(/\s+/g, '_')}_${academicYear.replace('/', '-')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast.success(`Generated ${ok} of ${batchRoster.length} report card${batchRoster.length === 1 ? '' : 's'}`);
+    } finally {
+      setBatchCard(null);
+      setBatchRunning(false);
     }
   };
 
@@ -203,11 +431,27 @@ export const ReportCardsPage: React.FC = () => {
         breadcrumbs={[{ label: 'Report Cards' }]}
         actions={
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <Button variant="outline" size="sm" onClick={handleExportPdf} disabled={!card || exporting} className="px-2 sm:px-3">
+            {/* Whole-class batch — staff only, once a class is selected. */}
+            {!isStudent && !isParent && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClassBatch}
+                disabled={!classId || batchRoster.length === 0 || batchRunning || exporting}
+                className="px-2 sm:px-3"
+                title="Generate a single PDF with every student's report card in this class"
+              >
+                <Users size={15} className="sm:mr-1.5" />
+                <span className="hidden sm:inline">
+                  {batchRunning ? `Generating ${batchProgress.done}/${batchProgress.total}…` : 'Download Whole Class'}
+                </span>
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleExportPdf} disabled={!card || exporting || batchRunning} className="px-2 sm:px-3">
               <Download size={15} className="sm:mr-1.5" />
               <span className="hidden sm:inline">{exporting ? 'Preparing...' : 'Download PDF'}</span>
             </Button>
-            <Button variant="default" size="sm" onClick={handlePrint} disabled={!card || exporting} className="bg-blue-600 hover:bg-blue-700 text-white px-2 sm:px-3">
+            <Button variant="default" size="sm" onClick={handlePrint} disabled={!card || exporting || batchRunning} className="bg-blue-600 hover:bg-blue-700 text-white px-2 sm:px-3">
               <Printer size={15} className="sm:mr-1.5" />
               <span className="hidden sm:inline">Print</span>
             </Button>
@@ -349,6 +593,30 @@ export const ReportCardsPage: React.FC = () => {
             }
           }
         `}</style>
+
+        {/* Hidden off-screen batch render target — one student at a time during
+            a whole-class export. Positioned far off-screen (not display:none) so
+            html-to-image can measure & capture it. */}
+        {batchCard && createPortal(
+          <div
+            aria-hidden
+            style={{ position: 'fixed', left: -100000, top: 0, width: 1123, pointerEvents: 'none', opacity: 1, zIndex: -1, background: '#fff' }}
+          >
+            <div ref={batchRef} className="w-max">
+              <BookletContent
+                card={batchCard}
+                school={school}
+                schoolName={schoolName}
+                schoolAddress={schoolAddress}
+                schoolLogo={schoolLogo}
+                shortName={shortName}
+                showCover
+                showInner
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
 
         {/* Portaled print copy — rendered to <body>, only visible during print */}
         {canLoad && card && createPortal(

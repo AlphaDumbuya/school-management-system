@@ -610,7 +610,7 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
               <option value="">— Use Default Template (auto-detect by role) —</option>
               {templates.map((template: any) => (
                 <option key={template.id || template.templateId} value={template.id || template.templateId}>
-                  {template.name} {template.isDefault ? '★ Default' : ''} {template.version ? `(v${template.version})` : ''}
+                  {template.name} {template.isDefault ? '★ Default' : ''}
                 </option>
               ))}
             </select>

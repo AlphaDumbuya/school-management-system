@@ -12,6 +12,7 @@ import {
   RefreshCw, X, Eye, Ban, RotateCcw, LayoutGrid, List,
   QrCode, Loader2, ShieldCheck, ShieldAlert, Clock, Zap,
   Search, ChevronRight, AlertCircle, GraduationCap, BookOpen, Trash2,
+  MoreVertical, FileText, Image as ImageIcon,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -87,7 +88,7 @@ function Avatar({ name, photoUrl, size = 'md' }: { name: string; photoUrl?: stri
 
 // ── Visual ID Card Tile ───────────────────────────────────────────────────────
 function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReportLost, onReactivate, onDownload, downloading }: {
-  card: IdCard; onView: () => void; onRevoke: () => void; onRegenerate: () => void; onDelete: () => void; onReportLost: () => void; onReactivate: () => void; onDownload: () => void; downloading: boolean;
+  card: IdCard; onView: () => void; onRevoke: () => void; onRegenerate: () => void; onDelete: () => void; onReportLost: () => void; onReactivate: () => void; onDownload: (output: 'pdf' | 'png' | 'jpg') => void; downloading: boolean;
 }) {
   const user = card.user;
   const name = user ? `${user.firstName} ${user.lastName}` : 'Unknown Member';
@@ -114,11 +115,17 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReport
     }
   };
 
+  // Keep every tile the same height so the action rows line up across the grid
+  // (PVC is landscape, badge is portrait — without a fixed aspect the buttons
+  // would sit at different heights per card and look scattered).
+  const isBadge = (card.format || 'pvc') === 'badge';
+
   return (
-    <div className="group relative flex flex-col gap-0">
-      {/* Card face */}
+    <div className="group relative flex flex-col h-full">
+      {/* Card face — fixed aspect ratio per format so all tiles align */}
       <div
         className="relative w-full shadow-xl overflow-hidden cursor-pointer transition-all duration-300 group-hover:shadow-2xl group-hover:-translate-y-1 flex items-center justify-center bg-gray-900 rounded-2xl p-1"
+        style={{ aspectRatio: isBadge ? '2 / 3' : '85.6 / 53.98' }}
         onClick={onView}
       >
         <VisualIdCardRenderer
@@ -158,26 +165,80 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReport
         )}
       </div>
 
-      {/* Actions — always visible on touch/small screens, hover-reveal on large */}
-      <div className="flex items-center gap-1 mt-2 flex-wrap opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
-        <button onClick={onView} className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-50 dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700">
-          <Eye size={12} /> View
+      {/* Actions — pinned to the bottom (mt-auto) so every tile's action row
+          lines up across the grid, even when PVC/badge faces differ in height. */}
+      <div className="flex items-center gap-1.5 mt-auto pt-2">
+        <button onClick={onView} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-50 dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700">
+          <Eye size={13} /> View
         </button>
-        <button onClick={onDownload} disabled={downloading} className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 bg-gray-50 dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700 disabled:opacity-50">
-          {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} PDF
-        </button>
-        <button onClick={onRegenerate} className="p-1.5 text-gray-500 hover:text-violet-600 dark:text-gray-400 dark:hover:text-violet-400 bg-gray-50 dark:bg-gray-800 hover:bg-violet-50 dark:hover:bg-violet-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Regenerate"><RotateCcw size={12} /></button>
-        {card.status === 'active' && (
-          <button onClick={onRevoke} className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 bg-gray-50 dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Revoke"><Ban size={12} /></button>
-        )}
-        {card.status === 'active' && (
-          <button onClick={onReportLost} className="p-1.5 text-gray-500 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400 bg-gray-50 dark:bg-gray-800 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Report Lost"><AlertTriangle size={12} /></button>
-        )}
-        {card.status === 'suspended' && (
-          <button onClick={onReactivate} className="p-1.5 text-gray-500 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400 bg-gray-50 dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Reactivate"><RotateCcw size={12} /></button>
-        )}
-        <button onClick={onDelete} className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 bg-gray-50 dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700" title="Delete"><Trash2 size={12} /></button>
+        <CardActionMenu
+          card={card}
+          downloading={downloading}
+          onDownload={onDownload}
+          onRegenerate={onRegenerate}
+          onRevoke={onRevoke}
+          onReportLost={onReportLost}
+          onReactivate={onReactivate}
+          onDelete={onDelete}
+        />
       </div>
+    </div>
+  );
+}
+
+// ── Tile action overflow menu ─────────────────────────────────────────────────
+function CardActionMenu({ card, downloading, onDownload, onRegenerate, onRevoke, onReportLost, onReactivate, onDelete }: {
+  card: IdCard; downloading: boolean;
+  onDownload: (output: 'pdf' | 'png' | 'jpg') => void;
+  onRegenerate: () => void; onRevoke: () => void; onReportLost: () => void; onReactivate: () => void; onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const item = 'w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium text-left hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors';
+
+  const act = (fn: () => void) => () => { setOpen(false); fn(); };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        disabled={downloading}
+        className="p-2 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors border border-gray-200 dark:border-gray-700 disabled:opacity-50"
+        title="Actions"
+      >
+        {downloading ? <Loader2 size={15} className="animate-spin" /> : <MoreVertical size={15} />}
+      </button>
+      {open && (
+        <div className="absolute right-0 bottom-full mb-1 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-40 overflow-hidden py-1">
+          <div className="px-3 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Download</div>
+          <button onClick={act(() => onDownload('pdf'))} className={item}><FileText size={13} className="text-emerald-600" /> Save as PDF</button>
+          <button onClick={act(() => onDownload('png'))} className={item}><ImageIcon size={13} className="text-emerald-600" /> Save as PNG</button>
+          <button onClick={act(() => onDownload('jpg'))} className={item}><ImageIcon size={13} className="text-emerald-600" /> Save as JPG</button>
+          <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
+          <button onClick={act(onRegenerate)} className={item}><RotateCcw size={13} className="text-violet-600" /> Regenerate</button>
+          {card.status === 'active' && (
+            <button onClick={act(onRevoke)} className={item}><Ban size={13} className="text-red-600" /> Revoke</button>
+          )}
+          {card.status === 'active' && (
+            <button onClick={act(onReportLost)} className={item}><AlertTriangle size={13} className="text-amber-600" /> Report Lost</button>
+          )}
+          {card.status === 'suspended' && (
+            <button onClick={act(onReactivate)} className={item}><RotateCcw size={13} className="text-emerald-600" /> Reactivate</button>
+          )}
+          <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
+          <button onClick={act(onDelete)} className={`${item} text-red-600 dark:text-red-400`}><Trash2 size={13} /> Delete</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -625,24 +686,51 @@ export const IdCardsPage: React.FC = () => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const exporterRef = React.useRef<CardPdfExporterHandle>(null);
 
-  const handleDownload = async (card: IdCard) => {
+  const [bulkDownloading, setBulkDownloading] = useState(false);
+
+  const fetchFull = async (card: IdCard): Promise<any> => {
+    try {
+      const res = await idCardService.getCard(card.id);
+      return (res as any)?.card ?? (res as any)?.data ?? card;
+    } catch {
+      return card;
+    }
+  };
+
+  const handleDownload = async (card: IdCard, output: 'pdf' | 'png' | 'jpg' = 'pdf') => {
     setDownloadingId(card.id);
     try {
-      // Fetch the full card (template config + user details) so the exported
-      // PDF matches the on-screen card exactly.
-      let full: any = card;
-      try {
-        const res = await idCardService.getCard(card.id);
-        full = (res as any)?.card ?? (res as any)?.data ?? card;
-      } catch {
-        /* fall back to list card data */
-      }
-      await exporterRef.current?.export(buildCardExportData(full));
-      showToast.success('Card PDF downloaded');
+      // Fetch the full card (template config + user details) so the export
+      // matches the on-screen card exactly.
+      const full = await fetchFull(card);
+      await exporterRef.current?.export(buildCardExportData(full, output));
+      showToast.success(`Card ${output.toUpperCase()} downloaded`);
     } catch {
-      showToast.error('Failed to download card PDF');
+      showToast.error(`Failed to download card ${output.toUpperCase()}`);
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  // Bulk download every visible card, one file each (sequential so the shared
+  // off-screen exporter isn't clobbered). Great for printing a whole batch.
+  const handleBulkDownload = async (list: IdCard[], output: 'pdf' | 'png' | 'jpg') => {
+    if (bulkDownloading || list.length === 0) return;
+    setBulkDownloading(true);
+    let ok = 0;
+    try {
+      for (const card of list) {
+        const full = await fetchFull(card);
+        try {
+          await exporterRef.current?.export(buildCardExportData(full, output));
+          ok++;
+          // Small gap so browsers don't drop rapid successive downloads.
+          await new Promise((r) => setTimeout(r, 400));
+        } catch { /* skip one, continue the batch */ }
+      }
+      showToast.success(`Downloaded ${ok} of ${list.length} card${list.length === 1 ? '' : 's'} (${output.toUpperCase()})`);
+    } finally {
+      setBulkDownloading(false);
     }
   };
 
@@ -820,6 +908,24 @@ export const IdCardsPage: React.FC = () => {
                 <button onClick={() => refetch()} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors" title="Refresh">
                   <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
                 </button>
+                {/* Bulk print/download of all visible cards */}
+                {cards.length > 0 && (
+                  <div className="relative group/bulk">
+                    <button
+                      disabled={bulkDownloading}
+                      className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-emerald-600 disabled:opacity-50 whitespace-nowrap"
+                      title="Download / print all listed cards"
+                    >
+                      {bulkDownloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                      <span className="hidden sm:inline">Download All</span>
+                    </button>
+                    <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-30 opacity-0 invisible group-hover/bulk:opacity-100 group-hover/bulk:visible transition-all">
+                      <button onClick={() => handleBulkDownload(cards, 'pdf')} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-lg">All as PDF</button>
+                      <button onClick={() => handleBulkDownload(cards, 'png')} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">All as PNG</button>
+                      <button onClick={() => handleBulkDownload(cards, 'jpg')} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 rounded-b-lg">All as JPG</button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Role pills */}
@@ -857,7 +963,7 @@ export const IdCardsPage: React.FC = () => {
                       onDelete={() => setDeleteTarget(card)}
                       onReportLost={() => setReportLostTarget(card)}
                       onReactivate={() => setReactivateTarget(card)}
-                      onDownload={() => handleDownload(card)}
+                      onDownload={(output) => handleDownload(card, output)}
                       downloading={downloadingId === card.id} />
                   ))}
                 </div>

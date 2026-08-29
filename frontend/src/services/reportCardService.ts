@@ -145,6 +145,7 @@ export interface ReportCard {
     form_teacher_name?: string | null;
     pupil_age?: number | null;
     class_average_age?: number | null;
+    number_in_form?: number | null;
   };
   academic_year: string;
   subjects: ReportSubject[];
