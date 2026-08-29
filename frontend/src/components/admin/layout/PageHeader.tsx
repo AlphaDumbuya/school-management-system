@@ -37,21 +37,21 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         </Link>
       )}
 
-      {/* Title row: side-by-side with actions right-aligned */}
-      <div className="flex items-start justify-between gap-3">
+      {/* Title row: stacks on mobile (title above actions), side-by-side on sm+ */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
         {/* Left: title + optional subtitle */}
         <div className="min-w-0">
-          <h1 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white truncate">
+          <h1 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">
             {title}
           </h1>
           {subtitle && (
-            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1 truncate">{subtitle}</p>
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">{subtitle}</p>
           )}
         </div>
 
-        {/* Right: action slot — always right-aligned */}
+        {/* Right: action slot — full row on mobile (wraps), right-aligned on sm+ */}
         {actions && (
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0 sm:justify-end">
             {actions}
           </div>
         )}

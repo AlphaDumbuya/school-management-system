@@ -84,8 +84,8 @@ export const ResultsPage: React.FC = () => {
         subtitle="Sierra Leone terminal booklet — Test 1 + Test 2 → Mean, per subject, per term"
         breadcrumbs={[{ label: 'Results & Grades' }]}
         actions={
-          <div className="w-32 sm:w-44">
-            <SearchableSelect options={yearOptions} value={academicYear} onChange={setAcademicYear} placeholder="Year" />
+          <div className="w-full sm:w-44">
+            <SearchableSelect options={yearOptions} value={academicYear} onChange={setAcademicYear} placeholder="Academic year" />
           </div>
         }
       >
