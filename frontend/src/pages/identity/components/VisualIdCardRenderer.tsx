@@ -545,14 +545,14 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
 
   // ── EDIT MODE: absolute, WYSIWYG layout driven by layoutConfig mm coords ──
   if (editing) {
-    const photoW = Math.round((layout.photoPosition?.width ?? 22) * scale);
-    const photoH = Math.round((layout.photoPosition?.height ?? 22) * scale);
+    const photoW = Math.round((layout.photoPosition?.width ?? 20) * scale);
+    const photoH = Math.round((layout.photoPosition?.height ?? 25) * scale);
     const qrSize = layout.qrCodePosition?.size ?? 12;
     return (
       <div ref={cardRef} className="absolute inset-0" style={{ paddingLeft: `${sidebarOffset * scale}px` }}>
         {/* Logo */}
         {!suppressHeader && vf.logo && (
-          <div {...abs('logo', 4, 3.5)}>
+          <div {...abs('logo', 4, 4)}>
             {activeLogoUrl && !logoFailed
               ? <img src={resolveImageUrl(activeLogoUrl)} alt="Logo" style={{ height: `${Math.max(14, scale * 6.5)}px`, maxWidth: `${scale * 18}px`, objectFit: 'contain' }} onError={onLogoError} />
               : <div className="rounded-full flex items-center justify-center text-white" style={{ width: `${Math.max(16, scale * 6)}px`, height: `${Math.max(16, scale * 6)}px`, backgroundColor: `${primary}dd` }}><GraduationCap size={Math.max(10, scale * 3.5)} /></div>}
@@ -560,31 +560,31 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
         )}
         {/* School name */}
         {!suppressHeader && vf.schoolName && (
-          <div {...abs('schoolName', 16, 4)}>
+          <div {...abs('schoolName', 26, 5)}>
             <span className="font-extrabold tracking-tight drop-shadow-sm block whitespace-nowrap" style={{ color: elColor('schoolName', headerStyle === 'top-banner' ? textColor : '#FFFFFF'), fontSize: schoolNameFontSize(schoolName, 11 * fontMult), fontFamily }}>{schoolName}</span>
           </div>
         )}
         {/* Photo */}
         {(
-          <div {...abs('photo', 6, 12)}>
+          <div {...abs('photo', 5, 17)}>
             <PhotoBlock photoUrl={user.photoUrl} userName={user.name} widthPx={photoW} heightPx={photoH} shapeClass={photoShapeCls} clipStyle={photoClipStyle} borderColor={pb} borderWidth={pbW} />
-            <ResizeHandle elemKey="photo" w={layout.photoPosition?.width ?? 22} h={layout.photoPosition?.height ?? 22} lockAspect />
+            <ResizeHandle elemKey="photo" w={layout.photoPosition?.width ?? 20} h={layout.photoPosition?.height ?? 25} lockAspect />
           </div>
         )}
         {/* Role */}
         {vf.role && (
-          <div {...abs('role', 34, 24)}>
+          <div {...abs('role', 30, 26)}>
             <span className="inline-block font-extrabold uppercase px-2 py-0.5 rounded-full" style={{ backgroundColor: elBg('role', primary), color: elColor('role', '#FFFFFF'), fontSize: `${elFs('role', 8)}px`, fontFamily: elFf('role'), opacity: elOp('role') }}>{user.role} IDENTITY CARD</span>
           </div>
         )}
         {/* Name */}
         {vf.name && (
-          <div {...abs('name', 34, 14)}>
+          <div {...abs('name', 30, 18)}>
             <h2 className="font-black leading-snug uppercase tracking-wide whitespace-nowrap" style={{ color: elColor('name', textColor), fontSize: `${nameFontPx}px`, fontFamily: elFf('name'), opacity: elOp('name') }}>{user.name}</h2>
           </div>
         )}
         {/* ID block */}
-        <div {...abs('id', 34, 31)}>
+        <div {...abs('id', 30, 33)}>
           {vf.id && <InfoRow label={config.idLabel || 'ID NO'} value={user.idNumber} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
           {vf.dob && user.dob && <InfoRow label={config.dobLabel || 'D.O.B'} value={user.dob} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
           {vf.grade && user.departmentOrGrade && <InfoRow label={config.gradeLabel || 'GRADE'} value={user.departmentOrGrade} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
@@ -592,13 +592,13 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
         </div>
         {/* Barcode */}
         {config.showBarcode === true && (
-          <div {...abs('barcode', 34, 45)}>
-            <BarcodeStripes idNumber={user.idNumber} widthMm={cardW * 0.5} scale={scale} />
+          <div {...abs('barcode', 5, 46)}>
+            <BarcodeStripes idNumber={user.idNumber} widthMm={cardW * 0.45} scale={scale} />
           </div>
         )}
-        {/* QR (front only when single-sided) */}
+        {/* QR (front only when single-sided) — small, bottom-right */}
         {config.showQrCode !== false && (config as any).printSides !== 'double' && (
-          <div {...abs('qrCode', 64, 14)}>
+          <div {...abs('qrCode', 71, 36)}>
             <QrCodeBlock sizeMm={qrSize} scale={scale} label="SCAN" />
             <ResizeHandle elemKey="qrCode" w={qrSize} h={qrSize} minW={8} lockAspect />
           </div>
@@ -808,50 +808,50 @@ function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primar
   };
 
   if (editing) {
-    const photoW = Math.round((layout.photoPosition?.width ?? 40) * scale);
-    const photoH = Math.round((layout.photoPosition?.height ?? 48) * scale);
-    const qrSize = layout.qrCodePosition?.size ?? 20;
+    const photoW = Math.round((layout.photoPosition?.width ?? 34) * scale);
+    const photoH = Math.round((layout.photoPosition?.height ?? 40) * scale);
+    const qrSize = layout.qrCodePosition?.size ?? 18;
     return (
       <div ref={cardRef} className="absolute inset-0 overflow-hidden" style={{ paddingLeft: `${sidebarOffset * scale}px` }}>
         {!suppressHeader && vf.logo && (
-          <div {...abs('logo', 4, 3.5)}>
+          <div {...abs('logo', 6, 6)}>
             {activeLogoUrl && !logoFailed
               ? <img src={resolveImageUrl(activeLogoUrl)} alt="Logo" style={{ height: `${Math.max(20, scale * 10)}px`, maxWidth: `${scale * 22}px`, objectFit: 'contain' }} onError={onLogoError} />
               : <div className="rounded-full flex items-center justify-center text-white" style={{ width: `${Math.max(22, scale * 10)}px`, height: `${Math.max(22, scale * 10)}px`, backgroundColor: `${primary}dd` }}><GraduationCap size={Math.max(13, scale * 5.5)} /></div>}
           </div>
         )}
         {!suppressHeader && vf.schoolName && (
-          <div {...abs('schoolName', 14, 4)}>
+          <div {...abs('schoolName', 22, 8)}>
             <span className="font-black tracking-wide drop-shadow-sm block whitespace-nowrap uppercase" style={{ color: elColor('schoolName', suppressHeader ? textColor : '#FFFFFF'), fontSize: schoolNameFontSize(schoolName, 13 * fontMult), fontFamily }}>{schoolName}</span>
           </div>
         )}
-        <div {...abs('photo', 25, 22)}>
+        <div {...abs('photo', 34, 26)}>
           <PhotoBlock photoUrl={user.photoUrl} userName={user.name} widthPx={photoW} heightPx={photoH} shapeClass={photoShapeCls} clipStyle={photoClipStyle} borderColor={pb} borderWidth={Math.max(pbW, 3)} />
-          <ResizeHandle elemKey="photo" w={layout.photoPosition?.width ?? 40} h={layout.photoPosition?.height ?? 48} lockAspect />
+          <ResizeHandle elemKey="photo" w={layout.photoPosition?.width ?? 34} h={layout.photoPosition?.height ?? 40} lockAspect />
         </div>
         {vf.name && (
-          <div {...abs('name', 10, 88)}>
+          <div {...abs('name', 12, 74)}>
             <h2 className="font-black uppercase tracking-wide whitespace-nowrap" style={{ color: elColor('name', textColor), fontSize: `${nameFontPx}px`, fontFamily: elFf('name'), opacity: elOp('name') }}>{user.name}</h2>
           </div>
         )}
         {vf.role && (
-          <div {...abs('role', 10, 96)}>
+          <div {...abs('role', 12, 84)}>
             <span className="inline-block font-extrabold uppercase rounded-full" style={{ backgroundColor: elBg('role', primary), color: elColor('role', '#FFFFFF'), fontSize: `${roleFontPx}px`, fontFamily: elFf('role'), opacity: elOp('role'), padding: `${Math.max(2, scale * 1.2)}px ${Math.max(7, scale * 4.5)}px` }}>{user.role} IDENTITY CARD</span>
           </div>
         )}
-        <div {...abs('id', 10, 108)}>
+        <div {...abs('id', 12, 96)}>
           {vf.id && <InfoRow label={config.idLabel || 'ID NO'} value={user.idNumber} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
           {vf.dob && user.dob && <InfoRow label={config.dobLabel || 'D.O.B'} value={user.dob} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
           {vf.grade && user.departmentOrGrade && <InfoRow label={config.gradeLabel || 'GRADE'} value={user.departmentOrGrade} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
           {vf.expiry && user.expiresAt && <InfoRow label={config.expiryLabel || 'EXPIRES'} value={user.expiresAt} valueColor={secondary || '#F59E0B'} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
         </div>
         {config.showBarcode === true && (
-          <div {...abs('barcode', 10, 138)}>
-            <BarcodeStripes idNumber={user.idNumber} widthMm={cardW * 0.5} scale={scale} />
+          <div {...abs('barcode', 12, 132)}>
+            <BarcodeStripes idNumber={user.idNumber} widthMm={cardW * 0.45} scale={scale} />
           </div>
         )}
         {config.showQrCode !== false && (config as any).printSides !== 'double' && (
-          <div {...abs('qrCode', 38, 126)}>
+          <div {...abs('qrCode', 76, 128)}>
             <QrCodeBlock sizeMm={qrSize} scale={scale} label="SCAN" />
             <ResizeHandle elemKey="qrCode" w={qrSize} h={qrSize} minW={10} lockAspect />
           </div>
