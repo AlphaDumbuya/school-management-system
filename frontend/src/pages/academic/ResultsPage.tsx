@@ -117,38 +117,44 @@ export const ResultsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-gray-700">
+        {/* Tabs — scrollable on mobile, short labels on xs */}
+        <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide">
           <button
             onClick={() => setTab('cognitive')}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            className={`flex-shrink-0 px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
               tab === 'cognitive'
                 ? 'border-blue-600 text-blue-700 dark:text-blue-400'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            <ClipboardList size={15} className="inline mr-1.5" /> Cognitive Scores
+            <ClipboardList size={15} className="inline mr-1.5" />
+            <span className="sm:hidden">Scores</span>
+            <span className="hidden sm:inline">Cognitive Scores</span>
           </button>
           <button
             onClick={() => setTab('ratings')}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            className={`flex-shrink-0 px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
               tab === 'ratings'
                 ? 'border-blue-600 text-blue-700 dark:text-blue-400'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            <Star size={15} className="inline mr-1.5" /> Affective & Psychomotor
+            <Star size={15} className="inline mr-1.5" />
+            <span className="sm:hidden">Ratings</span>
+            <span className="hidden sm:inline">Affective &amp; Psychomotor</span>
           </button>
           {isPrincipal && (
             <button
               onClick={() => setTab('settings')}
-              className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              className={`flex-shrink-0 px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
                 tab === 'settings'
                   ? 'border-blue-600 text-blue-700 dark:text-blue-400'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
             >
-              <Settings size={15} className="inline mr-1.5" /> Settings & Release
+              <Settings size={15} className="inline mr-1.5" />
+              <span className="sm:hidden">Settings</span>
+              <span className="hidden sm:inline">Settings &amp; Release</span>
             </button>
           )}
         </div>
