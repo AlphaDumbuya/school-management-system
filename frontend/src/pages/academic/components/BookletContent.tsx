@@ -13,6 +13,21 @@ import {
 const TERM_KEYS: SLTerm[] = ['first_term', 'second_term', 'third_term'];
 const TERM_SHORT: Record<SLTerm, string> = { first_term: 'TERM 1', second_term: 'TERM 2', third_term: 'TERM 3' };
 
+/** Format a rank as an ordinal: 1 → 1st, 2 → 2nd, 3 → 3rd, 11 → 11th, 21 → 21st. */
+function ordinal(n: number | null | undefined): string {
+  if (n == null || isNaN(Number(n))) return '';
+  const num = Number(n);
+  const mod100 = num % 100;
+  const mod10 = num % 10;
+  const suffix =
+    mod100 >= 11 && mod100 <= 13 ? 'th'
+    : mod10 === 1 ? 'st'
+    : mod10 === 2 ? 'nd'
+    : mod10 === 3 ? 'rd'
+    : 'th';
+  return `${num}${suffix}`;
+}
+
 // Cognitive cell — red if a fail (<50)
 const Num: React.FC<{ v: number | null | undefined; bold?: boolean }> = ({ v, bold }) => {
   if (v == null) return <span className="text-gray-400">–</span>;
@@ -190,7 +205,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
                         <th className="border border-gray-700 p-0.5 w-[22px]">1</th>
                         <th className="border border-gray-700 p-0.5 w-[22px]">2</th>
                         <th className="border border-gray-700 p-0.5 w-[26px] bg-blue-100/40">Mn</th>
-                        <th className="border border-gray-700 p-0.5 w-[22px]">Rnk</th>
+                        <th className="border border-gray-700 p-0.5 w-[30px]">Rnk</th>
                       </React.Fragment>
                     ))}
                     <th className="border border-gray-700 p-0.5 bg-amber-100/40">Mn</th>
@@ -236,12 +251,12 @@ export const BookletContent: React.FC<BookletContentProps> = ({
                               <td className="border border-gray-300 p-0.5"><Num v={ts?.test1} /></td>
                               <td className="border border-gray-300 p-0.5"><Num v={ts?.test2} /></td>
                               <td className="border border-gray-300 p-0.5 bg-blue-50/30"><Num v={ts?.mean} bold /></td>
-                              <td className="border border-gray-700 p-0.5">{ts?.rank ?? ''}</td>
+                              <td className="border border-gray-700 p-0.5">{ordinal(ts?.rank)}</td>
                             </React.Fragment>
                           );
                         })}
                         <td className="border border-gray-300 p-0.5 bg-amber-50/30"><Num v={s?.yearly_mean} bold /></td>
-                        <td className="border border-gray-700 p-0.5 font-bold">{s?.yearly_rank ?? ''}</td>
+                        <td className="border border-gray-700 p-0.5 font-bold">{ordinal(s?.yearly_rank)}</td>
 
                         <td className="border border-gray-700 p-0.5 font-bold bg-purple-50/40">{affTrait ? i + 1 : ''}</td>
                         {TERM_KEYS.map((term, k) => {
@@ -255,7 +270,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
                           );
                         })}
                         <td className="border border-gray-300 p-0.5 bg-amber-50/30 font-bold">{affTrait ? (affYr ?? '') : ''}</td>
-                        <td className="border border-gray-700 p-0.5">{affTrait ? (affRnk ?? '') : ''}</td>
+                        <td className="border border-gray-700 p-0.5">{affTrait ? ordinal(affRnk) : ''}</td>
 
                         <td className="border border-gray-700 p-0.5 font-bold bg-green-50/40">{psyTrait ? i + 1 : ''}</td>
                         {TERM_KEYS.map((term, k) => {
@@ -269,7 +284,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
                           );
                         })}
                         <td className="border border-gray-300 p-0.5 bg-amber-50/30 font-bold">{psyTrait ? (psyYr ?? '') : ''}</td>
-                        <td className="border border-gray-700 p-0.5">{psyTrait ? (psyRnk ?? '') : ''}</td>
+                        <td className="border border-gray-700 p-0.5">{psyTrait ? ordinal(psyRnk) : ''}</td>
                       </tr>
                     );
                   })}
@@ -310,12 +325,12 @@ export const BookletContent: React.FC<BookletContentProps> = ({
                         <React.Fragment key={t}>
                           <td className="border border-gray-300 p-0.5" />
                           <td className="border border-gray-300 p-0.5" />
-                          <td className="border border-gray-700 p-0.5 bg-blue-100/40">{sm?.position ? `${sm.position}${sm.class_size ? `/${sm.class_size}` : ''}` : ''}</td>
+                          <td className="border border-gray-700 p-0.5 bg-blue-100/40">{sm?.position ? `${ordinal(sm.position)}${sm.class_size ? `/${sm.class_size}` : ''}` : ''}</td>
                           <td className="border border-gray-700 p-0.5" />
                         </React.Fragment>
                       );
                     })}
-                    <td className="border border-gray-700 p-0.5 bg-amber-100/40">{posYr ? `${posYr}${posYrSize ? `/${posYrSize}` : ''}` : ''}</td>
+                    <td className="border border-gray-700 p-0.5 bg-amber-100/40">{posYr ? `${ordinal(posYr)}${posYrSize ? `/${posYrSize}` : ''}` : ''}</td>
                     <td className="border border-gray-700 p-0.5" />
                     <td colSpan={28} className="border border-gray-900 p-0.5 bg-gray-50/60" />
                   </tr>
@@ -381,7 +396,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
                 </div>
                 {card.yearly_summary?.percentage != null && (
                   <div className="text-[9px] text-gray-500 normal-case">
-                    Yearly: {card.yearly_summary.percentage}% · Position {card.yearly_summary.position}/{card.yearly_summary.class_size}
+                    Yearly: {card.yearly_summary.percentage}% · Position {ordinal(card.yearly_summary.position)}/{card.yearly_summary.class_size}
                   </div>
                 )}
               </div>

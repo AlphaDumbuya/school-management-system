@@ -26,7 +26,7 @@ import { studentDashboardService } from '@services/studentDashboardService';
 import { parentDashboardService } from '@services/parentDashboardService';
 import { useAuth } from '@hooks/useAuth';
 import { BookletContent } from './components/BookletContent';
-import { Printer, Download } from 'lucide-react';
+import { Printer, Download, Users } from 'lucide-react';
 
 export const ReportCardsPage: React.FC = () => {
   const currentYear = new Date().getFullYear();
@@ -125,6 +125,17 @@ export const ReportCardsPage: React.FC = () => {
 
   const bookletRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
+
+  // ── Whole-class batch export state ──────────────────────────────────────────
+  const batchRef = useRef<HTMLDivElement>(null);
+  const [batchCard, setBatchCard] = useState<ReportCard | null>(null);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  // Roster of students in the selected class (staff only), used by the batch.
+  const batchRoster = useMemo(
+    () => (isStudent || isParent ? [] : students),
+    [isStudent, isParent, students],
+  );
 
   /**
    * Print/export the booklet.
@@ -258,29 +269,36 @@ export const ReportCardsPage: React.FC = () => {
     const root = bookletRef.current;
     if (!root) throw new Error('Booklet not rendered');
 
-    const sheets = Array.from(root.querySelectorAll<HTMLElement>('.booklet-sheet'));
-    if (sheets.length === 0) throw new Error('No booklet sheets found');
-
-    const [{ toPng }, { jsPDF }] = await Promise.all([
-      import('html-to-image'),
-      import('jspdf'),
-    ]);
-
-    // A4 landscape in mm.
+    const { jsPDF } = await import('jspdf');
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const added = await appendBookletSheetsToPdf(root, pdf, true);
+    if (added === 0) throw new Error('No booklet sheets found');
+    return pdf.output('blob');
+  };
+
+  /**
+   * Capture every .booklet-sheet inside `root` as a high-res PNG and add one per
+   * A4-landscape page to the given jsPDF. Reused for both single-student and
+   * whole-class batch export. Returns the number of sheets added.
+   */
+  const appendBookletSheetsToPdf = async (root: HTMLElement, pdf: any, isFirst: boolean): Promise<number> => {
+    const { toPng } = await import('html-to-image');
+
+    const sheets = Array.from(root.querySelectorAll<HTMLElement>('.booklet-sheet'));
+    if (sheets.length === 0) return 0;
+
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
 
-    // A4 landscape aspect at ~96dpi. We force every sheet to exactly these
-    // dimensions before capture so the WHOLE sheet is rendered — never just the
-    // portion visible inside the mobile horizontal-scroll wrapper.
+    // A4 landscape aspect at ~96dpi — pin sheets to full size before capture so
+    // the WHOLE sheet renders (not just the visible region in a scroll wrapper).
     const SHEET_W = 1123; // 297mm
     const SHEET_H = 794;  // 210mm
 
+    let added = 0;
     for (let i = 0; i < sheets.length; i++) {
       const node = sheets[i];
 
-      // Wait for any images inside the sheet (logos etc.) to finish loading.
       const imgs = Array.from(node.querySelectorAll('img'));
       await Promise.all(
         imgs.map((img) =>
@@ -290,18 +308,10 @@ export const ReportCardsPage: React.FC = () => {
         )
       );
 
-      // Temporarily pin the sheet to full A4-landscape size and lift any
-      // clipping so html-to-image measures and captures the ENTIRE sheet, not
-      // just the on-screen visible region.
       const prev = {
-        width: node.style.width,
-        maxWidth: node.style.maxWidth,
-        minHeight: node.style.minHeight,
-        height: node.style.height,
-        boxShadow: node.style.boxShadow,
-        borderRadius: node.style.borderRadius,
-        margin: node.style.margin,
-        overflow: node.style.overflow,
+        width: node.style.width, maxWidth: node.style.maxWidth, minHeight: node.style.minHeight,
+        height: node.style.height, boxShadow: node.style.boxShadow, borderRadius: node.style.borderRadius,
+        margin: node.style.margin, overflow: node.style.overflow,
       };
       node.style.width = `${SHEET_W}px`;
       node.style.maxWidth = 'none';
@@ -311,13 +321,9 @@ export const ReportCardsPage: React.FC = () => {
       node.style.margin = '0';
       node.style.overflow = 'visible';
 
-      // Reflow, then measure the full rendered size (content may exceed A4-H).
       const fullW = Math.max(SHEET_W, node.scrollWidth);
       const fullH = Math.max(SHEET_H, node.scrollHeight);
 
-      // High-resolution capture: pixelRatio 3 ≈ 300 DPI at A4, giving crisp
-      // print output. Guard against browser canvas limits (~16k px per side /
-      // ~268MP total) on very tall sheets by scaling the ratio down if needed.
       const MAX_SIDE = 16000;
       const MAX_AREA = 260_000_000;
       let pixelRatio = 3;
@@ -327,8 +333,6 @@ export const ReportCardsPage: React.FC = () => {
 
       let dataUrl: string;
       try {
-        // pixelRatio scales the output canvas up for crisp, high-DPI print
-        // quality. width/height define the CSS capture box (the full sheet).
         dataUrl = await toPng(node, {
           cacheBust: true,
           pixelRatio,
@@ -337,7 +341,6 @@ export const ReportCardsPage: React.FC = () => {
           height: fullH,
         });
       } finally {
-        // Restore the on-screen styles.
         node.style.width = prev.width;
         node.style.maxWidth = prev.maxWidth;
         node.style.minHeight = prev.minHeight;
@@ -348,23 +351,73 @@ export const ReportCardsPage: React.FC = () => {
         node.style.overflow = prev.overflow;
       }
 
-      if (i > 0) pdf.addPage('a4', 'landscape');
-      // Fit the full captured sheet onto the A4-landscape page, preserving
-      // aspect ratio so nothing is cropped.
+      if (!(isFirst && i === 0)) pdf.addPage('a4', 'landscape');
+
       const imgRatio = fullW / fullH;
       const pageRatio = pageW / pageH;
       let drawW = pageW, drawH = pageH;
-      if (imgRatio > pageRatio) {
-        drawH = pageW / imgRatio;
-      } else {
-        drawW = pageH * imgRatio;
-      }
+      if (imgRatio > pageRatio) drawH = pageW / imgRatio;
+      else drawW = pageH * imgRatio;
       const offX = (pageW - drawW) / 2;
       const offY = (pageH - drawH) / 2;
       pdf.addImage(dataUrl, 'PNG', offX, offY, drawW, drawH, undefined, 'FAST');
+      added++;
     }
+    return added;
+  };
 
-    return pdf.output('blob');
+  /**
+   * WHOLE-CLASS batch: generate one combined PDF containing every student's
+   * booklet (2 landscape pages each). Fetches each student's report card,
+   * renders it into a hidden off-screen node, captures it, and appends.
+   */
+  const handleClassBatch = async () => {
+    if (!classId) { showToast.error('Select a class first'); return; }
+    if (batchRoster.length === 0) { showToast.error('No students found in this class'); return; }
+
+    setBatchRunning(true);
+    setBatchProgress({ done: 0, total: batchRoster.length });
+    const { jsPDF } = await import('jspdf');
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    let first = true;
+    let ok = 0;
+
+    try {
+      const className = classOptions.find((c: any) => String(c.value) === String(classId))?.label || 'Class';
+      for (let idx = 0; idx < batchRoster.length; idx++) {
+        const stu = batchRoster[idx];
+        try {
+          const resp: any = await reportCardService.getReportCard(String(stu.id), { class_id: classId, academic_year: academicYear });
+          const stuCard: ReportCard | null = resp?.data ?? null;
+          if (stuCard) {
+            // Render into the hidden batch node and wait for a commit.
+            setBatchCard(stuCard);
+            await new Promise((r) => setTimeout(r, 250));
+            const node = batchRef.current;
+            if (node) {
+              const added = await appendBookletSheetsToPdf(node, pdf, first);
+              if (added > 0) { first = false; ok++; }
+            }
+          }
+        } catch { /* skip a student who has no data, continue the batch */ }
+        setBatchProgress({ done: idx + 1, total: batchRoster.length });
+      }
+
+      if (ok === 0) { showToast.error('No report cards could be generated for this class'); return; }
+      const blob = pdf.output('blob');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Report_Cards_${className.replace(/\s+/g, '_')}_${academicYear.replace('/', '-')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast.success(`Generated ${ok} of ${batchRoster.length} report card${batchRoster.length === 1 ? '' : 's'}`);
+    } finally {
+      setBatchCard(null);
+      setBatchRunning(false);
+    }
   };
 
   const showCover = spread === 'all' || spread === 'cover';
@@ -378,11 +431,27 @@ export const ReportCardsPage: React.FC = () => {
         breadcrumbs={[{ label: 'Report Cards' }]}
         actions={
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <Button variant="outline" size="sm" onClick={handleExportPdf} disabled={!card || exporting} className="px-2 sm:px-3">
+            {/* Whole-class batch — staff only, once a class is selected. */}
+            {!isStudent && !isParent && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClassBatch}
+                disabled={!classId || batchRoster.length === 0 || batchRunning || exporting}
+                className="px-2 sm:px-3"
+                title="Generate a single PDF with every student's report card in this class"
+              >
+                <Users size={15} className="sm:mr-1.5" />
+                <span className="hidden sm:inline">
+                  {batchRunning ? `Generating ${batchProgress.done}/${batchProgress.total}…` : 'Download Whole Class'}
+                </span>
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleExportPdf} disabled={!card || exporting || batchRunning} className="px-2 sm:px-3">
               <Download size={15} className="sm:mr-1.5" />
               <span className="hidden sm:inline">{exporting ? 'Preparing...' : 'Download PDF'}</span>
             </Button>
-            <Button variant="default" size="sm" onClick={handlePrint} disabled={!card || exporting} className="bg-blue-600 hover:bg-blue-700 text-white px-2 sm:px-3">
+            <Button variant="default" size="sm" onClick={handlePrint} disabled={!card || exporting || batchRunning} className="bg-blue-600 hover:bg-blue-700 text-white px-2 sm:px-3">
               <Printer size={15} className="sm:mr-1.5" />
               <span className="hidden sm:inline">Print</span>
             </Button>
@@ -524,6 +593,30 @@ export const ReportCardsPage: React.FC = () => {
             }
           }
         `}</style>
+
+        {/* Hidden off-screen batch render target — one student at a time during
+            a whole-class export. Positioned far off-screen (not display:none) so
+            html-to-image can measure & capture it. */}
+        {batchCard && createPortal(
+          <div
+            aria-hidden
+            style={{ position: 'fixed', left: -100000, top: 0, width: 1123, pointerEvents: 'none', opacity: 1, zIndex: -1, background: '#fff' }}
+          >
+            <div ref={batchRef} className="w-max">
+              <BookletContent
+                card={batchCard}
+                school={school}
+                schoolName={schoolName}
+                schoolAddress={schoolAddress}
+                schoolLogo={schoolLogo}
+                shortName={shortName}
+                showCover
+                showInner
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
 
         {/* Portaled print copy — rendered to <body>, only visible during print */}
         {canLoad && card && createPortal(
