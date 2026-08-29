@@ -191,14 +191,16 @@ export const idCardService = {
      * Generate a single ID card
      */
     generateCard: async (data: CardGenerationRequest) => {
-        return apiClient.post('/api/v1/id-cards/generate', data);
+        // Pass the app's real origin so the QR verification URL points here
+        // (the page the user is actually on), never a baked-in localhost.
+        return apiClient.post('/api/v1/id-cards/generate', { ...data, baseUrl: window.location.origin });
     },
 
     /**
      * Regenerate an existing card
      */
     regenerateCard: async (cardId: string) => {
-        return apiClient.post(`/api/v1/id-cards/regenerate/${cardId}`);
+        return apiClient.post(`/api/v1/id-cards/regenerate/${cardId}`, { baseUrl: window.location.origin });
     },
 
     /**

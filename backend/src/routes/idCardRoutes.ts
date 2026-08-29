@@ -25,17 +25,30 @@ const router = Router();
  * scanned QR opens a REACHABLE page rather than a baked-in localhost URL.
  */
 function resolveRequestOrigin(req: Request): string | undefined {
+  // 1) Explicit origin from the client (window.location.origin) — the most
+  //    reliable source: it's exactly where the app is served. Trust it unless
+  //    it's a localhost value coming from a production request.
+  const bodyBase = typeof req.body?.baseUrl === 'string' ? req.body.baseUrl.trim() : '';
+  const reqIsLocal = /localhost|127\.0\.0\.1/.test(req.headers['x-forwarded-host'] as string || req.get('host') || '');
+  if (bodyBase && (!/localhost|127\.0\.0\.1/.test(bodyBase) || reqIsLocal)) {
+    return bodyBase.replace(/\/+$/, '');
+  }
+
+  // 2) A non-localhost env override (canonical production URL).
   const envBase = process.env.PUBLIC_APP_URL || process.env.APP_URL || process.env.FRONTEND_URL;
   if (envBase && !/localhost|127\.0\.0\.1/.test(envBase)) {
     return envBase.replace(/\/+$/, '');
   }
+
+  // 3) The request's forwarded host (works behind Vercel/proxies).
   const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim() || req.protocol || 'https';
   const host = (req.headers['x-forwarded-host'] as string)?.split(',')[0]?.trim() || req.get('host');
   if (host && !/localhost|127\.0\.0\.1/.test(host)) {
     return `${proto}://${host}`;
   }
-  // Local dev — fall back to env (even if localhost) so behaviour is unchanged.
-  return envBase ? envBase.replace(/\/+$/, '') : undefined;
+
+  // 4) Local dev fallback (env even if localhost, else the body value).
+  return (envBase || bodyBase || '').replace(/\/+$/, '') || undefined;
 }
 
 // Initialize services
