@@ -42,6 +42,7 @@ import phase25ExternalServicesRoutes from '@routes/phase25ExternalServicesRoutes
 import platformRoutes from '@routes/platformRoutes';
 import admissionRoutes from '@routes/admissionRoutes';
 import idCardRoutes from '@routes/idCardRoutes';
+import publicVerifyRoutes from '@routes/publicVerifyRoutes';
 import templateRoutes from '@routes/templateRoutes';
 import idCardReportingRoutes from '@routes/idCardReportingRoutes';
 import printConfigRoutes from '@routes/printConfigRoutes';
@@ -262,6 +263,9 @@ app.use('/api/v1/platform', platformRoutes);
 
 // Admission Management Routes (Phase 1.3: Admissions Officer Enhancement)
 app.use('/api/v1/admissions', admissionRoutes);
+
+// Public ID verification (UNAUTHENTICATED — QR scan verification)
+app.use('/api/v1/public', publicVerifyRoutes);
 
 // ID Card Management Routes (Phase 2.1: Identity Management Module)
 app.use('/api/v1/id-cards', idCardRoutes);

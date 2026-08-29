@@ -22,12 +22,16 @@ const CARD_MM: Record<CardFormat, { w: number; h: number }> = {
 // Render width (px) for capture — high enough for crisp print output.
 const CAPTURE_WIDTH_PX = 1010; // ~300 DPI at 85.6mm
 
+export type CardExportFormat = 'pdf' | 'png' | 'jpg';
+
 export interface CardExportData {
   config: TemplateConfig;
   format: CardFormat;
   user: VisualCardUserData;
   logoUrl?: string;
   fileName: string;
+  /** Output type. Defaults to 'pdf'. Images stitch front+back into one file. */
+  output?: CardExportFormat;
 }
 
 export interface CardPdfExporterHandle {
@@ -67,6 +71,53 @@ export const CardPdfExporter = forwardRef<CardPdfExporterHandle, {}>((_props, re
         // A short delay lets React commit + layout complete.
         setTimeout(async () => {
           try {
+            const output: CardExportFormat = payload.output || 'pdf';
+            const isDoubleSided = payload.config?.printSides === 'double';
+
+            // ── Image export (PNG/JPG): capture front (+back), stitch into one
+            // file so a 2-sided card downloads everything in a single image. ──
+            if (output === 'png' || output === 'jpg') {
+              const { toPng } = await import('html-to-image');
+              const captureImg = async (node: HTMLElement): Promise<HTMLImageElement> => {
+                await waitForImages(node);
+                const url = await toPng(node, { cacheBust: true, pixelRatio: 3, backgroundColor: '#ffffff' });
+                return await new Promise<HTMLImageElement>((res) => {
+                  const im = new Image();
+                  im.onload = () => res(im);
+                  im.src = url;
+                });
+              };
+
+              const frontImg = frontRef.current ? await captureImg(frontRef.current) : null;
+              const backImg = isDoubleSided && backRef.current ? await captureImg(backRef.current) : null;
+
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d')!;
+              const gap = frontImg && backImg ? 24 : 0;
+              const w = Math.max(frontImg?.width || 0, backImg?.width || 0);
+              const h = (frontImg?.height || 0) + (backImg ? backImg.height + gap : 0);
+              canvas.width = w;
+              canvas.height = h;
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, w, h);
+              let y = 0;
+              if (frontImg) { ctx.drawImage(frontImg, (w - frontImg.width) / 2, y); y += frontImg.height + gap; }
+              if (backImg) { ctx.drawImage(backImg, (w - backImg.width) / 2, y); }
+
+              const mime = output === 'jpg' ? 'image/jpeg' : 'image/png';
+              const dataUrl = canvas.toDataURL(mime, output === 'jpg' ? 0.95 : undefined);
+              const a = document.createElement('a');
+              a.href = dataUrl;
+              a.download = payload.fileName.replace(/\.(pdf|png|jpg|jpeg)$/i, '') + (output === 'jpg' ? '.jpg' : '.png');
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              resolve();
+              setData(null);
+              return;
+            }
+
+            // ── PDF export ──────────────────────────────────────────────────
             // Lazy-load heavy deps only when a download is triggered.
             const [{ toPng }, { jsPDF }] = await Promise.all([
               import('html-to-image'),

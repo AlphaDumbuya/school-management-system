@@ -314,6 +314,14 @@ export const idCardService = {
     },
 
     /**
+     * Public (unauthenticated) verification of a scanned QR value.
+     * Accepts raw QR content, a full verify URL, or a base64url payload.
+     */
+    verifyPublicId: async (value: string) => {
+        return apiClient.post('/api/v1/public/verify-id', { value, deviceId: 'web-scan' });
+    },
+
+    /**
      * Get QR code for card
      */
     getQrCode: async (cardId: string) => {

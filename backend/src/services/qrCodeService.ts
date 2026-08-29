@@ -43,6 +43,7 @@ interface QrCodeContent {
   role: string;
   expirationDate: string;
   securityHash: string;
+  tenantId?: string;
 }
 
 export class QrCodeService {
@@ -106,19 +107,25 @@ export class QrCodeService {
         secret
       );
 
-      // Create QR code content
+      // Create QR code content (stored raw in DB for the authenticated verify tab)
       const content: QrCodeContent = {
         userId,
         name: userName,
         role: user.role,
         expirationDate: expirationDate.toISOString(),
         securityHash,
+        tenantId,
       };
 
       const contentString = this.encodeQrContent(content);
 
+      // The image encodes a PUBLIC verification URL so ANY phone camera scan
+      // opens a live "Verify ID" page (rather than showing raw JSON that does
+      // nothing). The full payload is embedded in a URL-safe base64 param.
+      const scanTarget = this.buildVerificationUrl(contentString);
+
       // Generate QR code image with error correction level H (30% damage recovery)
-      const imageDataUrl = await QRCode.toDataURL(contentString, {
+      const imageDataUrl = await QRCode.toDataURL(scanTarget, {
         errorCorrectionLevel: 'H',
         type: 'image/png',
         width: this.QR_CODE_SIZE,
@@ -204,8 +211,8 @@ export class QrCodeService {
         };
       }
 
-      // Decode QR code content
-      const content = this.decodeQrContent(qrCodeContent);
+      // Decode QR code content (accept raw JSON, a scanned verify URL, or base64url)
+      const content = this.decodeQrContent(this.extractContentString(qrCodeContent));
       if (!content) {
         await this.logScan({
           scanningUserId,
@@ -485,10 +492,66 @@ export class QrCodeService {
   }
 
   /**
+   * Build the public verification URL that the QR image encodes.
+   * Reads APP_URL / FRONTEND_URL for the base, falling back to a relative path
+   * so it still resolves when served from the same origin.
+   */
+  private buildVerificationUrl(contentString: string): string {
+    const base = (
+      process.env.APP_URL ||
+      process.env.FRONTEND_URL ||
+      process.env.PUBLIC_APP_URL ||
+      ''
+    ).replace(/\/+$/, '');
+    const payload = Buffer.from(contentString, 'utf8').toString('base64url');
+    const path = `/verify-id?d=${payload}`;
+    return base ? `${base}${path}` : path;
+  }
+
+  /**
    * Encode QR code content to string
    */
   private encodeQrContent(content: QrCodeContent): string {
     return JSON.stringify(content);
+  }
+
+  /**
+   * Public verification entry point. Accepts either the raw JSON content or a
+   * scanned verification URL / base64url payload, resolves the tenant from the
+   * embedded payload (no auth session required), and verifies.
+   */
+  async verifyScannedValue(
+    scannedValue: string,
+    scanningDeviceId: string
+  ): Promise<QrVerificationResult> {
+    const contentString = this.extractContentString(scannedValue);
+    const parsed = this.decodeQrContent(contentString);
+    if (!parsed || !parsed.tenantId) {
+      return { isValid: false, failureReason: 'invalid_format' };
+    }
+    // Public scans have no logged-in user; attribute the scan to the holder.
+    return this.verifyQrCode(contentString, parsed.userId, scanningDeviceId, parsed.tenantId);
+  }
+
+  /**
+   * Normalise a scanned value into the raw JSON content string.
+   * Handles: raw JSON, a full verify URL (?d=base64url), or a bare base64url payload.
+   */
+  private extractContentString(scannedValue: string): string {
+    const v = (scannedValue || '').trim();
+    if (!v) return v;
+    // Already JSON?
+    if (v.startsWith('{')) return v;
+    // A URL containing ?d= or #d=
+    const match = v.match(/[?#&]d=([^&]+)/);
+    const b64 = match ? match[1] : (/^[A-Za-z0-9_-]+$/.test(v) ? v : null);
+    if (b64) {
+      try {
+        const decoded = Buffer.from(b64, 'base64url').toString('utf8');
+        if (decoded.startsWith('{')) return decoded;
+      } catch { /* fall through */ }
+    }
+    return v;
   }
 
   /**

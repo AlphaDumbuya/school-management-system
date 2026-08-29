@@ -48,6 +48,7 @@ import { MyEventsPage } from '@pages/events/MyEventsPage';
 import { EventAnalyticsPage } from '@pages/events/EventAnalyticsPage';
 import { IdCardsPage } from '@pages/identity/IdCardsPage';
 import { TemplatesPage } from '@pages/identity/TemplatesPage';
+import VerifyIdPage from '@pages/identity/VerifyIdPage';
 import TeachersPage from '@pages/staff/TeachersPage';
 
 import useAuthStore from '@store/authStore';
@@ -110,6 +111,7 @@ const router = createBrowserRouter(
         { path: 'contact', element: <ContactPage /> },
         { path: 'login', element: <LoginPage /> },
         { path: 'register', element: <RegisterPage /> },
+        { path: 'verify-id', element: <VerifyIdPage /> },
 
         // ── Generic dashboard redirect ──────────────────────────────
         {
