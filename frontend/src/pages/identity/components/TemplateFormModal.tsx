@@ -783,6 +783,28 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
         });
     };
 
+    // Dynamic size change handler during canvas resize (width/height in mm).
+    const handleSizeChange = (key: string, newW: number, newH: number) => {
+        setFormData(prev => {
+            pushUndo(prev);
+            const nextLayout = { ...prev.layoutConfig } as any;
+            if (key.startsWith('custom_')) {
+                nextLayout.customElements = (nextLayout.customElements || []).map((el: CanvasElement) =>
+                    el.id === key ? { ...el, width: newW, height: newH } : el
+                );
+            } else if (key === 'photo') {
+                nextLayout.photoPosition = { ...(nextLayout.photoPosition || {}), width: newW, height: newH };
+            } else if (key === 'qrCode' || key === 'backQr') {
+                const k = key === 'backQr' ? 'backQrPosition' : 'qrCodePosition';
+                nextLayout[k] = { ...(nextLayout[k] || {}), size: newW };
+            } else {
+                const posKey = key === 'logo' ? 'logoPositionConfig' : key === 'schoolName' ? 'schoolNamePosition' : `${key}Position`;
+                nextLayout[posKey] = { ...(nextLayout[posKey] || { side: 'front' }), width: newW, height: newH };
+            }
+            return { ...prev, layoutConfig: nextLayout };
+        });
+    };
+
     // Dynamic element-specific styling handler
     const handleUpdateElementStyle = (field: 'color' | 'bgColor' | 'fontSize' | 'fontFamily' | 'opacity', value: any) => {
         if (!selectedElement) return;
@@ -2218,6 +2240,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                                 selectedElement={selectedElement}
                                                 onClickElement={(key) => { setSelectedElement(key); setActiveTab('style'); setIsSettingsOpen(true); }}
                                                 onPositionChange={handlePositionChange}
+                                                onSizeChange={handleSizeChange}
                                             />
                                         </div>
                                     </div>
@@ -2264,6 +2287,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                                 selectedElement={selectedElement}
                                                 onClickElement={(key) => { setSelectedElement(key); setActiveTab('style'); setIsSettingsOpen(true); }}
                                                 onPositionChange={handlePositionChange}
+                                                onSizeChange={handleSizeChange}
                                             />
                                         </div>
                                     </div>
@@ -2306,6 +2330,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                         selectedElement={selectedElement}
                                         onClickElement={(key) => { setSelectedElement(key); setActiveTab('style'); setIsSettingsOpen(true); }}
                                         onPositionChange={handlePositionChange}
+                                        onSizeChange={handleSizeChange}
                                     />
                                 </div>
                             )}

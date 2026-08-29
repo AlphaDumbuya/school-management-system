@@ -337,10 +337,39 @@ interface DraggableProps {
   selectedElement?: string | null; onClickElement?: (key: string) => void;
   onPointerDown?: (e: React.PointerEvent, key: string, x: number, y: number) => void;
   readonly?: boolean; children: React.ReactNode; style?: React.CSSProperties; className?: string; ariaLabel?: string;
+  // Resize support: when provided (and element is selected) a drag handle is
+  // shown at the bottom-right. w/h are the current size in mm.
+  onSizeChange?: (key: string, newW: number, newH: number) => void;
+  w?: number; h?: number; minW?: number; minH?: number; lockAspect?: boolean;
 }
-function DraggableEl({ elemKey, x, y, scale, selectedElement, onClickElement, onPointerDown, readonly, children, style, className = '', ariaLabel }: DraggableProps) {
+function DraggableEl({ elemKey, x, y, scale, selectedElement, onClickElement, onPointerDown, readonly, children, style, className = '', ariaLabel, onSizeChange, w, h, minW = 6, minH = 6, lockAspect }: DraggableProps) {
   const isSelected = selectedElement === elemKey;
   const interactive = !readonly && (onClickElement || onPointerDown);
+  const canResize = !readonly && !!onSizeChange && w != null && h != null;
+
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = w!;
+    const startH = h!;
+    const aspect = startH !== 0 ? startW / startH : 1;
+    const move = (ev: PointerEvent) => {
+      const dxMm = (ev.clientX - startX) / scale;
+      const dyMm = (ev.clientY - startY) / scale;
+      let newW = Math.max(minW, Math.round((startW + dxMm) * 10) / 10);
+      let newH = lockAspect ? Math.max(minH, Math.round((newW / aspect) * 10) / 10) : Math.max(minH, Math.round((startH + dyMm) * 10) / 10);
+      onSizeChange!(elemKey, newW, newH);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   return (
     <div role={interactive ? 'button' : undefined} aria-label={ariaLabel || elemKey}
       tabIndex={interactive ? 0 : undefined}
@@ -352,6 +381,16 @@ function DraggableEl({ elemKey, x, y, scale, selectedElement, onClickElement, on
         className].join(' ')}
       style={{ left: `${x * scale}px`, top: `${y * scale}px`, ...style }}>
       {children}
+      {canResize && isSelected && (
+        <div
+          role="button"
+          aria-label={`Resize ${elemKey}`}
+          onPointerDown={startResize}
+          onClick={(e) => e.stopPropagation()}
+          title="Drag to resize"
+          className="absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-sm bg-amber-500 border border-white shadow cursor-se-resize z-40"
+        />
+      )}
     </div>
   );
 }
@@ -395,13 +434,14 @@ interface FrontSharedProps {
   vf: Record<string, boolean>;
   selectedElement?: string | null; onClickElement?: (k: string) => void;
   onPointerDown?: (e: React.PointerEvent, k: string, x: number, y: number) => void;
+  onSizeChange?: (k: string, w: number, h: number) => void;
   readonly?: boolean; layout: any; sidebarOffset: number;
 }
 
 // ── PVC Landscape Front ───────────────────────────────────────────────────────
 // Header band → photo+info zone → barcode|QR bottom bar
 
-function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary, secondary, textColor, fontFamily, photoShapeCls, photoClipStyle, activeLogoUrl, logoFailed, onLogoError, vf, selectedElement, onClickElement, onPointerDown, readonly, layout, sidebarOffset }: FrontSharedProps) {
+function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary, secondary, textColor, fontFamily, photoShapeCls, photoClipStyle, activeLogoUrl, logoFailed, onLogoError, vf, selectedElement, onClickElement, onPointerDown, onSizeChange, readonly, layout, sidebarOffset }: FrontSharedProps) {
   const pb = config.photoBorderColor || primary;
   const pbW = config.photoBorderWidth ?? 2;
   const schoolName = config.customSchoolName || user.schoolName || 'SCHOOL NAME';
@@ -544,7 +584,7 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
       </div>
 
       {(layout.customElements || []).filter((el: any) => !el.side || el.side === 'front').map((el: any) => (
-        <DraggableEl key={el.id} elemKey={el.id} x={el.x} y={el.y} scale={scale} selectedElement={selectedElement} onClickElement={onClickElement} onPointerDown={onPointerDown} readonly={readonly} ariaLabel={el.label}>
+        <DraggableEl key={el.id} elemKey={el.id} x={el.x} y={el.y} scale={scale} selectedElement={selectedElement} onClickElement={onClickElement} onPointerDown={onPointerDown} onSizeChange={onSizeChange} w={el.width ?? 24} h={el.height ?? 10} lockAspect={el.type === 'shape' || el.type === 'photo'} readonly={readonly} ariaLabel={el.label}>
           {el.type === 'badge'
             ? <span className="inline-block font-extrabold uppercase px-2 py-0.5 rounded-full shadow-xs" style={{ backgroundColor: el.bgColor || primary, color: el.color || '#FFFFFF', fontSize: `${(el.fontSize || 9) * fontMult}px`, opacity: el.opacity != null ? el.opacity / 100 : 1 }}>{el.label}</span>
             : <div style={{ color: el.color || textColor, fontSize: `${(el.fontSize || 10) * fontMult}px`, opacity: el.opacity != null ? el.opacity / 100 : 1 }}>{el.sublabel && <span className="font-bold opacity-60 uppercase mr-1">{el.sublabel}:</span>}<span className="font-semibold">{el.label}</span></div>}
@@ -563,7 +603,7 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
 //   ⑤ Info grid   — left-aligned label : value rows
 //   ⑥ Bottom      — QR centered, 7px+ from edge
 
-function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primary, secondary, textColor, fontFamily, photoShapeCls, photoClipStyle, activeLogoUrl, logoFailed, onLogoError, vf, selectedElement, onClickElement, onPointerDown, readonly, layout, sidebarOffset }: FrontSharedProps) {
+function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primary, secondary, textColor, fontFamily, photoShapeCls, photoClipStyle, activeLogoUrl, logoFailed, onLogoError, vf, selectedElement, onClickElement, onPointerDown, onSizeChange, readonly, layout, sidebarOffset }: FrontSharedProps) {
   const pb  = config.photoBorderColor || primary;
   const pbW = config.photoBorderWidth ?? 3;
   const schoolName = config.customSchoolName || user.schoolName || 'SCHOOL NAME';
@@ -729,7 +769,7 @@ function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primar
 
       {/* Custom overlay elements */}
       {(layout.customElements || []).filter((el: any) => !el.side || el.side === 'front').map((el: any) => (
-        <DraggableEl key={el.id} elemKey={el.id} x={el.x} y={el.y} scale={scale} selectedElement={selectedElement} onClickElement={onClickElement} onPointerDown={onPointerDown} readonly={readonly} ariaLabel={el.label}>
+        <DraggableEl key={el.id} elemKey={el.id} x={el.x} y={el.y} scale={scale} selectedElement={selectedElement} onClickElement={onClickElement} onPointerDown={onPointerDown} onSizeChange={onSizeChange} w={el.width ?? 24} h={el.height ?? 10} lockAspect={el.type === 'shape' || el.type === 'photo'} readonly={readonly} ariaLabel={el.label}>
           {el.type === 'badge'
             ? <span className="inline-block font-extrabold uppercase px-2 py-0.5 rounded-full shadow-xs" style={{ backgroundColor: el.bgColor||primary, color: el.color||'#FFFFFF', fontSize:`${(el.fontSize||9)*fontMult}px`, opacity:el.opacity!=null?el.opacity/100:1 }}>{el.label}</span>
             : <div style={{ color:el.color||textColor, fontSize:`${(el.fontSize||10)*fontMult}px`, opacity:el.opacity!=null?el.opacity/100:1 }}>{el.sublabel&&<span className="font-bold opacity-60 uppercase mr-1">{el.sublabel}:</span>}<span className="font-semibold">{el.label}</span></div>}
@@ -754,11 +794,12 @@ function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primar
 //   ④ Signature line       — centered
 //   ⑤ Barcode              — centered (if enabled)
 
-function BackContent({ user, config, scale, cardW, cardH, fontMult, primary, secondary, textColor, fontFamily, isPortrait, selectedElement, onClickElement, onPointerDown, readonly, layout, schoolName }: {
+function BackContent({ user, config, scale, cardW, cardH, fontMult, primary, secondary, textColor, fontFamily, isPortrait, selectedElement, onClickElement, onPointerDown, onSizeChange, readonly, layout, schoolName }: {
   user: VisualCardUserData; config: TemplateConfig; scale: number; cardW: number; cardH: number; fontMult: number;
   primary: string; secondary: string; textColor: string; fontFamily: string; isPortrait: boolean;
   selectedElement?: string | null; onClickElement?: (k: string) => void;
   onPointerDown?: (e: React.PointerEvent, k: string, x: number, y: number) => void;
+  onSizeChange?: (k: string, w: number, h: number) => void;
   readonly?: boolean; layout: any; schoolName: string;
 }) {
   // Refs for drag position measurement
@@ -860,7 +901,7 @@ function BackContent({ user, config, scale, cardW, cardH, fontMult, primary, sec
         {(layout.customElements || []).filter((el: any) => el.side === 'back').map((el: any) => (
           <DraggableEl key={el.id} elemKey={el.id} x={el.x} y={el.y} scale={scale}
             selectedElement={selectedElement} onClickElement={onClickElement}
-            onPointerDown={onPointerDown} readonly={readonly} ariaLabel={el.label}>
+            onPointerDown={onPointerDown} onSizeChange={onSizeChange} w={el.width ?? 24} h={el.height ?? 10} lockAspect={el.type === 'shape' || el.type === 'photo'} readonly={readonly} ariaLabel={el.label}>
             {el.type === 'badge'
               ? <span className="inline-block font-extrabold uppercase px-2 py-0.5 rounded-full shadow-xs"
                   style={{ backgroundColor: el.bgColor||primary, color: el.color||'#FFFFFF', fontSize:`${(el.fontSize||9)*fontMult}px`, opacity:el.opacity!=null?el.opacity/100:1 }}>{el.label}</span>
@@ -940,7 +981,7 @@ function BackContent({ user, config, scale, cardW, cardH, fontMult, primary, sec
       {(layout.customElements || []).filter((el: any) => el.side === 'back').map((el: any) => (
         <DraggableEl key={el.id} elemKey={el.id} x={el.x} y={el.y} scale={scale}
           selectedElement={selectedElement} onClickElement={onClickElement}
-          onPointerDown={onPointerDown} readonly={readonly} ariaLabel={el.label}>
+          onPointerDown={onPointerDown} onSizeChange={onSizeChange} w={el.width ?? 24} h={el.height ?? 10} lockAspect={el.type === 'shape' || el.type === 'photo'} readonly={readonly} ariaLabel={el.label}>
           {el.type === 'badge'
             ? <span className="inline-block font-extrabold uppercase px-2 py-0.5 rounded-full shadow-xs"
                 style={{ backgroundColor: el.bgColor||primary, color: el.color||'#FFFFFF', fontSize:`${(el.fontSize||9)*fontMult}px`, opacity:el.opacity!=null?el.opacity/100:1 }}>{el.label}</span>
@@ -1086,6 +1127,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
     onLogoError: () => { if (!activeLogoUrl?.startsWith('data:')) setLogoFailed(true); },
     vf, selectedElement, onClickElement,
     onPointerDown: onPositionChange ? handlePointerDown : undefined,
+    onSizeChange,
     readonly, layout, sidebarOffset,
   };
 
@@ -1120,6 +1162,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
                 primary={primary} secondary={secondary} textColor={textColor} fontFamily={fontFamily}
                 isPortrait={isPortrait} selectedElement={selectedElement} onClickElement={onClickElement}
                 onPointerDown={onPositionChange ? handlePointerDown : undefined}
+                onSizeChange={onSizeChange}
                 readonly={readonly} layout={layout} schoolName={schoolName} />
           }
         </div>
