@@ -337,7 +337,7 @@ export class IdCardService {
         cardId,
         userId: existingCard.user_id,
         cardNumber: existingCard.card_number,
-        qrCode: qrCode.content,
+        qrCode: qrCodeData.content,
         barcode: barcodeData.content,
         pdfUrl,
         issuedAt: existingCard.issued_at,
