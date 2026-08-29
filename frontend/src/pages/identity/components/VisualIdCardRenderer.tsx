@@ -25,6 +25,9 @@ export interface VisualCardUserData {
   expiresAt?: string;
   photoUrl?: string;
   schoolName?: string;
+  /** Base64 data-URL of the real scannable QR (from the backend). When missing,
+   *  QrCodeBlock shows a decorative placeholder. */
+  qrImageUrl?: string;
 }
 
 export interface VisualIdCardRendererProps {
@@ -323,11 +326,13 @@ function BarcodeStripes({ idNumber, widthMm, scale }: { idNumber: string; widthM
   );
 }
 
-function QrCodeBlock({ sizeMm, scale, label }: { sizeMm: number; scale: number; label?: string }) {
+function QrCodeBlock({ sizeMm, scale, label, imageUrl }: { sizeMm: number; scale: number; label?: string; imageUrl?: string }) {
   const sizePx = Math.round(Math.max(18, sizeMm * scale));
   return (
     <div className="bg-white p-1 rounded-lg border border-gray-300 shadow-sm flex flex-col items-center" style={{ width: `${sizePx + 8}px` }}>
-      <QrCode size={sizePx} className="text-gray-900" />
+      {imageUrl
+        ? <img src={imageUrl} alt="QR code" width={sizePx} height={sizePx} style={{ width: `${sizePx}px`, height: `${sizePx}px`, imageRendering: 'pixelated' }} />
+        : <QrCode size={sizePx} className="text-gray-900" />}
       {label && <span className="font-mono font-extrabold uppercase text-blue-900 mt-0.5" style={{ fontSize: `${Math.max(5, scale * 1.6)}px` }}>{label}</span>}
     </div>
   );
@@ -616,7 +621,7 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
         {/* QR (front only when single-sided) — small, bottom-right */}
         {config.showQrCode !== false && (config as any).printSides !== 'double' && (
           <div {...abs('qrCode', 71, 36)}>
-            <QrCodeBlock sizeMm={qrSize} scale={scale} label="SCAN" />
+            <QrCodeBlock sizeMm={qrSize} scale={scale} label="SCAN" imageUrl={user.qrImageUrl} />
             <ResizeHandle elemKey="qrCode" w={qrSize} h={qrSize} minW={8} lockAspect />
           </div>
         )}
@@ -711,7 +716,7 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
         {/* QR only on front when single-sided — double-sided puts it on the back */}
         {config.showQrCode !== false && (config as any).printSides !== 'double' && (
           <div {...mkBtn('qrCode', 'QR code')} className={[!readonly && onClickElement ? 'cursor-pointer' : '', selectedElement === 'qrCode' ? 'ring-1 ring-inset ring-amber-400' : ''].join(' ')}>
-            <QrCodeBlock sizeMm={9} scale={scale} label="SCAN" />
+            <QrCodeBlock sizeMm={9} scale={scale} label="SCAN" imageUrl={user.qrImageUrl} />
           </div>
         )}
       </div>
@@ -879,7 +884,7 @@ function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primar
         )}
         {config.showQrCode !== false && (config as any).printSides !== 'double' && (
           <div {...abs('qrCode', 42, 124)}>
-            <QrCodeBlock sizeMm={qrSize} scale={scale} label="SCAN" />
+            <QrCodeBlock sizeMm={qrSize} scale={scale} label="SCAN" imageUrl={user.qrImageUrl} />
             <ResizeHandle elemKey="qrCode" w={qrSize} h={qrSize} minW={10} lockAspect />
           </div>
         )}
@@ -995,7 +1000,7 @@ function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primar
         style={{ paddingBottom: `${Math.max(7, scale * 3.5)}px`, paddingTop: `${Math.max(2, scale * 1.5)}px` }}>
         {config.showQrCode !== false && (config as any).printSides !== 'double' && (
           <div {...mkBtn('qrCode', 'QR code')} className={[!readonly && onClickElement ? 'cursor-pointer' : '', selectedElement === 'qrCode' ? 'ring-1 ring-inset ring-amber-400 rounded' : ''].join(' ')}>
-            <QrCodeBlock sizeMm={14} scale={scale} label="SCAN" />
+            <QrCodeBlock sizeMm={14} scale={scale} label="SCAN" imageUrl={user.qrImageUrl} />
           </div>
         )}
         {config.showBarcode === true && (
@@ -1114,7 +1119,7 @@ function BackContent({ user, config, scale, cardW, cardH, fontMult, primary, sec
         {/* QR */}
         {config.showQrCode !== false && (
           <div {...absBack('backQr', isPortrait ? 38 : 66, isPortrait ? 60 : 18)}>
-            <QrCodeBlock sizeMm={backQrSize} scale={scale} label="VERIFY QR" />
+            <QrCodeBlock sizeMm={backQrSize} scale={scale} label="VERIFY QR" imageUrl={user.qrImageUrl} />
           </div>
         )}
         {/* Signature */}
@@ -1178,7 +1183,7 @@ function BackContent({ user, config, scale, cardW, cardH, fontMult, primary, sec
           {config.showQrCode !== false && (
             <div ref={sigRef} {...mkDrag('backQr', sigRef)} className="shrink-0 flex items-center justify-center"
               style={{ paddingLeft: `${Math.round(scale * 3)}px` }}>
-              <QrCodeBlock sizeMm={qrMm} scale={scale} label="VERIFY QR" />
+              <QrCodeBlock sizeMm={qrMm} scale={scale} label="VERIFY QR" imageUrl={user.qrImageUrl} />
             </div>
           )}
         </div>
@@ -1257,7 +1262,7 @@ function BackContent({ user, config, scale, cardW, cardH, fontMult, primary, sec
         <div ref={sigRef} {...mkDrag('backQr', sigRef)}
           className="shrink-0 flex items-center justify-center"
           style={{ paddingBlock: `${Math.round(scale * 2)}px`, paddingBottom: `${Math.max(7, scale * 3.5)}px` }}>
-          <QrCodeBlock sizeMm={qrMm} scale={scale} label="VERIFY QR" />
+          <QrCodeBlock sizeMm={qrMm} scale={scale} label="VERIFY QR" imageUrl={user.qrImageUrl} />
         </div>
       )}
 

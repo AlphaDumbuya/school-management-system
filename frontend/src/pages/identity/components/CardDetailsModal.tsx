@@ -155,6 +155,7 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                                         expiresAt: formatDate(card.expiresAt),
                                         dob: card.user?.dob ? formatDate(card.user.dob) : undefined,
                                         departmentOrGrade: card.user?.departmentOrGrade,
+                                        qrImageUrl: (card as any).qrImageUrl || undefined,
                                     }}
                                     logoUrl={card.template?.logoUrl || card.template?.config?.logoUrl}
                                     side={previewSide}
