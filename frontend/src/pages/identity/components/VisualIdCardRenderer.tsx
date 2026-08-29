@@ -395,12 +395,13 @@ function DraggableEl({ elemKey, x, y, scale, selectedElement, onClickElement, on
   );
 }
 
-function InfoRow({ label, value, valueColor, scale, fontMult, fontFamily, textColor }: {
-  label: string; value: string; valueColor?: string; scale: number; fontMult: number; fontFamily: string; textColor: string;
+function InfoRow({ label, value, valueColor, scale, fontMult, fontFamily, textColor, fontSizePt }: {
+  label: string; value: string; valueColor?: string; scale: number; fontMult: number; fontFamily: string; textColor: string; fontSizePt?: number;
 }) {
-  const fs = `${Math.max(5.5, 9 * fontMult)}px`;
+  const basePt = fontSizePt && fontSizePt > 0 ? fontSizePt : 9;
+  const fs = `${Math.max(5.5, basePt * fontMult)}px`;
   // Fixed label column width = 7 characters wide at current font size (longest label is "EXPIRES" = 7 chars)
-  const labelMinW = `${Math.max(28, 7 * Math.max(5.5, 9 * fontMult) * 0.62)}px`;
+  const labelMinW = `${Math.max(28, 7 * Math.max(5.5, basePt * fontMult) * 0.62)}px`;
   return (
     <div className="flex items-baseline overflow-hidden" style={{ fontFamily, gap: `${Math.max(3, scale * 1.5)}px` }}>
       <span className="font-bold opacity-65 uppercase tracking-wide whitespace-nowrap shrink-0"
@@ -581,10 +582,10 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
         )}
         {/* ID block */}
         <div {...abs('id', 34, 31)}>
-          {vf.id && <InfoRow label={config.idLabel || 'ID NO'} value={user.idNumber} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} />}
-          {vf.dob && user.dob && <InfoRow label={config.dobLabel || 'D.O.B'} value={user.dob} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} />}
-          {vf.grade && user.departmentOrGrade && <InfoRow label={config.gradeLabel || 'GRADE'} value={user.departmentOrGrade} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} />}
-          {vf.expiry && user.expiresAt && <InfoRow label={config.expiryLabel || 'EXPIRES'} value={user.expiresAt} valueColor={secondary || '#F59E0B'} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} />}
+          {vf.id && <InfoRow label={config.idLabel || 'ID NO'} value={user.idNumber} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
+          {vf.dob && user.dob && <InfoRow label={config.dobLabel || 'D.O.B'} value={user.dob} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
+          {vf.grade && user.departmentOrGrade && <InfoRow label={config.gradeLabel || 'GRADE'} value={user.departmentOrGrade} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
+          {vf.expiry && user.expiresAt && <InfoRow label={config.expiryLabel || 'EXPIRES'} value={user.expiresAt} valueColor={secondary || '#F59E0B'} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
         </div>
         {/* Barcode */}
         {config.showBarcode === true && (
@@ -673,10 +674,10 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
           )}
           <div className="border-t opacity-15" style={{ borderColor: textColor, margin: `${Math.max(1, scale * 0.8)}px 0` }} />
           <div {...mkDrag('id', 'ID details', idRef)} ref={idRef} className={['overflow-hidden', !readonly && onClickElement ? 'cursor-grab active:cursor-grabbing' : '', selectedElement === 'id' ? 'ring-1 ring-inset ring-amber-400' : ''].join(' ')} style={{ maxWidth: `${contentW}px` }}>
-            {vf.id && <InfoRow label={config.idLabel || 'ID NO'} value={user.idNumber} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} />}
-            {vf.dob && user.dob && <InfoRow label={config.dobLabel || 'D.O.B'} value={user.dob} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} />}
-            {vf.grade && user.departmentOrGrade && <InfoRow label={config.gradeLabel || 'GRADE'} value={user.departmentOrGrade} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} />}
-            {vf.expiry && user.expiresAt && <InfoRow label={config.expiryLabel || 'EXPIRES'} value={user.expiresAt} valueColor={secondary || '#F59E0B'} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} />}
+            {vf.id && <InfoRow label={config.idLabel || 'ID NO'} value={user.idNumber} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
+            {vf.dob && user.dob && <InfoRow label={config.dobLabel || 'D.O.B'} value={user.dob} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
+            {vf.grade && user.departmentOrGrade && <InfoRow label={config.gradeLabel || 'GRADE'} value={user.departmentOrGrade} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
+            {vf.expiry && user.expiresAt && <InfoRow label={config.expiryLabel || 'EXPIRES'} value={user.expiresAt} valueColor={secondary || '#F59E0B'} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
           </div>
         </div>
       </div>
@@ -1248,6 +1249,23 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
       <div onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp}
         className={`relative select-none overflow-hidden shadow-2xl border border-black/10 dark:border-white/10 ${className}`}
         style={{ width: `${actualWidth}px`, height: `${heightPx}px`, backgroundColor: bgColor, color: textColor, fontFamily, borderRadius: `${borderRadiusPx}px`, touchAction: 'none', backgroundImage: bgPatternImage }}>
+
+        {/* Alignment grid (edit mode only) — subtle 5mm grid + centre crosshair
+            so elements can be aligned while dragging. */}
+        {!readonly && onPositionChange && (
+          <div className="absolute inset-0 z-40 pointer-events-none"
+            style={{
+              backgroundImage:
+                `linear-gradient(to right, rgba(59,130,246,0.10) 1px, transparent 1px),` +
+                `linear-gradient(to bottom, rgba(59,130,246,0.10) 1px, transparent 1px)`,
+              backgroundSize: `${5 * scale}px ${5 * scale}px`,
+            }}>
+            {/* vertical centre */}
+            <div className="absolute top-0 bottom-0 border-l border-dashed border-blue-400/50" style={{ left: `${(cardW / 2) * scale}px` }} />
+            {/* horizontal centre */}
+            <div className="absolute left-0 right-0 border-t border-dashed border-blue-400/50" style={{ top: `${(cardH / 2) * scale}px` }} />
+          </div>
+        )}
 
         {/* Alignment guides */}
         {alignGuides.vx !== undefined && (
