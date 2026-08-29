@@ -63,24 +63,30 @@ const BG_PATTERNS = [
 // Helper to get default coordinates depending on layout
 const getDefaultLayout = (format: CardFormat) => {
     if (format === 'pvc') {
+        // PVC 85.6mm x 53.98mm. Photo left, info column right, QR small bottom-right.
         return {
-            photoPosition: { x: 5, y: 12, width: 25, height: 30, side: 'front' as const },
-            namePosition: { x: 34, y: 14, side: 'front' as const },
-            rolePosition: { x: 34, y: 23, side: 'front' as const },
-            idPosition: { x: 34, y: 31, side: 'front' as const },
-            qrCodePosition: { x: 64, y: 13, size: 16, side: 'front' as const },
-            barcodePosition: { x: 34, y: 39, side: 'front' as const },
+            logoPositionConfig: { x: 4, y: 4, side: 'front' as const },
+            schoolNamePosition: { x: 26, y: 5, side: 'front' as const },
+            photoPosition: { x: 5, y: 17, width: 20, height: 25, side: 'front' as const },
+            namePosition: { x: 30, y: 18, side: 'front' as const },
+            rolePosition: { x: 30, y: 26, side: 'front' as const },
+            idPosition: { x: 30, y: 33, side: 'front' as const },
+            qrCodePosition: { x: 71, y: 36, size: 12, side: 'front' as const },
+            barcodePosition: { x: 5, y: 46, side: 'front' as const },
             customElements: [] as CanvasElement[],
         };
     } else {
-        // badge 101.6mm x 152.4mm
+        // badge 101.6mm x 152.4mm. Photo top-centre (standard portrait), info
+        // block below, QR small bottom-right.
         return {
-            photoPosition: { x: 25, y: 20, width: 50, height: 60, side: 'front' as const },
-            namePosition: { x: 10, y: 90, side: 'front' as const },
-            rolePosition: { x: 10, y: 102, side: 'front' as const },
-            idPosition: { x: 10, y: 110, side: 'front' as const },
-            qrCodePosition: { x: 38, y: 120, size: 25, side: 'front' as const },
-            barcodePosition: { x: 10, y: 140, side: 'front' as const },
+            logoPositionConfig: { x: 6, y: 6, side: 'front' as const },
+            schoolNamePosition: { x: 22, y: 8, side: 'front' as const },
+            photoPosition: { x: 34, y: 26, width: 34, height: 40, side: 'front' as const },
+            namePosition: { x: 0, y: 72, side: 'front' as const },
+            rolePosition: { x: 0, y: 84, side: 'front' as const },
+            idPosition: { x: 0, y: 98, side: 'front' as const },
+            qrCodePosition: { x: 42, y: 124, size: 18, side: 'front' as const },
+            barcodePosition: { x: 26, y: 142, side: 'front' as const },
             customElements: [] as CanvasElement[],
         };
     }

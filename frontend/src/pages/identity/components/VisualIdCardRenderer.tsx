@@ -37,6 +37,7 @@ export interface VisualIdCardRendererProps {
   onClickElement?: (elementKey: string) => void;
   onPositionChange?: (elementKey: string, newX: number, newY: number) => void;
   onSizeChange?: (elementKey: string, newW: number, newH: number) => void;
+  showGrid?: boolean;
   selectedElement?: string | null;
   className?: string;
   readonly?: boolean;
@@ -376,10 +377,10 @@ function DraggableEl({ elemKey, x, y, scale, selectedElement, onClickElement, on
       onPointerDown={interactive && onPointerDown ? (e) => onPointerDown(e, elemKey, x, y) : undefined}
       onClick={interactive && onClickElement ? () => onClickElement(elemKey) : undefined}
       onKeyDown={interactive && onClickElement ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClickElement(elemKey); } : undefined}
-      className={['absolute transition-none', interactive ? 'cursor-grab active:cursor-grabbing' : '',
+      className={['absolute transition-none touch-none', interactive ? 'cursor-grab active:cursor-grabbing' : '',
         isSelected ? 'ring-2 ring-inset ring-amber-400 z-30' : (interactive ? 'hover:ring-1 hover:ring-blue-400/70 z-10' : ''),
         className].join(' ')}
-      style={{ left: `${x * scale}px`, top: `${y * scale}px`, ...style }}>
+      style={{ left: `${x * scale}px`, top: `${y * scale}px`, touchAction: 'none', ...style }}>
       {children}
       {canResize && isSelected && (
         <div
@@ -388,7 +389,8 @@ function DraggableEl({ elemKey, x, y, scale, selectedElement, onClickElement, on
           onPointerDown={startResize}
           onClick={(e) => e.stopPropagation()}
           title="Drag to resize"
-          className="absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-sm bg-amber-500 border border-white shadow cursor-se-resize z-40"
+          className="absolute -bottom-2 -right-2 w-5 h-5 rounded-full bg-amber-500 border-2 border-white shadow-md cursor-se-resize z-40 touch-none"
+          style={{ touchAction: 'none' }}
         />
       )}
     </div>
@@ -398,10 +400,15 @@ function DraggableEl({ elemKey, x, y, scale, selectedElement, onClickElement, on
 function InfoRow({ label, value, valueColor, scale, fontMult, fontFamily, textColor, fontSizePt }: {
   label: string; value: string; valueColor?: string; scale: number; fontMult: number; fontFamily: string; textColor: string; fontSizePt?: number;
 }) {
-  const basePt = fontSizePt && fontSizePt > 0 ? fontSizePt : 9;
-  const fs = `${Math.max(5.5, basePt * fontMult)}px`;
+  // When a per-element font size (pt) is set it OVERRIDES the general size:
+  // scale it geometrically only (by `scale`, ~px-per-mm) so it's independent of
+  // the card-wide fontMult. Otherwise fall back to the general fontMult sizing.
+  const fsPx = (fontSizePt && fontSizePt > 0)
+    ? Math.max(5.5, fontSizePt * scale * 0.3528)
+    : Math.max(5.5, 9 * fontMult);
+  const fs = `${fsPx}px`;
   // Fixed label column width = 7 characters wide at current font size (longest label is "EXPIRES" = 7 chars)
-  const labelMinW = `${Math.max(28, 7 * Math.max(5.5, basePt * fontMult) * 0.62)}px`;
+  const labelMinW = `${Math.max(28, 7 * fsPx * 0.62)}px`;
   return (
     <div className="flex items-baseline overflow-hidden" style={{ fontFamily, gap: `${Math.max(3, scale * 1.5)}px` }}>
       <span className="font-bold opacity-65 uppercase tracking-wide whitespace-nowrap shrink-0"
@@ -455,7 +462,13 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
   const elStyle = (key: string) => (layout as any)[key === 'logo' ? 'logoPositionConfig' : `${key}Position`] || {};
   const elColor = (key: string, def: string) => elStyle(key).color    || def;
   const elBg    = (key: string, def: string) => elStyle(key).bgColor  || def;
-  const elFs    = (key: string, def: number) => Math.max(5, ((elStyle(key).fontSize || def) * fontMult));
+  // Per-element font size (pt) OVERRIDES the general size: scale it geometrically
+  // (by `scale`) so it's independent of the card-wide fontMult; otherwise use the
+  // default size scaled by fontMult.
+  const elFs    = (key: string, def: number) => {
+    const s = elStyle(key).fontSize;
+    return (typeof s === 'number' && s > 0) ? Math.max(5, s * scale * 0.3528) : Math.max(5, def * fontMult);
+  };
   const elFf    = (key: string) => elStyle(key).fontFamily || fontFamily;
   const elOp    = (key: string) => elStyle(key).opacity != null ? elStyle(key).opacity / 100 : 1;
 
@@ -504,24 +517,30 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
   // (mm) so dragging, snap-align and resizing are truly WYSIWYG and match the
   // printed PDF (which also uses absolute mm). In readonly/preview we keep the
   // original flex zone layout untouched.
-  const editing = !readonly && !!onPointerDown;
+  // Absolute layout is used for BOTH editing and readonly/generated cards so the
+  // saved template renders exactly as designed (matches the mm-based PDF).
+  const editing = true;
+  const interactiveEdit = !readonly && !!onPointerDown;
   const posOf = (key: string): { x: number; y: number } | null => {
     const s = elStyle(key);
     if (typeof s.x === 'number' && typeof s.y === 'number') return { x: s.x, y: s.y };
     return null;
   };
-  // Absolute wrapper props for an editable core element.
+  // Absolute wrapper props for a core element.
   const abs = (key: string, fallX: number, fallY: number, size?: { w: number; h: number; lockAspect?: boolean }) => {
     const p = posOf(key) ?? { x: fallX, y: fallY };
     return {
-      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25 },
-      onPointerDown: onPointerDown ? (e: React.PointerEvent) => onPointerDown(e, key, p.x, p.y) : undefined,
-      onClick: onClickElement ? () => onClickElement(key) : undefined,
-      className: ['cursor-grab active:cursor-grabbing', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' '),
+      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25, touchAction: interactiveEdit ? 'none' as const : undefined },
+      onPointerDown: interactiveEdit && onPointerDown ? (e: React.PointerEvent) => onPointerDown(e, key, p.x, p.y) : undefined,
+      onClick: interactiveEdit && onClickElement ? () => onClickElement(key) : undefined,
+      className: interactiveEdit
+        ? ['cursor-grab active:cursor-grabbing touch-none', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' ')
+        : '',
       _size: size,
     };
   };
-  // A small bottom-right resize handle for the currently-selected editable element.
+  // A bottom-right resize handle for the currently-selected editable element
+  // (touch-friendly: larger hit target + touch-action none).
   const ResizeHandle = ({ elemKey, w, h, minW = 6, minH = 6, lockAspect }: { elemKey: string; w: number; h: number; minW?: number; minH?: number; lockAspect?: boolean }) => {
     if (!onSizeChange || selectedElement !== elemKey) return null;
     const start = (e: React.PointerEvent) => {
@@ -537,19 +556,20 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
       window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
     };
     return <div role="button" aria-label={`Resize ${elemKey}`} onPointerDown={start} onClick={(e) => e.stopPropagation()} title="Drag to resize"
-      className="absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-sm bg-amber-500 border border-white shadow cursor-se-resize z-50" />;
+      style={{ touchAction: 'none' }}
+      className="absolute -bottom-2 -right-2 w-5 h-5 rounded-full bg-amber-500 border-2 border-white shadow-md cursor-se-resize z-50 touch-none" />;
   };
 
   // ── EDIT MODE: absolute, WYSIWYG layout driven by layoutConfig mm coords ──
   if (editing) {
-    const photoW = Math.round((layout.photoPosition?.width ?? 22) * scale);
-    const photoH = Math.round((layout.photoPosition?.height ?? 22) * scale);
+    const photoW = Math.round((layout.photoPosition?.width ?? 20) * scale);
+    const photoH = Math.round((layout.photoPosition?.height ?? 25) * scale);
     const qrSize = layout.qrCodePosition?.size ?? 12;
     return (
       <div ref={cardRef} className="absolute inset-0" style={{ paddingLeft: `${sidebarOffset * scale}px` }}>
         {/* Logo */}
         {!suppressHeader && vf.logo && (
-          <div {...abs('logo', 4, 3.5)}>
+          <div {...abs('logo', 4, 4)}>
             {activeLogoUrl && !logoFailed
               ? <img src={resolveImageUrl(activeLogoUrl)} alt="Logo" style={{ height: `${Math.max(14, scale * 6.5)}px`, maxWidth: `${scale * 18}px`, objectFit: 'contain' }} onError={onLogoError} />
               : <div className="rounded-full flex items-center justify-center text-white" style={{ width: `${Math.max(16, scale * 6)}px`, height: `${Math.max(16, scale * 6)}px`, backgroundColor: `${primary}dd` }}><GraduationCap size={Math.max(10, scale * 3.5)} /></div>}
@@ -557,31 +577,31 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
         )}
         {/* School name */}
         {!suppressHeader && vf.schoolName && (
-          <div {...abs('schoolName', 16, 4)}>
-            <span className="font-extrabold tracking-tight drop-shadow-sm block whitespace-nowrap" style={{ color: elColor('schoolName', headerStyle === 'top-banner' ? textColor : '#FFFFFF'), fontSize: schoolNameFontSize(schoolName, 11 * fontMult), fontFamily }}>{schoolName}</span>
+          <div {...abs('schoolName', 26, 5)}>
+            <span className="font-extrabold tracking-tight drop-shadow-sm block whitespace-nowrap" style={{ color: elColor('schoolName', headerStyle === 'top-banner' ? textColor : '#FFFFFF'), fontSize: (typeof elStyle('schoolName').fontSize === 'number' && elStyle('schoolName').fontSize > 0) ? `${elFs('schoolName', 11)}px` : schoolNameFontSize(schoolName, 11 * fontMult), fontFamily: elFf('schoolName') }}>{schoolName}</span>
           </div>
         )}
         {/* Photo */}
         {(
-          <div {...abs('photo', 6, 12)}>
+          <div {...abs('photo', 5, 17)}>
             <PhotoBlock photoUrl={user.photoUrl} userName={user.name} widthPx={photoW} heightPx={photoH} shapeClass={photoShapeCls} clipStyle={photoClipStyle} borderColor={pb} borderWidth={pbW} />
-            <ResizeHandle elemKey="photo" w={layout.photoPosition?.width ?? 22} h={layout.photoPosition?.height ?? 22} lockAspect />
+            <ResizeHandle elemKey="photo" w={layout.photoPosition?.width ?? 20} h={layout.photoPosition?.height ?? 25} lockAspect />
           </div>
         )}
         {/* Role */}
         {vf.role && (
-          <div {...abs('role', 34, 24)}>
+          <div {...abs('role', 30, 26)}>
             <span className="inline-block font-extrabold uppercase px-2 py-0.5 rounded-full" style={{ backgroundColor: elBg('role', primary), color: elColor('role', '#FFFFFF'), fontSize: `${elFs('role', 8)}px`, fontFamily: elFf('role'), opacity: elOp('role') }}>{user.role} IDENTITY CARD</span>
           </div>
         )}
         {/* Name */}
         {vf.name && (
-          <div {...abs('name', 34, 14)}>
+          <div {...abs('name', 30, 18)}>
             <h2 className="font-black leading-snug uppercase tracking-wide whitespace-nowrap" style={{ color: elColor('name', textColor), fontSize: `${nameFontPx}px`, fontFamily: elFf('name'), opacity: elOp('name') }}>{user.name}</h2>
           </div>
         )}
         {/* ID block */}
-        <div {...abs('id', 34, 31)}>
+        <div {...abs('id', 30, 33)}>
           {vf.id && <InfoRow label={config.idLabel || 'ID NO'} value={user.idNumber} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
           {vf.dob && user.dob && <InfoRow label={config.dobLabel || 'D.O.B'} value={user.dob} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
           {vf.grade && user.departmentOrGrade && <InfoRow label={config.gradeLabel || 'GRADE'} value={user.departmentOrGrade} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
@@ -589,13 +609,13 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
         </div>
         {/* Barcode */}
         {config.showBarcode === true && (
-          <div {...abs('barcode', 34, 45)}>
-            <BarcodeStripes idNumber={user.idNumber} widthMm={cardW * 0.5} scale={scale} />
+          <div {...abs('barcode', 5, 46)}>
+            <BarcodeStripes idNumber={user.idNumber} widthMm={cardW * 0.45} scale={scale} />
           </div>
         )}
-        {/* QR (front only when single-sided) */}
+        {/* QR (front only when single-sided) — small, bottom-right */}
         {config.showQrCode !== false && (config as any).printSides !== 'double' && (
-          <div {...abs('qrCode', 64, 14)}>
+          <div {...abs('qrCode', 71, 36)}>
             <QrCodeBlock sizeMm={qrSize} scale={scale} label="SCAN" />
             <ResizeHandle elemKey="qrCode" w={qrSize} h={qrSize} minW={8} lockAspect />
           </div>
@@ -727,7 +747,11 @@ function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primar
   const elStyle = (key: string) => (layout as any)[key === 'logo' ? 'logoPositionConfig' : `${key}Position`] || {};
   const elColor = (key: string, def: string) => elStyle(key).color   || def;
   const elBg    = (key: string, def: string) => elStyle(key).bgColor || def;
-  const elFs    = (key: string, def: number) => Math.max(5, ((elStyle(key).fontSize || def) * fontMult));
+  // Per-element font size (pt) OVERRIDES the general size (see PVC front notes).
+  const elFs    = (key: string, def: number) => {
+    const s = elStyle(key).fontSize;
+    return (typeof s === 'number' && s > 0) ? Math.max(5, s * scale * 0.3528) : Math.max(5, def * fontMult);
+  };
   const elFf    = (key: string) => elStyle(key).fontFamily || fontFamily;
   const elOp    = (key: string) => elStyle(key).opacity != null ? elStyle(key).opacity / 100 : 1;
 
@@ -769,8 +793,9 @@ function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primar
     className: [!readonly && onClickElement ? 'cursor-grab active:cursor-grabbing' : '', selectedElement === key ? 'ring-1 ring-inset ring-amber-400' : ''].join(' '),
   });
 
-  // ── Edit-mode absolute WYSIWYG helpers (portrait) ──────────────────────────
-  const editing = !readonly && !!onPointerDown;
+  // ── Absolute WYSIWYG helpers (portrait) — used for edit AND readonly ───────
+  const editing = true;
+  const interactiveEdit = !readonly && !!onPointerDown;
   const posOf = (key: string): { x: number; y: number } | null => {
     const s = elStyle(key);
     if (typeof s.x === 'number' && typeof s.y === 'number') return { x: s.x, y: s.y };
@@ -779,10 +804,12 @@ function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primar
   const abs = (key: string, fallX: number, fallY: number) => {
     const p = posOf(key) ?? { x: fallX, y: fallY };
     return {
-      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25 },
-      onPointerDown: onPointerDown ? (e: React.PointerEvent) => onPointerDown(e, key, p.x, p.y) : undefined,
-      onClick: onClickElement ? () => onClickElement(key) : undefined,
-      className: ['cursor-grab active:cursor-grabbing', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' '),
+      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25, touchAction: interactiveEdit ? 'none' as const : undefined },
+      onPointerDown: interactiveEdit && onPointerDown ? (e: React.PointerEvent) => onPointerDown(e, key, p.x, p.y) : undefined,
+      onClick: interactiveEdit && onClickElement ? () => onClickElement(key) : undefined,
+      className: interactiveEdit
+        ? ['cursor-grab active:cursor-grabbing touch-none', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' ')
+        : '',
     };
   };
   const ResizeHandle = ({ elemKey, w, h, minW = 6, minH = 6, lockAspect }: { elemKey: string; w: number; h: number; minW?: number; minH?: number; lockAspect?: boolean }) => {
@@ -800,54 +827,58 @@ function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primar
       window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
     };
     return <div role="button" aria-label={`Resize ${elemKey}`} onPointerDown={start} onClick={(e) => e.stopPropagation()} title="Drag to resize"
-      className="absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-sm bg-amber-500 border border-white shadow cursor-se-resize z-50" />;
+      style={{ touchAction: 'none' }}
+      className="absolute -bottom-2 -right-2 w-5 h-5 rounded-full bg-amber-500 border-2 border-white shadow-md cursor-se-resize z-50 touch-none" />;
   };
 
   if (editing) {
-    const photoW = Math.round((layout.photoPosition?.width ?? 40) * scale);
-    const photoH = Math.round((layout.photoPosition?.height ?? 48) * scale);
-    const qrSize = layout.qrCodePosition?.size ?? 20;
+    const photoW = Math.round((layout.photoPosition?.width ?? 34) * scale);
+    const photoH = Math.round((layout.photoPosition?.height ?? 40) * scale);
+    const qrSize = layout.qrCodePosition?.size ?? 18;
     return (
       <div ref={cardRef} className="absolute inset-0 overflow-hidden" style={{ paddingLeft: `${sidebarOffset * scale}px` }}>
         {!suppressHeader && vf.logo && (
-          <div {...abs('logo', 4, 3.5)}>
+          <div {...abs('logo', 6, 6)}>
             {activeLogoUrl && !logoFailed
               ? <img src={resolveImageUrl(activeLogoUrl)} alt="Logo" style={{ height: `${Math.max(20, scale * 10)}px`, maxWidth: `${scale * 22}px`, objectFit: 'contain' }} onError={onLogoError} />
               : <div className="rounded-full flex items-center justify-center text-white" style={{ width: `${Math.max(22, scale * 10)}px`, height: `${Math.max(22, scale * 10)}px`, backgroundColor: `${primary}dd` }}><GraduationCap size={Math.max(13, scale * 5.5)} /></div>}
           </div>
         )}
         {!suppressHeader && vf.schoolName && (
-          <div {...abs('schoolName', 14, 4)}>
-            <span className="font-black tracking-wide drop-shadow-sm block whitespace-nowrap uppercase" style={{ color: elColor('schoolName', suppressHeader ? textColor : '#FFFFFF'), fontSize: schoolNameFontSize(schoolName, 13 * fontMult), fontFamily }}>{schoolName}</span>
+          <div {...abs('schoolName', 22, 8)}>
+            <span className="font-black tracking-wide drop-shadow-sm block whitespace-nowrap uppercase" style={{ color: elColor('schoolName', suppressHeader ? textColor : '#FFFFFF'), fontSize: (typeof elStyle('schoolName').fontSize === 'number' && elStyle('schoolName').fontSize > 0) ? `${elFs('schoolName', 13)}px` : schoolNameFontSize(schoolName, 13 * fontMult), fontFamily: elFf('schoolName') }}>{schoolName}</span>
           </div>
         )}
-        <div {...abs('photo', 25, 22)}>
+        <div {...abs('photo', 34, 26)}>
           <PhotoBlock photoUrl={user.photoUrl} userName={user.name} widthPx={photoW} heightPx={photoH} shapeClass={photoShapeCls} clipStyle={photoClipStyle} borderColor={pb} borderWidth={Math.max(pbW, 3)} />
-          <ResizeHandle elemKey="photo" w={layout.photoPosition?.width ?? 40} h={layout.photoPosition?.height ?? 48} lockAspect />
+          <ResizeHandle elemKey="photo" w={layout.photoPosition?.width ?? 34} h={layout.photoPosition?.height ?? 40} lockAspect />
         </div>
         {vf.name && (
-          <div {...abs('name', 10, 88)}>
-            <h2 className="font-black uppercase tracking-wide whitespace-nowrap" style={{ color: elColor('name', textColor), fontSize: `${nameFontPx}px`, fontFamily: elFf('name'), opacity: elOp('name') }}>{user.name}</h2>
+          <div {...abs('name', 0, 72)} style={{ ...abs('name', 0, 72).style, left: 0, width: `${cardW * scale}px`, textAlign: 'center' }}>
+            <h2 className="font-black uppercase tracking-wide whitespace-nowrap inline-block" style={{ color: elColor('name', textColor), fontSize: `${nameFontPx}px`, fontFamily: elFf('name'), opacity: elOp('name') }}>{user.name}</h2>
           </div>
         )}
         {vf.role && (
-          <div {...abs('role', 10, 96)}>
+          <div {...abs('role', 0, 84)} style={{ ...abs('role', 0, 84).style, left: 0, width: `${cardW * scale}px`, textAlign: 'center' }}>
             <span className="inline-block font-extrabold uppercase rounded-full" style={{ backgroundColor: elBg('role', primary), color: elColor('role', '#FFFFFF'), fontSize: `${roleFontPx}px`, fontFamily: elFf('role'), opacity: elOp('role'), padding: `${Math.max(2, scale * 1.2)}px ${Math.max(7, scale * 4.5)}px` }}>{user.role} IDENTITY CARD</span>
           </div>
         )}
-        <div {...abs('id', 10, 108)}>
-          {vf.id && <InfoRow label={config.idLabel || 'ID NO'} value={user.idNumber} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
-          {vf.dob && user.dob && <InfoRow label={config.dobLabel || 'D.O.B'} value={user.dob} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
-          {vf.grade && user.departmentOrGrade && <InfoRow label={config.gradeLabel || 'GRADE'} value={user.departmentOrGrade} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
-          {vf.expiry && user.expiresAt && <InfoRow label={config.expiryLabel || 'EXPIRES'} value={user.expiresAt} valueColor={secondary || '#F59E0B'} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
+        {/* Info block — centred column to match the name/role alignment */}
+        <div {...abs('id', 0, 98)} style={{ ...abs('id', 0, 98).style, left: 0, width: `${cardW * scale}px`, display: 'flex', justifyContent: 'center' }}>
+          <div className="inline-block text-left">
+            {vf.id && <InfoRow label={config.idLabel || 'ID NO'} value={user.idNumber} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
+            {vf.dob && user.dob && <InfoRow label={config.dobLabel || 'D.O.B'} value={user.dob} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
+            {vf.grade && user.departmentOrGrade && <InfoRow label={config.gradeLabel || 'GRADE'} value={user.departmentOrGrade} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
+            {vf.expiry && user.expiresAt && <InfoRow label={config.expiryLabel || 'EXPIRES'} value={user.expiresAt} valueColor={secondary || '#F59E0B'} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} fontSizePt={elStyle('id').fontSize} />}
+          </div>
         </div>
         {config.showBarcode === true && (
-          <div {...abs('barcode', 10, 138)}>
-            <BarcodeStripes idNumber={user.idNumber} widthMm={cardW * 0.5} scale={scale} />
+          <div {...abs('barcode', 12, 132)}>
+            <BarcodeStripes idNumber={user.idNumber} widthMm={cardW * 0.45} scale={scale} />
           </div>
         )}
         {config.showQrCode !== false && (config as any).printSides !== 'double' && (
-          <div {...abs('qrCode', 38, 126)}>
+          <div {...abs('qrCode', 42, 124)}>
             <QrCodeBlock sizeMm={qrSize} scale={scale} label="SCAN" />
             <ResizeHandle elemKey="qrCode" w={qrSize} h={qrSize} minW={10} lockAspect />
           </div>
@@ -1042,8 +1073,9 @@ function BackContent({ user, config, scale, cardW, cardH, fontMult, primary, sec
   const infoFs   = Math.max(5.5, scale * 2.3);
   const qrMm     = isPortrait ? 20 : 13;
 
-  // ── Edit-mode absolute WYSIWYG helpers (back face) ─────────────────────────
-  const editing = !readonly && !!onPointerDown;
+  // ── Absolute WYSIWYG helpers (back face) — used for edit AND readonly ──────
+  const editing = true;
+  const interactiveEdit = !readonly && !!onPointerDown;
   const backPos = (key: string): { x: number; y: number } | null => {
     const s = (layout as any)[`${key}Position`];
     if (s && typeof s.x === 'number' && typeof s.y === 'number') return { x: s.x, y: s.y };
@@ -1052,10 +1084,12 @@ function BackContent({ user, config, scale, cardW, cardH, fontMult, primary, sec
   const absBack = (key: string, fallX: number, fallY: number) => {
     const p = backPos(key) ?? { x: fallX, y: fallY };
     return {
-      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25 },
-      onPointerDown: onPointerDown ? (e: React.PointerEvent) => onPointerDown(e, key, p.x, p.y) : undefined,
-      onClick: onClickElement ? () => onClickElement(key) : undefined,
-      className: ['cursor-grab active:cursor-grabbing', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' '),
+      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25, touchAction: interactiveEdit ? 'none' as const : undefined },
+      onPointerDown: interactiveEdit && onPointerDown ? (e: React.PointerEvent) => onPointerDown(e, key, p.x, p.y) : undefined,
+      onClick: interactiveEdit && onClickElement ? () => onClickElement(key) : undefined,
+      className: interactiveEdit
+        ? ['cursor-grab active:cursor-grabbing touch-none', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' ')
+        : '',
     };
   };
   const backQrSize = (layout as any).backQrPosition?.size ?? qrMm;
@@ -1270,12 +1304,13 @@ function BackContent({ user, config, scale, cardW, cardH, fontMult, primary, sec
 
 export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
   config, format, user = DEFAULT_USER, logoUrl, side = 'front', widthPx,
-  onClickElement, onPositionChange, onSizeChange, selectedElement, className = '', readonly = false,
+  onClickElement, onPositionChange, onSizeChange, showGrid = false, selectedElement, className = '', readonly = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [actualWidth, setActualWidth] = useState<number>(widthPx || 340);
   const [logoFailed, setLogoFailed] = useState(false);
   const [alignGuides, setAlignGuides] = useState<{ vx?: number; hy?: number }>({});
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     if (widthPx) { setActualWidth(widthPx); return; }
@@ -1353,6 +1388,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
     try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch {}
     draggingKey.current = key;
     dragStart.current = { sx: e.clientX, sy: e.clientY, ex: curX, ey: curY };
+    setIsDragging(true);
   }, [readonly, onPositionChange, onClickElement]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
@@ -1370,7 +1406,7 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (draggingKey.current) { try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {} }
-    draggingKey.current = null; dragStart.current = null; setAlignGuides({});
+    draggingKey.current = null; dragStart.current = null; setAlignGuides({}); setIsDragging(false);
   }, []);
 
   const headerProps: HeaderProps = { primary, secondary, isBack: side === 'back', isPortrait };
@@ -1408,9 +1444,9 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
         className={`relative select-none overflow-hidden shadow-2xl border border-black/10 dark:border-white/10 ${className}`}
         style={{ width: `${actualWidth}px`, height: `${heightPx}px`, backgroundColor: bgColor, color: textColor, fontFamily, borderRadius: `${borderRadiusPx}px`, touchAction: 'none', backgroundImage: bgPatternImage }}>
 
-        {/* Alignment grid (edit mode only) — subtle 5mm grid + centre crosshair
-            so elements can be aligned while dragging. */}
-        {!readonly && onPositionChange && (
+        {/* Alignment grid — shown only WHILE actively dragging an element (or
+            when the editor's grid toggle is on), never fixed by default. */}
+        {!readonly && onPositionChange && (isDragging || showGrid) && (
           <div className="absolute inset-0 z-40 pointer-events-none"
             style={{
               backgroundImage:
