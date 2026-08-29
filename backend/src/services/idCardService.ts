@@ -139,10 +139,17 @@ export class IdCardService {
         );
       }
 
-      // Calculate expiration date (1 year from now if not specified)
+      // Calculate expiration date. Defaults to 1 year from issue when not
+      // supplied. The DB enforces expires_at > issued_at, so we normalise any
+      // provided date and guarantee it is strictly after issue (fall back to
+      // +1 year if the caller passes a today/past/invalid expiry).
       const issuedAt = new Date();
-      const expiresAt = options.expirationDate || new Date();
-      if (!options.expirationDate) {
+      let expiresAt: Date;
+      const provided = options.expirationDate ? new Date(options.expirationDate) : null;
+      if (provided && !isNaN(provided.getTime()) && provided.getTime() > issuedAt.getTime()) {
+        expiresAt = provided;
+      } else {
+        expiresAt = new Date(issuedAt);
         expiresAt.setFullYear(expiresAt.getFullYear() + 1);
       }
 
