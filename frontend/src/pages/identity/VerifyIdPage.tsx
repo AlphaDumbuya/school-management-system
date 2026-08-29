@@ -50,9 +50,11 @@ export default function VerifyIdPage() {
   }, []);
 
   useEffect(() => {
-    const d = params.get('d');
-    if (d) {
-      // Reconstruct the original scanned URL so the backend can parse ?d=
+    const c = params.get('c'); // short form: qr id
+    const d = params.get('d'); // legacy: base64 payload
+    if (c) {
+      runVerify(c);
+    } else if (d) {
       runVerify(`${window.location.origin}/verify-id?d=${d}`);
     }
   }, [params, runVerify]);

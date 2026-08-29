@@ -119,10 +119,26 @@ export class QrCodeService {
 
       const contentString = this.encodeQrContent(content);
 
-      // The image encodes a PUBLIC verification URL so ANY phone camera scan
-      // opens a live "Verify ID" page (rather than showing raw JSON that does
-      // nothing). The full payload is embedded in a URL-safe base64 param.
-      const scanTarget = this.buildVerificationUrl(contentString);
+      // Insert the row FIRST so we get a stable qr id. The QR image then encodes
+      // a SHORT public URL (…/verify-id?c=<id>) instead of a huge base64 blob —
+      // short URLs make far sparser, more reliably scannable QR codes.
+      const qrInsertData: any = {
+        content: contentString,
+        security_hash: securityHash,
+        expires_at: expirationDate,
+        is_valid: true,
+        created_at: new Date(),
+      };
+      if (cardId) {
+        qrInsertData.card_id = cardId;
+      }
+
+      const [qrCode] = await this.db('qr_codes')
+        .insert(qrInsertData)
+        .returning('*');
+
+      // Build the compact scan URL from the stored id.
+      const scanTarget = this.buildVerificationUrl(qrCode.id);
 
       // Generate QR code image with error correction level H (30% damage recovery)
       const imageDataUrl = await QRCode.toDataURL(scanTarget, {
@@ -132,26 +148,15 @@ export class QrCodeService {
         margin: 1,
       });
 
-      const qrInsertData: any = {
-        content: contentString,
-        security_hash: securityHash,
-        image_url: imageDataUrl,
-        expires_at: expirationDate,
-        is_valid: true,
-        created_at: new Date(),
-      };
-      if (cardId) {
-        qrInsertData.card_id = cardId;
-      }
-
-      // Store QR code in database
-      const [qrCode] = await this.db('qr_codes')
-        .insert(qrInsertData)
-        .returning('*');
+      // Store the rendered image back on the row.
+      await this.db('qr_codes')
+        .where({ id: qrCode.id })
+        .update({ image_url: imageDataUrl });
 
       logger.info(`Generated QR code for user ${userId}`, {
         qrCodeId: qrCode.id,
         expiresAt: expirationDate,
+        scanTarget,
       });
 
       return {
@@ -496,15 +501,14 @@ export class QrCodeService {
    * Reads APP_URL / FRONTEND_URL for the base, falling back to a relative path
    * so it still resolves when served from the same origin.
    */
-  private buildVerificationUrl(contentString: string): string {
+  private buildVerificationUrl(qrId: string): string {
     const base = (
+      process.env.PUBLIC_APP_URL ||
       process.env.APP_URL ||
       process.env.FRONTEND_URL ||
-      process.env.PUBLIC_APP_URL ||
       ''
     ).replace(/\/+$/, '');
-    const payload = Buffer.from(contentString, 'utf8').toString('base64url');
-    const path = `/verify-id?d=${payload}`;
+    const path = `/verify-id?c=${qrId}`;
     return base ? `${base}${path}` : path;
   }
 
@@ -524,13 +528,62 @@ export class QrCodeService {
     scannedValue: string,
     scanningDeviceId: string
   ): Promise<QrVerificationResult> {
-    const contentString = this.extractContentString(scannedValue);
-    const parsed = this.decodeQrContent(contentString);
-    if (!parsed || !parsed.tenantId) {
-      return { isValid: false, failureReason: 'invalid_format' };
+    await this.ensureColumnType();
+    const v = (scannedValue || '').trim();
+    if (!v) return { isValid: false, failureReason: 'invalid_format' };
+
+    // 1) Short URL / bare id form: …/verify-id?c=<qrId>  or just a UUID.
+    const qrId = this.extractQrId(v);
+    if (qrId) {
+      const row = await this.db('qr_codes').where({ id: qrId }).first();
+      if (!row || !row.content) {
+        return { isValid: false, failureReason: 'invalid_format' };
+      }
+      const parsed = this.decodeQrContent(row.content);
+      if (!parsed) return { isValid: false, failureReason: 'invalid_format' };
+      const tenantId = parsed.tenantId || (await this.resolveTenantFromCard(row.card_id));
+      if (!tenantId) return { isValid: false, failureReason: 'invalid_format' };
+      return this.verifyQrCode(row.content, parsed.userId, scanningDeviceId, tenantId);
     }
-    // Public scans have no logged-in user; attribute the scan to the holder.
-    return this.verifyQrCode(contentString, parsed.userId, scanningDeviceId, parsed.tenantId);
+
+    // 2) Legacy: raw JSON content or base64url payload embedded in a URL.
+    const contentString = this.extractContentString(v);
+    const parsed = this.decodeQrContent(contentString);
+    if (!parsed) return { isValid: false, failureReason: 'invalid_format' };
+    const tenantId = parsed.tenantId || (await this.resolveTenantByHash(parsed.securityHash));
+    if (!tenantId) return { isValid: false, failureReason: 'invalid_format' };
+    return this.verifyQrCode(contentString, parsed.userId, scanningDeviceId, tenantId);
+  }
+
+  /** Pull a qr_codes.id (UUID) out of a scanned short URL or bare value. */
+  private extractQrId(scannedValue: string): string | null {
+    const v = (scannedValue || '').trim();
+    const uuidRe = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    const paramMatch = v.match(/[?#&]c=([^&\s]+)/);
+    if (paramMatch && uuidRe.test(paramMatch[1])) return paramMatch[1];
+    if (uuidRe.test(v) && v.length <= 60) {
+      const m = v.match(uuidRe);
+      return m ? m[0] : null;
+    }
+    return null;
+  }
+
+  /** Resolve tenant from the card linked to a QR (for legacy QRs missing tenantId). */
+  private async resolveTenantFromCard(cardId?: string): Promise<string | null> {
+    if (!cardId) return null;
+    const card = await this.db('id_cards').where({ id: cardId }).first();
+    return card?.tenant_id || null;
+  }
+
+  /** Resolve tenant by matching a stored QR's card → id_cards.tenant_id via security hash. */
+  private async resolveTenantByHash(securityHash?: string): Promise<string | null> {
+    if (!securityHash) return null;
+    const row = await this.db('qr_codes')
+      .join('id_cards', 'qr_codes.card_id', 'id_cards.id')
+      .where('qr_codes.security_hash', securityHash)
+      .select('id_cards.tenant_id')
+      .first();
+    return row?.tenant_id || null;
   }
 
   /**
@@ -579,34 +632,51 @@ export class QrCodeService {
    * Get active tenant secret, auto-generating one if not already created
    */
   private async getActiveTenantSecret(tenantId: string): Promise<string> {
+    // Deterministic secret derived from the tenant id. This is the SAME on
+    // every call, so a hash created at generation time always matches at
+    // verification time — even if the tenant_secrets row can't be read/written.
+    // Using it as the canonical value fixes the previous bug where a random
+    // secret was regenerated per call (making every scan fail invalid_hash).
+    const deterministic = crypto
+      .createHash('sha256')
+      .update(`wiskul_tenant_secret_${tenantId}`)
+      .digest('hex');
+
     try {
-      const secret = await this.db('tenant_secrets')
+      const existing = await this.db('tenant_secrets')
         .where({ tenant_id: tenantId, is_active: true })
+        .orderBy('created_at', 'asc')
         .first();
 
-      if (secret?.secret_key_hash) {
-        return secret.secret_key_hash;
+      if (existing?.secret_key_hash) {
+        return existing.secret_key_hash;
       }
 
-      // Auto-generate active secret for tenant
-      const secretKey = crypto.randomBytes(32).toString('hex');
+      // No secret yet — persist the DETERMINISTIC one (not a random value) so
+      // it's stable across processes. valid_from/valid_until are NOT NULL.
+      const now = new Date();
+      const until = new Date();
+      until.setFullYear(until.getFullYear() + 5);
       try {
         await this.db('tenant_secrets').insert({
           tenant_id: tenantId,
-          secret_key_hash: secretKey,
+          secret_key_hash: deterministic,
+          valid_from: now,
+          valid_until: until,
           is_active: true,
-          created_at: new Date(),
-          updated_at: new Date(),
+          created_at: now,
         });
         logger.info(`Auto-generated tenant secret for tenant ${tenantId}`);
       } catch (insertErr) {
-        // Table or unique constraint fallback
+        // If the row already exists (race) or insert fails, fall through — the
+        // deterministic value is still correct and stable.
+        logger.warn(`tenant_secrets insert skipped for ${tenantId}`, { insertErr: (insertErr as Error)?.message });
       }
 
-      return secretKey;
-    } catch (err) {
-      // Deterministic fallback secret hash if database table read fails
-      return crypto.createHash('sha256').update(`wiskul_tenant_secret_${tenantId}`).digest('hex');
+      return deterministic;
+    } catch {
+      // DB read failed entirely — deterministic value keeps generate/verify aligned.
+      return deterministic;
     }
   }
 
