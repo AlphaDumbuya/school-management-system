@@ -208,18 +208,18 @@ export const ScoreEntryGrid: React.FC<Props> = ({ academicYear }) => {
                       </td>
                       <td className="py-2 px-3">
                         <input
-                          type="number" min={0} max={100} inputMode="numeric"
+                          type="text" inputMode="numeric" maxLength={3}
                           value={r._t1}
                           onChange={(e) => updateCell(r.student_id, '_t1', e.target.value)}
-                          className="w-full text-center px-1 py-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-full text-center px-2 py-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
                       <td className="py-2 px-3">
                         <input
-                          type="number" min={0} max={100} inputMode="numeric"
+                          type="text" inputMode="numeric" maxLength={3}
                           value={r._t2}
                           onChange={(e) => updateCell(r.student_id, '_t2', e.target.value)}
-                          className="w-full text-center px-1 py-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-full text-center px-2 py-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
                       <td className="py-2 px-2 text-center">
