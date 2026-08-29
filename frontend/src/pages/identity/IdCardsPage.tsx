@@ -833,7 +833,7 @@ export const IdCardsPage: React.FC = () => {
 
               {/* Cards content */}
               {isLoading ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4">
                   {[...Array(12)].map((_, i) => <div key={i} className="rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" style={{ aspectRatio: '1.586 / 1' }} />)}
                 </div>
               ) : cards.length === 0 ? (
@@ -844,7 +844,7 @@ export const IdCardsPage: React.FC = () => {
                   <Button onClick={() => setGenerationModalOpen(true)}><Plus size={15} className="mr-1.5" /> Generate First Card</Button>
                 </div>
               ) : viewMode === 'grid' ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-5">
                   {cards.map(card => (
                     <VisualIdCard key={card.id} card={card}
                       onView={() => setDetailsModal({ open: true, cardId: card.id })}
