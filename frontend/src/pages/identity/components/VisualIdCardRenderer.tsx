@@ -376,10 +376,10 @@ function DraggableEl({ elemKey, x, y, scale, selectedElement, onClickElement, on
       onPointerDown={interactive && onPointerDown ? (e) => onPointerDown(e, elemKey, x, y) : undefined}
       onClick={interactive && onClickElement ? () => onClickElement(elemKey) : undefined}
       onKeyDown={interactive && onClickElement ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClickElement(elemKey); } : undefined}
-      className={['absolute transition-none', interactive ? 'cursor-grab active:cursor-grabbing' : '',
+      className={['absolute transition-none touch-none', interactive ? 'cursor-grab active:cursor-grabbing' : '',
         isSelected ? 'ring-2 ring-inset ring-amber-400 z-30' : (interactive ? 'hover:ring-1 hover:ring-blue-400/70 z-10' : ''),
         className].join(' ')}
-      style={{ left: `${x * scale}px`, top: `${y * scale}px`, ...style }}>
+      style={{ left: `${x * scale}px`, top: `${y * scale}px`, touchAction: 'none', ...style }}>
       {children}
       {canResize && isSelected && (
         <div
@@ -388,7 +388,8 @@ function DraggableEl({ elemKey, x, y, scale, selectedElement, onClickElement, on
           onPointerDown={startResize}
           onClick={(e) => e.stopPropagation()}
           title="Drag to resize"
-          className="absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-sm bg-amber-500 border border-white shadow cursor-se-resize z-40"
+          className="absolute -bottom-2 -right-2 w-5 h-5 rounded-full bg-amber-500 border-2 border-white shadow-md cursor-se-resize z-40 touch-none"
+          style={{ touchAction: 'none' }}
         />
       )}
     </div>
@@ -514,14 +515,15 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
   const abs = (key: string, fallX: number, fallY: number, size?: { w: number; h: number; lockAspect?: boolean }) => {
     const p = posOf(key) ?? { x: fallX, y: fallY };
     return {
-      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25 },
+      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25, touchAction: 'none' as const },
       onPointerDown: onPointerDown ? (e: React.PointerEvent) => onPointerDown(e, key, p.x, p.y) : undefined,
       onClick: onClickElement ? () => onClickElement(key) : undefined,
-      className: ['cursor-grab active:cursor-grabbing', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' '),
+      className: ['cursor-grab active:cursor-grabbing touch-none', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' '),
       _size: size,
     };
   };
-  // A small bottom-right resize handle for the currently-selected editable element.
+  // A bottom-right resize handle for the currently-selected editable element
+  // (touch-friendly: larger hit target + touch-action none).
   const ResizeHandle = ({ elemKey, w, h, minW = 6, minH = 6, lockAspect }: { elemKey: string; w: number; h: number; minW?: number; minH?: number; lockAspect?: boolean }) => {
     if (!onSizeChange || selectedElement !== elemKey) return null;
     const start = (e: React.PointerEvent) => {
@@ -537,7 +539,8 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
       window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
     };
     return <div role="button" aria-label={`Resize ${elemKey}`} onPointerDown={start} onClick={(e) => e.stopPropagation()} title="Drag to resize"
-      className="absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-sm bg-amber-500 border border-white shadow cursor-se-resize z-50" />;
+      style={{ touchAction: 'none' }}
+      className="absolute -bottom-2 -right-2 w-5 h-5 rounded-full bg-amber-500 border-2 border-white shadow-md cursor-se-resize z-50 touch-none" />;
   };
 
   // ── EDIT MODE: absolute, WYSIWYG layout driven by layoutConfig mm coords ──
@@ -779,10 +782,10 @@ function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primar
   const abs = (key: string, fallX: number, fallY: number) => {
     const p = posOf(key) ?? { x: fallX, y: fallY };
     return {
-      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25 },
+      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25, touchAction: 'none' as const },
       onPointerDown: onPointerDown ? (e: React.PointerEvent) => onPointerDown(e, key, p.x, p.y) : undefined,
       onClick: onClickElement ? () => onClickElement(key) : undefined,
-      className: ['cursor-grab active:cursor-grabbing', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' '),
+      className: ['cursor-grab active:cursor-grabbing touch-none', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' '),
     };
   };
   const ResizeHandle = ({ elemKey, w, h, minW = 6, minH = 6, lockAspect }: { elemKey: string; w: number; h: number; minW?: number; minH?: number; lockAspect?: boolean }) => {
@@ -800,7 +803,8 @@ function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primar
       window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
     };
     return <div role="button" aria-label={`Resize ${elemKey}`} onPointerDown={start} onClick={(e) => e.stopPropagation()} title="Drag to resize"
-      className="absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-sm bg-amber-500 border border-white shadow cursor-se-resize z-50" />;
+      style={{ touchAction: 'none' }}
+      className="absolute -bottom-2 -right-2 w-5 h-5 rounded-full bg-amber-500 border-2 border-white shadow-md cursor-se-resize z-50 touch-none" />;
   };
 
   if (editing) {
@@ -1052,10 +1056,10 @@ function BackContent({ user, config, scale, cardW, cardH, fontMult, primary, sec
   const absBack = (key: string, fallX: number, fallY: number) => {
     const p = backPos(key) ?? { x: fallX, y: fallY };
     return {
-      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25 },
+      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25, touchAction: 'none' as const },
       onPointerDown: onPointerDown ? (e: React.PointerEvent) => onPointerDown(e, key, p.x, p.y) : undefined,
       onClick: onClickElement ? () => onClickElement(key) : undefined,
-      className: ['cursor-grab active:cursor-grabbing', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' '),
+      className: ['cursor-grab active:cursor-grabbing touch-none', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' '),
     };
   };
   const backQrSize = (layout as any).backQrPosition?.size ?? qrMm;
