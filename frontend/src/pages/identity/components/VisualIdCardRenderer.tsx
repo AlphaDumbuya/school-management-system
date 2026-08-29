@@ -499,6 +499,118 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
     className: [!readonly && onClickElement ? 'cursor-grab active:cursor-grabbing' : '', selectedElement === key ? 'ring-1 ring-inset ring-amber-400' : ''].join(' '),
   });
 
+  // ── Edit mode: render core elements ABSOLUTELY from their layoutConfig x/y
+  // (mm) so dragging, snap-align and resizing are truly WYSIWYG and match the
+  // printed PDF (which also uses absolute mm). In readonly/preview we keep the
+  // original flex zone layout untouched.
+  const editing = !readonly && !!onPointerDown;
+  const posOf = (key: string): { x: number; y: number } | null => {
+    const s = elStyle(key);
+    if (typeof s.x === 'number' && typeof s.y === 'number') return { x: s.x, y: s.y };
+    return null;
+  };
+  // Absolute wrapper props for an editable core element.
+  const abs = (key: string, fallX: number, fallY: number, size?: { w: number; h: number; lockAspect?: boolean }) => {
+    const p = posOf(key) ?? { x: fallX, y: fallY };
+    return {
+      style: { position: 'absolute' as const, left: `${p.x * scale}px`, top: `${p.y * scale}px`, zIndex: selectedElement === key ? 40 : 25 },
+      onPointerDown: onPointerDown ? (e: React.PointerEvent) => onPointerDown(e, key, p.x, p.y) : undefined,
+      onClick: onClickElement ? () => onClickElement(key) : undefined,
+      className: ['cursor-grab active:cursor-grabbing', selectedElement === key ? 'ring-2 ring-inset ring-amber-400' : 'hover:ring-1 hover:ring-blue-400/70'].join(' '),
+      _size: size,
+    };
+  };
+  // A small bottom-right resize handle for the currently-selected editable element.
+  const ResizeHandle = ({ elemKey, w, h, minW = 6, minH = 6, lockAspect }: { elemKey: string; w: number; h: number; minW?: number; minH?: number; lockAspect?: boolean }) => {
+    if (!onSizeChange || selectedElement !== elemKey) return null;
+    const start = (e: React.PointerEvent) => {
+      e.preventDefault(); e.stopPropagation();
+      const sx = e.clientX, sy = e.clientY, sw = w, sh = h;
+      const aspect = sh !== 0 ? sw / sh : 1;
+      const mv = (ev: PointerEvent) => {
+        const nw = Math.max(minW, Math.round((sw + (ev.clientX - sx) / scale) * 10) / 10);
+        const nh = lockAspect ? Math.max(minH, Math.round((nw / aspect) * 10) / 10) : Math.max(minH, Math.round((sh + (ev.clientY - sy) / scale) * 10) / 10);
+        onSizeChange!(elemKey, nw, nh);
+      };
+      const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+      window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+    };
+    return <div role="button" aria-label={`Resize ${elemKey}`} onPointerDown={start} onClick={(e) => e.stopPropagation()} title="Drag to resize"
+      className="absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-sm bg-amber-500 border border-white shadow cursor-se-resize z-50" />;
+  };
+
+  // ── EDIT MODE: absolute, WYSIWYG layout driven by layoutConfig mm coords ──
+  if (editing) {
+    const photoW = Math.round((layout.photoPosition?.width ?? 22) * scale);
+    const photoH = Math.round((layout.photoPosition?.height ?? 22) * scale);
+    const qrSize = layout.qrCodePosition?.size ?? 12;
+    return (
+      <div ref={cardRef} className="absolute inset-0" style={{ paddingLeft: `${sidebarOffset * scale}px` }}>
+        {/* Logo */}
+        {!suppressHeader && vf.logo && (
+          <div {...abs('logo', 4, 3.5)}>
+            {activeLogoUrl && !logoFailed
+              ? <img src={resolveImageUrl(activeLogoUrl)} alt="Logo" style={{ height: `${Math.max(14, scale * 6.5)}px`, maxWidth: `${scale * 18}px`, objectFit: 'contain' }} onError={onLogoError} />
+              : <div className="rounded-full flex items-center justify-center text-white" style={{ width: `${Math.max(16, scale * 6)}px`, height: `${Math.max(16, scale * 6)}px`, backgroundColor: `${primary}dd` }}><GraduationCap size={Math.max(10, scale * 3.5)} /></div>}
+          </div>
+        )}
+        {/* School name */}
+        {!suppressHeader && vf.schoolName && (
+          <div {...abs('schoolName', 16, 4)}>
+            <span className="font-extrabold tracking-tight drop-shadow-sm block whitespace-nowrap" style={{ color: elColor('schoolName', headerStyle === 'top-banner' ? textColor : '#FFFFFF'), fontSize: schoolNameFontSize(schoolName, 11 * fontMult), fontFamily }}>{schoolName}</span>
+          </div>
+        )}
+        {/* Photo */}
+        {(
+          <div {...abs('photo', 6, 12)}>
+            <PhotoBlock photoUrl={user.photoUrl} userName={user.name} widthPx={photoW} heightPx={photoH} shapeClass={photoShapeCls} clipStyle={photoClipStyle} borderColor={pb} borderWidth={pbW} />
+            <ResizeHandle elemKey="photo" w={layout.photoPosition?.width ?? 22} h={layout.photoPosition?.height ?? 22} lockAspect />
+          </div>
+        )}
+        {/* Role */}
+        {vf.role && (
+          <div {...abs('role', 34, 24)}>
+            <span className="inline-block font-extrabold uppercase px-2 py-0.5 rounded-full" style={{ backgroundColor: elBg('role', primary), color: elColor('role', '#FFFFFF'), fontSize: `${elFs('role', 8)}px`, fontFamily: elFf('role'), opacity: elOp('role') }}>{user.role} IDENTITY CARD</span>
+          </div>
+        )}
+        {/* Name */}
+        {vf.name && (
+          <div {...abs('name', 34, 14)}>
+            <h2 className="font-black leading-snug uppercase tracking-wide whitespace-nowrap" style={{ color: elColor('name', textColor), fontSize: `${nameFontPx}px`, fontFamily: elFf('name'), opacity: elOp('name') }}>{user.name}</h2>
+          </div>
+        )}
+        {/* ID block */}
+        <div {...abs('id', 34, 31)}>
+          {vf.id && <InfoRow label={config.idLabel || 'ID NO'} value={user.idNumber} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} />}
+          {vf.dob && user.dob && <InfoRow label={config.dobLabel || 'D.O.B'} value={user.dob} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} />}
+          {vf.grade && user.departmentOrGrade && <InfoRow label={config.gradeLabel || 'GRADE'} value={user.departmentOrGrade} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} />}
+          {vf.expiry && user.expiresAt && <InfoRow label={config.expiryLabel || 'EXPIRES'} value={user.expiresAt} valueColor={secondary || '#F59E0B'} scale={scale} fontMult={fontMult} fontFamily={elFf('id')} textColor={elColor('id', textColor)} />}
+        </div>
+        {/* Barcode */}
+        {config.showBarcode === true && (
+          <div {...abs('barcode', 34, 45)}>
+            <BarcodeStripes idNumber={user.idNumber} widthMm={cardW * 0.5} scale={scale} />
+          </div>
+        )}
+        {/* QR (front only when single-sided) */}
+        {config.showQrCode !== false && (config as any).printSides !== 'double' && (
+          <div {...abs('qrCode', 64, 14)}>
+            <QrCodeBlock sizeMm={qrSize} scale={scale} label="SCAN" />
+            <ResizeHandle elemKey="qrCode" w={qrSize} h={qrSize} minW={8} lockAspect />
+          </div>
+        )}
+        {/* Custom front elements */}
+        {(layout.customElements || []).filter((el: any) => !el.side || el.side === 'front').map((el: any) => (
+          <DraggableEl key={el.id} elemKey={el.id} x={el.x} y={el.y} scale={scale} selectedElement={selectedElement} onClickElement={onClickElement} onPointerDown={onPointerDown} onSizeChange={onSizeChange} w={el.width ?? 24} h={el.height ?? 10} lockAspect={el.type === 'shape' || el.type === 'photo'} readonly={readonly} ariaLabel={el.label}>
+            {el.type === 'badge'
+              ? <span className="inline-block font-extrabold uppercase px-2 py-0.5 rounded-full shadow-xs" style={{ backgroundColor: el.bgColor || primary, color: el.color || '#FFFFFF', fontSize: `${(el.fontSize || 9) * fontMult}px`, opacity: el.opacity != null ? el.opacity / 100 : 1 }}>{el.label}</span>
+              : <div style={{ color: el.color || textColor, fontSize: `${(el.fontSize || 10) * fontMult}px`, opacity: el.opacity != null ? el.opacity / 100 : 1 }}>{el.sublabel && <span className="font-bold opacity-60 uppercase mr-1">{el.sublabel}:</span>}<span className="font-semibold">{el.label}</span></div>}
+          </DraggableEl>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div ref={cardRef} className="absolute inset-0 flex flex-col" style={{ paddingLeft: `${sidebarOffset * scale}px` }}>
       {/* HEADER — logo left, school name centered on full width */}
