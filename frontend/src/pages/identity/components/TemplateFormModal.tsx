@@ -82,11 +82,11 @@ const getDefaultLayout = (format: CardFormat) => {
             logoPositionConfig: { x: 6, y: 6, side: 'front' as const },
             schoolNamePosition: { x: 22, y: 8, side: 'front' as const },
             photoPosition: { x: 34, y: 26, width: 34, height: 40, side: 'front' as const },
-            namePosition: { x: 12, y: 74, side: 'front' as const },
-            rolePosition: { x: 12, y: 84, side: 'front' as const },
-            idPosition: { x: 12, y: 96, side: 'front' as const },
-            qrCodePosition: { x: 76, y: 128, size: 18, side: 'front' as const },
-            barcodePosition: { x: 12, y: 132, side: 'front' as const },
+            namePosition: { x: 0, y: 72, side: 'front' as const },
+            rolePosition: { x: 0, y: 84, side: 'front' as const },
+            idPosition: { x: 0, y: 98, side: 'front' as const },
+            qrCodePosition: { x: 42, y: 124, size: 18, side: 'front' as const },
+            barcodePosition: { x: 26, y: 142, side: 'front' as const },
             customElements: [] as CanvasElement[],
         };
     }
