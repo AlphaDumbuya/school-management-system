@@ -103,12 +103,14 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReport
     photoShape: 'circle',
     cardTitle: 'IDENTIFICATION CARD',
     layoutConfig: {
-      photoPosition: { x: 6, y: 12, width: 22, height: 28, side: 'front' },
-      namePosition: { x: 33, y: 14, side: 'front' },
-      rolePosition: { x: 33, y: 23, side: 'front' },
-      idPosition: { x: 33, y: 30, side: 'front' },
-      qrCodePosition: { x: 63, y: 13, size: 16, side: 'front' },
-      barcodePosition: { x: 33, y: 38, side: 'front' },
+      logoPositionConfig: { x: 4, y: 4, side: 'front' },
+      schoolNamePosition: { x: 26, y: 5, side: 'front' },
+      photoPosition: { x: 5, y: 17, width: 20, height: 25, side: 'front' },
+      namePosition: { x: 30, y: 18, side: 'front' },
+      rolePosition: { x: 30, y: 26, side: 'front' },
+      idPosition: { x: 30, y: 33, side: 'front' },
+      qrCodePosition: { x: 71, y: 36, size: 12, side: 'front' },
+      barcodePosition: { x: 5, y: 46, side: 'front' },
     }
   };
 
@@ -130,9 +132,11 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReport
             expiresAt: fmt(card.expiresAt),
             dob: (user as any)?.dob ? fmt((user as any).dob) : undefined,
             departmentOrGrade: (user as any)?.departmentOrGrade || undefined,
+            qrImageUrl: (card as any).qrImageUrl || undefined,
           }}
           logoUrl={card.template?.logoUrl || card.template?.config?.logoUrl}
           side="front"
+          readonly
         />
 
         {/* Status overlay for non-active */}

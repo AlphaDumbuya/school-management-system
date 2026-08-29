@@ -66,7 +66,21 @@ router.get(
           'classes.level as student_grade',
           'classes.name as class_name',
           'teachers.teacher_id as teacher_code',
-          'teachers.department as teacher_department'
+          'teachers.department as teacher_department',
+          'card_templates.name as template_name',
+          'card_templates.config as template_config',
+          'card_templates.logo_url as template_logo_url',
+          'qr.image_url as qr_image_url'
+        )
+        .leftJoin('card_templates', 'card_templates.id', 'id_cards.template_id')
+        .leftJoin(
+          db('qr_codes')
+            .select('card_id')
+            .max('image_url as image_url')
+            .whereNotNull('card_id')
+            .groupBy('card_id')
+            .as('qr'),
+          'qr.card_id', 'id_cards.id',
         )
         .leftJoin('students', function () {
           this.on('students.user_id', '=', 'id_cards.user_id')
@@ -150,6 +164,12 @@ router.get(
           dob: c.student_dob || null,
           memberId: c.student_reg_id || c.teacher_code || c.card_number,
           departmentOrGrade: c.class_name || c.student_grade || c.teacher_department || null,
+        },
+        qrImageUrl: c.qr_image_url || null,
+        template: {
+          name: c.template_name || 'Unknown',
+          config: c.template_config || {},
+          logoUrl: c.template_logo_url || null,
         },
       }));
 
