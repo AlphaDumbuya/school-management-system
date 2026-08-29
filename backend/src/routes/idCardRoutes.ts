@@ -73,12 +73,13 @@ router.get(
           'qr.image_url as qr_image_url'
         )
         .leftJoin('card_templates', 'card_templates.id', 'id_cards.template_id')
+        // Newest QR image per card (id is a random UUID, so pick by created_at).
         .leftJoin(
           db('qr_codes')
-            .select('card_id')
-            .max('image_url as image_url')
+            .distinctOn('card_id')
+            .select('card_id', 'image_url')
             .whereNotNull('card_id')
-            .groupBy('card_id')
+            .orderBy([{ column: 'card_id' }, { column: 'created_at', order: 'desc' }])
             .as('qr'),
           'qr.card_id', 'id_cards.id',
         )

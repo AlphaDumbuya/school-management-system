@@ -363,7 +363,8 @@ export class IdCardService {
           'teachers.department as teacher_department',
           'card_templates.name as template_name',
           'card_templates.config as template_config',
-          'card_templates.logo_url as template_logo_url'
+          'card_templates.logo_url as template_logo_url',
+          'qr.image_url as qr_image_url'
         )
         .leftJoin('students', function () {
           this.on('students.user_id', '=', 'id_cards.user_id')
@@ -380,6 +381,16 @@ export class IdCardService {
             .orOn('teachers.id', '=', 'id_cards.user_id');
         })
         .leftJoin('card_templates', 'card_templates.id', 'id_cards.template_id')
+        // Newest scannable QR image for this card (base64 data-URL).
+        .leftJoin(
+          this.db('qr_codes')
+            .distinctOn('card_id')
+            .select('card_id', 'image_url')
+            .whereNotNull('card_id')
+            .orderBy([{ column: 'card_id' }, { column: 'created_at', order: 'desc' }])
+            .as('qr'),
+          'qr.card_id', 'id_cards.id',
+        )
         .where('id_cards.id', cardId)
         .first();
 
@@ -412,6 +423,7 @@ export class IdCardService {
           memberId: card.student_reg_id || card.teacher_code || card.card_number,
           departmentOrGrade: card.class_name || card.student_grade || card.teacher_department || null,
         },
+        qrImageUrl: card.qr_image_url || null,
         template: {
           name: card.template_name || 'Unknown',
           config: card.template_config || {},
