@@ -42,26 +42,27 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Send notification email to WiSkul team
-    const contactEmailResult = await sendContactEmail({
-      name,
-      email,
-      phone: phone || 'Not provided',
-      school: school || 'Not provided',
-      role,
-      message,
-    });
-
-    if (!contactEmailResult.success) {
-      console.error('Failed to send contact notification email:', contactEmailResult);
+    // Send notification email to the WiSkul team. Email delivery must NOT crash
+    // the endpoint — if Brevo rejects (e.g. unverified sender) we log and carry
+    // on, so the visitor still gets a success response and we don't 500.
+    try {
+      await sendContactEmail({
+        name,
+        email,
+        phone: phone || 'Not provided',
+        school: school || 'Not provided',
+        role,
+        message,
+      });
+    } catch (mailErr: any) {
+      console.error('Failed to send contact notification email:', mailErr?.message || mailErr);
     }
 
-    // Send auto-response to user - this is critical for UX
-    const autoResponseResult = await sendAutoResponse(email, name);
-
-    if (!autoResponseResult.success) {
-      console.error('Failed to send confirmation email to user:', autoResponseResult, { userEmail: email });
-      // Still report success to user since their message was received, but log the error
+    // Send auto-response to the visitor (best-effort).
+    try {
+      await sendAutoResponse(email, name);
+    } catch (mailErr: any) {
+      console.error('Failed to send confirmation email to user:', mailErr?.message || mailErr, { userEmail: email });
     }
 
     res.status(200).json({

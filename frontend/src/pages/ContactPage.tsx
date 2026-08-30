@@ -142,8 +142,21 @@ export const ContactPage: React.FC = () => {
                     </div>
                     <div>
                       <p className="text-sm font-bold text-gray-400 mb-1">Email</p>
-                      <p className="text-white text-sm">alphadumbuya7@gmail.com</p>
-                      <p className="text-gray-500 text-xs">We reply within 24 hours</p>
+                      <div className="space-y-1.5">
+                        <p className="text-white text-sm">
+                          <a href="mailto:info@wiskulsl.com" className="hover:text-[#00d4aa] transition-colors">info@wiskulsl.com</a>
+                          <span className="text-gray-500 text-xs block">General enquiries</span>
+                        </p>
+                        <p className="text-white text-sm">
+                          <a href="mailto:support@wiskulsl.com" className="hover:text-[#00d4aa] transition-colors">support@wiskulsl.com</a>
+                          <span className="text-gray-500 text-xs block">Technical support</span>
+                        </p>
+                        <p className="text-white text-sm">
+                          <a href="mailto:sales@wiskulsl.com" className="hover:text-[#00d4aa] transition-colors">sales@wiskulsl.com</a>
+                          <span className="text-gray-500 text-xs block">Sales & demos</span>
+                        </p>
+                      </div>
+                      <p className="text-gray-500 text-xs mt-2">We reply within 24 hours</p>
                     </div>
                   </div>
 

@@ -91,8 +91,8 @@ export class BrevoEmailService {
    */
   constructor() {
     this.apiKey = process.env.BREVO_API_KEY || '';
-    this.senderEmail = process.env.BREVO_SENDER_EMAIL || 'noreply@school.com';
-    this.senderName = process.env.BREVO_SENDER_NAME || 'School Management System';
+    this.senderEmail = process.env.BREVO_SENDER_EMAIL || 'info@wiskulsl.com';
+    this.senderName = process.env.BREVO_SENDER_NAME || 'WiSkul';
 
     if (!this.apiKey) {
       logger.error('BREVO_API_KEY is not configured in environment variables');
