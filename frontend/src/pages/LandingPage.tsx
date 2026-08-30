@@ -63,16 +63,16 @@ export const LandingPage: React.FC = () => {
               financial data, and academic information secure while providing powerful tools for
               enrollment, grading, communication, and analytics — all in one unified system.
             </p>
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4">
               <button
                 onClick={() => navigate('/register')}
-                className="bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,170,0.3)] active:scale-95 cursor-pointer"
+                className="w-full sm:w-auto bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,170,0.3)] active:scale-95 cursor-pointer"
               >
                 Register School Free →
               </button>
               <button
                 onClick={() => navigate('/pricing')}
-                className="border border-white/20 hover:border-white/40 text-white font-bold text-sm px-6 py-3.5 rounded-full transition-all duration-300 cursor-pointer"
+                className="w-full sm:w-auto border border-white/20 hover:border-white/40 text-white font-bold text-sm px-6 py-3.5 rounded-full transition-all duration-300 cursor-pointer"
               >
                 View Plans
               </button>
@@ -384,6 +384,9 @@ export const LandingPage: React.FC = () => {
             <p className="text-gray-500 text-xs leading-relaxed">
               Next-generation school management platform protecting student data while empowering educators.
             </p>
+            <a href="mailto:info@wiskulsl.com" className="inline-block mt-3 text-gray-400 text-xs hover:text-[#00d4aa] transition-colors">
+              info@wiskulsl.com
+            </a>
           </div>
 
           {/* Quick Links */}

@@ -34,8 +34,8 @@ class EmailService {
   private brevoClient: AxiosInstance;
   private readonly BREVO_API_URL = 'https://api.brevo.com/v3';
   private readonly BREVO_API_KEY = process.env.BREVO_API_KEY;
-  private readonly SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || 'noreply@schoolms.com';
-  private readonly SENDER_NAME = process.env.BREVO_SENDER_NAME || 'School Management System';
+  private readonly SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || 'info@wiskulsl.com';
+  private readonly SENDER_NAME = process.env.BREVO_SENDER_NAME || 'WiSkul';
   private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAY = 1000; // 1 second base delay
 
@@ -464,7 +464,7 @@ export async function sendContactEmail(data: {
 
   const emailService = new EmailService();
   return emailService.sendEmail({
-    to: 'alphadumbuya7@gmail.com',
+    to: process.env.CONTACT_EMAIL || 'info@wiskulsl.com',
     subject: `🎓 New Contact: ${data.name} from ${data.school}`,
     body: emailBody,
     isHtml: true,
@@ -533,25 +533,25 @@ export async function sendAutoResponse(email: string, name: string): Promise<Ema
       </div>
 
       <div style="text-align: center;">
-        <a href="${process.env.FRONTEND_URL || 'https://wiskul.com'}/features" class="button">Explore Features →</a>
+        <a href="${process.env.FRONTEND_URL || 'https://www.wiskulsl.com'}/features" class="button">Explore Features →</a>
       </div>
 
       <div style="margin-top: 30px; padding: 20px; background: linear-gradient(135deg, #7c3aed15, #00d4aa15); border-radius: 8px;">
         <p style="margin: 0 0 10px 0; font-weight: bold; color: #1a1a2e;">🚀 Quick Links:</p>
         <p style="margin: 5px 0; font-size: 13px;">
-          <a href="${process.env.FRONTEND_URL || 'https://wiskul.com'}/why" style="color: #7c3aed; text-decoration: none;">Why WiSkul</a> • 
-          <a href="${process.env.FRONTEND_URL || 'https://wiskul.com'}/benefits" style="color: #7c3aed; text-decoration: none;">Benefits</a> • 
-          <a href="${process.env.FRONTEND_URL || 'https://wiskul.com'}/pricing" style="color: #7c3aed; text-decoration: none;">Pricing</a>
+          <a href="${process.env.FRONTEND_URL || 'https://www.wiskulsl.com'}/why" style="color: #7c3aed; text-decoration: none;">Why WiSkul</a> • 
+          <a href="${process.env.FRONTEND_URL || 'https://www.wiskulsl.com'}/benefits" style="color: #7c3aed; text-decoration: none;">Benefits</a> • 
+          <a href="${process.env.FRONTEND_URL || 'https://www.wiskulsl.com'}/pricing" style="color: #7c3aed; text-decoration: none;">Pricing</a>
         </p>
       </div>
     </div>
     <div class="footer">
       <p style="margin: 0 0 10px 0; color: white; font-weight: bold;">WiSkul - Securing Education, One School at a Time</p>
-      <p style="margin: 0; color: #999;">📧 alphadumbuya7@gmail.com | 📱 +232 78 261 892</p>
+      <p style="margin: 0; color: #999;">📧 support@wiskulsl.com | 📱 +232 78 261 892</p>
       <p style="margin: 10px 0 0 0; color: #666;">75 Main Road, Kossoh Town, Sierra Leone</p>
       <p style="margin: 15px 0 0 0; color: #666;">
-        <a href="${process.env.FRONTEND_URL || 'https://wiskul.com'}/privacy">Privacy Policy</a> • 
-        <a href="${process.env.FRONTEND_URL || 'https://wiskul.com'}/terms">Terms of Service</a>
+        <a href="${process.env.FRONTEND_URL || 'https://www.wiskulsl.com'}/privacy">Privacy Policy</a> • 
+        <a href="${process.env.FRONTEND_URL || 'https://www.wiskulsl.com'}/terms">Terms of Service</a>
       </p>
     </div>
   </div>
@@ -638,7 +638,7 @@ export async function sendSchoolWelcomeEmail(data: {
 
     <div class="footer">
       <p style="margin: 0 0 8px 0; font-weight: bold; color: #ffffff;">WiSkul Customer Support</p>
-      <p style="margin: 0;">📧 alphadumbuya7@gmail.com | 📱 +232 78 261 892</p>
+      <p style="margin: 0;">📧 support@wiskulsl.com | 📱 +232 78 261 892</p>
       <p style="margin: 10px 0 0 0;">75 Main Road, Kossoh Town, Sierra Leone</p>
     </div>
   </div>
