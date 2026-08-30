@@ -236,9 +236,14 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
           aria-label="Mobile navigation"
           className="pn-dropdown"
           style={{
+            position:   'relative',
+            zIndex:     1001,
             overflow:   'hidden',
             maxHeight:  open ? '600px' : '0px',
             opacity:    open ? 1 : 0,
+            // Block taps entirely when closed so hidden links never intercept.
+            pointerEvents: open ? 'auto' : 'none',
+            background: 'rgba(13,13,33,0.98)',
             transition: 'max-height 0.38s cubic-bezier(0.4,0,0.2,1), opacity 0.25s ease',
             borderTop:  open ? '1px solid rgba(0,212,170,0.08)' : '1px solid transparent',
           }}
@@ -308,13 +313,14 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
         </div>
       </nav>
 
-      {/* Dim backdrop — behind everything except nav */}
+      {/* Dim backdrop — sits BELOW the nav/dropdown (z 998) and only dims the
+          page area, so it can never intercept taps on the menu links. */}
       {open && (
         <div
           aria-hidden="true"
           onClick={() => setOpen(false)}
           style={{
-            position:'fixed', inset:0, zIndex:999,
+            position:'fixed', left:0, right:0, bottom:0, top:'64px', zIndex:998,
             background:'rgba(0,0,0,0.45)',
             backdropFilter:'blur(2px)',
             WebkitBackdropFilter:'blur(2px)',
