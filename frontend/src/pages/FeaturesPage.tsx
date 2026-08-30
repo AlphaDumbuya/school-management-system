@@ -259,6 +259,32 @@ export const FeaturesPage: React.FC = () => {
                 'Portal Announcements — publish upcoming events directly to student and parent portals',
               ]}
             />
+
+            <ModuleSection
+              num="11"
+              title="Gradebook, Results & PDF Report Cards"
+              color="#00d4aa"
+              versionBadge="v1"
+              desc="Enter marks, compute positions, and generate terminal report booklets."
+              features={[
+                'Gradebook & Mark Entry — record Test 1/Test 2 per subject with auto-computed means, grades, and subject ranks',
+                'Terminal Report Booklets — Sierra Leone A4-landscape report cards with cognitive, affective & psychomotor domains',
+                'Class Positions & Whole-Class Export — auto class ranking plus one-click PDF for a single student or the whole class',
+              ]}
+            />
+
+            <ModuleSection
+              num="12"
+              title="End-of-Year Student Promotions"
+              color="#00d4aa"
+              versionBadge="v1"
+              desc="Advance or retain students based on yearly performance."
+              features={[
+                'Bulk Promotion — advance qualifying students to the next class at year end',
+                'Promotion Recommendations — auto pass/repeat guidance from yearly percentages',
+                'Session-Aware — promotions respect the active academic session and class structure',
+              ]}
+            />
           </div>
         </div>
       </section>
@@ -274,7 +300,7 @@ export const FeaturesPage: React.FC = () => {
               Upcoming Advanced Modules (v2.0 / v3.0)
             </h2>
             <p className="text-gray-400 text-sm max-w-xl mx-auto leading-relaxed">
-              These advanced financial, report card, and messaging modules are planned for future version releases.
+              These advanced financial, HR, and messaging modules are planned for future version releases.
             </p>
           </div>
 
@@ -294,36 +320,9 @@ export const FeaturesPage: React.FC = () => {
               ]}
             />
 
-            {/* V2-02: GRADEBOOK & REPORT CARDS */}
+            {/* V2-02: STAFF HR LEAVE */}
             <ModuleSection
               num="02"
-              title="Digital Gradebook & PDF Report Cards (Coming in v2)"
-              color="#7c3aed"
-              versionBadge="v2"
-              desc="Term mark sheets, grading scales, and terminal PDF report card generation."
-              features={[
-                'Gradebook & Mark Sheets — enter marks per student per subject with auto-calculated weighted grades',
-                'Term Report Card PDF Generator — auto-generated term report cards with subjects, grades, positions, and principal remarks',
-                'Grading Scale Customizer — configure WASSCE, BECE, or national letter grade boundaries',
-              ]}
-            />
-
-            {/* V2-03: PROMOTIONS ENGINE */}
-            <ModuleSection
-              num="03"
-              title="End-of-Year Student Promotions Engine (Coming in v2)"
-              color="#7c3aed"
-              versionBadge="v2"
-              desc="Automated class advancement and retention criteria."
-              features={[
-                'Bulk Student Promotion — bulk advance qualifying students to next grade level at end of academic year',
-                'Retention Criteria — set minimum pass percentage requirements for automatic promotion',
-              ]}
-            />
-
-            {/* V2-04: STAFF HR LEAVE */}
-            <ModuleSection
-              num="04"
               title="Staff Digital Leave & Performance (Coming in v2)"
               color="#7c3aed"
               versionBadge="v2"
@@ -336,7 +335,7 @@ export const FeaturesPage: React.FC = () => {
 
             {/* V3-01: SMS BROADCASTS */}
             <ModuleSection
-              num="05"
+              num="03"
               title="Automated SMS Parent Broadcasts (Coming in v3)"
               color="#3b82f6"
               versionBadge="v3"
@@ -349,7 +348,7 @@ export const FeaturesPage: React.FC = () => {
 
             {/* V3-02: WHATSAPP BUSINESS API */}
             <ModuleSection
-              num="06"
+              num="04"
               title="WhatsApp Business API Integration (Coming in v3)"
               color="#3b82f6"
               versionBadge="v3"

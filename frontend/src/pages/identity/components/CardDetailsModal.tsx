@@ -55,6 +55,7 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
     const [previewSide, setPreviewSide] = useState<'front' | 'back'>('front');
     const [isActioning, setIsActioning] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
+    const [dlOpen, setDlOpen] = useState(false);
     const exporterRef = React.useRef<CardPdfExporterHandle>(null);
     // Fetch card details
     const { data: cardData, isLoading: cardLoading } = useQuery({
@@ -85,26 +86,43 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                         ID Card Details
                     </h2>
                     {card && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={isDownloading}
-                            onClick={async () => {
-                                setIsDownloading(true);
-                                try {
-                                    await exporterRef.current?.export(buildCardExportData(card));
-                                    showToast.success('Card PDF downloaded');
-                                } catch {
-                                    showToast.error('Failed to download card PDF');
-                                } finally {
-                                    setIsDownloading(false);
-                                }
-                            }}
-                            className="flex items-center gap-1.5"
-                        >
-                            {isDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                            Download PDF
-                        </Button>
+                        <div className="relative">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={isDownloading}
+                                onClick={() => setDlOpen((o) => !o)}
+                                className="flex items-center gap-1.5"
+                            >
+                                {isDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                                Download
+                            </Button>
+                            {dlOpen && (
+                                <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-30">
+                                    {(['pdf', 'png', 'jpg'] as const).map((out) => (
+                                        <button
+                                            key={out}
+                                            disabled={isDownloading}
+                                            onClick={async () => {
+                                                setDlOpen(false);
+                                                setIsDownloading(true);
+                                                try {
+                                                    await exporterRef.current?.export(buildCardExportData(card, out));
+                                                    showToast.success(`Card ${out.toUpperCase()} downloaded`);
+                                                } catch {
+                                                    showToast.error(`Failed to download ${out.toUpperCase()}`);
+                                                } finally {
+                                                    setIsDownloading(false);
+                                                }
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg"
+                                        >
+                                            Save as {out.toUpperCase()}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
 

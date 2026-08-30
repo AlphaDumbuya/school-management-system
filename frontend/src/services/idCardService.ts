@@ -191,14 +191,16 @@ export const idCardService = {
      * Generate a single ID card
      */
     generateCard: async (data: CardGenerationRequest) => {
-        return apiClient.post('/api/v1/id-cards/generate', data);
+        // Pass the app's real origin so the QR verification URL points here
+        // (the page the user is actually on), never a baked-in localhost.
+        return apiClient.post('/api/v1/id-cards/generate', { ...data, baseUrl: window.location.origin });
     },
 
     /**
      * Regenerate an existing card
      */
     regenerateCard: async (cardId: string) => {
-        return apiClient.post(`/api/v1/id-cards/regenerate/${cardId}`);
+        return apiClient.post(`/api/v1/id-cards/regenerate/${cardId}`, { baseUrl: window.location.origin });
     },
 
     /**
@@ -318,7 +320,22 @@ export const idCardService = {
      * Accepts raw QR content, a full verify URL, or a base64url payload.
      */
     verifyPublicId: async (value: string) => {
-        return apiClient.post('/api/v1/public/verify-id', { value, deviceId: 'web-scan' });
+        // IMPORTANT: use a RAW fetch (not apiClient) so the auth interceptor
+        // never runs. The verify page is PUBLIC — a stale/absent token must NOT
+        // trigger a token-refresh or a redirect to /login. We also send no
+        // Authorization header at all.
+        const base = (import.meta as any).env?.VITE_API_URL || '';
+        const res = await fetch(`${base}/api/v1/public/verify-id`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value, deviceId: 'web-scan' }),
+        });
+        // The endpoint returns 200 with { verification } even for invalid IDs.
+        // On any non-OK status, surface a safe "not valid" result rather than throwing.
+        if (!res.ok) {
+            return { verification: { isValid: false, failureReason: 'invalid_format' } };
+        }
+        return res.json();
     },
 
     /**

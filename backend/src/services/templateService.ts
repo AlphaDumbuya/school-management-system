@@ -167,8 +167,14 @@ export class TemplateService {
         throw new AppError(`Template ${templateId} not found`, 404);
       }
 
-      // Parse existing config and merge with updates
-      const existingConfig = JSON.parse(existing.config);
+      // Parse existing config and merge with updates.
+      // NOTE: `config` is a jsonb column — the pg driver returns it ALREADY
+      // parsed as an object. Guard against double-parsing (which throws
+      // "[object Object]" is not valid JSON) by only parsing actual strings.
+      const existingConfig =
+        typeof existing.config === 'string'
+          ? (() => { try { return JSON.parse(existing.config); } catch { return {}; } })()
+          : (existing.config || {});
       const newConfig = {
         ...existingConfig,
         ...(updates.config || {}),

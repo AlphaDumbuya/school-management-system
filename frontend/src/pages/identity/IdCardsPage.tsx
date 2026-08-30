@@ -166,21 +166,45 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReport
       </div>
 
       {/* Actions — pinned to the bottom (mt-auto) so every tile's action row
-          lines up across the grid, even when PVC/badge faces differ in height. */}
+          lines up across the grid, even when PVC/badge faces differ in height.
+
+          MOBILE: only a full-width View button — all actions (download,
+          regenerate, revoke, …) live inside the View/detail page to keep tiles
+          tap-friendly and clutter-free.
+          DESKTOP (md+): View + a quick Download button + the ⋮ overflow menu. */}
       <div className="flex items-center gap-1.5 mt-auto pt-2">
         <button onClick={onView} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-50 dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700">
           <Eye size={13} /> View
         </button>
-        <CardActionMenu
-          card={card}
-          downloading={downloading}
-          onDownload={onDownload}
-          onRegenerate={onRegenerate}
-          onRevoke={onRevoke}
-          onReportLost={onReportLost}
-          onReactivate={onReactivate}
-          onDelete={onDelete}
-        />
+
+        {/* Desktop-only quick download + overflow menu */}
+        <div className="hidden md:flex items-center gap-1.5">
+          <div className="relative group/dl">
+            <button
+              onClick={() => onDownload('pdf')}
+              disabled={downloading}
+              className="flex items-center justify-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 bg-gray-50 dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700 disabled:opacity-50"
+              title="Download card"
+            >
+              {downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            </button>
+            <div className="absolute right-0 top-full mt-1 w-28 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-30 opacity-0 invisible group-hover/dl:opacity-100 group-hover/dl:visible transition-all">
+              <button onClick={() => onDownload('pdf')} className="w-full text-left px-2.5 py-1.5 text-[11px] font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-lg">PDF</button>
+              <button onClick={() => onDownload('png')} className="w-full text-left px-2.5 py-1.5 text-[11px] font-semibold hover:bg-gray-50 dark:hover:bg-gray-700">PNG</button>
+              <button onClick={() => onDownload('jpg')} className="w-full text-left px-2.5 py-1.5 text-[11px] font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 rounded-b-lg">JPG</button>
+            </div>
+          </div>
+          <CardActionMenu
+            card={card}
+            downloading={downloading}
+            onDownload={onDownload}
+            onRegenerate={onRegenerate}
+            onRevoke={onRevoke}
+            onReportLost={onReportLost}
+            onReactivate={onReactivate}
+            onDelete={onDelete}
+          />
+        </div>
       </div>
     </div>
   );

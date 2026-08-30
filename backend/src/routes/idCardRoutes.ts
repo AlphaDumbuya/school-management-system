@@ -18,6 +18,39 @@ import { QrCodeService } from '../services/qrCodeService.js';
 
 const router = Router();
 
+/**
+ * Determine the public origin the QR verification URL should point to.
+ * Priority: explicit env (canonical prod URL) → request's forwarded host
+ * (works automatically behind Vercel/proxies) → request host. This ensures a
+ * scanned QR opens a REACHABLE page rather than a baked-in localhost URL.
+ */
+function resolveRequestOrigin(req: Request): string | undefined {
+  // 1) Explicit origin from the client (window.location.origin) — the most
+  //    reliable source: it's exactly where the app is served. Trust it unless
+  //    it's a localhost value coming from a production request.
+  const bodyBase = typeof req.body?.baseUrl === 'string' ? req.body.baseUrl.trim() : '';
+  const reqIsLocal = /localhost|127\.0\.0\.1/.test(req.headers['x-forwarded-host'] as string || req.get('host') || '');
+  if (bodyBase && (!/localhost|127\.0\.0\.1/.test(bodyBase) || reqIsLocal)) {
+    return bodyBase.replace(/\/+$/, '');
+  }
+
+  // 2) A non-localhost env override (canonical production URL).
+  const envBase = process.env.PUBLIC_APP_URL || process.env.APP_URL || process.env.FRONTEND_URL;
+  if (envBase && !/localhost|127\.0\.0\.1/.test(envBase)) {
+    return envBase.replace(/\/+$/, '');
+  }
+
+  // 3) The request's forwarded host (works behind Vercel/proxies).
+  const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim() || req.protocol || 'https';
+  const host = (req.headers['x-forwarded-host'] as string)?.split(',')[0]?.trim() || req.get('host');
+  if (host && !/localhost|127\.0\.0\.1/.test(host)) {
+    return `${proto}://${host}`;
+  }
+
+  // 4) Local dev fallback (env even if localhost, else the body value).
+  return (envBase || bodyBase || '').replace(/\/+$/, '') || undefined;
+}
+
 // Initialize services
 const idCardService = new IdCardService(db);
 const templateService = new TemplateService(db);
@@ -358,6 +391,7 @@ router.post(
         format,
         expirationDate: expirationDate ? new Date(expirationDate) : undefined,
         issuedBy,
+        baseUrl: resolveRequestOrigin(req),
       });
 
       res.status(201).json({
@@ -383,7 +417,7 @@ router.post(
     try {
       const { cardId } = req.params;
 
-      const result = await idCardService.regenerateCard(cardId);
+      const result = await idCardService.regenerateCard(cardId, resolveRequestOrigin(req));
 
       res.json({
         message: 'ID card regenerated successfully',

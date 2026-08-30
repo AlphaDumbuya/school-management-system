@@ -22,6 +22,8 @@ export interface CardGenerationOptions {
   format: 'pvc' | 'badge';
   expirationDate?: Date;  // Optional, defaults to 1 year
   issuedBy: string;
+  /** Public origin for the QR verification URL (e.g. https://app.example.com). */
+  baseUrl?: string;
 }
 
 export interface CardResult {
@@ -182,7 +184,8 @@ export class IdCardService {
         userId,
         tenantId,
         expiresAt,
-        createdCard.id
+        createdCard.id,
+        options.baseUrl
       );
 
       // Generate barcode
@@ -248,7 +251,7 @@ export class IdCardService {
    * Regenerate an existing card
    * Requirements: 1.1
    */
-  async regenerateCard(cardId: string): Promise<CardResult> {
+  async regenerateCard(cardId: string, baseUrl?: string): Promise<CardResult> {
     try {
       const existingCard = await this.db('id_cards')
         .where({ id: cardId })
@@ -282,27 +285,28 @@ export class IdCardService {
         existingCard.template_id
       );
 
-      // Get QR code
-      const qrCode = await this.db('qr_codes')
-        .where({ card_id: cardId })
-        .orderBy('created_at', 'desc')
-        .first();
+      // Invalidate any old QR codes and generate a FRESH one so regenerating a
+      // card produces the current scannable short-URL QR (old cards may carry
+      // legacy JSON / localhost QRs that never scan). Uses the request origin.
+      await this.qrCodeService.invalidateQrCodesByCardId(cardId).catch(() => {});
+      const qrCodeData = await this.qrCodeService.generateQrCode(
+        existingCard.user_id,
+        existingCard.tenant_id,
+        new Date(existingCard.expires_at),
+        cardId,
+        baseUrl,
+      );
 
       // Get barcode
       const barcodeData = await this.barcodeService.generateBarcode(userIdentifier);
 
-      // Regenerate PDF
+      // Regenerate PDF with the fresh QR
       const pdfBuffer = await this.generateCardPDF(
         user,
         userIdentifier,
         existingCard,
         template,
-        {
-          qrCodeId: qrCode.id,
-          content: qrCode.content,
-          imageDataUrl: qrCode.image_url,
-          securityHash: qrCode.security_hash,
-        },
+        qrCodeData,
         barcodeData,
         existingCard.tenant_id
       );
@@ -333,7 +337,7 @@ export class IdCardService {
         cardId,
         userId: existingCard.user_id,
         cardNumber: existingCard.card_number,
-        qrCode: qrCode.content,
+        qrCode: qrCodeData.content,
         barcode: barcodeData.content,
         pdfUrl,
         issuedAt: existingCard.issued_at,
@@ -641,13 +645,22 @@ export class IdCardService {
         // Set text color
         doc.fillColor(template.config.textColor || '#0F172A');
 
-        // Front School branding / Logo
+        // Front School branding / Logo (on a white rounded chip so it stays
+        // visible when the header background is dark).
         if (vf.showLogo && isOnSide(logoConf, 'front', 'front') && logoUrl && logoUrl.startsWith('data:image/')) {
           try {
             const base64Data = logoUrl.split(',')[1];
             if (base64Data) {
               const logoBuffer = Buffer.from(base64Data, 'base64');
-              doc.image(logoBuffer, mmToPt(logoConf.x), mmToPt(logoConf.y), { height: mmToPt(8) });
+              const logoH = mmToPt(8);
+              const pad = mmToPt(1);
+              const cx = mmToPt(logoConf.x);
+              const cy = mmToPt(logoConf.y);
+              const chip = logoH + pad * 2;
+              doc.save();
+              doc.roundedRect(cx - pad, cy - pad, chip, chip, chip / 2).fill('#FFFFFF');
+              doc.restore();
+              doc.image(logoBuffer, cx, cy, { height: logoH });
             }
           } catch (logoErr) {
             logger.error('Failed to draw logo on front PDF', logoErr);
@@ -845,13 +858,21 @@ export class IdCardService {
         // Set text color
         doc.fillColor(template.config.textColor || '#0F172A');
 
-        // Back School branding / Logo
+        // Back School branding / Logo (white rounded chip for dark headers)
         if (vf.showLogo && isOnSide(logoConf, 'front', 'back') && logoUrl && logoUrl.startsWith('data:image/')) {
           try {
             const base64Data = logoUrl.split(',')[1];
             if (base64Data) {
               const logoBuffer = Buffer.from(base64Data, 'base64');
-              doc.image(logoBuffer, mmToPt(logoConf.x), mmToPt(logoConf.y), { height: mmToPt(8) });
+              const logoH = mmToPt(8);
+              const pad = mmToPt(1);
+              const cx = mmToPt(logoConf.x);
+              const cy = mmToPt(logoConf.y);
+              const chip = logoH + pad * 2;
+              doc.save();
+              doc.roundedRect(cx - pad, cy - pad, chip, chip, chip / 2).fill('#FFFFFF');
+              doc.restore();
+              doc.image(logoBuffer, cx, cy, { height: logoH });
             }
           } catch (logoErr) {
             logger.error('Failed to draw logo on back PDF', logoErr);
