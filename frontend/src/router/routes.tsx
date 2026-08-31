@@ -49,6 +49,10 @@ import { EventAnalyticsPage } from '@pages/events/EventAnalyticsPage';
 import { IdCardsPage } from '@pages/identity/IdCardsPage';
 import { TemplatesPage } from '@pages/identity/TemplatesPage';
 import VerifyIdPage from '@pages/identity/VerifyIdPage';
+import PaymentReturnPage from '@pages/finance/PaymentReturnPage';
+import FeesPage from '@pages/finance/FeesPage';
+import InvoicesPage from '@pages/finance/InvoicesPage';
+import PaymentsPage from '@pages/finance/PaymentsPage';
 import TeachersPage from '@pages/staff/TeachersPage';
 
 import useAuthStore from '@store/authStore';
@@ -225,16 +229,21 @@ const router = createBrowserRouter(
 
         // ── FINANCIAL MANAGEMENT ───────────────────────────────────
         {
+          // Payment return landing (after Monime hosted checkout) — any signed-in payer.
+          path: 'finance/pay/return',
+          element: <P><PaymentReturnPage /></P>,
+        },
+        {
           path: 'finance/fees',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><V2Route><CS /></V2Route></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><FeesPage /></P>,
         },
         {
           path: 'finance/invoices',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'parent']}><V2Route><CS /></V2Route></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'parent']}><InvoicesPage /></P>,
         },
         {
           path: 'finance/payments',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'parent']}><V2Route><CS /></V2Route></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'parent']}><PaymentsPage /></P>,
         },
         {
           path: 'finance/expenses',

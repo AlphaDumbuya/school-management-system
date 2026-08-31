@@ -58,6 +58,14 @@ Version 1.0.0 focuses on everyday school operations, student enrollment, attenda
 - **ID Card Management**: Student and staff ID card template design & batch printing ([IdCardsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/identity/IdCardsPage.tsx)).
 - **School Calendar & Events**: School event publishing, event details, and calendar view ([EventsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/events/EventsPage.tsx)).
 
+### 5.1 Financial & Fee Management (NOW IN v1.0.0)
+Promoted from v2.0.0 into the v1.0.0 core release. Covers the full fee lifecycle plus online payments via **Monime** (Sierra Leone mobile money, card, bank, and digital wallet in one checkout).
+- **Fee Structures & Billing**: Configure fees by type/class/term; bill students ([`/finance/fees`]).
+- **Student Invoicing & Receipts**: Generate invoices, track paid/partial/overdue balances, issue receipts ([`/finance/invoices`]).
+- **Online Payments (Monime)**: Hosted-checkout payments accepting mobile money, card, bank, and digital wallet. A **"Pay Fees"** action in the student and parent portals initiates a Monime checkout session; webhooks reconcile payment status and record the payment automatically ([`/finance/payments`]).
+- **Payments Ledger & Collection Analytics**: Recorded payments, collection rate, outstanding/overdue tracking surfaced on the admin dashboard and finance pages.
+- **Portal Billing Tabs**: Student & parent dashboards show outstanding balance, invoices, and a one-tap pay button.
+
 ### 6. SuperAdmin & Platform Management
 - Tenant creation, subscription plan management, and platform configuration ([PlatformTenantsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/PlatformTenantsPage.tsx)).
 
@@ -65,8 +73,8 @@ Version 1.0.0 focuses on everyday school operations, student enrollment, attenda
 To ensure market traction while maintaining complete honesty with school administrators:
 - **Self-Service Onboarding ([RegisterPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/RegisterPage.tsx))**: School principals can self-register their school workspace via `/register` without SuperAdmin manual intervention.
 - **Plan Hierarchy & Capacity Limits**:
-  - **Freetong (v1.0 Free Core)**: NLe 0 / Free Forever — Up to 250 Students & 20 Staff. Includes all operational v1.0.0 core features (including Result & Gradebook Management).
-  - **Combra (v2.0 Pro)**: NLe 500 / mo — Up to 1,000 Students & 75 Staff. Unlocks Fee Invoicing, PDF Report Cards, and Promotions Engine.
+  - **Freetong (v1.0 Free Core)**: NLe 0 / Free Forever — Up to 250 Students & 20 Staff. Includes all operational v1.0.0 core features (Result & Gradebook Management, PDF Report Cards, Promotions, and Fee & Payment Management with Monime online payments).
+  - **Combra (v2.0 Pro)**: NLe 500 / mo — Up to 1,000 Students & 75 Staff. Unlocks Payroll, Expense Tracking, and Staff HR & Leave.
   - **Bintumani (v3.0 Enterprise)**: NLe 1,200 / mo — Unlimited Students & Staff. Unlocks Bulk SMS, WhatsApp Business API, and Dedicated Support.
 - **Marketing Page Categorization ([FeaturesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/FeaturesPage.tsx), [PricingPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/PricingPage.tsx))**:
   - Section 1 showcases **v1.0 Operational Modules (100% Free)**.
@@ -82,8 +90,8 @@ Per user direction, the following modules are explicitly removed from v1.0.0 and
    - Deferred to v2.0.0 (`/communication/sms`, `SMSWhatsAppDashboard.tsx`). All SMS broadcasting, Twilio/WhatsApp gateways, and automated message triggers move to v2.0.0.
 2. ❌ **Terminal PDF Report Cards & Automated Promotions**:
    - Deferred to v2.0.0 (`/academic/report-cards`, `/academic/promotions`). Grade entry, calculation, and transcript viewing are fully included in v1.0.0 (`/academic/results`), but batch terminal PDF report card generation (supporting the **Sierra Leone Booklet-Style Standard** — see [REPORT_CARD_BOOKLET_SPECIFICATION.md](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/docs/admin-guides/REPORT_CARD_BOOKLET_SPECIFICATION.md)) and automated student class advancement move to v2.0.0.
-3. ❌ **Financial & Fee Management**:
-   - Fee structures, student invoicing, online payments, expense tracking, and payroll (`/finance/*`) deferred to v2.0.0.
+3. ⚠️ **Financial & Fee Management — PROMOTED TO v1.0.0**:
+   - Fee structures, student invoicing, online payments (via **Monime**), and the payments ledger are now part of v1.0.0 (see §5.1). Only **payroll** and standalone **expense tracking** remain deferred to v2.0.0.
 4. ❌ **Staff HR & Performance**:
    - Staff leave applications and performance appraisal tracking (`/staff/leave`, `/staff/performance`) deferred to v2.0.0.
 5. ❌ **Internal In-App Messaging & Email**:
@@ -98,8 +106,8 @@ Per user direction, the following modules are explicitly removed from v1.0.0 and
 To guarantee that v1.0.0 users do **NOT** see broken, empty, or unreleased pages:
 
 1. **Sidebar Navigation Filtering ([Sidebar.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/components/layout/Sidebar.tsx))**:
-   - Navigation links corresponding to v2.0.0 features (**SMS & WhatsApp**, **PDF Report Cards**, **Promotions**, **Finance**, **Staff Leave**, **In-App Messages**, **Reports**) are conditionally hidden in v1.0.0 builds using feature flag gating or list filtering.
-   - **Results & Grades (`/academic/results`)** is tagged as `v1` and fully accessible in v1.0.0 builds.
+   - Navigation links corresponding to remaining v2.0.0 features (**SMS & WhatsApp**, **Staff Leave/HR**, **Payroll/Expenses**, **In-App Messages**, **Advanced Reports**) are conditionally hidden in v1.0.0 builds using feature flag gating or list filtering.
+   - **Results & Grades (`/academic/results`)**, **Report Cards (`/academic/report-cards`)**, **Promotions (`/academic/promotions`)**, and **Finance (`/finance/fees`, `/finance/invoices`, `/finance/payments`)** are tagged as `v1` and fully accessible in v1.0.0 builds.
 
 2. **Route Guarding ([routes.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/router/routes.tsx))**:
    - Direct navigation attempts to v2.0.0 URLs (e.g. typing `/communication/sms`, `/academic/report-cards`, or `/finance/fees` in the address bar) will automatically redirect to `/dashboard` or show a clean, branded "Module Available in v2.0" notice.
@@ -141,7 +149,12 @@ For full feature specifications, data models, and architecture plans for Version
 │ • Classes & Timetables   │ • Student Promotions Engine │
 │ • Assignments & Exam Sched│ • Staff Leave & Performance │
 │ • Result & Gradebook Mgmt│ • Deep Analytics & Reports  │
-│ • Teacher Directory      │ • Mobile App API Extensions │
+│ • PDF Report Cards       │ • Payroll & Expense Tracking│
+│ • Student Promotions     │ • Mobile App API Extensions │
+│ • Fee & Payment Mgmt     │                             │
+│   (Monime: MoMo/card/    │                             │
+│    bank/wallet)          │                             │
+│ • Teacher Directory      │                             │
 │ • ID Cards & Events      │                             │
 │ • Platform & Tenants     │                             │
 └──────────────────────────┴─────────────────────────────┘

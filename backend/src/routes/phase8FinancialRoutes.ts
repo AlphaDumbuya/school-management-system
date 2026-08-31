@@ -1105,4 +1105,277 @@ router.get(
   }
 );
 
+/**
+ * ── Tenant-wide finance overview (admin/accountant) ──────────────────────────
+ * These power the finance admin pages. All are scoped to the caller's tenant
+ * via the students join (finance tables carry tenant_id after migration 112,
+ * but we also join students for older rows).
+ */
+
+// GET /api/v1/finance/overview — KPIs for the finance dashboard.
+router.get('/finance/overview', authenticate, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const billed = await db('invoices')
+      .leftJoin('students', 'invoices.student_id', 'students.id')
+      .where('students.tenant_id', tenantId)
+      .sum('invoices.total_amount as total').first();
+    const paid = await db('invoices')
+      .leftJoin('students', 'invoices.student_id', 'students.id')
+      .where('students.tenant_id', tenantId)
+      .sum('invoices.total_paid as total').first();
+    const outstanding = await db('invoices')
+      .leftJoin('students', 'invoices.student_id', 'students.id')
+      .where('students.tenant_id', tenantId)
+      .sum('invoices.balance as total').first();
+    const overdue = await db('invoices')
+      .leftJoin('students', 'invoices.student_id', 'students.id')
+      .where('students.tenant_id', tenantId)
+      .where('invoices.status', 'overdue')
+      .count('invoices.id as count').first();
+    res.json({
+      success: true,
+      data: {
+        totalBilled: Number(billed?.total) || 0,
+        totalPaid: Number(paid?.total) || 0,
+        totalOutstanding: Number(outstanding?.total) || 0,
+        overdueInvoices: Number(overdue?.count) || 0,
+      },
+    });
+  } catch (error) {
+    logger.error(`finance/overview error: ${error}`);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// GET /api/v1/finance/invoices — all invoices for the tenant (with student name).
+router.get('/finance/invoices', authenticate, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const status = req.query.status as string | undefined;
+    let q = db('invoices')
+      .join('students', 'invoices.student_id', 'students.id')
+      .leftJoin('users', 'students.user_id', 'users.id')
+      .where('students.tenant_id', tenantId)
+      .select(
+        'invoices.*',
+        db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
+        'students.student_id as admission_no',
+      )
+      .orderBy('invoices.created_at', 'desc');
+    if (status) q = q.where('invoices.status', status);
+    const rows = await q.limit(500);
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    logger.error(`finance/invoices error: ${error}`);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// GET /api/v1/finance/payments — all payments for the tenant (with student name).
+router.get('/finance/payments', authenticate, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const rows = await db('payments')
+      .join('students', 'payments.student_id', 'students.id')
+      .leftJoin('users', 'students.user_id', 'users.id')
+      .leftJoin('enrollments', function () {
+        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
+      })
+      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+      .where('students.tenant_id', tenantId)
+      .select(
+        'payments.*',
+        db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
+        'students.student_id as admission_no',
+        'classes.name as class_name',
+        'classes.level as class_level',
+      )
+      .orderBy('payments.payment_date', 'desc')
+      .limit(1000);
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    logger.error(`finance/payments error: ${error}`);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// GET /api/v1/finance/analytics — enterprise finance-hub analytics: totals,
+// collection rate %, by-term, by-level, by-class, method mix, 6-month trend,
+// top defaulters, and recent payments. Tenant-scoped via the students join.
+router.get('/finance/analytics', authenticate, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+
+    // ── Totals from invoices (the authoritative billed/paid/outstanding) ──
+    const totals = await db('invoices')
+      .join('students', 'invoices.student_id', 'students.id')
+      .where('students.tenant_id', tenantId)
+      .select(
+        db.raw('COALESCE(SUM(invoices.total_amount),0) as billed'),
+        db.raw('COALESCE(SUM(invoices.total_paid),0) as paid'),
+        db.raw('COALESCE(SUM(invoices.balance),0) as outstanding'),
+        db.raw('COUNT(invoices.id) as invoice_count'),
+        db.raw("COUNT(CASE WHEN invoices.status = 'overdue' THEN 1 END) as overdue_count"),
+        db.raw("COUNT(CASE WHEN invoices.status = 'paid' THEN 1 END) as paid_count"),
+      )
+      .first();
+    const billed = Number(totals?.billed) || 0;
+    const paid = Number(totals?.paid) || 0;
+    const outstanding = Number(totals?.outstanding) || 0;
+    const collectionRate = billed > 0 ? Math.round((paid / billed) * 1000) / 10 : 0;
+
+    // ── Payment method breakdown ──
+    const byMethod = await db('payments')
+      .join('students', 'payments.student_id', 'students.id')
+      .where('students.tenant_id', tenantId)
+      .where('payments.status', 'completed')
+      .select(db.raw('COALESCE(payments.method, payments.payment_method) as method'))
+      .sum('payments.amount as total')
+      .count('payments.id as count')
+      .groupByRaw('COALESCE(payments.method, payments.payment_method)');
+
+    // ── 6-month collection trend ──
+    const trend = await db('payments')
+      .join('students', 'payments.student_id', 'students.id')
+      .where('students.tenant_id', tenantId)
+      .where('payments.status', 'completed')
+      .where('payments.payment_date', '>=', db.raw("CURRENT_DATE - INTERVAL '6 months'"))
+      .select(db.raw("TO_CHAR(DATE_TRUNC('month', payments.payment_date), 'Mon YYYY') as label"))
+      .sum('payments.amount as total')
+      .groupByRaw("DATE_TRUNC('month', payments.payment_date)")
+      .orderByRaw("DATE_TRUNC('month', payments.payment_date)");
+
+    // ── Collection + outstanding by class LEVEL ──
+    const byLevel = await db('invoices')
+      .join('students', 'invoices.student_id', 'students.id')
+      .leftJoin('enrollments', function () {
+        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
+      })
+      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+      .where('students.tenant_id', tenantId)
+      .select(db.raw("COALESCE(classes.level, 'Unassigned') as level"))
+      .sum('invoices.total_amount as billed')
+      .sum('invoices.total_paid as collected')
+      .sum('invoices.balance as outstanding')
+      .groupByRaw("COALESCE(classes.level, 'Unassigned')")
+      .orderByRaw("COALESCE(classes.level, 'Unassigned')");
+
+    // ── Collection by CLASS (name) ──
+    const byClass = await db('invoices')
+      .join('students', 'invoices.student_id', 'students.id')
+      .leftJoin('enrollments', function () {
+        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
+      })
+      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+      .where('students.tenant_id', tenantId)
+      .whereNotNull('classes.name')
+      .select('classes.name as class_name')
+      .sum('invoices.total_amount as billed')
+      .sum('invoices.total_paid as collected')
+      .sum('invoices.balance as outstanding')
+      .groupBy('classes.name')
+      .orderByRaw('SUM(invoices.balance) DESC')
+      .limit(20);
+
+    // ── Collection by TERM ──
+    const byTerm = await db('invoices')
+      .join('students', 'invoices.student_id', 'students.id')
+      .where('students.tenant_id', tenantId)
+      .select(db.raw("COALESCE(invoices.term, 'Unspecified') as term"))
+      .sum('invoices.total_amount as billed')
+      .sum('invoices.total_paid as collected')
+      .sum('invoices.balance as outstanding')
+      .groupByRaw("COALESCE(invoices.term, 'Unspecified')")
+      .orderByRaw("COALESCE(invoices.term, 'Unspecified')");
+
+    // ── Top defaulters (highest outstanding) ──
+    const topDefaulters = await db('invoices')
+      .join('students', 'invoices.student_id', 'students.id')
+      .leftJoin('users', 'students.user_id', 'users.id')
+      .leftJoin('enrollments', function () {
+        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
+      })
+      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+      .where('students.tenant_id', tenantId)
+      .where('invoices.balance', '>', 0)
+      .groupBy('students.id', 'users.first_name', 'users.last_name', 'students.first_name', 'students.last_name', 'students.student_id', 'classes.name')
+      .select(
+        db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
+        'students.student_id as admission_no',
+        'classes.name as class_name',
+        db.raw('SUM(invoices.balance) as outstanding'),
+      )
+      .orderByRaw('SUM(invoices.balance) DESC')
+      .limit(10);
+
+    // ── Recent payments ──
+    const recent = await db('payments')
+      .join('students', 'payments.student_id', 'students.id')
+      .leftJoin('users', 'students.user_id', 'users.id')
+      .where('students.tenant_id', tenantId)
+      .select(
+        'payments.id', 'payments.amount', 'payments.payment_date', 'payments.status',
+        db.raw('COALESCE(payments.method, payments.payment_method) as method'),
+        db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
+      )
+      .orderBy('payments.payment_date', 'desc')
+      .limit(8);
+
+    const thisMonth = await db('payments')
+      .join('students', 'payments.student_id', 'students.id')
+      .where('students.tenant_id', tenantId)
+      .where('payments.status', 'completed')
+      .whereRaw("DATE_TRUNC('month', payments.payment_date) = DATE_TRUNC('month', CURRENT_DATE)")
+      .select(db.raw('COALESCE(SUM(payments.amount),0) as total'), db.raw('COUNT(payments.id) as count'))
+      .first();
+
+    const rate = (b: any, c: any) => { const bv = Number(b) || 0; const cv = Number(c) || 0; return bv > 0 ? Math.round((cv / bv) * 1000) / 10 : 0; };
+
+    res.json({
+      success: true,
+      data: {
+        totals: {
+          billed, paid, outstanding, collectionRate,
+          invoiceCount: Number(totals?.invoice_count) || 0,
+          overdueCount: Number(totals?.overdue_count) || 0,
+          paidCount: Number(totals?.paid_count) || 0,
+        },
+        byMethod: byMethod.map((r: any) => ({ method: r.method || 'unknown', total: Number(r.total) || 0, count: Number(r.count) || 0 })),
+        trend: trend.map((r: any) => ({ label: r.label, total: Number(r.total) || 0 })),
+        byLevel: byLevel.map((r: any) => ({ level: r.level, billed: Number(r.billed) || 0, collected: Number(r.collected) || 0, outstanding: Number(r.outstanding) || 0, rate: rate(r.billed, r.collected) })),
+        byClass: byClass.map((r: any) => ({ className: r.class_name, billed: Number(r.billed) || 0, collected: Number(r.collected) || 0, outstanding: Number(r.outstanding) || 0, rate: rate(r.billed, r.collected) })),
+        byTerm: byTerm.map((r: any) => ({ term: r.term, billed: Number(r.billed) || 0, collected: Number(r.collected) || 0, outstanding: Number(r.outstanding) || 0, rate: rate(r.billed, r.collected) })),
+        topDefaulters: topDefaulters.map((r: any) => ({ studentName: r.student_name, admissionNo: r.admission_no, className: r.class_name, outstanding: Number(r.outstanding) || 0 })),
+        recent: recent.map((r: any) => ({ id: r.id, studentName: r.student_name, amount: Number(r.amount) || 0, method: r.method, status: r.status, date: r.payment_date })),
+        thisMonth: { total: Number(thisMonth?.total) || 0, count: Number(thisMonth?.count) || 0 },
+      },
+    });
+  } catch (error) {
+    logger.error(`finance/analytics error: ${error}`);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// GET /api/v1/finance/fees — all fees for the tenant (with student name).
+router.get('/finance/fees', authenticate, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const rows = await db('fees')
+      .join('students', 'fees.student_id', 'students.id')
+      .leftJoin('users', 'students.user_id', 'users.id')
+      .where('students.tenant_id', tenantId)
+      .select(
+        'fees.*',
+        db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
+      )
+      .orderBy('fees.due_date', 'desc')
+      .limit(500);
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    logger.error(`finance/fees error: ${error}`);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
 export default router;
