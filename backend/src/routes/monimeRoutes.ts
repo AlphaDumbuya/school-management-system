@@ -213,8 +213,8 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
       updated_at: new Date(),
     });
 
-    // Reduce invoice balance if this paid an invoice.
     if (session.invoice_id) {
+      // Reduce the invoice balance…
       const invoice = await trx('invoices').where({ id: session.invoice_id }).first();
       if (invoice) {
         const newPaid = Number(invoice.total_paid || 0) + Number(session.amount);
@@ -226,6 +226,19 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
           updated_at: new Date(),
         });
       }
+      // …and settle the underlying fees linked to this invoice.
+      const itemFeeIds = (await trx('invoice_items').where({ invoice_id: session.invoice_id }).select('fee_id')).map((r: any) => r.fee_id);
+      if (itemFeeIds.length) {
+        const linkedFees = await trx('fees').whereIn('id', itemFeeIds).orderBy('due_date', 'asc');
+        await applyAmountToFees(trx, linkedFees, Number(session.amount));
+      }
+    } else {
+      // Ad-hoc payment (no invoice) → apply to the student's oldest outstanding fees.
+      const openFees = await trx('fees')
+        .where({ student_id: session.student_id })
+        .whereIn('status', ['pending', 'partial', 'overdue'])
+        .orderBy('due_date', 'asc');
+      await applyAmountToFees(trx, openFees, Number(session.amount));
     }
 
     await trx('payment_sessions').where({ id: sessionId }).update({
@@ -236,6 +249,28 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
   });
 
   logger.info(`Monime payment reconciled for session ${sessionId}`);
+}
+
+/**
+ * Apply a paid amount across a list of fees (oldest first), reducing each fee's
+ * balance and updating its status. Used so online payments auto-settle the
+ * student's fee ledger, not just the invoice.
+ */
+async function applyAmountToFees(trx: any, fees: any[], amount: number) {
+  let remaining = amount;
+  for (const fee of fees) {
+    if (remaining <= 0) break;
+    const bal = Number(fee.balance ?? fee.amount) || 0;
+    if (bal <= 0) continue;
+    const applied = Math.min(bal, remaining);
+    const newBal = bal - applied;
+    await trx('fees').where({ id: fee.id }).update({
+      balance: newBal,
+      status: newBal <= 0 ? 'paid' : 'partial',
+      updated_at: new Date(),
+    });
+    remaining -= applied;
+  }
 }
 
 export default router;

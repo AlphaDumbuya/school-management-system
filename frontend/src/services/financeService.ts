@@ -47,9 +47,14 @@ export interface FinanceOverview {
 }
 
 export interface FinanceAnalytics {
+  totals: { billed: number; paid: number; outstanding: number; collectionRate: number; invoiceCount: number; overdueCount: number; paidCount: number };
   byMethod: { method: string; total: number; count: number }[];
   trend: { label: string; total: number }[];
-  byLevel: { level: string; collected: number; outstanding: number }[];
+  byLevel: { level: string; billed: number; collected: number; outstanding: number; rate: number }[];
+  byClass: { className: string; billed: number; collected: number; outstanding: number; rate: number }[];
+  byTerm: { term: string; billed: number; collected: number; outstanding: number; rate: number }[];
+  topDefaulters: { studentName: string; admissionNo: string; className: string; outstanding: number }[];
+  recent: { id: string; studentName: string; amount: number; method: string; status: string; date: string }[];
   thisMonth: { total: number; count: number };
 }
 
