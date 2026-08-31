@@ -1,102 +1,262 @@
 /**
  * FeesPage — /finance/fees
- * Tenant-wide fees list with a quick "Create Fee" action.
+ * Sierra-Leone-style Academic Year Fee Structures Configurator.
+ *
+ * Layout:
+ *  1. Year picker + KPI row (configured classes, total expected, collected,
+ *     outstanding).
+ *  2. Class badge grid — click any class to open the configurator.
+ *  3. Configured structures list — expand for term breakdown.
+ *  4. FeeStructureModal — term tuition, itemised year expenses, payment-policy
+ *     rules (min % for new / continuing students, per-term clearance, late fee,
+ *     instalment flag) + live full-year summary.
+ *  5. BillTermModal — materialise fees for one term from a structure.
  */
-import React, { useState } from 'react';
+
+import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Plus, X } from 'lucide-react';
+import {
+  RefreshCw, Plus, Trash2, CheckCircle2, ChevronDown, ChevronRight,
+  Settings2, Layers, X, Info,
+} from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { Button } from '@components/ui/button';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { showToast } from '@utils/toast';
+import { classesService } from '@services/classesService';
+import { feeStructureService, FeeStructure, FeeStructureExpense } from '@services/feeStructureService';
 import { financeService } from '@services/financeService';
-import { studentsService } from '@services/studentsService';
-import { FinanceOverviewCards, fmtMoney, statusPill, SwipeHint } from './FinanceOverviewCards';
 
+/* ── helpers ─────────────────────────────────────────────────────────────── */
+const fmtLe = (v: number | string | null | undefined) => `Le ${(Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+
+const CURRENT_YEAR = `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`;
+const LEVEL_COLORS: Record<string, string> = {
+  'Nursery School': 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
+  'Primary School': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  'Junior Secondary (JSS)': 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400',
+  'Senior Secondary (SSS)': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+};
+const levelCls = (l?: string) => LEVEL_COLORS[l || ''] ?? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+
+/* ── main component ──────────────────────────────────────────────────────── */
 export const FeesPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const [year, setYear] = useState(CURRENT_YEAR);
   const [search, setSearch] = useState('');
-  const [createOpen, setCreateOpen] = useState(false);
+  const [configClass, setConfigClass] = useState<any | null>(null); // class object to configure
+  const [billTarget, setBillTarget] = useState<FeeStructure | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const { data: overviewResp, isLoading: ovLoading, refetch: refetchOv } = useQuery({
-    queryKey: ['finance-overview'], queryFn: () => financeService.getOverview(), staleTime: 30_000,
+  // All classes in the tenant
+  const { data: classResp, isLoading: classLoading } = useQuery({
+    queryKey: ['classes-all'], queryFn: () => classesService.listClasses({ limit: 200 } as any), staleTime: 60_000,
   });
-  const { data: feesResp, isLoading, refetch } = useQuery({
-    queryKey: ['finance-fees'], queryFn: () => financeService.listFees(), staleTime: 15_000,
-  });
+  const classes: any[] = ((classResp as any)?.data?.data ?? (classResp as any)?.data ?? []);
 
-  const overview = (overviewResp as any)?.data?.data ?? (overviewResp as any)?.data;
-  const fees = ((feesResp as any)?.data?.data ?? (feesResp as any)?.data ?? []) as any[];
-  const filtered = fees.filter((f) => {
+  // Configured structures for the year
+  const { data: structResp, isLoading: structLoading, refetch } = useQuery({
+    queryKey: ['fee-structures', year], queryFn: () => feeStructureService.list(year), staleTime: 15_000,
+  });
+  const structures: FeeStructure[] = ((structResp as any)?.data?.data ?? (structResp as any)?.data ?? []);
+
+  // Finance overview KPIs
+  const { data: ovResp } = useQuery({ queryKey: ['finance-overview'], queryFn: () => financeService.getOverview(), staleTime: 30_000 });
+  const ov = (ovResp as any)?.data?.data ?? (ovResp as any)?.data;
+
+  const configuredIds = useMemo(() => new Set(structures.map((s) => s.classId || (s as any).class_id)), [structures]);
+
+  const visibleClasses = useMemo(() => {
     const t = search.trim().toLowerCase();
-    return !t || f.student_name?.toLowerCase().includes(t) || (f.type || '').toLowerCase().includes(t);
-  });
+    return classes.filter((c) => !t || c.name?.toLowerCase().includes(t) || c.level?.toLowerCase().includes(t));
+  }, [classes, search]);
+
+  const toggleExpand = (id: string) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const years = useMemo(() => {
+    const cur = new Date().getFullYear();
+    return Array.from({ length: 5 }, (_, i) => `${cur + i - 1}/${cur + i}`);
+  }, []);
+
+  const totalExpected = useMemo(() => structures.reduce((s, x) => s + (Number((x as any).fullYearTotal) || 0), 0), [structures]);
 
   return (
     <MainLayout>
       <PageShell
         title="Fee Structures"
-        subtitle="Fees billed to students"
+        subtitle="Configure term tuition & academic-year expenses per class"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => { refetch(); refetchOv(); }} disabled={isLoading}><RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></Button>
-            <Button variant="default" size="sm" onClick={() => setCreateOpen(true)}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Create Fee</span></Button>
+            <div className="relative w-36">
+              <select value={year} onChange={(e) => setYear(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+            </div>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={structLoading}>
+              <RefreshCw size={14} className={structLoading ? 'animate-spin' : ''} />
+            </Button>
           </div>
         }
       >
-        <FinanceOverviewCards overview={overview} loading={ovLoading} />
-
-        <div className="mb-4">
-          <SearchBar
-            placeholder="Search by student or fee type…"
-            onSearch={setSearch}
-            isLoading={isLoading}
-            resultCount={search ? filtered.length : undefined}
-            defaultValue={search}
-            className="w-full sm:max-w-md"
-          />
+        {/* KPI row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <KPITile label="Configured Classes" value={structures.length} sub={`of ${classes.length} total`} color="blue" />
+          <KPITile label="Total Expected Fees" value={fmtLe(totalExpected)} sub="All structures · this year" color="indigo" />
+          <KPITile label="Total Collected" value={fmtLe(ov?.totalPaid)} sub="Received via payments" color="emerald" />
+          <KPITile label="Outstanding Balances" value={fmtLe(ov?.totalOutstanding)} sub="Uncollected balances" color="rose" />
         </div>
 
-        {filtered.length === 0 ? (
-          <EmptyState message="No fees on record" description="Create a fee to start billing students." action={{ label: 'Create Fee', onClick: () => setCreateOpen(true) }} />
+        {/* Search */}
+        <div className="mb-4">
+          <SearchBar placeholder="Search classes…" onSearch={setSearch} isLoading={classLoading} className="w-full sm:max-w-md" />
+        </div>
+
+        {/* Class badge grid */}
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 mb-6">
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-1">Quick Class Preset Setup</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            Academic Year <span className="font-semibold">{year}</span> — click any class to configure its term tuition & year expenses.
+          </p>
+          {visibleClasses.length === 0 ? (
+            <p className="text-sm text-gray-400 py-4 text-center">No classes found for this school yet. Add classes first.</p>
+          ) : (
+            <>
+            <div className="flex flex-wrap gap-2">
+              {visibleClasses.map((c) => {
+                const done = configuredIds.has(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setConfigClass(c)}
+                    className={`group relative flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-xs font-semibold transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                      done
+                        ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-600 text-emerald-700 dark:text-emerald-400'
+                        : 'bg-white dark:bg-gray-800 border-dashed border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400'
+                    }`}
+                  >
+                    {done
+                      ? <CheckCircle2 size={13} className="flex-shrink-0" />
+                      : <Plus size={13} className="flex-shrink-0 opacity-60 group-hover:opacity-100" />}
+                    {c.name}
+                    {!done && <span className="text-[10px] font-bold text-blue-500 hidden group-hover:inline ml-1">Configure →</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-gray-400 mt-4">
+              Click any class badge to configure its fees. <span className="text-blue-500">Dashed border = not yet configured.</span> <span className="text-emerald-600">Green = configured.</span>
+            </p>
+            </>
+          )}
+        </div>
+
+        {/* Configured structures list */}
+        {structures.length === 0 ? (
+          <EmptyState
+            message="No fee structures configured for this year"
+            description="Click any class badge above to set up its term tuition and year expenses."
+          />
         ) : (
-          <>
-          <SwipeHint />
-          <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-gray-50 dark:bg-gray-900/40 text-xs text-gray-500">
-                <tr>
-                  <th className="px-4 py-3 whitespace-nowrap">Student</th>
-                  <th className="px-4 py-3 whitespace-nowrap">Type</th>
-                  <th className="px-4 py-3 text-right whitespace-nowrap">Amount</th>
-                  <th className="px-4 py-3 text-right whitespace-nowrap">Balance</th>
-                  <th className="px-4 py-3 whitespace-nowrap">Due</th>
-                  <th className="px-4 py-3 whitespace-nowrap">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
-                {filtered.map((f) => (
-                  <tr key={f.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white whitespace-nowrap">{f.student_name}</td>
-                    <td className="px-4 py-3 capitalize whitespace-nowrap">{f.type || '—'}</td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">{fmtMoney(f.amount)}</td>
-                    <td className="px-4 py-3 text-right font-semibold whitespace-nowrap">{fmtMoney(f.balance ?? f.amount)}</td>
-                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{f.due_date ? new Date(f.due_date).toLocaleDateString() : '—'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{statusPill(f.status)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+              Academic Year Fee Structures ({structures.length})
+            </h3>
+            {structures.map((s: any) => {
+              const isOpen = expanded.has(s.id);
+              const t1 = Number(s.term1_tuition) || 0;
+              const t2 = Number(s.term2_tuition) || 0;
+              const t3 = Number(s.term3_tuition) || 0;
+              const exp = s.expenses ?? [];
+              const expTotal = exp.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
+              const fullYear = t1 + t2 + t3 + expTotal;
+              return (
+                <div key={s.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+                  <div className="flex items-center gap-3 px-4 py-3 cursor-pointer" onClick={() => toggleExpand(s.id)}>
+                    <button className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0">
+                      {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm text-gray-900 dark:text-white">{s.class_name}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${levelCls(s.class_level)}`}>{s.class_level || 'Class'}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        Term 1: {fmtLe(t1)} · Term 2: {fmtLe(t2)} · Term 3: {fmtLe(t3)}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm font-black text-gray-900 dark:text-white">{fmtLe(fullYear)} / Yr</div>
+                      <div className="text-[10px] text-gray-400">inc. {fmtLe(expTotal)} expenses</div>
+                    </div>
+                    <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                      <button onClick={(e) => { e.stopPropagation(); setConfigClass(classes.find((c) => c.id === (s.classId || s.class_id)) ?? { id: s.classId || s.class_id, name: s.class_name, level: s.class_level }); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-600" title="Edit"><Settings2 size={15} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setBillTarget(s); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-emerald-600" title="Bill a term"><Layers size={15} /></button>
+                    </div>
+                  </div>
+                  {isOpen && (
+                    <div className="border-t border-gray-100 dark:border-gray-700 px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-5 text-sm">
+                      <div>
+                        <div className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Term Tuition</div>
+                        <div className="space-y-1.5">
+                          {[['Term 1 (Tuition + Expenses)', t1 + expTotal], ['Term 2 (Tuition Only)', t2], ['Term 3 (Tuition Only)', t3]].map(([l, v]) => (
+                            <div key={l as string} className="flex justify-between">
+                              <span className="text-gray-500">{l}</span>
+                              <span className="font-semibold">{fmtLe(v)}</span>
+                            </div>
+                          ))}
+                          <div className="flex justify-between border-t border-gray-100 dark:border-gray-700 pt-1.5">
+                            <span className="font-bold text-gray-700 dark:text-gray-300">Full Year Total</span>
+                            <span className="font-black text-gray-900 dark:text-white">{fmtLe(fullYear)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-gray-700 dark:text-gray-300 mb-2">General Academic Year Expenses</div>
+                        {exp.length === 0 ? <p className="text-gray-400 text-xs">No one-off expenses.</p> : (
+                          <div className="space-y-1">
+                            {exp.map((e: any, i: number) => (
+                              <div key={i} className="flex justify-between text-xs">
+                                <span className="text-gray-600 dark:text-gray-400">• {e.label}</span>
+                                <span className="font-medium">{fmtLe(e.amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {(s.min_percent_new || s.min_percent_continuing || s.min_percent_term) && (
+                          <div className="mt-3">
+                            <div className="font-semibold text-gray-700 dark:text-gray-300 mb-1 text-xs uppercase">Payment Policy</div>
+                            {s.min_percent_new && <div className="text-xs text-gray-500">New enrolment: min {s.min_percent_new}%</div>}
+                            {s.min_percent_continuing && <div className="text-xs text-gray-500">Continuing: min {s.min_percent_continuing}%</div>}
+                            {s.min_percent_term && <div className="text-xs text-gray-500">Per-term clearance: {s.min_percent_term}%</div>}
+                            {s.late_fee_percent && <div className="text-xs text-gray-500">Late fee surcharge: {s.late_fee_percent}%</div>}
+                            {s.allow_installments !== false && <div className="text-xs text-emerald-600">Instalments allowed</div>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          </>
         )}
 
-        {createOpen && (
-          <CreateFeeModal
-            onClose={() => setCreateOpen(false)}
-            onCreated={() => { setCreateOpen(false); queryClient.invalidateQueries({ queryKey: ['finance-fees'] }); refetchOv(); }}
+        {configClass && (
+          <FeeStructureModal
+            cls={configClass}
+            year={year}
+            onClose={() => setConfigClass(null)}
+            onSaved={() => { setConfigClass(null); queryClient.invalidateQueries({ queryKey: ['fee-structures', year] }); queryClient.invalidateQueries({ queryKey: ['finance-overview'] }); }}
+          />
+        )}
+        {billTarget && (
+          <BillTermModal
+            structure={billTarget}
+            onClose={() => setBillTarget(null)}
+            onDone={() => { setBillTarget(null); queryClient.invalidateQueries({ queryKey: ['finance-fees'] }); }}
           />
         )}
       </PageShell>
@@ -104,82 +264,272 @@ export const FeesPage: React.FC = () => {
   );
 };
 
-// ── Create Fee modal ──────────────────────────────────────────────────────────
-const CreateFeeModal: React.FC<{ onClose: () => void; onCreated: () => void }> = ({ onClose, onCreated }) => {
-  const [studentQuery, setStudentQuery] = useState('');
-  const [studentId, setStudentId] = useState('');
-  const [type, setType] = useState('Tuition');
-  const [amount, setAmount] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [saving, setSaving] = useState(false);
+/* ── KPI tile ────────────────────────────────────────────────────────────── */
+const KCOLORS: Record<string, string> = {
+  blue:    'text-blue-600   bg-blue-500/10',
+  indigo:  'text-indigo-600 bg-indigo-500/10',
+  emerald: 'text-emerald-600 bg-emerald-500/10',
+  rose:    'text-rose-600   bg-rose-500/10',
+};
+const KPITile: React.FC<{ label: string; value: React.ReactNode; sub?: string; color: string }> = ({ label, value, sub, color }) => (
+  <div className={`rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4`}>
+    <div className={`text-xl font-black ${KCOLORS[color]?.split(' ')[0] ?? ''}`}>{value}</div>
+    <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mt-0.5">{label}</div>
+    {sub && <div className="text-[11px] text-gray-400 mt-0.5">{sub}</div>}
+  </div>
+);
 
-  const { data: studentsResp } = useQuery({
-    queryKey: ['fee-students', studentQuery],
-    queryFn: () => studentsService.listStudents({ search: studentQuery, limit: 10 } as any),
-    enabled: studentQuery.trim().length > 1,
-    staleTime: 30_000,
+/* ── Fee Structure Modal ──────────────────────────────────────────────────── */
+const FeeStructureModal: React.FC<{
+  cls: any; year: string;
+  onClose: () => void; onSaved: () => void;
+}> = ({ cls, year, onClose, onSaved }) => {
+  const [t1, setT1] = useState('');
+  const [t2, setT2] = useState('');
+  const [t3, setT3] = useState('');
+  const [applyT1, setApplyT1] = useState(false);
+  const [expenses, setExpenses] = useState<FeeStructureExpense[]>([]);
+  const [minNew, setMinNew] = useState('');
+  const [minCont, setMinCont] = useState('');
+  const [minTerm, setMinTerm] = useState('');
+  const [lateFee, setLateFee] = useState('');
+  const [allowInst, setAllowInst] = useState(true);
+  const [policyNotes, setPolicyNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  // Load existing
+  useQuery({
+    queryKey: ['fee-struct', cls.id, year],
+    queryFn: () => feeStructureService.get(cls.id, year),
+    staleTime: 0,
+    enabled: !loaded,
+    onSettled: (d: any) => {
+      setLoaded(true);
+      const s = (d as any)?.data?.data ?? (d as any)?.data;
+      if (!s) return;
+      setT1(String(s.term1Tuition ?? s.term1_tuition ?? ''));
+      setT2(String(s.term2Tuition ?? s.term2_tuition ?? ''));
+      setT3(String(s.term3Tuition ?? s.term3_tuition ?? ''));
+      setExpenses((s.expenses || []).map((e: any) => ({ label: e.label, amount: Number(e.amount) || 0 })));
+      setMinNew(s.minPercentNew ?? s.min_percent_new ?? '');
+      setMinCont(s.minPercentContinuing ?? s.min_percent_continuing ?? '');
+      setMinTerm(s.minPercentTerm ?? s.min_percent_term ?? '');
+      setLateFee(s.lateFeePercent ?? s.late_fee_percent ?? '');
+      setAllowInst(s.allowInstallments ?? s.allow_installments ?? true);
+      setPolicyNotes(s.policyNotes ?? s.policy_notes ?? '');
+    },
   });
-  const students = ((studentsResp as any)?.data?.data ?? (studentsResp as any)?.data ?? []) as any[];
+
+  const n = (v: string) => Number(v) || 0;
+  const t1v = n(t1), t2v = applyT1 ? t1v : n(t2), t3v = applyT1 ? t1v : n(t3);
+  const expTotal = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const fullYear = t1v + t2v + t3v + expTotal;
+
+  const addExpense = () => setExpenses((e) => [...e, { label: '', amount: 0 }]);
+  const updExp = (i: number, k: 'label' | 'amount', v: any) => setExpenses((e) => e.map((x, j) => j === i ? { ...x, [k]: k === 'amount' ? Number(v) || 0 : v } : x));
+  const delExp = (i: number) => setExpenses((e) => e.filter((_, j) => j !== i));
 
   const submit = async () => {
-    if (!studentId || !amount || !dueDate) { showToast.error('Student, amount and due date are required'); return; }
+    if (!t1) { showToast.error('Term 1 tuition is required'); return; }
     setSaving(true);
     try {
-      await financeService.createFee({ studentId, type, amount: Number(amount), dueDate });
-      showToast.success('Fee created');
-      onCreated();
+      await feeStructureService.save({
+        classId: cls.id, academicYear: year,
+        term1Tuition: t1v, term2Tuition: t2v, term3Tuition: t3v,
+        minPercentNew: minNew ? Number(minNew) : null,
+        minPercentContinuing: minCont ? Number(minCont) : null,
+        minPercentTerm: minTerm ? Number(minTerm) : null,
+        allowInstallments: allowInst,
+        lateFeePercent: lateFee ? Number(lateFee) : null,
+        policyNotes: policyNotes || null,
+        expenses: expenses.filter((e) => e.label),
+      });
+      showToast.success('Fee structure saved');
+      onSaved();
     } catch (err: any) {
-      showToast.error(err?.response?.data?.message || 'Failed to create fee');
-    } finally {
-      setSaving(false);
-    }
+      showToast.error(err?.response?.data?.error || 'Failed to save');
+    } finally { setSaving(false); }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="font-bold text-gray-900 dark:text-white">Create Fee</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 overflow-y-auto" onClick={onClose}>
+      <div className="relative w-full max-w-xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 my-4" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-t-2xl">
+          <div>
+            <h3 className="font-bold text-gray-900 dark:text-white">Configure Academic Year Fees</h3>
+            <p className="text-xs text-gray-500 mt-0.5">{cls.name} · {year}</p>
+          </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
         </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase">Student</label>
-            <input value={studentQuery} onChange={(e) => { setStudentQuery(e.target.value); setStudentId(''); }} placeholder="Search student…" className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
-            {studentQuery && !studentId && students.length > 0 && (
-              <div className="mt-1 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
-                {students.map((s: any) => (
-                  <button key={s.id} onClick={() => { setStudentId(s.id); setStudentQuery(`${s.first_name} ${s.last_name}`); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
-                    {s.first_name} {s.last_name} <span className="text-xs text-gray-400">{s.student_id}</span>
-                  </button>
-                ))}
+
+        <div className="p-5 space-y-6 overflow-y-auto max-h-[75vh]">
+          {/* Term tuition */}
+          <Section title="Sub-Terms Tuition Fees">
+            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mb-3 cursor-pointer">
+              <input type="checkbox" checked={applyT1} onChange={(e) => setApplyT1(e.target.checked)} className="rounded" />
+              Apply Term 1 tuition to Terms 2 & 3
+            </label>
+            <div className="grid grid-cols-3 gap-3">
+              <AmtField label="Term 1 Tuition" value={t1} onChange={setT1} />
+              <AmtField label="Term 2 Tuition" value={applyT1 ? t1 : t2} onChange={setT2} disabled={applyT1} />
+              <AmtField label="Term 3 Tuition" value={applyT1 ? t1 : t3} onChange={setT3} disabled={applyT1} />
+            </div>
+          </Section>
+
+          {/* Year expenses */}
+          <Section title="General Academic Year Expenses" hint="One-off full-year charges billed in Term 1 only (Uniform, Exams Levy, ID Card, Development Levy…)">
+            {expenses.map((e, i) => (
+              <div key={i} className="flex gap-2 items-center mb-2">
+                <input value={e.label} onChange={(ev) => updExp(i, 'label', ev.target.value)} placeholder="Expense label" className="flex-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+                <input type="number" value={e.amount || ''} onChange={(ev) => updExp(i, 'amount', ev.target.value)} placeholder="Le" className="w-24 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+                <button onClick={() => delExp(i)} className="p-1.5 text-gray-400 hover:text-rose-600"><Trash2 size={15} /></button>
               </div>
-            )}
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase">Fee Type</label>
-            <select value={type} onChange={(e) => setType(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
-              {['Tuition', 'Registration', 'Exam', 'Library', 'Transport', 'Uniform', 'Other'].map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Amount (Le)</label>
-              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+            ))}
+            <button onClick={addExpense} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline mt-1"><Plus size={14} /> Add Charge Item</button>
+            {expTotal > 0 && <p className="text-xs text-gray-500 mt-2">Total Academic Year Expenses: <span className="font-bold">{fmtLe(expTotal)}</span></p>}
+          </Section>
+
+          {/* Payment policy */}
+          <Section title="Payment Policy Rules" hint="Optional school-specific rules. Leave blank if no minimum applies.">
+            <div className="grid grid-cols-2 gap-3">
+              <PolicyField label="Newly enrolled — min %" value={minNew} onChange={setMinNew} />
+              <PolicyField label="Continuing student — min %" value={minCont} onChange={setMinCont} />
+              <PolicyField label="Per-term clearance %" value={minTerm} onChange={setMinTerm} />
+              <PolicyField label="Late-fee surcharge %" value={lateFee} onChange={setLateFee} />
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Due Date</label>
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 mt-3 cursor-pointer">
+              <input type="checkbox" checked={allowInst} onChange={(e) => setAllowInst(e.target.checked)} className="rounded" />
+              Allow instalment payments
+            </label>
+            <textarea value={policyNotes} onChange={(e) => setPolicyNotes(e.target.value)} placeholder="Additional policy notes (optional)…" rows={2} className="w-full mt-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm resize-none" />
+          </Section>
+
+          {/* Live summary */}
+          <div className="rounded-2xl bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 p-4">
+            <div className="text-xs font-bold uppercase text-gray-500 mb-3">Academic Year Unified Financial Summary</div>
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              {[
+                ['Term 1 (Tuition + Expenses)', t1v + expTotal],
+                ['Term 2 (Tuition)', t2v],
+                ['Term 3 (Tuition)', t3v],
+              ].map(([l, v]) => (
+                <div key={l as string} className="text-center">
+                  <div className="text-sm font-black text-gray-900 dark:text-white">{fmtLe(v)}</div>
+                  <div className="text-[10px] text-gray-400 mt-0.5">{l}</div>
+                </div>
+              ))}
             </div>
+            <div className="flex items-center justify-between border-t border-gray-200 dark:border-gray-700 pt-3">
+              <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Full Year Total</span>
+              <span className="text-lg font-black text-indigo-600">{fmtLe(fullYear)}</span>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-2">
+              Parents searching in Term 1 will see their Term 1 tuition + itemised year expenses ({fmtLe(t1v + expTotal)}).
+            </p>
           </div>
         </div>
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700 sticky bottom-0 bg-white dark:bg-gray-800 rounded-b-2xl">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="default" size="sm" onClick={submit} disabled={saving}>{saving ? 'Creating…' : 'Create Fee'}</Button>
+          <Button variant="default" size="sm" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Save Academic Year Fees'}</Button>
         </div>
       </div>
     </div>
   );
 };
+
+/* ── Bill term modal ─────────────────────────────────────────────────────── */
+const BillTermModal: React.FC<{ structure: any; onClose: () => void; onDone: () => void }> = ({ structure, onClose, onDone }) => {
+  const [term, setTerm] = useState<1 | 2 | 3>(1);
+  const [dueDate, setDueDate] = useState('');
+  const [saving, setSaving] = useState(false);
+  const t1 = Number(structure.term1_tuition) || 0;
+  const t2 = Number(structure.term2_tuition) || 0;
+  const t3 = Number(structure.term3_tuition) || 0;
+  const expTotal = (structure.expenses ?? []).reduce((s: number, e: any) => s + (Number(e.amount) || 0), 0);
+  const termAmt = [0, t1 + expTotal, t2, t3][term];
+
+  const submit = async () => {
+    if (!dueDate) { showToast.error('Set a due date'); return; }
+    setSaving(true);
+    try {
+      const res: any = await feeStructureService.billTerm(structure.id, term, dueDate);
+      const billed = res?.data?.data?.billed ?? res?.data?.billed ?? 0;
+      showToast.success(`Billed ${billed} student${billed === 1 ? '' : 's'} for ${['', 'First', 'Second', 'Third'][term]} Term`);
+      onDone();
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.error || 'Billing failed');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="font-bold text-gray-900 dark:text-white">Bill a Term — {structure.class_name}</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Term</label>
+            <div className="grid grid-cols-3 gap-1 mt-1 bg-gray-100 dark:bg-gray-900/50 rounded-xl p-1">
+              {([1, 2, 3] as const).map((t) => (
+                <button key={t} onClick={() => setTerm(t)} className={`py-1.5 text-xs font-semibold rounded-lg transition-colors ${term === t ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>Term {t}</button>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 px-4 py-3 text-sm">
+            <div className="text-xs text-indigo-500 mb-1">Amount to bill per student</div>
+            <div className="text-xl font-black text-indigo-700 dark:text-indigo-400">{fmtLe(termAmt)}</div>
+            {term === 1 && expTotal > 0 && <div className="text-xs text-indigo-400 mt-0.5">inc. {fmtLe(expTotal)} year expenses</div>}
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Due Date</label>
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+          </div>
+          <p className="text-xs text-gray-400">This creates individual fee records for every active student in the class, ready to invoice and collect.</p>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button variant="default" size="sm" onClick={submit} disabled={saving}>{saving ? 'Billing…' : 'Bill This Term'}</Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ── Small sub-components ────────────────────────────────────────────────── */
+const Section: React.FC<{ title: string; hint?: string; children: React.ReactNode }> = ({ title, hint, children }) => (
+  <div>
+    <div className="flex items-center gap-1.5 mb-2">
+      <h4 className="text-xs font-bold uppercase text-gray-600 dark:text-gray-400">{title}</h4>
+      {hint && <span title={hint}><Info size={13} className="text-gray-300 cursor-help" /></span>}
+    </div>
+    {children}
+  </div>
+);
+
+const AmtField: React.FC<{ label: string; value: string; onChange: (v: string) => void; disabled?: boolean }> = ({ label, value, onChange, disabled }) => (
+  <div>
+    <label className="text-[11px] text-gray-400 uppercase font-semibold">{label}</label>
+    <div className="relative mt-1">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">Le</span>
+      <input type="number" value={value} onChange={(e) => onChange(e.target.value)} placeholder="0" disabled={disabled} className="w-full pl-8 pr-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm disabled:opacity-50 disabled:cursor-not-allowed" />
+    </div>
+  </div>
+);
+
+const PolicyField: React.FC<{ label: string; value: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => (
+  <div>
+    <label className="text-[11px] text-gray-400 uppercase font-semibold">{label}</label>
+    <div className="relative mt-1">
+      <input type="number" value={value} onChange={(e) => onChange(e.target.value)} placeholder="e.g. 50" min={0} max={100} className="w-full pl-3 pr-8 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+    </div>
+  </div>
+);
 
 export default FeesPage;

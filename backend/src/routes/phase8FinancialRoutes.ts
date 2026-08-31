@@ -1157,10 +1157,16 @@ router.get('/finance/invoices', authenticate, async (req: Request, res: Response
       .join('students', 'invoices.student_id', 'students.id')
       .leftJoin('users', 'students.user_id', 'users.id')
       .where('students.tenant_id', tenantId)
+      .leftJoin('enrollments', function () {
+        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
+      })
+      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
       .select(
         'invoices.*',
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
         'students.student_id as admission_no',
+        'classes.name as class_name',
+        'classes.level as class_level',
       )
       .orderBy('invoices.created_at', 'desc');
     if (status) q = q.where('invoices.status', status);
@@ -1357,6 +1363,176 @@ router.get('/finance/analytics', authenticate, async (req: Request, res: Respons
   }
 });
 
+// POST /api/v1/finance/bulk-bill — create a fee for every student matching a
+// target (a class, a level, or ALL active students). Enterprise billing.
+router.post('/finance/bulk-bill', authenticate, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const userId = (req as any).user.id;
+    const { scope, classId, level, type, amount, dueDate, term, academicYear, description } = req.body || {};
+
+    if (!type || !amount || !dueDate) return res.status(400).json({ success: false, error: 'type, amount and dueDate are required' });
+    const amt = Number(amount);
+    if (!(amt > 0)) return res.status(400).json({ success: false, error: 'Amount must be greater than 0' });
+
+    // Resolve the target students (active enrollments within this tenant).
+    let q = db('students')
+      .leftJoin('enrollments', function () {
+        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
+      })
+      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+      .where('students.tenant_id', tenantId)
+      .where('students.status', 'active');
+
+    if (scope === 'class' && classId) q = q.where('enrollments.class_id', classId);
+    else if (scope === 'level' && level) q = q.where('classes.level', level);
+    // scope === 'all' → no extra filter.
+
+    const students = await q.distinct('students.id as id').select('students.id');
+    if (students.length === 0) return res.status(400).json({ success: false, error: 'No matching active students found' });
+
+    const now = new Date();
+    let created = 0;
+    for (const s of students) {
+      const feeId = `FEE-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+      try {
+        await db('fees').insert({
+          id: feeId,
+          tenant_id: tenantId,
+          student_id: s.id,
+          type,
+          amount: amt,
+          balance: amt,
+          due_date: new Date(dueDate),
+          term: term || null,
+          academic_year: academicYear || null,
+          description: description || null,
+          class_id: scope === 'class' ? classId : null,
+          status: 'pending',
+          created_at: now,
+          updated_at: now,
+        });
+        created++;
+      } catch (e) { /* skip individual failures */ }
+    }
+
+    await auditService.logAudit({
+      entityType: 'fee', entityId: `bulk-bill-${Date.now()}`, action: 'bulk_create',
+      performedBy: userId, details: { scope, classId, level, type, amount: amt, created }, timestamp: now,
+    }).catch(() => {});
+
+    res.json({ success: true, data: { created, total: students.length } });
+  } catch (error) {
+    logger.error(`finance/bulk-bill error: ${error}`);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// POST /api/v1/finance/bulk-invoice — generate ONE invoice per student from
+// their outstanding (unbilled) fees, optionally scoped by term/class/level.
+router.post('/finance/bulk-invoice', authenticate, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const userId = (req as any).user.id;
+    const { scope, classId, level, term, academicYear, dueDate } = req.body || {};
+
+    // Students in scope.
+    let sq = db('students')
+      .leftJoin('enrollments', function () {
+        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
+      })
+      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+      .where('students.tenant_id', tenantId)
+      .where('students.status', 'active');
+    if (scope === 'class' && classId) sq = sq.where('enrollments.class_id', classId);
+    else if (scope === 'level' && level) sq = sq.where('classes.level', level);
+    const students = await sq.distinct('students.id as id').select('students.id');
+
+    const now = new Date();
+    let generated = 0;
+    for (const s of students) {
+      // Fees for this student not yet linked to an invoice, with a balance.
+      let fq = db('fees')
+        .leftJoin('invoice_items', 'invoice_items.fee_id', 'fees.id')
+        .whereNull('invoice_items.id')
+        .where('fees.student_id', s.id)
+        .whereIn('fees.status', ['pending', 'partial', 'overdue']);
+      if (term) fq = fq.where('fees.term', term);
+      if (academicYear) fq = fq.where('fees.academic_year', academicYear);
+      const fees = await fq.select('fees.id', 'fees.amount', 'fees.balance');
+      if (fees.length === 0) continue;
+
+      const total = fees.reduce((sum: number, f: any) => sum + (Number(f.balance ?? f.amount) || 0), 0);
+      if (total <= 0) continue;
+
+      const invoiceId = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+      const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 900000 + 100000)}`;
+      await db('invoices').insert({
+        id: invoiceId,
+        tenant_id: tenantId,
+        invoice_number: invoiceNumber,
+        student_id: s.id,
+        total_amount: total,
+        total_paid: 0,
+        balance: total,
+        due_date: dueDate ? new Date(dueDate) : now,
+        term: term || null,
+        academic_year: academicYear || null,
+        status: 'pending',
+        generated_at: now,
+        created_at: now,
+        updated_at: now,
+      }).catch(() => {});
+      for (const f of fees) {
+        await db('invoice_items').insert({
+          id: `II-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          invoice_id: invoiceId, fee_id: f.id, created_at: now,
+        }).catch(() => {});
+      }
+      generated++;
+    }
+
+    await auditService.logAudit({
+      entityType: 'invoice', entityId: `bulk-invoice-${Date.now()}`, action: 'bulk_create',
+      performedBy: userId, details: { scope, classId, level, term, generated }, timestamp: now,
+    }).catch(() => {});
+
+    res.json({ success: true, data: { generated } });
+  } catch (error) {
+    logger.error(`finance/bulk-invoice error: ${error}`);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// GET /api/v1/finance/invoices/:id/detail — invoice with its fee line items + payments.
+router.get('/finance/invoices/:id/detail', authenticate, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const invoice = await db('invoices')
+      .join('students', 'invoices.student_id', 'students.id')
+      .leftJoin('users', 'students.user_id', 'users.id')
+      .where('invoices.id', req.params.id)
+      .where('students.tenant_id', tenantId)
+      .select('invoices.*', db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"), 'students.student_id as admission_no')
+      .first();
+    if (!invoice) return res.status(404).json({ success: false, error: 'Invoice not found' });
+
+    const items = await db('invoice_items')
+      .join('fees', 'invoice_items.fee_id', 'fees.id')
+      .where('invoice_items.invoice_id', invoice.id)
+      .select('fees.id', 'fees.type', 'fees.amount', 'fees.balance', 'fees.status', 'fees.due_date');
+    const payments = await db('payments')
+      .where('invoice_id', invoice.id)
+      .select('id', 'amount', 'payment_date', db.raw('COALESCE(method, payment_method) as method'), 'status', 'reference_number')
+      .orderBy('payment_date', 'desc');
+
+    res.json({ success: true, data: { invoice, items, payments } });
+  } catch (error) {
+    logger.error(`finance/invoices/detail error: ${error}`);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
 // GET /api/v1/finance/fees — all fees for the tenant (with student name).
 router.get('/finance/fees', authenticate, async (req: Request, res: Response) => {
   try {
@@ -1364,13 +1540,20 @@ router.get('/finance/fees', authenticate, async (req: Request, res: Response) =>
     const rows = await db('fees')
       .join('students', 'fees.student_id', 'students.id')
       .leftJoin('users', 'students.user_id', 'users.id')
+      .leftJoin('enrollments', function () {
+        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
+      })
+      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
       .where('students.tenant_id', tenantId)
       .select(
         'fees.*',
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
+        'students.student_id as admission_no',
+        'classes.name as class_name',
+        'classes.level as class_level',
       )
       .orderBy('fees.due_date', 'desc')
-      .limit(500);
+      .limit(1000);
     res.json({ success: true, data: rows });
   } catch (error) {
     logger.error(`finance/fees error: ${error}`);
