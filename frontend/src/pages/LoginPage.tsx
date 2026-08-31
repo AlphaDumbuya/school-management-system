@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
 import useAuthStore from '@store/authStore';
+import { InstallAppButton } from '@components/pwa/InstallAppButton';
+import { WelcomeModal } from '@components/pwa/WelcomeModal';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
@@ -43,9 +45,22 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login, isLoading, error } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
+  const [online, setOnline] = useState<boolean>(navigator.onLine);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isInitialized = useAuthStore((s) => s.isInitialized);
   const user = useAuthStore((s) => s.user);
+
+  // Track connectivity so we can guide the user before they even try to sign in.
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
 
   // PWA launch: if the user is already signed in, skip the form and go
   // straight to their dashboard.
@@ -73,6 +88,9 @@ export const LoginPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#1a1a2e] flex relative overflow-hidden">
+      {/* First-launch welcome popup (only when not already signed in) */}
+      {!(isAuthenticated && user) && <WelcomeModal onRegister={() => navigate('/register')} />}
+
       {/* ── Ambient background (whole screen) ───────────────────────── */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-[#00d4aa]/10 blur-[130px] animate-aurora" />
@@ -124,6 +142,11 @@ export const LoginPage: React.FC = () => {
             Academics, attendance, fees, identity and more — built for schools in
             Sierra Leone and beyond. Fast, secure and works even offline.
           </p>
+
+          {/* Install app CTA (only renders when installable / iOS) */}
+          <div className="mb-8 animate-fade-in-up animation-delay-100">
+            <InstallAppButton label="Get the WiSkul App" alwaysShow />
+          </div>
 
           {/* Feature grid */}
           <div className="grid grid-cols-2 gap-3 animate-fade-in-up animation-delay-200">
@@ -187,7 +210,17 @@ export const LoginPage: React.FC = () => {
                 <p className="text-gray-500 text-sm mt-1">Sign in to your school portal</p>
               </div>
 
-              {displayError && (
+              {!online && (
+                <div className="mb-5 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-200 flex items-start gap-2">
+                  <span className="text-amber-400 mt-0.5">📴</span>
+                  <span>
+                    You're offline. Connect to the internet to sign in. Once you're
+                    signed in, WiSkul keeps working offline.
+                  </span>
+                </div>
+              )}
+
+              {online && displayError && (
                 <div className="mb-5 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-xs text-red-300 animate-shake flex items-center gap-2">
                   <span className="text-red-400">⚠</span>
                   {displayError}
@@ -273,12 +306,13 @@ export const LoginPage: React.FC = () => {
                 {/* Submit */}
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || !online}
+                  title={!online ? 'You need an internet connection to sign in' : undefined}
                   className="group w-full bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-black text-sm tracking-[0.1em] py-3.5 rounded-xl transition-all duration-300 hover:shadow-[0_0_40px_rgba(0,212,170,0.35)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98]"
                 >
                   {isLoading && <FaSpinner className="animate-spin w-4 h-4" />}
-                  {isLoading ? 'SIGNING IN...' : 'SIGN IN'}
-                  {!isLoading && (
+                  {isLoading ? 'SIGNING IN...' : !online ? 'OFFLINE' : 'SIGN IN'}
+                  {!isLoading && online && (
                     <ArrowRight
                       size={16}
                       className="group-hover:translate-x-1 transition-transform"
@@ -304,6 +338,11 @@ export const LoginPage: React.FC = () => {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Install app CTA — mobile only (desktop shows it in the left panel) */}
+          <div className="lg:hidden mt-6 w-full flex justify-center">
+            <InstallAppButton label="Get the WiSkul App" variant="ghost" alwaysShow className="w-full" />
           </div>
 
           <button

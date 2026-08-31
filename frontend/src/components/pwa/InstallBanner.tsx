@@ -1,62 +1,46 @@
 /**
- * InstallBanner — PWA install prompt.
- * Shows a subtle bottom banner when the browser fires the `beforeinstallprompt`
- * event (Chrome/Edge/Android). iOS shows a tip to use "Add to Home Screen".
- * Dismisses permanently once accepted or closed.
+ * InstallBanner — subtle bottom banner that appears when the app is installable
+ * (or on iOS, offers add-to-home instructions). Shares install state via
+ * usePwaInstall so it never competes with the dedicated InstallAppButton.
+ * Dismissed state is persisted so it doesn't nag.
  */
 import React, { useEffect, useState } from 'react';
 import { Download, X, Share } from 'lucide-react';
+import usePwaInstall from '@hooks/usePwaInstall';
 
 const DISMISSED_KEY = 'pwa_install_dismissed';
 
 export const InstallBanner: React.FC = () => {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [show, setShow] = useState(false);
-  const [isIos, setIsIos] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
+  const { canInstall, isInstalled, platform, promptInstall } = usePwaInstall();
+  const [dismissed, setDismissed] = useState<boolean>(
+    () => !!localStorage.getItem(DISMISSED_KEY)
+  );
+  const [iosReady, setIosReady] = useState(false);
 
+  const isIos = platform === 'ios';
+
+  // On iOS there's no install event, so reveal the tip after a short delay.
   useEffect(() => {
-    // Already installed or previously dismissed
-    if (localStorage.getItem(DISMISSED_KEY)) return;
-
-    const standalone = window.matchMedia('(display-mode: standalone)').matches
-      || (navigator as any).standalone === true;
-    setIsStandalone(standalone);
-    if (standalone) return;
-
-    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    setIsIos(ios);
-
-    if (ios) {
-      // Show iOS tip after a short delay
-      setTimeout(() => setShow(true), 3000);
-      return;
+    if (isIos && !isInstalled && !dismissed) {
+      const t = setTimeout(() => setIosReady(true), 3000);
+      return () => clearTimeout(t);
     }
-
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShow(true);
-    };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
+  }, [isIos, isInstalled, dismissed]);
 
   const dismiss = () => {
-    setShow(false);
+    setDismissed(true);
     localStorage.setItem(DISMISSED_KEY, '1');
   };
 
   const install = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') localStorage.setItem(DISMISSED_KEY, '1');
-    setShow(false);
-    setDeferredPrompt(null);
+    const outcome = await promptInstall();
+    if (outcome === 'accepted') dismiss();
   };
 
-  if (!show || isStandalone) return null;
+  if (isInstalled || dismissed) return null;
+  // Show if directly installable, or on iOS once the tip is ready.
+  const visible = canInstall || (isIos && iosReady);
+  if (!visible) return null;
 
   return (
     <div
@@ -66,12 +50,17 @@ export const InstallBanner: React.FC = () => {
         text-white animate-in slide-in-from-bottom duration-300"
     >
       <div className="flex items-center gap-3 min-w-0">
-        <img src="/logo.png" alt="WiSkul" className="w-10 h-10 rounded-xl object-contain flex-shrink-0" />
+        <img
+          src="/logo.png"
+          alt="WiSkul"
+          className="w-10 h-10 rounded-xl object-contain flex-shrink-0 bg-white/95 p-1"
+        />
         <div className="min-w-0">
           <p className="text-sm font-bold truncate">Install WiSkul</p>
           {isIos ? (
             <p className="text-xs text-gray-400 flex items-center gap-1">
-              Tap <Share size={12} className="inline text-blue-400" /> then <strong>Add to Home Screen</strong>
+              Tap <Share size={12} className="inline text-blue-400" /> then{' '}
+              <strong>Add to Home Screen</strong>
             </p>
           ) : (
             <p className="text-xs text-gray-400">Add to home screen for quick access</p>
