@@ -2,7 +2,7 @@
   "name": "WiSkul — School Management",
   "short_name": "WiSkul",
   "description": "Comprehensive school management platform for academics, attendance, identity, and fee management.",
-  "start_url": "/",
+  "start_url": "/login",
   "display": "standalone",
   "background_color": "#1a1a2e",
   "theme_color": "#00d4aa",
