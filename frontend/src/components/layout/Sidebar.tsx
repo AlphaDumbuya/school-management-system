@@ -214,7 +214,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'accountant'],
     module: 'Financial Management',
     group: 'Finance',
-    version: 'v2',
+    version: 'v1',
   },
   {
     label: 'Invoices',
@@ -223,7 +223,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'accountant', 'parent'],
     module: 'Financial Management',
     group: 'Finance',
-    version: 'v2',
+    version: 'v1',
   },
   {
     label: 'Payments & Receipts',
@@ -232,7 +232,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'principal', 'accountant', 'parent'],
     module: 'Financial Management',
     group: 'Finance',
-    version: 'v2',
+    version: 'v1',
   },
   {
     label: 'Expenses',
