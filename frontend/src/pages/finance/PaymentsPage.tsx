@@ -1,7 +1,7 @@
 /**
  * PaymentsPage — /finance/payments
- * The school's FINANCE HUB. Enterprise command center to monitor and manage all
- * fee payments across every class, level and term:
+ * The school's payments command center to monitor and manage all fee payments
+ * across every class, level and term:
  *  - Total fees billed, collected, outstanding + collection-rate gauge
  *  - This-month collections, payment-method mix, 6-month trend
  *  - Breakdowns by TERM, LEVEL and CLASS (billed / collected / outstanding / %)
@@ -99,7 +99,7 @@ export const PaymentsPage: React.FC = () => {
   return (
     <MainLayout>
       <PageShell
-        title="Finance Hub"
+        title="Payments & Collections"
         subtitle="Monitor and manage all fee collections across classes, levels and terms"
         actions={
           <div className="flex items-center gap-2">
