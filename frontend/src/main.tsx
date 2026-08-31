@@ -20,7 +20,8 @@ ReactDOM.createRoot(rootElement).render(
   </React.StrictMode>
 );
 
-// Register the service worker (PWA — offline support, caching, push notifications).
+// Register the Workbox service worker (PWA — full offline app shell, API/image
+// runtime caching, offline write-queue replay, push notifications).
 // Runs after the app mounts so it never blocks the initial render.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -29,13 +30,20 @@ if ('serviceWorker' in navigator) {
       .then((reg) => {
         console.log('[WiSkul SW] registered, scope:', reg.scope);
 
-        // Notify user when a new version is available so they can refresh.
+        // Ask the SW to flush any queued offline writes once it's active
+        // (covers the case where the app reopens already back online).
+        const triggerFlush = () => {
+          navigator.serviceWorker.controller?.postMessage({ type: 'FLUSH_OFFLINE_QUEUE' });
+        };
+        if (navigator.serviceWorker.controller) triggerFlush();
+        navigator.serviceWorker.addEventListener('controllerchange', triggerFlush);
+
+        // Notify when a new version is ready. autoUpdate skips waiting, so we
+        // just log; the useServiceWorker hook drives any in-app "refresh" UI.
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           newWorker?.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // A new service worker is waiting. In production you'd show a
-              // "New version available — click to refresh" toast here.
               console.log('[WiSkul SW] new version available');
             }
           });

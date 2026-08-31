@@ -6,10 +6,31 @@
 
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      // We ship our own service worker (push + background sync + offline write
+      // queue). Workbox injects the precache manifest of all built assets into
+      // it so the whole app shell works offline after the first visit.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'service-worker.ts',
+      registerType: 'autoUpdate',
+      injectRegister: null, // we register manually in main.tsx
+      manifest: false, // we maintain our own public/manifest.json
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+      },
+      devOptions: {
+        enabled: false,
+      },
+    }),
+  ],
   server: {
     port: 5173,
     open: false,

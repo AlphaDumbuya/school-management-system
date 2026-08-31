@@ -7,6 +7,7 @@
 import { create } from 'zustand';
 import { AuthUser, UserRole } from '@appTypes/index';
 import authService from '@services/authService';
+import { clearQueue } from '@lib/offlineQueue';
 
 interface AuthStore {
   // State
@@ -173,6 +174,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   // Clear auth state
   clearAuthState: () => {
+    // Purge any queued offline writes so they never replay under a different
+    // tenant/user after logout.
+    clearQueue().catch(() => {});
     set({
       user: null,
       isAuthenticated: false,

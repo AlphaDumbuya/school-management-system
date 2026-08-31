@@ -7,6 +7,56 @@
 import axios, { AxiosInstance, AxiosError, AxiosResponse, AxiosRequestConfig } from 'axios';
 import { API_CONFIG, getAuthHeaders } from '@config/api.config';
 import { ApiResponse } from '@appTypes/index';
+import { enqueueRequest } from './offlineQueue';
+
+/** Methods that mutate server state and are safe to queue + replay offline. */
+const QUEUEABLE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
+
+/** Sentinel error thrown when a mutation is captured by the offline queue. */
+export class OfflineQueuedError extends Error {
+  offlineQueued = true;
+  constructor(message = 'Saved offline. It will sync when you reconnect.') {
+    super(message);
+    this.name = 'OfflineQueuedError';
+  }
+}
+
+/**
+ * When a mutating request fails purely because we're offline (no HTTP response),
+ * persist it to the durable queue so it replays on reconnect. Returns true if
+ * the request was captured.
+ */
+async function maybeQueueOffline(config?: AxiosRequestConfig): Promise<boolean> {
+  if (!config) return false;
+  const method = (config.method || 'get').toLowerCase();
+  if (!QUEUEABLE_METHODS.has(method)) return false;
+
+  // Build an absolute URL from axios baseURL + url.
+  const base = (config.baseURL || API_CONFIG.baseURL || '').replace(/\/$/, '');
+  const path = config.url || '';
+  const url = /^https?:\/\//i.test(path) ? path : `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+
+  const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let body: string | null = null;
+  if (config.data != null) {
+    body = typeof config.data === 'string' ? config.data : JSON.stringify(config.data);
+  }
+
+  await enqueueRequest({ url, method: method.toUpperCase(), headers, body });
+
+  // Ask the SW to fire a background sync so it flushes even if the tab closes.
+  try {
+    const reg = await navigator.serviceWorker?.ready;
+    // @ts-expect-error - sync is not in all TS lib versions
+    await reg?.sync?.register('sync-offline-queue');
+  } catch {
+    /* background sync unsupported — the online-event replay still covers it */
+  }
+  return true;
+}
 
 // Create axios instance
 export const axiosInstance: AxiosInstance = axios.create({
@@ -80,9 +130,14 @@ axiosInstance.interceptors.response.use(
       console.warn('403 Forbidden:', error.response?.config?.url);
     }
 
-    // Handle network errors
+    // Handle network errors — likely offline. Queue mutations for later replay.
     if (!error.response) {
       console.error('Network error:', error.message);
+      const queued = await maybeQueueOffline(originalRequest);
+      if (queued) {
+        // Surface a distinct error the UI can treat as "saved, will sync".
+        return Promise.reject(new OfflineQueuedError());
+      }
     }
 
     return Promise.reject(error);
@@ -185,6 +240,24 @@ interface ErrorResponse {
 }
 
 const handleError = (error: unknown): ErrorResponse => {
+  // A mutation captured by the offline queue — treat as a soft success so the
+  // UI shows "saved offline" rather than a hard failure.
+  if (error instanceof OfflineQueuedError || (error as any)?.offlineQueued) {
+    const msg = (error as Error).message;
+    // Broadcast so a single global listener can toast "saved offline" without
+    // every call site needing bespoke handling.
+    try {
+      window.dispatchEvent(new CustomEvent('wiskul:offline-queued', { detail: { message: msg } }));
+    } catch {
+      /* SSR / non-DOM env */
+    }
+    return {
+      success: false,
+      error: msg,
+      statusCode: 0, // 0 = offline-queued sentinel
+    };
+  }
+
   if (axios.isAxiosError(error)) {
     const status = error.response?.status || 500;
     const data = error.response?.data as any;
