@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import {
   ResponsiveContainer,
-  LineChart, Line,
+  AreaChart, Area,
   BarChart, Bar,
   PieChart, Pie, Cell,
   XAxis, YAxis,
@@ -45,12 +45,14 @@ const PALETTE = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4
 const CustomTooltip: React.FC<TooltipProps<any, any>> = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-gray-800 text-white rounded px-3 py-2 text-xs shadow-md">
-      {label && <p className="font-medium mb-1">{label}</p>}
+    <div className="bg-gray-900/95 backdrop-blur text-white rounded-lg px-3 py-2 text-xs shadow-xl border border-white/10">
+      {label && <p className="font-semibold mb-1.5 text-white/90">{label}</p>}
       {payload.map((entry: any, i: number) => (
-        <p key={i} style={{ color: entry.color ?? '#fff' }}>
-          {entry.name}: {entry.value}
-        </p>
+        <div key={i} className="flex items-center gap-2 py-0.5">
+          <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: entry.color ?? '#fff' }} />
+          <span className="text-white/70">{entry.name}</span>
+          <span className="font-bold ml-auto">{entry.value}</span>
+        </div>
       ))}
     </div>
   );
@@ -127,23 +129,50 @@ export const ChartCard: React.FC<ChartCardProps> = ({
     if (type === 'line') {
       const chartData = toRecharts(series, labels);
       return (
-        <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-          <XAxis dataKey="name" tick={{ fontSize: 11 }} {...xAxisProps} />
-          <YAxis tick={{ fontSize: 11 }} />
-          <Tooltip content={<CustomTooltip />} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          {series.map((s, i) => (
-            <Line
-              key={s.name}
-              type="monotone"
-              dataKey={s.name}
-              stroke={colors[i % colors.length]}
-              strokeWidth={2}
-              dot={labels.length === 1 ? { r: 4 } : false}
-            />
-          ))}
-        </LineChart>
+        <AreaChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+          <defs>
+            {series.map((s, i) => {
+              const c = colors[i % colors.length];
+              return (
+                <linearGradient key={s.name} id={`area-grad-${i}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={c} stopOpacity={0.28} />
+                  <stop offset="100%" stopColor={c} stopOpacity={0.02} />
+                </linearGradient>
+              );
+            })}
+          </defs>
+          <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="#EEF1F6" />
+          <XAxis
+            dataKey="name"
+            tick={{ fontSize: 11, fill: '#9CA3AF' }}
+            tickLine={false}
+            axisLine={{ stroke: '#E5E7EB' }}
+            {...xAxisProps}
+          />
+          <YAxis
+            tick={{ fontSize: 11, fill: '#9CA3AF' }}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+          />
+          <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#CBD5E1', strokeDasharray: '4 4' }} />
+          <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
+          {series.map((s, i) => {
+            const c = colors[i % colors.length];
+            return (
+              <Area
+                key={s.name}
+                type="monotone"
+                dataKey={s.name}
+                stroke={c}
+                strokeWidth={2.5}
+                fill={`url(#area-grad-${i})`}
+                dot={false}
+                activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }}
+              />
+            );
+          })}
+        </AreaChart>
       );
     }
 
