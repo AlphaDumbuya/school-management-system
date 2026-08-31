@@ -124,11 +124,21 @@ class DashboardService {
         .count('* as count')
         .first();
 
-      // Get total classes
+      // Get total classes. A class belongs to this tenant if its academic
+      // session belongs to the tenant, OR it has no session but was created by
+      // a user of this tenant (mirrors the classes list endpoint). The old
+      // INNER JOIN dropped NULL-session classes → showed 0.
       const totalClasses = await db('classes')
-        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
-        .where('academic_sessions.tenant_id', tenantId)
-        .count('classes.id as count')
+        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+        .where(function () {
+          this.where('academic_sessions.tenant_id', tenantId)
+            .orWhere(function () {
+              this.whereNull('classes.academic_session_id')
+                .where('class_creator.tenant_id', tenantId);
+            });
+        })
+        .countDistinct('classes.id as count')
         .first();
 
       // Get total active enrollments
@@ -658,9 +668,13 @@ class DashboardService {
         .join('students', 'attendance.student_id', 'students.id')
         .where('students.tenant_id', tenantId)
         .where('attendance.attendance_date', '>=', db.raw("CURRENT_DATE - INTERVAL '29 days'"))
-        .select(db.raw("TO_CHAR(attendance.attendance_date, 'MM-DD') as label"))
-        .count('attendance.id as total')
-        .sum(db.raw("CASE WHEN attendance.status IN ('present', 'late') THEN 1 ELSE 0 END as present_count"))
+        .select(
+          db.raw("TO_CHAR(attendance.attendance_date, 'MM-DD') as label"),
+          db.raw("COUNT(attendance.id) as total"),
+          // Alias must sit OUTSIDE the aggregate — placing it inside SUM(...)
+          // produced invalid SQL and silently emptied the chart.
+          db.raw("SUM(CASE WHEN attendance.status IN ('present', 'late') THEN 1 ELSE 0 END) as present_count"),
+        )
         .groupByRaw("TO_CHAR(attendance.attendance_date, 'MM-DD')")
         .orderByRaw('MIN(attendance.attendance_date)');
 
@@ -744,12 +758,14 @@ class DashboardService {
    */
   async getStudentDistributionChart(tenantId: string): Promise<ChartData> {
     try {
-      // Use snake_case join columns
+      // Scope by the enrolled student's tenant (reliable even when a class has
+      // no academic session). The old INNER JOIN on academic_sessions dropped
+      // NULL-session classes → empty chart.
       const classDistribution = await db('enrollments')
         .join('classes', 'enrollments.class_id', 'classes.id')
-        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .join('students', 'enrollments.student_id', 'students.id')
         .where('enrollments.status', 'active')
-        .where('academic_sessions.tenant_id', tenantId)
+        .where('students.tenant_id', tenantId)
         .select('classes.name', db.raw('COUNT(*) as count'))
         .groupBy('classes.name')
         .orderBy('count', 'desc');
