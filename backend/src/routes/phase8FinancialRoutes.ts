@@ -2,6 +2,16 @@ import express, { Router, Request, Response, NextFunction } from 'express';
 import { authenticate } from '@middleware/authMiddleware';
 import { FeeService } from '@services/feeService';
 import { PaymentService } from '@services/paymentService';
+
+const STAFF_ROLES = ['principal', 'super_admin', 'accountant'];
+/** Middleware: only staff (principal/super_admin/accountant) may access admin finance pages. */
+const requireStaff = (req: Request, res: Response, next: NextFunction) => {
+  const role = (req as any).user?.role;
+  if (!role || !STAFF_ROLES.includes(role)) {
+    return res.status(403).json({ success: false, error: 'Access denied. Finance management is restricted to staff roles.' });
+  }
+  next();
+};
 import { InvoiceService } from '@services/invoiceService';
 import { db } from '@utils/database';
 import { logger } from '@utils/logger';
@@ -1113,7 +1123,7 @@ router.get(
  */
 
 // GET /api/v1/finance/overview — KPIs for the finance dashboard.
-router.get('/finance/overview', authenticate, async (req: Request, res: Response) => {
+router.get('/finance/overview', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
     const billed = await db('invoices')
@@ -1149,7 +1159,7 @@ router.get('/finance/overview', authenticate, async (req: Request, res: Response
 });
 
 // GET /api/v1/finance/invoices — all invoices for the tenant (with student name).
-router.get('/finance/invoices', authenticate, async (req: Request, res: Response) => {
+router.get('/finance/invoices', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
     const status = req.query.status as string | undefined;
@@ -1179,7 +1189,7 @@ router.get('/finance/invoices', authenticate, async (req: Request, res: Response
 });
 
 // GET /api/v1/finance/payments — all payments for the tenant (with student name).
-router.get('/finance/payments', authenticate, async (req: Request, res: Response) => {
+router.get('/finance/payments', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
     const rows = await db('payments')
@@ -1209,7 +1219,7 @@ router.get('/finance/payments', authenticate, async (req: Request, res: Response
 // GET /api/v1/finance/analytics — enterprise finance-hub analytics: totals,
 // collection rate %, by-term, by-level, by-class, method mix, 6-month trend,
 // top defaulters, and recent payments. Tenant-scoped via the students join.
-router.get('/finance/analytics', authenticate, async (req: Request, res: Response) => {
+router.get('/finance/analytics', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
 
@@ -1365,7 +1375,7 @@ router.get('/finance/analytics', authenticate, async (req: Request, res: Respons
 
 // POST /api/v1/finance/bulk-bill — create a fee for every student matching a
 // target (a class, a level, or ALL active students). Enterprise billing.
-router.post('/finance/bulk-bill', authenticate, async (req: Request, res: Response) => {
+router.post('/finance/bulk-bill', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
     const userId = (req as any).user.id;
@@ -1430,7 +1440,7 @@ router.post('/finance/bulk-bill', authenticate, async (req: Request, res: Respon
 
 // POST /api/v1/finance/bulk-invoice — generate ONE invoice per student from
 // their outstanding (unbilled) fees, optionally scoped by term/class/level.
-router.post('/finance/bulk-invoice', authenticate, async (req: Request, res: Response) => {
+router.post('/finance/bulk-invoice', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
     const userId = (req as any).user.id;
@@ -1505,7 +1515,7 @@ router.post('/finance/bulk-invoice', authenticate, async (req: Request, res: Res
 });
 
 // GET /api/v1/finance/invoices/:id/detail — invoice with its fee line items + payments.
-router.get('/finance/invoices/:id/detail', authenticate, async (req: Request, res: Response) => {
+router.get('/finance/invoices/:id/detail', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
     const invoice = await db('invoices')
@@ -1534,7 +1544,7 @@ router.get('/finance/invoices/:id/detail', authenticate, async (req: Request, re
 });
 
 // GET /api/v1/finance/fees — all fees for the tenant (with student name).
-router.get('/finance/fees', authenticate, async (req: Request, res: Response) => {
+router.get('/finance/fees', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
     const rows = await db('fees')

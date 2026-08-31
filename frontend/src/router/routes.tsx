@@ -239,11 +239,11 @@ const router = createBrowserRouter(
         },
         {
           path: 'finance/invoices',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'parent']}><InvoicesPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><InvoicesPage /></P>,
         },
         {
           path: 'finance/payments',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant', 'parent']}><PaymentsPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><PaymentsPage /></P>,
         },
         {
           path: 'finance/expenses',

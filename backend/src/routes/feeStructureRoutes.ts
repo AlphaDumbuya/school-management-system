@@ -4,6 +4,15 @@ import { authenticate } from '../middleware/authMiddleware.js';
 import { db } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
 
+const STAFF_ROLES = ['principal', 'super_admin', 'accountant'];
+const requireStaff = (req: Request, res: Response, next: NextFunction) => {
+  const role = (req as any).user?.role;
+  if (!role || !STAFF_ROLES.includes(role)) {
+    return res.status(403).json({ success: false, error: 'Access denied. Fee structure management is restricted to staff.' });
+  }
+  next();
+};
+
 /**
  * Fee-structure configurator routes (Sierra Leone model).
  *  GET  /api/v1/fee-structures?academic_year=            → list configured classes + summary
@@ -30,7 +39,7 @@ async function assertClassInTenant(classId: string, tenantId: string) {
 }
 
 // ── List configured structures + summary ──────────────────────────────────────
-router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', authenticate, requireStaff, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = (req as any).user.tenant_id;
     const academicYear = (req.query.academic_year as string) || undefined;
@@ -71,7 +80,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 });
 
 // ── Get one structure for a class + year ──────────────────────────────────────
-router.get('/:classId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:classId', authenticate, requireStaff, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = (req as any).user.tenant_id;
     const academicYear = (req.query.academic_year as string);
@@ -87,7 +96,7 @@ router.get('/:classId', authenticate, async (req: Request, res: Response, next: 
 });
 
 // ── Upsert a structure ────────────────────────────────────────────────────────
-router.post('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, requireStaff, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = (req as any).user.tenant_id;
     const userId = (req as any).user.id;
@@ -141,7 +150,7 @@ router.post('/', authenticate, async (req: Request, res: Response, next: NextFun
 // ── Bill a term from a structure ──────────────────────────────────────────────
 // Creates fees for every active student in the class for the chosen term:
 //   tuition for that term + (Term 1 only) the itemised year expenses.
-router.post('/:id/bill', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:id/bill', authenticate, requireStaff, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = (req as any).user.tenant_id;
     const term = Number(req.body?.term); // 1 | 2 | 3
