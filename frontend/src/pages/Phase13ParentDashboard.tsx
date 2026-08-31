@@ -16,6 +16,7 @@ import { KPICard } from '@components/dashboard/KPICard';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import { parentDashboardService } from '@services/parentDashboardService';
+import { PayFeesButton } from '@components/finance/PayFeesButton';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -325,7 +326,14 @@ export const Phase13ParentDashboard: React.FC = () => {
                         <Card><CardContent className="pt-5"><p className="text-xs text-gray-500">Outstanding</p><p className={`text-xl font-bold ${fees.outstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>{fmtMoney(fees.outstanding)}</p></CardContent></Card>
                       </div>
                       <Card>
-                        <CardHeader><CardTitle className="text-base">Invoices</CardTitle></CardHeader>
+                        <CardHeader className="flex flex-row items-center justify-between gap-3">
+                          <CardTitle className="text-base">Invoices</CardTitle>
+                          {fees.outstanding > 0 && currentChildId && (
+                            <PayFeesButton studentId={currentChildId} amount={fees.outstanding} size="sm" label="School Fees">
+                              Pay {fmtMoney(fees.outstanding)}
+                            </PayFeesButton>
+                          )}
+                        </CardHeader>
                         <CardContent>
                           {fees.invoices.length === 0 ? (
                             <p className="text-sm text-gray-500 py-6 text-center">No invoices on record.</p>
@@ -340,10 +348,13 @@ export const Phase13ParentDashboard: React.FC = () => {
                                     <th className="py-2 px-3 text-right">Balance</th>
                                     <th className="py-2 px-3">Due</th>
                                     <th className="py-2 px-3">Status</th>
+                                    <th className="py-2 px-3 text-right">Action</th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {fees.invoices.map((inv: any) => (
+                                  {fees.invoices.map((inv: any) => {
+                                    const bal = Number(inv.balance) || 0;
+                                    return (
                                     <tr key={inv.id} className="border-b border-gray-50 dark:border-gray-800/50">
                                       <td className="py-2 pr-3 font-mono text-xs">{inv.invoice_number}</td>
                                       <td className="py-2 px-3 text-right">{fmtMoney(inv.total_amount)}</td>
@@ -357,8 +368,14 @@ export const Phase13ParentDashboard: React.FC = () => {
                                             : 'bg-amber-100 text-amber-700'
                                         }`}>{cap(inv.status)}</span>
                                       </td>
+                                      <td className="py-2 px-3 text-right">
+                                        {bal > 0 && inv.status !== 'paid'
+                                          ? <PayFeesButton invoiceId={inv.id} size="sm">Pay</PayFeesButton>
+                                          : <span className="text-xs text-gray-400">—</span>}
+                                      </td>
                                     </tr>
-                                  ))}
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                             </div>

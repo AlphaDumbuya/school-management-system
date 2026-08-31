@@ -17,6 +17,7 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import useAuthStore from '@store/authStore';
 import { studentDashboardService, StudentDashboardData } from '@services/studentDashboardService';
+import { PayFeesButton } from '@components/finance/PayFeesButton';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -355,7 +356,19 @@ export const Phase13StudentDashboard: React.FC = () => {
               </div>
 
               <Card>
-                <CardHeader><CardTitle className="text-base">Invoices</CardTitle></CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between gap-3">
+                  <CardTitle className="text-base">Invoices</CardTitle>
+                  {fees.outstanding > 0 && (
+                    <PayFeesButton
+                      studentId={profile?.id}
+                      amount={fees.outstanding}
+                      size="sm"
+                      label="School Fees"
+                    >
+                      Pay {fmtMoney(fees.outstanding)}
+                    </PayFeesButton>
+                  )}
+                </CardHeader>
                 <CardContent>
                   {fees.invoices.length === 0 ? (
                     <p className="text-sm text-gray-500 py-6 text-center">No invoices on record.</p>
@@ -370,10 +383,13 @@ export const Phase13StudentDashboard: React.FC = () => {
                             <th className="py-2 px-3 text-right">Balance</th>
                             <th className="py-2 px-3">Due</th>
                             <th className="py-2 px-3">Status</th>
+                            <th className="py-2 px-3 text-right">Action</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {fees.invoices.map((inv) => (
+                          {fees.invoices.map((inv) => {
+                            const bal = Number(inv.balance) || 0;
+                            return (
                             <tr key={inv.id} className="border-b border-gray-50 dark:border-gray-800/50">
                               <td className="py-2 pr-3 font-mono text-xs">{inv.invoice_number}</td>
                               <td className="py-2 px-3 text-right">{fmtMoney(inv.total_amount)}</td>
@@ -387,8 +403,14 @@ export const Phase13StudentDashboard: React.FC = () => {
                                     : 'bg-amber-100 text-amber-700'
                                 }`}>{cap(inv.status)}</span>
                               </td>
+                              <td className="py-2 px-3 text-right">
+                                {bal > 0 && inv.status !== 'paid'
+                                  ? <PayFeesButton invoiceId={inv.id} size="sm">Pay</PayFeesButton>
+                                  : <span className="text-xs text-gray-400">—</span>}
+                              </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
