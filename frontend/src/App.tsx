@@ -5,6 +5,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import useAuthStore from '@store/authStore';
 import AppRouter from '@router/routes';
 import '@styles/index.css';
+import { InstallBanner } from '@components/pwa/InstallBanner';
 
 // Singleton queryClient — but we call .clear() on logout to purge cross-tenant cache
 const queryClient = new QueryClient({
@@ -59,6 +60,7 @@ export const App: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <AppRouter />
       <ToastContainer position="top-right" closeButton={true} aria-live="polite" />
+      <InstallBanner />
     </QueryClientProvider>
   );
 };
