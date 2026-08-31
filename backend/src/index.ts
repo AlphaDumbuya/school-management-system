@@ -31,6 +31,7 @@ import phase6ScheduleRoutes from '@routes/phase6ScheduleRoutes';
 import phase7ReportingRoutes from '@routes/phase7ReportingRoutes';
 import phase8FinancialRoutes from '@routes/phase8FinancialRoutes';
 import monimeRoutes from '@routes/monimeRoutes';
+import feeStructureRoutes from '@routes/feeStructureRoutes';
 import phase9NotificationRoutes from '@routes/phase9NotificationRoutes';
 import phase10DashboardRoutes from '@routes/phase10DashboardRoutes';
 import phase12ExportRoutes from '@routes/phase12ExportRoutes';
@@ -237,6 +238,9 @@ app.use('/api/v1', phase8FinancialRoutes);
 
 // Monime online payment routes (checkout + public webhook)
 app.use('/api/v1/payments', monimeRoutes);
+
+// Fee-structure configurator (per class/year term tuition + year expenses + policy)
+app.use('/api/v1/fee-structures', feeStructureRoutes);
 
 // Notification System Routes (Phase 9)
 app.use('/api/v1', phase9NotificationRoutes);

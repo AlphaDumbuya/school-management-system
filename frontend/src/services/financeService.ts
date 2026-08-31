@@ -76,11 +76,17 @@ export const financeService = {
     apiClient.get<{ success: boolean; data: { studentId: string; outstandingBalance: number } }>(`/api/v1/students/${studentId}/outstanding`),
   getOverdueFees: () => apiClient.get('/api/v1/fees-overdue'),
   getFeeStatistics: () => apiClient.get('/api/v1/fees-statistics'),
-  bulkCreateFees: (data: { classId: string; fees: any[] }) => apiClient.post('/api/v1/fees/bulk', data),
+  bulkBill: (data: { scope: 'class' | 'level' | 'all'; classId?: string; level?: string; type: string; amount: number; dueDate: string; term?: string; academicYear?: string; description?: string }) =>
+    apiClient.post<{ success: boolean; data: { created: number; total: number } }>('/api/v1/finance/bulk-bill', data),
 
   // ── Invoices ──────────────────────────────────────────────────────────────
   generateInvoice: (data: { studentId: string; feeIds: string[]; dueDate?: string; notes?: string }) =>
     apiClient.post('/api/v1/invoices', data),
+  bulkInvoice: (data: { scope: 'class' | 'level' | 'all'; classId?: string; level?: string; term?: string; academicYear?: string; dueDate?: string }) =>
+    apiClient.post<{ success: boolean; data: { generated: number } }>('/api/v1/finance/bulk-invoice', data),
+  getInvoiceDetail: (invoiceId: string) =>
+    apiClient.get<{ success: boolean; data: { invoice: any; items: any[]; payments: any[] } }>(`/api/v1/finance/invoices/${invoiceId}/detail`),
+  sendInvoiceReminder: (invoiceId: string) => apiClient.post(`/api/v1/invoices/${invoiceId}/reminder`, {}),
   getStudentInvoices: (studentId: string) =>
     apiClient.get<{ success: boolean; data: Invoice[] }>(`/api/v1/students/${studentId}/invoices`),
   getOverdueInvoices: () => apiClient.get('/api/v1/invoices-overdue'),

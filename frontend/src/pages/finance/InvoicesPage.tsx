@@ -1,23 +1,32 @@
 /**
  * InvoicesPage — /finance/invoices
- * Tenant-wide invoices with collection KPIs. Staff/accountant view; parents
- * see their own via the portal.
+ * Enterprise invoicing: bulk-generate invoices from outstanding fees per
+ * class/level/term, inspect invoice line items & payment history, send
+ * reminders to defaulters, and pay online (Monime).
  */
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, ChevronDown } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { RefreshCw, ChevronDown, FileStack, Eye, Bell, X, Loader2 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { Button } from '@components/ui/button';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
+import { showToast } from '@utils/toast';
 import { financeService } from '@services/financeService';
+import { classesService } from '@services/classesService';
 import { FinanceOverviewCards, fmtMoney, statusPill, SwipeHint } from './FinanceOverviewCards';
 import { PayFeesButton } from '@components/finance/PayFeesButton';
 
+const TERMS = ['First Term', 'Second Term', 'Third Term'];
+
 export const InvoicesPage: React.FC = () => {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [levelFilter, setLevelFilter] = useState('');
+  const [genOpen, setGenOpen] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const { data: overviewResp, isLoading: ovLoading, refetch: refetchOv } = useQuery({
     queryKey: ['finance-overview'], queryFn: () => financeService.getOverview(), staleTime: 30_000,
@@ -28,44 +37,60 @@ export const InvoicesPage: React.FC = () => {
 
   const overview = (overviewResp as any)?.data?.data ?? (overviewResp as any)?.data;
   const invoices = ((invResp as any)?.data?.data ?? (invResp as any)?.data ?? []) as any[];
+  const levels = useMemo(() => Array.from(new Set(invoices.map((i) => i.class_level).filter(Boolean))).sort(), [invoices]);
 
   const filtered = invoices.filter((i) => {
     const t = search.trim().toLowerCase();
-    return !t || i.invoice_number?.toLowerCase().includes(t) || i.student_name?.toLowerCase().includes(t) || i.admission_no?.toLowerCase().includes(t);
+    const matchSearch = !t || i.invoice_number?.toLowerCase().includes(t) || i.student_name?.toLowerCase().includes(t) || (i.admission_no || '').toLowerCase().includes(t);
+    return matchSearch && (!levelFilter || i.class_level === levelFilter);
   });
+
+  const refetchAll = () => { refetch(); refetchOv(); };
+
+  const remind = async (id: string) => {
+    try { await financeService.sendInvoiceReminder(id); showToast.success('Reminder sent'); }
+    catch { showToast.error('Failed to send reminder'); }
+  };
 
   return (
     <MainLayout>
       <PageShell
         title="Invoices"
-        subtitle="Student fee invoices and balances"
-        actions={<Button variant="outline" size="sm" onClick={() => { refetch(); refetchOv(); }} disabled={isLoading}><RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></Button>}
+        subtitle="Generate and track student fee invoices"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={refetchAll} disabled={isLoading}><RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></Button>
+            <Button variant="default" size="sm" onClick={() => setGenOpen(true)}><FileStack size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Generate Invoices</span></Button>
+          </div>
+        }
       >
         <FinanceOverviewCards overview={overview} loading={ovLoading} />
 
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center mb-4">
-          <SearchBar
-            placeholder="Search by invoice # or student…"
-            onSearch={setSearch}
-            isLoading={isLoading}
-            resultCount={search ? filtered.length : undefined}
-            defaultValue={search}
-            className="w-full sm:max-w-md"
-          />
-          <div className="relative w-full sm:w-44">
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
-              <option value="">All statuses</option>
-              <option value="pending">Pending</option>
-              <option value="partial">Partial</option>
-              <option value="paid">Paid</option>
-              <option value="overdue">Overdue</option>
-            </select>
-            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+          <SearchBar placeholder="Search by invoice # or student…" onSearch={setSearch} isLoading={isLoading} resultCount={search ? filtered.length : undefined} defaultValue={search} className="w-full sm:max-w-md" />
+          <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:w-auto">
+            <div className="relative w-full sm:w-40">
+              <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                <option value="">All levels</option>
+                {levels.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+            </div>
+            <div className="relative w-full sm:w-40">
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                <option value="">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="partial">Partial</option>
+                <option value="paid">Paid</option>
+                <option value="overdue">Overdue</option>
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+            </div>
           </div>
         </div>
 
         {filtered.length === 0 ? (
-          <EmptyState message="No invoices found" description="Invoices generated for students will appear here." />
+          <EmptyState message="No invoices found" description="Generate invoices from students' outstanding fees." action={{ label: 'Generate Invoices', onClick: () => setGenOpen(true) }} />
         ) : (
           <>
           <SwipeHint />
@@ -75,12 +100,11 @@ export const InvoicesPage: React.FC = () => {
                 <tr>
                   <th className="px-4 py-3 whitespace-nowrap">Invoice #</th>
                   <th className="px-4 py-3 whitespace-nowrap">Student</th>
+                  <th className="px-4 py-3 whitespace-nowrap">Class</th>
                   <th className="px-4 py-3 text-right whitespace-nowrap">Amount</th>
-                  <th className="px-4 py-3 text-right whitespace-nowrap">Paid</th>
                   <th className="px-4 py-3 text-right whitespace-nowrap">Balance</th>
-                  <th className="px-4 py-3 whitespace-nowrap">Due</th>
                   <th className="px-4 py-3 whitespace-nowrap">Status</th>
-                  <th className="px-4 py-3 text-right whitespace-nowrap">Action</th>
+                  <th className="px-4 py-3 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -93,15 +117,20 @@ export const InvoicesPage: React.FC = () => {
                         <div className="font-medium text-gray-900 dark:text-white">{inv.student_name}</div>
                         <div className="text-xs text-gray-400">{inv.admission_no}</div>
                       </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-400">{inv.class_name || '—'}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">{fmtMoney(inv.total_amount)}</td>
-                      <td className="px-4 py-3 text-right text-emerald-600 whitespace-nowrap">{fmtMoney(inv.total_paid)}</td>
                       <td className="px-4 py-3 text-right font-semibold whitespace-nowrap">{fmtMoney(inv.balance)}</td>
-                      <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{inv.due_date ? new Date(inv.due_date).toLocaleDateString() : '—'}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{statusPill(inv.status)}</td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap">
-                        {bal > 0 && inv.status !== 'paid'
-                          ? <PayFeesButton invoiceId={inv.id} size="sm">Pay</PayFeesButton>
-                          : <span className="text-xs text-gray-400">—</span>}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button onClick={() => setDetailId(inv.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" title="View"><Eye size={15} /></button>
+                          {bal > 0 && inv.status !== 'paid' && (
+                            <>
+                              <button onClick={() => remind(inv.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20" title="Send reminder"><Bell size={15} /></button>
+                              <PayFeesButton invoiceId={inv.id} size="sm">Pay</PayFeesButton>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -111,8 +140,160 @@ export const InvoicesPage: React.FC = () => {
           </div>
           </>
         )}
+
+        {genOpen && (
+          <GenerateInvoicesModal onClose={() => setGenOpen(false)} onDone={() => { setGenOpen(false); queryClient.invalidateQueries({ queryKey: ['finance-invoices'] }); refetchOv(); }} />
+        )}
+        {detailId && <InvoiceDetailModal invoiceId={detailId} onClose={() => setDetailId(null)} />}
       </PageShell>
     </MainLayout>
+  );
+};
+
+// ── Generate invoices (bulk from outstanding fees) ────────────────────────────
+type GenScope = 'class' | 'level' | 'all';
+
+const GenerateInvoicesModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ onClose, onDone }) => {
+  const [scope, setScope] = useState<GenScope>('class');
+  const [classId, setClassId] = useState('');
+  const [level, setLevel] = useState('');
+  const [term, setTerm] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const { data: classesResp } = useQuery({ queryKey: ['gen-classes'], queryFn: () => classesService.listClasses({ limit: 200 } as any), staleTime: 60_000 });
+  const classes = ((classesResp as any)?.data?.data ?? (classesResp as any)?.data ?? []) as any[];
+  const levels = useMemo(() => Array.from(new Set(classes.map((c: any) => c.level).filter(Boolean))).sort(), [classes]);
+
+  const submit = async () => {
+    if (scope === 'class' && !classId) { showToast.error('Select a class'); return; }
+    if (scope === 'level' && !level) { showToast.error('Select a level'); return; }
+    setSaving(true);
+    try {
+      const res: any = await financeService.bulkInvoice({ scope, classId: scope === 'class' ? classId : undefined, level: scope === 'level' ? level : undefined, term: term || undefined, dueDate: dueDate || undefined });
+      const gen = res?.data?.data?.generated ?? res?.data?.generated ?? 0;
+      showToast.success(gen > 0 ? `Generated ${gen} invoice${gen === 1 ? '' : 's'}` : 'No unbilled fees to invoice');
+      onDone();
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.error || 'Failed to generate invoices');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="font-bold text-gray-900 dark:text-white">Generate Invoices</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-gray-500">Bundles each student's outstanding (unbilled) fees into a single invoice.</p>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Scope</label>
+            <div className="grid grid-cols-3 gap-1 mt-1 bg-gray-100 dark:bg-gray-900/50 rounded-xl p-1">
+              {(['class', 'level', 'all'] as GenScope[]).map((s) => (
+                <button key={s} onClick={() => setScope(s)} className={`px-2 py-1.5 text-xs font-semibold rounded-lg capitalize transition-colors ${scope === s ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>{s === 'all' ? 'All' : s}</button>
+              ))}
+            </div>
+          </div>
+          {scope === 'class' && (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Class</label>
+              <select value={classId} onChange={(e) => setClassId(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+                <option value="">Select a class…</option>
+                {classes.map((c: any) => <option key={c.id} value={c.id}>{c.name} {c.level ? `(${c.level})` : ''}</option>)}
+              </select>
+            </div>
+          )}
+          {scope === 'level' && (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Level</label>
+              <select value={level} onChange={(e) => setLevel(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+                <option value="">Select a level…</option>
+                {levels.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Term (optional)</label>
+              <select value={term} onChange={(e) => setTerm(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+                <option value="">All unbilled fees</option>
+                {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Due Date</label>
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button variant="default" size="sm" onClick={submit} disabled={saving}>{saving ? 'Generating…' : 'Generate'}</Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Invoice detail (line items + payments) ────────────────────────────────────
+const InvoiceDetailModal: React.FC<{ invoiceId: string; onClose: () => void }> = ({ invoiceId, onClose }) => {
+  const { data, isLoading } = useQuery({ queryKey: ['invoice-detail', invoiceId], queryFn: () => financeService.getInvoiceDetail(invoiceId) });
+  const detail = (data as any)?.data?.data ?? (data as any)?.data;
+  const invoice = detail?.invoice;
+  const items = detail?.items ?? [];
+  const payments = detail?.payments ?? [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className="w-full max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
+          <h3 className="font-bold text-gray-900 dark:text-white">{invoice?.invoice_number || 'Invoice'}</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
+        </div>
+        {isLoading || !invoice ? (
+          <div className="flex items-center justify-center py-12"><Loader2 size={28} className="animate-spin text-blue-500" /></div>
+        ) : (
+          <div className="p-5 space-y-5">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div><div className="text-xs text-gray-400">Student</div><div className="font-semibold text-gray-900 dark:text-white">{invoice.student_name}</div><div className="text-xs text-gray-400">{invoice.admission_no}</div></div>
+              <div className="text-right"><div className="text-xs text-gray-400">Status</div>{statusPill(invoice.status)}</div>
+              <div><div className="text-xs text-gray-400">Total</div><div className="font-semibold">{fmtMoney(invoice.total_amount)}</div></div>
+              <div className="text-right"><div className="text-xs text-gray-400">Balance</div><div className="font-semibold text-rose-600">{fmtMoney(invoice.balance)}</div></div>
+            </div>
+
+            <div>
+              <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Line items</div>
+              <div className="rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                {items.length === 0 ? <p className="text-sm text-gray-400 p-3">No line items.</p> : items.map((it: any) => (
+                  <div key={it.id} className="flex items-center justify-between px-3 py-2 text-sm border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+                    <span className="capitalize">{it.type || 'Fee'}</span>
+                    <span className="font-medium">{fmtMoney(it.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Payments</div>
+              <div className="rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                {payments.length === 0 ? <p className="text-sm text-gray-400 p-3">No payments yet.</p> : payments.map((p: any) => (
+                  <div key={p.id} className="flex items-center justify-between px-3 py-2 text-sm border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+                    <span className="text-gray-500">{p.payment_date ? new Date(p.payment_date).toLocaleDateString() : ''} · <span className="capitalize">{p.method}</span></span>
+                    <span className="font-medium text-emerald-600">{fmtMoney(p.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {Number(invoice.balance) > 0 && invoice.status !== 'paid' && (
+              <div className="flex justify-end"><PayFeesButton invoiceId={invoice.id}>Pay {fmtMoney(invoice.balance)}</PayFeesButton></div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
