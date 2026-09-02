@@ -1,7 +1,7 @@
 /**
  * KPI Card Component
- * Displays key performance indicators with trend indicators
- * Phase 11: Frontend Dashboard Implementation
+ * Displays key performance indicators with trend indicators.
+ * Polished: soft elevation, tinted icon chip, accent bar, hover lift.
  */
 
 import React from 'react';
@@ -16,40 +16,32 @@ interface KPICardProps {
     value: number;
     isPositive: boolean;
   };
+  /** Optional context for the trend, e.g. "vs last month". */
+  trendLabel?: string;
   icon?: React.ReactNode;
   color?: 'blue' | 'green' | 'red' | 'amber' | 'purple' | 'indigo' | 'gray';
   onClick?: () => void;
   isLoading?: boolean;
 }
 
-const colorClasses = {
-  blue: 'bg-blue-50 border-blue-200',
-  green: 'bg-green-50 border-green-200',
-  red: 'bg-red-50 border-red-200',
-  amber: 'bg-amber-50 border-amber-200',
-  purple: 'bg-purple-50 border-purple-200',
-  indigo: 'bg-indigo-50 border-indigo-200',
-  gray: 'bg-gray-50 border-gray-200',
+const accentClasses = {
+  blue: 'before:bg-blue-500',
+  green: 'before:bg-emerald-500',
+  red: 'before:bg-red-500',
+  amber: 'before:bg-amber-500',
+  purple: 'before:bg-purple-500',
+  indigo: 'before:bg-indigo-500',
+  gray: 'before:bg-gray-400',
 };
 
-const textColorClasses = {
-  blue: 'text-blue-600',
-  green: 'text-green-600',
-  red: 'text-red-600',
-  amber: 'text-amber-600',
-  purple: 'text-purple-600',
-  indigo: 'text-indigo-600',
-  gray: 'text-gray-600',
-};
-
-const trendColorClasses = {
-  blue: 'bg-blue-100',
-  green: 'bg-green-100',
-  red: 'bg-red-100',
-  amber: 'bg-amber-100',
-  purple: 'bg-purple-100',
-  indigo: 'bg-indigo-100',
-  gray: 'bg-gray-100',
+const iconChipClasses = {
+  blue: 'bg-blue-50 text-blue-600',
+  green: 'bg-emerald-50 text-emerald-600',
+  red: 'bg-red-50 text-red-600',
+  amber: 'bg-amber-50 text-amber-600',
+  purple: 'bg-purple-50 text-purple-600',
+  indigo: 'bg-indigo-50 text-indigo-600',
+  gray: 'bg-gray-100 text-gray-600',
 };
 
 export const KPICard: React.FC<KPICardProps> = ({
@@ -57,6 +49,7 @@ export const KPICard: React.FC<KPICardProps> = ({
   value,
   subtitle,
   trend,
+  trendLabel,
   icon,
   color = 'blue',
   onClick,
@@ -65,45 +58,66 @@ export const KPICard: React.FC<KPICardProps> = ({
   return (
     <div
       className={clsx(
-        'p-4 sm:p-6 rounded-lg border-l-4 transition-all duration-200',
-        colorClasses[color],
-        onClick && 'cursor-pointer hover:shadow-md',
-        isLoading && 'opacity-50 pointer-events-none'
+        // Base card: white, soft ring + shadow, left accent bar via ::before
+        'group relative overflow-hidden rounded-2xl bg-white p-4 sm:p-5',
+        'ring-1 ring-gray-200/70 shadow-sm transition-all duration-300',
+        'before:absolute before:inset-y-0 before:left-0 before:w-1 before:rounded-r-full',
+        accentClasses[color],
+        onClick && 'cursor-pointer hover:shadow-lg hover:-translate-y-0.5 hover:ring-gray-300',
+        isLoading && 'opacity-60 pointer-events-none'
       )}
       onClick={onClick}
     >
-      {/* Header with icon and trend */}
-      <div className="flex items-start justify-between mb-2 sm:mb-4">
+      {/* Header: title + icon chip */}
+      <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0 flex-1">
-          <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">{title}</p>
-          {subtitle && <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 truncate">{subtitle}</p>}
+          <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">{title}</p>
+          {subtitle && (
+            <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5 truncate">{subtitle}</p>
+          )}
         </div>
-        {icon && <div className={clsx('text-lg sm:text-xl flex-shrink-0 ml-2', textColorClasses[color])}>{icon}</div>}
+        {icon && (
+          <div
+            className={clsx(
+              'flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-lg transition-transform duration-300 group-hover:scale-110',
+              iconChipClasses[color]
+            )}
+          >
+            {icon}
+          </div>
+        )}
       </div>
 
       {/* Value */}
-      <div className="mb-1 sm:mb-2">
+      <div className="mb-2">
         {isLoading ? (
-          <div className="h-6 sm:h-8 bg-gray-200 rounded animate-pulse w-1/2" />
+          <div className="h-7 sm:h-9 bg-gray-100 rounded-lg animate-pulse w-2/3" />
         ) : (
-          <p className="text-xl sm:text-2xl font-bold text-gray-900 truncate">{value}</p>
+          <p className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight truncate">
+            {value}
+          </p>
         )}
       </div>
 
       {/* Trend indicator */}
-      {trend && (
-        <div
-          className={clsx(
-            'flex items-center gap-1 text-xs sm:text-sm font-semibold',
-            trend.isPositive ? 'text-green-600' : 'text-red-600'
-          )}
-        >
-          {trend.isPositive ? (
-            <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          ) : (
-            <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          )}
-          <span>{Math.abs(trend.value)}%</span>
+      {trend && !isLoading && (
+        <div className="flex items-center gap-1.5">
+          <span
+            className={clsx(
+              'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold',
+              trend.isPositive
+                ? 'bg-emerald-50 text-emerald-600'
+                : 'bg-red-50 text-red-600'
+            )}
+          >
+            {trend.isPositive ? (
+              <TrendingUp className="w-3.5 h-3.5" />
+            ) : (
+              <TrendingDown className="w-3.5 h-3.5" />
+            )}
+            {Math.abs(trend.value)}%
+          </span>
+          {trendLabel && <span className="text-[11px] text-gray-400 truncate">{trendLabel}</span>}
         </div>
       )}
     </div>

@@ -52,9 +52,17 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         <Sidebar isOpen={sidebarOpen} onClose={handleSidebarClose} />
 
         {/* Content area — tight horizontal gutter on mobile so content isn't
-            choked; comfortable padding from sm upwards. */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="px-2 py-3 sm:p-6">{children}</div>
+            choked; comfortable padding from sm upwards. Subtle radial texture
+            adds depth without noise. */}
+        <main
+          className="flex-1 overflow-y-auto"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle at 1px 1px, rgba(99,102,241,0.05) 1px, transparent 0)',
+            backgroundSize: '28px 28px',
+          }}
+        >
+          <div className="px-2 py-3 sm:p-6 animate-page-enter">{children}</div>
         </main>
       </div>
     </div>
