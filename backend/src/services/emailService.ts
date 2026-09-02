@@ -592,6 +592,178 @@ class EmailService {
       isHtml: true,
     });
   }
+
+  private fmtMoney(amount: number | string, currency = 'Le'): string {
+    const n = Number(amount) || 0;
+    return `${currency} ${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  }
+
+  /**
+   * Admissions decision → applicant's guardian.
+   * decision: 'accepted' | 'rejected' | 'waitlist'
+   */
+  async sendAdmissionDecisionEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      guardianName: string;
+      studentName: string;
+      decision: string;
+      applicationNumber?: string;
+      className?: string;
+      notes?: string;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const loginUrl = `${branding.appUrl}/login`;
+    const decision = (data.decision || '').toLowerCase();
+    const isAccepted = decision === 'accepted' || decision === 'approved' || decision === 'enrolled';
+    const isWaitlist = decision === 'waitlist' || decision === 'waitlisted';
+
+    const rows =
+      detailRow('Applicant', escapeHtml(data.studentName)) +
+      (data.applicationNumber ? detailRow('Application No.', escapeHtml(data.applicationNumber)) : '') +
+      (data.className ? detailRow('Class Applied For', escapeHtml(data.className)) : '') +
+      detailRow('Decision', escapeHtml(this.titleCase(data.decision)));
+
+    let heading: string;
+    let eyebrow: string;
+    let intro: string;
+    let callout: string;
+
+    if (isAccepted) {
+      heading = 'Congratulations — Application Accepted!';
+      eyebrow = 'Admissions Decision';
+      intro = `We are delighted to inform you that <strong>${escapeHtml(data.studentName)}</strong> has been <strong>accepted</strong> to <strong>${escapeHtml(branding.name)}</strong>.`;
+      callout = calloutBlock(
+        `${data.notes ? escapeHtml(data.notes) + '<br/><br/>' : ''}Please sign in to your parent portal to complete the next enrolment steps. We look forward to welcoming your child.`,
+        'success'
+      ) + emailButton('Complete Enrolment', loginUrl);
+    } else if (isWaitlist) {
+      heading = 'Application Update — Waitlisted';
+      eyebrow = 'Admissions Decision';
+      intro = `Thank you for applying to <strong>${escapeHtml(branding.name)}</strong>. <strong>${escapeHtml(data.studentName)}</strong> has been placed on our <strong>waitlist</strong>.`;
+      callout = calloutBlock(
+        `${data.notes ? escapeHtml(data.notes) + '<br/><br/>' : ''}We will contact you as soon as a place becomes available. Thank you for your patience.`,
+        'info'
+      );
+    } else {
+      heading = 'Application Update';
+      eyebrow = 'Admissions Decision';
+      intro = `Thank you for the interest shown in <strong>${escapeHtml(branding.name)}</strong> and for taking the time to apply.`;
+      callout = calloutBlock(
+        `After careful consideration, we are unable to offer <strong>${escapeHtml(data.studentName)}</strong> a place at this time.${data.notes ? '<br/><br/>' + escapeHtml(data.notes) : ''}<br/><br/>We wish your child every success in their education.`,
+        'warn'
+      );
+    }
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(data.guardianName)},</p>
+      <p>${intro}</p>
+      ${detailsCard(rows)}
+      ${callout}
+      <p style="color:#64748b;font-size:13px;">For any questions about this decision, please contact us using the details below.</p>`;
+
+    return this.sendEmail({
+      to: toEmail,
+      subject: `${isAccepted ? '🎉 ' : ''}Admission ${this.titleCase(decision)} — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow, heading, bodyHtml, preheader: `Admissions decision for ${data.studentName}.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Payment receipt → payer (guardian/student). Sent after a successful payment.
+   */
+  async sendPaymentReceiptEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      payerName: string;
+      studentName?: string;
+      amount: number | string;
+      currency?: string;
+      method?: string;
+      reference?: string;
+      date?: Date | string;
+      balanceRemaining?: number | string;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/dashboard`;
+    const currency = data.currency || 'Le';
+
+    const rows =
+      (data.studentName ? detailRow('Student', escapeHtml(data.studentName)) : '') +
+      detailRow('Amount Paid', `<strong style="color:#059669;">${escapeHtml(this.fmtMoney(data.amount, currency))}</strong>`) +
+      (data.method ? detailRow('Payment Method', escapeHtml(this.titleCase(data.method))) : '') +
+      (data.reference ? detailRow('Reference', escapeHtml(data.reference)) : '') +
+      detailRow('Date', escapeHtml(this.fmtDate(data.date || new Date()))) +
+      (data.balanceRemaining != null
+        ? detailRow('Balance Remaining', escapeHtml(this.fmtMoney(data.balanceRemaining, currency)))
+        : '');
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(data.payerName)},</p>
+      <p>Thank you — we've received your payment to <strong>${escapeHtml(branding.name)}</strong>. This email is your receipt.</p>
+      ${detailsCard(rows)}
+      ${calloutBlock('Please keep this receipt for your records. You can view your full payment history in your portal.', 'success')}
+      ${emailButton('View Payment History', portalUrl)}`;
+
+    return this.sendEmail({
+      to: toEmail,
+      subject: `Payment Receipt — ${this.fmtMoney(data.amount, currency)} to ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: 'Payment Receipt', heading: 'Payment Received — Thank You', bodyHtml, preheader: `Receipt for your ${this.fmtMoney(data.amount, currency)} payment.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Fee reminder → guardian. For upcoming or overdue balances.
+   */
+  async sendFeeReminderEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      guardianName: string;
+      studentName?: string;
+      amountDue: number | string;
+      currency?: string;
+      dueDate?: Date | string;
+      overdue?: boolean;
+      feeName?: string;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const payUrl = `${branding.appUrl}/dashboard`;
+    const currency = data.currency || 'Le';
+
+    const rows =
+      (data.studentName ? detailRow('Student', escapeHtml(data.studentName)) : '') +
+      (data.feeName ? detailRow('Fee', escapeHtml(data.feeName)) : '') +
+      detailRow('Amount Due', `<strong>${escapeHtml(this.fmtMoney(data.amountDue, currency))}</strong>`) +
+      (data.dueDate ? detailRow('Due Date', escapeHtml(this.fmtDate(data.dueDate))) : '');
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(data.guardianName)},</p>
+      <p>This is a friendly reminder from <strong>${escapeHtml(branding.name)}</strong> regarding ${data.overdue ? 'an <strong>overdue</strong> balance' : 'an upcoming fee payment'} for your child.</p>
+      ${detailsCard(rows)}
+      ${calloutBlock(
+        data.overdue
+          ? 'This balance is now past its due date. Please make payment at your earliest convenience to avoid any disruption. You can pay securely from your portal.'
+          : 'You can pay quickly and securely from your portal using mobile money, card, bank transfer or a digital wallet.',
+        data.overdue ? 'warn' : 'info'
+      )}
+      ${emailButton('Pay Fees Now', payUrl)}
+      <p style="color:#64748b;font-size:13px;">If you've already paid, please disregard this reminder. Thank you.</p>`;
+
+    return this.sendEmail({
+      to: toEmail,
+      subject: `${data.overdue ? 'Overdue' : 'Fee'} Reminder — ${this.fmtMoney(data.amountDue, currency)} · ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: data.overdue ? 'Overdue Notice' : 'Fee Reminder', heading: data.overdue ? 'Payment Overdue' : 'Upcoming Fee Payment', bodyHtml, preheader: `${data.overdue ? 'Overdue' : 'Fee'} reminder: ${this.fmtMoney(data.amountDue, currency)} due.` }),
+      isHtml: true,
+    });
+  }
 }
 
 // ── Contact Form Specific Functions ──────────────────────────────────────────

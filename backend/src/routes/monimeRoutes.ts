@@ -249,6 +249,61 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
   });
 
   logger.info(`Monime payment reconciled for session ${sessionId}`);
+
+  // Send a payment receipt email to the payer (best-effort — never block/fail
+  // the webhook because email delivery hiccuped).
+  try {
+    await sendPaymentReceipt(session);
+  } catch (mailErr: any) {
+    logger.warn(`Could not send payment receipt for session ${sessionId}: ${mailErr?.message || mailErr}`);
+  }
+}
+
+/**
+ * Look up the student + guardian for a completed session and email a receipt.
+ */
+async function sendPaymentReceipt(session: any) {
+  const student = await db('students').where({ id: session.student_id }).first();
+  if (!student) return;
+
+  const studentName = [student.first_name, student.last_name].filter(Boolean).join(' ') || 'Student';
+
+  // Prefer a linked guardian's email; fall back to the student's own email.
+  let payerEmail: string | null = student.email || null;
+  let payerName = studentName;
+  const guardianLink = await db('student_guardians')
+    .where({ student_id: session.student_id, status: 'active' })
+    .first()
+    .catch(() => null);
+  if (guardianLink?.guardian_id) {
+    const guardian = await db('users').where({ id: guardianLink.guardian_id }).first().catch(() => null);
+    if (guardian?.email) {
+      payerEmail = guardian.email;
+      payerName = [guardian.first_name, guardian.last_name].filter(Boolean).join(' ') || payerName;
+    }
+  }
+  if (!payerEmail) return;
+
+  // Remaining outstanding balance across the student's fees.
+  const openFees = await db('fees')
+    .where({ student_id: session.student_id })
+    .whereIn('status', ['pending', 'partial', 'overdue']);
+  const balanceRemaining = openFees.reduce(
+    (sum: number, f: any) => sum + Math.max(0, Number(f.amount || 0) - Number(f.amount_paid || 0)),
+    0
+  );
+
+  const { default: emailService } = await import('../services/emailService');
+  await emailService.sendPaymentReceiptEmail(session.tenant_id, payerEmail, {
+    payerName,
+    studentName,
+    amount: session.amount,
+    currency: 'Le',
+    method: 'Mobile / Card (Monime)',
+    reference: session.provider_session_id || undefined,
+    date: new Date(),
+    balanceRemaining,
+  });
 }
 
 /**
