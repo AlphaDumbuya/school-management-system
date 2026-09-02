@@ -1,6 +1,15 @@
 import axios, { AxiosInstance } from 'axios';
 import { logger } from '@utils/logger';
 import db from '@utils/database';
+import { resolveTenantBranding, platformBranding } from './email/emailBranding.js';
+import {
+  renderEmail,
+  emailButton,
+  detailsCard,
+  detailRow,
+  calloutBlock,
+  escapeHtml,
+} from './email/emailLayout.js';
 
 export interface EmailTemplate {
   id: string;
@@ -386,6 +395,202 @@ class EmailService {
       createdBy: template.createdBy,
       createdAt: template.createdAt,
     };
+  }
+
+  // ==========================================================================
+  // Branded transactional emails (mobile-first, tenant-branded)
+  // ==========================================================================
+
+  private fmtDate(d?: Date | string): string {
+    if (!d) return '—';
+    const date = typeof d === 'string' ? new Date(d) : d;
+    if (isNaN(date.getTime())) return String(d);
+    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
+  private titleCase(s?: string): string {
+    if (!s) return '';
+    return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  /**
+   * Detention scheduled notice → guardian.
+   */
+  async sendDetentionNotification(
+    tenantId: string,
+    toEmail: string,
+    guardianName: string,
+    detention: any
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/discipline`;
+
+    const rows =
+      detailRow('Type', escapeHtml(this.titleCase(detention.detention_type))) +
+      detailRow('Date', escapeHtml(this.fmtDate(detention.scheduled_date))) +
+      (detention.start_time
+        ? detailRow('Time', `${escapeHtml(detention.start_time)}${detention.end_time ? ' – ' + escapeHtml(detention.end_time) : ''}`)
+        : '') +
+      (detention.location ? detailRow('Location', escapeHtml(detention.location)) : '');
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(guardianName)},</p>
+      <p>This is to inform you that a detention has been scheduled for your child at <strong>${escapeHtml(branding.name)}</strong>. Please see the details below.</p>
+      ${detailsCard(rows)}
+      ${calloutBlock('Kindly ensure your child attends on time. If the scheduled time poses a difficulty, please contact the school so alternative arrangements can be discussed.', 'warn')}
+      ${emailButton('View in Portal', portalUrl)}
+      <p style="color:#64748b;font-size:13px;">If you have any questions, reply to this email or reach us using the contact details below.</p>`;
+
+    return this.sendEmail({
+      to: toEmail,
+      subject: `Detention Notice — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: 'Discipline Notice', heading: 'Detention Scheduled', bodyHtml, preheader: `A detention has been scheduled for your child on ${this.fmtDate(detention.scheduled_date)}.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Infraction recorded notice → guardian.
+   */
+  async sendInfractionNotification(
+    tenantId: string,
+    toEmail: string,
+    guardianName: string,
+    infraction: any
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/discipline`;
+
+    const rows =
+      detailRow('Date of Incident', escapeHtml(this.fmtDate(infraction.incident_date))) +
+      (infraction.incident_location ? detailRow('Location', escapeHtml(infraction.incident_location)) : '') +
+      (infraction.incident_description ? detailRow('Description', escapeHtml(infraction.incident_description)) : '') +
+      detailRow('Status', escapeHtml(this.titleCase(infraction.status)));
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(guardianName)},</p>
+      <p>We are writing to let you know that a behavioural incident involving your child has been recorded at <strong>${escapeHtml(branding.name)}</strong>. We share this in the spirit of partnership so we can support your child together.</p>
+      ${detailsCard(rows)}
+      ${calloutBlock('We encourage you to speak with your child about this and to contact us if you would like to discuss it further. Working together helps us support positive behaviour.', 'info')}
+      ${emailButton('View Details', portalUrl)}`;
+
+    return this.sendEmail({
+      to: toEmail,
+      subject: `Behaviour Notice — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: 'Discipline Notice', heading: 'Behaviour Incident Recorded', bodyHtml, preheader: 'A behavioural incident involving your child has been recorded.' }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Conduct report shared → guardian.
+   */
+  async sendConductReport(
+    tenantId: string,
+    toEmail: string,
+    guardianName: string,
+    studentName: string,
+    report: any
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/discipline`;
+
+    const rows =
+      detailRow('Student', escapeHtml(studentName)) +
+      detailRow('Period', escapeHtml(this.titleCase(report.report_period))) +
+      (report.period_start_date
+        ? detailRow('From', escapeHtml(this.fmtDate(report.period_start_date)))
+        : '') +
+      (report.period_end_date
+        ? detailRow('To', escapeHtml(this.fmtDate(report.period_end_date)))
+        : '') +
+      detailRow('Total Infractions', String(report.total_infractions ?? 0)) +
+      (report.behavioral_rating != null
+        ? detailRow('Behaviour Rating', `${escapeHtml(String(report.behavioral_rating))} / 5`)
+        : '');
+
+    const comments = [
+      report.strengths ? `<p><strong>Strengths:</strong> ${escapeHtml(report.strengths)}</p>` : '',
+      report.areas_for_improvement ? `<p><strong>Areas for improvement:</strong> ${escapeHtml(report.areas_for_improvement)}</p>` : '',
+      report.teacher_comments ? `<p><strong>Teacher's comments:</strong> ${escapeHtml(report.teacher_comments)}</p>` : '',
+      report.overall_assessment ? `<p><strong>Overall assessment:</strong> ${escapeHtml(report.overall_assessment)}</p>` : '',
+    ].filter(Boolean).join('');
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(guardianName)},</p>
+      <p><strong>${escapeHtml(branding.name)}</strong> has prepared a conduct report for <strong>${escapeHtml(studentName)}</strong>. A summary is below.</p>
+      ${detailsCard(rows)}
+      ${comments ? calloutBlock(comments, 'info') : ''}
+      ${emailButton('Open Full Report', portalUrl)}
+      <p style="color:#64748b;font-size:13px;">Please reach out if you would like to discuss any part of this report.</p>`;
+
+    return this.sendEmail({
+      to: toEmail,
+      subject: `Conduct Report for ${studentName} — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: 'Conduct Report', heading: 'Student Conduct Report', bodyHtml, preheader: `Conduct report for ${studentName} is ready.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Appeal decision → the person who submitted the appeal.
+   */
+  async sendAppealDecision(
+    tenantId: string,
+    toEmail: string,
+    recipientName: string,
+    appeal: any,
+    decision: string,
+    notes: string
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/discipline`;
+    const approved = decision?.toLowerCase() === 'approved';
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(recipientName)},</p>
+      <p>Your discipline appeal submitted to <strong>${escapeHtml(branding.name)}</strong> has been reviewed.</p>
+      ${calloutBlock(
+        `<strong>Decision: ${approved ? 'Approved' : 'Not upheld'}</strong>${notes ? `<br/>${escapeHtml(notes)}` : ''}`,
+        approved ? 'success' : 'warn'
+      )}
+      ${emailButton('View Appeal', portalUrl)}
+      <p style="color:#64748b;font-size:13px;">If you have questions about this decision, please contact the school using the details below.</p>`;
+
+    return this.sendEmail({
+      to: toEmail,
+      subject: `Appeal ${approved ? 'Approved' : 'Decision'} — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: 'Appeal Outcome', heading: `Appeal ${approved ? 'Approved' : 'Decision'}`, bodyHtml, preheader: `Your discipline appeal has been ${decision}.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Password reset → any user. Platform-branded (auth is a platform concern),
+   * but the link points to the app's reset page with the token.
+   */
+  async sendPasswordResetEmail(
+    toEmail: string,
+    userName: string,
+    resetToken: string
+  ): Promise<EmailResponse> {
+    const branding = platformBranding();
+    const resetUrl = `${branding.appUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+
+    const bodyHtml = `
+      <p>Hello ${escapeHtml(userName || 'there')},</p>
+      <p>We received a request to reset the password for your WiSkul account. Click the button below to choose a new password. This link will expire in <strong>1 hour</strong>.</p>
+      ${emailButton('Reset My Password', resetUrl)}
+      ${calloutBlock("If you didn't request a password reset, you can safely ignore this email — your password will not change.", 'info')}
+      <p style="color:#64748b;font-size:13px;">If the button doesn't work, copy and paste this link into your browser:<br/>
+      <a href="${resetUrl}" style="color:${'#00d4aa'};word-break:break-all;">${resetUrl}</a></p>`;
+
+    return this.sendEmail({
+      to: toEmail,
+      subject: 'Reset your WiSkul password',
+      body: renderEmail({ branding, eyebrow: 'Account Security', heading: 'Password Reset Request', bodyHtml, preheader: 'Reset your WiSkul password — link valid for 1 hour.' }),
+      isHtml: true,
+    });
   }
 }
 

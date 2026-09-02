@@ -428,6 +428,7 @@ class InfractionService {
           // Send email if enabled
           if (guardianUser.email_notifications_enabled && guardianUser.email) {
             await emailService.sendInfractionNotification(
+              tenantId,
               guardianUser.email,
               guardianUser.first_name,
               infraction

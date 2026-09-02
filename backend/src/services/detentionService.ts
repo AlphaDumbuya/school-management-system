@@ -427,6 +427,7 @@ class DetentionService {
 
           if (guardianUser.email_notifications_enabled && guardianUser.email) {
             await emailService.sendDetentionNotification(
+              tenantId,
               guardianUser.email,
               guardianUser.first_name,
               detention

@@ -288,6 +288,7 @@ class ConductReportService {
           // Email
           if (guardianUser.email_notifications_enabled && guardianUser.email) {
             await emailService.sendConductReport(
+              tenantId,
               guardianUser.email,
               guardianUser.first_name,
               student.first_name,
