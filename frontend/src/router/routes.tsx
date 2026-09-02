@@ -7,6 +7,8 @@ import React from 'react';
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import ProtectedRoute from './ProtectedRoute';
 import LoginPage from '@pages/LoginPage';
+import ForgotPasswordPage from '@pages/ForgotPasswordPage';
+import ResetPasswordPage from '@pages/ResetPasswordPage';
 import LandingPage from '@pages/LandingPage';
 import FeaturesPage from '@pages/FeaturesPage';
 import PricingPage from '@pages/PricingPage';
@@ -114,6 +116,8 @@ const router = createBrowserRouter(
         { path: 'benefits', element: <BenefitsPage /> },
         { path: 'contact', element: <ContactPage /> },
         { path: 'login', element: <LoginPage /> },
+        { path: 'forgot-password', element: <ForgotPasswordPage /> },
+        { path: 'reset-password', element: <ResetPasswordPage /> },
         { path: 'register', element: <RegisterPage /> },
         { path: 'verify-id', element: <VerifyIdPage /> },
 

@@ -29,8 +29,8 @@ export const API_ENDPOINTS = {
     REFRESH_TOKEN: '/api/v1/auth/refresh',
     ME: '/api/v1/auth/me',
     CHANGE_PASSWORD: '/api/v1/auth/change-password',
-    FORGOT_PASSWORD: '/api/v1/auth/forgot-password',
-    RESET_PASSWORD: '/api/v1/auth/reset-password',
+    FORGOT_PASSWORD: '/api/v1/auth/reset-password',
+    RESET_PASSWORD: '/api/v1/auth/reset-password/confirm',
   },
 
   // Dashboard

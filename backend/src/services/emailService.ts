@@ -24,6 +24,13 @@ export interface EmailTemplate {
   createdAt: string;
 }
 
+export interface EmailAttachment {
+  /** File name shown in the email, e.g. "receipt.pdf". */
+  name: string;
+  /** Base64-encoded file content. */
+  content: string;
+}
+
 export interface EmailRequest {
   to: string;
   subject: string;
@@ -31,6 +38,7 @@ export interface EmailRequest {
   templateName?: string;
   variables?: Record<string, any>;
   isHtml?: boolean;
+  attachments?: EmailAttachment[];
 }
 
 export interface EmailResponse {
@@ -98,6 +106,11 @@ class EmailService {
         subject: emailRequest.subject,
         htmlContent: emailRequest.isHtml !== false ? body : undefined,
         textContent: emailRequest.isHtml === true ? undefined : body,
+        // Brevo expects attachment: [{ content: <base64>, name: <filename> }]
+        attachment:
+          emailRequest.attachments && emailRequest.attachments.length
+            ? emailRequest.attachments.map((a) => ({ name: a.name, content: a.content }))
+            : undefined,
       };
 
       const response = await this.brevoClient.post('/smtp/email', payload);
@@ -705,16 +718,38 @@ class EmailService {
 
     const bodyHtml = `
       <p>Dear ${escapeHtml(data.payerName)},</p>
-      <p>Thank you — we've received your payment to <strong>${escapeHtml(branding.name)}</strong>. This email is your receipt.</p>
+      <p>Thank you — we've received your payment to <strong>${escapeHtml(branding.name)}</strong>. Your official receipt is attached to this email as a PDF.</p>
       ${detailsCard(rows)}
-      ${calloutBlock('Please keep this receipt for your records. You can view your full payment history in your portal.', 'success')}
+      ${calloutBlock('Please keep the attached PDF receipt for your records. You can also view your full payment history in your portal.', 'success')}
       ${emailButton('View Payment History', portalUrl)}`;
+
+    // Generate a professional, tenant-branded PDF receipt to attach.
+    let attachments: { name: string; content: string }[] | undefined;
+    try {
+      const { generateReceiptPdfBase64 } = await import('./email/receiptPdf.js');
+      const receiptNumber = data.reference || `RCPT-${Date.now()}`;
+      const { base64 } = await generateReceiptPdfBase64(tenantId, {
+        receiptNumber,
+        payerName: data.payerName,
+        studentName: data.studentName,
+        amount: Number(data.amount),
+        currency,
+        method: data.method,
+        reference: data.reference,
+        date: data.date ? new Date(data.date) : new Date(),
+        balanceRemaining: data.balanceRemaining != null ? Number(data.balanceRemaining) : undefined,
+      });
+      attachments = [{ name: `Receipt-${receiptNumber}.pdf`, content: base64 }];
+    } catch (err) {
+      logger.warn(`Could not generate PDF receipt; sending email without attachment: ${err}`);
+    }
 
     return this.sendEmail({
       to: toEmail,
       subject: `Payment Receipt — ${this.fmtMoney(data.amount, currency)} to ${branding.name}`,
       body: renderEmail({ branding, eyebrow: 'Payment Receipt', heading: 'Payment Received — Thank You', bodyHtml, preheader: `Receipt for your ${this.fmtMoney(data.amount, currency)} payment.` }),
       isHtml: true,
+      attachments,
     });
   }
 
