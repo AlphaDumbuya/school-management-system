@@ -249,8 +249,8 @@ export const authService = {
     newPassword: string
   ): Promise<ApiResponse<{ message: string }>> => {
     return apiClient.post(API_ENDPOINTS.AUTH.RESET_PASSWORD, {
-      token,
-      newPassword,
+      reset_token: token,
+      new_password: newPassword,
     });
   },
 

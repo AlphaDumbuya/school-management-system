@@ -479,7 +479,7 @@ class AppealService {
       });
 
       if (user.email_notifications_enabled && user.email) {
-        await emailService.sendAppealDecision(user.email, user.first_name, appeal, decision, notes);
+        await emailService.sendAppealDecision(tenantId, user.email, user.first_name, appeal, decision, notes);
       }
     } catch (error) {
       logger.error('Error notifying appeal decision:', error);

@@ -6,6 +6,7 @@ import { AppError } from '@middleware/errorHandler';
 import { authenticate, authorize, rateLimitLogin, clearLoginAttempts } from '@middleware/authMiddleware';
 import { logger } from '@utils/logger';
 import { UserRole, UserStatus } from '@types/auth';
+import emailService from '@services/emailService';
 
 const router = Router();
 const authService = new AuthService(db);
@@ -272,11 +273,25 @@ router.post('/reset-password', async (req: Request, res: Response, next: NextFun
     // Request password reset
     const resetToken = await authService.requestPasswordReset(email);
 
-    // TODO: Send email with reset token via email service
-    // For development, return token in response
+    // Send the reset email if a real token was issued (i.e. the account exists).
+    // requestPasswordReset returns a friendly message string when no user is
+    // found, so we look up the user to decide whether to send + personalise.
+    try {
+      const user = await db('users').where({ email }).first();
+      if (user && resetToken && !resetToken.startsWith('If an account')) {
+        const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'there';
+        await emailService.sendPasswordResetEmail(email, name, resetToken);
+      }
+    } catch (mailErr: any) {
+      // Never fail the request because email delivery hiccuped.
+      logger.warn(`Could not send password reset email to ${email}: ${mailErr?.message || mailErr}`);
+    }
+
+    // Always return a neutral response so we don't reveal whether the account exists.
+    // In non-production we also echo the token to aid local testing.
     if (process.env.NODE_ENV !== 'production') {
       res.json({
-        message: 'Password reset link sent to email',
+        message: 'If an account exists for this email, a password reset link has been sent',
         reset_token: resetToken, // Only for development
       });
     } else {

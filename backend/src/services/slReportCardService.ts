@@ -312,6 +312,14 @@ export class SLReportCardService {
       });
     }
 
+    // Notify guardians by email that report cards are now available (only on
+    // publish, best-effort, never blocks the publish action).
+    if (payload.published) {
+      this.notifyReportCardPublished(tenantId, payload.class_id, payload.academic_year, term).catch((err) =>
+        logger.warn(`Report card published emails failed for class ${payload.class_id}: ${err?.message || err}`),
+      );
+    }
+
     // AUTO-PROMOTION: when a WHOLE-YEAR result set is published (term = null)
     // and the tenant has enabled auto-promote, upgrade passing students to
     // their class's configured next class (or graduate final-year students).
@@ -332,6 +340,66 @@ export class SLReportCardService {
     }
 
     return {};
+  }
+
+  /**
+   * Email guardians (falling back to the student) that report cards for a class
+   * have been published. Best-effort per recipient.
+   */
+  private async notifyReportCardPublished(
+    tenantId: string,
+    classId: string,
+    academicYear: string,
+    term: string | null,
+  ): Promise<void> {
+    const cls = await db('classes').where({ id: classId }).first().catch(() => null);
+    const className = cls?.name || cls?.class_name || undefined;
+
+    const students = await db('enrollments')
+      .join('students', 'enrollments.student_id', 'students.id')
+      .where('enrollments.class_id', classId)
+      .where('enrollments.status', 'active')
+      .where('students.tenant_id', tenantId)
+      .select(
+        'students.id as student_id',
+        'students.first_name',
+        'students.last_name',
+        'students.email as student_email',
+      );
+
+    const { default: emailService } = await import('./emailService');
+
+    for (const s of students) {
+      try {
+        const studentName = [s.first_name, s.last_name].filter(Boolean).join(' ') || 'your child';
+
+        // Prefer an active guardian's email; fall back to the student's.
+        let recipientEmail: string | null = s.student_email || null;
+        let recipientName = studentName;
+        const link = await db('student_guardians')
+          .where({ student_id: s.student_id, status: 'active' })
+          .first()
+          .catch(() => null);
+        if (link?.guardian_id) {
+          const guardian = await db('users').where({ id: link.guardian_id }).first().catch(() => null);
+          if (guardian?.email) {
+            recipientEmail = guardian.email;
+            recipientName = [guardian.first_name, guardian.last_name].filter(Boolean).join(' ') || recipientName;
+          }
+        }
+        if (!recipientEmail) continue;
+
+        await emailService.sendReportCardPublishedEmail(tenantId, recipientEmail, {
+          recipientName,
+          studentName,
+          className,
+          term: term || 'Full Year',
+          academicYear,
+        });
+      } catch (err) {
+        logger.warn(`Report card email failed for student ${s.student_id}: ${(err as any)?.message || err}`);
+      }
+    }
   }
 
   /** Whether results for a class+year (optionally term) are published. */

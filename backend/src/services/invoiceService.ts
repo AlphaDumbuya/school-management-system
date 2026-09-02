@@ -272,10 +272,44 @@ export class InvoiceService {
 
       const invoice = await this.getInvoiceById(invoiceId);
 
-      // Get student details
-      const student = await this.db('users')
+      // Resolve the student and the best contact email (guardian first).
+      const studentRow = await this.db('students')
         .where('id', invoice.student_id)
-        .first();
+        .first()
+        .catch(() => null);
+      const studentUser = await this.db('users')
+        .where('id', invoice.student_id)
+        .first()
+        .catch(() => null);
+
+      const studentName = studentRow
+        ? [studentRow.first_name, studentRow.last_name].filter(Boolean).join(' ')
+        : studentUser
+        ? [studentUser.first_name, studentUser.last_name].filter(Boolean).join(' ')
+        : 'Student';
+
+      let recipientEmail: string | null =
+        studentRow?.email || studentUser?.email || null;
+      let recipientName = studentName;
+
+      // Prefer a linked active guardian's email.
+      const guardianLink = await this.db('student_guardians')
+        .where({ student_id: invoice.student_id, status: 'active' })
+        .first()
+        .catch(() => null);
+      if (guardianLink?.guardian_id) {
+        const guardian = await this.db('users')
+          .where({ id: guardianLink.guardian_id })
+          .first()
+          .catch(() => null);
+        if (guardian?.email) {
+          recipientEmail = guardian.email;
+          recipientName = [guardian.first_name, guardian.last_name].filter(Boolean).join(' ') || recipientName;
+        }
+      }
+
+      const balance = Number(invoice.balance ?? invoice.total_amount ?? 0);
+      const overdue = invoice.due_date ? new Date(invoice.due_date) < new Date() : false;
 
       // Log to audit
       await this.auditService.logAudit({
@@ -284,17 +318,39 @@ export class InvoiceService {
         action: 'send_reminder',
         performedBy: userId,
         details: {
-          studentEmail: student.email,
+          studentEmail: recipientEmail,
           invoiceAmount: invoice.total_amount,
         },
         timestamp: new Date(),
       });
 
-      // Note: Actual email sending would be done via email service
+      // Send the branded fee reminder email (best-effort).
+      let emailSent = false;
+      if (recipientEmail) {
+        try {
+          const { default: emailService } = await import('./emailService');
+          await emailService.sendFeeReminderEmail(invoice.tenant_id, recipientEmail, {
+            guardianName: recipientName,
+            studentName,
+            amountDue: balance,
+            currency: 'Le',
+            dueDate: invoice.due_date,
+            overdue,
+            feeName: invoice.invoice_number ? `Invoice ${invoice.invoice_number}` : undefined,
+          });
+          emailSent = true;
+        } catch (mailErr) {
+          logger.warn(`Fee reminder email failed for invoice ${invoiceId}: ${mailErr}`);
+        }
+      }
+
       return {
         success: true,
-        message: `Reminder sent for invoice ${invoiceId}`,
-        studentEmail: student.email,
+        message: emailSent
+          ? `Reminder email sent for invoice ${invoiceId}`
+          : `Reminder logged for invoice ${invoiceId} (no email on file)`,
+        studentEmail: recipientEmail,
+        emailSent,
       };
     } catch (error) {
       logger.error(`Error sending invoice reminder: ${error}`);

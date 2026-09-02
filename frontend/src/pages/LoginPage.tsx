@@ -295,12 +295,13 @@ export const LoginPage: React.FC = () => {
                     />
                     Remember me
                   </label>
-                  <a
-                    href="#"
+                  <button
+                    type="button"
+                    onClick={() => navigate('/forgot-password')}
                     className="text-[#00d4aa] text-xs font-semibold hover:text-[#00e6b8] transition-colors"
                   >
                     Forgot Password?
-                  </a>
+                  </button>
                 </div>
 
                 {/* Submit */}

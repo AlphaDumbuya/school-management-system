@@ -252,6 +252,51 @@ export async function updateApplicationStatus(
       userId
     );
 
+    // Notify the applicant's guardian of an admissions DECISION by email.
+    // Only on accept / reject / waitlist, and only when we have an email.
+    const decisionStatuses: string[] = [
+      ApplicationStatus.ACCEPTED,
+      ApplicationStatus.REJECTED,
+      ApplicationStatus.WAITLIST,
+    ];
+    if (decisionStatuses.includes(data.status)) {
+      try {
+        const app = application as any;
+        const guardianEmail = app.guardian_email || app.email || null;
+        if (guardianEmail) {
+          const guardianName =
+            [app.guardian_first_name || app.parent_name, app.guardian_last_name]
+              .filter(Boolean)
+              .join(' ') || 'Parent/Guardian';
+          const studentName =
+            [app.child_first_name || app.first_name, app.child_last_name || app.last_name]
+              .filter(Boolean)
+              .join(' ') || 'the applicant';
+          const emailTenantId = tenantId || app.tenant_id;
+
+          // Resolve a human class name if we have an id.
+          let className: string | undefined;
+          const classId = app.class_applying_for || app.grade_id || null;
+          if (classId) {
+            const cls = await db('classes').where({ id: classId }).first().catch(() => null);
+            className = cls?.name || cls?.class_name || undefined;
+          }
+
+          const { default: emailService } = await import('./emailService');
+          await emailService.sendAdmissionDecisionEmail(emailTenantId, guardianEmail, {
+            guardianName,
+            studentName,
+            decision: data.status,
+            applicationNumber: app.application_number,
+            className,
+            notes: data.decision_notes,
+          });
+        }
+      } catch (mailErr) {
+        console.error('Could not send admission decision email:', mailErr);
+      }
+    }
+
     // Auto-create/sync student record if approved or enrolled
     const autoCreateStatuses = ['accepted', 'approved', 'enrolled', ApplicationStatus.ACCEPTED, ApplicationStatus.ENROLLED];
     if (autoCreateStatuses.includes(data.status)) {

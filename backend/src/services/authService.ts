@@ -668,6 +668,17 @@ export class AuthService {
 
       logger.info(`User created: ${payload.email} with role ${payload.role}`);
 
+      // Email the new user their account details (non-blocking, best-effort).
+      import('./emailService')
+        .then(({ default: emailService }) =>
+          emailService.sendAccountCredentialsEmail(tenantId, payload.email, {
+            userName: `${payload.first_name} ${payload.last_name}`.trim(),
+            role: payload.role,
+            tempPassword: payload.password,
+          })
+        )
+        .catch((err) => logger.warn(`Could not send account credentials email to ${payload.email}: ${err?.message || err}`));
+
       const user = await this.getUserById(userId);
       return await this.mapUserToResponse(user);
     } catch (error) {
