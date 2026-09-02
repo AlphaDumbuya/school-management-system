@@ -223,11 +223,11 @@ export const ChartCard: React.FC<ChartCardProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6">
+    <div className="bg-white rounded-2xl ring-1 ring-gray-200/70 shadow-sm hover:shadow-md transition-shadow duration-300 p-4 sm:p-6">
       {/* Header */}
       <div className="flex items-start justify-between mb-4 gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+          <h3 className="text-sm sm:text-base font-bold text-gray-900 tracking-tight">{title}</h3>
           {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">

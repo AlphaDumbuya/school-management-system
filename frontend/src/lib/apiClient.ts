@@ -7,6 +7,76 @@
 import axios, { AxiosInstance, AxiosError, AxiosResponse, AxiosRequestConfig } from 'axios';
 import { API_CONFIG, getAuthHeaders } from '@config/api.config';
 import { ApiResponse } from '@appTypes/index';
+import { enqueueRequest } from './offlineQueue';
+
+/** Methods that mutate server state and are safe to queue + replay offline. */
+const QUEUEABLE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
+
+/**
+ * Endpoints that must NEVER be queued for offline replay. Authentication is
+ * interactive and time-sensitive — you can't sign in without the server — so
+ * these must fail cleanly rather than being silently replayed later. Also
+ * excludes actions that only make sense while online (payments, checkout).
+ */
+const NON_QUEUEABLE_PATTERNS: RegExp[] = [
+  /\/auth\/login/i,
+  /\/auth\/register/i,
+  /\/auth\/refresh/i,
+  /\/auth\/logout/i,
+  /\/auth\/forgot/i,
+  /\/auth\/reset/i,
+  /\/payments\/.*checkout/i, // Monime hosted checkout needs a live redirect
+];
+
+/** Sentinel error thrown when a mutation is captured by the offline queue. */
+export class OfflineQueuedError extends Error {
+  offlineQueued = true;
+  constructor(message = 'Saved offline. It will sync when you reconnect.') {
+    super(message);
+    this.name = 'OfflineQueuedError';
+  }
+}
+
+/**
+ * When a mutating request fails purely because we're offline (no HTTP response),
+ * persist it to the durable queue so it replays on reconnect. Returns true if
+ * the request was captured.
+ */
+async function maybeQueueOffline(config?: AxiosRequestConfig): Promise<boolean> {
+  if (!config) return false;
+  const method = (config.method || 'get').toLowerCase();
+  if (!QUEUEABLE_METHODS.has(method)) return false;
+
+  const rawPath = config.url || '';
+  // Never queue auth / payment-checkout style requests.
+  if (NON_QUEUEABLE_PATTERNS.some((re) => re.test(rawPath))) return false;
+
+  // Build an absolute URL from axios baseURL + url.
+  const base = (config.baseURL || API_CONFIG.baseURL || '').replace(/\/$/, '');
+  const path = rawPath;
+  const url = /^https?:\/\//i.test(path) ? path : `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+
+  const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let body: string | null = null;
+  if (config.data != null) {
+    body = typeof config.data === 'string' ? config.data : JSON.stringify(config.data);
+  }
+
+  await enqueueRequest({ url, method: method.toUpperCase(), headers, body });
+
+  // Ask the SW to fire a background sync so it flushes even if the tab closes.
+  try {
+    const reg = await navigator.serviceWorker?.ready;
+    // @ts-expect-error - sync is not in all TS lib versions
+    await reg?.sync?.register('sync-offline-queue');
+  } catch {
+    /* background sync unsupported — the online-event replay still covers it */
+  }
+  return true;
+}
 
 // Create axios instance
 export const axiosInstance: AxiosInstance = axios.create({
@@ -42,7 +112,7 @@ axiosInstance.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) {
-          // No refresh token, redirect to login
+          // No refresh token at all → genuine unauthenticated state.
           window.location.href = '/login';
           return Promise.reject(error);
         }
@@ -67,7 +137,19 @@ axiosInstance.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return axiosInstance(originalRequest);
       } catch (refreshError) {
-        // Refresh failed, redirect to login
+        // Distinguish "offline / server unreachable" from "server said no".
+        const refreshAx = refreshError as AxiosError;
+        const isOffline = !navigator.onLine || !refreshAx.response;
+
+        if (isOffline) {
+          // We can't refresh without a network, but the user already signed in
+          // on this device. Keep the cached session alive — do NOT log them out.
+          // Re-validation happens automatically the next time we're online.
+          console.warn('[auth] offline — keeping cached session, refresh deferred');
+          return Promise.reject(error);
+        }
+
+        // Online and the server rejected the refresh token → genuine logout.
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
         window.location.href = '/login';
@@ -80,9 +162,14 @@ axiosInstance.interceptors.response.use(
       console.warn('403 Forbidden:', error.response?.config?.url);
     }
 
-    // Handle network errors
+    // Handle network errors — likely offline. Queue mutations for later replay.
     if (!error.response) {
       console.error('Network error:', error.message);
+      const queued = await maybeQueueOffline(originalRequest);
+      if (queued) {
+        // Surface a distinct error the UI can treat as "saved, will sync".
+        return Promise.reject(new OfflineQueuedError());
+      }
     }
 
     return Promise.reject(error);
@@ -185,7 +272,36 @@ interface ErrorResponse {
 }
 
 const handleError = (error: unknown): ErrorResponse => {
+  // A mutation captured by the offline queue — treat as a soft success so the
+  // UI shows "saved offline" rather than a hard failure.
+  if (error instanceof OfflineQueuedError || (error as any)?.offlineQueued) {
+    const msg = (error as Error).message;
+    // Broadcast so a single global listener can toast "saved offline" without
+    // every call site needing bespoke handling.
+    try {
+      window.dispatchEvent(new CustomEvent('wiskul:offline-queued', { detail: { message: msg } }));
+    } catch {
+      /* SSR / non-DOM env */
+    }
+    return {
+      success: false,
+      error: msg,
+      statusCode: 0, // 0 = offline-queued sentinel
+    };
+  }
+
   if (axios.isAxiosError(error)) {
+    // No HTTP response at all → the device is offline / server unreachable.
+    // Give a clear, action-oriented message instead of raw "Network Error".
+    if (!error.response) {
+      return {
+        success: false,
+        error:
+          "You're offline. Connect to the internet to sign in — once you're in, the app keeps working offline.",
+        statusCode: 0,
+      };
+    }
+
     const status = error.response?.status || 500;
     const data = error.response?.data as any;
 

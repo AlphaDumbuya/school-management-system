@@ -6,6 +6,7 @@ import useAuthStore from '@store/authStore';
 import AppRouter from '@router/routes';
 import '@styles/index.css';
 import { InstallBanner } from '@components/pwa/InstallBanner';
+import { OfflineIndicator } from '@components/pwa/OfflineIndicator';
 
 // Singleton queryClient — but we call .clear() on logout to purge cross-tenant cache
 const queryClient = new QueryClient({
@@ -58,6 +59,7 @@ export const App: React.FC = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <OfflineIndicator />
       <AppRouter />
       <ToastContainer position="top-right" closeButton={true} aria-live="polite" />
       <InstallBanner />
