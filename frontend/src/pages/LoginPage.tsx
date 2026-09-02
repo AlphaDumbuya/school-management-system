@@ -24,7 +24,6 @@ import {
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
 import useAuthStore from '@store/authStore';
 import { InstallAppButton } from '@components/pwa/InstallAppButton';
-import { WelcomeModal } from '@components/pwa/WelcomeModal';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
@@ -88,9 +87,6 @@ export const LoginPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#1a1a2e] flex relative overflow-hidden">
-      {/* First-launch welcome popup (only when not already signed in) */}
-      {!(isAuthenticated && user) && <WelcomeModal onRegister={() => navigate('/register')} />}
-
       {/* ── Ambient background (whole screen) ───────────────────────── */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-[#00d4aa]/10 blur-[130px] animate-aurora" />
