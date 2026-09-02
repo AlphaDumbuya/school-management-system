@@ -9,6 +9,14 @@ import { API_CONFIG, getAuthHeaders } from '@config/api.config';
 import { ApiResponse } from '@appTypes/index';
 import { enqueueRequest } from './offlineQueue';
 
+/**
+ * Master switch for the offline write-queue. Disabled for now: it was
+ * intercepting failed mutations (including school registration) and returning a
+ * "saved offline" sentinel instead of surfacing the real error. Set back to
+ * true to re-enable offline queueing of POST/PUT/PATCH/DELETE.
+ */
+const OFFLINE_QUEUE_ENABLED = false;
+
 /** Methods that mutate server state and are safe to queue + replay offline. */
 const QUEUEABLE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 
@@ -43,6 +51,7 @@ export class OfflineQueuedError extends Error {
  * the request was captured.
  */
 async function maybeQueueOffline(config?: AxiosRequestConfig): Promise<boolean> {
+  if (!OFFLINE_QUEUE_ENABLED) return false;
   if (!config) return false;
   const method = (config.method || 'get').toLowerCase();
   if (!QUEUEABLE_METHODS.has(method)) return false;

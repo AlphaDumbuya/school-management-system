@@ -754,6 +754,86 @@ class EmailService {
   }
 
   /**
+   * Account credentials / welcome → newly created user (staff, teacher, parent,
+   * student). Tenant-branded, includes their login email and a portal link. If
+   * a temporary password is provided we include it with a change-it advisory.
+   */
+  async sendAccountCredentialsEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      userName: string;
+      role?: string;
+      tempPassword?: string;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const loginUrl = `${branding.appUrl}/login`;
+
+    const rows =
+      detailRow('Login Email', escapeHtml(toEmail)) +
+      (data.role ? detailRow('Role', escapeHtml(this.titleCase(data.role))) : '') +
+      (data.tempPassword
+        ? detailRow('Temporary Password', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">${escapeHtml(data.tempPassword)}</code>`)
+        : '');
+
+    const bodyHtml = `
+      <p>Hello ${escapeHtml(data.userName || 'there')},</p>
+      <p>An account has been created for you at <strong>${escapeHtml(branding.name)}</strong>. You can now sign in to your portal using the details below.</p>
+      ${detailsCard(rows)}
+      ${data.tempPassword
+        ? calloutBlock('For your security, please sign in and change this temporary password right away.', 'warn')
+        : calloutBlock('Use the password provided to you by your school. If you need help, contact your administrator.', 'info')}
+      ${emailButton('Sign In to Your Portal', loginUrl)}
+      <p style="color:#64748b;font-size:13px;">If you weren't expecting this, please contact your school using the details below.</p>`;
+
+    return this.sendEmail({
+      to: toEmail,
+      subject: `Your ${branding.name} account is ready`,
+      body: renderEmail({ branding, eyebrow: 'Welcome', heading: `Welcome to ${branding.name}`, bodyHtml, preheader: `Your account at ${branding.name} is ready — sign in to get started.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Report cards published → guardian/student.
+   */
+  async sendReportCardPublishedEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      recipientName: string;
+      studentName: string;
+      className?: string;
+      term?: string;
+      academicYear?: string;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/academic/report-cards`;
+
+    const rows =
+      detailRow('Student', escapeHtml(data.studentName)) +
+      (data.className ? detailRow('Class', escapeHtml(data.className)) : '') +
+      (data.term ? detailRow('Term', escapeHtml(data.term)) : '') +
+      (data.academicYear ? detailRow('Academic Year', escapeHtml(data.academicYear)) : '');
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(data.recipientName)},</p>
+      <p>Good news — <strong>${escapeHtml(branding.name)}</strong> has published the report card for <strong>${escapeHtml(data.studentName)}</strong>. You can now view and download it from your portal.</p>
+      ${detailsCard(rows)}
+      ${calloutBlock('Please review the results and reach out to the school if you have any questions about your child\'s progress.', 'info')}
+      ${emailButton('View Report Card', portalUrl)}`;
+
+    return this.sendEmail({
+      to: toEmail,
+      subject: `Report Card Available for ${data.studentName} — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: 'Report Card', heading: 'Report Card Published', bodyHtml, preheader: `${data.studentName}'s report card is now available.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
    * Fee reminder → guardian. For upcoming or overdue balances.
    */
   async sendFeeReminderEmail(
@@ -814,71 +894,34 @@ export async function sendContactEmail(data: {
   role: string;
   message: string;
 }): Promise<EmailResponse> {
-  const emailBody = `
-<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-    .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
-    .field { margin-bottom: 20px; }
-    .label { font-weight: bold; color: #00d4aa; margin-bottom: 5px; }
-    .value { background: white; padding: 12px; border-radius: 6px; border-left: 3px solid #00d4aa; }
-    .message { background: white; padding: 15px; border-radius: 6px; border-left: 3px solid #7c3aed; white-space: pre-wrap; }
-    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1 style="margin: 0; font-size: 24px;">🎓 New Contact Form Submission</h1>
-      <p style="margin: 10px 0 0 0; opacity: 0.9;">WiSkul Contact Request</p>
-    </div>
-    <div class="content">
-      <div class="field">
-        <div class="label">Name:</div>
-        <div class="value">${data.name}</div>
-      </div>
-      <div class="field">
-        <div class="label">Email:</div>
-        <div class="value"><a href="mailto:${data.email}" style="color: #00d4aa; text-decoration: none;">${data.email}</a></div>
-      </div>
-      <div class="field">
-        <div class="label">Phone:</div>
-        <div class="value">${data.phone}</div>
-      </div>
-      <div class="field">
-        <div class="label">School:</div>
-        <div class="value">${data.school}</div>
-      </div>
-      <div class="field">
-        <div class="label">Role:</div>
-        <div class="value">${data.role}</div>
-      </div>
-      <div class="field">
-        <div class="label">Message:</div>
-        <div class="message">${data.message}</div>
-      </div>
-      <div style="margin-top: 30px; padding: 15px; background: linear-gradient(135deg, #00d4aa15, #7c3aed15); border-radius: 6px; text-align: center;">
-        <p style="margin: 0; color: #666; font-size: 13px;">⚡ Please respond within 24 hours</p>
-      </div>
-    </div>
-    <div class="footer">
-      <p style="margin: 0;">WiSkul School Management System</p>
-      <p style="margin: 5px 0 0 0;">This email was sent from your website contact form</p>
-    </div>
-  </div>
-</body>
-</html>
-  `;
+  const branding = platformBranding();
+
+  const rows =
+    detailRow('Name', escapeHtml(data.name)) +
+    detailRow('Email', `<a href="mailto:${escapeHtml(data.email)}" style="color:#00d4aa;text-decoration:none;">${escapeHtml(data.email)}</a>`) +
+    detailRow('Phone', escapeHtml(data.phone || '—')) +
+    detailRow('School', escapeHtml(data.school || '—')) +
+    detailRow('Role', escapeHtml(data.role || '—'));
+
+  const bodyHtml = `
+    <p>A new enquiry was submitted through the WiSkul website contact form.</p>
+    ${detailsCard(rows)}
+    <p style="font-weight:700;color:#1a1a2e;margin:18px 0 6px;">Message</p>
+    <div style="background:#f8fafc;border-left:4px solid #7c3aed;border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.6;color:#334155;white-space:pre-wrap;">${escapeHtml(data.message)}</div>
+    ${emailButton('Reply to ' + escapeHtml(data.name), `mailto:${data.email}`)}
+    ${calloutBlock('Please respond within 24 hours.', 'warn')}`;
 
   const emailService = new EmailService();
   return emailService.sendEmail({
     to: process.env.CONTACT_EMAIL || 'info@wiskulsl.com',
-    subject: `🎓 New Contact: ${data.name} from ${data.school}`,
-    body: emailBody,
+    subject: `New Contact: ${data.name} from ${data.school || 'website'}`,
+    body: renderEmail({
+      branding,
+      eyebrow: 'Website Contact Form',
+      heading: 'New Contact Enquiry',
+      bodyHtml,
+      preheader: `${data.name} (${data.school || 'website'}) sent a message.`,
+    }),
     isHtml: true,
   });
 }
@@ -887,95 +930,33 @@ export async function sendContactEmail(data: {
  * Send auto-response to contact form submitter
  */
 export async function sendAutoResponse(email: string, name: string): Promise<EmailResponse> {
-  const emailBody = `
-<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 40px 30px; text-align: center; border-radius: 8px 8px 0 0; }
-    .logo { font-size: 32px; font-weight: bold; margin-bottom: 10px; }
-    .logo-accent { color: #00d4aa; }
-    .content { background: #f9f9f9; padding: 40px 30px; }
-    .message { background: white; padding: 25px; border-radius: 8px; border-left: 4px solid #00d4aa; margin: 20px 0; }
-    .button { display: inline-block; background: linear-gradient(135deg, #00d4aa, #00e6b8); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }
-    .features { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 25px 0; }
-    .feature { background: white; padding: 15px; border-radius: 8px; text-align: center; }
-    .feature-icon { font-size: 24px; margin-bottom: 8px; }
-    .footer { text-align: center; padding: 30px; color: #666; font-size: 12px; background: #1a1a2e; border-radius: 0 0 8px 8px; }
-    .footer a { color: #00d4aa; text-decoration: none; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <div class="logo">Wi<span class="logo-accent">Skul</span></div>
-      <p style="margin: 0; font-size: 18px; opacity: 0.9;">Thank You for Contacting Us!</p>
-    </div>
-    <div class="content">
-      <h2 style="color: #1a1a2e; margin-top: 0;">Hi ${name},</h2>
-      
-      <div class="message">
-        <p style="margin: 0 0 15px 0; font-size: 16px;">We've received your message and our team will get back to you within <strong style="color: #00d4aa;">24 hours</strong>.</p>
-        <p style="margin: 0; color: #666;">In the meantime, feel free to explore what WiSkul can do for your school:</p>
-      </div>
+  const branding = platformBranding();
+  const base = branding.appUrl;
 
-      <div class="features">
-        <div class="feature">
-          <div class="feature-icon">🛡️</div>
-          <strong style="color: #1a1a2e;">Secure Data</strong>
-          <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">Military-grade encryption</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">📊</div>
-          <strong style="color: #1a1a2e;">Smart Analytics</strong>
-          <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">AI-powered insights</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">⚡</div>
-          <strong style="color: #1a1a2e;">Fast Setup</strong>
-          <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">Ready in minutes</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">💰</div>
-          <strong style="color: #1a1a2e;">Affordable</strong>
-          <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">Plans from NLe 400/mo</p>
-        </div>
-      </div>
-
-      <div style="text-align: center;">
-        <a href="${process.env.FRONTEND_URL || 'https://www.wiskulsl.com'}/features" class="button">Explore Features →</a>
-      </div>
-
-      <div style="margin-top: 30px; padding: 20px; background: linear-gradient(135deg, #7c3aed15, #00d4aa15); border-radius: 8px;">
-        <p style="margin: 0 0 10px 0; font-weight: bold; color: #1a1a2e;">🚀 Quick Links:</p>
-        <p style="margin: 5px 0; font-size: 13px;">
-          <a href="${process.env.FRONTEND_URL || 'https://www.wiskulsl.com'}/why" style="color: #7c3aed; text-decoration: none;">Why WiSkul</a> • 
-          <a href="${process.env.FRONTEND_URL || 'https://www.wiskulsl.com'}/benefits" style="color: #7c3aed; text-decoration: none;">Benefits</a> • 
-          <a href="${process.env.FRONTEND_URL || 'https://www.wiskulsl.com'}/pricing" style="color: #7c3aed; text-decoration: none;">Pricing</a>
-        </p>
-      </div>
-    </div>
-    <div class="footer">
-      <p style="margin: 0 0 10px 0; color: white; font-weight: bold;">WiSkul - Securing Education, One School at a Time</p>
-      <p style="margin: 0; color: #999;">📧 support@wiskulsl.com | 📱 +232 78 261 892</p>
-      <p style="margin: 10px 0 0 0; color: #666;">75 Main Road, Kossoh Town, Sierra Leone</p>
-      <p style="margin: 15px 0 0 0; color: #666;">
-        <a href="${process.env.FRONTEND_URL || 'https://www.wiskulsl.com'}/privacy">Privacy Policy</a> • 
-        <a href="${process.env.FRONTEND_URL || 'https://www.wiskulsl.com'}/terms">Terms of Service</a>
-      </p>
-    </div>
-  </div>
-</body>
-</html>
-  `;
+  const bodyHtml = `
+    <p>Hi ${escapeHtml(name)},</p>
+    <p>Thanks for reaching out to <strong>WiSkul</strong>. We've received your message and a member of our team will get back to you within <strong>24 hours</strong>.</p>
+    ${calloutBlock('While you wait, here are a few links you might find useful.', 'info')}
+    <p style="font-size:14px;line-height:1.9;">
+      🔎 <a href="${base}/features" target="_blank" style="color:#00d4aa;text-decoration:none;font-weight:600;">Explore Features</a><br/>
+      💡 <a href="${base}/why" target="_blank" style="color:#00d4aa;text-decoration:none;font-weight:600;">Why WiSkul</a><br/>
+      🎯 <a href="${base}/benefits" target="_blank" style="color:#00d4aa;text-decoration:none;font-weight:600;">Benefits for your school</a><br/>
+      💳 <a href="${base}/pricing" target="_blank" style="color:#00d4aa;text-decoration:none;font-weight:600;">Pricing</a>
+    </p>
+    ${emailButton('Explore WiSkul', `${base}/features`)}
+    <p style="color:#64748b;font-size:13px;">If your enquiry is urgent, just reply to this email and we'll prioritise it.</p>`;
 
   const emailService = new EmailService();
   return emailService.sendEmail({
     to: email,
-    subject: '🎓 Thank You for Contacting WiSkul - We\'ll Be in Touch Soon!',
-    body: emailBody,
+    subject: "Thanks for contacting WiSkul — we'll be in touch soon",
+    body: renderEmail({
+      branding,
+      eyebrow: 'We received your message',
+      heading: `Thanks for reaching out, ${name}!`,
+      bodyHtml,
+      preheader: "We've received your message and will reply within 24 hours.",
+    }),
     isHtml: true,
   });
 }
@@ -989,80 +970,43 @@ export async function sendSchoolWelcomeEmail(data: {
   schoolName: string;
   loginUrl?: string;
 }): Promise<EmailResponse> {
-  const loginUrl = data.loginUrl || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
-  
-  const emailBody = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #1a1a2e; background-color: #f4f6f9; margin: 0; padding: 20px; }
-    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
-    .header { background: linear-gradient(135deg, #16213e 0%, #00d4aa 100%); padding: 35px 30px; text-align: center; color: #ffffff; }
-    .logo { font-size: 28px; font-weight: 900; letter-spacing: -0.5px; margin: 0; }
-    .content { padding: 35px 30px; }
-    .welcome-card { background: #f8fafc; border-left: 4px solid #00d4aa; padding: 20px; border-radius: 8px; margin: 20px 0; }
-    .details-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    .details-table td { padding: 10px 14px; border-bottom: 1px solid #edf2f7; font-size: 14px; }
-    .button { display: inline-block; background: #00d4aa; color: #1a1a2e !important; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-weight: 800; font-size: 14px; margin: 20px 0; tracking: 0.5px; }
-    .footer { background: #1a1a2e; color: #a0aec0; padding: 25px 30px; text-align: center; font-size: 12px; }
-    .badge { display: inline-block; background: #e6fffa; color: #047857; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1 class="logo">Wi<span style="color: #00d4aa;">Skul</span></h1>
-      <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">School Management System</p>
-    </div>
-    
-    <div class="content">
-      <h2 style="color: #1a1a2e; margin-top: 0;">Welcome to WiSkul, ${data.adminName}! 🎓</h2>
-      <p>Congratulations on successfully registering <strong>${data.schoolName}</strong> on WiSkul. Your isolated school workspace and administrator dashboard have been provisioned.</p>
+  // Platform-branded (WiSkul → the new school owner). Uses the shared
+  // mobile-first responsive layout so it reads well on phones.
+  const branding = platformBranding();
+  const loginUrl = data.loginUrl || `${branding.appUrl}/login`;
 
-      <div class="welcome-card">
-        <span class="badge">v1.0.0 Free Launch Edition</span>
-        <h4 style="margin: 8px 0 4px 0; color: #1a1a2e;">Your Workspace Summary:</h4>
-        <table class="details-table">
-          <tr><td><strong>School Name:</strong></td><td>${data.schoolName}</td></tr>
-          <tr><td><strong>Administrator Email:</strong></td><td>${data.toEmail}</td></tr>
-          <tr><td><strong>Academic Session:</strong></td><td>2026/2027 Academic Year (Current)</td></tr>
-          <tr><td><strong>Included Modules:</strong></td><td>Admissions, Attendance, ID Cards, Staff, Portals</td></tr>
-        </table>
-      </div>
+  const rows =
+    detailRow('School', escapeHtml(data.schoolName)) +
+    detailRow('Administrator', escapeHtml(data.adminName)) +
+    detailRow('Login Email', escapeHtml(data.toEmail)) +
+    detailRow('Included', 'Academics, Admissions, Attendance, Fees, ID Cards, Portals');
 
-      <div style="text-align: center;">
-        <a href="${loginUrl}" class="button">Access School Dashboard →</a>
-      </div>
-
-      <h3 style="color: #1a1a2e; font-size: 16px; margin-top: 25px;">🚀 Recommended Onboarding Steps:</h3>
-      <ol style="font-size: 14px; color: #4a5568; padding-left: 20px;">
-        <li style="margin-bottom: 8px;"><strong>Set up Classes & Streams:</strong> Add your grade levels under Academic Management.</li>
-        <li style="margin-bottom: 8px;"><strong>Add Teachers & Staff:</strong> Invite teaching staff to access their class registers.</li>
-        <li style="margin-bottom: 8px;"><strong>Process Admissions or Import Students:</strong> Enroll students to issue digital ID cards.</li>
-      </ol>
-
-      <p style="font-size: 13px; color: #718096; background: #fff5f5; border-left: 3px solid #f56565; padding: 12px; border-radius: 6px; margin-top: 20px;">
-        💡 <strong>Note:</strong> Your core v1.0.0 management features are 100% free. Upgrade announcements for v2.0 (Automated Report Cards & Fee Collection) will be shared directly in your admin portal.
-      </p>
-    </div>
-
-    <div class="footer">
-      <p style="margin: 0 0 8px 0; font-weight: bold; color: #ffffff;">WiSkul Customer Support</p>
-      <p style="margin: 0;">📧 support@wiskulsl.com | 📱 +232 78 261 892</p>
-      <p style="margin: 10px 0 0 0;">75 Main Road, Kossoh Town, Sierra Leone</p>
-    </div>
-  </div>
-</body>
-</html>
-  `;
+  const bodyHtml = `
+    <p>Hello ${escapeHtml(data.adminName)},</p>
+    <p>Congratulations — <strong>${escapeHtml(data.schoolName)}</strong> is now set up on WiSkul. Your school's private workspace and principal dashboard are ready to use.</p>
+    ${detailsCard(rows)}
+    ${emailButton('Go to Your Dashboard', loginUrl)}
+    <p style="font-weight:700;color:#1a1a2e;margin-bottom:6px;">A few good first steps:</p>
+    <ol style="font-size:14px;color:#334155;line-height:1.7;padding-left:20px;margin-top:0;">
+      <li><strong>Add your classes</strong> under Academic Management.</li>
+      <li><strong>Invite teachers &amp; staff</strong> so they can manage their registers.</li>
+      <li><strong>Admit or import students</strong> to start issuing digital ID cards.</li>
+      <li><strong>Set up your fee structures</strong> to bill and collect payments online.</li>
+    </ol>
+    ${calloutBlock('Tip: complete your school profile (logo, contact details, address) in Settings — it personalises the emails, ID cards and receipts your school sends to parents.', 'info')}
+    <p style="color:#64748b;font-size:13px;">Need a hand getting started? Just reply to this email — we're happy to help.</p>`;
 
   const emailService = new EmailService();
   return emailService.sendEmail({
     to: data.toEmail,
-    subject: `🎉 Welcome to WiSkul! Workspace Ready for ${data.schoolName}`,
-    body: emailBody,
+    subject: `Welcome to WiSkul — ${data.schoolName} is ready 🎉`,
+    body: renderEmail({
+      branding,
+      eyebrow: 'Welcome Aboard',
+      heading: `Welcome to WiSkul, ${data.adminName}!`,
+      bodyHtml,
+      preheader: `${data.schoolName} is set up on WiSkul — here's how to get started.`,
+    }),
     isHtml: true,
   });
 }
