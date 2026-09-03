@@ -24,7 +24,6 @@ import {
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
 import useAuthStore from '@store/authStore';
 import { InstallAppButton } from '@components/pwa/InstallAppButton';
-import { WelcomeModal } from '@components/pwa/WelcomeModal';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
@@ -43,9 +42,11 @@ const FEATURES = [
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login, isLoading, error } = useAuth();
+  const { login, verifyMfa, isLoading, error } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [online, setOnline] = useState<boolean>(navigator.onLine);
+  const [mfaStep, setMfaStep] = useState(false);
+  const [mfaCode, setMfaCode] = useState('');
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isInitialized = useAuthStore((s) => s.isInitialized);
   const user = useAuthStore((s) => s.user);
@@ -80,7 +81,14 @@ export const LoginPage: React.FC = () => {
   });
 
   const onSubmit = async (data: LoginFormValues) => {
-    await login(data.email, data.password);
+    const result = await login(data.email, data.password);
+    if (result === 'mfa_required') setMfaStep(true);
+  };
+
+  const onVerifyMfa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mfaCode.trim()) return;
+    await verifyMfa(mfaCode.trim());
   };
 
   const displayError =
@@ -88,9 +96,6 @@ export const LoginPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#1a1a2e] flex relative overflow-hidden">
-      {/* First-launch welcome popup (only when not already signed in) */}
-      {!(isAuthenticated && user) && <WelcomeModal onRegister={() => navigate('/register')} />}
-
       {/* ── Ambient background (whole screen) ───────────────────────── */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-[#00d4aa]/10 blur-[130px] animate-aurora" />
@@ -206,10 +211,63 @@ export const LoginPage: React.FC = () => {
 
             <div className="relative bg-[#16213e]/95 backdrop-blur-xl border border-white/[0.08] rounded-3xl p-7 sm:p-9 shadow-2xl">
               <div className="mb-7">
-                <h2 className="text-2xl font-black text-white">Welcome back</h2>
-                <p className="text-gray-500 text-sm mt-1">Sign in to your school portal</p>
+                <h2 className="text-2xl font-black text-white">
+                  {mfaStep ? 'Two-factor verification' : 'Welcome back'}
+                </h2>
+                <p className="text-gray-500 text-sm mt-1">
+                  {mfaStep
+                    ? 'Enter the 6-digit code from your authenticator app'
+                    : 'Sign in to your school portal'}
+                </p>
               </div>
 
+              {/* ── 2FA code step ─────────────────────────────────────── */}
+              {mfaStep ? (
+                <form onSubmit={onVerifyMfa} className="space-y-5">
+                  {displayError && (
+                    <div className="mb-1 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-xs text-red-300 animate-shake flex items-center gap-2">
+                      <span className="text-red-400">⚠</span>
+                      {displayError}
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">
+                      Verification Code
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={mfaCode}
+                      onChange={(e) => setMfaCode(e.target.value.replace(/[^0-9A-Za-z-]/g, ''))}
+                      placeholder="123456"
+                      maxLength={9}
+                      autoFocus
+                      disabled={isLoading}
+                      className="w-full bg-[#1a1a2e] border border-white/[0.08] focus:border-[#00d4aa]/50 focus:ring-1 focus:ring-[#00d4aa]/20 rounded-xl px-4 py-3.5 text-center text-lg tracking-[0.4em] font-bold text-white placeholder-gray-600 outline-none transition-all disabled:opacity-50"
+                    />
+                    <p className="mt-2 text-[11px] text-gray-500">
+                      Lost your device? Enter one of your backup codes instead.
+                    </p>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isLoading || !mfaCode.trim()}
+                    className="w-full bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-black text-sm tracking-[0.1em] py-3.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 active:scale-[0.98]"
+                  >
+                    {isLoading && <FaSpinner className="animate-spin w-4 h-4" />}
+                    {isLoading ? 'VERIFYING...' : 'VERIFY & SIGN IN'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMfaStep(false); setMfaCode(''); }}
+                    className="w-full text-gray-500 text-xs hover:text-gray-300 transition-colors"
+                  >
+                    ← Back to sign in
+                  </button>
+                </form>
+              ) : (
+              <>
               {!online && (
                 <div className="mb-5 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-200 flex items-start gap-2">
                   <span className="text-amber-400 mt-0.5">📴</span>
@@ -338,6 +396,8 @@ export const LoginPage: React.FC = () => {
                   Students &amp; Staff: Contact your school principal for portal access.
                 </p>
               </div>
+              </>
+              )}
             </div>
           </div>
 

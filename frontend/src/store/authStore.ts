@@ -17,6 +17,8 @@ interface AuthStore {
   error: string | null;
   accessToken: string | null;
   isInitialized: boolean;
+  /** Short-lived token issued when a login needs a 2FA code. */
+  mfaToken: string | null;
 
   // Actions
   setUser: (user: AuthUser | null) => void;
@@ -27,7 +29,8 @@ interface AuthStore {
 
   // Auth actions
   initialize: () => Promise<void>;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean | 'mfa_required'>;
+  verifyMfa: (code: string) => Promise<boolean>;
   logout: () => Promise<void>;
   refreshTokens: () => Promise<boolean>;
   clearAuthState: () => void;
@@ -45,6 +48,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   error: null,
   accessToken: authService.getAccessToken(),
   isInitialized: false,
+  mfaToken: null,
 
   // State setters
   setUser: (user) => set({ user }),
@@ -112,6 +116,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const resAny = response as any;
       const dataAny = response?.data as any;
 
+      // 2FA challenge — no tokens yet. Stash the mfa token for the verify step.
+      if (dataAny?.mfaRequired && dataAny?.mfaToken) {
+        set({ mfaToken: dataAny.mfaToken });
+        return 'mfa_required';
+      }
+
       const token = resAny?.token || resAny?.accessToken || dataAny?.accessToken || dataAny?.tokens?.accessToken || dataAny?.token;
       const user = resAny?.user || dataAny?.user;
 
@@ -132,6 +142,37 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Login failed';
       setError(errorMessage);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  },
+
+  // Verify a 2FA code to finish login
+  verifyMfa: async (code: string) => {
+    const { setIsLoading, setError, setUser, setAccessToken, setIsAuthenticated, mfaToken } = get();
+    if (!mfaToken) {
+      setError('Your session expired. Please sign in again.');
+      return false;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await authService.verifyTwoFactorLogin(mfaToken, code);
+      const dataAny = (response as any)?.data;
+      const token = dataAny?.accessToken;
+      const user = dataAny?.user;
+      if (response.success && token && user) {
+        setUser(user);
+        setAccessToken(token);
+        setIsAuthenticated(true);
+        set({ mfaToken: null });
+        return true;
+      }
+      setError(response.error || 'Invalid verification code');
+      return false;
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Verification failed');
       return false;
     } finally {
       setIsLoading(false);

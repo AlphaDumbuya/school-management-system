@@ -137,8 +137,20 @@ router.post('/login', rateLimitLogin, async (req: Request, res: Response, next: 
     // Authenticate
     const result = await authService.login(email, password);
 
-    // Clear login attempts on successful login
+    // Clear login attempts on successful login (password was valid)
     clearLoginAttempts(email);
+
+    // If 2FA is required, respond with the challenge — no tokens issued yet.
+    if ('mfa_required' in result) {
+      res.json({
+        success: true,
+        data: {
+          mfaRequired: true,
+          mfaToken: result.mfa_token,
+        },
+      });
+      return;
+    }
 
     // Set secure cookie for refresh token (optional)
     res.cookie('refreshToken', result.refresh_token, {
@@ -160,6 +172,105 @@ router.post('/login', rateLimitLogin, async (req: Request, res: Response, next: 
     });
 
     logger.info(`User logged in: ${email}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/auth/2fa/verify-login
+ * Complete a 2FA login by exchanging the mfa_token + code for real tokens.
+ */
+router.post('/2fa/verify-login', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { mfa_token, code } = req.body;
+    if (!mfa_token || !code) {
+      throw new AppError('Verification code is required', 400, 'VALIDATION_ERROR');
+    }
+    const result = await authService.completeMfaLogin(mfa_token, code);
+
+    res.cookie('refreshToken', result.refresh_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        accessToken: result.access_token,
+        refreshToken: result.refresh_token,
+        expiresIn: 1800,
+        tokenType: 'Bearer',
+        user: result.user,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/auth/2fa/setup   (authenticated)
+ * Begin 2FA setup — returns the secret + otpauth URI for a QR code.
+ */
+router.post('/2fa/setup', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).auth.userId;
+    const { default: twoFactorService } = await import('@services/twoFactorService');
+    const result = await twoFactorService.setup(userId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/auth/2fa/enable   (authenticated)
+ * Verify the first code and enable 2FA. Returns one-time backup codes.
+ */
+router.post('/2fa/enable', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).auth.userId;
+    const { code } = req.body;
+    if (!code) throw new AppError('Verification code is required', 400, 'VALIDATION_ERROR');
+    const { default: twoFactorService } = await import('@services/twoFactorService');
+    const result = await twoFactorService.enable(userId, code);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/auth/2fa/disable   (authenticated)
+ */
+router.post('/2fa/disable', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).auth.userId;
+    const { code } = req.body;
+    if (!code) throw new AppError('Verification code is required', 400, 'VALIDATION_ERROR');
+    const { default: twoFactorService } = await import('@services/twoFactorService');
+    await twoFactorService.disable(userId, code);
+    res.json({ success: true, message: 'Two-factor authentication disabled' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/auth/2fa/backup-codes   (authenticated)
+ * Regenerate backup codes (requires a valid current code).
+ */
+router.post('/2fa/backup-codes', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).auth.userId;
+    const { code } = req.body;
+    if (!code) throw new AppError('Verification code is required', 400, 'VALIDATION_ERROR');
+    const { default: twoFactorService } = await import('@services/twoFactorService');
+    const backupCodes = await twoFactorService.regenerateBackupCodes(userId, code);
+    res.json({ success: true, data: { backupCodes } });
   } catch (error) {
     next(error);
   }

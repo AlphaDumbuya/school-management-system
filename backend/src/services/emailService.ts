@@ -796,6 +796,35 @@ class EmailService {
   }
 
   /**
+   * Security notice → user, when two-factor authentication is enabled/disabled.
+   */
+  async sendTwoFactorStatusEmail(
+    tenantId: string,
+    toEmail: string,
+    data: { userName: string; action: 'enabled' | 'disabled' }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const loginUrl = `${branding.appUrl}/login`;
+    const enabled = data.action === 'enabled';
+
+    const bodyHtml = `
+      <p>Hello ${escapeHtml(data.userName)},</p>
+      <p>Two-factor authentication (2FA) was just <strong>${enabled ? 'enabled' : 'disabled'}</strong> on your account.</p>
+      ${enabled
+        ? calloutBlock('Your account is now better protected. You\'ll be asked for a code from your authenticator app each time you sign in.', 'success')
+        : calloutBlock('Your account no longer requires a second verification step at sign-in. If you didn\'t make this change, secure your account immediately.', 'warn')}
+      ${calloutBlock("If you didn't make this change, reset your password right away and contact your school administrator.", 'info')}
+      ${emailButton('Review Account Security', loginUrl)}`;
+
+    return this.sendEmail({
+      to: toEmail,
+      subject: `Two-factor authentication ${enabled ? 'enabled' : 'disabled'}`,
+      body: renderEmail({ branding, eyebrow: 'Account Security', heading: `2FA ${enabled ? 'Enabled' : 'Disabled'}`, bodyHtml, preheader: `Two-factor authentication was ${data.action} on your account.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
    * Report cards published → guardian/student.
    */
   async sendReportCardPublishedEmail(
