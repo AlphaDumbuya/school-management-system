@@ -120,6 +120,9 @@ const router = createBrowserRouter(
         { path: 'reset-password', element: <ResetPasswordPage /> },
         { path: 'register', element: <RegisterPage /> },
         { path: 'verify-id', element: <VerifyIdPage /> },
+        // Aliases for older/malformed QR paths so previously-printed cards still resolve.
+        { path: 'verify/id', element: <VerifyIdPage /> },
+        { path: 'verify', element: <VerifyIdPage /> },
 
         // ── Generic dashboard redirect ──────────────────────────────
         {

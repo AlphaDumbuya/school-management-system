@@ -126,14 +126,20 @@ axiosInstance.interceptors.response.use(
           return Promise.reject(error);
         }
 
-        // Try to refresh the token
+        // Try to refresh the token. Backend expects snake_case { refresh_token }
+        // and responds with { access_token, ... } (also snake_case, top-level).
         const response = await axios.post(
           `${API_CONFIG.baseURL}/api/v1/auth/refresh`,
-          { refreshToken },
+          { refresh_token: refreshToken },
           { headers: { 'Content-Type': 'application/json' } }
         );
 
-        const { accessToken, refreshToken: newRefreshToken } = response.data;
+        const body = response.data || {};
+        const accessToken = body.access_token || body.accessToken || body?.data?.accessToken;
+        const newRefreshToken = body.refresh_token || body.refreshToken || body?.data?.refreshToken;
+        if (!accessToken) {
+          throw new Error('No access token in refresh response');
+        }
 
         // Update stored tokens
         localStorage.setItem('accessToken', accessToken);

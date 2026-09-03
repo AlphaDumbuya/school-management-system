@@ -56,6 +56,12 @@ export default function VerifyIdPage() {
       runVerify(c);
     } else if (d) {
       runVerify(`${window.location.origin}/verify-id?d=${d}`);
+    } else {
+      // Fallback: a bare UUID embedded in the path (e.g. /verify/id/<uuid>).
+      const uuid = window.location.pathname.match(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+      );
+      if (uuid) runVerify(uuid[0]);
     }
   }, [params, runVerify]);
 
