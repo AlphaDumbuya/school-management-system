@@ -59,9 +59,10 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           </div>
         </div>
 
-        {/* Right: action slot — full row on mobile (wraps), right-aligned on sm+ */}
+        {/* Right: action slot — full width & right-aligned on mobile so buttons
+            aren't crammed left; auto width, right-aligned on sm+. */}
         {actions && (
-          <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0 sm:justify-end">
+          <div className="w-full sm:w-auto flex flex-wrap items-center gap-2 justify-end sm:flex-shrink-0">
             {actions}
           </div>
         )}

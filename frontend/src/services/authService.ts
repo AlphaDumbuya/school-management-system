@@ -172,7 +172,7 @@ export const authService = {
     }
 
     const response = await apiClient.post<AuthResponse>(API_ENDPOINTS.AUTH.REFRESH_TOKEN, {
-      refreshToken,
+      refresh_token: refreshToken,
     });
 
     if (response.success && response.data) {
@@ -261,7 +261,25 @@ export const authService = {
     mfaToken: string,
     code: string
   ): Promise<ApiResponse<any>> => {
-    return apiClient.post('/api/v1/auth/2fa/verify-login', { mfa_token: mfaToken, code });
+    const response = await apiClient.post('/api/v1/auth/2fa/verify-login', {
+      mfa_token: mfaToken,
+      code,
+    });
+
+    // Persist tokens exactly like a normal login so the axios interceptor
+    // (which reads localStorage) sends the Authorization header afterwards.
+    const resAny = response as any;
+    const dataAny = (response as any)?.data;
+    const accessToken =
+      resAny?.accessToken || dataAny?.accessToken || dataAny?.tokens?.accessToken || dataAny?.token;
+    const refreshToken = resAny?.refreshToken || dataAny?.refreshToken || dataAny?.tokens?.refreshToken;
+    const user = resAny?.user || dataAny?.user;
+
+    if (accessToken) localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+    if (refreshToken) localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+    if (user) localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+
+    return response;
   },
 
   /** Begin 2FA setup — returns { secret, otpauthUri }. */
