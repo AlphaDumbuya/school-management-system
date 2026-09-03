@@ -1,178 +1,186 @@
 /**
- * WiSkul Landing Page
- * Premium cyber-themed design inspired by dark navy/purple cyber security sites.
- * Focused on school data protection, analytics, and management.
+ * WiSkul Landing Page — Light, professional edu-SaaS theme.
+ * White base, royal-blue (#1d4ed8) brand + orange (#f59e0b) CTA accent.
+ * Alternating white / deep-blue bands for a bright, trustworthy rhythm.
  */
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  ShieldCheck, BarChart3, Lock, Sparkles, Users, GraduationCap,
+  Wallet, CreditCard, CalendarCheck, Megaphone, ArrowRight, Check,
+  TrendingUp, Zap, Globe, RefreshCw,
+} from 'lucide-react';
 import PublicNavbar from '@components/public';
+
+// Palette inspired by the reference: royal blue primary + orange CTA on white.
+const BLUE = '#1d4ed8';
+const ORANGE = '#f59e0b';
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
-  const [scrolled, setScrolled] = useState(false);
-  const [showAlert, setShowAlert] = useState(false);
-
-  const handleComingSoon = () => {
-    setShowAlert(true);
-    setTimeout(() => setShowAlert(false), 3000);
-  };
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 50);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   return (
-    <div className="min-h-screen bg-[#1a1a2e] text-white overflow-x-hidden font-sans">
-
-      {/* ── Coming Soon Alert ── */}
-      {showAlert && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] animate-fade-in-down">
-          <div className="bg-[#16213e] border border-[#00d4aa]/30 rounded-xl px-6 py-4 shadow-2xl shadow-[#00d4aa]/10 flex items-center gap-3 backdrop-blur-xl">
-            <span className="text-xl">🚀</span>
-            <div>
-              <p className="text-white font-bold text-sm">Coming Soon!</p>
-              <p className="text-gray-400 text-xs">This feature is under development. Stay tuned!</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Navigation ── */}
+    <div className="min-h-screen bg-white text-slate-800 overflow-x-hidden font-sans antialiased">
       <PublicNavbar ctaText="Register School Free" />
 
-      {/* ── Hero Section ── */}
+      {/* ── Hero ── */}
       <section className="relative pt-28 sm:pt-36 pb-20 sm:pb-28 px-6 sm:px-10 overflow-hidden">
-        {/* Background gradient shapes */}
-        <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
-          <div className="absolute top-[10%] right-[-5%] w-[400px] h-[400px] rounded-full bg-purple-600/10 blur-[100px]" />
-          <div className="absolute bottom-[10%] left-[-5%] w-[350px] h-[350px] rounded-full bg-indigo-600/10 blur-[80px]" />
-        </div>
+        {/* Deep-blue hero band with a subtle dotted pattern (reference style) */}
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-[#1e3a8a] via-[#1d4ed8] to-[#2563eb]" />
+        <div
+          className="absolute inset-0 opacity-[0.15] pointer-events-none"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)',
+            backgroundSize: '26px 26px',
+          }}
+        />
+        <div className="absolute top-[-10%] right-[-8%] w-[500px] h-[500px] rounded-full bg-white/5 blur-[120px] pointer-events-none" />
 
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center relative z-10">
-          {/* Left: Text */}
           <div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black leading-tight mb-6">
-              Protecting Your School's<br />
-              <span className="text-[#00d4aa]">Data Privacy & Security</span>
+            <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-3.5 py-1.5 mb-6">
+              <Sparkles size={14} className="text-amber-400" />
+              <span className="text-white/90 text-xs font-bold tracking-wide">The complete school platform</span>
+            </div>
+            <h1 className="text-4xl sm:text-5xl md:text-[3.4rem] font-black leading-[1.12] mb-6 tracking-tight text-white">
+              Simplify your entire
+              <br />
+              <span className="text-amber-400">school management</span>
             </h1>
-            <p className="text-gray-400 text-sm sm:text-base leading-relaxed mb-8 max-w-lg">
-              WiSkul is a next-generation school management platform that keeps student records,
-              financial data, and academic information secure while providing powerful tools for
-              enrollment, grading, communication, and analytics — all in one unified system.
+            <p className="text-blue-100/90 text-base leading-relaxed mb-8 max-w-lg">
+              WiSkul brings admissions, attendance, grading, fees, identity and
+              communication into one secure platform — built for schools in Sierra
+              Leone and beyond.
             </p>
             <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4">
               <button
                 onClick={() => navigate('/register')}
-                className="w-full sm:w-auto bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,170,0.3)] active:scale-95 cursor-pointer"
+                className="group w-full sm:w-auto bg-amber-500 hover:bg-amber-400 text-white font-bold text-sm px-8 py-3.5 rounded-lg transition-all duration-300 shadow-lg shadow-amber-500/30 active:scale-95 flex items-center justify-center gap-2"
               >
-                Register School Free →
+                Register School Free
+                <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
               </button>
               <button
                 onClick={() => navigate('/pricing')}
-                className="w-full sm:w-auto border border-white/20 hover:border-white/40 text-white font-bold text-sm px-6 py-3.5 rounded-full transition-all duration-300 cursor-pointer"
+                className="w-full sm:w-auto border border-white/30 hover:border-white/50 bg-white/5 text-white font-bold text-sm px-6 py-3.5 rounded-lg transition-all duration-300"
               >
                 View Plans
               </button>
             </div>
+
+            {/* Trust row (checkmark bullets, reference style) */}
+            <ul className="mt-8 space-y-2.5">
+              {['Distribution and grading of exams', 'Automates scheduling and planning', 'Improves data tracking & results analysis', 'Enhances security and accessibility'].map((t) => (
+                <li key={t} className="flex items-center gap-2.5 text-sm text-blue-50">
+                  <span className="w-5 h-5 rounded-full bg-amber-400 text-[#1e3a8a] flex items-center justify-center flex-shrink-0">
+                    <Check size={12} strokeWidth={3} />
+                  </span>
+                  {t}
+                </li>
+              ))}
+            </ul>
           </div>
 
-          {/* Right: Isometric Data Illustration */}
+          {/* Illustration */}
           <div className="relative flex items-center justify-center lg:pl-8">
-            <img src="/illustrations/hero-data.svg" alt="Data Security Infrastructure" className="w-full max-w-[480px] h-auto drop-shadow-2xl" />
+            <div className="absolute inset-0 bg-white/5 rounded-full blur-3xl" />
+            <img
+              src="/illustrations/hero-data.svg"
+              alt="School management platform"
+              className="relative w-full max-w-[480px] h-auto drop-shadow-2xl"
+            />
           </div>
         </div>
       </section>
 
-      {/* ── Why WiSkul (Numbered Steps) ── */}
-      <section id="why" className="px-6 sm:px-10 py-20 sm:py-28 bg-white text-[#1a1a2e]">
+      {/* ── Stats band ── */}
+      <section className="px-6 sm:px-10 pb-8">
+        <div className="max-w-6xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { value: '10+', label: 'Modules included' },
+            { value: '100%', label: 'Free core plan' },
+            { value: '2 min', label: 'To get started' },
+            { value: '99.9%', label: 'Uptime target' },
+          ].map((s) => (
+            <div key={s.label} className="bg-blue-50 border border-blue-100 rounded-2xl p-5 text-center">
+              <p className="text-2xl sm:text-3xl font-black text-[#1d4ed8]">{s.value}</p>
+              <p className="text-xs text-slate-500 mt-1">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Why WiSkul ── */}
+      <section id="why" className="px-6 sm:px-10 py-20 sm:py-28">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-black mb-3">WHY WISKUL</h2>
-            <p className="text-gray-500 text-sm sm:text-base max-w-xl mx-auto">
-              WiSkul uses advanced data architecture to protect school records and provide
-              intelligent insights — all in real time.
+            <p className="text-[#1d4ed8] text-xs font-bold tracking-[0.2em] uppercase mb-2">Why WiSkul</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Built to keep schools running smoothly</h2>
+            <p className="text-slate-500 text-sm sm:text-base max-w-xl mx-auto mt-3">
+              Advanced data architecture that protects school records and surfaces
+              insights in real time.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {[
-              {
-                num: '01',
-                title: 'Multi-Tenant Data Isolation',
-                desc: 'Each school gets a fully isolated database environment. Student records, grades, and financial data are completely separated with zero cross-contamination between institutions.',
-              },
-              {
-                num: '02',
-                title: 'Real-Time Threat Detection',
-                desc: 'WiSkul actively monitors access patterns and detects unauthorized attempts at the source — blocking fraudulent access before it can cause damage to sensitive records.',
-              },
-              {
-                num: '03',
-                title: 'Encrypted Communication',
-                desc: 'All data transmissions use enterprise-grade encryption. SMS notifications, parent communications, and grade reports are protected with end-to-end security protocols.',
-              },
-              {
-                num: '04',
-                title: 'Intelligent Analytics Engine',
-                desc: 'WiSkul keeps you fully informed with real-time academic insights and detailed analytics, enabling confident, data-driven decisions about student performance.',
-              },
+              { icon: Lock, title: 'Multi-Tenant Data Isolation', desc: 'Each school gets a fully isolated environment — records, grades and finances stay completely separate with zero cross-contamination.' },
+              { icon: ShieldCheck, title: 'Real-Time Threat Detection', desc: 'Access patterns are monitored and unauthorised attempts blocked at the source, before they reach sensitive records.' },
+              { icon: Megaphone, title: 'Secure Communication', desc: 'Notifications, parent messages and grade reports are protected with enterprise-grade encryption end to end.' },
+              { icon: BarChart3, title: 'Intelligent Analytics', desc: 'Real-time academic insights and detailed analytics power confident, data-driven decisions about student performance.' },
             ].map((item) => (
-              <div key={item.num} className="flex gap-5">
-                <div className="flex-shrink-0">
-                  <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#1a1a2e] text-[#00d4aa] font-black text-lg">
-                    {item.num}
-                  </span>
+              <div key={item.title} className="group bg-white border border-slate-100 rounded-2xl p-6 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 flex gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#1d4ed8] flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                  <item.icon size={22} />
                 </div>
                 <div>
-                  <h4 className="font-bold text-base mb-2">{item.title}</h4>
-                  <p className="text-gray-500 text-xs sm:text-sm leading-relaxed">{item.desc}</p>
+                  <h4 className="font-bold text-base text-slate-900 mb-1.5">{item.title}</h4>
+                  <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Learn More Button */}
           <div className="text-center mt-12">
             <button
               onClick={() => navigate('/why')}
-              className="inline-flex items-center gap-2 bg-[#1a1a2e] hover:bg-[#2a2a3e] text-white font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,212,170,0.2)]"
+              className="inline-flex items-center gap-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold text-sm px-8 py-3.5 rounded-lg transition-all duration-300 shadow-lg shadow-blue-500/20"
             >
-              Learn More About WiSkul
-              <span className="text-[#00d4aa]">→</span>
+              Learn more about WiSkul <ArrowRight size={16} className="text-amber-400" />
             </button>
           </div>
         </div>
       </section>
 
-      {/* ── Data Analytics Section (Two Column) ── */}
-      <section id="features" className="px-6 sm:px-10 py-20 sm:py-28 bg-[#16213e]">
+      {/* ── Analytics + Features (tinted section) ── */}
+      <section id="features" className="px-6 sm:px-10 py-20 sm:py-28 bg-gradient-to-b from-slate-50 to-white">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          {/* Left: Analytics illustration */}
-          <div className="relative">
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-cyan-500/5 rounded-3xl blur-xl" />
-            <img src="/illustrations/analytics.svg" alt="School Analytics Dashboard" className="relative w-full max-w-[500px] h-auto mx-auto drop-shadow-xl" />
+          <div className="relative order-2 lg:order-1">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-amber-500/5 rounded-3xl blur-xl" />
+            <img src="/illustrations/analytics.svg" alt="School analytics dashboard" className="relative w-full max-w-[500px] h-auto mx-auto drop-shadow-xl" />
           </div>
 
-          {/* Right: Feature list */}
-          <div className="bg-[#1a1a2e] border border-white/[0.06] rounded-2xl p-8">
-            <h3 className="text-xl sm:text-2xl font-black mb-2">SCHOOL DATA ANALYSIS</h3>
-            <p className="text-gray-400 text-sm mb-6">
-              Stop guessing and start making data-driven decisions. WiSkul provides real-time reports and analytics on every aspect of your institution.
+          <div className="order-1 lg:order-2 bg-white border border-slate-100 rounded-3xl p-8 shadow-sm">
+            <h3 className="text-2xl font-black text-slate-900 mb-2">School data analysis</h3>
+            <p className="text-slate-500 text-sm mb-6">
+              Stop guessing and start making data-driven decisions. WiSkul provides
+              real-time reports on every aspect of your institution.
             </p>
             <ul className="space-y-3">
               {[
                 'Student performance tracking across all terms',
                 'Attendance pattern analysis & alerts',
                 'Financial health monitoring & forecasting',
-                'Teacher workload & scheduling optimization',
+                'Teacher workload & scheduling optimisation',
                 'Enrollment trends & capacity planning',
                 'Parent engagement metrics',
               ].map((item) => (
-                <li key={item} className="flex items-center gap-3 text-sm text-gray-300">
-                  <span className="w-2 h-2 rounded-full bg-[#00d4aa] flex-shrink-0" />
+                <li key={item} className="flex items-center gap-3 text-sm text-slate-700">
+                  <span className="w-5 h-5 rounded-full bg-blue-100 text-[#1d4ed8] flex items-center justify-center flex-shrink-0">
+                    <Check size={12} strokeWidth={3} />
+                  </span>
                   {item}
                 </li>
               ))}
@@ -180,249 +188,177 @@ export const LandingPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Second row: Security + Optimize */}
-        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center mt-20">
-          {/* Left: Optimize card with chart */}
-
-          {/* Right: Optimize card with data illustration */}
-          <div className="relative">
-            {/* SVG Dashboard/Analytics Illustration */}
-            <div className="absolute -top-8 -right-4 w-[180px] h-[180px] opacity-20 pointer-events-none">
-              <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="100" cy="100" r="90" fill="none" stroke="#7c3aed" strokeWidth="0.5" strokeDasharray="4 4"/>
-                <circle cx="100" cy="100" r="60" fill="none" stroke="#00d4aa" strokeWidth="0.5" strokeDasharray="3 5"/>
-                <circle cx="100" cy="100" r="30" fill="none" stroke="#7c3aed" strokeWidth="0.5"/>
-              </svg>
-            </div>
-            
-            <div className="bg-[#1a1a2e] border border-white/[0.06] rounded-2xl p-8">
-              <h3 className="text-xl sm:text-2xl font-black mb-2">OPTIMIZE WITHOUT LIMITS</h3>
-              <p className="text-gray-400 text-sm mb-6">
-                WiSkul is a complete digital ecosystem with 50+ modules covering every aspect of school management — academics, finance, communication, identity, and more.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
-                {[
-                  { label: 'Student Directory', icon: '🎓', badge: 'v1 Free' },
-                  { label: 'Daily Attendance', icon: '📋', badge: 'v1 Free' },
-                  { label: 'Classes & Timetables', icon: '📖', badge: 'v1 Free' },
-                  { label: 'ID Cards & Batch PDF', icon: '💳', badge: 'v1 Free' },
-                  { label: 'Staff & Teachers', icon: '👨‍🏫', badge: 'v1 Free' },
-                  { label: 'Admissions Pipeline', icon: '📋', badge: 'v1 Free' },
-                  { label: 'Gradebook & Report Cards', icon: '📊', badge: 'v1 Free' },
-                  { label: 'Fee & Billing', icon: '💰', badge: 'Coming v2' },
-                  { label: 'SMS & WhatsApp Alerts', icon: '📢', badge: 'Coming v2' },
-                  { label: 'Staff HR & Leave', icon: '🔐', badge: 'Coming v2' },
-                ].map((f) => (
-                  <div key={f.label} className="bg-[#16213e] border border-white/[0.04] rounded-lg p-3 flex items-center justify-between gap-2 min-w-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-lg shrink-0">{f.icon}</span>
-                      <span className="text-xs text-gray-300 font-medium truncate">{f.label}</span>
-                    </div>
-                    <span
-                      className={`shrink-0 whitespace-nowrap text-[9px] font-mono font-bold px-2 py-0.5 rounded ${
-                        f.badge === 'v1 Free'
-                          ? 'bg-[#00d4aa]/10 text-[#00d4aa] border border-[#00d4aa]/30'
-                          : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                      }`}
-                    >
-                      {f.badge}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              
-              <p className="text-[11px] text-gray-500 mt-4">...and many more. <span className="text-[#7c3aed] font-semibold cursor-pointer hover:text-[#8b5cf6]" onClick={() => navigate('/features')}>See all features →</span></p>
-              
-              {/* Mini bar chart SVG */}
-              <div className="mt-6 bg-[#16213e] rounded-xl p-4 border border-white/[0.04]">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Performance Trend</span>
-                  <span className="text-[10px] text-[#00d4aa] font-bold">+24% ↑</span>
+        {/* Modules grid */}
+        <div className="max-w-4xl mx-auto mt-20 bg-white border border-slate-100 rounded-3xl p-8 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-2xl font-black text-slate-900">Everything in one place</h3>
+            <span className="hidden sm:inline-flex items-center gap-1 text-xs font-bold text-[#1d4ed8] bg-blue-50 px-2.5 py-1 rounded-full">
+              <TrendingUp size={13} /> +24% efficiency
+            </span>
+          </div>
+          <p className="text-slate-500 text-sm mb-6">
+            A complete digital ecosystem covering academics, finance, communication and identity.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {[
+              { label: 'Student Directory', icon: Users, badge: 'v1 Free' },
+              { label: 'Daily Attendance', icon: CalendarCheck, badge: 'v1 Free' },
+              { label: 'Classes & Timetables', icon: GraduationCap, badge: 'v1 Free' },
+              { label: 'ID Cards & Batch PDF', icon: CreditCard, badge: 'v1 Free' },
+              { label: 'Staff & Teachers', icon: Users, badge: 'v1 Free' },
+              { label: 'Admissions Pipeline', icon: GraduationCap, badge: 'v1 Free' },
+              { label: 'Gradebook & Report Cards', icon: BarChart3, badge: 'v1 Free' },
+              { label: 'Fees & Payments', icon: Wallet, badge: 'v1 Free' },
+              { label: 'SMS & WhatsApp Alerts', icon: Megaphone, badge: 'Coming v2' },
+              { label: 'Staff HR & Leave', icon: Lock, badge: 'Coming v2' },
+            ].map((f) => (
+              <div key={f.label} className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center justify-between gap-2 min-w-0 hover:border-blue-300 transition-colors">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-[#1d4ed8] shrink-0">
+                    <f.icon size={15} />
+                  </span>
+                  <span className="text-sm text-slate-700 font-medium truncate">{f.label}</span>
                 </div>
-                <svg viewBox="0 0 260 50" className="w-full h-[50px]">
-                  {/* Bar chart */}
-                  {[18, 28, 22, 35, 30, 42, 38, 45, 40, 48, 44, 50].map((h, i) => (
-                    <rect key={i} x={i * 21 + 4} y={50 - h} width="14" height={h} rx="2" fill={i >= 9 ? '#00d4aa' : '#7c3aed'} opacity={0.6 + i * 0.03}>
-                      <animate attributeName="height" from="0" to={String(h)} dur="1s" fill="freeze" begin={`${i * 0.08}s`}/>
-                      <animate attributeName="y" from="50" to={String(50 - h)} dur="1s" fill="freeze" begin={`${i * 0.08}s`}/>
-                    </rect>
-                  ))}
-                  {/* Trend line */}
-                  <polyline points="11,32 32,22 53,28 74,15 95,20 116,8 137,12 158,5 179,10 200,2 221,6 242,0" fill="none" stroke="#00d4aa" strokeWidth="1.5" opacity="0.7" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <span
+                  className={`shrink-0 whitespace-nowrap text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                    f.badge === 'v1 Free'
+                      ? 'bg-blue-100 text-[#1d4ed8]'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {f.badge}
+                </span>
               </div>
-              
-              <button
-                onClick={() => navigate('/features')}
-                className="mt-6 bg-[#7c3aed] hover:bg-[#8b5cf6] text-white font-bold text-sm px-6 py-3 rounded-full transition-all duration-300 hover:shadow-[0_0_20px_rgba(124,58,237,0.3)]"
-              >
-                Explore Platform →
-              </button>
-            </div>
+            ))}
           </div>
-
-          {/* Right: Security illustration */}
-          <div className="relative">
-            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-purple-500/5 rounded-3xl blur-xl" />
-            <img src="/illustrations/security.svg" alt="Data Security & Access Control" className="relative w-full max-w-[420px] h-auto mx-auto drop-shadow-xl" />
-          </div>
+          <button
+            onClick={() => navigate('/features')}
+            className="mt-6 inline-flex items-center gap-2 text-[#1d4ed8] hover:text-[#1e40af] font-bold text-sm"
+          >
+            See all features <ArrowRight size={15} />
+          </button>
         </div>
       </section>
 
-      {/* ── Typical Benefits ── */}
-      <section id="benefits" className="px-6 sm:px-10 py-20 sm:py-28 bg-white text-[#1a1a2e]">
+      {/* ── Benefits ── */}
+      <section id="benefits" className="px-6 sm:px-10 py-20 sm:py-28">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-black mb-3">TYPICAL BENEFITS</h2>
-            <p className="text-gray-500 text-sm max-w-lg mx-auto">
-              A revolutionary all-in-one toolkit every school needs — by WiSkul
-            </p>
+            <p className="text-[#1d4ed8] text-xs font-bold tracking-[0.2em] uppercase mb-2">Typical Benefits</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">A toolkit every school needs</h2>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
-              {
-                icon: '🛡️',
-                title: 'Be Protected',
-                desc: 'Military-grade encryption secures all student and staff data. GDPR-compliant data handling with full audit trails.',
-                color: 'from-[#1a1a2e] to-[#2d1b69]',
-              },
-              {
-                icon: '👥',
-                title: 'Know Your Students',
-                desc: 'Complete 360° student profiles with academic history, attendance, behavior, and health records in one view.',
-                color: 'from-[#16213e] to-[#1a3a5c]',
-              },
-              {
-                icon: '📈',
-                title: 'Data-Driven Decisions',
-                desc: 'AI-powered analytics surface trends in performance, attendance, and finances before they become problems.',
-                color: 'from-[#1a1a2e] to-[#0f3443]',
-              },
-              {
-                icon: '⚡',
-                title: 'Instant Communication',
-                desc: 'SMS, email, and in-app notifications keep parents, teachers, and students connected in real time.',
-                color: 'from-[#1a1a2e] to-[#2d1b69]',
-              },
-              {
-                icon: '🌐',
-                title: 'Access Anywhere',
-                desc: 'Cloud-based platform accessible from any device. Mobile-optimized dashboards for on-the-go management.',
-                color: 'from-[#16213e] to-[#1a3a5c]',
-              },
-              {
-                icon: '🔄',
-                title: 'Seamless Integration',
-                desc: 'Connect with payment gateways, SMS providers, and existing school tools without disrupting workflows.',
-                color: 'from-[#1a1a2e] to-[#0f3443]',
-              },
-            ].map((benefit) => (
-              <div
-                key={benefit.title}
-                className={`bg-gradient-to-br ${benefit.color} rounded-2xl p-6 text-white hover:-translate-y-1 transition-transform duration-300 shadow-lg hover:shadow-xl`}
-              >
-                <span className="text-3xl block mb-4">{benefit.icon}</span>
-                <h4 className="font-bold text-sm mb-2">{benefit.title}</h4>
-                <p className="text-gray-300 text-xs leading-relaxed">{benefit.desc}</p>
+              { icon: ShieldCheck, title: 'Be Protected', desc: 'Strong encryption secures all student and staff data, with full audit trails.', tint: 'from-blue-500/10 to-blue-500/5', ic: 'text-[#1d4ed8]' },
+              { icon: Users, title: 'Know Your Students', desc: 'Complete 360° profiles — academics, attendance, behaviour and health in one view.', tint: 'from-amber-500/10 to-amber-500/5', ic: 'text-amber-600' },
+              { icon: TrendingUp, title: 'Data-Driven Decisions', desc: 'Analytics surface trends in performance, attendance and finances early.', tint: 'from-amber-500/10 to-amber-500/5', ic: 'text-amber-600' },
+              { icon: Zap, title: 'Instant Communication', desc: 'SMS, email and in-app notifications keep everyone connected in real time.', tint: 'from-purple-500/10 to-purple-500/5', ic: 'text-purple-600' },
+              { icon: Globe, title: 'Access Anywhere', desc: 'Cloud-based and mobile-optimised — manage your school from any device.', tint: 'from-sky-500/10 to-sky-500/5', ic: 'text-sky-600' },
+              { icon: RefreshCw, title: 'Seamless Integration', desc: 'Connect payment gateways and SMS providers without disrupting workflows.', tint: 'from-rose-500/10 to-rose-500/5', ic: 'text-rose-600' },
+            ].map((b) => (
+              <div key={b.title} className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${b.tint} ${b.ic} flex items-center justify-center mb-4`}>
+                  <b.icon size={22} />
+                </div>
+                <h4 className="font-bold text-base text-slate-900 mb-1.5">{b.title}</h4>
+                <p className="text-slate-500 text-sm leading-relaxed">{b.desc}</p>
               </div>
             ))}
           </div>
 
-          {/* View All Benefits Button */}
           <div className="text-center mt-12">
             <button
               onClick={() => navigate('/benefits')}
-              className="inline-flex items-center gap-2 bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,170,0.3)]"
+              className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-white font-bold text-sm px-8 py-3.5 rounded-lg transition-all duration-300 shadow-lg shadow-amber-500/25"
             >
-              View All Benefits
-              <span>→</span>
+              View all benefits <ArrowRight size={16} />
             </button>
           </div>
         </div>
       </section>
 
-      {/* ── Ready to Start CTA Banner ── */}
-      <section className="px-6 sm:px-10 py-20 bg-[#16213e] border-y border-white/5 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-[#00d4aa]/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="max-w-4xl mx-auto text-center space-y-6 relative z-10">
-          <span className="text-[#00d4aa] text-xs font-bold tracking-[0.2em] uppercase bg-[#00d4aa]/10 px-3.5 py-1.5 rounded-full border border-[#00d4aa]/30">
-            Get Started Today
-          </span>
-          <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-            Ready to Transform Your School Management?
-          </h2>
-          <p className="text-gray-400 text-sm leading-relaxed max-w-xl mx-auto">
-            Join educational institutions already using WiSkul to streamline admissions, generate digital ID cards, track attendance, and empower educators.
-          </p>
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button
-              onClick={() => navigate('/register')}
-              className="w-full sm:w-auto bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-black text-sm px-8 py-4 rounded-2xl transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,170,0.3)] cursor-pointer"
-            >
-              REGISTER YOUR SCHOOL FREE →
-            </button>
-            <button
-              onClick={() => navigate('/contact')}
-              className="w-full sm:w-auto border border-white/20 hover:border-white/40 text-white font-bold text-sm px-8 py-4 rounded-2xl transition-all duration-300 cursor-pointer"
-            >
-              Contact Support Team
-            </button>
+      {/* ── CTA banner ── */}
+      <section className="px-6 sm:px-10 py-8">
+        <div className="max-w-6xl mx-auto relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#1e3a8a] via-[#1d4ed8] to-[#2563eb] px-8 sm:px-14 py-14 sm:py-16 text-center">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="relative z-10 space-y-5">
+            <span className="inline-block text-amber-300 text-xs font-bold tracking-[0.2em] uppercase bg-white/10 px-3.5 py-1.5 rounded-full border border-white/20">
+              Get Started Today
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight max-w-2xl mx-auto">
+              Ready to transform your school management?
+            </h2>
+            <p className="text-slate-300 text-sm leading-relaxed max-w-xl mx-auto">
+              Join schools already using WiSkul to streamline admissions, issue digital
+              ID cards, track attendance, collect fees and empower educators.
+            </p>
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button
+                onClick={() => navigate('/register')}
+                className="w-full sm:w-auto bg-amber-500 hover:bg-amber-400 text-white font-black text-sm px-8 py-4 rounded-xl transition-all duration-300 shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2"
+              >
+                REGISTER YOUR SCHOOL FREE <ArrowRight size={16} />
+              </button>
+              <button
+                onClick={() => navigate('/contact')}
+                className="w-full sm:w-auto border border-white/20 hover:border-white/40 text-white font-bold text-sm px-8 py-4 rounded-2xl transition-all duration-300"
+              >
+                Contact Support
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
       {/* ── Footer ── */}
-      <footer className="bg-[#0f0f1a] border-t border-white/[0.04] px-6 sm:px-10 py-10">
-        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* Brand */}
-          <div className="md:col-span-1">
+      <footer className="mt-12 border-t border-slate-100 px-6 sm:px-10 py-12 bg-slate-50">
+        <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
+          <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-3">
-              <img src="/logo.png" alt="WiSkul" className="w-8 h-8 rounded object-contain" />
-              <span className="font-black text-base">Wi<span className="text-[#00d4aa]">Skul</span></span>
+              <img src="/logo.png" alt="WiSkul" className="w-8 h-8 rounded-lg object-contain bg-white p-0.5 border border-slate-100" />
+              <span className="font-black text-base text-slate-900">Wi<span className="text-[#1d4ed8]">Skul</span></span>
             </div>
-            <p className="text-gray-500 text-xs leading-relaxed">
-              Next-generation school management platform protecting student data while empowering educators.
+            <p className="text-slate-500 text-xs leading-relaxed">
+              Next-generation school management protecting student data while empowering educators.
             </p>
-            <a href="mailto:info@wiskulsl.com" className="inline-block mt-3 text-gray-400 text-xs hover:text-[#00d4aa] transition-colors">
+            <a href="mailto:info@wiskulsl.com" className="inline-block mt-3 text-slate-600 text-xs hover:text-[#1d4ed8] transition-colors font-medium">
               info@wiskulsl.com
             </a>
           </div>
 
-          {/* Quick Links */}
           <div>
-            <h5 className="text-white font-bold text-xs mb-4 uppercase tracking-wider">Quick Links</h5>
+            <h5 className="text-slate-900 font-bold text-xs mb-4 uppercase tracking-wider">Product</h5>
             <ul className="space-y-2">
-              {['Dashboard', 'Students', 'Teachers', 'Reports'].map((link) => (
-                <li key={link}><span className="text-gray-500 text-xs hover:text-[#00d4aa] cursor-pointer transition-colors">{link}</span></li>
+              {[['Features', '/features'], ['Pricing', '/pricing'], ['Why WiSkul', '/why'], ['Benefits', '/benefits']].map(([label, to]) => (
+                <li key={label}><span onClick={() => navigate(to)} className="text-slate-500 text-xs hover:text-[#1d4ed8] cursor-pointer transition-colors">{label}</span></li>
               ))}
             </ul>
           </div>
 
-          {/* Others */}
           <div>
-            <h5 className="text-white font-bold text-xs mb-4 uppercase tracking-wider">Resources</h5>
+            <h5 className="text-slate-900 font-bold text-xs mb-4 uppercase tracking-wider">Company</h5>
             <ul className="space-y-2">
-              {['Documentation', 'API Reference', 'Privacy Policy', 'Terms of Service'].map((link) => (
-                <li key={link}><span className="text-gray-500 text-xs hover:text-[#00d4aa] cursor-pointer transition-colors">{link}</span></li>
+              {[['Contact', '/contact'], ['Register', '/register'], ['Sign In', '/login']].map(([label, to]) => (
+                <li key={label}><span onClick={() => navigate(to)} className="text-slate-500 text-xs hover:text-[#1d4ed8] cursor-pointer transition-colors">{label}</span></li>
               ))}
             </ul>
           </div>
 
-          {/* Powered by */}
           <div>
-            <h5 className="text-white font-bold text-xs mb-4 uppercase tracking-wider">Powered By</h5>
-            <p className="text-gray-500 text-xs leading-relaxed mb-4">Advanced cloud infrastructure with 99.9% uptime guarantee.</p>
+            <h5 className="text-slate-900 font-bold text-xs mb-4 uppercase tracking-wider">Get in touch</h5>
+            <p className="text-slate-500 text-xs leading-relaxed mb-4">Advanced cloud infrastructure with a 99.9% uptime target.</p>
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-white/[0.05] border border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-[#00d4aa] cursor-pointer transition-colors text-xs">𝕏</div>
-              <div className="w-8 h-8 rounded-full bg-white/[0.05] border border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-[#00d4aa] cursor-pointer transition-colors text-xs">f</div>
-              <div className="w-8 h-8 rounded-full bg-white/[0.05] border border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-[#00d4aa] cursor-pointer transition-colors text-xs">in</div>
+              {['𝕏', 'f', 'in'].map((s) => (
+                <div key={s} className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-[#1d4ed8] hover:border-[#1d4ed8]/30 cursor-pointer transition-colors text-xs">{s}</div>
+              ))}
             </div>
           </div>
         </div>
 
-        <div className="max-w-6xl mx-auto mt-8 pt-6 border-t border-white/[0.04] text-center">
-          <p className="text-gray-600 text-[11px]">© {new Date().getFullYear()} WiSkul. All rights reserved. Built with ❤️ for education.</p>
+        <div className="max-w-6xl mx-auto mt-10 pt-6 border-t border-slate-100 text-center">
+          <p className="text-slate-400 text-[11px]">© {new Date().getFullYear()} WiSkul. All rights reserved. Built with care for education.</p>
         </div>
       </footer>
     </div>
