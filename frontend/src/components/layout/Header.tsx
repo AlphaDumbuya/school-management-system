@@ -91,12 +91,16 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
   };
 
   const handleProfile = () => {
-    navigate('/profile');
+    // The dedicated /profile route is a placeholder; the real profile editor
+    // lives in Settings → My Profile.
+    navigate('/settings?tab=profile');
     setUserMenuOpen(false);
   };
 
   const handleSettings = () => {
-    navigate('/settings');
+    // Open the broader configuration (defaults to the Security tab so it's
+    // clearly distinct from "My Profile").
+    navigate('/settings?tab=security');
     setUserMenuOpen(false);
   };
 
@@ -261,13 +265,13 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
                     <MenuItem
                       icon={<FaUser className="w-4 h-4" />}
                       label="My Profile"
-                      hint="View and edit your details"
+                      hint="Edit your name, email & password"
                       onClick={handleProfile}
                     />
                     <MenuItem
                       icon={<FaCog className="w-4 h-4" />}
                       label="Settings"
-                      hint="Security, preferences & more"
+                      hint="Security, 2FA & configuration"
                       onClick={handleSettings}
                     />
                   </div>

@@ -28,8 +28,10 @@ import schoolConfigService, { SchoolInfo, GradeScale, BillingInvoice, Subscripti
 import authService from '../services/authService';
 import { FileUploader } from '@components/admin/forms/FileUploader';
 import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
+import { useSearchParams } from 'react-router-dom';
 
 export const SettingsPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
   const logout = useAuthStore((s) => s.logout);
@@ -69,8 +71,14 @@ export const SettingsPage: React.FC = () => {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
 
-  // Navigation
-  const [activeTab, setActiveTab] = useState<string>('profile');
+  // Navigation — allow deep-linking to a tab via ?tab= (e.g. /settings?tab=profile).
+  const [activeTab, setActiveTab] = useState<string>(searchParams.get('tab') || 'profile');
+
+  // Keep the active tab in sync if the URL query changes (e.g. header links).
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t) setActiveTab(t);
+  }, [searchParams]);
 
   // Loading States
   const [loading, setLoading] = useState(false);
