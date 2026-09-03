@@ -101,7 +101,7 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
         <div
           className="pn-utility"
           style={{
-            background: '#1e3a8a',
+            background: '#1a2b6b',
             color: '#e0e7ff',
             fontSize: '0.78rem',
           }}
