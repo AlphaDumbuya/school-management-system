@@ -99,8 +99,14 @@ export const LandingPage: React.FC = () => {
           </div>
 
           <div className="relative flex items-center justify-center lg:pl-8">
-            <div className="absolute inset-0 bg-white/5 rounded-full blur-3xl" />
-            <img src="/illustrations/hero-data.svg" alt="School management platform" className="relative w-full max-w-[480px] h-auto drop-shadow-2xl" />
+            <div className="absolute -inset-4 bg-gradient-to-br from-amber-400/20 to-[#1d4ed8]/20 rounded-[2rem] blur-2xl" />
+            <div className="relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15">
+              <img
+                src="https://images.unsplash.com/photo-1707904633074-20fb8f8f865a?w=900&auto=format&fit=crop&q=60"
+                alt="School management platform"
+                className="w-full max-w-[520px] h-auto object-cover"
+              />
+            </div>
           </div>
         </div>
       </section>
@@ -191,7 +197,19 @@ export const LandingPage: React.FC = () => {
             title="Everything in one place"
             subtitle="A complete digital ecosystem covering academics, finance, communication and identity."
           />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-center">
+            {/* Illustration (moved from hero) */}
+            <div className="lg:col-span-2 relative flex items-center justify-center">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#1d4ed8]/10 to-amber-400/10 rounded-[2rem] blur-2xl" />
+              <img
+                src="/illustrations/hero-data.svg"
+                alt="Unified school data platform"
+                className="relative w-full max-w-[380px] h-auto drop-shadow-xl"
+              />
+            </div>
+
+            {/* Module grid */}
+            <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
               { label: 'Student Directory', icon: Users, badge: 'v1 Free' },
               { label: 'Daily Attendance', icon: CalendarCheck, badge: 'v1 Free' },
@@ -219,6 +237,7 @@ export const LandingPage: React.FC = () => {
                 </div>
               </div>
             ))}
+            </div>
           </div>
           <div className="text-center mt-10">
             <button
