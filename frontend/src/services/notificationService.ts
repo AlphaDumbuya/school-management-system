@@ -32,23 +32,25 @@ const notificationService = {
       offset: opts?.offset ?? 0,
     };
     if (opts?.unreadOnly) params.isRead = 'false';
-    // The backend wraps as { data, total } (not the ApiResponse shape), so read raw.
+    // apiClient.get already returns the parsed JSON body. The endpoint responds
+    // { data: [...], total }, but be defensive about every shape so the caller
+    // ALWAYS receives an array.
     const res: any = await apiClient.get('/api/v1/notifications', { params });
-    const body = res?.data ?? res ?? {};
-    return {
-      data: (body.data ?? body ?? []) as AppNotification[],
-      total: Number(body.total ?? 0),
-    } as NotificationListResponse;
+    const arr =
+      (Array.isArray(res?.data) && res.data) ||
+      (Array.isArray(res?.data?.data) && res.data.data) ||
+      (Array.isArray(res?.notifications) && res.notifications) ||
+      (Array.isArray(res) && res) ||
+      [];
+    const total = Number(res?.total ?? res?.data?.total ?? arr.length ?? 0);
+    return { data: arr as AppNotification[], total } as NotificationListResponse;
   },
 
   /** Unread count. Falls back to list(total) if the count endpoint misbehaves. */
   unreadCount: async (): Promise<number> => {
     try {
-      const res: any = await apiClient.get('/api/v1/notifications', {
-        params: { isRead: 'false', limit: 1, offset: 0 },
-      });
-      const body = res?.data ?? res ?? {};
-      return Number(body.total ?? 0);
+      const res = await notificationService.list({ unreadOnly: true, limit: 1 });
+      return res.total;
     } catch {
       return 0;
     }

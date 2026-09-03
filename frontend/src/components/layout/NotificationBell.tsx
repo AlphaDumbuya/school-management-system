@@ -90,7 +90,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
-  const notifications: AppNotification[] = notifResp?.data ?? [];
+  const notifications: AppNotification[] = Array.isArray(notifResp?.data) ? notifResp!.data : [];
   const unreadNotifications = notifications.filter((n) => !n.readAt);
 
   // System alerts (principals only).
