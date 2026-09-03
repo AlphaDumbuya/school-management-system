@@ -270,7 +270,13 @@ export class AuthService {
   /**
    * Login user
    */
-  async login(email: string, password: string): Promise<{ access_token: string; refresh_token: string; user: UserResponse }> {
+  async login(
+    email: string,
+    password: string
+  ): Promise<
+    | { access_token: string; refresh_token: string; user: UserResponse }
+    | { mfa_required: true; mfa_token: string }
+  > {
     try {
       // Find user by email
       const user = await this.db('users').where({ email }).first();
@@ -289,36 +295,17 @@ export class AuthService {
         throw new AppError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
       }
 
-      // Generate tokens
-      const accessToken = JWTService.generateAccessToken({
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-      });
-
-      const refreshToken = JWTService.generateRefreshToken(user.id);
-
-      // Store refresh token
-      await this.db('refresh_tokens').insert({
-        user_id: user.id,
-        token: refreshToken,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-        created_at: new Date(),
-      });
-
-      // Update last login
-      await this.db('users').where({ id: user.id }).update({
-        last_login: new Date(),
-        updated_at: new Date(),
-      });
+      // If the user has 2FA enabled, don't issue tokens yet — issue a short-lived
+      // MFA challenge that the client exchanges for tokens after entering a code.
+      if (user.two_factor_enabled) {
+        const { default: twoFactorService } = await import('./twoFactorService');
+        const mfaToken = await twoFactorService.createChallenge(user.id);
+        logger.info(`2FA challenge issued for ${email}`);
+        return { mfa_required: true, mfa_token: mfaToken };
+      }
 
       logger.info(`User logged in: ${email}`);
-
-      return {
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        user: await this.mapUserToResponse(user),
-      };
+      return await this.issueSessionForUser(user);
     } catch (error) {
       if (error instanceof AppError) {
         throw error;
@@ -326,6 +313,55 @@ export class AuthService {
       logger.error('Error logging in user:', { error: String(error), stack: error instanceof Error ? error.stack : undefined });
       throw new AppError(`Login failed: ${String(error)}`, 500, 'LOGIN_FAILED');
     }
+  }
+
+  /**
+   * Issue access + refresh tokens for an already-authenticated user row and
+   * record the session. Shared by password login and MFA completion.
+   */
+  private async issueSessionForUser(
+    user: any
+  ): Promise<{ access_token: string; refresh_token: string; user: UserResponse }> {
+    const accessToken = JWTService.generateAccessToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
+    const refreshToken = JWTService.generateRefreshToken(user.id);
+
+    await this.db('refresh_tokens').insert({
+      user_id: user.id,
+      token: refreshToken,
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      created_at: new Date(),
+    });
+
+    await this.db('users').where({ id: user.id }).update({
+      last_login: new Date(),
+      updated_at: new Date(),
+    });
+
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      user: await this.mapUserToResponse(user),
+    };
+  }
+
+  /**
+   * Complete a 2FA login: verify the code against the MFA challenge and, on
+   * success, issue the real session tokens.
+   */
+  async completeMfaLogin(
+    mfaToken: string,
+    code: string
+  ): Promise<{ access_token: string; refresh_token: string; user: UserResponse }> {
+    const { default: twoFactorService } = await import('./twoFactorService');
+    const userId = await twoFactorService.verifyChallenge(mfaToken, code);
+    const user = await this.db('users').where({ id: userId }).first();
+    if (!user) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+    logger.info(`2FA login completed for ${user.email}`);
+    return await this.issueSessionForUser(user);
   }
 
   /**
@@ -599,8 +635,9 @@ export class AuthService {
       tenantId: user.tenant_id,
       schoolLogoUrl,
       schoolName,
+      two_factor_enabled: !!user.two_factor_enabled,
       createdAt: user.created_at,
-    };
+    } as UserResponse;
   }
 
   /**

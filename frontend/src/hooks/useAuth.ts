@@ -14,7 +14,8 @@ interface UseAuthReturn {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean | 'mfa_required'>;
+  verifyMfa: (code: string) => Promise<boolean>;
   logout: () => Promise<void>;
   hasRole: (role: UserRole | UserRole[]) => boolean;
   canAccess: (roles: UserRole[]) => boolean;
@@ -58,18 +59,34 @@ export const useAuth = (): UseAuthReturn => {
     canAccess,
   } = authStore;
 
-  // Login handler — navigates to the correct dashboard based on role
+  // Login handler — navigates to the correct dashboard based on role.
+  // Returns 'mfa_required' when a second factor is needed (no navigation yet).
   const login = useCallback(
     async (email: string, password: string) => {
-      const success = await storeLogin(email, password);
-      if (success) {
+      const result = await storeLogin(email, password);
+      if (result === 'mfa_required') return result;
+      if (result) {
         const { user: loggedInUser } = useAuthStore.getState();
         const path = loggedInUser ? getDashboardPath(loggedInUser.role) : '/dashboard';
         navigate(path, { replace: true });
       }
-      return success;
+      return result;
     },
     [storeLogin, navigate]
+  );
+
+  // Verify a 2FA code, then navigate to the dashboard on success.
+  const verifyMfa = useCallback(
+    async (code: string) => {
+      const ok = await useAuthStore.getState().verifyMfa(code);
+      if (ok) {
+        const { user: loggedInUser } = useAuthStore.getState();
+        const path = loggedInUser ? getDashboardPath(loggedInUser.role) : '/dashboard';
+        navigate(path, { replace: true });
+      }
+      return ok;
+    },
+    [navigate]
   );
 
   // Logout handler with navigation
@@ -84,6 +101,7 @@ export const useAuth = (): UseAuthReturn => {
     isLoading,
     error,
     login,
+    verifyMfa,
     logout,
     hasRole,
     canAccess,

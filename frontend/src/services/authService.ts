@@ -254,6 +254,36 @@ export const authService = {
     });
   },
 
+  // ── Two-Factor Authentication ────────────────────────────────────────────
+
+  /** Complete a 2FA login by exchanging the mfa token + code for real tokens. */
+  verifyTwoFactorLogin: async (
+    mfaToken: string,
+    code: string
+  ): Promise<ApiResponse<any>> => {
+    return apiClient.post('/api/v1/auth/2fa/verify-login', { mfa_token: mfaToken, code });
+  },
+
+  /** Begin 2FA setup — returns { secret, otpauthUri }. */
+  setupTwoFactor: async (): Promise<ApiResponse<{ secret: string; otpauthUri: string }>> => {
+    return apiClient.post('/api/v1/auth/2fa/setup');
+  },
+
+  /** Verify the first code and enable 2FA — returns { backupCodes }. */
+  enableTwoFactor: async (code: string): Promise<ApiResponse<{ backupCodes: string[] }>> => {
+    return apiClient.post('/api/v1/auth/2fa/enable', { code });
+  },
+
+  /** Disable 2FA (requires a current code). */
+  disableTwoFactor: async (code: string): Promise<ApiResponse<{ message: string }>> => {
+    return apiClient.post('/api/v1/auth/2fa/disable', { code });
+  },
+
+  /** Regenerate backup codes (requires a current code). */
+  regenerateBackupCodes: async (code: string): Promise<ApiResponse<{ backupCodes: string[] }>> => {
+    return apiClient.post('/api/v1/auth/2fa/backup-codes', { code });
+  },
+
   /**
    * Clear all auth data (for logout or errors)
    */

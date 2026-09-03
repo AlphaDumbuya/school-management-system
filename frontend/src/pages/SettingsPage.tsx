@@ -21,11 +21,13 @@ import {
   Sparkles,
   Eye,
   EyeOff,
+  ShieldCheck,
 } from 'lucide-react';
 import useAuthStore from '@store/authStore';
 import schoolConfigService, { SchoolInfo, GradeScale, BillingInvoice, SubscriptionDetails } from '../services/schoolConfigService';
 import authService from '../services/authService';
 import { FileUploader } from '@components/admin/forms/FileUploader';
+import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
 
 export const SettingsPage: React.FC = () => {
   const user = useAuthStore((s) => s.user);
@@ -408,6 +410,7 @@ export const SettingsPage: React.FC = () => {
   // Tabs mapping
   const tabs = [
     { id: 'profile', label: 'My Profile', icon: <User size={18} />, adminOnly: false },
+    { id: 'security', label: 'Security', icon: <ShieldCheck size={18} />, adminOnly: false },
     { id: 'school', label: 'School Info', icon: <Building size={18} />, adminOnly: true },
     { id: 'academic', label: 'Academic Config', icon: <Calendar size={18} />, adminOnly: true },
     { id: 'id-format', label: 'ID Format', icon: <Building size={18} />, adminOnly: true },
@@ -499,6 +502,21 @@ export const SettingsPage: React.FC = () => {
               </div>
             ) : (
               <>
+                {/* ── SECURITY TAB ── */}
+                {activeTab === 'security' && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <ShieldCheck size={18} className="text-gray-500" />
+                        Account Security
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <TwoFactorSettings />
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* ── PROFILE TAB ── */}
                 {activeTab === 'profile' && (
                   <div className="space-y-6">
