@@ -4,33 +4,15 @@
  * Phase 11: Frontend Dashboard Implementation
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { FaBars, FaUser, FaCog } from 'react-icons/fa';
-import { FaBell, FaRightFromBracket } from 'react-icons/fa6';
+import { FaRightFromBracket } from 'react-icons/fa6';
 import useAuth from '@hooks/useAuth';
 import useAuthStore from '@store/authStore';
 import schoolConfigService from '@services/schoolConfigService';
-import { dashboardService } from '@services/dashboardService';
+import { NotificationBell } from './NotificationBell';
 import clsx from 'clsx';
-
-interface SystemAlert {
-  id: string;
-  title: string;
-  message: string;
-  severity?: string;
-  actionUrl?: string;
-  dismissible?: boolean;
-}
-
-const ALERT_TONE: Record<string, string> = {
-  critical: 'bg-red-50 border-red-200 text-red-900',
-  error: 'bg-red-50 border-red-200 text-red-900',
-  warning: 'bg-amber-50 border-amber-200 text-amber-900',
-  info: 'bg-blue-50 border-blue-200 text-blue-900',
-  success: 'bg-emerald-50 border-emerald-200 text-emerald-900',
-};
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -41,26 +23,9 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
-  // System alerts (principal/super_admin only — other roles have no alerts feed).
+  // System alerts feed is principal/super_admin only.
   const canSeeAlerts = user?.role === 'principal' || user?.role === 'super_admin';
-  const { data: alertsResp } = useQuery({
-    queryKey: ['header-system-alerts'],
-    queryFn: () => dashboardService.getAlerts(),
-    enabled: !!canSeeAlerts,
-    staleTime: 120_000,
-    refetchInterval: 300_000,
-  });
-  const alerts: SystemAlert[] = useMemo(() => {
-    const raw = (alertsResp as any)?.data ?? (alertsResp as any) ?? [];
-    return Array.isArray(raw) ? raw : [];
-  }, [alertsResp]);
-  const visibleAlerts = alerts.filter((a) => !dismissed.has(a.id));
-  const unreadCount = visibleAlerts.length;
-
-  const dismissAlert = (id: string) => setDismissed((prev) => new Set([...prev, id]));
 
   // Sync missing tenant school info
   useEffect(() => {
@@ -91,14 +56,25 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
   };
 
   const handleProfile = () => {
-    navigate('/profile');
+    // The dedicated /profile route is a placeholder; the real profile editor
+    // lives in Settings → My Profile.
+    navigate('/settings?tab=profile');
     setUserMenuOpen(false);
   };
 
   const handleSettings = () => {
-    navigate('/settings');
+    // Open the broader configuration (defaults to the Security tab so it's
+    // clearly distinct from "My Profile").
+    navigate('/settings?tab=security');
     setUserMenuOpen(false);
   };
+
+  // Derived display values for the user menu.
+  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Your Account';
+  const initials =
+    `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() ||
+    (user?.email?.[0]?.toUpperCase() ?? 'U');
+  const roleLabel = (user?.role || '').replace(/_/g, ' ');
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
@@ -132,117 +108,82 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
         {/* Right side - Notifications and user menu */}
         <div className="flex items-center gap-2 sm:gap-4">
           {/* Notifications */}
-          <div className="relative">
-            <button
-              onClick={() => setNotificationsOpen(!notificationsOpen)}
-              className="text-gray-600 hover:text-gray-900 p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 relative"
-              title="Notifications"
-            >
-              <FaBell className="w-4 h-4 sm:w-5 sm:h-5" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </button>
-
-            {notificationsOpen && (
-              <>
-                {/* click-away backdrop */}
-                <div className="fixed inset-0 z-40" onClick={() => setNotificationsOpen(false)} />
-                <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                  <div className="p-3 sm:p-4">
-                    <div className="flex items-center justify-between mb-2 sm:mb-3">
-                      <h3 className="font-semibold text-gray-900 text-sm sm:text-base">System Alerts</h3>
-                      {unreadCount > 0 && (
-                        <span className="text-xs text-gray-500">{unreadCount} active</span>
-                      )}
-                    </div>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {!canSeeAlerts ? (
-                        <p className="text-xs sm:text-sm text-gray-500 py-6 text-center">You have no notifications.</p>
-                      ) : visibleAlerts.length === 0 ? (
-                        <p className="text-xs sm:text-sm text-gray-500 py-6 text-center">You're all caught up — no active alerts.</p>
-                      ) : (
-                        visibleAlerts.map((alert) => (
-                          <div
-                            key={alert.id}
-                            className={clsx(
-                              'p-2.5 sm:p-3 rounded border text-xs sm:text-sm flex items-start justify-between gap-2',
-                              ALERT_TONE[alert.severity || 'info'] ?? ALERT_TONE.info,
-                            )}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="font-semibold">{alert.title}</p>
-                              <p className="mt-0.5 opacity-80">{alert.message}</p>
-                              {alert.actionUrl && (
-                                <button
-                                  onClick={() => { setNotificationsOpen(false); navigate(alert.actionUrl!); }}
-                                  className="mt-1 text-xs font-medium underline underline-offset-2 hover:opacity-80"
-                                >
-                                  View details
-                                </button>
-                              )}
-                            </div>
-                            {alert.dismissible !== false && (
-                              <button
-                                aria-label="Dismiss"
-                                onClick={() => dismissAlert(alert.id)}
-                                className="flex-shrink-0 text-current/60 hover:text-current text-base leading-none"
-                              >
-                                ×
-                              </button>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+          <NotificationBell canSeeAlerts={!!canSeeAlerts} />
 
           {/* User menu */}
           <div className="relative">
             <button
               onClick={() => setUserMenuOpen(!userMenuOpen)}
-              className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg hover:bg-gray-100 transition-colors"
+              aria-haspopup="menu"
+              aria-expanded={userMenuOpen}
+              className="flex items-center gap-2 pl-1 pr-1 sm:pr-2.5 py-1 rounded-full sm:rounded-xl hover:bg-gray-100 transition-colors"
             >
-              <div className="w-7 h-7 sm:w-8 sm:h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold flex-shrink-0">
-                {user?.firstName?.[0]}
-                {user?.lastName?.[0]}
+              <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold flex-shrink-0 shadow-sm ring-2 ring-white">
+                {initials}
               </div>
-              <div className="hidden sm:block text-left text-sm">
-                <p className="font-medium text-gray-900">{user?.firstName} {user?.lastName}</p>
-                <p className="text-gray-500 text-xs capitalize">{user?.role}</p>
+              <div className="hidden sm:block text-left leading-tight max-w-[160px]">
+                <p className="font-semibold text-gray-900 text-sm truncate">{fullName}</p>
+                <p className="text-gray-500 text-[11px] capitalize truncate">{roleLabel}</p>
               </div>
+              <svg
+                className={clsx('hidden sm:block w-4 h-4 text-gray-400 transition-transform', userMenuOpen && 'rotate-180')}
+                viewBox="0 0 20 20" fill="currentColor"
+              >
+                <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+              </svg>
             </button>
 
             {userMenuOpen && (
-              <div className="absolute right-0 mt-2 w-44 sm:w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                <div className="py-1">
-                  <button
-                    onClick={handleProfile}
-                    className="w-full text-left px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                  >
-                    <FaUser className="w-3 h-3 sm:w-4 sm:h-4" /> Profile
-                  </button>
-                  <button
-                    onClick={handleSettings}
-                    className="w-full text-left px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                  >
-                    <FaCog className="w-3 h-3 sm:w-4 sm:h-4" /> Settings
-                  </button>
-                  <div className="border-t border-gray-200 my-1" />
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left px-3 sm:px-4 py-2 text-xs sm:text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                  >
-                    <FaRightFromBracket className="w-3 h-3 sm:w-4 sm:h-4" /> Logout
-                  </button>
+              <>
+                {/* click-away backdrop */}
+                <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+                >
+                  {/* Identity block */}
+                  <div className="px-4 py-4 bg-gradient-to-br from-blue-50 to-indigo-50/60 flex items-center gap-3">
+                    <div className="w-11 h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-sm ring-2 ring-white">
+                      {initials}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-gray-900 text-sm truncate">{fullName}</p>
+                      {user?.email && (
+                        <p className="text-gray-500 text-xs truncate">{user.email}</p>
+                      )}
+                      <span className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                        {roleLabel}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="py-1.5">
+                    <MenuItem
+                      icon={<FaUser className="w-4 h-4" />}
+                      label="My Profile"
+                      hint="Edit your name, email & password"
+                      onClick={handleProfile}
+                    />
+                    <MenuItem
+                      icon={<FaCog className="w-4 h-4" />}
+                      label="Settings"
+                      hint="Security, 2FA & configuration"
+                      onClick={handleSettings}
+                    />
+                  </div>
+
+                  <div className="border-t border-gray-100 py-1.5">
+                    <button
+                      role="menuitem"
+                      onClick={handleLogout}
+                      className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                    >
+                      <FaRightFromBracket className="w-4 h-4" />
+                      <span className="font-medium">Sign out</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -250,5 +191,27 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
     </header>
   );
 };
+
+/** A single dropdown menu row with an icon, label and a subtle hint line. */
+const MenuItem: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  hint?: string;
+  onClick: () => void;
+}> = ({ icon, label, hint, onClick }) => (
+  <button
+    role="menuitem"
+    onClick={onClick}
+    className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition-colors group"
+  >
+    <span className="w-8 h-8 rounded-lg bg-gray-100 text-gray-500 group-hover:bg-blue-100 group-hover:text-blue-600 flex items-center justify-center flex-shrink-0 transition-colors">
+      {icon}
+    </span>
+    <span className="min-w-0">
+      <span className="block text-sm font-medium text-gray-800">{label}</span>
+      {hint && <span className="block text-[11px] text-gray-400 truncate">{hint}</span>}
+    </span>
+  </button>
+);
 
 export default Header;

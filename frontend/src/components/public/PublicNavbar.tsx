@@ -24,7 +24,9 @@ const NAV_LINKS = [
   { label: 'Contact',  path: '/contact'  },
 ];
 
-const TEAL = '#00d4aa';
+// Royal-blue brand + amber CTA to match the reference theme.
+const TEAL = '#1d4ed8'; // (name kept for minimal churn) — brand blue
+const CTA_ORANGE = '#f59e0b';
 
 export const PublicNavbar: React.FC<PublicNavbarProps> = ({
   ctaText    = 'Get Started',
@@ -84,17 +86,47 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
           top: 0, left: 0, right: 0,
           zIndex:         1000,
           background:     scrolled || open
-            ? `rgba(13,13,33,0.95)`
-            : 'transparent',
-          backdropFilter: scrolled || open ? 'blur(18px) saturate(160%)' : 'none',
-          WebkitBackdropFilter: scrolled || open ? 'blur(18px) saturate(160%)' : 'none',
+            ? 'rgba(255,255,255,0.92)'
+            : 'rgba(255,255,255,0.7)',
+          backdropFilter: 'blur(18px) saturate(160%)',
+          WebkitBackdropFilter: 'blur(18px) saturate(160%)',
           borderBottom:   scrolled || open
-            ? '1px solid rgba(0,212,170,0.1)'
+            ? '1px solid rgba(15,23,42,0.08)'
             : '1px solid transparent',
-          boxShadow:      scrolled ? '0 4px 40px rgba(0,0,0,0.5)' : 'none',
+          boxShadow:      scrolled ? '0 4px 30px rgba(15,23,42,0.06)' : 'none',
           transition:     'background 0.3s, border-color 0.3s, box-shadow 0.3s',
         }}
       >
+        {/* ── Utility bar (contact + quick links) — desktop only ──────── */}
+        <div
+          className="pn-utility"
+          style={{
+            background: '#1a2b6b',
+            color: '#e0e7ff',
+            fontSize: '0.78rem',
+          }}
+        >
+          <div style={{
+            maxWidth: '1280px', margin: '0 auto', padding: '0.4rem 1.5rem',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+              <a href="tel:+23278261892" style={{ color: '#e0e7ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                📞 +232 78 261 892
+              </a>
+              <a href="mailto:info@wiskulsl.com" style={{ color: '#e0e7ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                ✉️ info@wiskulsl.com
+              </a>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.1rem' }}>
+              <Link to="/pricing" style={{ color: '#e0e7ff', textDecoration: 'none', fontWeight: 600 }}>Pricing</Link>
+              <Link to="/features" style={{ color: '#e0e7ff', textDecoration: 'none', fontWeight: 600 }}>Features</Link>
+              <Link to="/contact" style={{ color: '#e0e7ff', textDecoration: 'none', fontWeight: 600 }}>Become a Partner</Link>
+              <Link to="/register" style={{ color: '#fbbf24', textDecoration: 'none', fontWeight: 700 }}>Free Sign Up ▸</Link>
+            </div>
+          </div>
+        </div>
+
         {/* ── Top bar ──────────────────────────────────────────────── */}
         <div style={{
           maxWidth:       '1280px',
@@ -125,8 +157,8 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
                 flexShrink: 0,
               }}
             />
-            <span style={{ fontSize:'1.2rem', fontWeight:900, color:'#fff', letterSpacing:'-0.02em', lineHeight:1 }}>
-              Wi<span style={{ color:TEAL }}>Skul</span>
+            <span style={{ fontSize:'1.2rem', fontWeight:900, color:'#0f172a', letterSpacing:'-0.02em', lineHeight:1 }}>
+              Wi<span style={{ color:'#1d4ed8' }}>Skul</span>
             </span>
           </Link>
 
@@ -145,9 +177,9 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
                   style={{
                     position:'relative', padding:'0.4rem 1rem', borderRadius:'7px',
                     fontSize:'0.875rem', fontWeight: 600,
-                    color: active ? TEAL : 'rgba(255,255,255,0.7)',
+                    color: active ? '#1d4ed8' : 'rgba(15,23,42,0.65)',
                     textDecoration:'none',
-                    background: active ? 'rgba(0,212,170,0.08)' : 'transparent',
+                    background: active ? 'rgba(29,78,216,0.08)' : 'transparent',
                     transition:'color 0.18s, background 0.18s',
                     whiteSpace:'nowrap',
                   }}
@@ -174,8 +206,8 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
                 className="pn-btn-ghost"
                 style={{
                   padding:'0.45rem 1rem', borderRadius:'7px',
-                  border:'1px solid rgba(255,255,255,0.15)', background:'transparent',
-                  color:'rgba(255,255,255,0.8)', fontSize:'0.875rem', fontWeight:500,
+                  border:'1px solid rgba(15,23,42,0.15)', background:'transparent',
+                  color:'rgba(15,23,42,0.75)', fontSize:'0.875rem', fontWeight:500,
                   cursor:'pointer', transition:'all 0.2s', whiteSpace:'nowrap',
                 }}
               >Sign In</button>
@@ -185,10 +217,10 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
               className="pn-btn-cta"
               style={{
                 padding:'0.48rem 1.25rem', borderRadius:'7px', border:'none',
-                background:`linear-gradient(135deg,${TEAL},#00a898)`,
-                color:'#0d0d21', fontSize:'0.875rem', fontWeight:700,
+                background:`linear-gradient(135deg,${CTA_ORANGE},#d97706)`,
+                color:'#fff', fontSize:'0.875rem', fontWeight:700,
                 cursor:'pointer', transition:'all 0.25s', whiteSpace:'nowrap',
-                boxShadow:`0 0 0 rgba(0,212,170,0)`,
+                boxShadow:`0 4px 14px rgba(245,158,11,0.3)`,
               }}
             >{ctaText}</button>
           </div>
@@ -204,8 +236,8 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
               display:'flex', flexDirection:'column', justifyContent:'center',
               alignItems:'center', gap:'5px',
               width:'40px', height:'40px', padding:0, flexShrink:0,
-              background: open ? 'rgba(0,212,170,0.1)' : 'rgba(255,255,255,0.06)',
-              border:`1px solid ${open ? 'rgba(0,212,170,0.3)' : 'rgba(255,255,255,0.12)'}`,
+              background: open ? 'rgba(0,212,170,0.1)' : 'rgba(15,23,42,0.04)',
+              border:`1px solid ${open ? 'rgba(0,212,170,0.3)' : 'rgba(15,23,42,0.12)'}`,
               borderRadius:'9px', cursor:'pointer', transition:'background 0.2s, border-color 0.2s',
             }}
           >
@@ -243,9 +275,9 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
             opacity:    open ? 1 : 0,
             // Block taps entirely when closed so hidden links never intercept.
             pointerEvents: open ? 'auto' : 'none',
-            background: 'rgba(13,13,33,0.98)',
+            background: 'rgba(255,255,255,0.98)',
             transition: 'max-height 0.38s cubic-bezier(0.4,0,0.2,1), opacity 0.25s ease',
-            borderTop:  open ? '1px solid rgba(0,212,170,0.08)' : '1px solid transparent',
+            borderTop:  open ? '1px solid rgba(15,23,42,0.08)' : '1px solid transparent',
           }}
         >
           <div style={{ padding:'0.5rem 1rem 1.25rem' }}>
@@ -262,8 +294,8 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
                     padding:'0.75rem 0.9rem', borderRadius:'9px', marginBottom:'2px',
                     textDecoration:'none', fontSize:'0.95rem',
                     fontWeight: active ? 700 : 500,
-                    color: active ? TEAL : 'rgba(255,255,255,0.75)',
-                    background: active ? 'rgba(0,212,170,0.08)' : 'transparent',
+                    color: active ? '#1d4ed8' : 'rgba(15,23,42,0.75)',
+                    background: active ? 'rgba(29,78,216,0.08)' : 'transparent',
                     borderLeft:`3px solid ${active ? TEAL : 'transparent'}`,
                     transition:'background 0.15s, color 0.15s',
                   }}
@@ -281,7 +313,7 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
             })}
 
             {/* Divider */}
-            <div style={{ margin:'0.75rem 0', height:'1px', background:'rgba(255,255,255,0.06)' }}/>
+            <div style={{ margin:'0.75rem 0', height:'1px', background:'rgba(15,23,42,0.08)' }}/>
 
             {/* Actions */}
             <div style={{ display:'flex', flexDirection:'column', gap:'0.6rem' }}>
@@ -290,8 +322,8 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
                   onClick={() => { navigate('/login'); setOpen(false); }}
                   style={{
                     width:'100%', padding:'0.78rem',
-                    borderRadius:'9px', border:'1px solid rgba(255,255,255,0.15)',
-                    background:'transparent', color:'rgba(255,255,255,0.85)',
+                    borderRadius:'9px', border:'1px solid rgba(15,23,42,0.15)',
+                    background:'transparent', color:'rgba(15,23,42,0.85)',
                     fontSize:'0.9rem', fontWeight:600, cursor:'pointer',
                     transition:'border-color 0.2s, background 0.2s',
                   }}
@@ -302,9 +334,9 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
                 style={{
                   width:'100%', padding:'0.85rem',
                   borderRadius:'9px', border:'none',
-                  background:`linear-gradient(135deg,${TEAL},#00a898)`,
-                  color:'#0d0d21', fontSize:'0.9rem', fontWeight:700,
-                  cursor:'pointer', boxShadow:`0 4px 18px rgba(0,212,170,0.28)`,
+                  background:`linear-gradient(135deg,${CTA_ORANGE},#d97706)`,
+                  color:'#fff', fontSize:'0.9rem', fontWeight:700,
+                  cursor:'pointer', boxShadow:`0 4px 18px rgba(245,158,11,0.3)`,
                   transition:'box-shadow 0.2s, transform 0.15s',
                 }}
               >{ctaText}</button>
@@ -332,8 +364,10 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
       <div style={{ height:'64px' }} aria-hidden="true" className="pn-spacer"/>
 
       <style>{`
-        /* Desktop: show links+actions, hide burger */
+        /* Utility bar: desktop only */
+        .pn-utility { display: none; }
         @media (min-width: 768px) {
+          .pn-utility      { display: block !important; }
           .pn-desk-links   { display: flex !important; }
           .pn-desk-actions { display: flex !important; }
           .pn-burger       { display: none  !important; }
@@ -343,17 +377,18 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
 
         /* Link hover (desktop) */
         .pn-link:not(.pn-link--active):hover {
-          color: #fff !important;
-          background: rgba(255,255,255,0.05) !important;
+          color: #0f172a !important;
+          background: rgba(15,23,42,0.04) !important;
         }
         .pn-btn-ghost:hover {
-          border-color: rgba(0,212,170,0.4) !important;
-          color: #fff !important;
-          background: rgba(0,212,170,0.05) !important;
+          border-color: rgba(29,78,216,0.4) !important;
+          color: #1d4ed8 !important;
+          background: rgba(29,78,216,0.06) !important;
         }
         .pn-btn-cta:hover {
-          box-shadow: 0 0 22px rgba(0,212,170,0.42) !important;
+          box-shadow: 0 6px 22px rgba(245,158,11,0.45) !important;
           transform: translateY(-1px) !important;
+          filter: brightness(1.05) !important;
         }
       `}</style>
     </>
