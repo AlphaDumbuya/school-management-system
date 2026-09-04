@@ -102,7 +102,7 @@ export const LandingPage: React.FC = () => {
             <div className="absolute -inset-4 bg-gradient-to-br from-amber-400/20 to-[#1d4ed8]/20 rounded-[2rem] blur-2xl" />
             <div className="relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15">
               <img
-                src="https://images.unsplash.com/photo-1707904633074-20fb8f8f865a?w=900&auto=format&fit=crop&q=60"
+                src="/hero.png"
                 alt="School management platform"
                 className="w-full max-w-[520px] h-auto object-cover"
               />
