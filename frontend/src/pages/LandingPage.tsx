@@ -170,6 +170,13 @@ export const LandingPage: React.FC = () => {
         <div className="absolute inset-0 opacity-[0.1] pointer-events-none" style={DOT_PATTERN} />
         <div className="relative max-w-6xl mx-auto">
           <SectionHead light eyebrow="How it works" title="Up and running in three steps" />
+          <div className="flex justify-center mb-10">
+            <img
+              src="/illustrations/hero-data.svg"
+              alt="Unified school data platform"
+              className="w-full max-w-[420px] h-auto drop-shadow-xl opacity-95"
+            />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               { icon: UserPlus, step: '01', title: 'Register your school', desc: 'Create your isolated workspace and admin account in under two minutes — free.' },
@@ -197,19 +204,7 @@ export const LandingPage: React.FC = () => {
             title="Everything in one place"
             subtitle="A complete digital ecosystem covering academics, finance, communication and identity."
           />
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-center">
-            {/* Illustration (moved from hero) */}
-            <div className="lg:col-span-2 relative flex items-center justify-center">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#1d4ed8]/10 to-amber-400/10 rounded-[2rem] blur-2xl" />
-              <img
-                src="/illustrations/hero-data.svg"
-                alt="Unified school data platform"
-                className="relative w-full max-w-[380px] h-auto drop-shadow-xl"
-              />
-            </div>
-
-            {/* Module grid */}
-            <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
               { label: 'Student Directory', icon: Users, badge: 'v1 Free' },
               { label: 'Daily Attendance', icon: CalendarCheck, badge: 'v1 Free' },
@@ -237,7 +232,6 @@ export const LandingPage: React.FC = () => {
                 </div>
               </div>
             ))}
-            </div>
           </div>
           <div className="text-center mt-10">
             <button
@@ -256,19 +250,19 @@ export const LandingPage: React.FC = () => {
           <SectionHead eyebrow="Typical Benefits" title="A toolkit every school needs" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
-              { icon: ShieldCheck, title: 'Be Protected', desc: 'Strong encryption secures all student and staff data, with full audit trails.', tint: 'bg-blue-50', ic: 'text-[#1d4ed8]' },
-              { icon: Users, title: 'Know Your Students', desc: 'Complete 360° profiles — academics, attendance, behaviour and health.', tint: 'bg-amber-50', ic: 'text-amber-600' },
-              { icon: TrendingUp, title: 'Data-Driven Decisions', desc: 'Analytics surface trends in performance, attendance and finances early.', tint: 'bg-emerald-50', ic: 'text-emerald-600' },
-              { icon: Zap, title: 'Instant Communication', desc: 'SMS, email and in-app notifications keep everyone connected in real time.', tint: 'bg-purple-50', ic: 'text-purple-600' },
-              { icon: Globe, title: 'Access Anywhere', desc: 'Cloud-based and mobile-optimised — manage your school from any device.', tint: 'bg-sky-50', ic: 'text-sky-600' },
-              { icon: RefreshCw, title: 'Seamless Integration', desc: 'Connect payment gateways and SMS providers without disrupting workflows.', tint: 'bg-rose-50', ic: 'text-rose-600' },
+              { icon: ShieldCheck, title: 'Be Protected', desc: 'Strong encryption secures all student and staff data, with full audit trails.', card: 'bg-blue-50 border-blue-100', chip: 'bg-blue-100', ic: 'text-[#1d4ed8]' },
+              { icon: Users, title: 'Know Your Students', desc: 'Complete 360° profiles — academics, attendance, behaviour and health.', card: 'bg-amber-50 border-amber-100', chip: 'bg-amber-100', ic: 'text-amber-600' },
+              { icon: TrendingUp, title: 'Data-Driven Decisions', desc: 'Analytics surface trends in performance, attendance and finances early.', card: 'bg-emerald-50 border-emerald-100', chip: 'bg-emerald-100', ic: 'text-emerald-600' },
+              { icon: Zap, title: 'Instant Communication', desc: 'SMS, email and in-app notifications keep everyone connected in real time.', card: 'bg-purple-50 border-purple-100', chip: 'bg-purple-100', ic: 'text-purple-600' },
+              { icon: Globe, title: 'Access Anywhere', desc: 'Cloud-based and mobile-optimised — manage your school from any device.', card: 'bg-sky-50 border-sky-100', chip: 'bg-sky-100', ic: 'text-sky-600' },
+              { icon: RefreshCw, title: 'Seamless Integration', desc: 'Connect payment gateways and SMS providers without disrupting workflows.', card: 'bg-rose-50 border-rose-100', chip: 'bg-rose-100', ic: 'text-rose-600' },
             ].map((b) => (
-              <div key={b.title} className="bg-[#f8fafc] border border-[#e5e9f2] rounded-2xl p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
-                <div className={`w-12 h-12 rounded-2xl ${b.tint} ${b.ic} flex items-center justify-center mb-4`}>
+              <div key={b.title} className={`${b.card} border rounded-2xl p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-300`}>
+                <div className={`w-12 h-12 rounded-2xl ${b.chip} ${b.ic} flex items-center justify-center mb-4`}>
                   <b.icon size={22} />
                 </div>
                 <h4 className="font-bold text-base text-slate-900 mb-1.5">{b.title}</h4>
-                <p className="text-slate-500 text-sm leading-relaxed">{b.desc}</p>
+                <p className="text-slate-600 text-sm leading-relaxed">{b.desc}</p>
               </div>
             ))}
           </div>
