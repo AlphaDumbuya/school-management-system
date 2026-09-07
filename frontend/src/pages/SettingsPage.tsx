@@ -461,10 +461,10 @@ export const SettingsPage: React.FC = () => {
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`inline-flex items-center gap-2 min-w-[120px] px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
+                      className={`inline-flex items-center gap-2 min-w-[120px] px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-all ${
                         active
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                          ? 'bg-gradient-to-r from-[#1d4ed8] to-[#3b82f6] text-white shadow-md shadow-blue-500/30'
+                          : 'bg-white text-gray-700 border border-gray-200 hover:bg-blue-50 hover:text-blue-700'
                       }`}
                     >
                       <span className={active ? 'text-white' : 'text-gray-500'}>{tab.icon}</span>
@@ -487,13 +487,13 @@ export const SettingsPage: React.FC = () => {
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                         active
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                          ? 'bg-gradient-to-r from-[#1d4ed8] to-[#3b82f6] text-white shadow-md shadow-blue-500/30'
+                          : 'text-gray-600 hover:bg-blue-50 hover:text-blue-700'
                       }`}
                     >
-                      <span className={active ? 'text-blue-600' : 'text-gray-400'}>{tab.icon}</span>
+                      <span className={active ? 'text-white' : 'text-blue-500'}>{tab.icon}</span>
                       {tab.label}
                     </button>
                   );
@@ -514,8 +514,8 @@ export const SettingsPage: React.FC = () => {
                 {activeTab === 'security' && (
                   <Card>
                     <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <ShieldCheck size={18} className="text-gray-500" />
+                      <CardTitle className="flex items-center gap-2.5">
+                        <span className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center"><ShieldCheck size={18} /></span>
                         Account Security
                       </CardTitle>
                     </CardHeader>
@@ -586,8 +586,8 @@ export const SettingsPage: React.FC = () => {
                     {/* Change Password Form */}
                     <Card>
                       <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                          <Lock size={18} className="text-gray-500" />
+                        <CardTitle className="flex items-center gap-2.5">
+                          <span className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center"><Lock size={18} /></span>
                           Security & Password
                         </CardTitle>
                       </CardHeader>
@@ -668,8 +668,8 @@ export const SettingsPage: React.FC = () => {
                     {/* Display preferences (language & date format) */}
                     <Card>
                       <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                          <SettingsIcon size={18} className="text-gray-500" />
+                        <CardTitle className="flex items-center gap-2.5">
+                          <span className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center"><SettingsIcon size={18} /></span>
                           Display Settings (Global Configuration)
                         </CardTitle>
                       </CardHeader>
@@ -1001,7 +1001,10 @@ export const SettingsPage: React.FC = () => {
                 {activeTab === 'academic' && (
                   <Card>
                     <CardHeader>
-                      <CardTitle>Academic Configuration</CardTitle>
+                      <CardTitle className="flex items-center gap-2.5">
+                        <span className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center"><Calendar size={18} /></span>
+                        Academic Configuration
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1112,7 +1115,10 @@ export const SettingsPage: React.FC = () => {
                 {activeTab === 'id-format' && (
                   <Card>
                     <CardHeader>
-                      <CardTitle>ID Number Configuration</CardTitle>
+                      <CardTitle className="flex items-center gap-2.5">
+                        <span className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center"><CreditCard size={18} /></span>
+                        ID Number Configuration
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
 
@@ -1349,7 +1355,10 @@ export const SettingsPage: React.FC = () => {
                     {/* Create New Scale */}
                     <Card>
                       <CardHeader>
-                        <CardTitle>Create Grading Scale</CardTitle>
+                        <CardTitle className="flex items-center gap-2.5">
+                          <span className="w-9 h-9 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center"><GraduationCap size={18} /></span>
+                          Create Grading Scale
+                        </CardTitle>
                       </CardHeader>
                       <CardContent>
                         <form onSubmit={handleSaveGradingScale} className="space-y-4">
@@ -1395,7 +1404,10 @@ export const SettingsPage: React.FC = () => {
                 {activeTab === 'attendance' && (
                   <Card>
                     <CardHeader>
-                      <CardTitle>Attendance Thresholds & Rules</CardTitle>
+                      <CardTitle className="flex items-center gap-2.5">
+                        <span className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center"><AlertCircle size={18} /></span>
+                        Attendance Thresholds & Rules
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1446,7 +1458,10 @@ export const SettingsPage: React.FC = () => {
                 {activeTab === 'financial' && (
                   <Card>
                     <CardHeader>
-                      <CardTitle>Financial Settings</CardTitle>
+                      <CardTitle className="flex items-center gap-2.5">
+                        <span className="w-9 h-9 rounded-xl bg-green-50 text-green-600 flex items-center justify-center"><DollarSign size={18} /></span>
+                        Financial Settings
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1489,7 +1504,10 @@ export const SettingsPage: React.FC = () => {
                 {activeTab === 'comms' && (
                   <Card>
                     <CardHeader>
-                      <CardTitle>Communication Sender Defaults</CardTitle>
+                      <CardTitle className="flex items-center gap-2.5">
+                        <span className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><Mail size={18} /></span>
+                        Communication Sender Defaults
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1797,18 +1815,18 @@ export const SettingsPage: React.FC = () => {
                         ) : (
                           <div className="overflow-x-auto">
                             <table className="w-full text-left text-sm text-gray-600">
-                              <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase border-b border-gray-100">
+                              <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] text-xs font-bold text-white uppercase tracking-wider">
                                 <tr>
-                                  <th className="px-6 py-3">Billing Date</th>
-                                  <th className="px-6 py-3">Transaction ID</th>
-                                  <th className="px-6 py-3">Amount</th>
-                                  <th className="px-6 py-3">Status</th>
-                                  <th className="px-6 py-3">Notes</th>
+                                  <th className="px-6 py-3.5">Billing Date</th>
+                                  <th className="px-6 py-3.5">Transaction ID</th>
+                                  <th className="px-6 py-3.5">Amount</th>
+                                  <th className="px-6 py-3.5">Status</th>
+                                  <th className="px-6 py-3.5">Notes</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-100">
-                                {billingHistory.map((inv) => (
-                                  <tr key={inv.id} className="hover:bg-gray-50/50">
+                                {billingHistory.map((inv, rowIndex) => (
+                                  <tr key={inv.id} className={`transition-colors hover:bg-sky-100 ${rowIndex % 2 === 1 ? 'bg-sky-50' : 'bg-white'}`}>
                                     <td className="px-6 py-4 font-medium text-gray-900">{new Date(inv.billing_date).toLocaleDateString()}</td>
                                     <td className="px-6 py-4 font-mono text-xs">{inv.transaction_id}</td>
                                     <td className="px-6 py-4 font-bold text-gray-900">${inv.amount}</td>

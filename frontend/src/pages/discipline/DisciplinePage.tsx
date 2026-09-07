@@ -497,7 +497,7 @@ export const DisciplinePage: React.FC = () => {
         actions={tabAction()}
       >
         {/* ── Tab Navigation ─────────────────────────────────────────── */}
-        <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+        <div className="flex flex-wrap gap-2 mb-6 p-1.5 bg-slate-100 dark:bg-gray-800 rounded-2xl overflow-x-auto">
           {TABS.map(tab => (
             <button
               key={tab.key}
@@ -509,10 +509,10 @@ export const DisciplinePage: React.FC = () => {
                 setStatusFilter('');
                 setSeverityFilter('');
               }}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold whitespace-nowrap rounded-xl transition-all flex-shrink-0
                 ${activeTab === tab.key
-                  ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-300'
+                  ? 'bg-gradient-to-r from-[#1d4ed8] to-[#3b82f6] text-white shadow-md shadow-blue-500/30'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-700 hover:bg-white/70 dark:hover:bg-gray-700/50'
                 }`}
             >
               {tab.icon}

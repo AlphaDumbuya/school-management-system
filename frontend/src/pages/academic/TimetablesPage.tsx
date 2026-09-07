@@ -32,11 +32,20 @@ import { Settings } from 'lucide-react';
 // ── Subject category colors ───────────────────────────────────────────────────
 
 const CATEGORY_BG: Record<string, string> = {
-  core: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800',
-  science: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800',
-  arts: 'bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800',
-  commercial: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800',
-  technical: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800',
+  core: 'bg-blue-100 dark:bg-blue-950/40 border-l-4 border-blue-500 dark:border-blue-500',
+  science: 'bg-emerald-100 dark:bg-emerald-950/40 border-l-4 border-emerald-500 dark:border-emerald-500',
+  arts: 'bg-purple-100 dark:bg-purple-950/40 border-l-4 border-purple-500 dark:border-purple-500',
+  commercial: 'bg-amber-100 dark:bg-amber-950/40 border-l-4 border-amber-500 dark:border-amber-500',
+  technical: 'bg-orange-100 dark:bg-orange-950/40 border-l-4 border-orange-500 dark:border-orange-500',
+};
+
+// Text accent per category to make subject names pop with the cell colour.
+const CATEGORY_TEXT: Record<string, string> = {
+  core: 'text-blue-800 dark:text-blue-300',
+  science: 'text-emerald-800 dark:text-emerald-300',
+  arts: 'text-purple-800 dark:text-purple-300',
+  commercial: 'text-amber-800 dark:text-amber-300',
+  technical: 'text-orange-800 dark:text-orange-300',
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -166,16 +175,17 @@ export const TimetablesPage: React.FC = () => {
 
     const slot = getSlot(day, period.start, period.end);
     const catBg = slot?.subject_category ? CATEGORY_BG[slot.subject_category] || '' : '';
+    const catText = slot?.subject_category ? CATEGORY_TEXT[slot.subject_category] || 'text-gray-900 dark:text-white' : 'text-gray-900 dark:text-white';
 
     if (slot) {
       return (
         <td
           key={`${day}-${periodIndex}`}
-          className={`px-1.5 sm:px-2 py-1.5 sm:py-2 border border-gray-100 dark:border-gray-700/50 ${catBg} group cursor-pointer transition-colors hover:ring-2 hover:ring-blue-400/50 rounded-sm`}
+          className={`relative px-1.5 sm:px-2 py-1.5 sm:py-2 border border-gray-100 dark:border-gray-700/50 ${catBg} group cursor-pointer transition-all hover:ring-2 hover:ring-blue-400/60 hover:shadow-md rounded-sm`}
           onClick={() => handleEditSlot(slot)}
         >
           <div className="min-w-[80px] sm:min-w-[100px]">
-            <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white truncate leading-tight">
+            <p className={`text-xs sm:text-sm font-bold truncate leading-tight ${catText}`}>
               {slot.subject_code || slot.subject_name}
             </p>
             <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
@@ -205,7 +215,7 @@ export const TimetablesPage: React.FC = () => {
     return (
       <td
         key={`${day}-${periodIndex}`}
-        className="px-1.5 sm:px-2 py-1.5 sm:py-2 border border-gray-100 dark:border-gray-700/50 hover:bg-blue-50/50 dark:hover:bg-blue-950/10 transition-colors"
+        className="px-1.5 sm:px-2 py-1.5 sm:py-2 border border-gray-100 dark:border-gray-700/50 bg-white dark:bg-gray-900 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
       >
         <RoleGuard roles={['principal', 'super_admin']}>
           <button
@@ -299,6 +309,22 @@ export const TimetablesPage: React.FC = () => {
               </span>
             </div>
 
+            {/* Subject category color legend */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4">
+              {[
+                { key: 'core', label: 'Core', dot: 'bg-blue-500' },
+                { key: 'science', label: 'Science', dot: 'bg-emerald-500' },
+                { key: 'arts', label: 'Arts', dot: 'bg-purple-500' },
+                { key: 'commercial', label: 'Commercial', dot: 'bg-amber-500' },
+                { key: 'technical', label: 'Technical', dot: 'bg-orange-500' },
+              ].map((c) => (
+                <span key={c.key} className="inline-flex items-center gap-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                  <span className={`w-2.5 h-2.5 rounded-full ${c.dot}`} />
+                  {c.label}
+                </span>
+              ))}
+            </div>
+
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
             {isLoading ? (
               <><SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard /></>
@@ -316,17 +342,17 @@ export const TimetablesPage: React.FC = () => {
 
         {/* ── DESKTOP: Weekly Grid Table ── */}
         {selectedClassId && !isLoading && (
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
+          <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+            <table className="w-full border-collapse text-sm bg-white dark:bg-gray-900">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-800">
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border border-gray-200 dark:border-gray-700 w-[100px]">
+                <tr className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6]">
+                  <th className="px-3 py-3 text-left text-xs font-bold text-white uppercase tracking-wider border border-blue-700/40 w-[100px]">
                     Time
                   </th>
                   {DAYS_OF_WEEK.map((day) => (
                     <th
                       key={day}
-                      className="px-3 py-2.5 text-center text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider border border-gray-200 dark:border-gray-700"
+                      className="px-3 py-3 text-center text-xs font-bold text-white uppercase tracking-wider border border-blue-700/40"
                     >
                       {day.substring(0, 3)}
                     </th>
@@ -340,11 +366,11 @@ export const TimetablesPage: React.FC = () => {
                     className={period.isBreak ? 'bg-gray-50/50 dark:bg-gray-800/30' : ''}
                   >
                     {/* Time label */}
-                    <td className="px-2 py-1.5 border border-gray-100 dark:border-gray-700/50 whitespace-nowrap">
-                      <div className="text-[10px] font-bold text-gray-600 dark:text-gray-400">
+                    <td className="px-2 py-1.5 border border-gray-100 dark:border-gray-700/50 whitespace-nowrap bg-slate-50 dark:bg-gray-800">
+                      <div className="text-[10px] font-bold text-slate-700 dark:text-gray-200">
                         {period.label}
                       </div>
-                      <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                      <div className="text-[10px] text-slate-500 dark:text-gray-400">
                         {period.start}–{period.end}
                       </div>
                     </td>
@@ -396,13 +422,14 @@ export const TimetablesPage: React.FC = () => {
 
                 const slot = getSlot(mobileDay, period.start, period.end);
                 const catBg = slot?.subject_category ? CATEGORY_BG[slot.subject_category] || '' : '';
+                const catText = slot?.subject_category ? CATEGORY_TEXT[slot.subject_category] || 'text-gray-900 dark:text-white' : 'text-gray-900 dark:text-white';
 
                 return (
                   <div
                     key={periodIndex}
-                    className={`flex items-center gap-3 p-3 rounded-xl border ${
+                    className={`flex items-center gap-3 p-3 rounded-xl border shadow-sm ${
                       slot
-                        ? `${catBg} border-gray-200 dark:border-gray-700`
+                        ? catBg
                         : 'border-dashed border-gray-300 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30'
                     }`}
                   >
@@ -415,7 +442,7 @@ export const TimetablesPage: React.FC = () => {
                     {/* Content */}
                     {slot ? (
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-gray-900 dark:text-white truncate">
+                        <p className={`text-sm font-bold truncate ${catText}`}>
                           {slot.subject_name}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">

@@ -199,3 +199,7 @@ This document tracks all enhancements needed to bring the Identity Card module t
 ---
 
 *Last updated: August 2, 2026*
+
+let the header only have the logo and school name and fully align them well
+
+

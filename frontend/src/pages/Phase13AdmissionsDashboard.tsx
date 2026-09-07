@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Users, FileText, CheckCircle, Clock, AlertCircle, Download, GripVertical, ArrowRight } from 'lucide-react';
 import { MainLayout } from '@components/layout/MainLayout';
+import { WelcomeHero } from '@components/dashboard/WelcomeHero';
+import useAuthStore from '@store/authStore';
 
 interface Application {
   id: string;
@@ -210,6 +212,7 @@ const ApplicationCard: React.FC<ApplicationCardProps> = ({ application, onView, 
 };
 
 export const Phase13AdmissionsDashboard: React.FC = () => {
+  const user = useAuthStore((s) => s.user);
   const [activeTab, setActiveTab] = useState<'pipeline' | 'list'>('pipeline');
   const [filterStatus, setFilterStatus] = useState<'all' | string>('all');
 
@@ -248,11 +251,14 @@ export const Phase13AdmissionsDashboard: React.FC = () => {
 
   return (
     <MainLayout>
-      {/* Page heading */}
-      <div className="mb-6">
-        <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Admissions Dashboard</h1>
-        <p className="text-gray-600 mt-1">Manage student applications and enrollment process</p>
-      </div>
+      {/* Welcome hero */}
+      <WelcomeHero
+        firstName={user?.firstName ?? (user as any)?.first_name}
+        role="admissions"
+        roleLabel="Admissions Officer"
+        subtitle="Manage student applications and the enrollment pipeline."
+      />
+      
 
       {/* Main Content */}
       <div>

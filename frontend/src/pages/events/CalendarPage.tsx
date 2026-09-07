@@ -184,9 +184,9 @@ export const CalendarPage: React.FC = () => {
           <div className="flex-1">
             <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow-sm">
               {/* Day headers */}
-              <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+              <div className="grid grid-cols-7 bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
                 {DAYS.map((day) => (
-                  <div key={day} className="px-1 sm:px-3 py-2.5 text-center text-[10px] sm:text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  <div key={day} className="px-1 sm:px-3 py-3 text-center text-[10px] sm:text-xs font-bold text-white uppercase tracking-wide">
                     {day}
                   </div>
                 ))}

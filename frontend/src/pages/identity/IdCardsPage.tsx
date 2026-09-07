@@ -895,10 +895,10 @@ export const IdCardsPage: React.FC = () => {
           )}
 
           {/* Tab bar */}
-          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/70 p-1 rounded-xl overflow-x-auto scrollbar-none">
+          <div className="flex items-center gap-2 bg-slate-100 dark:bg-gray-800/70 p-1.5 rounded-2xl overflow-x-auto scrollbar-none">
             {TABS.map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`relative flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150 flex-shrink-0 whitespace-nowrap ${activeTab === tab.id ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white'}`}>
+                className={`relative flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 flex-shrink-0 whitespace-nowrap ${activeTab === tab.id ? 'bg-gradient-to-r from-[#1d4ed8] to-[#3b82f6] text-white shadow-md shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:text-blue-700 hover:bg-white/70 dark:hover:bg-gray-700/50'}`}>
                 {tab.icon} {tab.label}
                 {'badge' in tab && tab.badge ? (
                   <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{tab.badge}</span>
@@ -996,21 +996,21 @@ export const IdCardsPage: React.FC = () => {
                 <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                      <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+                      <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
                         <tr>
                           {['Holder', 'Card #', 'Role', 'Format', 'Issued', 'Expires', 'Status', 'Actions'].map(h => (
-                            <th key={h} className={`px-5 py-3 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400${h === 'Actions' ? ' text-right' : ''}`}>{h}</th>
+                            <th key={h} className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white${h === 'Actions' ? ' text-right' : ''}`}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                        {cards.map(card => {
+                        {cards.map((card, rowIndex) => {
                           const user = card.user;
                           const name = user ? `${user.firstName} ${user.lastName}` : '—';
                           const expiring = isExpiringSoon(card.expiresAt);
                           const days = daysUntil(card.expiresAt);
                           return (
-                            <tr key={card.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group">
+                            <tr key={card.id} className={`transition-colors hover:bg-sky-100 dark:hover:bg-gray-700/30 group ${rowIndex % 2 === 1 ? 'bg-sky-50 dark:bg-gray-900/30' : 'bg-white dark:bg-transparent'}`}>
                               <td className="px-5 py-3.5">
                                 <div className="flex items-center gap-3">
                                   <Avatar name={name} photoUrl={user?.photoUrl} size="sm" />

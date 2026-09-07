@@ -580,15 +580,15 @@ export const AttendancePage: React.FC = () => {
         <div className="space-y-6">
 
           {/* ── Tab bar ─────────────────────────────────────────────────── */}
-          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl w-full overflow-x-auto scrollbar-none whitespace-nowrap sm:w-fit">
+          <div className="flex items-center gap-2 bg-slate-100 dark:bg-gray-800 p-1.5 rounded-2xl w-full overflow-x-auto scrollbar-none whitespace-nowrap sm:w-fit">
             {TABS.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as ActiveTab)}
-                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150 ${
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
                   activeTab === tab.id
-                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white'
+                    ? 'bg-gradient-to-r from-[#1d4ed8] to-[#3b82f6] text-white shadow-md shadow-blue-500/30'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-blue-700 hover:bg-white/70 dark:hover:bg-gray-700/50'
                 }`}
               >
                 {tab.icon}
@@ -729,19 +729,19 @@ export const AttendancePage: React.FC = () => {
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                      <thead className="bg-gray-50 dark:bg-gray-750 border-b border-gray-200 dark:border-gray-700">
+                      <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
                         <tr>
-                          <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Student</th>
-                          <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Class</th>
-                          <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Date</th>
-                          <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
-                          <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Remarks</th>
-                          <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-right">Edit</th>
+                          <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Student</th>
+                          <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Class</th>
+                          <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Date</th>
+                          <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Status</th>
+                          <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Remarks</th>
+                          <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white text-right">Edit</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
-                        {logs.map((log: any) => (
-                          <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group">
+                        {logs.map((log: any, rowIndex: number) => (
+                          <tr key={log.id} className={`transition-colors hover:bg-sky-100 dark:hover:bg-gray-700/30 group ${rowIndex % 2 === 1 ? 'bg-sky-50 dark:bg-gray-900/40' : 'bg-white dark:bg-transparent'}`}>
                             <td className="px-5 py-3.5">
                               <div className="flex items-center gap-3">
                                 {/* Avatar */}

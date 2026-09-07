@@ -96,22 +96,22 @@ export const InvoicesPage: React.FC = () => {
           <SwipeHint />
           <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="bg-gray-50 dark:bg-gray-900/40 text-xs text-gray-500">
+              <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] text-xs text-white uppercase tracking-wider font-bold">
                 <tr>
-                  <th className="px-4 py-3 whitespace-nowrap">Invoice #</th>
-                  <th className="px-4 py-3 whitespace-nowrap">Student</th>
-                  <th className="px-4 py-3 whitespace-nowrap">Class</th>
-                  <th className="px-4 py-3 text-right whitespace-nowrap">Amount</th>
-                  <th className="px-4 py-3 text-right whitespace-nowrap">Balance</th>
-                  <th className="px-4 py-3 whitespace-nowrap">Status</th>
-                  <th className="px-4 py-3 text-right whitespace-nowrap">Actions</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Invoice #</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Student</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Class</th>
+                  <th className="px-4 py-3.5 text-right whitespace-nowrap">Amount</th>
+                  <th className="px-4 py-3.5 text-right whitespace-nowrap">Balance</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Status</th>
+                  <th className="px-4 py-3.5 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
-                {filtered.map((inv) => {
+                {filtered.map((inv, rowIndex) => {
                   const bal = Number(inv.balance) || 0;
                   return (
-                    <tr key={inv.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                    <tr key={inv.id} className={`transition-colors hover:bg-sky-100 dark:hover:bg-gray-700/30 ${rowIndex % 2 === 1 ? 'bg-sky-50 dark:bg-gray-900/30' : 'bg-white dark:bg-transparent'}`}>
                       <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{inv.invoice_number}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="font-medium text-gray-900 dark:text-white">{inv.student_name}</div>

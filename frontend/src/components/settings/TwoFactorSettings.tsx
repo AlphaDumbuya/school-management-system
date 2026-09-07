@@ -15,7 +15,7 @@ export const TwoFactorSettings: React.FC = () => {
   const setUser = useAuthStore((s) => s.setUser);
   const enabled = !!(user as any)?.two_factor_enabled;
 
-  const [mode, setMode] = useState<'idle' | 'setup' | 'disable'>('idle');
+  const [mode, setMode] = useState<'idle' | 'setup' | 'disable' | 'regenerate'>('idle');
   const [loading, setLoading] = useState(false);
   const [secret, setSecret] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState('');
@@ -89,14 +89,15 @@ export const TwoFactorSettings: React.FC = () => {
     }
   };
 
-  const regenerate = async () => {
-    const c = window.prompt('Enter a current 2FA code to regenerate backup codes:');
-    if (!c) return;
+  const confirmRegenerate = async () => {
+    if (!code.trim()) return;
     setLoading(true);
     try {
-      const res = await authService.regenerateBackupCodes(c.trim());
+      const res = await authService.regenerateBackupCodes(code.trim());
       if (res.success && res.data) {
         setBackupCodes(res.data.backupCodes);
+        setMode('idle');
+        setCode('');
         showToast.success('New backup codes generated');
       } else {
         showToast.error(res.error || 'Invalid code');
@@ -162,7 +163,7 @@ export const TwoFactorSettings: React.FC = () => {
       {mode === 'idle' && (
         enabled ? (
           <div className="flex flex-wrap gap-3">
-            <button onClick={regenerate} disabled={loading}
+            <button onClick={() => { setCode(''); setMode('regenerate'); }} disabled={loading}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-sm">
               <RefreshCw size={15} /> Regenerate backup codes
             </button>
@@ -225,6 +226,35 @@ export const TwoFactorSettings: React.FC = () => {
             </button>
             <button onClick={() => { setMode('idle'); setCode(''); }}
               className="px-4 py-2.5 rounded-xl bg-white hover:bg-gray-50 text-gray-700 font-bold text-sm border border-gray-200">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Regenerate: require a current code */}
+      {mode === 'regenerate' && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 space-y-3 max-w-md">
+          <div className="flex items-center gap-2">
+            <KeyRound size={16} className="text-blue-600" />
+            <p className="text-sm text-gray-800 font-semibold">Enter a current 6-digit code from your authenticator app</p>
+          </div>
+          <p className="text-xs text-gray-500">
+            This replaces all existing backup codes with a fresh set. Use the code from your
+            authenticator app (backup codes are not accepted here).
+          </p>
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/[^0-9A-Za-z-]/g, ''))}
+            inputMode="numeric" maxLength={9} placeholder="123456"
+            autoFocus
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] font-bold outline-none focus:border-[#1d4ed8] focus:ring-1 focus:ring-[#1d4ed8]/30"
+          />
+          <div className="flex gap-2">
+            <button onClick={confirmRegenerate} disabled={loading || !code.trim()}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold text-sm disabled:opacity-50">
+              {loading && <Loader2 size={16} className="animate-spin" />} Generate new codes
+            </button>
+            <button onClick={() => { setMode('idle'); setCode(''); }}
+              className="px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm">Cancel</button>
           </div>
         </div>
       )}

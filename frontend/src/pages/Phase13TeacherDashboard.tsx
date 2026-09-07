@@ -15,6 +15,7 @@ import {
 import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
+import { WelcomeHero } from '@components/dashboard/WelcomeHero';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Button } from '@components/ui/button';
 import useAuthStore from '@store/authStore';
@@ -72,8 +73,15 @@ export const Phase13TeacherDashboard: React.FC = () => {
     <MainLayout>
       <PageShell
         title="Teacher Dashboard"
-        subtitle={`Welcome back, ${user?.firstName ?? 'Teacher'} — here are your classes`}
+        subtitle="Your classes and schedule"
       >
+        <WelcomeHero
+          firstName={user?.firstName ?? (user as any)?.first_name}
+          role="teacher"
+          roleLabel="Teacher"
+          schoolName={user?.schoolName}
+          subtitle="Here are your classes and today's schedule."
+        />
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 size={32} className="animate-spin text-blue-500" />

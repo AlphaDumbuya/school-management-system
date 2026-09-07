@@ -12,7 +12,7 @@ import {
   Wallet, CreditCard, CalendarCheck, Megaphone, ArrowRight, Check,
   TrendingUp, Zap, Globe, RefreshCw, UserPlus, ClipboardCheck, Send,
 } from 'lucide-react';
-import PublicNavbar from '@components/public';
+import PublicNavbar, { PublicFooter } from '@components/public';
 
 // Theme tokens — see docs/THEME_GUIDE.md
 const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
@@ -99,13 +99,22 @@ export const LandingPage: React.FC = () => {
           </div>
 
           <div className="relative flex items-center justify-center lg:pl-8">
-            <div className="absolute -inset-4 bg-gradient-to-br from-amber-400/20 to-[#1d4ed8]/20 rounded-[2rem] blur-2xl" />
-            <div className="relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15">
-              <img
-                src="/hero.png"
-                alt="School management platform"
-                className="w-full max-w-[520px] h-auto object-cover"
-              />
+            {/* Ambient colored halo behind the card */}
+            <div className="absolute -inset-8 bg-gradient-to-br from-amber-400/25 via-[#1d4ed8]/20 to-transparent rounded-full blur-[60px] pointer-events-none" />
+
+            {/* Floating card */}
+            <div className="hero-float relative w-full max-w-[520px]">
+              <div className="relative rounded-2xl overflow-hidden ring-1 ring-white/20 shadow-[0_35px_80px_-15px_rgba(0,0,0,0.6)]">
+                <img
+                  src="/hero.png"
+                  alt="School management platform"
+                  className="w-full h-auto object-cover"
+                />
+                {/* Subtle top gloss so it reads as a screen/panel */}
+                <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
+              </div>
+              {/* Soft reflection beneath the card to sell the "lift" */}
+              <div className="absolute left-1/2 -translate-x-1/2 bottom-[-28px] w-[75%] h-8 bg-black/40 blur-2xl rounded-[50%] pointer-events-none" />
             </div>
           </div>
         </div>
@@ -138,15 +147,15 @@ export const LandingPage: React.FC = () => {
           />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
-              { icon: Lock, title: 'Data Isolation', desc: 'Each school gets a fully isolated environment — records, grades and finances stay completely separate.' },
-              { icon: ShieldCheck, title: 'Threat Detection', desc: 'Access patterns are monitored and unauthorised attempts blocked at the source.' },
-              { icon: Megaphone, title: 'Secure Messaging', desc: 'Notifications, parent messages and reports protected with end-to-end encryption.' },
-              { icon: BarChart3, title: 'Smart Analytics', desc: 'Real-time academic insights power confident, data-driven decisions.' },
-              { icon: CalendarCheck, title: 'Attendance & Alerts', desc: 'Daily attendance with automatic pattern analysis and parent alerts.' },
-              { icon: Wallet, title: 'Fees & Payments', desc: 'Collect fees online via mobile money, card, bank transfer and wallets.' },
+              { icon: Lock, title: 'Data Isolation', desc: 'Each school gets a fully isolated environment — records, grades and finances stay completely separate.', tint: 'max-md:bg-blue-50 max-md:border-blue-100', chip: 'bg-[#1d4ed8]' },
+              { icon: ShieldCheck, title: 'Threat Detection', desc: 'Access patterns are monitored and unauthorised attempts blocked at the source.', tint: 'max-md:bg-emerald-50 max-md:border-emerald-100', chip: 'bg-emerald-600' },
+              { icon: Megaphone, title: 'Secure Messaging', desc: 'Notifications, parent messages and reports protected with end-to-end encryption.', tint: 'max-md:bg-amber-50 max-md:border-amber-100', chip: 'bg-amber-500' },
+              { icon: BarChart3, title: 'Smart Analytics', desc: 'Real-time academic insights power confident, data-driven decisions.', tint: 'max-md:bg-violet-50 max-md:border-violet-100', chip: 'bg-violet-600' },
+              { icon: CalendarCheck, title: 'Attendance & Alerts', desc: 'Daily attendance with automatic pattern analysis and parent alerts.', tint: 'max-md:bg-sky-50 max-md:border-sky-100', chip: 'bg-sky-600' },
+              { icon: Wallet, title: 'Fees & Payments', desc: 'Collect fees online via mobile money, card, bank transfer and wallets.', tint: 'max-md:bg-rose-50 max-md:border-rose-100', chip: 'bg-rose-600' },
             ].map((item) => (
-              <div key={item.title} className="group bg-white border border-[#e5e9f2] rounded-2xl p-6 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 text-center">
-                <div className="w-16 h-16 mx-auto rounded-full bg-[#1a2b6b] text-white flex items-center justify-center shadow-md shadow-blue-900/20 group-hover:scale-110 transition-transform mb-4">
+              <div key={item.title} className={`group bg-white border border-[#e5e9f2] rounded-2xl p-6 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 text-center ${item.tint}`}>
+                <div className={`w-16 h-16 mx-auto rounded-full text-white flex items-center justify-center shadow-md shadow-blue-900/20 group-hover:scale-110 transition-transform mb-4 bg-[#1a2b6b] ${item.chip} md:!bg-[#1a2b6b]`}>
                   <item.icon size={26} />
                 </div>
                 <h4 className="font-bold text-base text-slate-900 mb-2">{item.title}</h4>
@@ -319,82 +328,8 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ═══ FOOTER (premium navy) ═══ */}
-      <footer className="relative overflow-hidden bg-[#0f1b45] text-blue-100/70">
-        {/* Subtle pattern + glow */}
-        <div className="absolute inset-0 opacity-[0.06] pointer-events-none" style={DOT_PATTERN} />
-        <div className="absolute -top-24 right-[-6%] w-[420px] h-[420px] rounded-full bg-[#1d4ed8]/20 blur-[130px] pointer-events-none" />
-        <div className="absolute -bottom-24 left-[-6%] w-[360px] h-[360px] rounded-full bg-amber-400/10 blur-[120px] pointer-events-none" />
-
-        {/* Top accent line */}
-        <div className="h-1 w-full bg-gradient-to-r from-[#1d4ed8] via-[#f59e0b] to-[#1d4ed8]" />
-
-        <div className="relative px-6 sm:px-10 py-14">
-          <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-8 gap-y-10">
-            {/* Brand + newsletter */}
-            <div className="col-span-2 md:col-span-2">
-              <div className="flex items-center gap-2 mb-4">
-                <img src="/logo.png" alt="WiSkul" className="w-9 h-9 rounded-xl object-contain bg-white p-1" />
-                <span className="font-black text-lg text-white">Wi<span className="text-amber-400">Skul</span></span>
-              </div>
-              <p className="text-blue-100/70 text-sm leading-relaxed max-w-xs">
-                Next-generation school management protecting student data while empowering
-                educators across Sierra Leone and beyond.
-              </p>
-              <div className="mt-5 flex items-center gap-2 max-w-xs">
-                <input
-                  type="email"
-                  placeholder="Your email for updates"
-                  className="flex-1 bg-white/10 border border-white/15 rounded-lg px-3 py-2.5 text-sm text-white placeholder-blue-100/40 outline-none focus:border-amber-400/50 min-w-0"
-                />
-                <button className="bg-[#f59e0b] hover:bg-[#d97706] text-white font-bold text-sm px-4 py-2.5 rounded-lg transition-colors flex-shrink-0">
-                  <ArrowRight size={16} />
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <h5 className="text-white font-bold text-xs mb-4 uppercase tracking-wider">Product</h5>
-              <ul className="space-y-2.5">
-                {[['Features', '/features'], ['Pricing', '/pricing'], ['Why WiSkul', '/why'], ['Benefits', '/benefits']].map(([label, to]) => (
-                  <li key={label}><span onClick={() => navigate(to)} className="text-blue-100/70 text-sm hover:text-amber-400 cursor-pointer transition-colors">{label}</span></li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h5 className="text-white font-bold text-xs mb-4 uppercase tracking-wider">Company</h5>
-              <ul className="space-y-2.5">
-                {[['Contact', '/contact'], ['Register', '/register'], ['Sign In', '/login']].map(([label, to]) => (
-                  <li key={label}><span onClick={() => navigate(to)} className="text-blue-100/70 text-sm hover:text-amber-400 cursor-pointer transition-colors">{label}</span></li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h5 className="text-white font-bold text-xs mb-4 uppercase tracking-wider">Contact</h5>
-              <ul className="space-y-2.5 text-sm text-blue-100/70">
-                <li><a href="mailto:info@wiskulsl.com" className="hover:text-amber-400 transition-colors">info@wiskulsl.com</a></li>
-                <li><a href="tel:+23278261892" className="hover:text-amber-400 transition-colors">+232 78 261 892</a></li>
-                <li className="text-blue-100/50">Kossoh Town, Sierra Leone</li>
-              </ul>
-              <div className="flex items-center gap-2.5 mt-4">
-                {['𝕏', 'f', 'in'].map((s) => (
-                  <div key={s} className="w-9 h-9 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-blue-100/70 hover:text-white hover:bg-[#f59e0b] hover:border-[#f59e0b] cursor-pointer transition-colors text-sm">{s}</div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="max-w-6xl mx-auto mt-12 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-blue-100/50 text-xs">© {new Date().getFullYear()} WiSkul. All rights reserved.</p>
-            <div className="flex items-center gap-5 text-xs text-blue-100/50">
-              <span className="hover:text-amber-400 cursor-pointer transition-colors">Privacy Policy</span>
-              <span className="hover:text-amber-400 cursor-pointer transition-colors">Terms of Service</span>
-            </div>
-          </div>
-        </div>
-      </footer>
+      {/* ═══ FOOTER (shared) ═══ */}
+      <PublicFooter />
     </div>
   );
 };

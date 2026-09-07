@@ -317,7 +317,7 @@ export function DataTable<TData>({
       {/* ── Desktop/Tablet: Traditional Table (hidden on mobile) ──────── */}
       <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200">
         <table className="w-full text-sm text-left">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
                 {hg.headers.map((header) => {
@@ -327,16 +327,16 @@ export function DataTable<TData>({
                     <th
                       key={header.id}
                       scope="col"
-                      className={`px-4 py-3 font-semibold text-xs text-gray-500 uppercase tracking-wider whitespace-nowrap ${canSort ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
+                      className={`px-4 py-3.5 font-bold text-xs text-white uppercase tracking-wider whitespace-nowrap ${canSort ? 'cursor-pointer select-none hover:text-amber-200' : ''}`}
                       style={header.column.columnDef.size ? { width: header.column.columnDef.size } : undefined}
                       onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                     >
                       <div className="flex items-center gap-1">
                         {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                         {canSort && (
-                          sortDir === 'asc' ? <ChevronUp size={14} className="text-blue-600" /> :
-                          sortDir === 'desc' ? <ChevronDown size={14} className="text-blue-600" /> :
-                          <ChevronsUpDown size={14} className="text-gray-300" />
+                          sortDir === 'asc' ? <ChevronUp size={14} className="text-amber-400" /> :
+                          sortDir === 'desc' ? <ChevronDown size={14} className="text-amber-400" /> :
+                          <ChevronsUpDown size={14} className="text-blue-200/50" />
                         )}
                       </div>
                     </th>
@@ -363,8 +363,11 @@ export function DataTable<TData>({
                 </td>
               </tr>
             ) : (
-              currentRows.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
+              currentRows.map((row, rowIndex) => (
+                <tr
+                  key={row.id}
+                  className={`transition-colors hover:bg-sky-100 ${rowIndex % 2 === 1 ? 'bg-sky-50' : 'bg-white'}`}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-4 py-3.5 text-gray-700">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

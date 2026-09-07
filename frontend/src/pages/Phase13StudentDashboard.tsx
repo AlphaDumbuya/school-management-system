@@ -13,6 +13,7 @@ import {
 import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
+import { WelcomeHero } from '@components/dashboard/WelcomeHero';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import useAuthStore from '@store/authStore';
@@ -106,9 +107,15 @@ export const Phase13StudentDashboard: React.FC = () => {
   return (
     <MainLayout>
       <PageShell
-        title={`Welcome, ${displayName.split(' ')[0]}`}
-        subtitle={`${classLabel}${profile?.admission_no ? ` • ${profile.admission_no}` : ''}${profile?.academic_year ? ` • ${profile.academic_year}` : ''}`}
+        title="Student Dashboard"
+        subtitle="Your grades, attendance, schedule and fees"
       >
+        <WelcomeHero
+          firstName={displayName.split(' ')[0]}
+          role="student"
+          roleLabel="Student"
+          subtitle={`${classLabel}${profile?.admission_no ? ` • ${profile.admission_no}` : ''}${profile?.academic_year ? ` • ${profile.academic_year}` : ''}`}
+        />
         {profile == null && (
           <div className="mb-4">
             <EmptyState

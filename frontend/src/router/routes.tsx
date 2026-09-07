@@ -22,6 +22,7 @@ import { Phase13ParentDashboard } from '@pages/Phase13ParentDashboard';
 import { Phase13AccountantDashboard } from '@pages/Phase13AccountantDashboard';
 import { Phase13AdmissionsDashboard } from '@pages/Phase13AdmissionsDashboard';
 import SuperAdminDashboard from '@pages/SuperAdminDashboard';
+import GuidePage from '@pages/GuidePage';
 import { PlatformTenantsPage } from '@pages/PlatformTenantsPage';
 import { PlatformSubscriptionsPage } from '@pages/PlatformSubscriptionsPage';
 import { PlatformAnalyticsPage } from '@pages/PlatformAnalyticsPage';
@@ -128,6 +129,12 @@ const router = createBrowserRouter(
         {
           path: 'dashboard',
           element: <P><DashboardRedirect /></P>,
+        },
+
+        // ── Platform guide (all authenticated roles) ────────────────
+        {
+          path: 'guide',
+          element: <P><GuidePage /></P>,
         },
 
         // ── Role dashboards ─────────────────────────────────────────
