@@ -17,6 +17,7 @@ import {
   SlidersHorizontal,
   Search,
   Check,
+  Info,
 } from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import MainLayout from '@components/layout/MainLayout';
@@ -232,9 +233,12 @@ const SearchableFilterPopover: React.FC<SearchableFilterPopoverProps> = ({
 
 export const AssignmentsPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { canAccess } = useAuth();
+  const { canAccess, user } = useAuth();
   // Students (and other non-staff) get a read-only view of their class assignments.
   const canManage = canAccess(['principal', 'super_admin', 'teacher']);
+  const isTeacherRole = user?.role === 'teacher';
+  const isStudentRole = user?.role === 'student';
+  const isParentRole = user?.role === 'parent' || user?.role === 'guardian';
 
   // Filter state
   const [search, setSearch] = useState('');
@@ -373,6 +377,57 @@ export const AssignmentsPage: React.FC = () => {
           </div>
         }
       >
+        {/* Scope info banner — explains what this role can do here */}
+        <div className={`mb-6 rounded-2xl border p-4 flex items-start gap-3 ${
+          isTeacherRole
+            ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/40'
+            : isStudentRole
+              ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40'
+              : isParentRole
+                ? 'bg-violet-50 dark:bg-violet-950/20 border-violet-200 dark:border-violet-800/40'
+                : 'bg-slate-50 dark:bg-gray-800/40 border-slate-200 dark:border-gray-700'
+        }`}>
+          <span className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
+            isTeacherRole ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400'
+            : isStudentRole ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400'
+            : isParentRole ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/40 dark:text-violet-400'
+            : 'bg-slate-200 text-slate-600 dark:bg-gray-700 dark:text-gray-300'
+          }`}>
+            <Info size={18} />
+          </span>
+          <div className="text-sm">
+            {isTeacherRole ? (
+              <>
+                <p className="font-bold text-blue-900 dark:text-blue-300">You're managing your own assignments</p>
+                <p className="text-blue-800/80 dark:text-blue-300/70 mt-0.5">
+                  You can create, edit and delete assignments only for the <strong>classes and subjects assigned to you</strong>. Assignments are automatically posted under your name and are visible to the students in those classes.
+                </p>
+              </>
+            ) : isStudentRole ? (
+              <>
+                <p className="font-bold text-emerald-900 dark:text-emerald-300">Your class assignments</p>
+                <p className="text-emerald-800/80 dark:text-emerald-300/70 mt-0.5">
+                  This shows the assignments for the classes you're enrolled in. Open one to see full instructions and the due date.
+                </p>
+              </>
+            ) : isParentRole ? (
+              <>
+                <p className="font-bold text-violet-900 dark:text-violet-300">Your children's assignments</p>
+                <p className="text-violet-800/80 dark:text-violet-300/70 mt-0.5">
+                  This shows the assignments for the classes your children are enrolled in, so you can follow their homework and due dates. This view is read-only.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-bold text-slate-900 dark:text-white">School-wide assignments</p>
+                <p className="text-slate-600 dark:text-gray-400 mt-0.5">
+                  As an administrator you can view and manage assignments across all classes, teachers and subjects.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
         {/* KPI Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
           {isLoading && !data ? (

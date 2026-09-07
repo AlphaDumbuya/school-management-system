@@ -183,7 +183,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'academic/assignments',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student']}><AssignmentsPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent', 'guardian']}><AssignmentsPage /></P>,
         },
         {
           path: 'academic/exam-timetable',

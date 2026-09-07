@@ -16,6 +16,7 @@ import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
 import { WelcomeHero } from '@components/dashboard/WelcomeHero';
+import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Button } from '@components/ui/button';
 import useAuthStore from '@store/authStore';
@@ -117,29 +118,34 @@ export const Phase13TeacherDashboard: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Today's schedule */}
-              <div className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
-                <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Calendar size={16} className="text-blue-500" /> Today's Schedule
-                </h3>
-                {schedule.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">No classes scheduled for today.</p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {schedule.map((s) => (
-                      <div key={s.id} className="flex items-start justify-between gap-3 p-3 rounded-lg border border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{s.subject_name || s.class_name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.class_name}</p>
-                          {s.room && <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5"><MapPin size={10} /> {s.room}</p>}
+              {/* Left column: today's schedule + announcements */}
+              <div className="lg:col-span-1 space-y-6">
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                    <Calendar size={16} className="text-blue-500" /> Today's Schedule
+                  </h3>
+                  {schedule.length === 0 ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">No classes scheduled for today.</p>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {schedule.map((s) => (
+                        <div key={s.id} className="flex items-start justify-between gap-3 p-3 rounded-lg border border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{s.subject_name || s.class_name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.class_name}</p>
+                            {s.room && <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5"><MapPin size={10} /> {s.room}</p>}
+                          </div>
+                          <span className="text-xs font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap flex items-center gap-1">
+                            <Clock size={11} /> {fmtTime(s.start_time)}
+                          </span>
                         </div>
-                        <span className="text-xs font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap flex items-center gap-1">
-                          <Clock size={11} /> {fmtTime(s.start_time)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Teacher-scoped announcements (tenant + role filtered by the API) */}
+                <AnnouncementsWidget limit={4} />
               </div>
 
               {/* Assigned classes */}

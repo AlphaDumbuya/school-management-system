@@ -27,6 +27,14 @@ export interface CreateAnnouncementPayload {
   audience: AnnouncementAudience;
   priority?: AnnouncementPriority;
   notifyByEmail?: boolean;
+  /** Optional class scope (required for teachers). */
+  classId?: string | null;
+}
+
+export interface TeacherClass {
+  id: string;
+  name: string;
+  level?: string;
 }
 
 export const announcementService = {
@@ -63,6 +71,11 @@ export const announcementService = {
   /** Mark all visible announcements as read. */
   async markAllRead() {
     return apiClient.post('/api/v1/announcements/read-all');
+  },
+
+  /** Classes the current teacher can announce to (empty for non-teachers). */
+  async myClasses() {
+    return apiClient.get<TeacherClass[]>('/api/v1/announcements/my-classes');
   },
 };
 

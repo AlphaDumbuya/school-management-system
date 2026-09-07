@@ -31,6 +31,20 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+/** GET /my-classes — classes the current teacher can announce to (for the compose dropdown). */
+router.get('/my-classes', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== 'teacher') {
+      return res.json({ success: true, data: [] });
+    }
+    const classes = await announcementService.getTeacherClasses(user.tenant_id, user.id);
+    res.json({ success: true, data: classes });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** GET /unread-count — number of unread announcements for the current user. */
 router.get('/unread-count', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -64,22 +78,24 @@ router.post('/read-all', async (req: Request, res: Response, next: NextFunction)
   }
 });
 
-/** POST / — create an announcement (principal, teacher, super admin). */
+/** POST / — create an announcement (staff roles; audience is constrained per role in the service). */
 router.post(
   '/',
-  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER, UserRole.ACCOUNTANT, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = (req as any).user;
-      const { title, body, audience, priority, notifyByEmail } = req.body;
+      const { title, body, audience, priority, notifyByEmail, classId } = req.body;
       const row = await announcementService.create({
         tenantId: user.tenant_id,
         authorId: user.id,
+        authorRole: user.role,
         title,
         body,
         audience,
         priority,
         notifyByEmail: !!notifyByEmail,
+        classId: classId ?? null,
       });
       res.status(201).json({ success: true, data: row });
     } catch (err) {
@@ -88,15 +104,20 @@ router.post(
   }
 );
 
-/** PUT /:id — edit an announcement (principal, super admin, teacher). */
+/** PUT /:id — edit an announcement. Non-admins may only edit their own. */
 router.put(
   '/:id',
-  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER, UserRole.ACCOUNTANT, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = (req as any).user;
       const { title, body, audience, priority } = req.body;
-      const row = await announcementService.update(user.tenant_id, req.params.id, { title, body, audience, priority });
+      const row = await announcementService.update(
+        user.tenant_id,
+        req.params.id,
+        { title, body, audience, priority },
+        { editorId: user.id, editorRole: user.role }
+      );
       res.json({ success: true, data: row });
     } catch (err) {
       next(err);
@@ -104,14 +125,14 @@ router.put(
   }
 );
 
-/** DELETE /:id — remove an announcement (principal, super admin). */
+/** DELETE /:id — remove an announcement. Non-admins may only delete their own. */
 router.delete(
   '/:id',
-  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER, UserRole.ACCOUNTANT, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = (req as any).user;
-      await announcementService.remove(user.tenant_id, req.params.id);
+      await announcementService.remove(user.tenant_id, req.params.id, { editorId: user.id, editorRole: user.role });
       res.json({ success: true });
     } catch (err) {
       next(err);
