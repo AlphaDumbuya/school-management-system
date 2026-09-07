@@ -10,6 +10,7 @@ import { Button } from '@components/ui/button';
 import { MainLayout } from '@components/layout/MainLayout';
 import { AlertCircle, TrendingUp, DollarSign, FileText, PhoneIcon, Mail, Download, Filter } from 'lucide-react';
 import useAuthStore from '@store/authStore';
+import { WelcomeHero } from '@components/dashboard/WelcomeHero';
 
 // Mock data
 const mockTransactions = [
@@ -70,18 +71,20 @@ export const Phase13AccountantDashboard: React.FC = () => {
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Accountant Dashboard</h1>
-            <p className="text-gray-600 mt-1 text-sm sm:mt-2">Financial management and revenue tracking</p>
-          </div>
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-sm px-3 py-1.5 sm:px-4 sm:py-2 flex-shrink-0 self-start sm:self-auto">
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Export Report</span>
-            <span className="sm:hidden">Export</span>
-          </Button>
-        </div>
+        {/* Welcome hero */}
+        <WelcomeHero
+          firstName={user?.firstName ?? (user as any)?.first_name}
+          role="accountant"
+          roleLabel="Accountant"
+          subtitle="Financial management and revenue tracking."
+          actions={
+            <Button className="bg-white/20 hover:bg-white/30 text-white border border-white/20 flex items-center gap-2 text-sm px-3 py-1.5 flex-shrink-0">
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Export Report</span>
+              <span className="sm:hidden">Export</span>
+            </Button>
+          }
+        />
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

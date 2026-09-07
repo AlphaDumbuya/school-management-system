@@ -62,7 +62,7 @@ export const InstallAppButton: React.FC<InstallAppButtonProps> = ({
     'inline-flex items-center justify-center gap-2 font-bold rounded-xl transition-all duration-300 active:scale-[0.98]';
   const styles =
     variant === 'solid'
-      ? 'bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] px-5 py-3 hover:shadow-[0_0_30px_rgba(0,212,170,0.3)]'
+      ? 'bg-[#1d4ed8] hover:bg-[#1e40af] text-white px-5 py-3 hover:shadow-[0_0_30px_rgba(29,78,216,0.3)]'
       : 'bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.12] px-5 py-3';
 
   return (
@@ -88,8 +88,8 @@ export const InstallAppButton: React.FC<InstallAppButtonProps> = ({
           >
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-xl bg-[#00d4aa]/15 flex items-center justify-center">
-                  <Smartphone size={18} className="text-[#00d4aa]" />
+                <div className="w-10 h-10 rounded-xl bg-[#1d4ed8]/15 flex items-center justify-center">
+                  <Smartphone size={18} className="text-[#1d4ed8]" />
                 </div>
                 <h3 className="text-white font-black text-lg">Install WiSkul</h3>
               </div>
@@ -105,7 +105,7 @@ export const InstallAppButton: React.FC<InstallAppButtonProps> = ({
             {sheetMode === 'ios' ? (
               <ol className="space-y-4">
                 <li className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-full bg-[#00d4aa] text-[#1a1a2e] text-xs font-black flex items-center justify-center flex-shrink-0">
+                  <span className="w-6 h-6 rounded-full bg-[#1d4ed8] text-white text-xs font-black flex items-center justify-center flex-shrink-0">
                     1
                   </span>
                   <span className="text-sm text-gray-300 flex items-center gap-1.5">
@@ -113,7 +113,7 @@ export const InstallAppButton: React.FC<InstallAppButtonProps> = ({
                   </span>
                 </li>
                 <li className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-full bg-[#00d4aa] text-[#1a1a2e] text-xs font-black flex items-center justify-center flex-shrink-0">
+                  <span className="w-6 h-6 rounded-full bg-[#1d4ed8] text-white text-xs font-black flex items-center justify-center flex-shrink-0">
                     2
                   </span>
                   <span className="text-sm text-gray-300 flex items-center gap-1.5">
@@ -122,7 +122,7 @@ export const InstallAppButton: React.FC<InstallAppButtonProps> = ({
                   </span>
                 </li>
                 <li className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-full bg-[#00d4aa] text-[#1a1a2e] text-xs font-black flex items-center justify-center flex-shrink-0">
+                  <span className="w-6 h-6 rounded-full bg-[#1d4ed8] text-white text-xs font-black flex items-center justify-center flex-shrink-0">
                     3
                   </span>
                   <span className="text-sm text-gray-300">

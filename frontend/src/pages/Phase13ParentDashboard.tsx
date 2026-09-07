@@ -13,6 +13,8 @@ import {
 import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
+import { WelcomeHero } from '@components/dashboard/WelcomeHero';
+import useAuthStore from '@store/authStore';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import { parentDashboardService } from '@services/parentDashboardService';
@@ -43,6 +45,7 @@ function cap(s?: string): string {
 type TabType = 'overview' | 'grades' | 'attendance' | 'schedule' | 'fees';
 
 export const Phase13ParentDashboard: React.FC = () => {
+  const user = useAuthStore((s) => s.user);
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
@@ -108,6 +111,12 @@ export const Phase13ParentDashboard: React.FC = () => {
   return (
     <MainLayout>
       <PageShell title="Parent Portal" subtitle="Monitor your children's progress">
+        <WelcomeHero
+          firstName={user?.firstName ?? (user as any)?.first_name}
+          role="parent"
+          roleLabel="Parent"
+          subtitle="Follow your children's attendance, grades and fees in one place."
+        />
         {children.length === 0 ? (
           <EmptyState
             message="No children linked"

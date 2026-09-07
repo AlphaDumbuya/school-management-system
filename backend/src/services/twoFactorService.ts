@@ -58,8 +58,12 @@ export class TwoFactorService {
     }
 
     // Generate 10 human-friendly backup codes; store only their hashes.
+    // Hash the NORMALIZED form (no hyphen, uppercase) so verification — which
+    // also normalizes input — matches. The hyphen is presentation-only.
     const backupCodes = Array.from({ length: 10 }, () => this.generateBackupCode());
-    const hashed = await Promise.all(backupCodes.map((c) => PasswordService.hashPassword(c)));
+    const hashed = await Promise.all(
+      backupCodes.map((c) => PasswordService.hashPassword(this.normalizeBackupCode(c)))
+    );
 
     await db('users').where({ id: userId }).update({
       two_factor_enabled: true,
@@ -140,19 +144,21 @@ export class TwoFactorService {
 
   /** Verify a code (TOTP or one backup code) against a user row. */
   private async verifyCodeForUser(user: any, code: string): Promise<boolean> {
-    const normalized = (code || '').replace(/[\s-]/g, '');
+    const totpCandidate = (code || '').replace(/[\s-]/g, '');
 
-    // Try TOTP first.
+    // Try TOTP first (6-digit numeric, hyphen/space stripped).
     if (user.two_factor_secret) {
       const secret = decryptSecret(user.two_factor_secret);
-      if (verifyTotp(secret, normalized)) return true;
+      if (verifyTotp(secret, totpCandidate)) return true;
     }
 
-    // Fall back to backup codes (consume on use).
+    // Fall back to backup codes (consume on use). Compare against the same
+    // normalized form the codes were hashed with at generation time.
+    const backupCandidate = this.normalizeBackupCode(code);
     const stored = this.parseBackupCodes(user.two_factor_backup_codes);
-    if (stored.length) {
+    if (stored.length && backupCandidate) {
       for (let i = 0; i < stored.length; i++) {
-        if (await PasswordService.comparePassword(normalized.toUpperCase(), stored[i])) {
+        if (await PasswordService.comparePassword(backupCandidate, stored[i])) {
           const remaining = stored.filter((_, idx) => idx !== i);
           await db('users').where({ id: user.id }).update({
             two_factor_backup_codes: JSON.stringify(remaining),
@@ -175,12 +181,19 @@ export class TwoFactorService {
       throw new AppError('Invalid verification code', 400, 'INVALID_2FA_CODE');
     }
     const backupCodes = Array.from({ length: 10 }, () => this.generateBackupCode());
-    const hashed = await Promise.all(backupCodes.map((c) => PasswordService.hashPassword(c)));
+    const hashed = await Promise.all(
+      backupCodes.map((c) => PasswordService.hashPassword(this.normalizeBackupCode(c)))
+    );
     await db('users').where({ id: userId }).update({
       two_factor_backup_codes: JSON.stringify(hashed),
       updated_at: new Date(),
     });
     return backupCodes;
+  }
+
+  /** Normalize a backup code for hashing/verification: strip spaces & hyphens, uppercase. */
+  private normalizeBackupCode(code: string): string {
+    return (code || '').replace(/[\s-]/g, '').toUpperCase();
   }
 
   private parseBackupCodes(raw: any): string[] {

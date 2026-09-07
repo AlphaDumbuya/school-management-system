@@ -23,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
+import { WelcomeHero } from '@components/dashboard/WelcomeHero';
 import { ChartCard } from '@components/admin/charts/ChartCard';
 import { SkeletonCard, SkeletonChart } from '@components/admin/feedback/Skeleton';
 import { ErrorState } from '@components/admin/feedback/ErrorState';
@@ -87,9 +88,18 @@ export const AdminDashboard: React.FC = () => {
     <MainLayout>
       <PageShell
         title="Principal Dashboard"
-        subtitle={`Welcome back, ${user?.firstName ?? ''} ${user?.lastName ?? ''}`}
+        subtitle="Your school at a glance"
         actions={actions}
       >
+        {/* ── Welcome hero ── */}
+        <WelcomeHero
+          firstName={user?.firstName}
+          role={user?.role}
+          roleLabel="Principal"
+          schoolName={user?.schoolName}
+          subtitle="Here's what's happening across your school today."
+        />
+
         {/* ── Error state (initial load failure only) ── */}
         {error && !dashboard && (
           <ErrorState
@@ -371,24 +381,23 @@ export const AdminDashboard: React.FC = () => {
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: 'Enroll Student',    icon: <UserPlus size={18} />,       route: '/students/directory' },
-              { label: 'Create Class',      icon: <BookOpen size={18} />,       route: '/academic/classes' },
-              { label: 'Add Teacher',       icon: <Briefcase size={18} />,      route: '/staff/teachers' },
-              { label: 'Manage Timetable',  icon: <CalendarDays size={18} />,   route: '/academic/timetables' },
-              { label: 'Publish Results',   icon: <ClipboardCheck size={18} />, route: '/academic/results' },
-              { label: 'Generate Report',   icon: <BarChart2 size={18} />,      route: '/reports/academic' },
-              { label: 'Send Announcement', icon: <Megaphone size={18} />,      route: '/communication/announcements' },
-              { label: 'Import / Export',   icon: <ArrowLeftRight size={18} />, route: '/import-export' },
-            ].map(({ label, icon, route }) => (
-              <Button
+              { label: 'Enroll Student',    icon: <UserPlus size={20} />,       route: '/students/directory',            tint: 'bg-blue-50 hover:bg-blue-100 border-blue-100 text-blue-700' },
+              { label: 'Create Class',      icon: <BookOpen size={20} />,       route: '/academic/classes',              tint: 'bg-violet-50 hover:bg-violet-100 border-violet-100 text-violet-700' },
+              { label: 'Add Teacher',       icon: <Briefcase size={20} />,      route: '/staff/teachers',                tint: 'bg-emerald-50 hover:bg-emerald-100 border-emerald-100 text-emerald-700' },
+              { label: 'Manage Timetable',  icon: <CalendarDays size={20} />,   route: '/academic/timetables',           tint: 'bg-sky-50 hover:bg-sky-100 border-sky-100 text-sky-700' },
+              { label: 'Publish Results',   icon: <ClipboardCheck size={20} />, route: '/academic/results',              tint: 'bg-amber-50 hover:bg-amber-100 border-amber-100 text-amber-700' },
+              { label: 'Generate Report',   icon: <BarChart2 size={20} />,      route: '/reports/academic',              tint: 'bg-indigo-50 hover:bg-indigo-100 border-indigo-100 text-indigo-700' },
+              { label: 'Send Announcement', icon: <Megaphone size={20} />,      route: '/communication/announcements',   tint: 'bg-rose-50 hover:bg-rose-100 border-rose-100 text-rose-700' },
+              { label: 'Import / Export',   icon: <ArrowLeftRight size={20} />, route: '/import-export',                 tint: 'bg-teal-50 hover:bg-teal-100 border-teal-100 text-teal-700' },
+            ].map(({ label, icon, route, tint }) => (
+              <button
                 key={route}
-                variant="outline"
-                className="flex flex-col items-center gap-2 h-auto py-4 text-gray-700"
                 onClick={() => navigate(route)}
+                className={`group flex flex-col items-center gap-2 h-auto py-5 px-3 rounded-2xl border shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${tint}`}
               >
-                {icon}
-                <span className="text-xs font-medium">{label}</span>
-              </Button>
+                <span className="transition-transform duration-300 group-hover:scale-110">{icon}</span>
+                <span className="text-xs font-semibold text-center leading-tight">{label}</span>
+              </button>
             ))}
           </div>
         </div>

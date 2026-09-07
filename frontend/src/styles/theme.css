@@ -236,23 +236,12 @@ code {
   border-color: var(--color-border);
 }
 
-/* Tables */
+/* Tables — no global background/hover overrides.
+   Table components (DataTable, timetable grid) own their own backgrounds,
+   headers and hover states. Forcing a global background here previously
+   covered the component tints and caused invisible (white-on-white) cells. */
 table {
-  background-color: var(--color-background);
   color: var(--color-text);
-}
-
-thead {
-  background-color: var(--color-background-secondary);
-  border-color: var(--color-border);
-}
-
-tbody tr {
-  border-color: var(--color-border);
-}
-
-tbody tr:hover {
-  background-color: var(--color-background-secondary);
 }
 
 /* Scrollbar */

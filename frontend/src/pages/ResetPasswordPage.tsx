@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { FaSpinner, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { ShieldCheck, CheckCircle2 } from 'lucide-react';
 import authService from '@services/authService';
+import CyberBackground from '@components/auth/CyberBackground';
 
 const schema = z
   .object({
@@ -60,31 +61,40 @@ export const ResetPasswordPage: React.FC = () => {
   };
 
   const inputCls = (bad?: boolean) =>
-    `w-full bg-[#1a1a2e] border rounded-xl px-4 py-3.5 pr-12 text-sm text-white placeholder-gray-600 outline-none transition-all disabled:opacity-50 ${
-      bad ? 'border-red-500/50 focus:border-red-500' : 'border-white/[0.08] focus:border-[#00d4aa]/50 focus:ring-1 focus:ring-[#00d4aa]/20'
+    `w-full bg-[#16235c] border rounded-xl px-4 py-3.5 pr-12 text-sm text-white placeholder-gray-600 outline-none transition-all disabled:opacity-50 ${
+      bad ? 'border-red-500/50 focus:border-red-500' : 'border-white/[0.08] focus:border-amber-400/50 focus:ring-1 focus:ring-amber-400/20'
     }`;
 
   return (
-    <div className="min-h-screen bg-[#1a1a2e] flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-[-15%] left-[-10%] w-[500px] h-[500px] rounded-full bg-[#00d4aa]/8 blur-[120px]" />
-        <div className="absolute bottom-[-15%] right-[-10%] w-[400px] h-[400px] rounded-full bg-purple-600/8 blur-[100px]" />
+    <div className="min-h-screen bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a] flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Animated aurora background */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="auth-blob-1 absolute top-[-20%] left-[-12%] w-[520px] h-[520px] rounded-full bg-[#2563eb]/25 blur-[120px]" />
+        <div className="auth-blob-2 absolute bottom-[-20%] right-[-12%] w-[460px] h-[460px] rounded-full bg-amber-400/15 blur-[130px]" />
+        <div className="auth-blob-3 absolute top-1/4 left-1/2 w-[420px] h-[420px] rounded-full bg-fuchsia-500/15 blur-[120px]" />
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)', backgroundSize: '26px 26px' }}
+        />
       </div>
+
+      {/* Animated 3D cyber scene */}
+      <CyberBackground />
 
       <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
           <div className="relative w-14 h-14 mx-auto mb-3">
-            <div className="absolute inset-0 bg-[#00d4aa]/30 blur-xl rounded-2xl" />
+            <div className="absolute inset-0 bg-amber-400/30 blur-xl rounded-2xl" />
             <img src="/logo.png" alt="WiSkul" className="relative w-14 h-14 rounded-2xl object-contain bg-white/95 p-1.5" />
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight">
-            Wi<span className="text-[#00d4aa]">Skul</span>
+            Wi<span className="text-amber-400">Skul</span>
           </h1>
         </div>
 
         <div className="relative">
-          <div className="absolute -inset-[1px] rounded-3xl bg-gradient-to-br from-[#00d4aa]/40 via-[#7c3aed]/20 to-transparent opacity-70 blur-[2px]" />
-          <div className="relative bg-[#16213e]/95 backdrop-blur-xl border border-white/[0.08] rounded-3xl p-7 sm:p-9 shadow-2xl">
+          <div className="absolute -inset-[1px] rounded-3xl bg-gradient-to-br from-amber-400/40 via-[#1d4ed8]/20 to-transparent opacity-70 blur-[2px]" />
+          <div className="relative bg-[#20308a]/95 backdrop-blur-xl border border-white/[0.08] rounded-3xl p-7 sm:p-9 shadow-2xl">
             {done ? (
               <div className="text-center">
                 <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/15 flex items-center justify-center mb-4">
@@ -96,7 +106,7 @@ export const ResetPasswordPage: React.FC = () => {
             ) : (
               <>
                 <div className="flex items-center gap-2 mb-1">
-                  <ShieldCheck className="text-[#00d4aa]" size={20} />
+                  <ShieldCheck className="text-amber-400" size={20} />
                   <h2 className="text-2xl font-black text-white">Set a new password</h2>
                 </div>
                 <p className="text-gray-500 text-sm mb-6">Choose a strong password you haven't used before.</p>
@@ -123,7 +133,7 @@ export const ResetPasswordPage: React.FC = () => {
                         type="button"
                         onClick={() => setShow(!show)}
                         tabIndex={-1}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-500 hover:text-[#00d4aa]"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-500 hover:text-amber-400"
                         aria-label={show ? 'Hide password' : 'Show password'}
                       >
                         {show ? <FaEyeSlash size={14} /> : <FaEye size={14} />}
@@ -148,7 +158,7 @@ export const ResetPasswordPage: React.FC = () => {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-black text-sm tracking-[0.1em] py-3.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full bg-[#f59e0b] hover:bg-[#d97706] text-white font-black text-sm tracking-[0.1em] py-3.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {loading && <FaSpinner className="animate-spin w-4 h-4" />}
                     {loading ? 'UPDATING...' : 'UPDATE PASSWORD'}

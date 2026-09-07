@@ -187,21 +187,21 @@ export const ScoreEntryGrid: React.FC<Props> = ({ academicYear }) => {
           <p className="sm:hidden text-[11px] text-gray-400">Swipe sideways if the table is wider than your screen.</p>
           <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl">
             <table className="w-full text-sm min-w-[540px]">
-              <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+              <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
                 <tr>
-                  <th className="text-left py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[140px]">Student</th>
-                  <th className="text-center py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32 sm:w-40">Test 1</th>
-                  <th className="text-center py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32 sm:w-40">Test 2</th>
-                  <th className="text-center py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Mean</th>
-                  <th className="text-center py-2.5 px-3 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">Grade</th>
+                  <th className="text-left py-3 px-3 font-bold text-xs text-white uppercase tracking-wider min-w-[140px]">Student</th>
+                  <th className="text-center py-3 px-3 font-bold text-xs text-white uppercase tracking-wider w-32 sm:w-40">Test 1</th>
+                  <th className="text-center py-3 px-3 font-bold text-xs text-white uppercase tracking-wider w-32 sm:w-40">Test 2</th>
+                  <th className="text-center py-3 px-3 font-bold text-xs text-white uppercase tracking-wider w-20">Mean</th>
+                  <th className="text-center py-3 px-3 font-bold text-xs text-white uppercase tracking-wider w-16">Grade</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {rows.map((r) => {
+                {rows.map((r, rowIndex) => {
                   const mean = liveMean(r._t1, r._t2);
                   const g = getGrade(mean);
                   return (
-                    <tr key={r.student_id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <tr key={r.student_id} className={`transition-colors hover:bg-sky-100 dark:hover:bg-gray-800/50 ${rowIndex % 2 === 1 ? 'bg-sky-50 dark:bg-gray-900/40' : 'bg-white dark:bg-transparent'}`}>
                       <td className="py-2 px-3">
                         <p className="font-medium text-gray-900 dark:text-white">{r.student_name}</p>
                         <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">{r.roll_number}</p>

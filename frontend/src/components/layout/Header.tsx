@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaBars, FaUser, FaCog } from 'react-icons/fa';
+import { FaBars, FaUser, FaCog, FaBookOpen } from 'react-icons/fa';
 import { FaRightFromBracket } from 'react-icons/fa6';
 import useAuth from '@hooks/useAuth';
 import useAuthStore from '@store/authStore';
@@ -59,6 +59,11 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
     // The dedicated /profile route is a placeholder; the real profile editor
     // lives in Settings → My Profile.
     navigate('/settings?tab=profile');
+    setUserMenuOpen(false);
+  };
+
+  const handleGuide = () => {
+    navigate('/guide');
     setUserMenuOpen(false);
   };
 
@@ -169,6 +174,12 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
                       label="Settings"
                       hint="Security, 2FA & configuration"
                       onClick={handleSettings}
+                    />
+                    <MenuItem
+                      icon={<FaBookOpen className="w-4 h-4" />}
+                      label="Guide & Help"
+                      hint="Learn how to use the platform"
+                      onClick={handleGuide}
                     />
                   </div>
 

@@ -1,308 +1,174 @@
 /**
- * BenefitsPage - /benefits
- * Cyber security-themed benefits showcase
- * Dark design with neon accents, animations, and glassmorphism
+ * BenefitsPage — /benefits
+ * Light edu-SaaS theme (see docs/THEME_GUIDE.md). Shared navbar + footer.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import PublicNavbar from '@components/public';
+import {
+  ShieldCheck, Users, TrendingUp, Zap, Globe, RefreshCw, Wallet, Clock,
+  Target, Smartphone, GraduationCap, BarChart3, ArrowRight, Check, X,
+} from 'lucide-react';
+import PublicNavbar, { PublicFooter } from '@components/public';
+
+const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
+const DOT_PATTERN: React.CSSProperties = {
+  backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)',
+  backgroundSize: '26px 26px',
+};
+
+const TINTS = [
+  { card: 'bg-blue-50 border-blue-100', chip: 'bg-blue-100 text-[#1d4ed8]', dot: 'bg-[#1d4ed8]' },
+  { card: 'bg-emerald-50 border-emerald-100', chip: 'bg-emerald-100 text-emerald-600', dot: 'bg-emerald-600' },
+  { card: 'bg-amber-50 border-amber-100', chip: 'bg-amber-100 text-amber-600', dot: 'bg-amber-600' },
+  { card: 'bg-purple-50 border-purple-100', chip: 'bg-purple-100 text-purple-600', dot: 'bg-purple-600' },
+  { card: 'bg-sky-50 border-sky-100', chip: 'bg-sky-100 text-sky-600', dot: 'bg-sky-600' },
+  { card: 'bg-rose-50 border-rose-100', chip: 'bg-rose-100 text-rose-600', dot: 'bg-rose-600' },
+];
 
 export const BenefitsPage: React.FC = () => {
   const navigate = useNavigate();
-  const [showAlert, setShowAlert] = useState(false);
+  useEffect(() => { window.scrollTo(0, 0); }, []);
 
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
-  const handleComingSoon = () => {
-    setShowAlert(true);
-    setTimeout(() => setShowAlert(false), 3000);
-  };
+  const benefits = [
+    { icon: ShieldCheck, title: 'Be Protected', desc: '256-bit encryption secures all student and staff data, with full audit trails and a zero-trust approach.', features: ['256-bit AES encryption', 'Compliance-ready', 'Full audit trails', 'Zero-trust security'] },
+    { icon: Users, title: 'Know Your Students', desc: 'Complete 360° profiles — academic history, attendance, behaviour and health — in one unified view.', features: ['360° profiles', 'Academic history', 'Behaviour tracking', 'Health records'] },
+    { icon: TrendingUp, title: 'Data-Driven Decisions', desc: 'Analytics surface trends in performance, attendance and finances before they become problems.', features: ['Trend detection', 'Real-time dashboards', 'Resource optimisation', 'Actionable insight'] },
+    { icon: Zap, title: 'Instant Communication', desc: 'SMS, email and in-app notifications keep parents, teachers and students connected in real time.', features: ['SMS notifications', 'Email alerts', 'In-app messaging', 'Real-time updates'] },
+    { icon: Globe, title: 'Access Anywhere', desc: 'Cloud-based and mobile-optimised — manage your school from any device, anywhere.', features: ['Cloud-based', 'Mobile optimised', 'Cross-platform', 'Works offline (PWA)'] },
+    { icon: RefreshCw, title: 'Seamless Integration', desc: 'Connect payment gateways and SMS providers without disrupting workflows.', features: ['Payment gateways', 'SMS providers', 'RESTful APIs', 'Custom integrations'] },
+    { icon: Wallet, title: 'Reduce Costs', desc: 'Eliminate paper, reduce admin overhead and automate repetitive tasks to save on printing and storage.', features: ['Paperless operations', 'Task automation', 'Lower overhead', 'Cost savings'] },
+    { icon: Clock, title: 'Save Time', desc: 'Automate attendance, grading, report cards and fee reminders — reclaim hours every week.', features: ['Auto attendance', 'Auto grading', 'Report generation', 'Smart reminders'] },
+    { icon: Target, title: 'Increase Efficiency', desc: 'Streamlined workflows reduce errors and speed up every process — admissions to graduation.', features: ['Streamlined workflows', 'Fewer errors', 'Process automation', 'Higher productivity'] },
+    { icon: Smartphone, title: 'Empower Parents', desc: "Parents track their child's journey from anywhere — grades, attendance, fees and events.", features: ['Parent portal', 'Real-time updates', 'Mobile access', 'Transparent reporting'] },
+    { icon: GraduationCap, title: 'Engage Students', desc: 'Students access timetables, assignments, results and announcements instantly.', features: ['Student portal', 'Assignment tracking', 'Result access', 'Digital engagement'] },
+    { icon: BarChart3, title: 'Powerful Reporting', desc: 'Generate detailed reports on academics, finances and attendance, and export to PDF in one click.', features: ['Custom reports', 'PDF export', 'Financial reports', 'Academic analytics'] },
+  ];
 
   return (
-    <div className="min-h-screen bg-[#0a0a14] text-white overflow-x-hidden font-sans">
-
-      {/* Coming Soon Alert */}
-      {showAlert && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100]" style={{ animation: 'fadeInDown 0.4s ease-out' }}>
-          <div className="bg-[#16213e] border border-[#00d4aa]/30 rounded-xl px-6 py-4 shadow-2xl shadow-[#00d4aa]/10 flex items-center gap-3 backdrop-blur-xl">
-            <span className="text-xl">🚀</span>
-            <div>
-              <p className="text-white font-bold text-sm">Coming Soon!</p>
-              <p className="text-gray-400 text-xs">This feature is under development.</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {/* ── Navigation ── */}
+    <div className="min-h-screen bg-[#f5f7fb] text-slate-700 overflow-x-hidden font-sans antialiased">
       <PublicNavbar ctaText="Register School Free" />
 
-      {/* Hero Section */}
-      <section className="relative pt-32 pb-20 px-6 sm:px-10 overflow-hidden">
-        {/* Animated Background Grid */}
-        <div className="absolute inset-0 opacity-[0.03]" style={{
-          backgroundImage: `linear-gradient(rgba(0,212,170,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(0,212,170,0.5) 1px, transparent 1px)`,
-          backgroundSize: '80px 80px',
-        }} />
-
-        {/* Floating Orbs */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute top-[20%] left-[10%] w-[400px] h-[400px] rounded-full bg-purple-600/10 blur-[100px] animate-pulse" />
-          <div className="absolute top-[60%] right-[15%] w-[350px] h-[350px] rounded-full bg-cyan-500/10 blur-[90px] animate-pulse" style={{ animationDelay: '1.5s' }} />
-          <div className="absolute bottom-[10%] left-[40%] w-[300px] h-[300px] rounded-full bg-[#00d4aa]/10 blur-[80px] animate-pulse" style={{ animationDelay: '3s' }} />
-        </div>
-
-        <div className="relative z-10 max-w-6xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-[#16213e]/50 border border-[#00d4aa]/30 rounded-full px-6 py-2.5 mb-8 backdrop-blur-xl">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00d4aa] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-[#00d4aa]"></span>
-            </span>
-            <span className="text-[#00d4aa] text-xs font-bold tracking-widest uppercase">Transform Your School</span>
+      {/* ═══ HERO (navy) ═══ */}
+      <section className={`relative pt-28 sm:pt-36 pb-20 px-6 sm:px-10 overflow-hidden ${NAVY_BAND}`}>
+        <div className="absolute inset-0 opacity-[0.12] pointer-events-none" style={DOT_PATTERN} />
+        <div className="absolute top-[-10%] right-[-8%] w-[500px] h-[500px] rounded-full bg-white/5 blur-[120px] pointer-events-none" />
+        <div className="relative z-10 max-w-4xl mx-auto text-center">
+          <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-5 py-2 mb-8">
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-white/90 text-xs font-bold tracking-widest uppercase">Transform your school</span>
           </div>
-
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black leading-tight mb-8">
-            <span className="bg-gradient-to-r from-white via-cyan-200 to-purple-200 bg-clip-text text-transparent">
-              The WiSkul
-            </span>
-            <br />
-            <span className="text-[#00d4aa]">Benefits</span>
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-black leading-[1.1] mb-6 text-white">
+            The WiSkul <span className="text-amber-400">benefits</span>
           </h1>
-
-          <p className="text-gray-400 text-base sm:text-lg md:text-xl max-w-3xl mx-auto leading-relaxed">
-            More than just software — WiSkul is a complete digital transformation toolkit 
-            that saves time, reduces costs, and unlocks new possibilities for your institution.
+          <p className="text-blue-100/90 text-base sm:text-lg max-w-2xl mx-auto leading-relaxed">
+            More than software — a complete digital transformation toolkit that saves time,
+            reduces costs and unlocks new possibilities for your institution.
           </p>
         </div>
       </section>
 
-      {/* Main Benefits Grid */}
-      <section className="px-6 sm:px-10 py-20">
+      {/* ═══ BENEFITS GRID (light) ═══ */}
+      <section className="px-6 sm:px-10 py-20 bg-white border-b border-[#e5e9f2]">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[
-              {
-                icon: '🛡️',
-                title: 'Be Protected',
-                desc: 'Military-grade 256-bit encryption secures all student and staff data. GDPR-compliant data handling with full audit trails and zero-trust architecture.',
-                color: 'from-purple-500 to-purple-700',
-                features: ['256-bit AES encryption', 'GDPR compliant', 'Full audit trails', 'Zero-trust security']
-              },
-              {
-                icon: '👥',
-                title: 'Know Your Students',
-                desc: 'Complete 360° student profiles with academic history, attendance patterns, behavior records, and health information — all in one unified view.',
-                color: 'from-cyan-500 to-blue-700',
-                features: ['360° student profiles', 'Academic history', 'Behavior tracking', 'Health records']
-              },
-              {
-                icon: '📈',
-                title: 'Data-Driven Decisions',
-                desc: 'AI-powered analytics surface trends in performance, attendance, and finances before they become problems. Predict outcomes and optimize resources.',
-                color: 'from-[#00d4aa] to-green-700',
-                features: ['Predictive analytics', 'Trend detection', 'Resource optimization', 'AI insights']
-              },
-              {
-                icon: '⚡',
-                title: 'Instant Communication',
-                desc: 'SMS, email, and in-app notifications keep parents, teachers, and students connected in real time. No delays, no missed messages.',
-                color: 'from-pink-500 to-red-700',
-                features: ['SMS notifications', 'Email alerts', 'In-app messaging', 'Real-time updates']
-              },
-              {
-                icon: '🌐',
-                title: 'Access Anywhere',
-                desc: 'Cloud-based platform accessible from any device. Mobile-optimized dashboards let you manage your school from anywhere in the world.',
-                color: 'from-orange-500 to-yellow-600',
-                features: ['Cloud-based', 'Mobile optimized', 'Cross-platform', 'Global access']
-              },
-              {
-                icon: '🔄',
-                title: 'Seamless Integration',
-                desc: 'Connect with payment gateways, SMS providers, and existing school tools without disrupting workflows. RESTful APIs for custom integrations.',
-                color: 'from-indigo-500 to-purple-700',
-                features: ['Payment gateways', 'SMS providers', 'RESTful APIs', 'Custom integrations']
-              },
-              {
-                icon: '💰',
-                title: 'Reduce Costs',
-                desc: 'Eliminate paper, reduce administrative overhead, automate repetitive tasks. Save thousands on printing, storage, and manual data entry.',
-                color: 'from-green-500 to-emerald-700',
-                features: ['Paperless operations', 'Task automation', 'Lower overhead', 'Cost savings']
-              },
-              {
-                icon: '⏱️',
-                title: 'Save Time',
-                desc: 'Automate attendance, grade calculation, report card generation, and fee reminders. Reclaim hours of manual work every week.',
-                color: 'from-blue-500 to-cyan-700',
-                features: ['Auto attendance', 'Auto grading', 'Report generation', 'Smart reminders']
-              },
-              {
-                icon: '🎯',
-                title: 'Increase Efficiency',
-                desc: 'Streamlined workflows reduce errors and speed up every process — from admissions to graduation. Do more with less.',
-                color: 'from-red-500 to-pink-700',
-                features: ['Streamlined workflows', 'Error reduction', 'Process automation', 'Higher productivity']
-              },
-              {
-                icon: '📱',
-                title: 'Empower Parents',
-                desc: 'Parents track their child\'s journey from anywhere — grades, attendance, behavior, fees, and events. Complete transparency builds trust.',
-                color: 'from-violet-500 to-purple-700',
-                features: ['Parent portal', 'Real-time updates', 'Mobile access', 'Transparent reporting']
-              },
-              {
-                icon: '🎓',
-                title: 'Engage Students',
-                desc: 'Students access timetables, assignments, results, and announcements instantly. Digital engagement increases accountability and motivation.',
-                color: 'from-teal-500 to-cyan-700',
-                features: ['Student portal', 'Assignment tracking', 'Result access', 'Digital engagement']
-              },
-              {
-                icon: '📊',
-                title: 'Powerful Reporting',
-                desc: 'Generate detailed reports on academics, finances, attendance, and more. Export to PDF or Excel with one click. Custom report builder included.',
-                color: 'from-amber-500 to-orange-700',
-                features: ['Custom reports', 'PDF/Excel export', 'Financial reports', 'Academic analytics']
-              },
-            ].map((benefit, index) => (
-              <div key={benefit.title} className="relative group" style={{ animationDelay: `${index * 0.1}s` }}>
-                {/* Glow effect on hover */}
-                <div className={`absolute -inset-[1px] bg-gradient-to-br ${benefit.color} rounded-2xl opacity-0 group-hover:opacity-30 blur-xl transition-all duration-500`} />
-                
-                <div className="relative h-full bg-gradient-to-br from-[#16213e]/80 to-[#0f0f1a]/80 border border-white/[0.08] rounded-2xl p-6 backdrop-blur-xl hover:border-[#00d4aa]/40 transition-all duration-300">
-                  {/* Icon with gradient background */}
-                  <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${benefit.color} flex items-center justify-center text-3xl mb-4 shadow-lg`}>
-                    {benefit.icon}
+            {benefits.map((b, i) => {
+              const t = TINTS[i % TINTS.length];
+              return (
+                <div key={b.title} className={`${t.card} border rounded-2xl p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-300`}>
+                  <div className={`w-14 h-14 rounded-xl ${t.chip} flex items-center justify-center mb-4`}>
+                    <b.icon size={26} />
                   </div>
-
-                  {/* Title */}
-                  <h3 className="text-lg font-black text-white mb-3">{benefit.title}</h3>
-
-                  {/* Description */}
-                  <p className="text-sm text-gray-400 leading-relaxed mb-4">{benefit.desc}</p>
-
-                  {/* Features list */}
-                  <div className="grid grid-cols-2 gap-2 pt-4 border-t border-white/[0.05]">
-                    {benefit.features.map((feature) => (
-                      <div key={feature} className="flex items-start gap-2">
-                        <div className={`w-1 h-1 rounded-full bg-gradient-to-r ${benefit.color} mt-1.5 flex-shrink-0`} />
-                        <span className="text-[10px] text-gray-500 leading-tight">{feature}</span>
+                  <h3 className="text-lg font-black text-slate-900 mb-2">{b.title}</h3>
+                  <p className="text-sm text-slate-600 leading-relaxed mb-4">{b.desc}</p>
+                  <div className="grid grid-cols-2 gap-2 pt-4 border-t border-white/70">
+                    {b.features.map((f) => (
+                      <div key={f} className="flex items-start gap-2">
+                        <span className={`w-3.5 h-3.5 rounded-full ${t.chip} flex items-center justify-center mt-0.5 flex-shrink-0`}><Check size={8} strokeWidth={3} /></span>
+                        <span className="text-[11px] text-slate-600 leading-tight">{f}</span>
                       </div>
                     ))}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* ROI Calculator Section */}
-      <section className="px-6 sm:px-10 py-20 bg-[#0f0f1a] relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/10 via-transparent to-cyan-900/10" />
-        
-        <div className="relative z-10 max-w-5xl mx-auto">
+      {/* ═══ IMPACT (navy band) ═══ */}
+      <section className={`relative px-6 sm:px-10 py-20 overflow-hidden ${NAVY_BAND}`}>
+        <div className="absolute inset-0 opacity-[0.1] pointer-events-none" style={DOT_PATTERN} />
+        <div className="relative max-w-5xl mx-auto">
           <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-black mb-4">
-              <span className="bg-gradient-to-r from-[#00d4aa] to-cyan-400 bg-clip-text text-transparent">Calculate</span> Your Savings
-            </h2>
-            <p className="text-gray-500 text-sm">See how much time and money WiSkul can save your school</p>
+            <p className="text-amber-300 text-xs font-bold tracking-[0.2em] uppercase mb-2">The impact</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">What schools typically gain</h2>
+            <div className="w-12 h-1 bg-[#f59e0b] rounded-full mx-auto mt-4" />
+            <p className="text-blue-100/80 text-sm mt-3">Illustrative outcomes as manual work is replaced with automation.</p>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              { 
-                metric: '15 hours/week', 
-                label: 'Time Saved', 
-                desc: 'Automation eliminates manual data entry, report generation, and repetitive tasks',
-                icon: '⏰',
-                color: 'purple'
-              },
-              { 
-                metric: 'NLe 2.5M/year', 
-                label: 'Cost Reduction', 
-                desc: 'Eliminate paper, reduce admin overhead, and optimize resource allocation',
-                icon: '💵',
-                color: 'cyan'
-              },
-              { 
-                metric: '40% faster', 
-                label: 'Process Speed', 
-                desc: 'Streamlined workflows accelerate everything from admissions to graduation',
-                icon: '🚀',
-                color: 'green'
-              },
+              { metric: 'Hours saved weekly', label: 'Time', desc: 'Automation removes manual data entry, report generation and repetitive admin tasks.', icon: Clock },
+              { metric: 'Lower running costs', label: 'Cost', desc: 'Go paperless, reduce admin overhead and optimise how resources are allocated.', icon: Wallet },
+              { metric: 'Faster processes', label: 'Speed', desc: 'Streamlined workflows accelerate everything from admissions to graduation.', icon: Zap },
             ].map((roi) => (
-              <div key={roi.label} className="relative group">
-                <div className="absolute -inset-[1px] bg-gradient-to-br from-purple-500/20 to-cyan-500/20 rounded-2xl opacity-0 group-hover:opacity-100 blur-lg transition-opacity duration-500" />
-                <div className="relative bg-[#16213e]/50 border border-white/[0.08] rounded-2xl p-8 backdrop-blur-xl text-center">
-                  <div className="text-4xl mb-4">{roi.icon}</div>
-                  <p className="text-3xl font-black bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent mb-2">{roi.metric}</p>
-                  <p className="text-sm font-bold text-[#00d4aa] mb-3">{roi.label}</p>
-                  <p className="text-xs text-gray-500 leading-relaxed">{roi.desc}</p>
-                </div>
+              <div key={roi.label} className="bg-white/[0.06] border border-white/10 rounded-2xl p-8 text-center backdrop-blur-sm">
+                <div className="w-12 h-12 mx-auto rounded-xl bg-amber-500 text-white flex items-center justify-center mb-4"><roi.icon size={22} /></div>
+                <p className="text-xl font-black text-white mb-1">{roi.metric}</p>
+                <p className="text-sm font-bold text-amber-300 mb-3 uppercase tracking-wider">{roi.label}</p>
+                <p className="text-xs text-blue-100/70 leading-relaxed">{roi.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Before vs After Comparison */}
+      {/* ═══ BEFORE / AFTER (light) ═══ */}
       <section className="px-6 sm:px-10 py-20">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-black mb-4">Before & After WiSkul</h2>
-            <p className="text-gray-500 text-sm">See the transformation in action</p>
+          <div className="text-center mb-14">
+            <p className="text-[#1d4ed8] text-xs font-bold tracking-[0.2em] uppercase mb-2">The transformation</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Before &amp; after WiSkul</h2>
+            <div className="w-12 h-1 bg-[#f59e0b] rounded-full mx-auto mt-4" />
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Before */}
-            <div className="bg-gradient-to-br from-red-900/20 to-orange-900/20 border border-red-500/20 rounded-2xl p-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-rose-50 border border-rose-100 rounded-2xl p-8">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center text-2xl">😓</div>
-                <h3 className="text-2xl font-black text-red-400">Before</h3>
+                <div className="w-11 h-11 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center"><X size={22} /></div>
+                <h3 className="text-2xl font-black text-rose-600">Before</h3>
               </div>
-              <ul className="space-y-4">
+              <ul className="space-y-3.5">
                 {[
                   'Manual attendance registers lost or damaged',
-                  'Paper-based report cards taking weeks to generate',
+                  'Paper report cards taking weeks to prepare',
                   'Parents calling constantly for updates',
                   'No visibility into school-wide performance',
                   'Fee collection chaos and missing records',
                   'Hours wasted on data entry and filing',
-                  'Security breaches from physical document theft',
                 ].map((issue) => (
-                  <li key={issue} className="flex items-start gap-3 text-gray-400">
-                    <span className="text-red-500 text-lg flex-shrink-0">✗</span>
+                  <li key={issue} className="flex items-start gap-3 text-slate-600">
+                    <span className="w-5 h-5 rounded-full bg-rose-100 text-rose-500 flex items-center justify-center flex-shrink-0 mt-0.5"><X size={11} strokeWidth={3} /></span>
                     <span className="text-sm">{issue}</span>
                   </li>
                 ))}
               </ul>
             </div>
-
-            {/* After */}
-            <div className="bg-gradient-to-br from-[#00d4aa]/20 to-cyan-900/20 border border-[#00d4aa]/30 rounded-2xl p-8">
+            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-8">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 rounded-xl bg-[#00d4aa]/20 flex items-center justify-center text-2xl">🎉</div>
-                <h3 className="text-2xl font-black text-[#00d4aa]">After</h3>
+                <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center"><Check size={22} /></div>
+                <h3 className="text-2xl font-black text-emerald-600">After</h3>
               </div>
-              <ul className="space-y-4">
+              <ul className="space-y-3.5">
                 {[
                   'Digital attendance with automatic parent notifications',
                   'Auto-generated report cards in seconds',
-                  'Parents access everything via mobile portal',
-                  'Real-time analytics and predictive insights',
+                  'Parents access everything via a mobile portal',
+                  'Real-time analytics and clear insights',
                   'Automated fee tracking and payment reminders',
                   'Zero manual data entry — everything is digital',
-                  'Military-grade encryption protects all data',
                 ].map((benefit) => (
-                  <li key={benefit} className="flex items-start gap-3 text-gray-300">
-                    <span className="text-[#00d4aa] text-lg flex-shrink-0">✓</span>
+                  <li key={benefit} className="flex items-start gap-3 text-slate-700">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0 mt-0.5"><Check size={11} strokeWidth={3} /></span>
                     <span className="text-sm font-medium">{benefit}</span>
                   </li>
                 ))}
@@ -312,48 +178,28 @@ export const BenefitsPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="px-6 sm:px-10 py-20 relative overflow-hidden">
-        <div className="absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 via-transparent to-cyan-600/20" />
-          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#00d4aa] to-transparent" />
-        </div>
-
-        <div className="relative z-10 max-w-3xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-black mb-6">
-            <span className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Start Your</span>
-            <br />
-            <span className="text-[#00d4aa]">Digital Transformation</span>
-          </h2>
-          <p className="text-gray-400 text-base mb-10 max-w-2xl mx-auto">
-            Join hundreds of schools already experiencing the WiSkul advantage. 
-            No credit card required. Full access to all features for 14 days.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button
-              onClick={handleComingSoon}
-              className="w-full sm:w-auto bg-gradient-to-r from-[#00d4aa] to-cyan-500 hover:from-cyan-500 hover:to-[#00d4aa] text-[#0a0a14] font-bold text-sm px-10 py-4 rounded-full transition-all duration-300 shadow-[0_0_30px_rgba(0,212,170,0.4)] hover:shadow-[0_0_50px_rgba(0,212,170,0.6)] active:scale-95"
-            >
-              Start Free Trial
-            </button>
-            <button
-              onClick={() => navigate('/pricing')}
-              className="w-full sm:w-auto border-2 border-white/20 hover:border-[#00d4aa] text-white font-bold text-sm px-10 py-4 rounded-full transition-all duration-300 hover:bg-[#00d4aa]/10"
-            >
-              View Pricing →
-            </button>
+      {/* ═══ CTA (navy card) ═══ */}
+      <section className="px-6 sm:px-10 py-16">
+        <div className={`max-w-4xl mx-auto relative overflow-hidden rounded-[2rem] px-8 sm:px-14 py-14 text-center ${NAVY_BAND}`}>
+          <div className="absolute inset-0 opacity-[0.1] pointer-events-none" style={DOT_PATTERN} />
+          <div className="relative z-10">
+            <h2 className="text-3xl sm:text-4xl font-black text-white mb-4">Start your digital transformation</h2>
+            <p className="text-blue-100/80 text-sm mb-8 max-w-lg mx-auto">Set up your school in minutes — the core plan is free, no card required.</p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button onClick={() => navigate('/register')}
+                className="w-full sm:w-auto bg-[#f59e0b] hover:bg-[#d97706] text-white font-bold text-sm px-10 py-4 rounded-xl transition-all duration-300 shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2">
+                Register School Free <ArrowRight size={16} />
+              </button>
+              <button onClick={() => navigate('/pricing')}
+                className="w-full sm:w-auto border border-white/25 hover:border-white/50 text-white font-bold text-sm px-10 py-4 rounded-xl transition-all duration-300">
+                View Pricing
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-[#0a0a14] border-t border-white/[0.04] px-6 sm:px-10 py-8 text-center">
-        <p className="text-gray-600 text-xs">© {new Date().getFullYear()} WiSkul. Empowering education through technology.</p>
-      </footer>
-
-      <style>{`
-        @keyframes fadeInDown { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
-      `}</style>
+      <PublicFooter />
     </div>
   );
 };

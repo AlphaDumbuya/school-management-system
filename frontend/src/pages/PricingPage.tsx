@@ -1,249 +1,139 @@
 /**
  * PricingPage — /pricing
- * WiSkul subscription plans with Sierra Leonean-inspired tier names.
- * Dark cyber design matching the landing page.
+ * Light edu-SaaS theme (see docs/THEME_GUIDE.md). Shared navbar + footer.
  */
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import PublicNavbar from '@components/public';
+import { Check, X, ArrowRight } from 'lucide-react';
+import PublicNavbar, { PublicFooter } from '@components/public';
 
-// ── Plan Data Aligned with version.md ─────────────────────────────────────────
+const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
+const DOT_PATTERN: React.CSSProperties = {
+  backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)',
+  backgroundSize: '26px 26px',
+};
 
 const PLANS = [
   {
-    id: 'freetong',
-    name: 'Freetong',
-    meaning: 'v1.0 Core — 100% Free Public Launch',
-    price: { monthly: 0, yearly: 0 },
-    highlight: true,
-    badge: '100% FREE CORE TIER',
-    color: '#00d4aa',
-    students: 'Up to 250',
-    staff: 'Up to 20',
+    id: 'freetong', name: 'Freetong', meaning: 'v1.0 Core — 100% Free', highlight: true, badge: 'FREE CORE',
+    price: { monthly: 0, yearly: 0 }, accent: '#1d4ed8', students: 'Up to 250', staff: 'Up to 20',
     features: [
-      'Isolated Multi-Tenant School Portal',
-      'Student Directory & Profiles',
-      'Full Admissions & Onboarding Pipeline',
-      'Daily Attendance Registers & Tracking',
-      'Classes, Streams & Subject Allocation',
-      'Visual Timetable Builder & Scheduling',
-      'Digital ID Card Design & Batch Printing',
-      'Teacher & Staff Directory',
-      'Assignments & Exam Scheduling',
-      'Gradebook, Results & PDF Report Cards',
-      'End-of-Year Student Promotions',
-      'School Calendar & Event Management',
-      'Student & Parent Access Portals',
+      'Isolated multi-tenant portal', 'Student directory & profiles', 'Admissions & onboarding',
+      'Daily attendance & tracking', 'Classes, streams & subjects', 'Timetable builder',
+      'Digital ID cards & batch printing', 'Teacher & staff directory', 'Assignments & exams',
+      'Gradebook, results & report cards', 'Student promotions', 'Fees & online payments',
+      'Student & parent portals',
     ],
-    notIncluded: [
-      'Automated Mobile Fee Billing & Invoicing (Coming v2)',
-      'Automated SMS & WhatsApp Alerts (Coming v2)',
-      'Staff HR & Leave Approvals (Coming v2)',
-    ],
+    notIncluded: ['SMS & WhatsApp alerts (v2)', 'Staff HR & leave (v2)', 'Payroll (v2)'],
   },
   {
-    id: 'combra',
-    name: 'Combra',
-    meaning: 'v2.0 Pro — Fee Billing & Finance Engine',
-    price: { monthly: 500, yearly: 5000 },
-    highlight: false,
-    badge: 'COMING v2',
-    color: '#7c3aed',
-    students: 'Up to 1,000',
-    staff: 'Up to 75',
+    id: 'combra', name: 'Combra', meaning: 'v2.0 Pro — HR & Payroll', highlight: false, badge: 'COMING v2',
+    price: { monthly: 500, yearly: 5000 }, accent: '#f59e0b', students: 'Up to 1,000', staff: 'Up to 75',
     features: [
-      'Everything in Freetong (v1.0 Free), plus:',
-      'Automated Student Fee Invoicing & Receipts (Coming v2)',
-      'Orange Money / Bank Payment Gateways (Coming v2)',
-      'Staff Leave Requests & HR Approvals (Coming v2)',
-      'Financial Expense & Budget Reports (Coming v2)',
-      'Payroll & Payslip Generation (Coming v2)',
+      'Everything in Freetong, plus:', 'Staff leave requests & HR approvals (v2)',
+      'Financial expense & budget reports (v2)', 'Payroll & payslip generation (v2)',
     ],
-    notIncluded: [
-      'WhatsApp Business API Messaging (Coming v3)',
-      'Custom API & White-label Support',
-    ],
+    notIncluded: ['WhatsApp Business API (v3)', 'Custom API & white-label'],
   },
   {
-    id: 'bintumani',
-    name: 'Bintumani',
-    meaning: 'v3.0 Enterprise — Unlimited & Automated Messaging',
-    price: { monthly: 1200, yearly: 12000 },
-    highlight: false,
-    badge: 'UNLIMITED / ENTERPRISE',
-    color: '#3b82f6',
-    students: 'Unlimited',
-    staff: 'Unlimited',
+    id: 'bintumani', name: 'Bintumani', meaning: 'v3.0 Enterprise — Unlimited', highlight: false, badge: 'ENTERPRISE',
+    price: { monthly: 1200, yearly: 12000 }, accent: '#7c3aed', students: 'Unlimited', staff: 'Unlimited',
     features: [
-      'Everything in Combra (v2.0 Pro), plus:',
-      'Bulk SMS Notifications to Parents (Coming v3)',
-      'WhatsApp Business API Parent Broadcasts (Coming v3)',
-      'Custom Excel & PDF Operational Exports (Coming v3)',
-      'Dedicated School Onboarding Specialist',
-      '24/7 Priority WhatsApp & Phone Support',
-      'Multi-Branch School Network Support',
+      'Everything in Combra, plus:', 'Bulk SMS to parents (v3)', 'WhatsApp broadcasts (v3)',
+      'Custom Excel & PDF exports (v3)', 'Dedicated onboarding specialist',
+      'Priority WhatsApp & phone support', 'Multi-branch network support',
     ],
     notIncluded: [],
   },
 ];
 
-// ── Component ─────────────────────────────────────────────────────────────────
-
 export const PricingPage: React.FC = () => {
   const navigate = useNavigate();
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly');
-  const [showAlert, setShowAlert] = useState(false);
 
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
-  const handleSubscribe = () => {
-    setShowAlert(true);
-    setTimeout(() => setShowAlert(false), 3000);
-  };
+  useEffect(() => { window.scrollTo(0, 0); }, []);
 
   return (
-    <div className="min-h-screen bg-[#0a0a14] text-white overflow-x-hidden font-sans">
-
-      {/* ── Coming Soon Alert ── */}
-      {showAlert && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100]" style={{ animation: 'fadeInDown 0.4s ease-out' }}>
-          <div className="bg-[#16213e] border border-[#00d4aa]/30 rounded-xl px-6 py-4 shadow-2xl shadow-[#00d4aa]/10 flex items-center gap-3 backdrop-blur-xl">
-            <span className="text-xl">🚀</span>
-            <div>
-              <p className="text-white font-bold text-sm">Coming Soon!</p>
-              <p className="text-gray-400 text-xs">Online payments will be available soon. Contact us to subscribe.</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {/* ── Navigation ── */}
+    <div className="min-h-screen bg-[#f5f7fb] text-slate-700 overflow-x-hidden font-sans antialiased">
       <PublicNavbar ctaText="Register School Free" />
 
-      {/* ── Hero ── */}
-      <section className="pt-32 pb-12 px-6 sm:px-10 text-center relative overflow-hidden">
-        <div className="absolute top-[10%] left-[-10%] w-[400px] h-[400px] rounded-full bg-purple-600/8 blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-5%] w-[350px] h-[350px] rounded-full bg-cyan-500/5 blur-[80px]" />
-
+      {/* ═══ HERO (navy) ═══ */}
+      <section className={`relative pt-28 sm:pt-36 pb-16 px-6 sm:px-10 text-center overflow-hidden ${NAVY_BAND}`}>
+        <div className="absolute inset-0 opacity-[0.12] pointer-events-none" style={DOT_PATTERN} />
         <div className="relative z-10 max-w-3xl mx-auto">
-          <span className="text-[#00d4aa] text-xs font-bold tracking-[0.3em] uppercase">Simple Pricing</span>
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-black mt-3 mb-5">
-            Choose Your <span className="text-[#00d4aa]">Plan</span>
-          </h1>
-          <p className="text-gray-400 text-sm sm:text-base max-w-xl mx-auto mb-8">
-            Affordable plans designed for Sierra Leonean schools. Start small, scale as you grow.
-            All prices in New Leones (NLe).
+          <span className="text-amber-300 text-xs font-bold tracking-[0.3em] uppercase">Simple Pricing</span>
+          <h1 className="text-4xl sm:text-5xl font-black mt-3 mb-5 text-white">Choose your <span className="text-amber-400">plan</span></h1>
+          <p className="text-blue-100/90 text-sm sm:text-base max-w-xl mx-auto mb-8">
+            Start free and scale as you grow. All prices in New Leones (NLe).
           </p>
-
-          {/* Billing toggle */}
-          <div className="inline-flex items-center bg-[#16213e] border border-white/[0.06] rounded-full p-1">
-            <button
-              onClick={() => setBilling('monthly')}
-              className={`px-5 py-2 rounded-full text-sm font-bold transition-all duration-300 ${billing === 'monthly' ? 'bg-[#00d4aa] text-[#1a1a2e]' : 'text-gray-400 hover:text-white'}`}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setBilling('yearly')}
-              className={`px-5 py-2 rounded-full text-sm font-bold transition-all duration-300 ${billing === 'yearly' ? 'bg-[#00d4aa] text-[#1a1a2e]' : 'text-gray-400 hover:text-white'}`}
-            >
-              Yearly <span className="text-[10px] ml-1 opacity-80">Save 17%</span>
-            </button>
+          <div className="inline-flex items-center bg-white/10 border border-white/20 rounded-full p-1">
+            {(['monthly', 'yearly'] as const).map((b) => (
+              <button key={b} onClick={() => setBilling(b)}
+                className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${billing === b ? 'bg-[#f59e0b] text-white' : 'text-blue-100/80 hover:text-white'}`}>
+                {b === 'monthly' ? 'Monthly' : <>Yearly <span className="text-[10px] ml-1 opacity-80">Save 17%</span></>}
+              </button>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* ── Pricing Cards ── */}
-      <section className="px-6 sm:px-10 pb-20">
+      {/* ═══ PRICING CARDS (light, overlapping) ═══ */}
+      <section className="px-6 sm:px-10 -mt-8 relative z-20 pb-16">
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
           {PLANS.map((plan) => (
-            <div
-              key={plan.id}
-              className={`relative rounded-2xl p-[1px] transition-all duration-300 hover:-translate-y-1 ${
-                plan.highlight
-                  ? 'bg-gradient-to-br from-[#7c3aed] via-[#00d4aa] to-[#7c3aed]'
-                  : 'bg-white/[0.06]'
-              }`}
-            >
-              {/* Badge */}
+            <div key={plan.id}
+              className={`relative rounded-2xl bg-white flex flex-col shadow-sm border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${
+                plan.highlight ? 'border-[#1d4ed8] ring-2 ring-[#1d4ed8]/20 shadow-lg' : 'border-[#e5e9f2]'
+              }`}>
               {plan.badge && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
-                  <span className="bg-gradient-to-r from-[#7c3aed] to-[#00d4aa] text-white text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-wider shadow-lg">
+                  <span className="text-white text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-wider shadow" style={{ background: plan.accent }}>
                     {plan.badge}
                   </span>
                 </div>
               )}
-
-              <div className={`h-full bg-[#16213e] rounded-2xl p-7 sm:p-8 flex flex-col ${plan.highlight ? '' : 'border border-white/[0.04]'}`}>
-                {/* Plan header */}
+              <div className="p-7 sm:p-8 flex flex-col h-full">
                 <div className="mb-6">
-                  <h3 className="text-xl font-black text-white mb-1">{plan.name}</h3>
-                  <p className="text-gray-500 text-[11px] italic">{plan.meaning}</p>
+                  <h3 className="text-xl font-black text-slate-900 mb-1">{plan.name}</h3>
+                  <p className="text-slate-400 text-[11px] italic">{plan.meaning}</p>
                 </div>
-
-                {/* Price */}
                 <div className="mb-6">
                   <div className="flex items-baseline gap-1">
-                    <span className="text-gray-500 text-sm">NLe</span>
-                    <span className="text-4xl font-black" style={{ color: plan.color }}>
-                      {billing === 'monthly' ? plan.price.monthly : plan.price.yearly}
-                    </span>
-                    <span className="text-gray-500 text-sm">/{billing === 'monthly' ? 'mo' : 'yr'}</span>
+                    <span className="text-slate-400 text-sm">NLe</span>
+                    <span className="text-4xl font-black" style={{ color: plan.accent }}>{billing === 'monthly' ? plan.price.monthly : plan.price.yearly}</span>
+                    <span className="text-slate-400 text-sm">/{billing === 'monthly' ? 'mo' : 'yr'}</span>
                   </div>
-                  {billing === 'yearly' && (
-                    <p className="text-[#00d4aa] text-[10px] font-bold mt-1">
-                      Save NLe {plan.price.monthly * 12 - plan.price.yearly} per year
-                    </p>
+                  {billing === 'yearly' && plan.price.monthly > 0 && (
+                    <p className="text-emerald-600 text-[10px] font-bold mt-1">Save NLe {plan.price.monthly * 12 - plan.price.yearly} per year</p>
                   )}
                 </div>
-
-                {/* Capacity */}
-                <div className="flex gap-4 mb-6 pb-6 border-b border-white/[0.06]">
-                  <div>
-                    <p className="text-xs text-gray-500">Students</p>
-                    <p className="text-sm font-bold text-white">{plan.students}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Staff</p>
-                    <p className="text-sm font-bold text-white">{plan.staff}</p>
-                  </div>
+                <div className="flex gap-6 mb-6 pb-6 border-b border-[#eef1f7]">
+                  <div><p className="text-xs text-slate-400">Students</p><p className="text-sm font-bold text-slate-900">{plan.students}</p></div>
+                  <div><p className="text-xs text-slate-400">Staff</p><p className="text-sm font-bold text-slate-900">{plan.staff}</p></div>
                 </div>
-
-                {/* Features */}
                 <ul className="space-y-2.5 flex-1 mb-6">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-start gap-2.5 text-xs">
-                      <span className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: `${plan.color}20` }}>
-                        <span style={{ color: plan.color }} className="text-[10px] font-bold">✓</span>
-                      </span>
-                      <span className="text-gray-300">{f}</span>
+                      <span className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: `${plan.accent}1a`, color: plan.accent }}><Check size={9} strokeWidth={3} /></span>
+                      <span className="text-slate-700">{f}</span>
                     </li>
                   ))}
                   {plan.notIncluded.map((f) => (
                     <li key={f} className="flex items-start gap-2.5 text-xs">
-                      <span className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-white/[0.03]">
-                        <span className="text-gray-600 text-[10px]">✕</span>
-                      </span>
-                      <span className="text-gray-600 line-through">{f}</span>
+                      <span className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-slate-100 text-slate-400"><X size={9} strokeWidth={3} /></span>
+                      <span className="text-slate-400 line-through">{f}</span>
                     </li>
                   ))}
                 </ul>
-
-                {/* CTA */}
                 <button
-                  onClick={handleSubscribe}
-                  className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all duration-300 active:scale-[0.98] ${
-                    plan.highlight
-                      ? 'bg-gradient-to-r from-[#7c3aed] to-[#00d4aa] text-white hover:shadow-[0_0_30px_rgba(124,58,237,0.3)]'
-                      : `border-2 hover:bg-white/[0.03]`
+                  onClick={() => (plan.id === 'freetong' ? navigate('/register') : navigate('/contact'))}
+                  className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all active:scale-[0.98] ${
+                    plan.highlight ? 'bg-[#f59e0b] hover:bg-[#d97706] text-white shadow-lg shadow-amber-500/25' : 'border-2 hover:bg-slate-50'
                   }`}
-                  style={!plan.highlight ? { borderColor: `${plan.color}40`, color: plan.color } : {}}
+                  style={!plan.highlight ? { borderColor: `${plan.accent}55`, color: plan.accent } : {}}
                 >
-                  {plan.id === 'freetong' ? 'Start with Freetong' : plan.id === 'combra' ? 'Choose Combra' : 'Go Bintumani'}
+                  {plan.id === 'freetong' ? 'Start with Freetong' : plan.id === 'combra' ? 'Contact Sales' : 'Contact Sales'}
                 </button>
               </div>
             </div>
@@ -251,49 +141,45 @@ export const PricingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ── Comparison Table ── */}
-      <section className="px-6 sm:px-10 py-16 bg-[#16213e]">
+      {/* ═══ COMPARISON (white) ═══ */}
+      <section className="px-6 sm:px-10 py-16 bg-white border-y border-[#e5e9f2]">
         <div className="max-w-5xl mx-auto">
-          <h2 className="text-2xl font-black text-center mb-10">Plan Comparison</h2>
-          <div className="overflow-x-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900">Plan comparison</h2>
+            <div className="w-12 h-1 bg-[#f59e0b] rounded-full mx-auto mt-3" />
+          </div>
+          <div className="overflow-x-auto rounded-2xl border border-[#e5e9f2]">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/[0.06]">
-                  <th className="text-left py-3 px-4 text-gray-500 font-bold text-xs uppercase tracking-wider">Feature</th>
-                  <th className="text-center py-3 px-4 text-[#00d4aa] font-bold text-xs">Freetong</th>
-                  <th className="text-center py-3 px-4 text-[#7c3aed] font-bold text-xs">Combra</th>
-                  <th className="text-center py-3 px-4 text-[#f59e0b] font-bold text-xs">Bintumani</th>
+                <tr className="bg-[#f8fafc] border-b border-[#e5e9f2]">
+                  <th className="text-left py-3 px-4 text-slate-500 font-bold text-xs uppercase tracking-wider whitespace-nowrap">Feature</th>
+                  <th className="text-center py-3 px-4 text-[#1d4ed8] font-bold text-xs">Freetong</th>
+                  <th className="text-center py-3 px-4 text-[#f59e0b] font-bold text-xs">Combra</th>
+                  <th className="text-center py-3 px-4 text-[#7c3aed] font-bold text-xs">Bintumani</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.04]">
+              <tbody className="divide-y divide-[#eef1f7]">
                 {[
-                  { feature: 'Students', freetong: '200', combra: '500', bintumani: 'Unlimited' },
-                  { feature: 'Staff accounts', freetong: '15', combra: '40', bintumani: 'Unlimited' },
-                  { feature: 'Admin accounts', freetong: '1', combra: '5', bintumani: 'Unlimited' },
+                  { feature: 'Students', freetong: '250', combra: '1,000', bintumani: 'Unlimited' },
+                  { feature: 'Staff accounts', freetong: '20', combra: '75', bintumani: 'Unlimited' },
                   { feature: 'Student directory', freetong: '✓', combra: '✓', bintumani: '✓' },
-                  { feature: 'Attendance tracking', freetong: 'Basic', combra: 'Advanced + alerts', bintumani: 'Advanced + AI' },
-                  { feature: 'Grades & results', freetong: '✓', combra: '✓', bintumani: '✓' },
-                  { feature: 'Report cards', freetong: '✓', combra: '✓', bintumani: '✓ + Custom' },
-                  { feature: 'Examinations', freetong: '✓', combra: '✓', bintumani: '✓' },
-                  { feature: 'Student promotions', freetong: '✓', combra: '✓', bintumani: '✓' },
-                  { feature: 'Fee management', freetong: '—', combra: '✓', bintumani: '✓ + Payroll' },
-                  { feature: 'SMS notifications', freetong: '—', combra: '200/mo', bintumani: 'Unlimited' },
-                  { feature: 'WhatsApp', freetong: '—', combra: '✓', bintumani: '✓' },
-                  { feature: 'ID cards', freetong: '✓ + Bulk', combra: '✓ + Bulk', bintumani: '✓ + Bulk' },
+                  { feature: 'Attendance tracking', freetong: '✓', combra: '✓ + alerts', bintumani: '✓ + alerts' },
+                  { feature: 'Grades & report cards', freetong: '✓', combra: '✓', bintumani: '✓ + custom' },
+                  { feature: 'Fees & online payments', freetong: '✓', combra: '✓', bintumani: '✓ + payroll' },
+                  { feature: 'ID cards (bulk)', freetong: '✓', combra: '✓', bintumani: '✓' },
                   { feature: 'Events & calendar', freetong: '✓', combra: '✓', bintumani: '✓' },
-                  { feature: 'Analytics', freetong: 'Basic', combra: 'Standard', bintumani: 'Advanced + AI' },
-                  { feature: 'Discipline tracking', freetong: '—', combra: '✓', bintumani: '✓' },
-                  { feature: 'Scholarships', freetong: '—', combra: '—', bintumani: '✓' },
+                  { feature: 'SMS notifications', freetong: '—', combra: '200/mo', bintumani: 'Unlimited' },
+                  { feature: 'WhatsApp', freetong: '—', combra: '—', bintumani: '✓' },
+                  { feature: 'Staff HR & leave', freetong: '—', combra: '✓', bintumani: '✓' },
                   { feature: 'Multi-branch', freetong: '—', combra: '—', bintumani: '✓' },
                   { feature: 'API access', freetong: '—', combra: '—', bintumani: '✓' },
-                  { feature: 'Custom branding', freetong: '—', combra: '—', bintumani: '✓' },
-                  { feature: 'Support', freetong: 'Email', combra: 'Priority email', bintumani: 'Dedicated + Phone' },
+                  { feature: 'Support', freetong: 'Email', combra: 'Priority', bintumani: 'Dedicated + phone' },
                 ].map((row) => (
-                  <tr key={row.feature} className="hover:bg-white/[0.02] transition-colors">
-                    <td className="py-3 px-4 text-gray-300 font-medium">{row.feature}</td>
-                    <td className="py-3 px-4 text-center text-gray-400">{row.freetong}</td>
-                    <td className="py-3 px-4 text-center text-gray-300">{row.combra}</td>
-                    <td className="py-3 px-4 text-center text-white font-medium">{row.bintumani}</td>
+                  <tr key={row.feature} className="hover:bg-[#f8fafc] transition-colors">
+                    <td className="py-3 px-4 text-slate-700 font-medium whitespace-nowrap">{row.feature}</td>
+                    <td className="py-3 px-4 text-center text-slate-500">{row.freetong}</td>
+                    <td className="py-3 px-4 text-center text-slate-600">{row.combra}</td>
+                    <td className="py-3 px-4 text-center text-slate-900 font-medium">{row.bintumani}</td>
                   </tr>
                 ))}
               </tbody>
@@ -302,52 +188,52 @@ export const PricingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ── FAQ ── */}
-      <section className="px-6 sm:px-10 py-20">
+      {/* ═══ FAQ (tinted band) ═══ */}
+      <section className="px-6 sm:px-10 py-20 bg-gradient-to-b from-[#eef2fb] to-[#f5f7fb]">
         <div className="max-w-3xl mx-auto">
-          <h2 className="text-2xl font-black text-center mb-10">Frequently Asked Questions</h2>
+          <div className="text-center mb-10">
+            <p className="text-[#1d4ed8] text-xs font-bold tracking-[0.2em] uppercase mb-2">Questions</p>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900">Frequently asked questions</h2>
+            <div className="w-12 h-1 bg-[#f59e0b] rounded-full mx-auto mt-3" />
+          </div>
           <div className="space-y-4">
             {[
-              { q: 'Can I upgrade my plan at any time?', a: 'Yes! You can upgrade from Freetong to Combra or Bintumani at any time. Your data and settings carry over seamlessly.' },
-              { q: 'Is there a free trial?', a: 'Every plan comes with a 14-day free trial. No payment required to start. You can explore all features before committing.' },
-              { q: 'How do I pay?', a: 'We accept mobile money (Orange Money, Africell Money), bank transfers, and cash payments at our office in Freetown.' },
-              { q: 'What happens when I exceed my student limit?', a: 'You\'ll get a notification to upgrade. We won\'t lock you out — you can continue for a grace period while you decide.' },
-              { q: 'Can I get a custom plan for my school?', a: 'Absolutely! Contact us for schools with special needs — we\'ll create a tailored package that fits your budget and requirements.' },
-              { q: 'Is my data safe?', a: 'Yes. All data is encrypted with 256-bit encryption, stored on secure cloud servers with daily backups, and isolated per school (multi-tenant).' },
+              { q: 'Is the core plan really free?', a: 'Yes — the Freetong (v1.0) core is 100% free for schools, with no card required. Paid tiers add advanced HR, payroll and messaging features.' },
+              { q: 'Can I upgrade later?', a: 'Absolutely. You can move from Freetong to Combra or Bintumani at any time — your data and settings carry over seamlessly.' },
+              { q: 'How do I pay for paid tiers?', a: 'We accept mobile money, card, and bank transfer via Monime, plus cash at our office. Reach out to sales to get set up.' },
+              { q: 'What if I exceed my student limit?', a: "You'll get a notification to upgrade. We won't lock you out — there's a grace period while you decide." },
+              { q: 'Can I get a custom plan?', a: 'Yes — contact us for schools with special needs and we\'ll tailor a package to your budget and requirements.' },
+              { q: 'Is my data safe?', a: 'Yes. Data is encrypted with 256-bit encryption, backed up regularly, and isolated per school (multi-tenant).' },
             ].map((faq) => (
-              <div key={faq.q} className="bg-[#16213e] border border-white/[0.06] rounded-xl p-5">
-                <h4 className="text-sm font-bold text-white mb-2">{faq.q}</h4>
-                <p className="text-xs text-gray-400 leading-relaxed">{faq.a}</p>
+              <div key={faq.q} className="bg-white border border-[#e5e9f2] rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                <h4 className="text-sm font-bold text-slate-900 mb-2">{faq.q}</h4>
+                <p className="text-xs text-slate-500 leading-relaxed">{faq.a}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── CTA ── */}
-      <section className="px-6 sm:px-10 py-16 bg-[#16213e]">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-2xl font-black mb-3">Still Have Questions?</h2>
-          <p className="text-gray-400 text-sm mb-6">Our team is ready to help you choose the right plan for your school.</p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button onClick={handleSubscribe} className="w-full sm:w-auto bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,212,170,0.3)]">
-              Contact Sales
-            </button>
-            <button onClick={() => navigate('/login')} className="w-full sm:w-auto border border-white/10 hover:border-white/25 text-white font-bold text-sm px-8 py-3.5 rounded-full transition-all duration-300">
-              Sign In
-            </button>
+      {/* ═══ CTA (navy card) ═══ */}
+      <section className="px-6 sm:px-10 py-16">
+        <div className={`max-w-4xl mx-auto relative overflow-hidden rounded-[2rem] px-8 sm:px-14 py-14 text-center ${NAVY_BAND}`}>
+          <div className="absolute inset-0 opacity-[0.1] pointer-events-none" style={DOT_PATTERN} />
+          <div className="relative z-10">
+            <h2 className="text-3xl font-black text-white mb-3">Still have questions?</h2>
+            <p className="text-blue-100/80 text-sm mb-8 max-w-lg mx-auto">Our team is ready to help you choose the right plan for your school.</p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button onClick={() => navigate('/contact')} className="w-full sm:w-auto bg-[#f59e0b] hover:bg-[#d97706] text-white font-bold text-sm px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2">
+                Contact Sales <ArrowRight size={16} />
+              </button>
+              <button onClick={() => navigate('/register')} className="w-full sm:w-auto border border-white/25 hover:border-white/50 text-white font-bold text-sm px-8 py-3.5 rounded-xl transition-all">
+                Start Free
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── Footer ── */}
-      <footer className="bg-[#0f0f1a] border-t border-white/[0.04] px-6 sm:px-10 py-8 text-center">
-        <p className="text-gray-600 text-[11px]">© {new Date().getFullYear()} WiSkul. All rights reserved. Prices in New Leones (NLe).</p>
-      </footer>
-
-      <style>{`
-        @keyframes fadeInDown { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
-      `}</style>
+      <PublicFooter />
     </div>
   );
 };

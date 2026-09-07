@@ -290,18 +290,18 @@ export const EventAnalyticsPage: React.FC = () => {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                        <th className="text-left py-3 px-4 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Category</th>
-                        <th className="text-right py-3 px-4 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Events</th>
-                        <th className="text-right py-3 px-4 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Upcoming</th>
-                        <th className="text-right py-3 px-4 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Completed</th>
-                        <th className="text-right py-3 px-4 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Registrations</th>
-                        <th className="text-right py-3 px-4 font-bold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Attendance</th>
+                      <tr className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
+                        <th className="text-left py-3.5 px-4 font-bold text-xs text-white uppercase tracking-wider">Category</th>
+                        <th className="text-right py-3.5 px-4 font-bold text-xs text-white uppercase tracking-wider">Events</th>
+                        <th className="text-right py-3.5 px-4 font-bold text-xs text-white uppercase tracking-wider">Upcoming</th>
+                        <th className="text-right py-3.5 px-4 font-bold text-xs text-white uppercase tracking-wider">Completed</th>
+                        <th className="text-right py-3.5 px-4 font-bold text-xs text-white uppercase tracking-wider">Registrations</th>
+                        <th className="text-right py-3.5 px-4 font-bold text-xs text-white uppercase tracking-wider">Attendance</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                       {stats.popular_categories.map((cat, idx) => (
-                        <tr key={cat.category_id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                        <tr key={cat.category_id} className={`transition-colors hover:bg-sky-100 dark:hover:bg-gray-800/50 ${idx % 2 === 1 ? 'bg-sky-50 dark:bg-gray-900/30' : 'bg-white dark:bg-transparent'}`}>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2.5">
                               <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: CHART_COLORS[idx % CHART_COLORS.length] }} />

@@ -24,6 +24,7 @@ import useAuth from '@hooks/useAuth';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
+import { WelcomeHero } from '@components/dashboard/WelcomeHero';
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { Button } from '@components/ui/button';
 
@@ -93,7 +94,7 @@ const SuperAdminDashboard: React.FC = () => {
     <MainLayout>
       <PageShell
         title="Platform Overview"
-        subtitle={`Welcome back, ${user?.firstName || 'Admin'}. Here's how the platform is performing.`}
+        subtitle="How the platform is performing"
         breadcrumbs={[{ label: 'Platform Dashboard' }]}
         actions={
           <div className="flex items-center gap-2">
@@ -108,6 +109,13 @@ const SuperAdminDashboard: React.FC = () => {
           </div>
         }
       >
+        <WelcomeHero
+          firstName={user?.firstName}
+          role="super_admin"
+          roleLabel="Platform Admin"
+          subtitle="Here's how the WiSkul platform is performing today."
+        />
+
         {/* ── KPI Row ──────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
           <KPICard

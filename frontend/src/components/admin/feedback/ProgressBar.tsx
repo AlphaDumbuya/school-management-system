@@ -19,11 +19,11 @@ const HEIGHT: Record<ProgressBarSize, string> = {
 };
 
 const COLOR_CLASS: Record<ProgressBarColor, string> = {
-  blue: 'bg-blue-600',
-  green: 'bg-green-500',
-  amber: 'bg-amber-500',
-  red: 'bg-red-500',
-  purple: 'bg-purple-500',
+  blue: 'bg-gradient-to-r from-blue-500 to-blue-600',
+  green: 'bg-gradient-to-r from-emerald-400 to-emerald-600',
+  amber: 'bg-gradient-to-r from-amber-400 to-amber-600',
+  red: 'bg-gradient-to-r from-red-400 to-red-600',
+  purple: 'bg-gradient-to-r from-purple-400 to-purple-600',
 };
 
 export const ProgressBar: React.FC<ProgressBarProps> = ({
