@@ -716,10 +716,10 @@ class EmailService {
   ): Promise<EmailResponse> {
     const branding = platformBranding();
     const creds = data.tempPassword
-      ? detailsCard([
-          detailRow('Login email', escapeHtml(data.loginEmail || toEmail)),
-          detailRow('Temporary password', escapeHtml(data.tempPassword)),
-        ]) + calloutBlock('For security, change this password right after your first sign-in.', 'warning')
+      ? detailsCard(
+          detailRow('Login email', escapeHtml(data.loginEmail || toEmail)) +
+          detailRow('Temporary password', escapeHtml(data.tempPassword))
+        ) + calloutBlock('For security, change this password right after your first sign-in.', 'warn')
       : '';
     const bodyHtml = `
       <p>Hello,</p>
@@ -736,6 +736,33 @@ class EmailService {
     });
   }
 
+  /** Newsletter subscription confirmation → the new subscriber. */
+  async sendNewsletterWelcomeEmail(
+    toEmail: string,
+    data: { name?: string; unsubscribeUrl?: string }
+  ): Promise<EmailResponse> {
+    const branding = platformBranding();
+    const bodyHtml = `
+      <p>Hello ${escapeHtml(data.name || 'there')},</p>
+      <p>Thanks for subscribing to the <strong>WiSkul</strong> newsletter! You'll now receive product news, tips, and important updates straight to your inbox.</p>
+      ${calloutBlock('We keep it useful and occasional — no spam, and you can unsubscribe anytime.', 'info')}
+      ${emailButton('Explore WiSkul', branding.appUrl)}`;
+    return this.sendEmail({
+      ...this.platformSender('sales'),
+      to: toEmail,
+      subject: 'Welcome to the WiSkul newsletter 🎉',
+      body: renderEmail({
+        branding,
+        eyebrow: 'Newsletter',
+        heading: "You're subscribed!",
+        bodyHtml,
+        preheader: 'Thanks for subscribing to the WiSkul newsletter.',
+        unsubscribeUrl: data.unsubscribeUrl,
+      }),
+      isHtml: true,
+    });
+  }
+
   /** Subscription plan changed / renewed → school contact. */
   async sendTenantSubscriptionEmail(
     toEmail: string,
@@ -745,14 +772,14 @@ class EmailService {
     const verb = {
       changed: 'updated', renewed: 'renewed', extended: 'extended', expired: 'expired',
     }[data.action];
-    const tone: 'info' | 'success' | 'warning' = data.action === 'expired' ? 'warning' : 'success';
+    const tone: 'info' | 'success' | 'warn' = data.action === 'expired' ? 'warn' : 'success';
     const bodyHtml = `
       <p>Hello,</p>
       <p>The subscription for <strong>${escapeHtml(data.schoolName)}</strong> has been <strong>${verb}</strong>.</p>
-      ${detailsCard([
-        detailRow('Plan', escapeHtml(data.planLabel)),
-        ...(data.endDate ? [detailRow('Valid until', escapeHtml(new Date(data.endDate).toLocaleDateString()))] : []),
-      ])}
+      ${detailsCard(
+        detailRow('Plan', escapeHtml(data.planLabel)) +
+        (data.endDate ? detailRow('Valid until', escapeHtml(new Date(data.endDate).toLocaleDateString())) : '')
+      )}
       ${data.action === 'expired'
         ? calloutBlock('Access to premium features is paused until the subscription is renewed.', tone)
         : calloutBlock('Your plan features and limits are now active.', tone)}
@@ -772,7 +799,7 @@ class EmailService {
     data: { schoolName: string; status: 'suspended' | 'activated' | 'restored'; reason?: string }
   ): Promise<EmailResponse> {
     const branding = platformBranding();
-    const tone: 'info' | 'success' | 'warning' = data.status === 'suspended' ? 'warning' : 'success';
+    const tone: 'info' | 'success' | 'warn' = data.status === 'suspended' ? 'warn' : 'success';
     const bodyHtml = `
       <p>Hello,</p>
       <p>The WiSkul account for <strong>${escapeHtml(data.schoolName)}</strong> has been <strong>${data.status}</strong>.</p>

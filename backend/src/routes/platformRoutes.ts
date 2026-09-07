@@ -698,7 +698,16 @@ router.post('/newsletter/subscribers', authenticate, authorize(UserRole.SUPER_AD
   try {
     const { email, name } = req.body;
     if (!email) throw new AppError('Email is required', 400, 'VALIDATION_ERROR');
-    const row = await NewsletterService.upsertSubscriber({ email, name, source: 'manual', optIn: true });
+    const row: any = await NewsletterService.upsertSubscriber({ email, name, source: 'manual', optIn: true });
+    if (row?.justSubscribed && row?.unsubscribe_token) {
+      notify(
+        emailService.sendNewsletterWelcomeEmail(row.email, {
+          name: row.name,
+          unsubscribeUrl: NewsletterService.unsubscribeUrl(row.unsubscribe_token),
+        }),
+        'newsletter welcome'
+      );
+    }
     res.json({ success: true, data: row });
   } catch (error) {
     next(error);
