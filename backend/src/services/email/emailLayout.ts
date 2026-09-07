@@ -14,8 +14,11 @@
  */
 import type { EmailBranding } from './emailBranding';
 
-const ACCENT = '#00d4aa';
-const INK = '#1a1a2e';
+// Brand palette (matches the marketing pages): blue primary, amber accent, navy ink.
+const ACCENT = '#1d4ed8'; // primary blue — links & buttons
+const HEADER_TO = '#25408f'; // moderate mid-navy for the header gradient end (not bright)
+const AMBER = '#f59e0b'; // amber accent
+const INK = '#1a2b6b'; // navy
 
 function escapeHtml(s: string): string {
   return String(s ?? '')
@@ -32,7 +35,7 @@ export function emailButton(label: string, href: string): string {
     <tr>
       <td align="center" bgcolor="${ACCENT}" style="border-radius:12px;">
         <a href="${href}" target="_blank"
-           style="display:inline-block;padding:14px 30px;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:700;color:${INK};text-decoration:none;border-radius:12px;">
+           style="display:inline-block;padding:14px 32px;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:12px;">
           ${escapeHtml(label)}
         </a>
       </td>
@@ -92,10 +95,22 @@ export interface RenderOptions {
 export function renderEmail({ branding, eyebrow, heading, bodyHtml, preheader }: RenderOptions): string {
   const brandName = escapeHtml(branding.name);
 
-  // Header logo: image if the school/platform has one, else a clean text logo.
-  const headerLogo = branding.logoUrl
-    ? `<img src="${branding.logoUrl}" alt="${brandName}" width="120" style="max-width:60%;height:auto;display:block;margin:0 auto;border:0;background:#ffffff;border-radius:12px;padding:8px;" />`
-    : `<div style="font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">${brandName}</div>`;
+  // Header logo: use an image only when it's an absolute http(s) URL. Many email
+  // clients (Gmail/Outlook) block `data:` base64 images, so those fall back to a
+  // clean text logo rather than showing a broken image. The mark always sits on
+  // a white rounded chip so it stays crisp and professional over the dark header.
+  const isHostedLogo = !!branding.logoUrl && /^https?:\/\//i.test(branding.logoUrl);
+  const logoInner = isHostedLogo
+    ? `<img src="${branding.logoUrl}" alt="${brandName}" height="40" style="height:40px;max-width:200px;width:auto;display:block;border:0;" />`
+    : `<div style="font-size:22px;font-weight:800;color:${INK};letter-spacing:-0.5px;line-height:1;">${brandName}</div>`;
+  const headerLogo = `
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+      <tr>
+        <td align="center" bgcolor="#ffffff" style="background:#ffffff;border-radius:14px;padding:12px 20px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
+          ${logoInner}
+        </td>
+      </tr>
+    </table>`;
 
   // Footer contact lines — only render what exists.
   const footerLines: string[] = [];
@@ -112,7 +127,7 @@ export function renderEmail({ branding, eyebrow, heading, bodyHtml, preheader }:
   // Tenant emails get a small "powered by WiSkul" line; platform emails don't.
   const poweredBy = branding.isPlatform
     ? ''
-    : `<p style="margin:14px 0 0;font-size:11px;color:#64748b;">Powered by <a href="https://www.wiskulsl.com" target="_blank" style="color:${ACCENT};text-decoration:none;font-weight:600;">WiSkul</a></p>`;
+    : `<p style="margin:14px 0 0;font-size:11px;color:#64748b;">Powered by <a href="https://www.wiskulsl.com" target="_blank" style="color:${AMBER};text-decoration:none;font-weight:600;">WiSkul</a></p>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -147,8 +162,8 @@ export function renderEmail({ branding, eyebrow, heading, bodyHtml, preheader }:
 
           <!-- Header -->
           <tr>
-            <td class="email-head" align="center"
-                style="background:linear-gradient(135deg, ${INK} 0%, ${ACCENT} 140%);padding:32px 30px;">
+            <td class="email-head" align="center" bgcolor="${INK}"
+                style="background:${INK};background:linear-gradient(135deg, ${INK} 0%, ${HEADER_TO} 100%);padding:32px 30px;">
               ${headerLogo}
               ${eyebrow ? `<div style="margin-top:10px;font-family:'Segoe UI',Arial,sans-serif;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,0.85);font-weight:600;">${escapeHtml(eyebrow)}</div>` : ''}
             </td>

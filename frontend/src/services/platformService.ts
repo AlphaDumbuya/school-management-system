@@ -162,6 +162,29 @@ export const platformService = {
   async getAudit(filters?: { tenantId?: string; action?: string; limit?: number; offset?: number }) {
     return apiClient.get<{ success: boolean; data: any[] }>(`/api/v1/platform/audit`, { params: filters });
   },
+
+  // ── Communications hub ─────────────────────────────────────────────────────
+  async getMessages(filters?: { status?: string; search?: string; limit?: number; offset?: number }) {
+    return apiClient.get<{ success: boolean; data: any[]; total: number }>(`/api/v1/platform/communications/messages`, { params: filters });
+  },
+  async getMessagesUnreadCount() {
+    return apiClient.get<{ success: boolean; data: { count: number } }>(`/api/v1/platform/communications/unread-count`);
+  },
+  async setMessageStatus(id: string, status: 'unread' | 'read' | 'archived') {
+    return apiClient.post<{ success: boolean; data: any }>(`/api/v1/platform/communications/messages/${id}/status`, { status });
+  },
+  async replyMessage(id: string, subject: string, body: string) {
+    return apiClient.post<{ success: boolean; message: string }>(`/api/v1/platform/communications/messages/${id}/reply`, { subject, body });
+  },
+  async deleteMessage(id: string) {
+    return apiClient.delete<{ success: boolean; message: string }>(`/api/v1/platform/communications/messages/${id}`);
+  },
+  async broadcast(data: { subject: string; body: string; audience: 'all' | 'active' | 'trial' | 'suspended' }) {
+    return apiClient.post<{ success: boolean; data: { recipients: number; delivered: number }; message: string }>(`/api/v1/platform/communications/broadcast`, data);
+  },
+  async getBroadcasts() {
+    return apiClient.get<{ success: boolean; data: any[] }>(`/api/v1/platform/communications/broadcasts`);
+  },
 };
 
 export default platformService;

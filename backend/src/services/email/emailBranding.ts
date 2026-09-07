@@ -56,7 +56,8 @@ export function platformBranding(): EmailBranding {
     contactPhone: process.env.SUPPORT_PHONE || '+232 78 261 892',
     address: process.env.SUPPORT_ADDRESS || '75 Main Road, Kossoh Town, Sierra Leone',
     website: appBaseUrl(),
-    logoUrl: undefined, // platform uses the text "WiSkul" logo
+    // Platform emails show the hosted WiSkul logo (falls back to a text logo if unset).
+    logoUrl: process.env.PLATFORM_LOGO_URL || `${appBaseUrl()}/logo.png`,
     appUrl: appBaseUrl(),
     isPlatform: true,
   };

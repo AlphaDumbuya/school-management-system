@@ -440,6 +440,15 @@ const navItems: NavItem[] = [
     group: 'Platform',
     version: 'v1',
   },
+  {
+    label: 'Communications',
+    icon: <FaComments className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/platform/communications',
+    roles: ['super_admin'],
+    module: 'Platform Management',
+    group: 'Platform',
+    version: 'v1',
+  },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = false, onToggleCollapse }) => {

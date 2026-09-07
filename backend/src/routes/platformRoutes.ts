@@ -12,6 +12,9 @@ import { SubscriptionService } from '../services/subscriptionService';
 import { TenantUserService } from '../services/tenantUserService';
 import { ImpersonationService } from '../services/impersonationService';
 import { PlatformAuditService } from '../services/platformAuditService';
+import { PlatformCommunicationService } from '../services/platformCommunicationService';
+import emailService from '../services/emailService';
+import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { UserRole } from '../types/auth';
 import { db } from '../utils/database';
@@ -23,6 +26,30 @@ const router = Router();
 function auditMeta(req: any) {
   return { actorUserId: req.auth!.userId, ip: req.ip, userAgent: req.get('user-agent') };
 }
+
+/**
+ * Resolve the best contact email for a tenant: the tenant's contact_email,
+ * else the school profile email, else the principal user's email.
+ */
+async function tenantContactEmail(tenantId: string): Promise<string | null> {
+  const tenant = await db('tenants').where({ id: tenantId }).first();
+  if (tenant?.contact_email) return tenant.contact_email;
+  const school = await db('schools').where({ tenant_id: tenantId }).first();
+  if (school?.email) return school.email;
+  const principal = await db('users').where({ tenant_id: tenantId, role: 'principal' }).first();
+  return principal?.email || null;
+}
+
+/** Fire-and-forget notification — never blocks or fails the admin action. */
+function notify(promise: Promise<any>, context: string) {
+  promise.catch((err) => logger.warn(`[platform email] ${context} failed: ${err?.message || err}`));
+}
+
+const PLAN_LABELS: Record<string, string> = {
+  freetong: 'Freetong (Basic Trial)',
+  combra: 'Combra (Standard)',
+  bintumani: 'Bintumani (Enterprise)',
+};
 
 /**
  * @route   GET /api/platform/statistics
@@ -129,6 +156,19 @@ router.post('/tenants', authenticate, authorize(UserRole.SUPER_ADMIN), async (re
       });
     }
 
+    // Welcome email with login details (fire-and-forget).
+    const welcomeTo = (adminEmail || contactEmail) as string | undefined;
+    if (welcomeTo) {
+      notify(
+        emailService.sendTenantWelcomeEmail(welcomeTo, {
+          schoolName: name,
+          loginEmail: adminEmail,
+          tempPassword: adminPassword,
+        }),
+        'tenant welcome'
+      );
+    }
+
     // Seed system event categories for the new tenant (fire-and-forget — don't fail tenant creation)
     eventCategoryService.initializeSystemCategories(tenant.id).catch((err: Error) => {
       console.error(`[platformRoutes] Failed to seed event categories for tenant ${tenant.id}:`, err.message);
@@ -167,6 +207,8 @@ router.post('/tenants/:id/activate', authenticate, authorize(UserRole.SUPER_ADMI
     const { id } = req.params;
     const tenant = await TenantService.activateTenant(id, req.auth!.userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.activate' });
+    const to = await tenantContactEmail(id);
+    if (to) notify(emailService.sendTenantStatusEmail(to, { schoolName: tenant.name, status: 'activated' }), 'tenant activate');
     res.json({ success: true, data: tenant, message: 'Tenant activated successfully' });
   } catch (error) {
     next(error);
@@ -189,6 +231,8 @@ router.post('/tenants/:id/suspend', authenticate, authorize(UserRole.SUPER_ADMIN
 
     const tenant = await TenantService.suspendTenant(id, reason, req.auth!.userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.suspend', changes: { reason } });
+    const to = await tenantContactEmail(id);
+    if (to) notify(emailService.sendTenantStatusEmail(to, { schoolName: tenant.name, status: 'suspended', reason }), 'tenant suspend');
     res.json({ success: true, data: tenant, message: 'Tenant suspended successfully' });
   } catch (error) {
     next(error);
@@ -228,6 +272,9 @@ router.post('/tenants/:id/subscription', authenticate, authorize(UserRole.SUPER_
 
     const updated = await SubscriptionService.changePlan(id, plan_type, billing_cycle, userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.change', changes: { plan_type, billing_cycle } });
+    const tenant = await db('tenants').where({ id }).first();
+    const to = await tenantContactEmail(id);
+    if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[plan_type] || plan_type, action: 'changed', endDate: (updated as any).end_date }), 'subscription change');
     res.json({ success: true, message: `Tenant subscription updated to ${plan_type.toUpperCase()}`, data: updated });
   } catch (error) {
     next(error);
@@ -312,6 +359,8 @@ router.post('/tenants/:id/restore', authenticate, authorize(UserRole.SUPER_ADMIN
     const { id } = req.params;
     const tenant = await TenantService.restoreTenant(id, req.auth!.userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.restore' });
+    const to = await tenantContactEmail(id);
+    if (to) notify(emailService.sendTenantStatusEmail(to, { schoolName: tenant.name, status: 'restored' }), 'tenant restore');
     res.json({ success: true, data: tenant, message: 'Tenant restored successfully' });
   } catch (error) {
     next(error);
@@ -402,6 +451,9 @@ router.post('/tenants/:id/subscription/renew', authenticate, authorize(UserRole.
     }
     const updated = await SubscriptionService.renewSubscription(id, billing_cycle, req.auth!.userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.renew', changes: { billing_cycle } });
+    const tenant = await db('tenants').where({ id }).first();
+    const to = await tenantContactEmail(id);
+    if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[(updated as any).plan_type] || (updated as any).plan_type, action: 'renewed', endDate: (updated as any).end_date }), 'subscription renew');
     res.json({ success: true, data: updated, message: 'Subscription renewed' });
   } catch (error) {
     next(error);
@@ -418,6 +470,9 @@ router.post('/tenants/:id/subscription/extend', authenticate, authorize(UserRole
     const days = Number(req.body.days);
     const updated = await SubscriptionService.extendSubscription(id, days, req.auth!.userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.extend', changes: { days } });
+    const tenant = await db('tenants').where({ id }).first();
+    const to = await tenantContactEmail(id);
+    if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[(updated as any).plan_type] || (updated as any).plan_type, action: 'extended', endDate: (updated as any).end_date }), 'subscription extend');
     res.json({ success: true, data: updated, message: `Subscription extended by ${days} days` });
   } catch (error) {
     next(error);
@@ -433,6 +488,9 @@ router.post('/tenants/:id/subscription/expire', authenticate, authorize(UserRole
     const { id } = req.params;
     const updated = await SubscriptionService.expireSubscription(id, req.auth!.userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.expire' });
+    const tenant = await db('tenants').where({ id }).first();
+    const to = await tenantContactEmail(id);
+    if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[(updated as any).plan_type] || (updated as any).plan_type, action: 'expired' }), 'subscription expire');
     res.json({ success: true, data: updated, message: 'Subscription expired' });
   } catch (error) {
     next(error);
@@ -459,6 +517,17 @@ router.post('/tenants/:id/users/:userId/reset-password', authenticate, authorize
     const { id, userId } = req.params;
     const result = await TenantUserService.resetPassword(id, userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'user.reset_password', entityId: userId });
+    // Email the user their temporary password (school-branded).
+    const u = await db('users').where({ id: userId, tenant_id: id }).first();
+    const userName = u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() : '';
+    notify(
+      emailService.sendAccountCredentialsEmail(id, result.email, {
+        userName,
+        role: u?.role,
+        tempPassword: result.tempPassword,
+      }),
+      'user reset-password'
+    );
     res.json({ success: true, data: result, message: 'Temporary password generated' });
   } catch (error) {
     next(error);
@@ -492,6 +561,13 @@ router.post('/tenants/:id/users/:userId/disable-2fa', authenticate, authorize(Us
     const { id, userId } = req.params;
     await TenantUserService.disableTwoFactor(id, userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'user.disable_2fa', entityId: userId });
+    const u = await db('users').where({ id: userId, tenant_id: id }).first();
+    if (u?.email) {
+      notify(
+        emailService.sendTwoFactorStatusEmail(id, u.email, { userName: `${u.first_name || ''} ${u.last_name || ''}`.trim(), action: 'disabled' }),
+        'user disable-2fa'
+      );
+    }
     res.json({ success: true, message: 'Two-factor authentication disabled' });
   } catch (error) {
     next(error);
@@ -507,6 +583,83 @@ router.post('/tenants/:id/impersonate', authenticate, authorize(UserRole.SUPER_A
     const result = await ImpersonationService.start(id, req.auth!.userId, userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.impersonate', entityId: result.user.id });
     res.json({ success: true, data: result, message: `Now viewing ${result.user.schoolName} as support` });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── Communications hub ──────────────────────────────────────────────────────
+
+// Inbox
+router.get('/communications/messages', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const result = await PlatformCommunicationService.listMessages({
+      status: req.query.status as string,
+      search: req.query.search as string,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
+      offset: req.query.offset ? parseInt(req.query.offset as string, 10) : undefined,
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/communications/unread-count', authenticate, authorize(UserRole.SUPER_ADMIN), async (_req, res, next) => {
+  try {
+    res.json({ success: true, data: { count: await PlatformCommunicationService.unreadCount() } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/communications/messages/:id/status', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const data = await PlatformCommunicationService.setStatus(req.params.id, req.body.status);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/communications/messages/:id/reply', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { subject, body } = req.body;
+    if (!body?.trim()) throw new AppError('Reply body is required', 400, 'VALIDATION_ERROR');
+    await PlatformCommunicationService.reply(req.params.id, subject, body);
+    await PlatformAuditService.record({ ...auditMeta(req), action: 'communication.reply', entityId: req.params.id, entityType: 'platform_message' });
+    res.json({ success: true, message: 'Reply sent' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/communications/messages/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    await PlatformCommunicationService.deleteMessage(req.params.id);
+    res.json({ success: true, message: 'Message deleted' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Broadcast
+router.post('/communications/broadcast', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { subject, body, audience } = req.body;
+    const result = await PlatformCommunicationService.broadcast(req.auth!.userId, {
+      subject, body, audience: audience || 'all',
+    });
+    await PlatformAuditService.record({ ...auditMeta(req), action: 'communication.broadcast', entityType: 'platform_broadcast', changes: { audience, recipients: result.recipients } });
+    res.json({ success: true, data: result, message: `Broadcast sent to ${result.delivered}/${result.recipients} schools` });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/communications/broadcasts', authenticate, authorize(UserRole.SUPER_ADMIN), async (_req, res, next) => {
+  try {
+    res.json({ success: true, data: await PlatformCommunicationService.listBroadcasts() });
   } catch (error) {
     next(error);
   }

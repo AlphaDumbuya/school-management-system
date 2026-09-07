@@ -30,6 +30,7 @@ import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { Button } from '@components/ui/button';
 import { Modal } from '@components/admin/feedback/Modal';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
+import { SearchBar } from '@components/admin/table/SearchBar';
 import { showToast } from '@utils/toast';
 import platformService, { PlatformTenant, PlatformStatistics } from '../services/platformService';
 
@@ -64,6 +65,11 @@ export const PlatformTenantsPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+
+  // Pagination
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1); // 1-indexed
+  const [total, setTotal] = useState(0);
 
   // Modals state
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
@@ -132,6 +138,8 @@ export const PlatformTenantsPage: React.FC = () => {
         platformService.getTenants({
           search: search || undefined,
           status: statusFilter || undefined,
+          limit: PAGE_SIZE,
+          offset: (page - 1) * PAGE_SIZE,
         }).catch(() => ({ success: false, data: [] as PlatformTenant[], total: 0 })),
       ]);
 
@@ -140,6 +148,7 @@ export const PlatformTenantsPage: React.FC = () => {
       }
       if (tenantsRes.success && tenantsRes.data) {
         setTenants(tenantsRes.data);
+        setTotal((tenantsRes as any).total ?? tenantsRes.data.length);
       }
     } catch (err) {
       console.error('Error fetching platform data:', err);
@@ -149,9 +158,13 @@ export const PlatformTenantsPage: React.FC = () => {
     }
   };
 
+  // Reset to page 1 whenever the search/filter changes.
+  useEffect(() => { setPage(1); }, [search, statusFilter]);
+
   useEffect(() => {
     fetchData();
-  }, [search, statusFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, statusFilter, page]);
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -338,14 +351,13 @@ export const PlatformTenantsPage: React.FC = () => {
 
         {/* Search & Filter bar */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
-          <div className="relative w-full sm:max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
+          <div className="w-full sm:max-w-md">
+            <SearchBar
               placeholder="Search schools by name, slug or email..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-100"
+              defaultValue={search}
+              onSearch={(val) => setSearch(val)}
+              isLoading={loading}
+              resultCount={tenants.length}
             />
           </div>
           <div className="flex gap-2 w-full sm:w-auto items-center">
@@ -384,18 +396,18 @@ export const PlatformTenantsPage: React.FC = () => {
               <table className="w-full border-collapse text-left">
                 <thead>
                   <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
-                    <th className="px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">School / Tenant</th>
-                    <th className="px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Domain / Slug</th>
-                    <th className="px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Limits (Users/Storage)</th>
-                    <th className="px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Registered</th>
-                    <th className="px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                    <th className="px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">School / Tenant</th>
+                    <th className="px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Domain / Slug</th>
+                    <th className="px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                    <th className="px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Limits (Users/Storage)</th>
+                    <th className="px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Registered</th>
+                    <th className="px-6 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider text-right whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {tenants.map((tenant) => (
                     <tr key={tenant.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors">
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
                             <Building2 size={18} />
@@ -406,16 +418,16 @@ export const PlatformTenantsPage: React.FC = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm font-mono text-gray-600 dark:text-gray-300 block">{tenant.slug}</span>
                         <span className="text-xs text-gray-400 block flex items-center gap-1">
                           <Globe size={11} /> {tenant.domain || 'Internal default'}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <StatusBadge status={tenant.status} />
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm text-gray-700 dark:text-gray-300 block">
                           <Users size={12} className="inline mr-1" /> {tenant.max_users || 500} Users
                         </span>
@@ -423,11 +435,18 @@ export const PlatformTenantsPage: React.FC = () => {
                           <HardDrive size={12} className="inline mr-1" /> {tenant.max_storage_gb || 10} GB Storage
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
+                      <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                         {new Date(tenant.created_at).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-2 flex-nowrap">
+                          <Button
+                            size="sm"
+                            className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold"
+                            onClick={() => navigate(`/platform/tenants/${tenant.id}`)}
+                          >
+                            Manage
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -485,6 +504,18 @@ export const PlatformTenantsPage: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Pagination footer (always visible) */}
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-gray-100 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300">
+              <span>
+                Showing <strong>{total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}</strong>–<strong>{Math.min(page * PAGE_SIZE, total)}</strong> of <strong>{total}</strong> {total === 1 ? 'school' : 'schools'}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</Button>
+                <span className="text-xs text-gray-500">Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}</span>
+                <Button variant="outline" size="sm" disabled={page >= Math.ceil(total / PAGE_SIZE)} onClick={() => setPage((p) => p + 1)}>Next</Button>
+              </div>
             </div>
           </div>
         )}

@@ -28,6 +28,7 @@ import TenantDetailPage from '@pages/TenantDetailPage';
 import { PlatformTenantsPage } from '@pages/PlatformTenantsPage';
 import { PlatformSubscriptionsPage } from '@pages/PlatformSubscriptionsPage';
 import { PlatformAnalyticsPage } from '@pages/PlatformAnalyticsPage';
+import PlatformCommunicationPage from '@pages/PlatformCommunicationPage';
 import { ComingSoonPage } from '@pages/ComingSoonPage';
 import { SettingsPage } from '@pages/SettingsPage';
 import SMSWhatsAppDashboard from '@pages/SMSWhatsAppDashboard';
@@ -366,6 +367,10 @@ const router = createBrowserRouter(
         {
           path: 'platform/analytics',
           element: <P requiredRoles={['super_admin']}><PlatformAnalyticsPage /></P>,
+        },
+        {
+          path: 'platform/communications',
+          element: <P requiredRoles={['super_admin']}><PlatformCommunicationPage /></P>,
         },
 
         // ── SYSTEM ─────────────────────────────────────────────────

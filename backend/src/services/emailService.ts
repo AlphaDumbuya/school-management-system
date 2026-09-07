@@ -673,6 +673,92 @@ class EmailService {
     return `${currency} ${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
   }
 
+  // ────────────────────────────────────────────────────────────────────────
+  // Platform operator emails — sent to a school's contact when the super admin
+  // performs a lifecycle/billing action. Always platform-branded (from WiSkul).
+  // Failures are swallowed by callers so they never block the admin action.
+  // ────────────────────────────────────────────────────────────────────────
+
+  /** School onboarded → welcome + (optional) principal login details. */
+  async sendTenantWelcomeEmail(
+    toEmail: string,
+    data: { schoolName: string; loginEmail?: string; tempPassword?: string }
+  ): Promise<EmailResponse> {
+    const branding = platformBranding();
+    const creds = data.tempPassword
+      ? detailsCard([
+          detailRow('Login email', escapeHtml(data.loginEmail || toEmail)),
+          detailRow('Temporary password', escapeHtml(data.tempPassword)),
+        ]) + calloutBlock('For security, change this password right after your first sign-in.', 'warning')
+      : '';
+    const bodyHtml = `
+      <p>Hello,</p>
+      <p>Welcome to WiSkul! Your school workspace for <strong>${escapeHtml(data.schoolName)}</strong> has been created and is ready to use.</p>
+      ${creds}
+      ${emailButton('Sign in to WiSkul', `${branding.appUrl}/login`)}
+      <p style="color:#64748b;font-size:13px;">Need help getting set up? Reply to this email and our team will assist you.</p>`;
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: `Welcome to WiSkul — ${data.schoolName}`,
+      body: renderEmail({ branding, eyebrow: 'Onboarding', heading: 'Your school is ready', bodyHtml, preheader: `Welcome to WiSkul, ${data.schoolName}.` }),
+      isHtml: true,
+    });
+  }
+
+  /** Subscription plan changed / renewed → school contact. */
+  async sendTenantSubscriptionEmail(
+    toEmail: string,
+    data: { schoolName: string; planLabel: string; action: 'changed' | 'renewed' | 'extended' | 'expired'; endDate?: string }
+  ): Promise<EmailResponse> {
+    const branding = platformBranding();
+    const verb = {
+      changed: 'updated', renewed: 'renewed', extended: 'extended', expired: 'expired',
+    }[data.action];
+    const tone: 'info' | 'success' | 'warning' = data.action === 'expired' ? 'warning' : 'success';
+    const bodyHtml = `
+      <p>Hello,</p>
+      <p>The subscription for <strong>${escapeHtml(data.schoolName)}</strong> has been <strong>${verb}</strong>.</p>
+      ${detailsCard([
+        detailRow('Plan', escapeHtml(data.planLabel)),
+        ...(data.endDate ? [detailRow('Valid until', escapeHtml(new Date(data.endDate).toLocaleDateString()))] : []),
+      ])}
+      ${data.action === 'expired'
+        ? calloutBlock('Access to premium features is paused until the subscription is renewed.', tone)
+        : calloutBlock('Your plan features and limits are now active.', tone)}
+      ${emailButton('Open WiSkul', `${branding.appUrl}/login`)}`;
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: `Subscription ${verb} — ${data.schoolName}`,
+      body: renderEmail({ branding, eyebrow: 'Billing', heading: `Subscription ${verb}`, bodyHtml, preheader: `${data.schoolName} subscription ${verb}.` }),
+      isHtml: true,
+    });
+  }
+
+  /** Account status changed (suspend / activate / restore) → school contact. */
+  async sendTenantStatusEmail(
+    toEmail: string,
+    data: { schoolName: string; status: 'suspended' | 'activated' | 'restored'; reason?: string }
+  ): Promise<EmailResponse> {
+    const branding = platformBranding();
+    const tone: 'info' | 'success' | 'warning' = data.status === 'suspended' ? 'warning' : 'success';
+    const bodyHtml = `
+      <p>Hello,</p>
+      <p>The WiSkul account for <strong>${escapeHtml(data.schoolName)}</strong> has been <strong>${data.status}</strong>.</p>
+      ${data.status === 'suspended'
+        ? calloutBlock(`Access is temporarily paused.${data.reason ? ' Reason: ' + escapeHtml(data.reason) : ''} Please contact support to resolve this.`, tone)
+        : calloutBlock('Your account is active and users can sign in normally.', tone)}
+      ${emailButton('Open WiSkul', `${branding.appUrl}/login`)}`;
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: `Account ${data.status} — ${data.schoolName}`,
+      body: renderEmail({ branding, eyebrow: 'Account', heading: `Account ${data.status}`, bodyHtml, preheader: `${data.schoolName} account ${data.status}.` }),
+      isHtml: true,
+    });
+  }
+
   /**
    * Admissions decision → applicant's guardian.
    * decision: 'accepted' | 'rejected' | 'waitlist'

@@ -56,7 +56,12 @@ export class TenantService {
       if (filters?.status) {
         query = query.where('status', filters.status);
       } else {
-        query = query.whereNot('status', 'expired');
+        // Default view hides only ARCHIVED (soft-deleted) tenants — those carry
+        // `settings.archived_from`. Lapsed/expired-subscription tenants stay
+        // visible so the super admin can renew them.
+        // NOTE: use jsonb_exists() rather than the `?` operator, which Knex
+        // would treat as a positional binding placeholder.
+        query = query.whereRaw(`NOT (status = 'expired' AND jsonb_exists(settings, 'archived_from'))`);
       }
 
       if (filters?.search) {
