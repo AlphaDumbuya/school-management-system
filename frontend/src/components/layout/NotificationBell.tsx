@@ -20,6 +20,8 @@ import {
 import clsx from 'clsx';
 import notificationService, { type AppNotification } from '@services/notificationService';
 import { dashboardService } from '@services/dashboardService';
+import announcementService, { type Announcement } from '@services/announcementService';
+import { Megaphone } from 'lucide-react';
 
 interface SystemAlert {
   id: string;
@@ -79,7 +81,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<'notifications' | 'alerts'>('notifications');
+  const [tab, setTab] = useState<'notifications' | 'announcements' | 'alerts'>('notifications');
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
 
   // Notifications — poll every 60s, refetch on window focus.
@@ -107,7 +109,25 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
   }, [alertsResp]);
   const visibleAlerts = alerts.filter((a) => !dismissedAlerts.has(a.id));
 
-  const totalUnread = unreadNotifications.length + (canSeeAlerts ? visibleAlerts.length : 0);
+  // Announcements — recent list + unread count.
+  const { data: annResp } = useQuery({
+    queryKey: ['bell-announcements'],
+    queryFn: () => announcementService.list({ limit: 10 }),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+  const announcements: Announcement[] = Array.isArray((annResp as any)?.data) ? (annResp as any).data : [];
+  const { data: annUnreadResp } = useQuery({
+    queryKey: ['announcements-unread'],
+    queryFn: () => announcementService.unreadCount(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+  const announcementsUnread = Number((annUnreadResp as any)?.data?.count ?? 0);
+
+  const totalUnread = unreadNotifications.length + announcementsUnread + (canSeeAlerts ? visibleAlerts.length : 0);
 
   const refresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['bell-notifications'] });
@@ -125,6 +145,14 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
   const markAll = useCallback(async () => {
     try { await notificationService.markAllRead(); refresh(); } catch { /* ignore */ }
   }, [refresh]);
+
+  const markAllAnnouncements = useCallback(async () => {
+    try {
+      await announcementService.markAllRead();
+      queryClient.invalidateQueries({ queryKey: ['bell-announcements'] });
+      queryClient.invalidateQueries({ queryKey: ['announcements-unread'] });
+    } catch { /* ignore */ }
+  }, [queryClient]);
 
   const dismissAlert = (id: string) => setDismissedAlerts((prev) => new Set([...prev, id]));
 
@@ -151,29 +179,38 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
             {/* Header */}
             <div className="px-4 pt-3 pb-2 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 text-sm">Notifications</h3>
-              {unreadNotifications.length > 0 && (
+              {tab === 'announcements' && announcementsUnread > 0 ? (
+                <button
+                  onClick={markAllAnnouncements}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                >
+                  <CheckCheck size={14} /> Mark all read
+                </button>
+              ) : tab === 'notifications' && unreadNotifications.length > 0 ? (
                 <button
                   onClick={markAll}
                   className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
                 >
                   <CheckCheck size={14} /> Mark all read
                 </button>
+              ) : null}
+            </div>
+
+            {/* Tabs */}
+            <div className="px-3 flex gap-1 border-b border-gray-100">
+              <TabBtn active={tab === 'notifications'} onClick={() => setTab('notifications')}
+                label="Activity" count={unreadNotifications.length} />
+              <TabBtn active={tab === 'announcements'} onClick={() => setTab('announcements')}
+                label="Announcements" count={announcementsUnread} />
+              {canSeeAlerts && (
+                <TabBtn active={tab === 'alerts'} onClick={() => setTab('alerts')}
+                  label="System" count={visibleAlerts.length} />
               )}
             </div>
 
-            {/* Tabs (only show alerts tab for principals) */}
-            {canSeeAlerts && (
-              <div className="px-3 flex gap-1 border-b border-gray-100">
-                <TabBtn active={tab === 'notifications'} onClick={() => setTab('notifications')}
-                  label="Activity" count={unreadNotifications.length} />
-                <TabBtn active={tab === 'alerts'} onClick={() => setTab('alerts')}
-                  label="System" count={visibleAlerts.length} />
-              </div>
-            )}
-
             <div className="max-h-[70vh] sm:max-h-96 overflow-y-auto">
               {/* Activity / notifications */}
-              {(!canSeeAlerts || tab === 'notifications') && (
+              {tab === 'notifications' && (
                 notifLoading ? (
                   <div className="py-10 flex justify-center text-gray-400"><Loader2 className="animate-spin" size={22} /></div>
                 ) : notifications.length === 0 ? (
@@ -204,6 +241,40 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
                         </li>
                       );
                     })}
+                  </ul>
+                )
+              )}
+
+              {/* Announcements */}
+              {tab === 'announcements' && (
+                announcements.length === 0 ? (
+                  <EmptyBlock text="No announcements yet." />
+                ) : (
+                  <ul className="divide-y divide-gray-50">
+                    {announcements.map((a) => (
+                      <li key={a.id}>
+                        <button
+                          onClick={() => { setOpen(false); navigate('/communication/announcements'); }}
+                          className={clsx(
+                            'w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors',
+                            !a.is_read && 'bg-blue-50/40'
+                          )}
+                        >
+                          <span className={clsx('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5',
+                            a.priority === 'high' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600')}>
+                            <Megaphone size={15} />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-semibold text-gray-900 truncate">{a.title}</span>
+                            <span className="block text-xs text-gray-600 line-clamp-2">{a.body}</span>
+                            <span className="block text-[11px] text-gray-400 mt-0.5">
+                              {a.author_name ? `${a.author_name} · ` : ''}{relativeTime(a.created_at)}
+                            </span>
+                          </span>
+                          {!a.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />}
+                        </button>
+                      </li>
+                    ))}
                   </ul>
                 )
               )}

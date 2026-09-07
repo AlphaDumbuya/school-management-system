@@ -908,6 +908,47 @@ class EmailService {
       isHtml: true,
     });
   }
+
+  /**
+   * School announcement → a recipient in the tenant. Branded with the school's
+   * identity so it reads as an official message from their school.
+   */
+  async sendAnnouncementEmail(
+    tenantId: string,
+    toEmail: string,
+    data: { userName: string; title: string; body: string; priority?: 'normal' | 'high' }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/communication/announcements`;
+    const high = data.priority === 'high';
+
+    // Preserve line breaks from the composer as paragraphs.
+    const paragraphs = escapeHtml(data.body)
+      .split(/\n{2,}/)
+      .map((p) => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
+      .join('');
+
+    const bodyHtml = `
+      <p>Hello ${escapeHtml(data.userName)},</p>
+      ${high ? calloutBlock('This is a high-priority announcement from your school.', 'warn') : ''}
+      <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin:16px 0 8px;">${escapeHtml(data.title)}</h2>
+      ${paragraphs}
+      ${emailButton('View in Portal', portalUrl)}
+      <p style="color:#64748b;font-size:13px;">You're receiving this because you're a member of ${escapeHtml(branding.name)}.</p>`;
+
+    return this.sendEmail({
+      to: toEmail,
+      subject: `${high ? '[Important] ' : ''}${data.title} — ${branding.name}`,
+      body: renderEmail({
+        branding,
+        eyebrow: high ? 'Important Announcement' : 'Announcement',
+        heading: data.title,
+        bodyHtml,
+        preheader: data.body.slice(0, 120),
+      }),
+      isHtml: true,
+    });
+  }
 }
 
 // ── Contact Form Specific Functions ──────────────────────────────────────────

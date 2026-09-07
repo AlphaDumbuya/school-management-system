@@ -23,6 +23,7 @@ import { Phase13AccountantDashboard } from '@pages/Phase13AccountantDashboard';
 import { Phase13AdmissionsDashboard } from '@pages/Phase13AdmissionsDashboard';
 import SuperAdminDashboard from '@pages/SuperAdminDashboard';
 import GuidePage from '@pages/GuidePage';
+import AnnouncementsPage from '@pages/communication/AnnouncementsPage';
 import { PlatformTenantsPage } from '@pages/PlatformTenantsPage';
 import { PlatformSubscriptionsPage } from '@pages/PlatformSubscriptionsPage';
 import { PlatformAnalyticsPage } from '@pages/PlatformAnalyticsPage';
@@ -275,7 +276,7 @@ const router = createBrowserRouter(
         // ── COMMUNICATION ──────────────────────────────────────────
         {
           path: 'communication/announcements',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'parent', 'student']}><V2Route><CS /></V2Route></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'parent', 'student', 'accountant', 'admissions_officer']}><AnnouncementsPage /></P>,
         },
         {
           path: 'communication/messages',

@@ -57,6 +57,7 @@ import smsWhatsAppWebhooks from '@routes/smsWhatsAppWebhooks';
 import teacherRoutes from '@routes/teacherRoutes';
 import contactRoutes from '@routes/contactRoutes';
 import schoolConfigRoutes from '@routes/schoolConfigRoutes';
+import announcementRoutes from '@routes/announcementRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
 import { startEventManagementJobs } from './jobs/eventManagementJobs.js';
 import { startSmsDeliveryJobs } from './jobs/smsDeliveryJobs.js';
@@ -316,6 +317,9 @@ app.use('/api/contact', contactRoutes);
 
 // School Config & Settings Routes
 app.use('/api/v1/school-config', schoolConfigRoutes);
+
+// Announcements Routes (Communication)
+app.use('/api/v1/announcements', announcementRoutes);
 
 // Timetable Routes (Simplified schedule management)
 app.use('/api/v1/timetable', timetableRoutes);
