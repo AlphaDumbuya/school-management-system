@@ -6,6 +6,7 @@
  * in the header that opens a large compose/edit modal (hidden by default).
  */
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Megaphone, Send, Trash2, Loader2, AlertTriangle, Users, Pencil, Plus, X, CheckCheck } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
@@ -290,12 +291,12 @@ export const AnnouncementsPage: React.FC = () => {
       </PageShell>
 
       {/* ── Compose / Edit modal (big) ── */}
-      {composeOpen && (
-        <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto">
+      {composeOpen && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={closeCompose} />
-          <div className="relative w-full max-w-2xl my-4 bg-white rounded-2xl shadow-2xl overflow-hidden animate-fade-in">
+          <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-fade-in flex flex-col max-h-[90vh]">
             {/* Header */}
-            <div className="bg-gradient-to-r from-[#1d4ed8] to-[#3b82f6] text-white px-6 py-4 flex items-center justify-between">
+            <div className="flex-shrink-0 bg-gradient-to-r from-[#1d4ed8] to-[#3b82f6] text-white px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <span className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center"><Megaphone size={18} /></span>
                 <div>
@@ -312,7 +313,7 @@ export const AnnouncementsPage: React.FC = () => {
 
             {/* Body */}
             <form
-              className="p-6 space-y-5 max-h-[70vh] overflow-y-auto"
+              className="p-6 space-y-5 flex-1 overflow-y-auto"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!title.trim() || !body.trim()) return;
@@ -401,7 +402,7 @@ export const AnnouncementsPage: React.FC = () => {
             </form>
 
             {/* Footer */}
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+            <div className="flex-shrink-0 px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
               <button onClick={closeCompose} className="px-4 py-2.5 rounded-xl bg-white ring-1 ring-gray-200 hover:bg-gray-50 text-gray-700 font-semibold text-sm">
                 Cancel
               </button>
@@ -419,7 +420,8 @@ export const AnnouncementsPage: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <ConfirmationDialog

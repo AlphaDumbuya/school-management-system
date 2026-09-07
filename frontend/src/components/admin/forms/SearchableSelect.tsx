@@ -132,9 +132,9 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         {/* Dropdown — uses fixed positioning to escape overflow clipping */}
         {isOpen && (
           <>
-            <div className="fixed inset-0 z-40" onClick={() => { setIsOpen(false); setSearch(''); }} aria-hidden />
+            <div className="fixed inset-0 z-[60]" onClick={() => { setIsOpen(false); setSearch(''); }} aria-hidden />
             <div
-              className="fixed z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+              className="fixed z-[70] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
               style={{
                 top: containerRef.current ? containerRef.current.getBoundingClientRect().bottom + 4 : 0,
                 left: containerRef.current ? containerRef.current.getBoundingClientRect().left : 0,
