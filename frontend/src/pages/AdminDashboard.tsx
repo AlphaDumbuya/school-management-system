@@ -24,6 +24,7 @@ import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
 import { WelcomeHero } from '@components/dashboard/WelcomeHero';
+import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 import { ChartCard } from '@components/admin/charts/ChartCard';
 import { SkeletonCard, SkeletonChart } from '@components/admin/feedback/Skeleton';
 import { ErrorState } from '@components/admin/feedback/ErrorState';
@@ -375,6 +376,11 @@ export const AdminDashboard: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* ── Announcements (school-wide, principal sees all) ── */}
+        <div className="mb-8">
+          <AnnouncementsWidget limit={4} />
+        </div>
 
         {/* ── Quick Actions ── */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-8">

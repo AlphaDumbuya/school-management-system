@@ -41,19 +41,39 @@ export const AnnouncementsPage: React.FC = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const role = user?.role;
-  const canPost = role === 'principal' || role === 'super_admin' || role === 'teacher';
-  const canDelete = role === 'principal' || role === 'super_admin';
+  const isTeacher = role === 'teacher';
+  const isAdmin = role === 'principal' || role === 'super_admin';
+  const isDeptStaff = role === 'accountant' || role === 'admissions_officer';
+  const canPost = isAdmin || isTeacher || isDeptStaff;
+  // Admins can delete anything; teachers/dept staff can delete their own.
+  const canDelete = isAdmin || isTeacher || isDeptStaff;
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [audience, setAudience] = useState<AnnouncementAudience>('all');
+  const [audience, setAudience] = useState<AnnouncementAudience>(isTeacher ? 'all' : 'all');
   const [priority, setPriority] = useState<AnnouncementPriority>('normal');
   const [notifyByEmail, setNotifyByEmail] = useState(false);
+  const [classId, setClassId] = useState<string>('');
   const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Teachers can only post to classes they teach.
+  const { data: myClassesResp } = useQuery({
+    queryKey: ['announcement-my-classes'],
+    queryFn: () => announcementService.myClasses(),
+    enabled: isTeacher,
+    staleTime: 300_000,
+  });
+  const myClasses = useMemo(() => (myClassesResp as any)?.data ?? [], [myClassesResp]);
+
+  // Teachers and department staff (accountant/admissions) can only target
+  // students/parents; admins can target any audience.
+  const audienceOptions = (isTeacher || isDeptStaff)
+    ? AUDIENCES.filter((a) => ['all', 'student', 'parent'].includes(a.value))
+    : AUDIENCES;
+
   const resetForm = () => {
-    setEditingId(null); setTitle(''); setBody(''); setAudience('all'); setPriority('normal'); setNotifyByEmail(false);
+    setEditingId(null); setTitle(''); setBody(''); setAudience('all'); setPriority('normal'); setNotifyByEmail(false); setClassId('');
   };
 
   const startEdit = (a: Announcement) => {
@@ -90,7 +110,7 @@ export const AnnouncementsPage: React.FC = () => {
     mutationFn: () =>
       editingId
         ? announcementService.update(editingId, { title, body, audience, priority })
-        : announcementService.create({ title, body, audience, priority, notifyByEmail }),
+        : announcementService.create({ title, body, audience, priority, notifyByEmail, classId: isTeacher ? classId : (classId || null) }),
     onSuccess: (res) => {
       if ((res as any)?.success === false) {
         showToast.error((res as any).error || 'Failed to save announcement');
@@ -147,7 +167,12 @@ export const AnnouncementsPage: React.FC = () => {
                 </div>
                 <form
                   className="p-5 space-y-4"
-                  onSubmit={(e) => { e.preventDefault(); if (title.trim() && body.trim()) saveMutation.mutate(); }}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!title.trim() || !body.trim()) return;
+                    if (isTeacher && !editingId && !classId) { showToast.error('Please select one of your classes'); return; }
+                    saveMutation.mutate();
+                  }}
                 >
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Title</label>
@@ -169,15 +194,38 @@ export const AnnouncementsPage: React.FC = () => {
                       className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm resize-y focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/30 focus:border-[#1d4ed8]"
                     />
                   </div>
+                  {/* Teacher: choose one of your classes */}
+                  {isTeacher && !editingId && (
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Class</label>
+                      <select
+                        value={classId}
+                        onChange={(e) => setClassId(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/30"
+                      >
+                        <option value="">Select a class you teach…</option>
+                        {myClasses.map((c: any) => (
+                          <option key={c.id} value={c.id}>{c.name}{c.level ? ` · ${c.level}` : ''}</option>
+                        ))}
+                      </select>
+                      {myClasses.length === 0 && (
+                        <p className="mt-1 text-[11px] text-amber-600">You have no assigned classes yet. Ask your principal to assign you.</p>
+                      )}
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Audience</label>
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{isTeacher ? 'Send to' : 'Audience'}</label>
                       <select
                         value={audience}
                         onChange={(e) => setAudience(e.target.value as AnnouncementAudience)}
                         className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/30"
                       >
-                        {AUDIENCES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+                        {audienceOptions.map((a) => (
+                          <option key={a.value} value={a.value}>
+                            {isTeacher && a.value === 'all' ? 'Whole class' : a.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div>
@@ -201,7 +249,7 @@ export const AnnouncementsPage: React.FC = () => {
                   <div className="flex gap-2">
                     <button
                       type="submit"
-                      disabled={saveMutation.isPending || !title.trim() || !body.trim()}
+                      disabled={saveMutation.isPending || !title.trim() || !body.trim() || (isTeacher && !editingId && !classId)}
                       className="flex-1 inline-flex items-center justify-center gap-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold text-sm py-2.5 rounded-xl transition-colors disabled:opacity-50"
                     >
                       {saveMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
@@ -269,16 +317,20 @@ export const AnnouncementsPage: React.FC = () => {
                           {a.author_name ? `${a.author_name} · ` : ''}{fmtDate(a.created_at)}
                         </p>
                       </div>
-                      {canPost && (
-                        <div className="flex-shrink-0 flex items-center gap-1">
-                          <button
-                            onClick={() => startEdit(a)}
-                            className="p-2 rounded-lg text-gray-400 hover:text-[#1d4ed8] hover:bg-blue-50 transition-colors"
-                            title="Edit"
-                          >
-                            <Pencil size={16} />
-                          </button>
-                          {canDelete && (
+                      {(() => {
+                        // Admins manage anything; others only their own posts.
+                        const mine = a.author_id === user?.id;
+                        const canManageThis = isAdmin || (canPost && mine);
+                        if (!canManageThis) return null;
+                        return (
+                          <div className="flex-shrink-0 flex items-center gap-1">
+                            <button
+                              onClick={() => startEdit(a)}
+                              className="p-2 rounded-lg text-gray-400 hover:text-[#1d4ed8] hover:bg-blue-50 transition-colors"
+                              title="Edit"
+                            >
+                              <Pencil size={16} />
+                            </button>
                             <button
                               onClick={() => setDeleteTarget(a)}
                               className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
@@ -286,9 +338,9 @@ export const AnnouncementsPage: React.FC = () => {
                             >
                               <Trash2 size={16} />
                             </button>
-                          )}
-                        </div>
-                      )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 ))}

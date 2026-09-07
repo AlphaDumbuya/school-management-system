@@ -189,6 +189,30 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       query = query.whereIn('assignments.class_id', studentClassIds);
     }
 
+    // Parent/guardian scoping: parents only see assignments for the class(es)
+    // their children are enrolled in. Reuses studentClassIds so the count query
+    // filter below applies automatically.
+    if (req.user?.role === 'parent' || req.user?.role === 'guardian') {
+      const guardianRows = await db('guardians as g')
+        .join('students as s', 'g.student_id', 's.id')
+        .where('g.user_id', req.user.id)
+        .where('s.tenant_id', tenantId)
+        .distinct('g.student_id');
+      const childStudentIds = guardianRows.map((r: any) => r.student_id).filter(Boolean);
+      if (childStudentIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      const enrolled = await db('enrollments')
+        .whereIn('student_id', childStudentIds)
+        .whereIn('status', ['enrolled', 'active'])
+        .distinct('class_id');
+      studentClassIds = enrolled.map((r: any) => r.class_id).filter(Boolean);
+      if (studentClassIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      query = query.whereIn('assignments.class_id', studentClassIds);
+    }
+
     if (class_id) query = query.where('assignments.class_id', class_id as string);
     if (subject_id) query = query.where('assignments.subject_id', subject_id as string);
     if (teacher_id) query = query.where('assignments.teacher_id', teacher_id as string);

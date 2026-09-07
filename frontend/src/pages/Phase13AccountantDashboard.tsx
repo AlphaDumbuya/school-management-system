@@ -11,6 +11,7 @@ import { MainLayout } from '@components/layout/MainLayout';
 import { AlertCircle, TrendingUp, DollarSign, FileText, PhoneIcon, Mail, Download, Filter } from 'lucide-react';
 import useAuthStore from '@store/authStore';
 import { WelcomeHero } from '@components/dashboard/WelcomeHero';
+import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 
 // Mock data
 const mockTransactions = [
@@ -136,6 +137,9 @@ export const Phase13AccountantDashboard: React.FC = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Announcements scoped to this accountant (school-wide + accountant audience) */}
+        <AnnouncementsWidget limit={4} />
 
         {/* Outstanding Fees Alert */}
         {totalOutstanding > 0 && (

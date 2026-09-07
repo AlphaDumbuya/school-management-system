@@ -14,6 +14,7 @@ import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
 import { WelcomeHero } from '@components/dashboard/WelcomeHero';
+import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 import useAuthStore from '@store/authStore';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
@@ -130,6 +131,11 @@ export const Phase13ParentDashboard: React.FC = () => {
               <KPICard title="Avg Attendance" value={`${stats.average_attendance}%`} icon={<Calendar className="w-5 h-5" />} color={stats.average_attendance >= 85 ? 'green' : 'amber'} />
               <KPICard title="Avg Score" value={stats.average_grade ? `${stats.average_grade}%` : '—'} icon={<TrendingUp className="w-5 h-5" />} color="purple" />
               <KPICard title="Total Outstanding" value={fmtMoney(stats.total_outstanding)} icon={<DollarSign className="w-5 h-5" />} color={stats.total_outstanding > 0 ? 'amber' : 'green'} />
+            </div>
+
+            {/* School & class announcements (scoped to this parent's children) */}
+            <div className="mt-6">
+              <AnnouncementsWidget limit={4} title="School & Class Announcements" />
             </div>
 
             {/* Child selector */}

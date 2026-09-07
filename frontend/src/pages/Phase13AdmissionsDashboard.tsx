@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Users, FileText, CheckCircle, Clock, AlertCircle, Download, GripVertical, ArrowRight } from 'lucide-react';
 import { MainLayout } from '@components/layout/MainLayout';
 import { WelcomeHero } from '@components/dashboard/WelcomeHero';
+import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 import useAuthStore from '@store/authStore';
 
 interface Application {
@@ -267,6 +268,11 @@ export const Phase13AdmissionsDashboard: React.FC = () => {
           {mockApplicationMetrics.map((metric) => (
             <MetricCard key={metric.id} metric={metric} />
           ))}
+        </div>
+
+        {/* Announcements scoped to this admissions officer (school-wide + admissions audience) */}
+        <div className="mb-8">
+          <AnnouncementsWidget limit={4} />
         </div>
 
         {/* Alert */}

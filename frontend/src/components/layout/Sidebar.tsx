@@ -86,7 +86,7 @@ const navItems: NavItem[] = [
     label: 'Assignments',
     icon: <FaClipboardList className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/academic/assignments',
-    roles: ['super_admin', 'principal', 'teacher', 'student'],
+    roles: ['super_admin', 'principal', 'teacher', 'student', 'parent', 'guardian'],
     module: 'Academic Management',
     group: 'Academic',
     version: 'v1',

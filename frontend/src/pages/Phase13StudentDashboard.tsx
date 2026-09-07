@@ -14,6 +14,7 @@ import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
 import { WelcomeHero } from '@components/dashboard/WelcomeHero';
+import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import useAuthStore from '@store/authStore';
@@ -176,6 +177,9 @@ export const Phase13StudentDashboard: React.FC = () => {
           {/* ── Overview ─────────────────────────────────────────────── */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
+              {/* Announcements scoped to this student's classes + school-wide */}
+              <AnnouncementsWidget limit={4} />
+
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
