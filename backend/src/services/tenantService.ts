@@ -87,10 +87,36 @@ export class TenantService {
 
       const tenants = await mainQuery;
 
+      // Attach lightweight per-tenant counts (users + students) in two grouped
+      // queries, then map — avoids N+1 while giving the platform views real data.
+      const tenantIds = tenants.map((t: any) => t.id);
+      let userCounts: Record<string, number> = {};
+      let studentCounts: Record<string, number> = {};
+      if (tenantIds.length) {
+        const uRows = await db('users').whereIn('tenant_id', tenantIds).groupBy('tenant_id').select('tenant_id').count('* as count');
+        userCounts = Object.fromEntries(uRows.map((r: any) => [r.tenant_id, parseInt(r.count as string, 10) || 0]));
+        const sRows = await db('students')
+          .join('users', 'students.user_id', 'users.id')
+          .whereIn('users.tenant_id', tenantIds)
+          .groupBy('users.tenant_id')
+          .select('users.tenant_id as tenant_id')
+          .count('students.id as count');
+        studentCounts = Object.fromEntries(sRows.map((r: any) => [r.tenant_id, parseInt(r.count as string, 10) || 0]));
+      }
+
+      const enriched = tenants.map((t: any) => ({
+        ...t,
+        stats: {
+          usersCount: userCounts[t.id] ?? 0,
+          studentsCount: studentCounts[t.id] ?? 0,
+          staffCount: 0,
+        },
+      }));
+
       return {
-        data: tenants,
+        data: enriched,
         total: parseInt(count as string, 10) || 0,
-        limit: filters?.limit || tenants.length,
+        limit: filters?.limit || enriched.length,
         offset: filters?.offset || 0,
       };
     } catch (error) {
@@ -320,7 +346,8 @@ export class TenantService {
       const deletedSlug = `${tenant.slug}-deleted-${Date.now()}`;
       const deletedName = `${tenant.name} (Archived-${Date.now()})`;
 
-      // Soft delete by setting status to expired, renaming name and slug, and detaching subscription reference
+      // Soft delete: mark expired, rename/slug, detach subscription, and stash
+      // the original name/slug in settings so a later restore is clean.
       await db('tenants')
         .where({ id: tenantId })
         .update({
@@ -328,6 +355,9 @@ export class TenantService {
           name: deletedName,
           slug: deletedSlug,
           subscription_id: null,
+          settings: db.raw(`settings || ?`, [
+            JSON.stringify({ archived_from: { name: tenant.name, slug: tenant.slug }, archived_at: new Date().toISOString() }),
+          ]),
           updated_at: db.fn.now(),
         });
 
@@ -338,6 +368,51 @@ export class TenantService {
       if (error instanceof AppError) throw error;
       logger.error('Error deleting tenant:', error);
       throw new AppError('Failed to delete tenant', 500, 'DELETE_TENANT_ERROR');
+    }
+  }
+
+  /**
+   * Restore a soft-deleted (archived) tenant back to active, recovering its
+   * original name and slug from settings.archived_from when available.
+   */
+  static async restoreTenant(tenantId: string, restoredBy: string) {
+    try {
+      const tenant = await db('tenants').where({ id: tenantId }).first();
+      if (!tenant) {
+        throw new AppError('Tenant not found', 404, 'TENANT_NOT_FOUND');
+      }
+
+      const settings = typeof tenant.settings === 'string' ? JSON.parse(tenant.settings) : (tenant.settings || {});
+      const archivedFrom = settings.archived_from || {};
+
+      // If the recovered slug is already taken (rare), keep the archived slug.
+      let restoreSlug = archivedFrom.slug || tenant.slug;
+      if (archivedFrom.slug) {
+        const clash = await db('tenants').where({ slug: archivedFrom.slug }).whereNot({ id: tenantId }).first();
+        if (clash) restoreSlug = `${archivedFrom.slug}-restored-${Date.now()}`;
+      }
+
+      const nextSettings = { ...settings };
+      delete nextSettings.archived_from;
+      delete nextSettings.archived_at;
+
+      const [restored] = await db('tenants')
+        .where({ id: tenantId })
+        .update({
+          status: 'active',
+          name: archivedFrom.name || tenant.name,
+          slug: restoreSlug,
+          settings: JSON.stringify(nextSettings),
+          updated_at: db.fn.now(),
+        })
+        .returning('*');
+
+      logger.info(`Tenant restored: ${tenantId} by user: ${restoredBy}`);
+      return restored;
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      logger.error('Error restoring tenant:', error);
+      throw new AppError('Failed to restore tenant', 500, 'RESTORE_TENANT_ERROR');
     }
   }
 

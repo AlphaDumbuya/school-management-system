@@ -488,9 +488,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
   // Flag to toggle v2 items. Set to false for Version 1.0.0 release.
   const ENABLE_V2_FEATURES = false;
 
-  // Filter nav items based on user role & release version
+  const isSuperAdmin = user?.role === 'super_admin';
+
+  // Filter nav items based on user role & release version.
+  // The super admin is the PLATFORM operator — they should only see platform
+  // management, NOT tenant/school modules (which `canAccess` would otherwise
+  // grant them via the implicit "super_admin has all roles" rule).
   const filteredNavItems = navItems.filter((item) => {
     if (!ENABLE_V2_FEATURES && item.version === 'v2') return false;
+    if (isSuperAdmin) return item.group === 'Platform';
     return canAccess(item.roles as any[]);
   });
 
@@ -517,21 +523,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
           {/* Logo section */}
           <div className={clsx('py-4 sm:py-5 border-b border-gray-800 flex-shrink-0', collapsed ? 'px-2 lg:flex lg:justify-center' : 'px-4 sm:px-6')}>
             <div className={clsx('flex items-center gap-2 sm:gap-3', collapsed && 'lg:gap-0')}>
-              {user?.schoolLogoUrl ? (
-                <img
-                  src={user.schoolLogoUrl}
-                  alt={user.schoolName || 'School Logo'}
-                  className="w-9 sm:w-10 h-9 sm:h-10 rounded-lg object-contain bg-white p-1 border border-gray-700 flex-shrink-0"
-                />
+              {/* Super admin is the PLATFORM operator — never branded as a tenant school. */}
+              {isSuperAdmin ? (
+                <>
+                  <img src="/logo.png" alt="WiSkul" className="w-9 sm:w-10 h-9 sm:h-10 rounded-lg object-contain bg-white p-1 border border-gray-700 flex-shrink-0" />
+                  <div className={clsx('min-w-0 flex-1', collapsed && 'lg:hidden')}>
+                    <h2 className="font-bold text-sm sm:text-lg truncate">Wi<span className="text-amber-400">Skul</span></h2>
+                    <p className="text-gray-400 text-xs truncate">Platform Console</p>
+                  </div>
+                </>
               ) : (
-                <div className="w-9 sm:w-10 h-9 sm:h-10 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-sm sm:text-lg text-white flex-shrink-0">
-                  {user?.schoolName ? user.schoolName.substring(0, 2).toUpperCase() : 'SMS'}
-                </div>
+                <>
+                  {user?.schoolLogoUrl ? (
+                    <img
+                      src={user.schoolLogoUrl}
+                      alt={user.schoolName || 'School Logo'}
+                      className="w-9 sm:w-10 h-9 sm:h-10 rounded-lg object-contain bg-white p-1 border border-gray-700 flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-9 sm:w-10 h-9 sm:h-10 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-sm sm:text-lg text-white flex-shrink-0">
+                      {user?.schoolName ? user.schoolName.substring(0, 2).toUpperCase() : 'SMS'}
+                    </div>
+                  )}
+                  <div className={clsx('min-w-0 flex-1', collapsed && 'lg:hidden')}>
+                    <h2 className="font-bold text-sm sm:text-lg truncate">{user?.schoolName || 'School Management'}</h2>
+                    <p className="text-gray-400 text-xs truncate capitalize">{user?.role?.replace('_', ' ')}</p>
+                  </div>
+                </>
               )}
-              <div className={clsx('min-w-0 flex-1', collapsed && 'lg:hidden')}>
-                <h2 className="font-bold text-sm sm:text-lg truncate">{user?.schoolName || 'School Management'}</h2>
-                <p className="text-gray-400 text-xs truncate capitalize">{user?.role?.replace('_', ' ')}</p>
-              </div>
             </div>
           </div>
 

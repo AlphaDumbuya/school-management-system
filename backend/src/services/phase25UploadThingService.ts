@@ -1,5 +1,7 @@
 import { logger } from '@utils/logger';
 import axios, { AxiosInstance } from 'axios';
+import { db } from '@utils/database';
+import { decryptSecret } from '@utils/encryption';
 
 /**
  * Interface for file upload configuration
@@ -12,6 +14,11 @@ export interface FileUploadConfig {
   entityId: string;
   fileCategory: 'document' | 'photo' | 'certificate' | 'qualification' | 'resource';
   metadata?: Record<string, any>;
+  /**
+   * When provided, uploads use this tenant's own UploadThing credentials if the
+   * tenant has configured own-mode storage; otherwise the platform account.
+   */
+  tenantId?: string;
 }
 
 /**
@@ -131,6 +138,38 @@ export class UploadThingService {
   }
 
   /**
+   * Resolve the axios client to use for a given tenant. If the tenant is in
+   * own-mode storage and has a configured token, build a client bound to the
+   * tenant's own UploadThing token; otherwise fall back to the platform client.
+   */
+  private async resolveClient(tenantId?: string): Promise<AxiosInstance> {
+    if (!tenantId) return this.client;
+    try {
+      const school = await db('schools')
+        .where({ tenant_id: tenantId })
+        .select('storage_provider', 'storage_configured', 'storage_uploadthing_token')
+        .first();
+
+      if (school?.storage_provider === 'own' && school?.storage_configured && school?.storage_uploadthing_token) {
+        const token = decryptSecret(school.storage_uploadthing_token);
+        return axios.create({
+          baseURL: 'https://api.uploadthing.com/v1',
+          headers: {
+            'X-Uploadthing-Api-Key': token,
+            'X-Uploadthing-Be-Api-Key': token,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          timeout: 60000,
+        });
+      }
+    } catch (err) {
+      logger.warn(`Could not resolve tenant storage for ${tenantId}, using platform account: ${err instanceof Error ? err.message : err}`);
+    }
+    return this.client;
+  }
+
+  /**
    * Upload a file to UploadThing
    * 
    * @param config - File upload configuration
@@ -139,6 +178,7 @@ export class UploadThingService {
   async uploadFile(config: FileUploadConfig): Promise<FileUploadResponse> {
     try {
       this.validateFileUpload(config);
+      const client = await this.resolveClient(config.tenantId);
 
       const formData = new FormData();
       const blob = new Blob([config.file as BlobPart], { type: config.mimeType });
@@ -152,7 +192,7 @@ export class UploadThingService {
       }
 
       const response = await this.executeWithRetry(() =>
-        this.client.post('/upload', formData, {
+        client.post('/upload', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },

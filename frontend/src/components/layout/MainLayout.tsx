@@ -10,6 +10,7 @@ import Sidebar from './Sidebar';
 import useAuthStore from '@store/authStore';
 import { isOnboardingComplete } from '@lib/onboarding';
 import OnboardingGuide from '@components/onboarding/OnboardingGuide';
+import ImpersonationBanner from './ImpersonationBanner';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -100,6 +101,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col">
+      {/* Support-mode banner (only while impersonating) */}
+      <ImpersonationBanner />
+
       {/* Header */}
       <Header onMenuClick={handleMenuClick} sidebarOpen={sidebarOpen} />
 

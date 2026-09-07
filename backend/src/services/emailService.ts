@@ -39,6 +39,10 @@ export interface EmailRequest {
   variables?: Record<string, any>;
   isHtml?: boolean;
   attachments?: EmailAttachment[];
+  /** Optional custom sender (e.g. a tenant school). Falls back to platform. */
+  sender?: { email: string; name: string };
+  /** Optional reply-to (e.g. the school's own email). */
+  replyTo?: { email: string; name?: string };
 }
 
 export interface EmailResponse {
@@ -71,6 +75,53 @@ class EmailService {
   }
 
   /**
+   * Build the sender + reply-to for a tenant-branded email.
+   *
+   * Deliverability rule: an email's "From" address must belong to a domain that
+   * is verified in Brevo. A school's own email usually isn't, so by default we:
+   *   - keep the verified platform address as the From EMAIL,
+   *   - use the SCHOOL'S NAME as the From display name (white-label look), and
+   *   - set Reply-To to the school's email so replies reach the school.
+   *
+   * If TENANT_SENDER_STRICT=true (the school has verified its domain in Brevo),
+   * we send fully from the school's own email address.
+   */
+  private senderFromBranding(branding: {
+    name: string;
+    contactEmail?: string;
+    isPlatform: boolean;
+    senderMode?: 'platform' | 'own';
+    senderVerified?: boolean;
+    fromAddress?: string;
+  }): {
+    sender: { email: string; name: string };
+    replyTo?: { email: string; name?: string };
+  } {
+    // Platform emails always use the platform sender.
+    if (branding.isPlatform || !branding.contactEmail) {
+      return { sender: { email: this.SENDER_EMAIL, name: branding.name || this.SENDER_NAME } };
+    }
+
+    // 'own' mode is only honoured once the setup team has verified the school's
+    // sender in the provider — otherwise the send would fail SPF/DKIM. This is
+    // the paid-setup switch: schools start on 'platform' and are upgraded to
+    // 'own' after verification.
+    if (branding.senderMode === 'own' && branding.senderVerified) {
+      const fromEmail = branding.fromAddress || branding.contactEmail;
+      return {
+        sender: { email: fromEmail, name: branding.name },
+        replyTo: { email: branding.contactEmail, name: branding.name },
+      };
+    }
+
+    // Default (deliverable): platform From email + school display name, reply to school.
+    return {
+      sender: { email: this.SENDER_EMAIL, name: branding.name },
+      replyTo: { email: branding.contactEmail, name: branding.name },
+    };
+  }
+
+  /**
    * Send email using Brevo API
    */
   async sendEmail(emailRequest: EmailRequest, retryCount: number = 0): Promise<EmailResponse> {
@@ -94,10 +145,16 @@ class EmailService {
       }
 
       const payload = {
-        sender: {
+        // Sender: use the per-request sender when provided (tenant school),
+        // otherwise the platform default. See resolveSender() for the
+        // deliverability rules (verified-domain vs. name-only + reply-to).
+        sender: emailRequest.sender ?? {
           email: this.SENDER_EMAIL,
           name: this.SENDER_NAME,
         },
+        // Reply-To lets recipients reply to the school directly even when the
+        // From address stays on the verified platform domain.
+        replyTo: emailRequest.replyTo,
         to: [
           {
             email: emailRequest.to,
@@ -455,6 +512,7 @@ class EmailService {
       <p style="color:#64748b;font-size:13px;">If you have any questions, reply to this email or reach us using the contact details below.</p>`;
 
     return this.sendEmail({
+      ...this.senderFromBranding(branding),
       to: toEmail,
       subject: `Detention Notice — ${branding.name}`,
       body: renderEmail({ branding, eyebrow: 'Discipline Notice', heading: 'Detention Scheduled', bodyHtml, preheader: `A detention has been scheduled for your child on ${this.fmtDate(detention.scheduled_date)}.` }),
@@ -488,6 +546,7 @@ class EmailService {
       ${emailButton('View Details', portalUrl)}`;
 
     return this.sendEmail({
+      ...this.senderFromBranding(branding),
       to: toEmail,
       subject: `Behaviour Notice — ${branding.name}`,
       body: renderEmail({ branding, eyebrow: 'Discipline Notice', heading: 'Behaviour Incident Recorded', bodyHtml, preheader: 'A behavioural incident involving your child has been recorded.' }),
@@ -538,6 +597,7 @@ class EmailService {
       <p style="color:#64748b;font-size:13px;">Please reach out if you would like to discuss any part of this report.</p>`;
 
     return this.sendEmail({
+      ...this.senderFromBranding(branding),
       to: toEmail,
       subject: `Conduct Report for ${studentName} — ${branding.name}`,
       body: renderEmail({ branding, eyebrow: 'Conduct Report', heading: 'Student Conduct Report', bodyHtml, preheader: `Conduct report for ${studentName} is ready.` }),
@@ -571,6 +631,7 @@ class EmailService {
       <p style="color:#64748b;font-size:13px;">If you have questions about this decision, please contact the school using the details below.</p>`;
 
     return this.sendEmail({
+      ...this.senderFromBranding(branding),
       to: toEmail,
       subject: `Appeal ${approved ? 'Approved' : 'Decision'} — ${branding.name}`,
       body: renderEmail({ branding, eyebrow: 'Appeal Outcome', heading: `Appeal ${approved ? 'Approved' : 'Decision'}`, bodyHtml, preheader: `Your discipline appeal has been ${decision}.` }),
@@ -599,6 +660,7 @@ class EmailService {
       <a href="${resetUrl}" style="color:${'#00d4aa'};word-break:break-all;">${resetUrl}</a></p>`;
 
     return this.sendEmail({
+      ...this.senderFromBranding(branding),
       to: toEmail,
       subject: 'Reset your WiSkul password',
       body: renderEmail({ branding, eyebrow: 'Account Security', heading: 'Password Reset Request', bodyHtml, preheader: 'Reset your WiSkul password — link valid for 1 hour.' }),
@@ -678,6 +740,7 @@ class EmailService {
       <p style="color:#64748b;font-size:13px;">For any questions about this decision, please contact us using the details below.</p>`;
 
     return this.sendEmail({
+      ...this.senderFromBranding(branding),
       to: toEmail,
       subject: `${isAccepted ? '🎉 ' : ''}Admission ${this.titleCase(decision)} — ${branding.name}`,
       body: renderEmail({ branding, eyebrow, heading, bodyHtml, preheader: `Admissions decision for ${data.studentName}.` }),
@@ -745,6 +808,7 @@ class EmailService {
     }
 
     return this.sendEmail({
+      ...this.senderFromBranding(branding),
       to: toEmail,
       subject: `Payment Receipt — ${this.fmtMoney(data.amount, currency)} to ${branding.name}`,
       body: renderEmail({ branding, eyebrow: 'Payment Receipt', heading: 'Payment Received — Thank You', bodyHtml, preheader: `Receipt for your ${this.fmtMoney(data.amount, currency)} payment.` }),
@@ -788,6 +852,7 @@ class EmailService {
       <p style="color:#64748b;font-size:13px;">If you weren't expecting this, please contact your school using the details below.</p>`;
 
     return this.sendEmail({
+      ...this.senderFromBranding(branding),
       to: toEmail,
       subject: `Your ${branding.name} account is ready`,
       body: renderEmail({ branding, eyebrow: 'Welcome', heading: `Welcome to ${branding.name}`, bodyHtml, preheader: `Your account at ${branding.name} is ready — sign in to get started.` }),
@@ -817,6 +882,7 @@ class EmailService {
       ${emailButton('Review Account Security', loginUrl)}`;
 
     return this.sendEmail({
+      ...this.senderFromBranding(branding),
       to: toEmail,
       subject: `Two-factor authentication ${enabled ? 'enabled' : 'disabled'}`,
       body: renderEmail({ branding, eyebrow: 'Account Security', heading: `2FA ${enabled ? 'Enabled' : 'Disabled'}`, bodyHtml, preheader: `Two-factor authentication was ${data.action} on your account.` }),
@@ -855,6 +921,7 @@ class EmailService {
       ${emailButton('View Report Card', portalUrl)}`;
 
     return this.sendEmail({
+      ...this.senderFromBranding(branding),
       to: toEmail,
       subject: `Report Card Available for ${data.studentName} — ${branding.name}`,
       body: renderEmail({ branding, eyebrow: 'Report Card', heading: 'Report Card Published', bodyHtml, preheader: `${data.studentName}'s report card is now available.` }),
@@ -902,6 +969,7 @@ class EmailService {
       <p style="color:#64748b;font-size:13px;">If you've already paid, please disregard this reminder. Thank you.</p>`;
 
     return this.sendEmail({
+      ...this.senderFromBranding(branding),
       to: toEmail,
       subject: `${data.overdue ? 'Overdue' : 'Fee'} Reminder — ${this.fmtMoney(data.amountDue, currency)} · ${branding.name}`,
       body: renderEmail({ branding, eyebrow: data.overdue ? 'Overdue Notice' : 'Fee Reminder', heading: data.overdue ? 'Payment Overdue' : 'Upcoming Fee Payment', bodyHtml, preheader: `${data.overdue ? 'Overdue' : 'Fee'} reminder: ${this.fmtMoney(data.amountDue, currency)} due.` }),
@@ -937,6 +1005,7 @@ class EmailService {
       <p style="color:#64748b;font-size:13px;">You're receiving this because you're a member of ${escapeHtml(branding.name)}.</p>`;
 
     return this.sendEmail({
+      ...this.senderFromBranding(branding),
       to: toEmail,
       subject: `${high ? '[Important] ' : ''}${data.title} — ${branding.name}`,
       body: renderEmail({

@@ -1,24 +1,28 @@
 /**
  * Super Admin Dashboard — Platform Owner
  * Route: /platform/dashboard
- * Full platform overview with tenant management, revenue, and system health
+ *
+ * Live platform overview: real tenant/user/student counts and the most recent
+ * schools, pulled from the platform API. No mock data — everything reflects the
+ * actual state of the platform.
  */
 
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2,
   Users,
-  DollarSign,
-  TrendingUp,
+  GraduationCap,
   ArrowUpRight,
   AlertTriangle,
   CreditCard,
   BarChart3,
-  Server,
-  Shield,
   ExternalLink,
   ChevronRight,
+  Loader2,
+  UserPlus,
+  Pause,
+  Clock,
 } from 'lucide-react';
 import useAuth from '@hooks/useAuth';
 import MainLayout from '@components/layout/MainLayout';
@@ -27,52 +31,7 @@ import { KPICard } from '@components/dashboard/KPICard';
 import { WelcomeHero } from '@components/dashboard/WelcomeHero';
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { Button } from '@components/ui/button';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface TenantSummary {
-  id: string;
-  name: string;
-  status: 'active' | 'suspended' | 'trial' | 'expired';
-  plan: string;
-  users: number;
-  students: number;
-  monthlyRevenue: number;
-  expiresAt?: string;
-}
-
-// ── Mock Data (replace with API calls) ────────────────────────────────────────
-
-const stats = {
-  totalTenants: 45,
-  activeTenants: 42,
-  totalUsers: 12540,
-  totalStudents: 48200,
-  monthlyRevenue: 25000,
-  annualRevenue: 285000,
-  newSignups: 8,
-  activeSubscriptions: 42,
-  expiringSubscriptions: 3,
-  storageUsed: 72,
-  uptime: 99.97,
-};
-
-const recentTenants: TenantSummary[] = [
-  { id: '1', name: 'Sierra Leone Grammar School', status: 'active', plan: 'Premium', users: 450, students: 3200, monthlyRevenue: 2500 },
-  { id: '2', name: 'Annie Walsh Memorial School', status: 'trial', plan: 'Trial', users: 120, students: 800, monthlyRevenue: 0, expiresAt: '2026-07-30' },
-  { id: '3', name: 'Model Primary School Bo', status: 'active', plan: 'Basic', users: 85, students: 450, monthlyRevenue: 800 },
-  { id: '4', name: "St. Edward's Secondary School", status: 'active', plan: 'Enterprise', users: 680, students: 5000, monthlyRevenue: 5000 },
-  { id: '5', name: 'Freetown Secondary School', status: 'suspended', plan: 'Premium', users: 320, students: 2100, monthlyRevenue: 0 },
-  { id: '6', name: 'Methodist Boys High School', status: 'active', plan: 'Premium', users: 290, students: 1800, monthlyRevenue: 2500 },
-];
-
-const alerts = [
-  { id: 1, type: 'warning', message: '3 subscriptions expiring within 7 days', action: '/platform/subscriptions' },
-  { id: 2, type: 'warning', message: '2 tenants exceeded 90% storage limit', action: '/platform/tenants' },
-  { id: 3, type: 'info', message: '1 new tenant awaiting onboarding approval', action: '/platform/tenants' },
-];
-
-// ── Helper ────────────────────────────────────────────────────────────────────
+import platformService, { PlatformTenant, PlatformStatistics } from '@services/platformService';
 
 function statusToVariant(status: string): 'active' | 'inactive' | 'pending' | 'suspended' {
   const map: Record<string, 'active' | 'inactive' | 'pending' | 'suspended'> = {
@@ -84,11 +43,54 @@ function statusToVariant(status: string): 'active' | 'inactive' | 'pending' | 's
   return map[status] || 'inactive';
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
-
 const SuperAdminDashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  const [stats, setStats] = useState<PlatformStatistics | null>(null);
+  const [tenants, setTenants] = useState<PlatformTenant[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoading(true);
+      const [statsRes, tenantsRes] = await Promise.all([
+        platformService.getStatistics().catch(() => ({ success: false, data: null as any })),
+        platformService.getTenants({ limit: 6, offset: 0 }).catch(() => ({ success: false, data: [] as any })),
+      ]);
+      if (!active) return;
+      if ((statsRes as any)?.data) setStats((statsRes as any).data);
+      // The endpoint returns { success, data: [...], total }. Be defensive about
+      // any extra nesting so the list always resolves to the tenant array.
+      const raw: any = tenantsRes as any;
+      const list = Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.data?.data)
+          ? raw.data.data
+          : Array.isArray(raw)
+            ? raw
+            : [];
+      setTenants(list);
+      setLoading(false);
+    })();
+    return () => { active = false; };
+  }, []);
+
+  // Derive live alerts from real counts.
+  const alerts = useMemo(() => {
+    const out: { id: string; type: 'warning' | 'info'; message: string; action: string }[] = [];
+    if (stats?.suspendedTenants) {
+      out.push({ id: 'susp', type: 'warning', message: `${stats.suspendedTenants} school${stats.suspendedTenants === 1 ? '' : 's'} currently suspended`, action: '/platform/tenants' });
+    }
+    if (stats?.trialTenants) {
+      out.push({ id: 'trial', type: 'info', message: `${stats.trialTenants} school${stats.trialTenants === 1 ? '' : 's'} on trial`, action: '/platform/subscriptions' });
+    }
+    if (stats?.newTenantsThisMonth) {
+      out.push({ id: 'new', type: 'info', message: `${stats.newTenantsThisMonth} new school${stats.newTenantsThisMonth === 1 ? '' : 's'} joined this month`, action: '/platform/tenants' });
+    }
+    return out;
+  }, [stats]);
 
   return (
     <MainLayout>
@@ -116,34 +118,34 @@ const SuperAdminDashboard: React.FC = () => {
           subtitle="Here's how the WiSkul platform is performing today."
         />
 
-        {/* ── KPI Row ──────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        {/* ── KPI Row (live) ───────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-8">
           <KPICard
             title="Total Schools"
-            value={stats.totalTenants}
-            subtitle={`${stats.activeTenants} active · ${stats.newSignups} new this month`}
+            value={loading ? '…' : (stats?.totalTenants ?? 0)}
+            subtitle={loading ? '' : `${stats?.activeTenants ?? 0} active${stats?.newTenantsThisMonth ? ` · ${stats.newTenantsThisMonth} new` : ''}`}
             icon={<div className="p-2.5 rounded-xl bg-blue-500 text-white shadow-sm"><Building2 size={20} /></div>}
             color="blue"
           />
           <KPICard
             title="Platform Users"
-            value={stats.totalUsers.toLocaleString()}
-            subtitle={`${stats.totalStudents.toLocaleString()} students total`}
+            value={loading ? '…' : (stats?.totalUsers ?? 0).toLocaleString()}
+            subtitle={loading ? '' : `across all schools`}
             icon={<div className="p-2.5 rounded-xl bg-purple-500 text-white shadow-sm"><Users size={20} /></div>}
             color="purple"
           />
           <KPICard
-            title="Monthly Revenue"
-            value={`Le ${stats.monthlyRevenue.toLocaleString()}`}
-            subtitle={`Annual: Le ${stats.annualRevenue.toLocaleString()}`}
-            icon={<div className="p-2.5 rounded-xl bg-emerald-500 text-white shadow-sm"><DollarSign size={20} /></div>}
+            title="Total Students"
+            value={loading ? '…' : (stats?.totalStudents ?? 0).toLocaleString()}
+            subtitle={loading ? '' : `enrolled platform-wide`}
+            icon={<div className="p-2.5 rounded-xl bg-emerald-500 text-white shadow-sm"><GraduationCap size={20} /></div>}
             color="green"
           />
           <KPICard
-            title="System Uptime"
-            value={`${stats.uptime}%`}
-            subtitle={`Storage: ${stats.storageUsed}% used`}
-            icon={<div className="p-2.5 rounded-xl bg-amber-500 text-white shadow-sm"><Server size={20} /></div>}
+            title="On Trial"
+            value={loading ? '…' : (stats?.trialTenants ?? 0)}
+            subtitle={loading ? '' : `${stats?.suspendedTenants ?? 0} suspended`}
+            icon={<div className="p-2.5 rounded-xl bg-amber-500 text-white shadow-sm"><Clock size={20} /></div>}
             color="amber"
           />
         </div>
@@ -152,54 +154,28 @@ const SuperAdminDashboard: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Quick Actions */}
           <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <button
+            <QuickAction
               onClick={() => navigate('/platform/tenants')}
-              className="group bg-white rounded-xl border border-gray-200 p-5 text-left hover:border-blue-300 hover:shadow-md transition-all"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2.5 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
-                  <Building2 size={20} />
-                </div>
-                <ArrowUpRight size={16} className="text-gray-400 group-hover:text-blue-500 transition-colors" />
-              </div>
-              <h3 className="font-semibold text-gray-900 text-sm">Tenant Management</h3>
-              <p className="text-xs text-gray-500 mt-1">Create & manage schools</p>
-            </button>
-
-            <button
+              icon={<Building2 size={20} />}
+              tint="blue"
+              title="Tenant Management"
+              desc="Create & manage schools"
+            />
+            <QuickAction
               onClick={() => navigate('/platform/subscriptions')}
-              className="group bg-white rounded-xl border border-gray-200 p-5 text-left hover:border-emerald-300 hover:shadow-md transition-all"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100 transition-colors">
-                  <CreditCard size={20} />
-                </div>
-                <div className="flex items-center gap-1">
-                  {stats.expiringSubscriptions > 0 && (
-                    <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                      {stats.expiringSubscriptions}
-                    </span>
-                  )}
-                  <ArrowUpRight size={16} className="text-gray-400 group-hover:text-emerald-500 transition-colors" />
-                </div>
-              </div>
-              <h3 className="font-semibold text-gray-900 text-sm">Subscriptions</h3>
-              <p className="text-xs text-gray-500 mt-1">Plans, billing & renewals</p>
-            </button>
-
-            <button
+              icon={<CreditCard size={20} />}
+              tint="emerald"
+              title="Subscriptions"
+              desc="Plans, billing & renewals"
+              badge={stats?.trialTenants || undefined}
+            />
+            <QuickAction
               onClick={() => navigate('/platform/analytics')}
-              className="group bg-white rounded-xl border border-gray-200 p-5 text-left hover:border-purple-300 hover:shadow-md transition-all"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2.5 rounded-lg bg-purple-50 text-purple-600 group-hover:bg-purple-100 transition-colors">
-                  <TrendingUp size={20} />
-                </div>
-                <ArrowUpRight size={16} className="text-gray-400 group-hover:text-purple-500 transition-colors" />
-              </div>
-              <h3 className="font-semibold text-gray-900 text-sm">Platform Analytics</h3>
-              <p className="text-xs text-gray-500 mt-1">Revenue & usage metrics</p>
-            </button>
+              icon={<BarChart3 size={20} />}
+              tint="purple"
+              title="Platform Analytics"
+              desc="Usage & growth metrics"
+            />
           </div>
 
           {/* Alerts Panel */}
@@ -209,32 +185,40 @@ const SuperAdminDashboard: React.FC = () => {
                 <AlertTriangle size={15} className="text-amber-500" />
                 Alerts
               </h3>
-              <span className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                {alerts.length}
-              </span>
+              {alerts.length > 0 && (
+                <span className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                  {alerts.length}
+                </span>
+              )}
             </div>
             <div className="divide-y divide-gray-100">
-              {alerts.map(alert => (
-                <button
-                  key={alert.id}
-                  onClick={() => navigate(alert.action)}
-                  className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-gray-50 transition-colors"
-                >
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${alert.type === 'warning' ? 'bg-amber-400' : 'bg-blue-400'}`} />
-                  <span className="text-sm text-gray-700 flex-1">{alert.message}</span>
-                  <ChevronRight size={14} className="text-gray-400" />
-                </button>
-              ))}
+              {loading ? (
+                <div className="py-8 flex justify-center text-gray-400"><Loader2 className="animate-spin" size={20} /></div>
+              ) : alerts.length === 0 ? (
+                <p className="px-5 py-6 text-sm text-gray-400 text-center">All clear — nothing needs your attention.</p>
+              ) : (
+                alerts.map((alert) => (
+                  <button
+                    key={alert.id}
+                    onClick={() => navigate(alert.action)}
+                    className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-gray-50 transition-colors"
+                  >
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${alert.type === 'warning' ? 'bg-amber-400' : 'bg-blue-400'}`} />
+                    <span className="text-sm text-gray-700 flex-1">{alert.message}</span>
+                    <ChevronRight size={14} className="text-gray-400" />
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>
 
-        {/* ── Tenants Table ────────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {/* ── Recent Schools Table (live) ──────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-gray-900">Schools Overview</h2>
-              <p className="text-xs text-gray-500 mt-0.5">{stats.totalTenants} registered schools</p>
+              <p className="text-xs text-gray-500 mt-0.5">{stats?.totalTenants ?? 0} registered schools</p>
             </div>
             <Button variant="outline" size="sm" onClick={() => navigate('/platform/tenants')}>
               View All
@@ -244,96 +228,118 @@ const SuperAdminDashboard: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">School</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Plan</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Users</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Students</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">MRR</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                <tr className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6]">
+                  <th className="px-6 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">School</th>
+                  <th className="px-6 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3.5 text-left text-xs font-bold text-white uppercase tracking-wider">Contact</th>
+                  <th className="px-6 py-3.5 text-right text-xs font-bold text-white uppercase tracking-wider">Users</th>
+                  <th className="px-6 py-3.5 text-right text-xs font-bold text-white uppercase tracking-wider">Students</th>
+                  <th className="px-6 py-3.5 text-center text-xs font-bold text-white uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {recentTenants.map(tenant => (
-                  <tr key={tenant.id} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                          <Building2 size={16} className="text-gray-500" />
+                {loading ? (
+                  <tr><td colSpan={6} className="py-16 text-center text-gray-400"><Loader2 className="animate-spin inline" size={22} /></td></tr>
+                ) : tenants.length === 0 ? (
+                  <tr><td colSpan={6} className="py-16 text-center text-gray-400">No schools registered yet.</td></tr>
+                ) : (
+                  tenants.map((tenant, i) => (
+                    <tr key={tenant.id} className={`transition-colors hover:bg-sky-100 ${i % 2 === 1 ? 'bg-sky-50' : 'bg-white'}`}>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 text-blue-600">
+                            <Building2 size={16} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-900 truncate">{tenant.name}</p>
+                            <p className="text-[11px] text-gray-400 font-mono truncate">{tenant.slug}</p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900 truncate">{tenant.name}</p>
-                          {tenant.expiresAt && (
-                            <p className="text-[11px] text-gray-400">Expires {tenant.expiresAt}</p>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <StatusBadge status={statusToVariant(tenant.status)} showDot />
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-xs font-semibold text-gray-700 bg-gray-100 px-2.5 py-1 rounded-full">
-                        {tenant.plan}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right font-medium text-gray-700">{tenant.users}</td>
-                    <td className="px-6 py-4 text-right font-medium text-gray-700">{tenant.students.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right">
-                      <span className="font-semibold text-gray-900">
-                        {tenant.monthlyRevenue > 0 ? `Le ${tenant.monthlyRevenue.toLocaleString()}` : '—'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => navigate(`/platform/tenants/${tenant.id}`)}
-                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                      >
-                        Manage
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-6 py-4">
+                        <StatusBadge status={statusToVariant(tenant.status)} showDot />
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-xs text-gray-600 truncate">{tenant.contact_email || '—'}</span>
+                      </td>
+                      <td className="px-6 py-4 text-right font-medium text-gray-700">{tenant.stats?.usersCount ?? '—'}</td>
+                      <td className="px-6 py-4 text-right font-medium text-gray-700">{tenant.stats?.studentsCount ?? '—'}</td>
+                      <td className="px-6 py-4 text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(`/platform/tenants/${tenant.id}`)}
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        >
+                          Manage
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* ── Platform Health Footer ───────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
-            <div className="p-2 rounded-lg bg-green-50 text-green-600">
-              <Shield size={18} />
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 font-medium">Security Status</p>
-              <p className="text-sm font-bold text-green-700">All Systems Secure</p>
-            </div>
+        {/* ── Platform composition footer (live) ───────────────────────── */}
+        {!loading && stats && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
+            <CompositionCard icon={<Building2 size={18} />} tint="blue" label="Active Schools" value={stats.activeTenants} />
+            <CompositionCard icon={<Pause size={18} />} tint="amber" label="Suspended" value={stats.suspendedTenants} />
+            <CompositionCard icon={<UserPlus size={18} />} tint="emerald" label="New This Month" value={stats.newTenantsThisMonth ?? 0} />
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
-            <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
-              <Server size={18} />
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 font-medium">API Response</p>
-              <p className="text-sm font-bold text-gray-900">142ms avg</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
-            <div className="p-2 rounded-lg bg-purple-50 text-purple-600">
-              <BarChart3 size={18} />
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 font-medium">Active Sessions</p>
-              <p className="text-sm font-bold text-gray-900">1,247 right now</p>
-            </div>
-          </div>
-        </div>
+        )}
       </PageShell>
     </MainLayout>
+  );
+};
+
+// ── Sub-components ──────────────────────────────────────────────────────────
+
+const TINTS: Record<string, { bg: string; text: string; hover: string }> = {
+  blue: { bg: 'bg-blue-50', text: 'text-blue-600', hover: 'hover:border-blue-300' },
+  emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', hover: 'hover:border-emerald-300' },
+  purple: { bg: 'bg-purple-50', text: 'text-purple-600', hover: 'hover:border-purple-300' },
+  amber: { bg: 'bg-amber-50', text: 'text-amber-600', hover: 'hover:border-amber-300' },
+};
+
+const QuickAction: React.FC<{
+  onClick: () => void;
+  icon: React.ReactNode;
+  tint: keyof typeof TINTS;
+  title: string;
+  desc: string;
+  badge?: number;
+}> = ({ onClick, icon, tint, title, desc, badge }) => {
+  const t = TINTS[tint];
+  return (
+    <button onClick={onClick} className={`group bg-white rounded-xl border border-gray-200 p-5 text-left hover:shadow-md transition-all ${t.hover}`}>
+      <div className="flex items-center justify-between mb-3">
+        <div className={`p-2.5 rounded-lg ${t.bg} ${t.text}`}>{icon}</div>
+        <div className="flex items-center gap-1">
+          {badge ? (
+            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{badge}</span>
+          ) : null}
+          <ArrowUpRight size={16} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
+        </div>
+      </div>
+      <h3 className="font-semibold text-gray-900 text-sm">{title}</h3>
+      <p className="text-xs text-gray-500 mt-1">{desc}</p>
+    </button>
+  );
+};
+
+const CompositionCard: React.FC<{ icon: React.ReactNode; tint: keyof typeof TINTS; label: string; value: number }> = ({ icon, tint, label, value }) => {
+  const t = TINTS[tint];
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+      <div className={`p-2.5 rounded-lg ${t.bg} ${t.text}`}>{icon}</div>
+      <div>
+        <p className="text-xs text-gray-500 font-medium">{label}</p>
+        <p className="text-xl font-extrabold text-gray-900">{value}</p>
+      </div>
+    </div>
   );
 };
 

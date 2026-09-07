@@ -31,6 +31,16 @@ export interface EmailBranding {
   appUrl: string;
   /** True for platform-level (WiSkul) emails. */
   isPlatform: boolean;
+  /**
+   * How this tenant's transactional emails are sent:
+   *   'platform' — from the platform's verified address (school name + reply-to). Default.
+   *   'own'      — fully from the school's own verified email address.
+   */
+  senderMode?: 'platform' | 'own';
+  /** Whether the setup team has verified the school's own sender in the provider. */
+  senderVerified?: boolean;
+  /** Optional dedicated From address for 'own' mode (falls back to contactEmail). */
+  fromAddress?: string;
 }
 
 /** Trim trailing slash so we can safely concatenate paths. */
@@ -76,6 +86,10 @@ export async function resolveTenantBranding(tenantId: string): Promise<EmailBran
     const website = school?.website || undefined;
     const logoUrl = school?.logo_url || tenant?.logo_url || undefined;
 
+    const senderMode: 'platform' | 'own' = school?.email_sender_mode === 'own' ? 'own' : 'platform';
+    const senderVerified = !!school?.email_sender_verified;
+    const fromAddress = school?.email_from_address || undefined;
+
     return {
       name,
       contactEmail,
@@ -85,6 +99,9 @@ export async function resolveTenantBranding(tenantId: string): Promise<EmailBran
       logoUrl,
       appUrl: appBaseUrl(),
       isPlatform: false,
+      senderMode,
+      senderVerified,
+      fromAddress,
     };
   } catch (err: any) {
     logger.warn(`resolveTenantBranding failed for tenant ${tenantId}: ${err?.message}`);

@@ -219,6 +219,7 @@ export const AdminDashboard: React.FC = () => {
                     apiResponseTime={dashboard.systemHealth.apiResponseTime}
                     storageUsage={dashboard.systemHealth.storageUsage}
                     activeUsers={dashboard.systemHealth.activeUsers}
+                    isPlatformAdmin={user?.role === 'super_admin'}
                   />
                 )}
               </RoleGuard>

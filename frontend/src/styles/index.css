@@ -207,6 +207,11 @@ a.button:disabled {
   @apply px-6 py-4 border-t border-gray-200 bg-gray-50;
 }
 
+/* Reusable form input used by platform/admin management screens. */
+.inp {
+  @apply w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm bg-white text-gray-800 outline-none transition-all focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#1d4ed8]/20 disabled:bg-gray-50 disabled:text-gray-400;
+}
+
 /* Table styles — intentionally minimal.
    Backgrounds, borders, padding and hover are owned by the table components
    (DataTable, timetable grid, etc.). Global element rules previously forced
