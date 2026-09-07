@@ -6,8 +6,15 @@ import { Phase15GradingConfigService } from '../services/phase15GradingConfigSer
 import { SubscriptionService } from '../services/subscriptionService';
 import { AppError } from '../middleware/errorHandler';
 import { db } from '../utils/database';
+import { encryptSecret } from '../utils/encryption';
 
 const router = Router();
+
+/** Mask a secret token for display (never return the plaintext). */
+function maskToken(token?: string | null): string | null {
+  if (!token) return null;
+  return '••••••••' + token.slice(-4);
+}
 const schoolConfigService = new Phase15SchoolConfigService(db);
 const gradingConfigService = new Phase15GradingConfigService(db);
 
@@ -336,6 +343,87 @@ router.get('/subscription/billing', authenticate, authorize(UserRole.PRINCIPAL, 
     const tenantId = getTenantId(req);
     const history = await SubscriptionService.getBillingHistory(tenantId);
     res.json({ success: true, data: history });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================================
+// STORAGE (UploadThing) ENDPOINTS — tenant self-service, mirrors email sender
+// ============================================================================
+
+/**
+ * GET /api/v1/school-config/storage
+ * Read the tenant's file-storage (UploadThing) configuration. The stored token
+ * is never returned in plaintext — only a masked hint and a configured flag.
+ */
+router.get('/storage', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = getTenantId(req);
+    const school = await db('schools').where({ tenant_id: tenantId }).first();
+    res.json({
+      success: true,
+      data: {
+        provider: school?.storage_provider || 'platform',
+        configured: !!school?.storage_configured,
+        appId: school?.storage_uploadthing_app_id || null,
+        tokenMasked: maskToken(school?.storage_uploadthing_token),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/school-config/storage
+ * Configure the tenant's file-storage provider.
+ *   { provider: 'platform' | 'own', uploadthingToken?, appId? }
+ * In 'own' mode the token is encrypted at rest and the tenant is marked configured.
+ */
+router.post('/storage', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { provider, uploadthingToken, appId } = req.body as {
+      provider?: string; uploadthingToken?: string; appId?: string;
+    };
+    if (provider !== 'platform' && provider !== 'own') {
+      throw new AppError("provider must be 'platform' or 'own'", 400, 'VALIDATION_ERROR');
+    }
+    const school = await db('schools').where({ tenant_id: tenantId }).first();
+    if (!school) throw new AppError('School profile not found for this tenant', 404, 'NOT_FOUND');
+
+    const patch: any = { storage_provider: provider, updated_at: new Date() };
+
+    if (provider === 'own') {
+      // Keep the existing token if the caller didn't supply a new one.
+      const hasNewToken = uploadthingToken && uploadthingToken.trim().length > 0;
+      if (hasNewToken) {
+        patch.storage_uploadthing_token = encryptSecret(uploadthingToken!.trim());
+      } else if (!school.storage_uploadthing_token) {
+        throw new AppError('An UploadThing token is required to enable own storage', 400, 'VALIDATION_ERROR');
+      }
+      if (appId !== undefined) patch.storage_uploadthing_app_id = appId || null;
+      patch.storage_configured = true;
+    } else {
+      // Platform mode — keep any saved token but mark as not using own storage.
+      patch.storage_configured = false;
+    }
+
+    await db('schools').where({ tenant_id: tenantId }).update(patch);
+    const updated = await db('schools').where({ tenant_id: tenantId }).first();
+    res.json({
+      success: true,
+      message: provider === 'own'
+        ? 'File uploads now use your school\'s own UploadThing account.'
+        : 'File uploads now use the platform storage account.',
+      data: {
+        provider: updated.storage_provider,
+        configured: !!updated.storage_configured,
+        appId: updated.storage_uploadthing_app_id || null,
+        tokenMasked: maskToken(updated.storage_uploadthing_token),
+      },
+    });
   } catch (error) {
     next(error);
   }

@@ -24,6 +24,7 @@ import { Phase13AdmissionsDashboard } from '@pages/Phase13AdmissionsDashboard';
 import SuperAdminDashboard from '@pages/SuperAdminDashboard';
 import GuidePage from '@pages/GuidePage';
 import AnnouncementsPage from '@pages/communication/AnnouncementsPage';
+import TenantDetailPage from '@pages/TenantDetailPage';
 import { PlatformTenantsPage } from '@pages/PlatformTenantsPage';
 import { PlatformSubscriptionsPage } from '@pages/PlatformSubscriptionsPage';
 import { PlatformAnalyticsPage } from '@pages/PlatformAnalyticsPage';
@@ -356,7 +357,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'platform/tenants/:tenantId',
-          element: <P requiredRoles={['super_admin']}><PlatformTenantsPage /></P>,
+          element: <P requiredRoles={['super_admin']}><TenantDetailPage /></P>,
         },
         {
           path: 'platform/subscriptions',

@@ -9,12 +9,20 @@ import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/authMiddleware';
 import { TenantService } from '../services/tenantService';
 import { SubscriptionService } from '../services/subscriptionService';
+import { TenantUserService } from '../services/tenantUserService';
+import { ImpersonationService } from '../services/impersonationService';
+import { PlatformAuditService } from '../services/platformAuditService';
 import { AppError } from '../middleware/errorHandler';
 import { UserRole } from '../types/auth';
 import { db } from '../utils/database';
 import eventCategoryService from '../services/eventCategoryService';
 
 const router = Router();
+
+/** Small helper: super admin id + request meta for audit calls. */
+function auditMeta(req: any) {
+  return { actorUserId: req.auth!.userId, ip: req.ip, userAgent: req.get('user-agent') };
+}
 
 /**
  * @route   GET /api/platform/statistics
@@ -62,7 +70,8 @@ router.get('/tenants/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async 
   try {
     const { id } = req.params;
     const tenant = await TenantService.getTenantById(id);
-    res.json({ success: true, data: tenant });
+    const usage = await SubscriptionService.getUsage(id).catch(() => null);
+    res.json({ success: true, data: { ...tenant, usage } });
   } catch (error) {
     next(error);
   }
@@ -157,6 +166,7 @@ router.post('/tenants/:id/activate', authenticate, authorize(UserRole.SUPER_ADMI
   try {
     const { id } = req.params;
     const tenant = await TenantService.activateTenant(id, req.auth!.userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.activate' });
     res.json({ success: true, data: tenant, message: 'Tenant activated successfully' });
   } catch (error) {
     next(error);
@@ -178,6 +188,7 @@ router.post('/tenants/:id/suspend', authenticate, authorize(UserRole.SUPER_ADMIN
     }
 
     const tenant = await TenantService.suspendTenant(id, reason, req.auth!.userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.suspend', changes: { reason } });
     res.json({ success: true, data: tenant, message: 'Tenant suspended successfully' });
   } catch (error) {
     next(error);
@@ -193,6 +204,7 @@ router.delete('/tenants/:id', authenticate, authorize(UserRole.SUPER_ADMIN), asy
   try {
     const { id } = req.params;
     const result = await TenantService.deleteTenant(id, req.auth!.userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.delete' });
     res.json({ success: true, ...result });
   } catch (error) {
     next(error);
@@ -215,7 +227,302 @@ router.post('/tenants/:id/subscription', authenticate, authorize(UserRole.SUPER_
     }
 
     const updated = await SubscriptionService.changePlan(id, plan_type, billing_cycle, userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.change', changes: { plan_type, billing_cycle } });
     res.json({ success: true, message: `Tenant subscription updated to ${plan_type.toUpperCase()}`, data: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   GET /api/platform/tenants/:id/email-sender
+ * @desc    Read a tenant's transactional email sender config
+ * @access  Super Admin only
+ */
+router.get('/tenants/:id/email-sender', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const school = await db('schools').where({ tenant_id: req.params.id }).first();
+    res.json({
+      success: true,
+      data: {
+        mode: school?.email_sender_mode || 'platform',
+        verified: !!school?.email_sender_verified,
+        fromAddress: school?.email_from_address || null,
+        contactEmail: school?.email || null,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/platform/tenants/:id/email-sender
+ * @desc    Switch a tenant's email sender mode. Setup team uses this AFTER
+ *          verifying the school's sender/domain in the email provider (Brevo).
+ * @access  Super Admin only
+ * @body    { mode: 'platform' | 'own', fromAddress?: string }
+ */
+router.post('/tenants/:id/email-sender', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { mode, fromAddress } = req.body as { mode?: string; fromAddress?: string };
+    if (mode !== 'platform' && mode !== 'own') {
+      throw new AppError("mode must be 'platform' or 'own'", 400, 'VALIDATION_ERROR');
+    }
+    const school = await db('schools').where({ tenant_id: id }).first();
+    if (!school) throw new AppError('School profile not found for this tenant', 404, 'NOT_FOUND');
+
+    const patch: any = {
+      email_sender_mode: mode,
+      email_sender_verified: mode === 'own',
+      updated_at: new Date(),
+    };
+    if (mode === 'own') {
+      patch.email_from_address = fromAddress || school.email || null;
+    } else {
+      patch.email_from_address = null;
+    }
+
+    await db('schools').where({ tenant_id: id }).update(patch);
+    const updated = await db('schools').where({ tenant_id: id }).first();
+    res.json({
+      success: true,
+      message: mode === 'own'
+        ? 'Tenant now sends from its own verified email address.'
+        : 'Tenant now sends via the platform address (school name + reply-to).',
+      data: {
+        mode: updated.email_sender_mode,
+        verified: !!updated.email_sender_verified,
+        fromAddress: updated.email_from_address || null,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/platform/tenants/:id/restore
+ * @desc    Restore a soft-deleted (archived) tenant to active
+ * @access  Super Admin only
+ */
+router.post('/tenants/:id/restore', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const tenant = await TenantService.restoreTenant(id, req.auth!.userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.restore' });
+    res.json({ success: true, data: tenant, message: 'Tenant restored successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   PUT /api/platform/tenants/:id/school-profile
+ * @desc    Update the tenant's school profile / branding (schools table)
+ * @access  Super Admin only
+ */
+router.put('/tenants/:id/school-profile', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const {
+      shortName, logoUrl, principalName, principalEmail, website, city, state,
+      country, timezone, languagePreference,
+    } = req.body;
+
+    const school = await db('schools').where({ tenant_id: id }).first();
+    if (!school) throw new AppError('School profile not found for this tenant', 404, 'NOT_FOUND');
+
+    const patch: any = { updated_at: new Date() };
+    if (shortName !== undefined) patch.short_name = shortName;
+    if (logoUrl !== undefined) patch.logo_url = logoUrl;
+    if (principalName !== undefined) patch.principal_name = principalName;
+    if (principalEmail !== undefined) patch.principal_email = principalEmail;
+    if (website !== undefined) patch.website = website;
+    if (city !== undefined) patch.city = city;
+    if (state !== undefined) patch.state = state;
+    if (country !== undefined) patch.country = country;
+    if (timezone !== undefined) patch.timezone = timezone;
+    if (languagePreference !== undefined) patch.language_preference = languagePreference;
+
+    await db('schools').where({ tenant_id: id }).update(patch);
+    const updated = await db('schools').where({ tenant_id: id }).first();
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.school_profile.update' });
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   GET /api/platform/tenants/:id/school-profile
+ * @desc    Read the tenant's school profile / branding
+ * @access  Super Admin only
+ */
+router.get('/tenants/:id/school-profile', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const school = await db('schools').where({ tenant_id: req.params.id }).first();
+    res.json({ success: true, data: school || null });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── Billing ───────────────────────────────────────────────────────────────
+
+/**
+ * @route   GET /api/platform/tenants/:id/billing
+ * @desc    Billing history + active subscription for a tenant
+ * @access  Super Admin only
+ */
+router.get('/tenants/:id/billing', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [history, subscription] = await Promise.all([
+      SubscriptionService.getBillingHistory(id),
+      SubscriptionService.getActiveSubscription(id).catch(() => null),
+    ]);
+    res.json({ success: true, data: { history, subscription } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/platform/tenants/:id/subscription/renew
+ * @access  Super Admin only
+ */
+router.post('/tenants/:id/subscription/renew', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { billing_cycle } = req.body;
+    if (billing_cycle !== 'monthly' && billing_cycle !== 'yearly') {
+      throw new AppError("billing_cycle must be 'monthly' or 'yearly'", 400, 'VALIDATION_ERROR');
+    }
+    const updated = await SubscriptionService.renewSubscription(id, billing_cycle, req.auth!.userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.renew', changes: { billing_cycle } });
+    res.json({ success: true, data: updated, message: 'Subscription renewed' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/platform/tenants/:id/subscription/extend
+ * @access  Super Admin only
+ */
+router.post('/tenants/:id/subscription/extend', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const days = Number(req.body.days);
+    const updated = await SubscriptionService.extendSubscription(id, days, req.auth!.userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.extend', changes: { days } });
+    res.json({ success: true, data: updated, message: `Subscription extended by ${days} days` });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/platform/tenants/:id/subscription/expire
+ * @access  Super Admin only
+ */
+router.post('/tenants/:id/subscription/expire', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const updated = await SubscriptionService.expireSubscription(id, req.auth!.userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.expire' });
+    res.json({ success: true, data: updated, message: 'Subscription expired' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── Tenant users ────────────────────────────────────────────────────────────
+
+router.get('/tenants/:id/users', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const users = await TenantUserService.listUsers(req.params.id, {
+      search: req.query.search as string,
+      role: req.query.role as string,
+      status: req.query.status as string,
+    });
+    res.json({ success: true, data: users });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/tenants/:id/users/:userId/reset-password', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id, userId } = req.params;
+    const result = await TenantUserService.resetPassword(id, userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'user.reset_password', entityId: userId });
+    res.json({ success: true, data: result, message: 'Temporary password generated' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/tenants/:id/users/:userId/status', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id, userId } = req.params;
+    await TenantUserService.setStatus(id, userId, req.body.status);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'user.set_status', entityId: userId, changes: { status: req.body.status } });
+    res.json({ success: true, message: 'User status updated' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/tenants/:id/users/:userId/unlock', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id, userId } = req.params;
+    await TenantUserService.unlock(id, userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'user.unlock', entityId: userId });
+    res.json({ success: true, message: 'User unlocked' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/tenants/:id/users/:userId/disable-2fa', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id, userId } = req.params;
+    await TenantUserService.disableTwoFactor(id, userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'user.disable_2fa', entityId: userId });
+    res.json({ success: true, message: 'Two-factor authentication disabled' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── Impersonation ─────────────────────────────────────────────────────────
+
+router.post('/tenants/:id/impersonate', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body || {};
+    const result = await ImpersonationService.start(id, req.auth!.userId, userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.impersonate', entityId: result.user.id });
+    res.json({ success: true, data: result, message: `Now viewing ${result.user.schoolName} as support` });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── Audit ───────────────────────────────────────────────────────────────────
+
+router.get('/audit', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const rows = await PlatformAuditService.list({
+      tenantId: req.query.tenantId as string,
+      action: req.query.action as string,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
+      offset: req.query.offset ? parseInt(req.query.offset as string, 10) : undefined,
+    });
+    res.json({ success: true, data: rows });
   } catch (error) {
     next(error);
   }

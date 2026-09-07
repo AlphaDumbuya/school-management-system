@@ -212,29 +212,31 @@ export class SubscriptionService {
         })
         .returning('*');
 
-      // Update tenant subscription reference and limits
+      // Update tenant subscription reference and limits. Changing/renewing a
+      // plan also restores a tenant that was expired/suspended back to active.
       await db('tenants')
         .where({ id: tenantId })
         .update({
           subscription_id: newSub.id,
           max_users: limits.max_users,
           max_storage_gb: limits.max_storage_gb,
+          status: 'active',
           updated_at: db.fn.now(),
         });
 
-      // Generate invoice record in billing_history
+      // Generate invoice record in billing_history (currency: SLE — Leone)
       await db('billing_history').insert({
         tenant_id: tenantId,
         subscription_id: newSub.id,
         amount: price,
-        currency: 'USD',
+        currency: 'SLE',
         payment_method: 'card',
         transaction_id: 'sub_' + uuidv4().substring(0, 12),
         status: 'paid',
         billing_date: startDate,
         due_date: startDate,
         paid_date: startDate,
-        notes: `Simulated subscription upgrade to ${newPlanType.toUpperCase()} (${billingCycle})`,
+        notes: `Subscription set to ${newPlanType.toUpperCase()} (${billingCycle})`,
       });
 
       logger.info(`Tenant ${tenantId} subscription updated to ${newPlanType} by ${userId}`);
@@ -262,6 +264,135 @@ export class SubscriptionService {
     } catch (error) {
       logger.error(`Error fetching billing history: ${error}`);
       throw new AppError('Failed to fetch billing history', 500, 'DATABASE_ERROR');
+    }
+  }
+
+  /**
+   * Renew the active subscription: extend the end date by one billing cycle and
+   * record a paid billing entry. Restores the tenant to active.
+   */
+  static async renewSubscription(
+    tenantId: string,
+    billingCycle: 'monthly' | 'yearly',
+    userId: string
+  ): Promise<ActiveSubscription> {
+    try {
+      const sub = await this.getActiveSubscription(tenantId);
+      const limits = PLAN_LIMITS[sub.plan_type];
+      const base = sub.end_date && new Date(sub.end_date) > new Date() ? new Date(sub.end_date) : new Date();
+      const newEnd = new Date(base);
+      if (billingCycle === 'monthly') newEnd.setMonth(newEnd.getMonth() + 1);
+      else newEnd.setFullYear(newEnd.getFullYear() + 1);
+
+      const price = billingCycle === 'monthly' ? limits.monthly_price : limits.monthly_price * 10;
+
+      const [updated] = await db('subscriptions')
+        .where({ id: sub.id })
+        .update({ status: 'active', end_date: newEnd, updated_at: db.fn.now() })
+        .returning('*');
+
+      await db('tenants').where({ id: tenantId }).update({ status: 'active', updated_at: db.fn.now() });
+
+      await db('billing_history').insert({
+        tenant_id: tenantId,
+        subscription_id: sub.id,
+        amount: price,
+        currency: 'SLE',
+        payment_method: 'card',
+        transaction_id: 'ren_' + uuidv4().substring(0, 12),
+        status: 'paid',
+        billing_date: new Date(),
+        due_date: new Date(),
+        paid_date: new Date(),
+        notes: `Renewal of ${sub.plan_type.toUpperCase()} (${billingCycle})`,
+      });
+
+      logger.info(`Tenant ${tenantId} subscription renewed by ${userId}`);
+      return { ...updated, features: typeof updated.features === 'string' ? JSON.parse(updated.features) : updated.features };
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      logger.error(`Error renewing subscription: ${error}`);
+      throw new AppError('Failed to renew subscription', 500, 'DATABASE_ERROR');
+    }
+  }
+
+  /**
+   * Manually extend the current subscription end date by a number of days
+   * (a grace period). Keeps the tenant active.
+   */
+  static async extendSubscription(tenantId: string, days: number, userId: string): Promise<ActiveSubscription> {
+    try {
+      if (!Number.isFinite(days) || days <= 0) {
+        throw new AppError('Days must be a positive number', 400, 'VALIDATION_ERROR');
+      }
+      const sub = await this.getActiveSubscription(tenantId);
+      const base = sub.end_date && new Date(sub.end_date) > new Date() ? new Date(sub.end_date) : new Date();
+      const newEnd = new Date(base);
+      newEnd.setDate(newEnd.getDate() + Math.floor(days));
+
+      const [updated] = await db('subscriptions')
+        .where({ id: sub.id })
+        .update({ status: 'active', end_date: newEnd, updated_at: db.fn.now() })
+        .returning('*');
+
+      await db('tenants').where({ id: tenantId }).update({ status: 'active', updated_at: db.fn.now() });
+
+      logger.info(`Tenant ${tenantId} subscription extended by ${days} days by ${userId}`);
+      return { ...updated, features: typeof updated.features === 'string' ? JSON.parse(updated.features) : updated.features };
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      logger.error(`Error extending subscription: ${error}`);
+      throw new AppError('Failed to extend subscription', 500, 'DATABASE_ERROR');
+    }
+  }
+
+  /**
+   * Force-expire the current subscription (e.g. non-payment). Flips the tenant
+   * status to expired so feature/limit enforcement blocks access.
+   */
+  static async expireSubscription(tenantId: string, userId: string): Promise<ActiveSubscription> {
+    try {
+      const sub = await this.getActiveSubscription(tenantId);
+      const [updated] = await db('subscriptions')
+        .where({ id: sub.id })
+        .update({ status: 'expired', end_date: new Date(), updated_at: db.fn.now() })
+        .returning('*');
+
+      await db('tenants').where({ id: tenantId }).update({ status: 'expired', updated_at: db.fn.now() });
+
+      logger.info(`Tenant ${tenantId} subscription force-expired by ${userId}`);
+      return { ...updated, features: typeof updated.features === 'string' ? JSON.parse(updated.features) : updated.features };
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      logger.error(`Error expiring subscription: ${error}`);
+      throw new AppError('Failed to expire subscription', 500, 'DATABASE_ERROR');
+    }
+  }
+
+  /**
+   * Usage snapshot vs plan limits for the platform console.
+   */
+  static async getUsage(tenantId: string): Promise<{
+    students: { current: number; max: number };
+    staff: { current: number; max: number };
+    users: { current: number; max: number };
+  }> {
+    try {
+      const [students, staff] = await Promise.all([
+        this.checkLimit(tenantId, 'students'),
+        this.checkLimit(tenantId, 'staff'),
+      ]);
+      const [{ count }] = await db('users').where({ tenant_id: tenantId }).count('* as count');
+      const sub = await this.getActiveSubscription(tenantId);
+      return {
+        students: { current: students.current, max: students.max },
+        staff: { current: staff.current, max: staff.max },
+        users: { current: parseInt(count as string, 10) || 0, max: sub.max_users },
+      };
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      logger.error(`Error getting usage: ${error}`);
+      throw new AppError('Failed to get usage', 500, 'DATABASE_ERROR');
     }
   }
 

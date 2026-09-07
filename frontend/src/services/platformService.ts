@@ -31,7 +31,8 @@ export interface PlatformStatistics {
   trialTenants: number;
   totalUsers: number;
   totalStudents: number;
-  totalStaff: number;
+  totalStaff?: number;
+  newTenantsThisMonth?: number;
 }
 
 export const platformService = {
@@ -93,6 +94,73 @@ export const platformService = {
       plan_type: planType,
       billing_cycle: billingCycle,
     });
+  },
+
+  /** Read a tenant's transactional email sender config. */
+  async getTenantEmailSender(id: string) {
+    return apiClient.get<{ success: boolean; data: { mode: 'platform' | 'own'; verified: boolean; fromAddress: string | null; contactEmail: string | null } }>(
+      `/api/v1/platform/tenants/${id}/email-sender`
+    );
+  },
+
+  /** Switch a tenant's email sender mode (after verifying its domain in Brevo). */
+  async setTenantEmailSender(id: string, mode: 'platform' | 'own', fromAddress?: string) {
+    return apiClient.post<{ success: boolean; message: string; data: any }>(`/api/v1/platform/tenants/${id}/email-sender`, {
+      mode,
+      fromAddress,
+    });
+  },
+
+  // ── Restore & school profile ──────────────────────────────────────────────
+  async restoreTenant(id: string) {
+    return apiClient.post<{ success: boolean; data: PlatformTenant; message: string }>(`/api/v1/platform/tenants/${id}/restore`);
+  },
+  async getTenantSchoolProfile(id: string) {
+    return apiClient.get<{ success: boolean; data: any }>(`/api/v1/platform/tenants/${id}/school-profile`);
+  },
+  async updateTenantSchoolProfile(id: string, data: Record<string, any>) {
+    return apiClient.put<{ success: boolean; data: any }>(`/api/v1/platform/tenants/${id}/school-profile`, data);
+  },
+
+  // ── Billing ────────────────────────────────────────────────────────────────
+  async getTenantBilling(id: string) {
+    return apiClient.get<{ success: boolean; data: { history: any[]; subscription: any } }>(`/api/v1/platform/tenants/${id}/billing`);
+  },
+  async renewSubscription(id: string, billingCycle: 'monthly' | 'yearly') {
+    return apiClient.post<{ success: boolean; data: any; message: string }>(`/api/v1/platform/tenants/${id}/subscription/renew`, { billing_cycle: billingCycle });
+  },
+  async extendSubscription(id: string, days: number) {
+    return apiClient.post<{ success: boolean; data: any; message: string }>(`/api/v1/platform/tenants/${id}/subscription/extend`, { days });
+  },
+  async expireSubscription(id: string) {
+    return apiClient.post<{ success: boolean; data: any; message: string }>(`/api/v1/platform/tenants/${id}/subscription/expire`);
+  },
+
+  // ── Tenant users ─────────────────────────────────────────────────────────
+  async getTenantUsers(id: string, filters?: { search?: string; role?: string; status?: string }) {
+    return apiClient.get<{ success: boolean; data: any[] }>(`/api/v1/platform/tenants/${id}/users`, { params: filters });
+  },
+  async resetTenantUserPassword(id: string, userId: string) {
+    return apiClient.post<{ success: boolean; data: { tempPassword: string; email: string }; message: string }>(`/api/v1/platform/tenants/${id}/users/${userId}/reset-password`);
+  },
+  async setTenantUserStatus(id: string, userId: string, status: 'active' | 'inactive') {
+    return apiClient.post<{ success: boolean; message: string }>(`/api/v1/platform/tenants/${id}/users/${userId}/status`, { status });
+  },
+  async unlockTenantUser(id: string, userId: string) {
+    return apiClient.post<{ success: boolean; message: string }>(`/api/v1/platform/tenants/${id}/users/${userId}/unlock`);
+  },
+  async disableTenantUser2FA(id: string, userId: string) {
+    return apiClient.post<{ success: boolean; message: string }>(`/api/v1/platform/tenants/${id}/users/${userId}/disable-2fa`);
+  },
+
+  // ── Impersonation ──────────────────────────────────────────────────────────
+  async impersonateTenant(id: string, userId?: string) {
+    return apiClient.post<{ success: boolean; data: { access_token: string; user: any }; message: string }>(`/api/v1/platform/tenants/${id}/impersonate`, { userId });
+  },
+
+  // ── Audit ────────────────────────────────────────────────────────────────
+  async getAudit(filters?: { tenantId?: string; action?: string; limit?: number; offset?: number }) {
+    return apiClient.get<{ success: boolean; data: any[] }>(`/api/v1/platform/audit`, { params: filters });
   },
 };
 

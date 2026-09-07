@@ -74,6 +74,11 @@ export const PlatformTenantsPage: React.FC = () => {
   const [selectedTenant, setSelectedTenant] = useState<PlatformTenant | null>(null);
   const [suspensionReason, setSuspensionReason] = useState('');
 
+  // Email sender modal state
+  const [isEmailSenderOpen, setIsEmailSenderOpen] = useState(false);
+  const [emailSender, setEmailSender] = useState<{ mode: 'platform' | 'own'; verified: boolean; fromAddress: string | null; contactEmail: string | null } | null>(null);
+  const [emailSenderFrom, setEmailSenderFrom] = useState('');
+
   // Register Form State
   const [registerStep, setRegisterStep] = useState(1);
   const [generatedCredentials, setGeneratedCredentials] = useState<{ email: string; pass: string; schoolName: string } | null>(null);
@@ -207,6 +212,40 @@ export const PlatformTenantsPage: React.FC = () => {
       }
     } catch (err: any) {
       showToast.error('Failed to activate tenant');
+    }
+  };
+
+  const openEmailSender = async (tenant: PlatformTenant) => {
+    setSelectedTenant(tenant);
+    setEmailSender(null);
+    setEmailSenderFrom('');
+    setIsEmailSenderOpen(true);
+    try {
+      const res = await platformService.getTenantEmailSender(tenant.id);
+      if (res.success && res.data) {
+        setEmailSender(res.data);
+        setEmailSenderFrom(res.data.fromAddress || res.data.contactEmail || '');
+      }
+    } catch {
+      showToast.error('Could not load email sender settings');
+    }
+  };
+
+  const applyEmailSender = async (mode: 'platform' | 'own') => {
+    if (!selectedTenant) return;
+    setSaving(true);
+    try {
+      const res = await platformService.setTenantEmailSender(selectedTenant.id, mode, mode === 'own' ? emailSenderFrom.trim() || undefined : undefined);
+      if (res.success) {
+        showToast.success(res.message || 'Email sender updated');
+        setEmailSender((prev) => prev ? { ...prev, mode, verified: mode === 'own', fromAddress: mode === 'own' ? (emailSenderFrom.trim() || prev.contactEmail) : null } : prev);
+      } else {
+        showToast.error((res as any).error || 'Failed to update email sender');
+      }
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.error || 'Failed to update email sender');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -398,6 +437,15 @@ export const PlatformTenantsPage: React.FC = () => {
                             }}
                           >
                             Details
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-[#1d4ed8] border-blue-200 hover:bg-blue-50"
+                            title="Email sender settings"
+                            onClick={() => openEmailSender(tenant)}
+                          >
+                            <Mail size={12} className="mr-1" /> Email
                           </Button>
                           {tenant.status === 'suspended' ? (
                             <Button
@@ -772,6 +820,82 @@ export const PlatformTenantsPage: React.FC = () => {
 
           </div>
         </form>
+      </Modal>
+
+      {/* MODAL: EMAIL SENDER */}
+      <Modal isOpen={isEmailSenderOpen && !!selectedTenant} onClose={() => setIsEmailSenderOpen(false)} title="Transactional Email Sender" size="md">
+        {selectedTenant && (
+          <div className="space-y-5">
+            <div className="flex items-center gap-3 pb-3 border-b border-gray-100 dark:border-gray-700">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <Mail size={20} />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 dark:text-gray-100">{selectedTenant.name}</h3>
+                <span className="text-xs text-gray-400">{emailSender?.contactEmail || selectedTenant.contact_email || 'No school email set'}</span>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
+              <strong>Setup step:</strong> only switch to “School’s own email” <em>after</em> you have verified the
+              school’s sender/domain in Brevo. Until then, keep it on the platform sender (delivers reliably).
+            </div>
+
+            {!emailSender ? (
+              <div className="py-8 flex justify-center text-gray-400"><Loader2 className="animate-spin" size={22} /></div>
+            ) : (
+              <>
+                <div className="text-sm">
+                  Current mode:{' '}
+                  <span className={`font-bold ${emailSender.mode === 'own' ? 'text-emerald-600' : 'text-blue-600'}`}>
+                    {emailSender.mode === 'own' ? "School's own email" : 'Platform sender (default)'}
+                  </span>
+                </div>
+
+                {/* Platform option */}
+                <label className={`block rounded-xl border p-4 cursor-pointer transition-all ${emailSender.mode === 'platform' ? 'border-blue-400 ring-2 ring-blue-500/20 bg-blue-50/40' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <div className="flex items-start gap-3">
+                    <input type="radio" name="senderMode" checked={emailSender.mode === 'platform'} onChange={() => setEmailSender({ ...emailSender, mode: 'platform' })} className="mt-1" />
+                    <div>
+                      <p className="font-semibold text-sm text-gray-900">Platform sender (recommended default)</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Sends from the platform address showing the school’s name, with the school’s email as reply-to. Works immediately, no verification needed.</p>
+                    </div>
+                  </div>
+                </label>
+
+                {/* Own option */}
+                <label className={`block rounded-xl border p-4 cursor-pointer transition-all ${emailSender.mode === 'own' ? 'border-emerald-400 ring-2 ring-emerald-500/20 bg-emerald-50/40' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <div className="flex items-start gap-3">
+                    <input type="radio" name="senderMode" checked={emailSender.mode === 'own'} onChange={() => setEmailSender({ ...emailSender, mode: 'own' })} className="mt-1" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-sm text-gray-900">School’s own verified email</p>
+                      <p className="text-xs text-gray-500 mt-0.5 mb-2">Sends fully from the school’s address. Requires the domain to be verified in Brevo.</p>
+                      <input
+                        type="email"
+                        value={emailSenderFrom}
+                        onChange={(e) => setEmailSenderFrom(e.target.value)}
+                        placeholder="noreply@school.edu.sl"
+                        disabled={emailSender.mode !== 'own'}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:bg-gray-50 disabled:text-gray-400"
+                      />
+                    </div>
+                  </div>
+                </label>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                  <Button variant="outline" onClick={() => setIsEmailSenderOpen(false)}>Cancel</Button>
+                  <Button
+                    disabled={saving || (emailSender.mode === 'own' && !emailSenderFrom.trim())}
+                    onClick={() => applyEmailSender(emailSender.mode)}
+                    className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold"
+                  >
+                    {saving ? 'Saving…' : 'Save'}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </Modal>
 
       {/* MODAL 2: TENANT DETAILS */}

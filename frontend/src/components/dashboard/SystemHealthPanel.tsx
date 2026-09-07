@@ -7,6 +7,12 @@ export interface SystemHealthProps {
   apiResponseTime: number;
   storageUsage: number;
   activeUsers: number;
+  /**
+   * When true (platform super admin) the panel shows infrastructure metrics
+   * (database, API latency, storage, backups). Tenants (principals) only see
+   * their own school's activity, not platform internals.
+   */
+  isPlatformAdmin?: boolean;
 }
 
 const statusColors = {
@@ -34,10 +40,31 @@ export const SystemHealthPanel: React.FC<SystemHealthProps> = ({
   apiResponseTime,
   storageUsage,
   activeUsers,
+  isPlatformAdmin = false,
 }) => {
   const lastBackupDate = new Date(lastBackup);
   const formattedBackupTime = lastBackupDate.toLocaleString();
   const hoursAgo = Math.floor((Date.now() - lastBackupDate.getTime()) / (1000 * 60 * 60));
+
+  // Tenants (principals) only see their own school's activity — infrastructure
+  // metrics are platform-internal and reserved for the super admin.
+  if (!isPlatformAdmin) {
+    return (
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h3 className="text-lg font-semibold mb-6 text-gray-800">School Activity</h3>
+        <div className="flex items-start gap-4">
+          <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+            <Users size={22} />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm text-gray-600 mb-1">Active Users</p>
+            <p className="text-2xl font-extrabold text-gray-900">{activeUsers}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Signed in during the last 24 hours</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
@@ -107,8 +134,8 @@ export const SystemHealthPanel: React.FC<SystemHealthProps> = ({
           </div>
           <div className="flex-1">
             <p className="text-sm text-gray-600 mb-2">Active Users</p>
-            <p className="font-semibold text-sm">{activeUsers} Online</p>
-            <p className="text-xs text-gray-500">Last 5 minutes</p>
+            <p className="font-semibold text-sm">{activeUsers}</p>
+            <p className="text-xs text-gray-500">Last 24 hours</p>
           </div>
         </div>
       </div>

@@ -22,12 +22,14 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
+  HardDrive,
 } from 'lucide-react';
 import useAuthStore from '@store/authStore';
 import schoolConfigService, { SchoolInfo, GradeScale, BillingInvoice, SubscriptionDetails } from '../services/schoolConfigService';
 import authService from '../services/authService';
 import { FileUploader } from '@components/admin/forms/FileUploader';
 import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
+import { StorageSettings } from '@components/settings/StorageSettings';
 import { useSearchParams } from 'react-router-dom';
 
 export const SettingsPage: React.FC = () => {
@@ -426,6 +428,7 @@ export const SettingsPage: React.FC = () => {
     { id: 'attendance', label: 'Attendance Rules', icon: <AlertCircle size={18} />, adminOnly: true },
     { id: 'financial', label: 'Financial Info', icon: <DollarSign size={18} />, adminOnly: true },
     { id: 'comms', label: 'Communications', icon: <Mail size={18} />, adminOnly: true },
+    { id: 'storage', label: 'File Storage', icon: <HardDrive size={18} />, adminOnly: true },
     { id: 'billing', label: 'Plan & Billing', icon: <CreditCard size={18} />, adminOnly: true },
   ];
 
@@ -1565,6 +1568,21 @@ export const SettingsPage: React.FC = () => {
                           Save Communication Config
                         </Button>
                       </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ── FILE STORAGE TAB ── */}
+                {activeTab === 'storage' && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2.5">
+                        <span className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><HardDrive size={18} /></span>
+                        File Storage (Uploads)
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <StorageSettings />
                     </CardContent>
                   </Card>
                 )}

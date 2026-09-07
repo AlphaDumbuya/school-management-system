@@ -26,10 +26,12 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
 
   // System alerts feed is principal/super_admin only.
   const canSeeAlerts = user?.role === 'principal' || user?.role === 'super_admin';
+  const isSuperAdmin = user?.role === 'super_admin';
 
-  // Sync missing tenant school info
+  // Sync missing tenant school info — NOT for the super admin, who is the
+  // platform operator and must never be branded as a specific tenant school.
   useEffect(() => {
-    if (user && (!user.schoolName || !user.schoolLogoUrl)) {
+    if (!isSuperAdmin && user && (!user.schoolName || !user.schoolLogoUrl)) {
       schoolConfigService
         .getSchoolInfo()
         .then((res) => {
@@ -96,17 +98,29 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
             </button>
           )}
           <div className="flex items-center gap-2">
-            {user?.schoolLogoUrl && (
-              <img
-                src={user.schoolLogoUrl}
-                alt={user.schoolName || 'School Logo'}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain bg-white p-0.5 border border-gray-200"
-              />
+            {isSuperAdmin ? (
+              <>
+                <img src="/logo.png" alt="WiSkul" className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain bg-white p-0.5 border border-gray-200" />
+                <h1 className="text-sm sm:text-xl font-bold text-gray-900 whitespace-nowrap">
+                  Wi<span className="text-amber-500">Skul</span>
+                  <span className="hidden sm:inline font-medium text-gray-400 text-sm"> · Platform</span>
+                </h1>
+              </>
+            ) : (
+              <>
+                {user?.schoolLogoUrl && (
+                  <img
+                    src={user.schoolLogoUrl}
+                    alt={user.schoolName || 'School Logo'}
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain bg-white p-0.5 border border-gray-200"
+                  />
+                )}
+                <h1 className="text-sm sm:text-xl font-bold text-gray-900 whitespace-nowrap">
+                  <span className="sm:hidden">{user?.schoolName || 'SMS'}</span>
+                  <span className="hidden sm:inline">{user?.schoolName || (sidebarOpen ? 'School Management' : 'SMS')}</span>
+                </h1>
+              </>
             )}
-            <h1 className="text-sm sm:text-xl font-bold text-gray-900 whitespace-nowrap">
-              <span className="sm:hidden">{user?.schoolName || 'SMS'}</span>
-              <span className="hidden sm:inline">{user?.schoolName || (sidebarOpen ? 'School Management' : 'SMS')}</span>
-            </h1>
           </div>
         </div>
 
