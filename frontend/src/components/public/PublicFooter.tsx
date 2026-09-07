@@ -3,9 +3,10 @@
  * Deep-navy background, accent line, brand + newsletter, link columns,
  * contact, social chips and legal row. See docs/THEME_GUIDE.md.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Check, Loader2 } from 'lucide-react';
+import apiClient from '@lib/apiClient';
 
 const DOT_PATTERN: React.CSSProperties = {
   backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)',
@@ -14,6 +15,35 @@ const DOT_PATTERN: React.CSSProperties = {
 
 export const PublicFooter: React.FC = () => {
   const navigate = useNavigate();
+
+  const [email, setEmail] = useState('');
+  const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [message, setMessage] = useState('');
+
+  const subscribe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const value = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      setState('error');
+      setMessage('Please enter a valid email.');
+      return;
+    }
+    setState('loading');
+    try {
+      const res = await apiClient.post<{ success: boolean; message?: string }>('/api/newsletter/subscribe', { email: value });
+      if (res.success) {
+        setState('done');
+        setMessage(res.message || "You're subscribed! Watch your inbox for updates.");
+        setEmail('');
+      } else {
+        setState('error');
+        setMessage('Could not subscribe. Please try again.');
+      }
+    } catch {
+      setState('error');
+      setMessage('Could not subscribe. Please try again.');
+    }
+  };
 
   return (
     <footer className="relative overflow-hidden bg-[#0f1b45] text-blue-100/70">
@@ -37,16 +67,33 @@ export const PublicFooter: React.FC = () => {
               Next-generation school management protecting student data while empowering
               educators across Sierra Leone and beyond.
             </p>
-            <div className="mt-5 flex items-center gap-2 max-w-xs">
-              <input
-                type="email"
-                placeholder="Your email for updates"
-                className="flex-1 bg-white/10 border border-white/15 rounded-lg px-3 py-2.5 text-sm text-white placeholder-blue-100/40 outline-none focus:border-amber-400/50 min-w-0"
-              />
-              <button className="bg-[#f59e0b] hover:bg-[#d97706] text-white font-bold text-sm px-4 py-2.5 rounded-lg transition-colors flex-shrink-0">
-                <ArrowRight size={16} />
-              </button>
-            </div>
+            {state === 'done' ? (
+              <div className="mt-5 flex items-center gap-2 max-w-xs text-sm text-emerald-300 font-semibold">
+                <Check size={16} /> {message}
+              </div>
+            ) : (
+              <form onSubmit={subscribe} className="mt-5 max-w-xs">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => { setEmail(e.target.value); if (state === 'error') setState('idle'); }}
+                    placeholder="Your email for updates"
+                    className="flex-1 bg-white/10 border border-white/15 rounded-lg px-3 py-2.5 text-sm text-white placeholder-blue-100/40 outline-none focus:border-amber-400/50 min-w-0"
+                  />
+                  <button
+                    type="submit"
+                    disabled={state === 'loading'}
+                    aria-label="Subscribe to newsletter"
+                    className="bg-[#f59e0b] hover:bg-[#d97706] disabled:opacity-60 text-white font-bold text-sm px-4 py-2.5 rounded-lg transition-colors flex-shrink-0"
+                  >
+                    {state === 'loading' ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+                  </button>
+                </div>
+                {state === 'error' && <p className="mt-2 text-xs text-red-300">{message}</p>}
+                <p className="mt-2 text-[11px] text-blue-100/40">Get product news and tips. Unsubscribe anytime.</p>
+              </form>
+            )}
           </div>
 
           <div>

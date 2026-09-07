@@ -13,6 +13,7 @@ import { TenantUserService } from '../services/tenantUserService';
 import { ImpersonationService } from '../services/impersonationService';
 import { PlatformAuditService } from '../services/platformAuditService';
 import { PlatformCommunicationService } from '../services/platformCommunicationService';
+import { NewsletterService } from '../services/newsletterService';
 import emailService from '../services/emailService';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
@@ -166,6 +167,17 @@ router.post('/tenants', authenticate, authorize(UserRole.SUPER_ADMIN), async (re
           tempPassword: adminPassword,
         }),
         'tenant welcome'
+      );
+    }
+
+    // Add the school's CONTACT email (one per tenant, never individual users)
+    // to the marketing list. Tenants are customers, so they are opted IN by
+    // default for platform newsletters; they can unsubscribe via any email.
+    const subTo = (contactEmail || adminEmail) as string | undefined;
+    if (subTo) {
+      notify(
+        NewsletterService.upsertSubscriber({ email: subTo, name, source: 'tenant', tenantId: tenant.id, optIn: true }),
+        'tenant newsletter upsert'
       );
     }
 
@@ -624,9 +636,9 @@ router.post('/communications/messages/:id/status', authenticate, authorize(UserR
 
 router.post('/communications/messages/:id/reply', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
   try {
-    const { subject, body } = req.body;
+    const { subject, body, purpose } = req.body;
     if (!body?.trim()) throw new AppError('Reply body is required', 400, 'VALIDATION_ERROR');
-    await PlatformCommunicationService.reply(req.params.id, subject, body);
+    await PlatformCommunicationService.reply(req.params.id, subject, body, purpose);
     await PlatformAuditService.record({ ...auditMeta(req), action: 'communication.reply', entityId: req.params.id, entityType: 'platform_message' });
     res.json({ success: true, message: 'Reply sent' });
   } catch (error) {
@@ -646,9 +658,9 @@ router.delete('/communications/messages/:id', authenticate, authorize(UserRole.S
 // Broadcast
 router.post('/communications/broadcast', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
   try {
-    const { subject, body, audience } = req.body;
+    const { subject, body, audience, purpose } = req.body;
     const result = await PlatformCommunicationService.broadcast(req.auth!.userId, {
-      subject, body, audience: audience || 'all',
+      subject, body, audience: audience || 'all', purpose,
     });
     await PlatformAuditService.record({ ...auditMeta(req), action: 'communication.broadcast', entityType: 'platform_broadcast', changes: { audience, recipients: result.recipients } });
     res.json({ success: true, data: result, message: `Broadcast sent to ${result.delivered}/${result.recipients} schools` });
@@ -660,6 +672,62 @@ router.post('/communications/broadcast', authenticate, authorize(UserRole.SUPER_
 router.get('/communications/broadcasts', authenticate, authorize(UserRole.SUPER_ADMIN), async (_req, res, next) => {
   try {
     res.json({ success: true, data: await PlatformCommunicationService.listBroadcasts() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── Newsletter / Marketing ───────────────────────────────────────────────────
+
+router.get('/newsletter/subscribers', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const result = await NewsletterService.list({
+      status: req.query.status as string,
+      search: req.query.search as string,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
+      offset: req.query.offset ? parseInt(req.query.offset as string, 10) : undefined,
+    });
+    const counts = await NewsletterService.counts();
+    res.json({ success: true, ...result, counts });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/newsletter/subscribers', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { email, name } = req.body;
+    if (!email) throw new AppError('Email is required', 400, 'VALIDATION_ERROR');
+    const row = await NewsletterService.upsertSubscriber({ email, name, source: 'manual', optIn: true });
+    res.json({ success: true, data: row });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/newsletter/subscribers/:id/status', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const data = await NewsletterService.setStatus(req.params.id, req.body.status);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/newsletter/campaign', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { subject, body, segment } = req.body;
+    const result = await NewsletterService.sendCampaign(req.auth!.userId, { subject, body, segment: segment || 'all' });
+    await PlatformAuditService.record({ ...auditMeta(req), action: 'newsletter.campaign', entityType: 'newsletter_campaign', changes: { segment, recipients: result.recipients } });
+    res.json({ success: true, data: result, message: `Newsletter sent to ${result.delivered}/${result.recipients} subscribers` });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/newsletter/campaigns', authenticate, authorize(UserRole.SUPER_ADMIN), async (_req, res, next) => {
+  try {
+    res.json({ success: true, data: await NewsletterService.listCampaigns() });
   } catch (error) {
     next(error);
   }

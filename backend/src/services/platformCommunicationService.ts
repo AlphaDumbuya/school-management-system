@@ -57,8 +57,8 @@ export class PlatformCommunicationService {
     return { success: true };
   }
 
-  /** Reply to an inbound message by email (platform-branded). */
-  static async reply(id: string, subject: string, body: string) {
+  /** Reply to an inbound message by email (platform-branded, chosen mailbox). */
+  static async reply(id: string, subject: string, body: string, purpose: 'info' | 'support' | 'sales' = 'support') {
     const msg = await db('platform_messages').where({ id }).first();
     if (!msg) throw new AppError('Message not found', 404, 'NOT_FOUND');
 
@@ -69,6 +69,7 @@ export class PlatformCommunicationService {
       ${emailButton('Visit WiSkul', branding.appUrl)}`;
 
     await emailService.sendEmail({
+      ...emailService.platformSenderFor(purpose),
       to: msg.email,
       subject: subject || 'Re: your message to WiSkul',
       body: renderEmail({ branding, eyebrow: 'WiSkul Support', heading: subject || 'A reply from WiSkul', bodyHtml, preheader: 'A reply from the WiSkul team.' }),
@@ -87,7 +88,7 @@ export class PlatformCommunicationService {
    */
   static async broadcast(
     sentBy: string,
-    data: { subject: string; body: string; audience: 'all' | 'active' | 'trial' | 'suspended' }
+    data: { subject: string; body: string; audience: 'all' | 'active' | 'trial' | 'suspended'; purpose?: 'info' | 'support' | 'sales' }
   ): Promise<{ recipients: number; delivered: number }> {
     if (!data.subject?.trim() || !data.body?.trim()) {
       throw new AppError('Subject and message are required', 400, 'VALIDATION_ERROR');
@@ -125,6 +126,7 @@ export class PlatformCommunicationService {
         ${emailButton('Open WiSkul', `${branding.appUrl}/login`)}`;
       try {
         await emailService.sendEmail({
+          ...emailService.platformSenderFor(data.purpose || 'info'),
           to: r.email,
           subject: data.subject,
           body: renderEmail({ branding, eyebrow: 'WiSkul Announcement', heading: data.subject, bodyHtml, preheader: data.subject }),
