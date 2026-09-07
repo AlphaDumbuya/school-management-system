@@ -274,10 +274,10 @@ const navItems: NavItem[] = [
     label: 'Announcements',
     icon: <FaBell className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/communication/announcements',
-    roles: ['super_admin', 'principal', 'teacher', 'parent', 'student'],
+    roles: ['super_admin', 'principal', 'teacher', 'parent', 'student', 'accountant', 'admissions_officer'],
     module: 'Communication',
     group: 'Communication',
-    version: 'v2',
+    version: 'v1',
   },
   {
     label: 'Messages',
