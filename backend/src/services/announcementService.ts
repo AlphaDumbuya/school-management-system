@@ -224,7 +224,19 @@ export class AnnouncementService {
       .offset(offset)
       .select(
         'announcements.*',
-        db.raw("CONCAT(users.first_name, ' ', users.last_name) as author_name"),
+        'users.role as author_role',
+        db.raw("TRIM(CONCAT(users.first_name, ' ', users.last_name)) as author_name"),
+        // Respectful, role-based display name (honorific prefix + full name).
+        db.raw(`
+          CASE users.role
+            WHEN 'principal' THEN CONCAT('Principal ', users.first_name, ' ', users.last_name)
+            WHEN 'super_admin' THEN CONCAT('Administrator ', users.first_name, ' ', users.last_name)
+            WHEN 'teacher' THEN CONCAT('Tr. ', users.first_name, ' ', users.last_name)
+            WHEN 'accountant' THEN CONCAT('Bursar ', users.first_name, ' ', users.last_name)
+            WHEN 'admissions_officer' THEN CONCAT('Admissions Officer ', users.first_name, ' ', users.last_name)
+            ELSE TRIM(CONCAT(users.first_name, ' ', users.last_name))
+          END as author_display
+        `),
         opts.viewerId
           ? db.raw('(announcement_reads.id IS NOT NULL) as is_read')
           : db.raw('true as is_read')

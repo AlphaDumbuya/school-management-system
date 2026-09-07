@@ -268,7 +268,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
                             <span className="block text-sm font-semibold text-gray-900 truncate">{a.title}</span>
                             <span className="block text-xs text-gray-600 line-clamp-2">{a.body}</span>
                             <span className="block text-[11px] text-gray-400 mt-0.5">
-                              {a.author_name ? `${a.author_name} · ` : ''}{relativeTime(a.created_at)}
+                              {(a.author_display || a.author_name) ? `${a.author_display || a.author_name} · ` : ''}{relativeTime(a.created_at)}
                             </span>
                           </span>
                           {!a.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />}

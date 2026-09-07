@@ -103,7 +103,7 @@ export const AnnouncementsWidget: React.FC<AnnouncementsWidgetProps> = ({
                 </span>
                 <span className="block text-xs text-gray-600 dark:text-gray-400 line-clamp-2">{a.body}</span>
                 <span className="block text-[11px] text-gray-400 mt-0.5">
-                  {a.author_name ? `${a.author_name} · ` : ''}{relTime(a.created_at)}
+                  {(a.author_display || a.author_name) ? `${a.author_display || a.author_name} · ` : ''}{relTime(a.created_at)}
                 </span>
               </span>
             </button>

@@ -12,6 +12,9 @@ export interface Announcement {
   tenant_id: string;
   author_id: string;
   author_name?: string;
+  /** Respectful role-based display name, e.g. "Principal Alpha Dumbuya". */
+  author_display?: string;
+  author_role?: string;
   title: string;
   body: string;
   audience: AnnouncementAudience;
