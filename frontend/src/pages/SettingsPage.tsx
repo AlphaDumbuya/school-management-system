@@ -37,7 +37,12 @@ export const SettingsPage: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
   const logout = useAuthStore((s) => s.logout);
-  const isPrincipalOrSuper = user?.role === 'principal' || user?.role === 'super_admin';
+  const isSuperAdmin = user?.role === 'super_admin';
+  // A tenant/school admin (principal) manages the school-config tabs. The super
+  // admin is the PLATFORM operator and has no school to configure — they only
+  // get Profile + Security (2FA). `isPrincipalOrSuper` gates school-config data
+  // loading and school-scoped fields; the super admin must NOT trigger those.
+  const isPrincipalOrSuper = user?.role === 'principal';
 
   // Profile Form States
   const [profileForm, setProfileForm] = useState({
@@ -81,6 +86,14 @@ export const SettingsPage: React.FC = () => {
     const t = searchParams.get('tab');
     if (t) setActiveTab(t);
   }, [searchParams]);
+
+  // The super admin only has Profile + Security — if they somehow land on a
+  // school-config tab (e.g. a stale deep link), snap them back to Profile.
+  useEffect(() => {
+    if (isSuperAdmin && activeTab !== 'profile' && activeTab !== 'security') {
+      setActiveTab('profile');
+    }
+  }, [isSuperAdmin, activeTab]);
 
   // Loading States
   const [loading, setLoading] = useState(false);
@@ -436,7 +449,9 @@ export const SettingsPage: React.FC = () => {
     <MainLayout>
       <PageShell
         title="Settings & Configuration"
-        subtitle="Configure your personal preferences and school-wide administrative variables."
+        subtitle={isSuperAdmin
+          ? 'Manage your platform account profile and security.'
+          : 'Configure your personal preferences and school-wide administrative variables.'}
       >
         {/* ── Toast Feedback ── */}
         {toast && (

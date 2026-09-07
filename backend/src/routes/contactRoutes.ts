@@ -6,6 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { sendContactEmail, sendAutoResponse } from '../services/emailService';
 import { db } from '../utils/database';
+import { NewsletterService } from '../services/newsletterService';
 
 const router = Router();
 
@@ -56,6 +57,13 @@ router.post('/', async (req: Request, res: Response) => {
       });
     } catch (dbErr: any) {
       console.error('Failed to persist contact message:', dbErr?.message || dbErr);
+    }
+
+    // Add to the marketing list, opted OUT by default (explicit consent required).
+    try {
+      await NewsletterService.upsertSubscriber({ email, name, source: 'contact', optIn: false });
+    } catch (subErr: any) {
+      console.error('Failed to upsert newsletter subscriber:', subErr?.message || subErr);
     }
 
     // Send notification email to the WiSkul team. Email delivery must NOT crash

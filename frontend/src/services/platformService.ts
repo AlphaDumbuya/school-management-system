@@ -173,17 +173,34 @@ export const platformService = {
   async setMessageStatus(id: string, status: 'unread' | 'read' | 'archived') {
     return apiClient.post<{ success: boolean; data: any }>(`/api/v1/platform/communications/messages/${id}/status`, { status });
   },
-  async replyMessage(id: string, subject: string, body: string) {
-    return apiClient.post<{ success: boolean; message: string }>(`/api/v1/platform/communications/messages/${id}/reply`, { subject, body });
+  async replyMessage(id: string, subject: string, body: string, purpose?: 'info' | 'support' | 'sales') {
+    return apiClient.post<{ success: boolean; message: string }>(`/api/v1/platform/communications/messages/${id}/reply`, { subject, body, purpose });
   },
   async deleteMessage(id: string) {
     return apiClient.delete<{ success: boolean; message: string }>(`/api/v1/platform/communications/messages/${id}`);
   },
-  async broadcast(data: { subject: string; body: string; audience: 'all' | 'active' | 'trial' | 'suspended' }) {
+  async broadcast(data: { subject: string; body: string; audience: 'all' | 'active' | 'trial' | 'suspended'; purpose?: 'info' | 'support' | 'sales' }) {
     return apiClient.post<{ success: boolean; data: { recipients: number; delivered: number }; message: string }>(`/api/v1/platform/communications/broadcast`, data);
   },
   async getBroadcasts() {
     return apiClient.get<{ success: boolean; data: any[] }>(`/api/v1/platform/communications/broadcasts`);
+  },
+
+  // ── Newsletter / Marketing ─────────────────────────────────────────────────
+  async getSubscribers(filters?: { status?: string; search?: string; limit?: number; offset?: number }) {
+    return apiClient.get<{ success: boolean; data: any[]; total: number; counts: { subscribed: number; unsubscribed: number } }>(`/api/v1/platform/newsletter/subscribers`, { params: filters });
+  },
+  async addSubscriber(email: string, name?: string) {
+    return apiClient.post<{ success: boolean; data: any }>(`/api/v1/platform/newsletter/subscribers`, { email, name });
+  },
+  async setSubscriberStatus(id: string, status: 'subscribed' | 'unsubscribed') {
+    return apiClient.post<{ success: boolean; data: any }>(`/api/v1/platform/newsletter/subscribers/${id}/status`, { status });
+  },
+  async sendCampaign(data: { subject: string; body: string; segment: 'all' | 'tenants' | 'prospects' }) {
+    return apiClient.post<{ success: boolean; data: { recipients: number; delivered: number }; message: string }>(`/api/v1/platform/newsletter/campaign`, data);
+  },
+  async getCampaigns() {
+    return apiClient.get<{ success: boolean; data: any[] }>(`/api/v1/platform/newsletter/campaigns`);
   },
 };
 

@@ -87,12 +87,14 @@ export interface RenderOptions {
   bodyHtml: string;
   /** Optional preheader text (hidden preview snippet in the inbox). */
   preheader?: string;
+  /** Marketing emails: a token-based unsubscribe URL rendered in the footer. */
+  unsubscribeUrl?: string;
 }
 
 /**
  * Render a complete responsive HTML email around the given body.
  */
-export function renderEmail({ branding, eyebrow, heading, bodyHtml, preheader }: RenderOptions): string {
+export function renderEmail({ branding, eyebrow, heading, bodyHtml, preheader, unsubscribeUrl }: RenderOptions): string {
   const brandName = escapeHtml(branding.name);
 
   // Header logo: use an image only when it's an absolute http(s) URL. Many email
@@ -185,6 +187,7 @@ export function renderEmail({ branding, eyebrow, heading, bodyHtml, preheader }:
               <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#ffffff;">${brandName}</p>
               ${footerLines.map((l) => `<p style="margin:3px 0;font-size:12px;color:#94a3b8;">${l}</p>`).join('')}
               ${poweredBy}
+              ${unsubscribeUrl ? `<p style="margin:14px 0 0;font-size:11px;color:#64748b;">Don't want these emails? <a href="${unsubscribeUrl}" target="_blank" style="color:#94a3b8;text-decoration:underline;">Unsubscribe</a></p>` : ''}
             </td>
           </tr>
 

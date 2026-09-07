@@ -56,6 +56,7 @@ import smsWhatsAppRoutes from '@routes/smsWhatsAppRoutes';
 import smsWhatsAppWebhooks from '@routes/smsWhatsAppWebhooks';
 import teacherRoutes from '@routes/teacherRoutes';
 import contactRoutes from '@routes/contactRoutes';
+import newsletterRoutes from '@routes/newsletterRoutes';
 import schoolConfigRoutes from '@routes/schoolConfigRoutes';
 import announcementRoutes from '@routes/announcementRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
@@ -314,6 +315,9 @@ app.use('/api/v1/teachers', teacherRoutes);
 
 // Contact Form Routes (Public)
 app.use('/api/contact', contactRoutes);
+
+// Public Newsletter Routes (subscribe / one-click unsubscribe)
+app.use('/api/newsletter', newsletterRoutes);
 
 // School Config & Settings Routes
 app.use('/api/v1/school-config', schoolConfigRoutes);

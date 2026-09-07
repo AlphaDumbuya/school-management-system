@@ -31,6 +31,15 @@ export interface EmailAttachment {
   content: string;
 }
 
+/**
+ * Which platform mailbox a message should come from / reply to.
+ *   info    — general/onboarding/account notices
+ *   support — operational, security, and help
+ *   sales   — billing/subscription/marketing
+ *   no-reply— automated messages that don't expect a reply
+ */
+export type PlatformSenderPurpose = 'info' | 'support' | 'sales' | 'no-reply';
+
 export interface EmailRequest {
   to: string;
   subject: string;
@@ -59,6 +68,27 @@ class EmailService {
   private readonly SENDER_NAME = process.env.BREVO_SENDER_NAME || 'WiSkul';
   private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAY = 1000; // 1 second base delay
+
+  /**
+   * Purpose-specific platform mailboxes. Each platform email should send from
+   * (and reply to) the address that matches its intent, so recipients reply to
+   * the right team. All are env-overridable; default names are branded per team.
+   */
+  /** Public accessor for other services that call sendEmail directly. */
+  public platformSenderFor(purpose: PlatformSenderPurpose) {
+    return this.platformSender(purpose);
+  }
+
+  private platformSender(purpose: PlatformSenderPurpose): { sender: { email: string; name: string }; replyTo: { email: string; name: string } } {
+    const map: Record<PlatformSenderPurpose, { email: string; name: string }> = {
+      info: { email: process.env.INFO_EMAIL || 'info@wiskulsl.com', name: 'WiSkul' },
+      support: { email: process.env.SUPPORT_EMAIL || 'support@wiskulsl.com', name: 'WiSkul Support' },
+      sales: { email: process.env.SALES_EMAIL || 'sales@wiskulsl.com', name: 'WiSkul Sales' },
+      'no-reply': { email: process.env.NOREPLY_EMAIL || process.env.BREVO_SENDER_EMAIL || 'no-reply@wiskulsl.com', name: 'WiSkul' },
+    };
+    const s = map[purpose] || map.info;
+    return { sender: s, replyTo: s };
+  }
 
   constructor() {
     if (!this.BREVO_API_KEY) {
@@ -660,7 +690,7 @@ class EmailService {
       <a href="${resetUrl}" style="color:${'#00d4aa'};word-break:break-all;">${resetUrl}</a></p>`;
 
     return this.sendEmail({
-      ...this.senderFromBranding(branding),
+      ...this.platformSender('support'),
       to: toEmail,
       subject: 'Reset your WiSkul password',
       body: renderEmail({ branding, eyebrow: 'Account Security', heading: 'Password Reset Request', bodyHtml, preheader: 'Reset your WiSkul password — link valid for 1 hour.' }),
@@ -698,7 +728,7 @@ class EmailService {
       ${emailButton('Sign in to WiSkul', `${branding.appUrl}/login`)}
       <p style="color:#64748b;font-size:13px;">Need help getting set up? Reply to this email and our team will assist you.</p>`;
     return this.sendEmail({
-      ...this.senderFromBranding(branding),
+      ...this.platformSender('info'),
       to: toEmail,
       subject: `Welcome to WiSkul — ${data.schoolName}`,
       body: renderEmail({ branding, eyebrow: 'Onboarding', heading: 'Your school is ready', bodyHtml, preheader: `Welcome to WiSkul, ${data.schoolName}.` }),
@@ -728,7 +758,7 @@ class EmailService {
         : calloutBlock('Your plan features and limits are now active.', tone)}
       ${emailButton('Open WiSkul', `${branding.appUrl}/login`)}`;
     return this.sendEmail({
-      ...this.senderFromBranding(branding),
+      ...this.platformSender('sales'),
       to: toEmail,
       subject: `Subscription ${verb} — ${data.schoolName}`,
       body: renderEmail({ branding, eyebrow: 'Billing', heading: `Subscription ${verb}`, bodyHtml, preheader: `${data.schoolName} subscription ${verb}.` }),
@@ -751,7 +781,7 @@ class EmailService {
         : calloutBlock('Your account is active and users can sign in normally.', tone)}
       ${emailButton('Open WiSkul', `${branding.appUrl}/login`)}`;
     return this.sendEmail({
-      ...this.senderFromBranding(branding),
+      ...this.platformSender('support'),
       to: toEmail,
       subject: `Account ${data.status} — ${data.schoolName}`,
       body: renderEmail({ branding, eyebrow: 'Account', heading: `Account ${data.status}`, bodyHtml, preheader: `${data.schoolName} account ${data.status}.` }),
@@ -1138,6 +1168,7 @@ export async function sendContactEmail(data: {
 
   const emailService = new EmailService();
   return emailService.sendEmail({
+    ...emailService.platformSenderFor('info'),
     to: process.env.CONTACT_EMAIL || 'info@wiskulsl.com',
     subject: `New Contact: ${data.name} from ${data.school || 'website'}`,
     body: renderEmail({
@@ -1173,6 +1204,7 @@ export async function sendAutoResponse(email: string, name: string): Promise<Ema
 
   const emailService = new EmailService();
   return emailService.sendEmail({
+    ...emailService.platformSenderFor('support'),
     to: email,
     subject: "Thanks for contacting WiSkul — we'll be in touch soon",
     body: renderEmail({
@@ -1223,6 +1255,7 @@ export async function sendSchoolWelcomeEmail(data: {
 
   const emailService = new EmailService();
   return emailService.sendEmail({
+    ...emailService.platformSenderFor('info'),
     to: data.toEmail,
     subject: `Welcome to WiSkul — ${data.schoolName} is ready 🎉`,
     body: renderEmail({
