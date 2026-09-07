@@ -22,6 +22,7 @@ import { KPICard } from '@components/dashboard/KPICard';
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { Button } from '@components/ui/button';
 import { Modal } from '@components/admin/feedback/Modal';
+import { SearchBar } from '@components/admin/table/SearchBar';
 import { showToast } from '@utils/toast';
 import platformService, { PlatformTenant } from '../services/platformService';
 
@@ -31,6 +32,11 @@ export const PlatformSubscriptionsPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('');
+
+  // Pagination
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   // Modify subscription modal
   const [selectedTenant, setSelectedTenant] = useState<PlatformTenant | null>(null);
@@ -45,9 +51,12 @@ export const PlatformSubscriptionsPage: React.FC = () => {
     try {
       const res = await platformService.getTenants({
         search: search || undefined,
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
       });
       if (res.success && res.data) {
         setTenants(res.data);
+        setTotal((res as any).total ?? res.data.length);
       }
     } catch (err) {
       console.error('Error fetching tenant subscriptions:', err);
@@ -57,9 +66,12 @@ export const PlatformSubscriptionsPage: React.FC = () => {
     }
   };
 
+  useEffect(() => { setPage(1); }, [search]);
+
   useEffect(() => {
     fetchData();
-  }, [search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, page]);
 
   const handleModifySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,14 +191,13 @@ export const PlatformSubscriptionsPage: React.FC = () => {
 
         {/* Filters */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
-          <div className="relative w-full sm:max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
+          <div className="w-full sm:max-w-md">
+            <SearchBar
               placeholder="Search school subscriptions..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-100"
+              defaultValue={search}
+              onSearch={(val) => setSearch(val)}
+              isLoading={loading}
+              resultCount={filteredTenants.length}
             />
           </div>
           <select
@@ -231,7 +242,7 @@ export const PlatformSubscriptionsPage: React.FC = () => {
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {filteredTenants.map((tenant) => (
                     <tr key={tenant.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors">
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-3">
                           <Building2 size={16} className="text-gray-400" />
                           <div>
@@ -240,15 +251,15 @@ export const PlatformSubscriptionsPage: React.FC = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 block">
                           {getPlanLabel(tenant.plan || 'freetong')}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm font-mono text-gray-700 dark:text-gray-300">
+                      <td className="px-6 py-4 text-sm font-mono text-gray-700 dark:text-gray-300 whitespace-nowrap">
                         {getPlanPrice(tenant.plan || 'freetong')}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-xs text-gray-700 dark:text-gray-300 block">
                           <Users size={12} className="inline mr-1" /> {tenant.max_users || 500} Users
                         </span>
@@ -256,10 +267,10 @@ export const PlatformSubscriptionsPage: React.FC = () => {
                           <HardDrive size={12} className="inline mr-1" /> {tenant.max_storage_gb || 10} GB Storage
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <StatusBadge status={tenant.status} />
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right whitespace-nowrap">
                         <Button
                           variant="outline"
                           size="sm"
@@ -280,6 +291,20 @@ export const PlatformSubscriptionsPage: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Pagination footer (always visible; plan filter narrows the current page) */}
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-gray-100 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300">
+              <span>
+                {planFilter
+                  ? `Filtered to ${filteredTenants.length} on this page`
+                  : <>Showing <strong>{total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}</strong>–<strong>{Math.min(page * PAGE_SIZE, total)}</strong> of <strong>{total}</strong></>}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1 || !!planFilter} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</Button>
+                <span className="text-xs text-gray-500">Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}</span>
+                <Button variant="outline" size="sm" disabled={page >= Math.ceil(total / PAGE_SIZE) || !!planFilter} onClick={() => setPage((p) => p + 1)}>Next</Button>
+              </div>
             </div>
           </div>
         )}

@@ -5,6 +5,7 @@
 
 import { Router, Request, Response } from 'express';
 import { sendContactEmail, sendAutoResponse } from '../services/emailService';
+import { db } from '../utils/database';
 
 const router = Router();
 
@@ -40,6 +41,21 @@ router.post('/', async (req: Request, res: Response) => {
         success: false,
         message: 'Invalid email address',
       });
+    }
+
+    // Persist to the platform inbox so the operator can see/manage it later.
+    // Best-effort — a DB hiccup must not fail the visitor's submission.
+    try {
+      const tenant = school
+        ? await db('tenants').whereRaw('LOWER(name) = LOWER(?)', [school]).first()
+        : null;
+      await db('platform_messages').insert({
+        name, email, phone: phone || null, school: school || null, role: role || null,
+        message, source: 'contact', status: 'unread', tenant_id: tenant?.id || null,
+        created_at: new Date(),
+      });
+    } catch (dbErr: any) {
+      console.error('Failed to persist contact message:', dbErr?.message || dbErr);
     }
 
     // Send notification email to the WiSkul team. Email delivery must NOT crash

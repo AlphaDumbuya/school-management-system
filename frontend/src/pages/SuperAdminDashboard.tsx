@@ -153,7 +153,7 @@ const SuperAdminDashboard: React.FC = () => {
         {/* ── Quick Actions + Alerts ───────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Quick Actions */}
-          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             <QuickAction
               onClick={() => navigate('/platform/tenants')}
               icon={<Building2 size={20} />}
@@ -314,18 +314,18 @@ const QuickAction: React.FC<{
 }> = ({ onClick, icon, tint, title, desc, badge }) => {
   const t = TINTS[tint];
   return (
-    <button onClick={onClick} className={`group bg-white rounded-xl border border-gray-200 p-5 text-left hover:shadow-md transition-all ${t.hover}`}>
+    <button onClick={onClick} className={`group bg-white rounded-xl border border-gray-200 p-5 text-left hover:shadow-md transition-all min-w-0 ${t.hover}`}>
       <div className="flex items-center justify-between mb-3">
-        <div className={`p-2.5 rounded-lg ${t.bg} ${t.text}`}>{icon}</div>
-        <div className="flex items-center gap-1">
+        <div className={`p-2.5 rounded-lg ${t.bg} ${t.text} shrink-0`}>{icon}</div>
+        <div className="flex items-center gap-1 shrink-0">
           {badge ? (
             <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{badge}</span>
           ) : null}
           <ArrowUpRight size={16} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
         </div>
       </div>
-      <h3 className="font-semibold text-gray-900 text-sm">{title}</h3>
-      <p className="text-xs text-gray-500 mt-1">{desc}</p>
+      <h3 className="font-semibold text-gray-900 text-sm truncate">{title}</h3>
+      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{desc}</p>
     </button>
   );
 };
