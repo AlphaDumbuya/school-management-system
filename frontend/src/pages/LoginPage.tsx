@@ -14,6 +14,7 @@ import { FaSpinner, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { ArrowRight } from 'lucide-react';
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
 import useAuthStore from '@store/authStore';
+import { isAppMode } from '@lib/appMode';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
@@ -230,9 +231,11 @@ export const LoginPage: React.FC = () => {
           )}
         </div>
 
-        <button onClick={() => navigate('/')} className="mt-5 mx-auto block text-white/60 text-xs hover:text-white transition-colors">
-          ← Back to home
-        </button>
+        {!isAppMode() && (
+          <button onClick={() => navigate('/')} className="mt-5 mx-auto block text-white/60 text-xs hover:text-white transition-colors">
+            ← Back to home
+          </button>
+        )}
       </div>
 
       <style>{`
