@@ -60,7 +60,8 @@
   - Sync triggers extended: visibilitychange (foreground/resume) + Background Sync tag registration (progressive enhancement). App-update: SW no longer auto-skipWaiting → OfflineBanner shows "Update available" and activates on click (SKIP_WAITING). NOTE: full closed-tab SW replay of the structured Dexie outbox is deferred (iOS-unreliable, complex); resume/online/interval triggers cover the real teacher flow.
   - _Requirements: 12_
 
-- [ ] 16. Capacitor Android: add Capacitor, Android platform, app id/icons/splash, production API base
+- [x] 16. Capacitor Android: add Capacitor, Android platform, app id/icons/splash, production API base
+  - Installed @capacitor/core/cli/android; capacitor.config.ts (appId sl.wiskul.app, appName WiSkul, webDir dist, androidScheme https). .env.app sets absolute VITE_API_URL (webview runs from bundled origin). `npx cap add android` scaffolded android/. Scripts: android:sync (build:app + cap sync), android:open. Default launcher icons in place (custom branding icons can replace later).
   - _Requirements: 7_
 
 - [ ] 17. Android release: keystore + signed AAB; verify offline features in webview
