@@ -28,7 +28,8 @@
   - `syncEngine`: drains Dexie outbox to /sync/push, maps per-item results to local syncStatus (applied/duplicate→synced, rejected→error, MAX_ATTEMPTS cap), then pulls via rosterRepo; serialized + backoff. `useSyncEngine` hook mounted in MainLayout triggers on start/online/interval/after-write (requestSync event); teacher-only.
   - _Requirements: 5_
 
-- [ ] 8. Offline Attendance: attendanceRepo write-behind; page works offline; verify single row + no-duplicate on retry
+- [x] 8. Offline Attendance: attendanceRepo write-behind; page works offline; single row + no-duplicate on retry
+  - `attendanceRepo.mark`: write-behind into Dexie + outbox with per-cell dedupe (re-mark updates same clientId, no duplicate queue item). `attendanceService.submitBulkAttendance` is offline-aware for teachers: offline → queue each record locally + return queued success; online → real /attendance/bulk. No-duplicate on retry guaranteed by backend client_id idempotency (task 4). Existing AttendancePage works offline transparently (no rewrite).
   - _Requirements: 3_
 
 - [ ] 9. Offline Grades + Assignments: repos + pages; locked-grade rejected on sync with clear message
