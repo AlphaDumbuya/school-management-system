@@ -66,15 +66,17 @@ and the email+password base credential is retained.
     same session as TOTP), with typed-code fallback; hidden where WebAuthn unsupported.
   - _Requirements: 2.6, 2.7, 5.4, 7.1, 7.2_
 
-- [ ] 10. Cross-platform: Digital Asset Links + Android config
-  - Add `frontend/public/.well-known/assetlinks.json` binding `sl.wiskul.app` + release SHA-256
-    cert fingerprint to `www.wiskulsl.com`. Add the Android apk-key-hash origin to the backend's
-    accepted-origins config (env). Document the release-keystore fingerprint prerequisite.
+- [x] 10. Cross-platform: Digital Asset Links + Android config
+  - Added `frontend/public/.well-known/assetlinks.json` (package sl.wiskul.app; release SHA-256
+    fingerprint placeholder, builds into dist/.well-known and served by Vercel via the filesystem
+    route before the SPA catch-all). Backend already reads `WEBAUTHN_ANDROID_ORIGIN`; added
+    WEBAUTHN_* to .env.example and a `docs/PASSKEYS.md` guide with exact fingerprint→assetlinks→env
+    steps. Web/PWA passkeys work now; native Android needs the release keystore fingerprint filled in.
   - _Requirements: 5.1, 5.2, 5.3_
 
-- [ ] 11. Build green + migrate + commit/push
-  - Backend build + `get_diagnostics`; frontend `build` and `build:app`; run migration 124;
-    commit each stable unit and push.
+- [x] 11. Build green + migrate + commit/push
+  - Backend + frontend (`build` and `build:app`) green throughout; migration 124 applied to dev DB;
+    each stable unit committed + pushed to feature/sl-report-cards.
   - _Requirements: 4.3_
 
 ## Notes
