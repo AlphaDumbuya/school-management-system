@@ -167,7 +167,10 @@ async function flushOfflineQueue(): Promise<number> {
 // Lifecycle
 // ===========================================================================
 self.addEventListener('install', () => {
-  self.skipWaiting();
+  // NOTE: we intentionally do NOT skipWaiting here. A freshly built SW stays in
+  // "waiting" so the app can show an "Update available" prompt (OfflineBanner)
+  // and only activate on the user's click (which posts SKIP_WAITING). This gives
+  // teachers control and avoids reloading mid-task.
 });
 
 self.addEventListener('activate', (event) => {

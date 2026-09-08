@@ -56,7 +56,8 @@
   - `storage.ts`: estimateUsage (navigator.storage.estimate), counts, clearReadCache (preserves outbox/pending writes), evictStale (30d TTL, called on roster refresh). `OfflineStorageSettings` component + "Offline & Storage" teacher-only tab in Settings (usage bar, cached vs un-synced counts, clear-cache with pending warning).
   - _Requirements: 11_
 
-- [ ] 15. Background sync + app-update prompt (SW background sync / Capacitor resume; prompt-to-reload)
+- [x] 15. Background sync + app-update prompt (SW background sync / Capacitor resume; prompt-to-reload)
+  - Sync triggers extended: visibilitychange (foreground/resume) + Background Sync tag registration (progressive enhancement). App-update: SW no longer auto-skipWaiting → OfflineBanner shows "Update available" and activates on click (SKIP_WAITING). NOTE: full closed-tab SW replay of the structured Dexie outbox is deferred (iOS-unreliable, complex); resume/online/interval triggers cover the real teacher flow.
   - _Requirements: 12_
 
 - [ ] 16. Capacitor Android: add Capacitor, Android platform, app id/icons/splash, production API base
