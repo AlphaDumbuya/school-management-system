@@ -1,0 +1,107 @@
+# Implementation Plan — Passkey Authentication
+
+## Overview
+
+Adds passkeys (WebAuthn/FIDO2) as an advanced authentication method alongside the existing
+authenticator-app (TOTP) 2FA. Backend uses `@simplewebauthn/server`; frontend uses
+`@simplewebauthn/browser`. Reuses the existing MFA challenge/login flow and audit patterns.
+Passkeys are password-free/phishing-resistant but require server connectivity (no offline login),
+and the email+password base credential is retained.
+
+## Tasks
+
+- [x] 1. Install WebAuthn libraries and add DB schema (migration 124)
+  - Installed `@simplewebauthn/server@^13` (backend) + `@simplewebauthn/browser@^13` (frontend).
+  - Created `124_passkeys.ts` with tenant-isolated `user_passkeys` (credential_id unique,
+    public_key, counter, transports, device_label, failed_attempts/locked_until, last_used_at)
+    and `webauthn_challenges` (type, 120s expiry). Ran migration (batch 40); both tables verified.
+  - _Requirements: 4.3, 4.4, 6.1_
+
+- [ ] 2. Backend: passkeyService — registration ceremony
+  - `getRegistrationOptions(userId, tenantId)`: generate options via `@simplewebauthn/server`,
+    RP_ID `www.wiskulsl.com`, excludeCredentials from existing user passkeys, persist a
+    `registration` challenge (120s TTL). Enforce per-user limit of 10.
+  - `verifyRegistration(userId, tenantId, response, deviceLabel?)`: consume+verify challenge,
+    origin, RP_ID; store credential (id, public key, counter, transports, label, tenant); default
+    label when absent; validate label 1–64 chars; audit `passkey_added`.
+  - _Requirements: 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11_
+
+- [ ] 3. Backend: passkeyService — authentication ceremony (login second factor)
+  - `getAuthenticationOptions(mfaToken)`: resolve user from the mfa challenge, list
+    allowCredentials, persist an `authentication` challenge (120s TTL).
+  - `verifyAuthentication(mfaToken, response)`: consume+verify challenge/origin/RP_ID; look up
+    credential in owning tenant; reject cross-tenant; counter replay guard + advance;
+    per-credential lockout (5/300s); update last_used_at; consume mfa challenge; audit
+    `passkey_login`; return userId.
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.11, 2.12, 4.5, 4.6, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8_
+
+- [ ] 4. Backend: passkeyService — manage passkeys (list/rename/remove)
+  - `listPasskeys` (tenant-scoped), `renamePasskey` (label 1–64, not-found guard),
+    `removePasskey` (not-found guard + last-factor lockout guard). Audit rename/remove.
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 7.3, 7.4_
+
+- [ ] 5. Backend: routes + wire into auth
+  - Add `/api/v1/auth/passkeys/*` routes (register/options, register/verify [auth];
+    authenticate/options, authenticate/verify [public + mfa_token]; GET, PATCH/:id, DELETE/:id
+    [auth]).
+  - `authenticate/verify` issues the same session tokens as `2fa/verify-login` via authService.
+  - Map errors to the AppError codes in the design's Error Handling table.
+  - _Requirements: 2.9, 2.10, 5.4, 7.1, 7.2_
+
+- [ ] 6. Backend: unit + integration tests (Vitest)
+  - Service tests: challenge lifecycle/expiry, registration verify happy + tampered, auth verify +
+    replay + cross-tenant reject, remove-last-factor guard, label validation, lockout.
+  - Route tests: auth guards + mfa_token requirement on authenticate routes.
+  - _Requirements: 6.2, 6.3, 6.4, 6.6, 6.7, 6.8, 7.3_
+
+- [ ] 7. Frontend: authService passkey methods
+  - Add `getPasskeyRegistrationOptions`, `verifyPasskeyRegistration`, `getPasskeyAuthOptions`,
+    `verifyPasskeyAuth` (persist tokens like `verifyTwoFactorLogin`), `listPasskeys`,
+    `renamePasskey`, `removePasskey`.
+  - _Requirements: 1.2, 2.1, 3.1_
+
+- [ ] 8. Frontend: PasskeySettings + Advanced security section
+  - New `PasskeySettings.tsx` (register via `startRegistration`, list with label/created/last-used,
+    rename, remove with confirm + last-factor message). Add an "Advanced security" section to
+    `TwoFactorSettings.tsx` presenting Authenticator app vs Passkeys. Hide passkeys where
+    `browserSupportsWebAuthn()` is false.
+  - _Requirements: 1.1, 3.1, 3.2, 3.3, 3.4, 3.5, 5.4_
+
+- [ ] 9. Frontend: LoginPage passkey option at MFA step
+  - When the user has passkeys, show "Use passkey" that runs `startAuthentication` +
+    `verifyPasskeyAuth`, completing login identically to a TOTP verify; keep code entry fallback.
+    Hide where WebAuthn unsupported.
+  - _Requirements: 2.6, 2.7, 5.4, 7.1, 7.2_
+
+- [ ] 10. Cross-platform: Digital Asset Links + Android config
+  - Add `frontend/public/.well-known/assetlinks.json` binding `sl.wiskul.app` + release SHA-256
+    cert fingerprint to `www.wiskulsl.com`. Add the Android apk-key-hash origin to the backend's
+    accepted-origins config (env). Document the release-keystore fingerprint prerequisite.
+  - _Requirements: 5.1, 5.2, 5.3_
+
+- [ ] 11. Build green + migrate + commit/push
+  - Backend build + `get_diagnostics`; frontend `build` and `build:app`; run migration 124;
+    commit each stable unit and push.
+  - _Requirements: 4.3_
+
+## Notes
+
+- Native passkeys require a release-signed APK whose SHA-256 cert fingerprint matches the
+  published `assetlinks.json`; until then, passkeys work on web/PWA and the Android app falls
+  back to password + TOTP/backup codes.
+- No offline login: every ceremony needs the server. Password remains the base credential.
+
+## Task Dependency Graph
+
+```json
+{
+  "waves": [
+    { "wave": 1, "tasks": ["1"] },
+    { "wave": 2, "tasks": ["2", "3", "4"] },
+    { "wave": 3, "tasks": ["5"] },
+    { "wave": 4, "tasks": ["6", "7", "10"] },
+    { "wave": 5, "tasks": ["8", "9"] },
+    { "wave": 6, "tasks": ["11"] }
+  ]
+}
+```
