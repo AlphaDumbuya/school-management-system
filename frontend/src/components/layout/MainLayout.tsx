@@ -12,6 +12,7 @@ import { isOnboardingComplete } from '@lib/onboarding';
 import OnboardingGuide from '@components/onboarding/OnboardingGuide';
 import ImpersonationBanner from './ImpersonationBanner';
 import OfflineBanner from '@components/offline/OfflineBanner';
+import { useSyncEngine } from '../../offline/useSyncEngine';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -38,6 +39,9 @@ const OnboardingController: React.FC = () => {
 const COLLAPSE_KEY = 'wiskul.sidebar.collapsed';
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
+  // Drive the teacher offline sync loop (no-op for other roles / when online-first).
+  useSyncEngine();
+
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024);
   // Desktop-only: collapse the sidebar to a slim icon rail. Persisted.

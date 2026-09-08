@@ -4,6 +4,8 @@
  */
 
 import { apiClient } from '@lib/apiClient';
+import useAuthStore from '@store/authStore';
+import { attendanceRepo } from '../offline/repositories/attendanceRepo';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -83,7 +85,23 @@ export const attendanceService = {
   },
 
   async submitBulkAttendance(payload: BulkAttendancePayload) {
-    return apiClient.post<{ success: boolean; message: string }>(
+    // Offline-first: for teachers with no connectivity, queue each mark locally
+    // (Dexie + outbox) and report success. The sync engine flushes on reconnect.
+    const user = useAuthStore.getState().user;
+    if (!navigator.onLine && user?.role === 'teacher') {
+      for (const rec of payload.records) {
+        await attendanceRepo.mark(user.id, {
+          studentId: rec.student_id,
+          classId: payload.class_id,
+          date: payload.date,
+          sessionType: (rec.session_type || payload.session_type) as string | undefined,
+          status: rec.status,
+          remarks: rec.remarks,
+        });
+      }
+      return { success: true, message: `Saved ${payload.records.length} record(s) offline — will sync when you reconnect.`, offline: true } as { success: boolean; message: string; offline?: boolean };
+    }
+    return apiClient.post<{ success: boolean; message: string; offline?: boolean }>(
       '/api/v1/attendance/bulk',
       payload
     );
