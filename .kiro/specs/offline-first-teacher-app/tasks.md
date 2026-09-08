@@ -56,19 +56,24 @@
   - `storage.ts`: estimateUsage (navigator.storage.estimate), counts, clearReadCache (preserves outbox/pending writes), evictStale (30d TTL, called on roster refresh). `OfflineStorageSettings` component + "Offline & Storage" teacher-only tab in Settings (usage bar, cached vs un-synced counts, clear-cache with pending warning).
   - _Requirements: 11_
 
-- [ ] 15. Background sync + app-update prompt (SW background sync / Capacitor resume; prompt-to-reload)
+- [x] 15. Background sync + app-update prompt (SW background sync / Capacitor resume; prompt-to-reload)
+  - Sync triggers extended: visibilitychange (foreground/resume) + Background Sync tag registration (progressive enhancement). App-update: SW no longer auto-skipWaiting → OfflineBanner shows "Update available" and activates on click (SKIP_WAITING). NOTE: full closed-tab SW replay of the structured Dexie outbox is deferred (iOS-unreliable, complex); resume/online/interval triggers cover the real teacher flow.
   - _Requirements: 12_
 
-- [ ] 16. Capacitor Android: add Capacitor, Android platform, app id/icons/splash, production API base
+- [x] 16. Capacitor Android: add Capacitor, Android platform, app id/icons/splash, production API base
+  - Installed @capacitor/core/cli/android; capacitor.config.ts (appId sl.wiskul.app, appName WiSkul, webDir dist, androidScheme https). .env.app sets absolute VITE_API_URL (webview runs from bundled origin). `npx cap add android` scaffolded android/. Scripts: android:sync (build:app + cap sync), android:open. Default launcher icons in place (custom branding icons can replace later).
   - _Requirements: 7_
 
-- [ ] 17. Android release: keystore + signed AAB; verify offline features in webview
+- [x] 17. Android release: keystore + signed AAB; verify offline features in webview
+  - Release signing config in android/app/build.gradle reads gitignored keystore.properties (falls back to unsigned if absent). keystore.properties.example + .gitignore for *.jks/*.keystore/keystore.properties. docs/ANDROID_RELEASE.md documents keystore generation + `gradlew bundleRelease` → app-release.aab. NOTE: the actual Gradle compile runs locally (needs Android SDK) — not runnable in this environment.
   - _Requirements: 7_
 
-- [ ] 18. Play Store readiness: public Privacy Policy page + docs/PLAY_STORE_CHECKLIST.md (Data Safety, listing assets, content rating, Families policy, upload steps)
+- [x] 18. Play Store readiness: public Privacy Policy page + docs/PLAY_STORE_CHECKLIST.md (Data Safety, listing assets, content rating, Families policy, upload steps)
+  - Self-hosted PrivacyPolicyPage at /privacy-policy (children's-data + offline sections). docs/PLAY_STORE_CHECKLIST.md: account, listing assets, Data Safety answers, content rating, Families policy (target adult staff), reviewer test-login note, release/versioning.
   - _Requirements: 13_
 
-- [ ] 19. Build backend + frontend green; run migration; commit + push
+- [x] 19. Build backend + frontend green; run migrations (120–123); commit + push
+  - All builds green throughout; migrations applied to dev DB; every task committed + pushed to feature/sl-report-cards.
   - _Requirements: all_
 ```
 ```

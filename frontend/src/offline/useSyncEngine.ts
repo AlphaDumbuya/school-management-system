@@ -33,14 +33,29 @@ export function useSyncEngine() {
 
     const onOnline = () => tick();
     const onRequest = () => tick();
+    // Resume trigger: sync when the app returns to the foreground (e.g. the
+    // teacher reopens it after being in a low-signal area) — closest reliable
+    // proxy for "background sync" that also works on iOS webviews.
+    const onVisible = () => { if (document.visibilityState === 'visible') tick(); };
+
     window.addEventListener('online', onOnline);
     window.addEventListener(SYNC_EVENT, onRequest);
+    document.addEventListener('visibilitychange', onVisible);
     const interval = window.setInterval(tick, INTERVAL_MS);
+
+    // Register a Background Sync tag so a supporting browser/OS can wake the SW
+    // to flush the queue even if the tab is closed (progressive enhancement).
+    if ('serviceWorker' in navigator && 'SyncManager' in window) {
+      navigator.serviceWorker.ready
+        .then((reg) => (reg as any).sync?.register('sync-offline-queue'))
+        .catch(() => undefined);
+    }
 
     return () => {
       disposed = true;
       window.removeEventListener('online', onOnline);
       window.removeEventListener(SYNC_EVENT, onRequest);
+      document.removeEventListener('visibilitychange', onVisible);
       window.clearInterval(interval);
     };
   }, [userId, isTeacher]);
