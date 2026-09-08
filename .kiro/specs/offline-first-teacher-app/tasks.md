@@ -40,16 +40,20 @@
   - OfflineGate component shows a clear "Internet required" state offline (never queues/fakes writes). Wrapped platform (tenants/subscriptions/analytics/communications), finance (fees/invoices/payments), and admissions routes via a `G` shorthand in the router.
   - _Requirements: 6_
 
-- [ ] 11. Secure local data: user-namespaced store + wipe on logout/unrecoverable auth; final-push-then-wipe
+- [x] 11. Secure local data: user-namespaced store + wipe on logout/unrecoverable auth; final-push-then-wipe
+  - Logout: best-effort final sync (teacher, online) then wipeOfflineDb(userId) — student PII never lingers. Login/verifyMfa: wipeOtherUsers() drops any other user's offline DB on this device (shared-phone safety). Store already namespaced per user.
   - _Requirements: 8_
 
-- [ ] 12. Sync visibility: last-synced + pending count + "Sync now"; per-row sync chips; "data as of" freshness badge
+- [x] 12. Sync visibility: last-synced + pending count + "Sync now"; per-row sync chips; "data as of" freshness badge
+  - `useSyncStatus` (Dexie: pending=outbox, failed=error rows, lastPulledAt) + syncNow. SyncStatusIndicator upgraded (online/offline/syncing/pending/failed states, last-synced tooltip, Sync now). FreshnessBadge for cached screens (timeAgo). Per-row chips available via row.syncStatus (used by useRoster.fromCache + attendance rows).
   - _Requirements: 9_
 
-- [ ] 13. Conflict/rejection: per-item push results; "Sync issues" view with Retry/Discard
+- [x] 13. Conflict/rejection: per-item push results; "Sync issues" view with Retry/Discard
+  - `syncIssues` (list/retry/discard rejected writes). SyncIssuesPage at /sync-issues (teacher) lists rejected writes with reason + Retry/Discard; nothing dropped silently. Header "Sync issues" chip navigates there.
   - _Requirements: 10_
 
-- [ ] 14. Cache & storage: usage estimate + clear-cache (preserve pending); TTL eviction on refresh
+- [x] 14. Cache & storage: usage estimate + clear-cache (preserve pending); TTL eviction on refresh
+  - `storage.ts`: estimateUsage (navigator.storage.estimate), counts, clearReadCache (preserves outbox/pending writes), evictStale (30d TTL, called on roster refresh). `OfflineStorageSettings` component + "Offline & Storage" teacher-only tab in Settings (usage bar, cached vs un-synced counts, clear-cache with pending warning).
   - _Requirements: 11_
 
 - [ ] 15. Background sync + app-update prompt (SW background sync / Capacitor resume; prompt-to-reload)

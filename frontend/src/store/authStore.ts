@@ -8,6 +8,8 @@ import { create } from 'zustand';
 import { AuthUser, UserRole } from '@appTypes/index';
 import authService from '@services/authService';
 import { clearQueue } from '@lib/offlineQueue';
+import { wipeOfflineDb, wipeOtherUsers } from '../offline/db';
+import { runSync } from '../offline/syncEngine';
 
 interface AuthStore {
   // State
@@ -129,11 +131,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         setUser(user);
         setAccessToken(token);
         setIsAuthenticated(true);
+        if (user.id) wipeOtherUsers(user.id).catch(() => {});
         return true;
       } else if (response.success && dataAny) {
         if (dataAny.user) setUser(dataAny.user);
         if (token) setAccessToken(token);
         setIsAuthenticated(true);
+        if (dataAny.user?.id) wipeOtherUsers(dataAny.user.id).catch(() => {});
         return true;
       } else {
         setError(response.error || 'Login failed');
@@ -167,6 +171,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         setAccessToken(token);
         setIsAuthenticated(true);
         set({ mfaToken: null });
+        if (user.id) wipeOtherUsers(user.id).catch(() => {});
         return true;
       }
       setError(response.error || 'Invalid verification code');
@@ -181,16 +186,29 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   // Logout action
   logout: async () => {
-    const { setIsLoading } = get();
+    const { setIsLoading, user } = get();
     setIsLoading(true);
 
+    // Capture the user id BEFORE clearing state so we can wipe their local data.
+    const userId = user?.id || null;
+
     try {
+      // Best-effort: flush any pending offline writes while we (maybe) still
+      // have connectivity, so a teacher's queued work isn't lost on logout.
+      if (userId && user?.role === 'teacher' && navigator.onLine) {
+        await runSync(userId).catch(() => undefined);
+      }
       await authService.logout();
       get().clearAuthState();
     } catch (error) {
       console.error('Logout error:', error);
       get().clearAuthState();
     } finally {
+      // Wipe the per-user offline database so student PII never lingers on a
+      // shared device after logout (privacy — Req 8).
+      if (userId) {
+        await wipeOfflineDb(userId).catch(() => undefined);
+      }
       setIsLoading(false);
     }
   },
