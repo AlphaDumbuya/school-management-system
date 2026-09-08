@@ -25,6 +25,8 @@ jobs:
   build-apk:
     name: Build APK
     runs-on: ubuntu-latest
+    # Don't re-trigger on the workflow's own auto-publish commit (prevents a loop).
+    if: "!contains(github.event.head_commit.message, 'auto-publish latest APK')"
 
     steps:
       - uses: actions/checkout@v4
@@ -86,8 +88,7 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
-      # Publish the APK to a GitHub Release so you get a PERMANENT download URL.
-      # Manual runs: uses the tag you enter. Push runs: uses a rolling "android-latest" tag.
+      # Publish the APK to a GitHub Release (permanent URL for internal/manual use).
       - name: Publish APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -98,3 +99,25 @@ jobs:
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # HANDS-OFF PUBLISHING (task 20b): commit the built APK back into
+      # frontend/public/downloads so Vercel serves it at
+      # https://www.wiskulsl.com/downloads/wiskul.apk automatically — no manual
+      # download/copy. The repo is private so the GitHub Release asset isn't
+      # publicly downloadable; serving via our own domain is the public path.
+      # Skips the commit if the APK is unchanged (avoids empty/no-op commits).
+      - name: Commit APK to frontend/public/downloads
+        if: github.event_name == 'push'
+        run: |
+          set -e
+          mkdir -p frontend/public/downloads
+          cp apk-out/wiskul.apk frontend/public/downloads/wiskul.apk
+          if git diff --quiet -- frontend/public/downloads/wiskul.apk; then
+            echo "APK unchanged — nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/public/downloads/wiskul.apk
+          git commit -m "chore(app): auto-publish latest APK [skip ci]"
+          git push origin HEAD:${GITHUB_REF_NAME}

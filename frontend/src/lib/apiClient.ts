@@ -306,13 +306,17 @@ const handleError = (error: unknown): ErrorResponse => {
   }
 
   if (axios.isAxiosError(error)) {
-    // No HTTP response at all → the device is offline / server unreachable.
-    // Give a clear, action-oriented message instead of raw "Network Error".
+    // No HTTP response at all → could be genuinely offline OR the server was
+    // unreachable (DNS/TLS/CORS/timeout) even with a live connection. Only claim
+    // "offline" when the device actually reports it; otherwise say we couldn't
+    // reach the server, which is accurate and less confusing.
     if (!error.response) {
+      const reallyOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
       return {
         success: false,
-        error:
-          "You're offline. Connect to the internet to sign in — once you're in, the app keeps working offline.",
+        error: reallyOffline
+          ? "You appear to be offline. Check your connection and try again."
+          : "Couldn't reach the WiSkul server. Please check your connection and try again.",
         statusCode: 0,
       };
     }
