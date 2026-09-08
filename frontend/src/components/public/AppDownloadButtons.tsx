@@ -26,18 +26,18 @@ export const AppDownloadButtons: React.FC<Props> = ({ variant = 'light', classNa
   const onDark = variant === 'light';
 
   return (
-    <div className={`flex flex-col items-center sm:items-start gap-2 ${className}`}>
-      <div className="flex flex-col sm:flex-row gap-3">
+    <div className={`flex flex-col items-center sm:items-start gap-1.5 ${className}`}>
+      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
         {PLAY_URL && (
           <a
             href={PLAY_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 bg-black hover:bg-gray-900 text-white font-bold text-sm px-6 py-3.5 rounded-lg transition-colors"
+            className="inline-flex items-center gap-2 bg-black hover:bg-gray-900 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition-colors"
           >
-            <Smartphone size={18} />
+            <Smartphone size={16} />
             <span className="text-left leading-tight">
-              <span className="block text-[10px] font-normal opacity-80">GET IT ON</span>
+              <span className="block text-[9px] font-normal opacity-80">GET IT ON</span>
               Google Play
             </span>
           </a>
@@ -46,23 +46,23 @@ export const AppDownloadButtons: React.FC<Props> = ({ variant = 'light', classNa
           <a
             href={APK_URL}
             download
-            className={`inline-flex items-center gap-2 font-bold text-sm px-6 py-3.5 rounded-lg transition-colors ${
+            className={`inline-flex items-center gap-2 font-semibold text-xs px-4 py-2.5 rounded-lg transition-colors ${
               onDark
-                ? 'bg-white/10 hover:bg-white/20 text-white border border-white/25'
+                ? 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
                 : 'bg-[#1d4ed8] hover:bg-[#1e40af] text-white'
             }`}
           >
-            <Download size={18} />
+            <Download size={16} />
             <span className="text-left leading-tight">
-              <span className="block text-[10px] font-normal opacity-80">ANDROID · v{APP_VERSION}</span>
-              Download App
+              <span className="block text-[9px] font-normal opacity-80">ANDROID · v{APP_VERSION}</span>
+              Get the app
             </span>
           </a>
         )}
       </div>
       {APK_URL && !PLAY_URL && (
         <p className={`text-[11px] ${onDark ? 'text-white/50' : 'text-slate-400'}`}>
-          Android only. You may need to allow installs from your browser.
+          Android only. Enable installs from your browser if prompted.
         </p>
       )}
     </div>
