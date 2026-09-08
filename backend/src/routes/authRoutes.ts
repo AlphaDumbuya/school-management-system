@@ -276,6 +276,126 @@ router.post('/2fa/backup-codes', authenticate, async (req: Request, res: Respons
   }
 });
 
+// ── Passkeys (WebAuthn) ─────────────────────────────────────────────────────
+// Resolve the caller's tenant from their user record (JWT doesn't carry tenant).
+async function resolveTenantId(userId: string): Promise<string> {
+  const { db } = await import('@utils/database');
+  const user = await db('users').select('tenant_id').where({ id: userId }).first();
+  if (!user?.tenant_id) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+  return user.tenant_id;
+}
+
+/** POST /api/v1/auth/passkeys/register/options  (authenticated) */
+router.post('/passkeys/register/options', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).auth.userId;
+    const tenantId = await resolveTenantId(userId);
+    const { default: passkeyService } = await import('@services/passkeyService');
+    const options = await passkeyService.getRegistrationOptions(userId, tenantId);
+    res.json({ success: true, data: options });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** POST /api/v1/auth/passkeys/register/verify  (authenticated) */
+router.post('/passkeys/register/verify', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).auth.userId;
+    const tenantId = await resolveTenantId(userId);
+    const { response, label } = req.body;
+    if (!response) throw new AppError('Registration response is required', 400, 'VALIDATION_ERROR');
+    const { default: passkeyService } = await import('@services/passkeyService');
+    const passkey = await passkeyService.verifyRegistration(userId, tenantId, response, label);
+    res.json({ success: true, data: { passkey } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** POST /api/v1/auth/passkeys/authenticate/options  (public; needs mfa_token) */
+router.post('/passkeys/authenticate/options', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { mfa_token } = req.body;
+    if (!mfa_token) throw new AppError('Session token is required', 400, 'VALIDATION_ERROR');
+    const { default: passkeyService } = await import('@services/passkeyService');
+    const options = await passkeyService.getAuthenticationOptions(mfa_token);
+    res.json({ success: true, data: options });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** POST /api/v1/auth/passkeys/authenticate/verify  (public; needs mfa_token) */
+router.post('/passkeys/authenticate/verify', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { mfa_token, response } = req.body;
+    if (!mfa_token || !response) throw new AppError('Passkey response is required', 400, 'VALIDATION_ERROR');
+    const result = await authService.completePasskeyLogin(mfa_token, response);
+
+    res.cookie('refreshToken', result.refresh_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        accessToken: result.access_token,
+        refreshToken: result.refresh_token,
+        expiresIn: 1800,
+        tokenType: 'Bearer',
+        user: result.user,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** GET /api/v1/auth/passkeys  (authenticated) — list */
+router.get('/passkeys', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).auth.userId;
+    const tenantId = await resolveTenantId(userId);
+    const { default: passkeyService } = await import('@services/passkeyService');
+    const passkeys = await passkeyService.listPasskeys(userId, tenantId);
+    res.json({ success: true, data: { passkeys } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** PATCH /api/v1/auth/passkeys/:id  (authenticated) — rename */
+router.patch('/passkeys/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).auth.userId;
+    const tenantId = await resolveTenantId(userId);
+    const { label } = req.body;
+    if (!label) throw new AppError('A device label is required', 400, 'VALIDATION_ERROR');
+    const { default: passkeyService } = await import('@services/passkeyService');
+    const passkey = await passkeyService.renamePasskey(userId, tenantId, req.params.id, label);
+    res.json({ success: true, data: { passkey } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** DELETE /api/v1/auth/passkeys/:id  (authenticated) — remove */
+router.delete('/passkeys/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).auth.userId;
+    const tenantId = await resolveTenantId(userId);
+    const { default: passkeyService } = await import('@services/passkeyService');
+    await passkeyService.removePasskey(userId, tenantId, req.params.id);
+    res.json({ success: true, message: 'Passkey removed' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * POST /api/v1/auth/refresh
  * Refresh access token using refresh token

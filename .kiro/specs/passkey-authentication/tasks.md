@@ -17,35 +17,29 @@ and the email+password base credential is retained.
     and `webauthn_challenges` (type, 120s expiry). Ran migration (batch 40); both tables verified.
   - _Requirements: 4.3, 4.4, 6.1_
 
-- [ ] 2. Backend: passkeyService — registration ceremony
-  - `getRegistrationOptions(userId, tenantId)`: generate options via `@simplewebauthn/server`,
-    RP_ID `www.wiskulsl.com`, excludeCredentials from existing user passkeys, persist a
-    `registration` challenge (120s TTL). Enforce per-user limit of 10.
-  - `verifyRegistration(userId, tenantId, response, deviceLabel?)`: consume+verify challenge,
-    origin, RP_ID; store credential (id, public key, counter, transports, label, tenant); default
-    label when absent; validate label 1–64 chars; audit `passkey_added`.
+- [x] 2. Backend: passkeyService — registration ceremony
+  - `passkeyService.getRegistrationOptions` (RP_ID www.wiskulsl.com, excludeCredentials, 120s
+    challenge, per-user limit 10) + `verifyRegistration` (consume/verify challenge+origin+RP_ID,
+    store credential, default label, validate 1–64, audit passkey_added).
   - _Requirements: 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11_
 
-- [ ] 3. Backend: passkeyService — authentication ceremony (login second factor)
-  - `getAuthenticationOptions(mfaToken)`: resolve user from the mfa challenge, list
-    allowCredentials, persist an `authentication` challenge (120s TTL).
-  - `verifyAuthentication(mfaToken, response)`: consume+verify challenge/origin/RP_ID; look up
-    credential in owning tenant; reject cross-tenant; counter replay guard + advance;
-    per-credential lockout (5/300s); update last_used_at; consume mfa challenge; audit
-    `passkey_login`; return userId.
+- [x] 3. Backend: passkeyService — authentication ceremony (login second factor)
+  - `getAuthenticationOptions(mfaToken)` + `verifyAuthentication(mfaToken, response)`:
+    tenant-scoped credential lookup, cross-tenant reject, counter replay guard + advance,
+    per-credential lockout (5/300s), last_used_at, consume mfa challenge, audit passkey_login.
+    authService.completePasskeyLogin issues the same session as 2FA.
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.11, 2.12, 4.5, 4.6, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8_
 
-- [ ] 4. Backend: passkeyService — manage passkeys (list/rename/remove)
-  - `listPasskeys` (tenant-scoped), `renamePasskey` (label 1–64, not-found guard),
-    `removePasskey` (not-found guard + last-factor lockout guard). Audit rename/remove.
+- [x] 4. Backend: passkeyService — manage passkeys (list/rename/remove)
+  - `listPasskeys` (tenant-scoped), `renamePasskey` (label validation + not-found guard),
+    `removePasskey` (not-found + last-second-factor lockout guard). Audits rename/remove.
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 7.3, 7.4_
 
-- [ ] 5. Backend: routes + wire into auth
-  - Add `/api/v1/auth/passkeys/*` routes (register/options, register/verify [auth];
-    authenticate/options, authenticate/verify [public + mfa_token]; GET, PATCH/:id, DELETE/:id
-    [auth]).
-  - `authenticate/verify` issues the same session tokens as `2fa/verify-login` via authService.
-  - Map errors to the AppError codes in the design's Error Handling table.
+- [x] 5. Backend: routes + wire into auth
+  - `/api/v1/auth/passkeys/*` routes added (register/options+verify [auth]; authenticate/
+    options+verify [public+mfa_token]; GET list, PATCH rename, DELETE remove [auth]).
+    authenticate/verify issues the same tokens as 2fa/verify-login. AppError codes per design.
+    Backend builds green.
   - _Requirements: 2.9, 2.10, 5.4, 7.1, 7.2_
 
 - [ ] 6. Backend: unit + integration tests (Vitest)

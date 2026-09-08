@@ -365,6 +365,23 @@ export class AuthService {
   }
 
   /**
+   * Complete a login using a passkey (WebAuthn) as the second factor. Verifies
+   * the assertion against the mfa challenge, then issues the SAME session tokens
+   * as a completed TOTP 2FA login (spec Correctness Property 7).
+   */
+  async completePasskeyLogin(
+    mfaToken: string,
+    response: any
+  ): Promise<{ access_token: string; refresh_token: string; user: UserResponse }> {
+    const { default: passkeyService } = await import('./passkeyService');
+    const { userId } = await passkeyService.verifyAuthentication(mfaToken, response);
+    const user = await this.db('users').where({ id: userId }).first();
+    if (!user) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+    logger.info(`Passkey login completed for ${user.email}`);
+    return await this.issueSessionForUser(user);
+  }
+
+  /**
    * Refresh access token
    */
   async refreshToken(refreshToken: string): Promise<{ access_token: string }> {
