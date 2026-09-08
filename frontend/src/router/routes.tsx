@@ -95,6 +95,11 @@ const Unauthorized = () => (
 // Shorthand wrappers
 const P = ProtectedRoute;
 const CS = ComingSoonPage;
+// Online-only gate: shows a "requires internet" state offline (for admin/finance/
+// admissions/reports/communications/platform modules).
+const G: React.FC<{ children: React.ReactNode; feature?: string }> = ({ children, feature }) => (
+  <OfflineGate feature={feature}>{children}</OfflineGate>
+);
 
 // Version 2 Feature Gate (Set to true when rolling out v2.0.0)
 const V2_ENABLED = false;
@@ -109,6 +114,7 @@ const V2Route: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 import RegisterPage from '@pages/RegisterPage';
 import UnsubscribePage from '@pages/UnsubscribePage';
 import { isAppMode } from '@lib/appMode';
+import OfflineGate from '@components/offline/OfflineGate';
 
 /**
  * App mode = native Capacitor build (VITE_APP_TARGET=native) OR an installed
@@ -230,7 +236,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'students/admissions',
-          element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><AdmissionsPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><G feature="Admissions"><AdmissionsPage /></G></P>,
         },
         {
           path: 'students/profiles',
@@ -271,15 +277,15 @@ const router = createBrowserRouter(
         },
         {
           path: 'finance/fees',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><FeesPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Fees"><FeesPage /></G></P>,
         },
         {
           path: 'finance/invoices',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><InvoicesPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Invoices"><InvoicesPage /></G></P>,
         },
         {
           path: 'finance/payments',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><PaymentsPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Payments"><PaymentsPage /></G></P>,
         },
         {
           path: 'finance/expenses',
@@ -373,23 +379,23 @@ const router = createBrowserRouter(
         // ── PLATFORM MANAGEMENT (super admin) ─────────────────────
         {
           path: 'platform/tenants',
-          element: <P requiredRoles={['super_admin']}><PlatformTenantsPage /></P>,
+          element: <P requiredRoles={['super_admin']}><G feature="Tenant management"><PlatformTenantsPage /></G></P>,
         },
         {
           path: 'platform/tenants/:tenantId',
-          element: <P requiredRoles={['super_admin']}><TenantDetailPage /></P>,
+          element: <P requiredRoles={['super_admin']}><G feature="Tenant management"><TenantDetailPage /></G></P>,
         },
         {
           path: 'platform/subscriptions',
-          element: <P requiredRoles={['super_admin']}><PlatformSubscriptionsPage /></P>,
+          element: <P requiredRoles={['super_admin']}><G feature="Subscriptions"><PlatformSubscriptionsPage /></G></P>,
         },
         {
           path: 'platform/analytics',
-          element: <P requiredRoles={['super_admin']}><PlatformAnalyticsPage /></P>,
+          element: <P requiredRoles={['super_admin']}><G feature="Platform analytics"><PlatformAnalyticsPage /></G></P>,
         },
         {
           path: 'platform/communications',
-          element: <P requiredRoles={['super_admin']}><PlatformCommunicationPage /></P>,
+          element: <P requiredRoles={['super_admin']}><G feature="Communications"><PlatformCommunicationPage /></G></P>,
         },
 
         // ── SYSTEM ─────────────────────────────────────────────────
