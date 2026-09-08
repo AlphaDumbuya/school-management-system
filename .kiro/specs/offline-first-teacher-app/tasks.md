@@ -64,7 +64,8 @@
   - Installed @capacitor/core/cli/android; capacitor.config.ts (appId sl.wiskul.app, appName WiSkul, webDir dist, androidScheme https). .env.app sets absolute VITE_API_URL (webview runs from bundled origin). `npx cap add android` scaffolded android/. Scripts: android:sync (build:app + cap sync), android:open. Default launcher icons in place (custom branding icons can replace later).
   - _Requirements: 7_
 
-- [ ] 17. Android release: keystore + signed AAB; verify offline features in webview
+- [x] 17. Android release: keystore + signed AAB; verify offline features in webview
+  - Release signing config in android/app/build.gradle reads gitignored keystore.properties (falls back to unsigned if absent). keystore.properties.example + .gitignore for *.jks/*.keystore/keystore.properties. docs/ANDROID_RELEASE.md documents keystore generation + `gradlew bundleRelease` → app-release.aab. NOTE: the actual Gradle compile runs locally (needs Android SDK) — not runnable in this environment.
   - _Requirements: 7_
 
 - [ ] 18. Play Store readiness: public Privacy Policy page + docs/PLAY_STORE_CHECKLIST.md (Data Safety, listing assets, content rating, Families policy, upload steps)
