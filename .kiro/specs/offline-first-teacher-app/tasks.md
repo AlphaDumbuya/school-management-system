@@ -8,7 +8,8 @@
   - Existing `useOfflineStatus` (online/pending/syncing/flush). Added `SyncStatusIndicator` in Header. `OfflineGate` for online-only routes → Task 10.
   - _Requirements: 1, 6_
 
-- [ ] 3. Local store: Dexie schema (cache tables, writes, outbox, sync_meta) + client-id util
+- [x] 3. Local store: Dexie schema (cache tables, writes, outbox, sync_meta) + client-id util
+  - `src/offline/db.ts`: per-user namespaced DB, cache tables (classes/students/subjects/timetable), write tables (attendance/grades/assignments) with clientId+syncStatus, outbox, sync_meta; getOfflineDb/wipeOfflineDb/newClientId. Separate from the existing generic offlineQueue.
   - _Requirements: 2, 3, 4, 5_
 
 - [ ] 4. Backend: migration 123 (client_id + updated_at) and idempotent create on attendance/grades/assignments
