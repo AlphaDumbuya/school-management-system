@@ -302,6 +302,65 @@ export const authService = {
     return apiClient.post('/api/v1/auth/2fa/backup-codes', { code });
   },
 
+  // ── Passkeys (WebAuthn) ────────────────────────────────────────────────────
+
+  /** Get WebAuthn registration options (creation) for the signed-in user. */
+  getPasskeyRegistrationOptions: async (): Promise<ApiResponse<any>> => {
+    return apiClient.post('/api/v1/auth/passkeys/register/options');
+  },
+
+  /** Verify a registration response + persist the new passkey. */
+  verifyPasskeyRegistration: async (
+    response: unknown,
+    label?: string
+  ): Promise<ApiResponse<{ passkey: any }>> => {
+    return apiClient.post('/api/v1/auth/passkeys/register/verify', { response, label });
+  },
+
+  /** Get WebAuthn authentication options during login (needs the mfa token). */
+  getPasskeyAuthOptions: async (mfaToken: string): Promise<ApiResponse<any>> => {
+    return apiClient.post('/api/v1/auth/passkeys/authenticate/options', { mfa_token: mfaToken });
+  },
+
+  /**
+   * Complete a passkey login by verifying the assertion. Persists tokens exactly
+   * like verifyTwoFactorLogin so the axios interceptor sends Authorization next.
+   */
+  verifyPasskeyAuth: async (
+    mfaToken: string,
+    response: unknown
+  ): Promise<ApiResponse<any>> => {
+    const res = await apiClient.post('/api/v1/auth/passkeys/authenticate/verify', {
+      mfa_token: mfaToken,
+      response,
+    });
+    const resAny = res as any;
+    const dataAny = (res as any)?.data;
+    const accessToken =
+      resAny?.accessToken || dataAny?.accessToken || dataAny?.tokens?.accessToken || dataAny?.token;
+    const refreshToken = resAny?.refreshToken || dataAny?.refreshToken || dataAny?.tokens?.refreshToken;
+    const user = resAny?.user || dataAny?.user;
+    if (accessToken) localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+    if (refreshToken) localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+    if (user) localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+    return res;
+  },
+
+  /** List the signed-in user's registered passkeys. */
+  listPasskeys: async (): Promise<ApiResponse<{ passkeys: any[] }>> => {
+    return apiClient.get('/api/v1/auth/passkeys');
+  },
+
+  /** Rename a passkey. */
+  renamePasskey: async (id: string, label: string): Promise<ApiResponse<{ passkey: any }>> => {
+    return apiClient.patch(`/api/v1/auth/passkeys/${id}`, { label });
+  },
+
+  /** Remove a passkey. */
+  removePasskey: async (id: string): Promise<ApiResponse<{ message: string }>> => {
+    return apiClient.delete(`/api/v1/auth/passkeys/${id}`);
+  },
+
   /**
    * Clear all auth data (for logout or errors)
    */

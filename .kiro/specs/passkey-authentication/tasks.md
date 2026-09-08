@@ -48,23 +48,22 @@ and the email+password base credential is retained.
   - Route tests: auth guards + mfa_token requirement on authenticate routes.
   - _Requirements: 6.2, 6.3, 6.4, 6.6, 6.7, 6.8, 7.3_
 
-- [ ] 7. Frontend: authService passkey methods
-  - Add `getPasskeyRegistrationOptions`, `verifyPasskeyRegistration`, `getPasskeyAuthOptions`,
-    `verifyPasskeyAuth` (persist tokens like `verifyTwoFactorLogin`), `listPasskeys`,
-    `renamePasskey`, `removePasskey`.
+- [x] 7. Frontend: authService passkey methods
+  - Added getPasskeyRegistrationOptions, verifyPasskeyRegistration, getPasskeyAuthOptions,
+    verifyPasskeyAuth (persists tokens like verifyTwoFactorLogin), listPasskeys, renamePasskey,
+    removePasskey.
   - _Requirements: 1.2, 2.1, 3.1_
 
-- [ ] 8. Frontend: PasskeySettings + Advanced security section
-  - New `PasskeySettings.tsx` (register via `startRegistration`, list with label/created/last-used,
-    rename, remove with confirm + last-factor message). Add an "Advanced security" section to
-    `TwoFactorSettings.tsx` presenting Authenticator app vs Passkeys. Hide passkeys where
-    `browserSupportsWebAuthn()` is false.
+- [x] 8. Frontend: PasskeySettings + Advanced security section
+  - New `PasskeySettings.tsx` (register via startRegistration, list with label/created/last-used,
+    rename inline, remove with confirm). Added an "Advanced security" section to
+    `TwoFactorSettings.tsx`. Hidden where `browserSupportsWebAuthn()` is false. Also fixed stale
+    teal 2FA button colors to brand blue.
   - _Requirements: 1.1, 3.1, 3.2, 3.3, 3.4, 3.5, 5.4_
 
-- [ ] 9. Frontend: LoginPage passkey option at MFA step
-  - When the user has passkeys, show "Use passkey" that runs `startAuthentication` +
-    `verifyPasskeyAuth`, completing login identically to a TOTP verify; keep code entry fallback.
-    Hide where WebAuthn unsupported.
+- [x] 9. Frontend: LoginPage passkey option at MFA step
+  - Added "USE A PASSKEY" button at the MFA step (startAuthentication + verifyPasskeyAuth →
+    same session as TOTP), with typed-code fallback; hidden where WebAuthn unsupported.
   - _Requirements: 2.6, 2.7, 5.4, 7.1, 7.2_
 
 - [ ] 10. Cross-platform: Digital Asset Links + Android config
