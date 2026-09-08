@@ -113,6 +113,7 @@ const V2Route: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 import RegisterPage from '@pages/RegisterPage';
+import WelcomePage, { hasOnboarded } from '@pages/WelcomePage';
 import UnsubscribePage from '@pages/UnsubscribePage';
 import PrivacyPolicyPage from '@pages/PrivacyPolicyPage';
 import { isAppMode } from '@lib/appMode';
@@ -126,9 +127,10 @@ import OfflineGate from '@components/offline/OfflineGate';
  */
 const APP_MODE = isAppMode();
 
-// Public marketing pages — web only. In app mode, the index redirects to /login.
+// Public marketing pages — web only. In app mode, the index shows the one-time
+// welcome guide on first launch, then goes straight to /login afterwards.
 const publicMarketingRoutes = APP_MODE
-  ? [{ index: true, element: <Navigate to="/login" replace /> }]
+  ? [{ index: true, element: <Navigate to={hasOnboarded() ? '/login' : '/welcome'} replace /> }]
   : [
       { index: true, element: <LandingPage /> },
       { path: 'features', element: <FeaturesPage /> },
@@ -145,6 +147,8 @@ const router = createBrowserRouter(
       children: [
         ...publicMarketingRoutes,
         // Auth pages — always present (web + app).
+        // One-time app onboarding guide (app mode only; web redirects to home).
+        { path: 'welcome', element: APP_MODE ? <WelcomePage /> : <Navigate to="/" replace /> },
         { path: 'login', element: <LoginPage /> },
         { path: 'forgot-password', element: <ForgotPasswordPage /> },
         { path: 'reset-password', element: <ResetPasswordPage /> },

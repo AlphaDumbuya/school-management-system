@@ -12,7 +12,6 @@ import { Download, Smartphone } from 'lucide-react';
 
 const APK_URL = import.meta.env.VITE_APK_DOWNLOAD_URL as string | undefined;
 const PLAY_URL = import.meta.env.VITE_PLAY_STORE_URL as string | undefined;
-const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || '1.0';
 
 interface Props {
   /**
@@ -71,10 +70,7 @@ export const AppDownloadButtons: React.FC<Props> = ({ variant = 'light', classNa
             }`}
           >
             <Download size={iconSize} />
-            <span className="text-left leading-tight">
-              <span className={`block ${subSize} font-normal opacity-80`}>ANDROID · v{APP_VERSION}</span>
-              {isHero ? 'Download App' : 'Get the app'}
-            </span>
+            <span>Download App</span>
           </a>
         )}
       </div>
