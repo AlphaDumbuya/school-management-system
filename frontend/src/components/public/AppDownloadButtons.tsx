@@ -15,29 +15,45 @@ const PLAY_URL = import.meta.env.VITE_PLAY_STORE_URL as string | undefined;
 const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || '1.0';
 
 interface Props {
-  /** 'light' for dark backgrounds (hero/CTA), 'dark' for light backgrounds. */
-  variant?: 'light' | 'dark';
+  /**
+   * 'hero'  → full-size CTA matching the primary hero button (dark background).
+   * 'light' → compact secondary CTA for dark backgrounds.
+   * 'dark'  → compact secondary CTA for light backgrounds.
+   */
+  variant?: 'hero' | 'light' | 'dark';
   className?: string;
 }
 
 export const AppDownloadButtons: React.FC<Props> = ({ variant = 'light', className = '' }) => {
   if (!APK_URL && !PLAY_URL) return null;
 
-  const onDark = variant === 'light';
+  const isHero = variant === 'hero';
+  const onDark = variant === 'hero' || variant === 'light';
+
+  // Hero matches the primary button footprint; light/dark are compact secondary.
+  const sizing = isHero ? 'px-6 py-3.5 text-sm font-bold' : 'px-4 py-2.5 text-xs font-semibold';
+  const iconSize = isHero ? 18 : 16;
+  const subSize = isHero ? 'text-[10px]' : 'text-[9px]';
 
   return (
     <div className={`flex flex-col items-center sm:items-start gap-1.5 ${className}`}>
-      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
+      <div
+        className={`flex ${
+          isHero ? 'flex-col sm:flex-row w-full sm:w-auto' : 'flex-wrap justify-center sm:justify-start'
+        } items-stretch sm:items-center gap-2.5`}
+      >
         {PLAY_URL && (
           <a
             href={PLAY_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 bg-black hover:bg-gray-900 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition-colors"
+            className={`inline-flex items-center justify-center gap-2 bg-black hover:bg-gray-900 text-white rounded-lg transition-colors ${sizing} ${
+              isHero ? 'w-full sm:w-auto' : ''
+            }`}
           >
-            <Smartphone size={16} />
+            <Smartphone size={iconSize} />
             <span className="text-left leading-tight">
-              <span className="block text-[9px] font-normal opacity-80">GET IT ON</span>
+              <span className={`block ${subSize} font-normal opacity-80`}>GET IT ON</span>
               Google Play
             </span>
           </a>
@@ -46,16 +62,18 @@ export const AppDownloadButtons: React.FC<Props> = ({ variant = 'light', classNa
           <a
             href={APK_URL}
             download
-            className={`inline-flex items-center gap-2 font-semibold text-xs px-4 py-2.5 rounded-lg transition-colors ${
+            className={`inline-flex items-center justify-center gap-2 rounded-lg transition-colors ${sizing} ${
+              isHero ? 'w-full sm:w-auto' : ''
+            } ${
               onDark
-                ? 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+                ? 'bg-white/10 hover:bg-white/20 text-white border border-white/25'
                 : 'bg-[#1d4ed8] hover:bg-[#1e40af] text-white'
             }`}
           >
-            <Download size={16} />
+            <Download size={iconSize} />
             <span className="text-left leading-tight">
-              <span className="block text-[9px] font-normal opacity-80">ANDROID · v{APP_VERSION}</span>
-              Get the app
+              <span className={`block ${subSize} font-normal opacity-80`}>ANDROID · v{APP_VERSION}</span>
+              {isHero ? 'Download App' : 'Get the app'}
             </span>
           </a>
         )}
