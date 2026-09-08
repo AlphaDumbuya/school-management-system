@@ -20,7 +20,8 @@
   - `syncService` resolves teacher scope (assigned + led classes → enrolled students); pull returns changed classes/students/subjects/schedules/attendance/grades/assignments since a timestamp; push applies items idempotently by client_id (attendance last-write-wins per key, grades reject when locked, assignments by client_id) with per-item result. Mounted at /api/v1/sync (teacher-only).
   - _Requirements: 5_
 
-- [ ] 6. Frontend read cache: rosterRepo (classes/students/subjects/timetable) read-through + refresh; wire teacher pages to read local when offline
+- [x] 6. Frontend read cache: rosterRepo (classes/students/subjects/timetable) read-through + refresh; useRoster hook
+  - `syncClient` (pull/push wrappers); `rosterRepo` read-through cache into Dexie with incremental refresh + freshness bookmark; `useRoster` hook (serves cache first, refreshes when online, exposes fromCache + lastSyncedAt). Wiring specific teacher pages to useRoster happens alongside the attendance page in Task 8.
   - _Requirements: 2_
 
 - [ ] 7. Frontend sync engine: push outbox + pull changes, triggers (start/online/interval/after-write), backoff
