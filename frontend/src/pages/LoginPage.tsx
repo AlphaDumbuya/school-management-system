@@ -144,11 +144,11 @@ export const LoginPage: React.FC = () => {
             <>
               {!online && (
                 <div className="max-w-3xl mx-auto mb-5 bg-amber-500/20 border border-amber-400/40 rounded-xl px-4 py-3 text-xs text-amber-100 flex items-start gap-2">
-                  <span className="mt-0.5">📴</span>
-                  <span>You're offline. Connect to the internet to sign in.</span>
+                  <span className="mt-0.5">📶</span>
+                  <span>You may be offline. If sign in fails, check your connection and try again.</span>
                 </div>
               )}
-              {online && displayError && (
+              {displayError && (
                 <div className="max-w-3xl mx-auto mb-5 bg-red-500/20 border border-red-400/40 rounded-xl px-4 py-3 text-xs text-red-100 animate-shake flex items-center gap-2">
                   <span>⚠</span> {displayError}
                 </div>
@@ -203,26 +203,28 @@ export const LoginPage: React.FC = () => {
                 </div>
 
                 <button
-                  type="submit" disabled={isLoading || !online}
-                  title={!online ? 'You need an internet connection to sign in' : undefined}
+                  type="submit" disabled={isLoading}
                   className="group w-full bg-[#f59e0b] hover:bg-[#d97706] text-white font-black text-sm tracking-[0.1em] py-3.5 rounded-xl transition-all duration-300 shadow-lg shadow-amber-500/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98]"
                 >
                   {isLoading && <FaSpinner className="animate-spin w-4 h-4" />}
-                  {isLoading ? 'SIGNING IN...' : !online ? 'OFFLINE' : 'SIGN IN'}
-                  {!isLoading && online && <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+                  {isLoading ? 'SIGNING IN...' : 'SIGN IN'}
+                  {!isLoading && <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />}
                 </button>
               </form>
 
               <div className="mt-6 pt-5 border-t border-white/10 text-center space-y-2">
-                <p className="text-blue-100/70 text-xs">
-                  Registering a new school?{' '}
-                  <button
-                    type="button" onClick={() => navigate('/register')}
-                    className="text-amber-400 font-semibold hover:text-amber-300 transition-colors underline underline-offset-2"
-                  >
-                    Register School Free
-                  </button>
-                </p>
+                {/* School registration is a public/web action — hide it inside the app. */}
+                {!isAppMode() && (
+                  <p className="text-blue-100/70 text-xs">
+                    Registering a new school?{' '}
+                    <button
+                      type="button" onClick={() => navigate('/register')}
+                      className="text-amber-400 font-semibold hover:text-amber-300 transition-colors underline underline-offset-2"
+                    >
+                      Register School Free
+                    </button>
+                  </p>
+                )}
                 <p className="text-blue-100/50 text-[11px]">
                   Students &amp; Staff: Contact your school principal for portal access.
                 </p>
