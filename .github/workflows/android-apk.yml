@@ -18,6 +18,9 @@ on:
       - 'frontend/**'
       - '.github/workflows/android-apk.yml'
 
+permissions:
+  contents: write   # needed to publish the APK to a GitHub Release
+
 jobs:
   build-apk:
     name: Build APK
@@ -29,7 +32,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Setup Java (JDK 21 — required by Capacitor 8)
         uses: actions/setup-java@v4
@@ -80,13 +83,17 @@ jobs:
           name: wiskul-apk
           path: apk-out/wiskul.apk
           retention-days: 30
+          if-no-files-found: error
+          overwrite: true
 
-      - name: Publish to GitHub Release (manual runs with a tag)
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '' }}
+      # Publish the APK to a GitHub Release so you get a PERMANENT download URL.
+      # Manual runs: uses the tag you enter. Push runs: uses a rolling "android-latest" tag.
+      - name: Publish APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.release_tag }}
-          name: WiSkul Android ${{ github.event.inputs.release_tag }}
+          tag_name: ${{ github.event.inputs.release_tag != '' && github.event.inputs.release_tag || 'android-latest' }}
+          name: WiSkul Android APK
+          body: 'Latest WiSkul Android app (debug-signed). Direct download — enable "install from unknown sources" if prompted.'
           files: apk-out/wiskul.apk
           fail_on_unmatched_files: true
         env:

@@ -83,12 +83,12 @@ export const LoginPage: React.FC = () => {
       : 'border-slate-200 focus:border-[#1d4ed8] focus:ring-1 focus:ring-[#1d4ed8]/20';
 
   return (
-    <div
-      className="min-h-screen bg-[#1a1147] bg-cover bg-center bg-no-repeat flex items-center justify-center p-4 relative overflow-hidden"
-      style={{ backgroundImage: 'url(/login2.jpg)' }}
-    >
-      {/* Readability overlay so the glass card stays legible over the artwork */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#1a1147]/70 via-[#241a5c]/55 to-[#0b1234]/70" />
+    <div className="min-h-screen bg-[#1a2b6b] flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Brand gradient backdrop (no third-party artwork / watermark). */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#1a2b6b] via-[#25408f] to-[#0b1234]" />
+      {/* Soft brand glows for depth */}
+      <div className="absolute -top-24 -left-24 w-[420px] h-[420px] rounded-full bg-[#1d4ed8]/25 blur-[130px] pointer-events-none" />
+      <div className="absolute -bottom-24 -right-24 w-[420px] h-[420px] rounded-full bg-amber-400/15 blur-[130px] pointer-events-none" />
 
       {/* Portrait card */}
       <div className="relative z-10 w-full max-w-md animate-fade-in">
@@ -236,6 +236,11 @@ export const LoginPage: React.FC = () => {
             ← Back to home
           </button>
         )}
+
+        {/* Brand attribution */}
+        <p className="mt-4 text-center text-[11px] text-white/50">
+          Powered by <span className="font-bold text-white">Wi<span className="text-amber-400">Skul</span></span>
+        </p>
       </div>
 
       <style>{`
