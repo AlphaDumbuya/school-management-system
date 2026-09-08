@@ -4,6 +4,8 @@
  */
 
 import { apiClient } from '@lib/apiClient';
+import useAuthStore from '@store/authStore';
+import { assignmentsRepo } from '../offline/repositories/assignmentsRepo';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -92,6 +94,23 @@ export const assignmentsService = {
   },
 
   async createAssignment(data: AssignmentFormData) {
+    // Offline-first: teachers with no connectivity queue locally + sync later.
+    const user = useAuthStore.getState().user;
+    if (!navigator.onLine && user?.role === 'teacher') {
+      await assignmentsRepo.create(user.id, {
+        classId: data.class_id,
+        subjectId: data.subject_id,
+        title: data.title,
+        description: data.description,
+        type: data.type,
+        assignedDate: data.assigned_date,
+        dueDate: data.due_date,
+        maxMarks: data.max_marks,
+        instructions: data.instructions,
+        status: data.status,
+      });
+      return { offline: true, message: 'Assignment saved offline — will sync when you reconnect.' } as any;
+    }
     return apiClient.post<AssignmentRecord>('/api/v1/assignments', data);
   },
 

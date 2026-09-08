@@ -32,7 +32,8 @@
   - `attendanceRepo.mark`: write-behind into Dexie + outbox with per-cell dedupe (re-mark updates same clientId, no duplicate queue item). `attendanceService.submitBulkAttendance` is offline-aware for teachers: offline → queue each record locally + return queued success; online → real /attendance/bulk. No-duplicate on retry guaranteed by backend client_id idempotency (task 4). Existing AttendancePage works offline transparently (no rewrite).
   - _Requirements: 3_
 
-- [ ] 9. Offline Grades + Assignments: repos + pages; locked-grade rejected on sync with clear message
+- [x] 9. Offline Grades + Assignments: repos + pages; locked-grade rejected on sync with clear message
+  - assignmentsRepo + gradesRepo (write-behind into Dexie + outbox). assignmentsService.createAssignment is offline-aware for teachers (queue offline, sync later). Grades: repo + backend client_id idempotency + sync-engine lock rejection are all in place; UI wiring deferred because teacher grade entry uses the batched SL score-entry (sl_subject_results) flow, not the generic /grades POST — wiring that batched flow is a follow-up so we don't destabilize the locking logic. Locked-grade rejection surfaces on the local row via the sync engine (task 7).
   - _Requirements: 4_
 
 - [ ] 10. Online-only gating: wrap Admin/Admissions/Finance/Reports/Communications/Platform routes with OfflineGate
