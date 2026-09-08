@@ -13,6 +13,7 @@ import OnboardingGuide from '@components/onboarding/OnboardingGuide';
 import ImpersonationBanner from './ImpersonationBanner';
 import OfflineBanner from '@components/offline/OfflineBanner';
 import { useSyncEngine } from '../../offline/useSyncEngine';
+import useInactivityLock from '@hooks/useInactivityLock';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -41,6 +42,8 @@ const COLLAPSE_KEY = 'wiskul.sidebar.collapsed';
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   // Drive the teacher offline sync loop (no-op for other roles / when online-first).
   useSyncEngine();
+  // Auto-lock the app after inactivity → back to /login (re-auth required).
+  useInactivityLock();
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024);
