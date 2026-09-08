@@ -13,7 +13,7 @@ const router = Router();
  */
 router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { student_id, class_id, date, status, session_type, check_in_time, check_out_time, remarks } = req.body;
+    const { student_id, class_id, date, status, session_type, check_in_time, check_out_time, remarks, client_id } = req.body;
     const recordedBy = (req as any).user?.id || (req as any).auth?.userId;
 
     if (!student_id || !date || !status) {
@@ -34,6 +34,15 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
     const tenantId = req.user?.tenant_id;
     if (!tenantId) {
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    // Idempotency: if this exact offline write (same client_id) already landed,
+    // return it as success so a retried sync push never errors or duplicates.
+    if (client_id) {
+      const byClient = await db('attendance').where('client_id', client_id).first();
+      if (byClient) {
+        return res.status(200).json({ message: 'Attendance already recorded (idempotent)', attendance: byClient });
+      }
     }
 
     // Verify student exists and belongs to this tenant
@@ -74,6 +83,9 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
 
     if (class_id) {
       attendanceData.class_id = class_id;
+    }
+    if (client_id) {
+      attendanceData.client_id = client_id;
     }
 
     const [id] = await db('attendance').insert(attendanceData).returning('id');

@@ -12,7 +12,8 @@
   - `src/offline/db.ts`: per-user namespaced DB, cache tables (classes/students/subjects/timetable), write tables (attendance/grades/assignments) with clientId+syncStatus, outbox, sync_meta; getOfflineDb/wipeOfflineDb/newClientId. Separate from the existing generic offlineQueue.
   - _Requirements: 2, 3, 4, 5_
 
-- [ ] 4. Backend: migration 123 (client_id + updated_at) and idempotent create on attendance/grades/assignments
+- [x] 4. Backend: migration 123 (client_id + updated_at) and idempotent create on attendance/grades/assignments
+  - Migration 123 adds nullable client_id (+ partial unique index) and updated_at to attendance/grades/assignments. Create endpoints accept client_id and return the existing row (200) on repeat — no duplicates on retry.
   - _Requirements: 3, 4, 5_
 
 - [ ] 5. Backend: sync routes — GET /sync/pull (teacher-scoped) + POST /sync/push (batch, per-item result)

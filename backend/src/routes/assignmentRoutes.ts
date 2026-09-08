@@ -31,12 +31,21 @@ async function teacherOwnsAssignment(req: Request, assignmentTeacherId: string):
  */
 router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { title, description, class_id, subject_id, teacher_id, type, assigned_date, due_date, max_marks, instructions, resources, status } = req.body;
+    const { title, description, class_id, subject_id, teacher_id, type, assigned_date, due_date, max_marks, instructions, resources, status, client_id } = req.body;
     const createdBy = req.auth?.userId ?? null;
     const tenantId = req.user?.tenant_id;
 
     if (!tenantId) {
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    // Idempotency: a retried offline push with the same client_id returns the
+    // already-created assignment instead of creating a duplicate.
+    if (client_id) {
+      const byClient = await db('assignments').where('client_id', client_id).first();
+      if (byClient) {
+        return res.status(200).json({ message: 'Assignment already created (idempotent)', data: byClient });
+      }
     }
 
     // Teachers can only create assignments as themselves for classes they teach.
@@ -95,6 +104,7 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       resources: resources ? JSON.stringify(resources) : null,
       status: status || 'active',
       created_by: createdBy,
+      client_id: client_id || null,
       created_at: new Date(),
       updated_at: new Date(),
     }).returning('*');
