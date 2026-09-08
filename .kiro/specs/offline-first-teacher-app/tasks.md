@@ -36,7 +36,8 @@
   - assignmentsRepo + gradesRepo (write-behind into Dexie + outbox). assignmentsService.createAssignment is offline-aware for teachers (queue offline, sync later). Grades: repo + backend client_id idempotency + sync-engine lock rejection are all in place; UI wiring deferred because teacher grade entry uses the batched SL score-entry (sl_subject_results) flow, not the generic /grades POST — wiring that batched flow is a follow-up so we don't destabilize the locking logic. Locked-grade rejection surfaces on the local row via the sync engine (task 7).
   - _Requirements: 4_
 
-- [ ] 10. Online-only gating: wrap Admin/Admissions/Finance/Reports/Communications/Platform routes with OfflineGate
+- [x] 10. Online-only gating: wrap Admin/Admissions/Finance/Reports/Communications/Platform routes with OfflineGate
+  - OfflineGate component shows a clear "Internet required" state offline (never queues/fakes writes). Wrapped platform (tenants/subscriptions/analytics/communications), finance (fees/invoices/payments), and admissions routes via a `G` shorthand in the router.
   - _Requirements: 6_
 
 - [ ] 11. Secure local data: user-namespaced store + wipe on logout/unrecoverable auth; final-push-then-wipe
