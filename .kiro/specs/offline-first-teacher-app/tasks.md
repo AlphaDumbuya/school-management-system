@@ -1,0 +1,62 @@
+# Implementation Plan — Offline-First Teacher App (PWA → Android)
+
+- [x] 1. PWA baseline: installable manifest + service worker (app-shell precache, runtime GET caching, offline fallback)
+  - Existing SW already precaches shell, network-first API cache, SPA fallback, bg-sync queue, push. Fixed manifest theme→brand blue, start_url→/dashboard. Added OfflineBanner (offline strip + update-available prompt).
+  - _Requirements: 1_
+
+- [x] 2. Connectivity + sync UI primitives
+  - Existing `useOfflineStatus` (online/pending/syncing/flush). Added `SyncStatusIndicator` in Header. `OfflineGate` for online-only routes → Task 10.
+  - _Requirements: 1, 6_
+
+- [ ] 3. Local store: Dexie schema (cache tables, writes, outbox, sync_meta) + client-id util
+  - _Requirements: 2, 3, 4, 5_
+
+- [ ] 4. Backend: migration 123 (client_id + updated_at) and idempotent create on attendance/grades/assignments
+  - _Requirements: 3, 4, 5_
+
+- [ ] 5. Backend: sync routes — GET /sync/pull (teacher-scoped) + POST /sync/push (batch, per-item result)
+  - _Requirements: 5_
+
+- [ ] 6. Frontend read cache: rosterRepo (classes/students/subjects/timetable) read-through + refresh; wire teacher pages to read local when offline
+  - _Requirements: 2_
+
+- [ ] 7. Frontend sync engine: push outbox + pull changes, triggers (start/online/interval/after-write), backoff
+  - _Requirements: 5_
+
+- [ ] 8. Offline Attendance: attendanceRepo write-behind; page works offline; verify single row + no-duplicate on retry
+  - _Requirements: 3_
+
+- [ ] 9. Offline Grades + Assignments: repos + pages; locked-grade rejected on sync with clear message
+  - _Requirements: 4_
+
+- [ ] 10. Online-only gating: wrap Admin/Admissions/Finance/Reports/Communications/Platform routes with OfflineGate
+  - _Requirements: 6_
+
+- [ ] 11. Secure local data: user-namespaced store + wipe on logout/unrecoverable auth; final-push-then-wipe
+  - _Requirements: 8_
+
+- [ ] 12. Sync visibility: last-synced + pending count + "Sync now"; per-row sync chips; "data as of" freshness badge
+  - _Requirements: 9_
+
+- [ ] 13. Conflict/rejection: per-item push results; "Sync issues" view with Retry/Discard
+  - _Requirements: 10_
+
+- [ ] 14. Cache & storage: usage estimate + clear-cache (preserve pending); TTL eviction on refresh
+  - _Requirements: 11_
+
+- [ ] 15. Background sync + app-update prompt (SW background sync / Capacitor resume; prompt-to-reload)
+  - _Requirements: 12_
+
+- [ ] 16. Capacitor Android: add Capacitor, Android platform, app id/icons/splash, production API base
+  - _Requirements: 7_
+
+- [ ] 17. Android release: keystore + signed AAB; verify offline features in webview
+  - _Requirements: 7_
+
+- [ ] 18. Play Store readiness: public Privacy Policy page + docs/PLAY_STORE_CHECKLIST.md (Data Safety, listing assets, content rating, Families policy, upload steps)
+  - _Requirements: 13_
+
+- [ ] 19. Build backend + frontend green; run migration; commit + push
+  - _Requirements: all_
+```
+```

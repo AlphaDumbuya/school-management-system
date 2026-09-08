@@ -11,6 +11,7 @@ import useAuthStore from '@store/authStore';
 import { isOnboardingComplete } from '@lib/onboarding';
 import OnboardingGuide from '@components/onboarding/OnboardingGuide';
 import ImpersonationBanner from './ImpersonationBanner';
+import OfflineBanner from '@components/offline/OfflineBanner';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -103,6 +104,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     <div className="h-screen bg-gray-50 flex flex-col">
       {/* Support-mode banner (only while impersonating) */}
       <ImpersonationBanner />
+
+      {/* Offline / update-available strip (only when relevant) */}
+      <OfflineBanner />
 
       {/* Header */}
       <Header onMenuClick={handleMenuClick} sidebarOpen={sidebarOpen} />

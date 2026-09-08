@@ -39,14 +39,17 @@ export class NewsletterService {
     const existing = await db('newsletter_subscribers').where({ email }).first();
     if (existing) {
       const patch: any = {};
+      let justSubscribed = false;
       if (input.name && !existing.name) patch.name = input.name;
       if (input.tenantId && !existing.tenant_id) patch.tenant_id = input.tenantId;
       if (input.optIn && existing.status !== 'subscribed') {
         patch.status = 'subscribed';
         patch.unsubscribed_at = null;
+        justSubscribed = true;
       }
       if (Object.keys(patch).length) await db('newsletter_subscribers').where({ id: existing.id }).update(patch);
-      return db('newsletter_subscribers').where({ id: existing.id }).first();
+      const row = await db('newsletter_subscribers').where({ id: existing.id }).first();
+      return { ...row, justSubscribed };
     }
     const [row] = await db('newsletter_subscribers')
       .insert({
@@ -59,7 +62,14 @@ export class NewsletterService {
         created_at: new Date(),
       })
       .returning('*');
-    return row;
+    // A brand-new row counts as "just subscribed" only when it opted in.
+    return { ...row, justSubscribed: !!input.optIn };
+  }
+
+  /** Absolute unsubscribe URL for a subscriber token. */
+  static unsubscribeUrl(token: string): string {
+    const base = (process.env.FRONTEND_URL || 'https://www.wiskulsl.com').replace(/\/$/, '');
+    return `${base}/newsletter/unsubscribe?token=${encodeURIComponent(token)}`;
   }
 
   static async unsubscribeByToken(token: string): Promise<boolean> {

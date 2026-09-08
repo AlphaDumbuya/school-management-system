@@ -5,6 +5,7 @@
  */
 import { Router } from 'express';
 import { NewsletterService } from '../services/newsletterService';
+import emailService from '../services/emailService';
 
 const router = Router();
 
@@ -12,7 +13,18 @@ router.post('/subscribe', async (req, res, next) => {
   try {
     const { email, name } = req.body;
     if (!email) return res.status(400).json({ success: false, error: 'Email is required' });
-    await NewsletterService.upsertSubscriber({ email, name, source: 'public', optIn: true });
+    const sub: any = await NewsletterService.upsertSubscriber({ email, name, source: 'public', optIn: true });
+
+    // Send a confirmation/welcome email only when they actually just opted in.
+    if (sub?.justSubscribed && sub?.unsubscribe_token) {
+      emailService
+        .sendNewsletterWelcomeEmail(sub.email, {
+          name: sub.name,
+          unsubscribeUrl: NewsletterService.unsubscribeUrl(sub.unsubscribe_token),
+        })
+        .catch((err) => console.error('Newsletter welcome email failed:', err?.message || err));
+    }
+
     res.json({ success: true, message: 'You have been subscribed to the WiSkul newsletter.' });
   } catch (error) {
     next(error);
