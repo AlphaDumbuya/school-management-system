@@ -13,6 +13,7 @@ import {
   TrendingUp, Zap, Globe, RefreshCw, UserPlus, ClipboardCheck, Send,
 } from 'lucide-react';
 import PublicNavbar, { PublicFooter } from '@components/public';
+import AppDownloadButtons from '@components/public/AppDownloadButtons';
 
 // Theme tokens — see docs/THEME_GUIDE.md
 const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
@@ -86,6 +87,8 @@ export const LandingPage: React.FC = () => {
                 View Plans
               </button>
             </div>
+            {/* Mobile app download (shows once VITE_APK_DOWNLOAD_URL / VITE_PLAY_STORE_URL are set) */}
+            <AppDownloadButtons variant="light" className="mt-4" />
             <ul className="mt-8 space-y-2.5">
               {['Admissions, attendance & grading', 'Digital ID cards & fee collection', 'Real-time analytics & reporting', 'Bank-grade data security'].map((t) => (
                 <li key={t} className="flex items-center gap-2.5 text-sm text-blue-50">
