@@ -11,6 +11,7 @@
  */
 import { getOfflineDb, type CachedRow } from '../db';
 import { syncClient } from '../syncClient';
+import { evictStale } from '../storage';
 
 export type RosterEntity = 'classes' | 'students' | 'subjects' | 'timetable';
 
@@ -68,6 +69,9 @@ export const rosterRepo = {
       if (d.timetable?.length) { await db.timetable.bulkPut(toCached(d.timetable)); written += d.timetable.length; }
       await db.sync_meta.put({ key: SYNC_KEY, lastPulledAt: d.serverTime, lastPushedAt: meta?.lastPushedAt });
     });
+
+    // TTL-evict stale cached rows after a successful refresh (best-effort).
+    await evictStale(userId).catch(() => 0);
 
     return written;
   },

@@ -30,6 +30,7 @@ import authService from '../services/authService';
 import { FileUploader } from '@components/admin/forms/FileUploader';
 import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
 import { StorageSettings } from '@components/settings/StorageSettings';
+import { OfflineStorageSettings } from '@components/offline/OfflineStorageSettings';
 import { useSearchParams } from 'react-router-dom';
 
 export const SettingsPage: React.FC = () => {
@@ -38,6 +39,7 @@ export const SettingsPage: React.FC = () => {
   const setUser = useAuthStore((s) => s.setUser);
   const logout = useAuthStore((s) => s.logout);
   const isSuperAdmin = user?.role === 'super_admin';
+  const isTeacher = user?.role === 'teacher';
   // A tenant/school admin (principal) manages the school-config tabs. The super
   // admin is the PLATFORM operator and has no school to configure — they only
   // get Profile + Security (2FA). `isPrincipalOrSuper` gates school-config data
@@ -434,6 +436,7 @@ export const SettingsPage: React.FC = () => {
   const tabs = [
     { id: 'profile', label: 'My Profile', icon: <User size={18} />, adminOnly: false },
     { id: 'security', label: 'Security', icon: <ShieldCheck size={18} />, adminOnly: false },
+    { id: 'offline', label: 'Offline & Storage', icon: <HardDrive size={18} />, adminOnly: false, teacherOnly: true },
     { id: 'school', label: 'School Info', icon: <Building size={18} />, adminOnly: true },
     { id: 'academic', label: 'Academic Config', icon: <Calendar size={18} />, adminOnly: true },
     { id: 'id-format', label: 'ID Format', icon: <Building size={18} />, adminOnly: true },
@@ -474,6 +477,7 @@ export const SettingsPage: React.FC = () => {
               <div className="inline-flex gap-2 px-2">
                 {tabs.map((tab) => {
                   if (tab.adminOnly && !isPrincipalOrSuper) return null;
+                  if ((tab as any).teacherOnly && !isTeacher) return null;
                   const active = activeTab === tab.id;
                   return (
                     <button
@@ -500,6 +504,7 @@ export const SettingsPage: React.FC = () => {
               <nav className="space-y-1">
                 {tabs.map((tab) => {
                   if (tab.adminOnly && !isPrincipalOrSuper) return null;
+                  if ((tab as any).teacherOnly && !isTeacher) return null;
                   const active = activeTab === tab.id;
                   return (
                     <button
@@ -539,6 +544,21 @@ export const SettingsPage: React.FC = () => {
                     </CardHeader>
                     <CardContent>
                       <TwoFactorSettings />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ── OFFLINE & STORAGE TAB (teachers) ── */}
+                {activeTab === 'offline' && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2.5">
+                        <span className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><HardDrive size={18} /></span>
+                        Offline & Storage
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <OfflineStorageSettings />
                     </CardContent>
                   </Card>
                 )}

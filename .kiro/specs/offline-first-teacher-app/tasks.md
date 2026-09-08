@@ -52,7 +52,8 @@
   - `syncIssues` (list/retry/discard rejected writes). SyncIssuesPage at /sync-issues (teacher) lists rejected writes with reason + Retry/Discard; nothing dropped silently. Header "Sync issues" chip navigates there.
   - _Requirements: 10_
 
-- [ ] 14. Cache & storage: usage estimate + clear-cache (preserve pending); TTL eviction on refresh
+- [x] 14. Cache & storage: usage estimate + clear-cache (preserve pending); TTL eviction on refresh
+  - `storage.ts`: estimateUsage (navigator.storage.estimate), counts, clearReadCache (preserves outbox/pending writes), evictStale (30d TTL, called on roster refresh). `OfflineStorageSettings` component + "Offline & Storage" teacher-only tab in Settings (usage bar, cached vs un-synced counts, clear-cache with pending warning).
   - _Requirements: 11_
 
 - [ ] 15. Background sync + app-update prompt (SW background sync / Capacitor resume; prompt-to-reload)
