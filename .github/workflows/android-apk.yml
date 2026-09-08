@@ -105,9 +105,14 @@ jobs:
       # https://www.wiskulsl.com/downloads/wiskul.apk automatically — no manual
       # download/copy. The repo is private so the GitHub Release asset isn't
       # publicly downloadable; serving via our own domain is the public path.
+      #
+      # Only commits on `main` — the single canonical home for the published APK.
+      # Committing on feature branches too would create diverging binary APKs that
+      # can't auto-merge, forcing manual conflict resolution on every PR. Vercel
+      # deploys from main anyway, so main is the right (and only) place to publish.
       # Skips the commit if the APK is unchanged (avoids empty/no-op commits).
       - name: Commit APK to frontend/public/downloads
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref_name == 'main'
         run: |
           set -e
           mkdir -p frontend/public/downloads
