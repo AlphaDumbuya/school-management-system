@@ -14,11 +14,20 @@ router.use(attachUserContext);
  */
 router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { student_id, subject_id, class_id, marks_obtained, total_marks, grade, remarks } = req.body;
+    const { student_id, subject_id, class_id, marks_obtained, total_marks, grade, remarks, client_id } = req.body;
     const recordedBy = (req as any).user.id;
 
     if (!student_id || !subject_id || marks_obtained === undefined || total_marks === undefined) {
       throw new AppError('Missing required fields', 400, 'VALIDATION_ERROR');
+    }
+
+    // Idempotency: a retried offline push with the same client_id returns the
+    // already-created grade instead of creating a duplicate.
+    if (client_id) {
+      const byClient = await db('grades').where('client_id', client_id).first();
+      if (byClient) {
+        return res.status(200).json({ message: 'Grade already recorded (idempotent)', grade: byClient });
+      }
     }
 
     if (marks_obtained < 0 || marks_obtained > total_marks) {
@@ -73,6 +82,7 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
       status: 'draft',
       recorded_by: recordedBy,
       recorded_date: new Date(),
+      client_id: client_id || null,
       created_at: new Date(),
       updated_at: new Date(),
     });
