@@ -108,18 +108,35 @@ const V2Route: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 import RegisterPage from '@pages/RegisterPage';
 import UnsubscribePage from '@pages/UnsubscribePage';
+import { isAppMode } from '@lib/appMode';
+
+/**
+ * App mode = native Capacitor build (VITE_APP_TARGET=native) OR an installed
+ * standalone PWA. In app mode we drop the public marketing site — the app is
+ * for signed-in school users, so it opens straight at the auth pages. The web
+ * (browser tab) experience keeps the full marketing site.
+ */
+const APP_MODE = isAppMode();
+
+// Public marketing pages — web only. In app mode, the index redirects to /login.
+const publicMarketingRoutes = APP_MODE
+  ? [{ index: true, element: <Navigate to="/login" replace /> }]
+  : [
+      { index: true, element: <LandingPage /> },
+      { path: 'features', element: <FeaturesPage /> },
+      { path: 'pricing', element: <PricingPage /> },
+      { path: 'why', element: <WhyWiskulPage /> },
+      { path: 'benefits', element: <BenefitsPage /> },
+      { path: 'contact', element: <ContactPage /> },
+    ];
 
 const router = createBrowserRouter(
   [
     {
       path: '/',
       children: [
-        { index: true, element: <LandingPage /> },
-        { path: 'features', element: <FeaturesPage /> },
-        { path: 'pricing', element: <PricingPage /> },
-        { path: 'why', element: <WhyWiskulPage /> },
-        { path: 'benefits', element: <BenefitsPage /> },
-        { path: 'contact', element: <ContactPage /> },
+        ...publicMarketingRoutes,
+        // Auth pages — always present (web + app).
         { path: 'login', element: <LoginPage /> },
         { path: 'forgot-password', element: <ForgotPasswordPage /> },
         { path: 'reset-password', element: <ResetPasswordPage /> },
