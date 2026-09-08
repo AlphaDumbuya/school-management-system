@@ -12,6 +12,7 @@ import useAuth from '@hooks/useAuth';
 import useAuthStore from '@store/authStore';
 import schoolConfigService from '@services/schoolConfigService';
 import { NotificationBell } from './NotificationBell';
+import { SyncStatusIndicator } from '@components/offline/SyncStatusIndicator';
 import clsx from 'clsx';
 
 interface HeaderProps {
@@ -126,6 +127,9 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
 
         {/* Right side - Notifications and user menu */}
         <div className="flex items-center gap-2 sm:gap-4">
+          {/* Connectivity / sync status */}
+          <SyncStatusIndicator compact />
+
           {/* Notifications */}
           <NotificationBell canSeeAlerts={!!canSeeAlerts} />
 
