@@ -75,5 +75,13 @@
 - [x] 19. Build backend + frontend green; run migrations (120–123); commit + push
   - All builds green throughout; migrations applied to dev DB; every task committed + pushed to feature/sl-report-cards.
   - _Requirements: all_
-```
-```
+
+- [ ] 20. App update distribution: auto-updating content + hands-off APK publishing
+  - **Problem:** with the current setup, every app change requires: build APK → download it → replace `frontend/public/downloads/wiskul.apk` → commit → merge → and every user must manually reinstall. Bundled web assets (`capacitor.config.ts` uses `webDir: 'dist'`, no `server.url`) mean even small UI/logic fixes cannot reach installed apps without a full reinstall.
+  - **20a — Auto-updating app content (Option B):** point Capacitor at the live origin (`server.url = 'https://www.wiskulsl.com'`) so the installed app loads its UI from the server. After one final APK install, all future UI/logic changes deploy automatically via Vercel — no new APK, no reinstall. Only native changes (icon, permissions, plugins) then need a rebuild.
+    - Trade-off to weigh: the app needs connectivity to load the shell on FIRST launch (weaker cold-start offline story). After first successful load the service worker cache covers offline use. For spotty school connectivity this is the key decision — alternative is to keep bundled assets and instead adopt a proper OTA layer (Capacitor live-update / @capgo/capacitor-updater / CodePush-style) that pushes web bundles without a store update.
+    - Ensure `isAppMode()` detection still holds when served from the live origin (currently relies on VITE_APP_TARGET=native baked into the bundle; server-loaded means the live bundle must still signal native — revisit the flag strategy).
+  - **20b — Automate APK publishing (remove manual copy):** have the GitHub Action upload the built APK to a public, stable URL automatically so the website download button always serves the latest without manual download/commit.
+    - Option: upload to Vercel Blob or UploadThing (already in the stack) from `.github/workflows/android-apk.yml`; point `VITE_APK_DOWNLOAD_URL` at that stable URL. A green build then = website automatically serving the new APK. (The GitHub Release android-latest URL is not usable directly because the repo is private → asset is not publicly downloadable.)
+  - **Goal:** turn "do this every time" into "just push code, like the website" — auto-updating content for the common case + hands-off APK for rare native rebuilds.
+  - _Requirements: 7, 12 (extends app update prompt from task 15)_
