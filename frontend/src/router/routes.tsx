@@ -29,6 +29,7 @@ import { PlatformTenantsPage } from '@pages/PlatformTenantsPage';
 import { PlatformSubscriptionsPage } from '@pages/PlatformSubscriptionsPage';
 import { PlatformAnalyticsPage } from '@pages/PlatformAnalyticsPage';
 import PlatformCommunicationPage from '@pages/PlatformCommunicationPage';
+import SyncIssuesPage from '@pages/offline/SyncIssuesPage';
 import { ComingSoonPage } from '@pages/ComingSoonPage';
 import { SettingsPage } from '@pages/SettingsPage';
 import SMSWhatsAppDashboard from '@pages/SMSWhatsAppDashboard';
@@ -399,6 +400,10 @@ const router = createBrowserRouter(
         },
 
         // ── SYSTEM ─────────────────────────────────────────────────
+        {
+          path: 'sync-issues',
+          element: <P requiredRoles={['teacher']}><SyncIssuesPage /></P>,
+        },
         {
           path: 'settings',
           element: <P><SettingsPage /></P>,

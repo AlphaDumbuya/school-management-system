@@ -7,10 +7,12 @@
  * teacher roles it falls back to a simple online/offline pill.
  */
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Wifi, WifiOff, RefreshCw, Loader2, Check, AlertTriangle } from 'lucide-react';
 import { useSyncStatus, timeAgo } from '../../offline/useSyncStatus';
 
 export const SyncStatusIndicator: React.FC<{ compact?: boolean }> = ({ compact }) => {
+  const navigate = useNavigate();
   const { online, pending, failed, syncing, lastPulledAt, syncNow, isTeacher } = useSyncStatus();
 
   // Non-teacher roles: just a plain online/offline dot (no offline sync path).
@@ -51,8 +53,8 @@ export const SyncStatusIndicator: React.FC<{ compact?: boolean }> = ({ compact }
   if (failed > 0) {
     return (
       <button
-        onClick={() => syncNow()}
-        title={`${failed} change(s) could not sync — tap to retry`}
+        onClick={() => navigate('/sync-issues')}
+        title={`${failed} change(s) could not sync — tap to review`}
         className="inline-flex items-center gap-1.5 rounded-full bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-2.5 py-1 text-xs font-semibold transition-colors"
       >
         <AlertTriangle size={13} /> {compact ? '' : 'Sync issues'} <span className="rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">{failed}</span>

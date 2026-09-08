@@ -48,7 +48,8 @@
   - `useSyncStatus` (Dexie: pending=outbox, failed=error rows, lastPulledAt) + syncNow. SyncStatusIndicator upgraded (online/offline/syncing/pending/failed states, last-synced tooltip, Sync now). FreshnessBadge for cached screens (timeAgo). Per-row chips available via row.syncStatus (used by useRoster.fromCache + attendance rows).
   - _Requirements: 9_
 
-- [ ] 13. Conflict/rejection: per-item push results; "Sync issues" view with Retry/Discard
+- [x] 13. Conflict/rejection: per-item push results; "Sync issues" view with Retry/Discard
+  - `syncIssues` (list/retry/discard rejected writes). SyncIssuesPage at /sync-issues (teacher) lists rejected writes with reason + Retry/Discard; nothing dropped silently. Header "Sync issues" chip navigates there.
   - _Requirements: 10_
 
 - [ ] 14. Cache & storage: usage estimate + clear-cache (preserve pending); TTL eviction on refresh
