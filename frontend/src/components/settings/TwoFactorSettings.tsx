@@ -9,6 +9,7 @@ import QRCode from 'qrcode';
 import authService from '@services/authService';
 import useAuthStore from '@store/authStore';
 import { showToast } from '@utils/toast';
+import PasskeySettings from './PasskeySettings';
 
 export const TwoFactorSettings: React.FC = () => {
   const user = useAuthStore((s) => s.user);
@@ -174,7 +175,7 @@ export const TwoFactorSettings: React.FC = () => {
           </div>
         ) : (
           <button onClick={beginSetup} disabled={loading}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm">
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold text-sm">
             {loading ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />} Enable 2FA
           </button>
         )
@@ -195,12 +196,12 @@ export const TwoFactorSettings: React.FC = () => {
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, ''))}
               inputMode="numeric" maxLength={6} placeholder="123456"
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-center text-lg tracking-[0.4em] font-bold outline-none focus:border-[#00d4aa] focus:ring-1 focus:ring-[#00d4aa]/30"
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-center text-lg tracking-[0.4em] font-bold outline-none focus:border-[#1d4ed8] focus:ring-1 focus:ring-[#1d4ed8]/30"
             />
           </div>
           <div className="flex gap-2">
             <button onClick={confirmEnable} disabled={loading || code.length < 6}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#00d4aa] hover:bg-[#00e6b8] text-[#1a1a2e] font-bold text-sm disabled:opacity-50">
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold text-sm disabled:opacity-50">
               {loading && <Loader2 size={16} className="animate-spin" />} Verify & Enable
             </button>
             <button onClick={() => { setMode('idle'); setCode(''); }}
@@ -258,6 +259,12 @@ export const TwoFactorSettings: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ── Advanced security: passkeys (phishing-resistant, password-free) ── */}
+      <div className="pt-6 mt-2 border-t border-gray-100">
+        <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-4">Advanced security</p>
+        <PasskeySettings />
+      </div>
     </div>
   );
 };

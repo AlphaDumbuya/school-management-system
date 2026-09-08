@@ -11,9 +11,11 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { FaSpinner, FaEye, FaEyeSlash } from 'react-icons/fa';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Fingerprint } from 'lucide-react';
+import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
 import useAuthStore from '@store/authStore';
+import authService from '@services/authService';
 import { isAppMode } from '@lib/appMode';
 
 const loginSchema = z.object({
@@ -31,9 +33,13 @@ export const LoginPage: React.FC = () => {
   const [online, setOnline] = useState<boolean>(navigator.onLine);
   const [mfaStep, setMfaStep] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isInitialized = useAuthStore((s) => s.isInitialized);
   const user = useAuthStore((s) => s.user);
+  const mfaToken = useAuthStore((s) => s.mfaToken);
+  const supportsPasskeys = typeof window !== 'undefined' && browserSupportsWebAuthn();
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -70,6 +76,44 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     if (!mfaCode.trim()) return;
     await verifyMfa(mfaCode.trim());
+  };
+
+  /** Complete the second factor with a passkey instead of a typed code. */
+  const onUsePasskey = async () => {
+    if (!mfaToken) {
+      setPasskeyError('Your session expired. Please sign in again.');
+      return;
+    }
+    setPasskeyError(null);
+    setPasskeyBusy(true);
+    try {
+      const optRes = await authService.getPasskeyAuthOptions(mfaToken);
+      if (!optRes.success || !optRes.data) {
+        setPasskeyError(optRes.error || 'No passkey available for this account.');
+        return;
+      }
+      let assertion;
+      try {
+        assertion = await startAuthentication({ optionsJSON: optRes.data as any });
+      } catch (err: any) {
+        // User cancelled / no matching passkey — silent, let them type a code.
+        if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') return;
+        setPasskeyError('Passkey sign-in was not completed.');
+        return;
+      }
+      const verifyRes = await authService.verifyPasskeyAuth(mfaToken, assertion);
+      const verifiedUser = (verifyRes as any)?.data?.user || (verifyRes as any)?.user;
+      if (verifyRes.success && verifiedUser) {
+        useAuthStore.setState({ user: verifiedUser, isAuthenticated: true, mfaToken: null });
+        navigate(getDashboardPath(verifiedUser.role), { replace: true });
+      } else {
+        setPasskeyError(verifyRes.error || 'Passkey sign-in failed.');
+      }
+    } catch {
+      setPasskeyError('Passkey sign-in failed. Please try a code instead.');
+    } finally {
+      setPasskeyBusy(false);
+    }
   };
 
   const displayError =
@@ -133,8 +177,27 @@ export const LoginPage: React.FC = () => {
                 {isLoading && <FaSpinner className="animate-spin w-4 h-4" />}
                 {isLoading ? 'VERIFYING...' : 'VERIFY & SIGN IN'}
               </button>
+
+              {supportsPasskeys && (
+                <>
+                  <div className="flex items-center gap-3 text-blue-100/40 text-[11px]">
+                    <span className="flex-1 h-px bg-white/15" /> or <span className="flex-1 h-px bg-white/15" />
+                  </div>
+                  {passkeyError && (
+                    <p className="text-[11px] text-red-200 text-center">{passkeyError}</p>
+                  )}
+                  <button
+                    type="button" onClick={onUsePasskey} disabled={passkeyBusy || isLoading}
+                    className="w-full flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-sm py-3.5 rounded-xl transition-all disabled:opacity-50 active:scale-[0.98]"
+                  >
+                    {passkeyBusy ? <FaSpinner className="animate-spin w-4 h-4" /> : <Fingerprint size={16} />}
+                    {passkeyBusy ? 'WAITING FOR PASSKEY…' : 'USE A PASSKEY'}
+                  </button>
+                </>
+              )}
+
               <button
-                type="button" onClick={() => { setMfaStep(false); setMfaCode(''); }}
+                type="button" onClick={() => { setMfaStep(false); setMfaCode(''); setPasskeyError(null); }}
                 className="w-full text-blue-100/60 text-xs hover:text-white transition-colors"
               >
                 ← Back to sign in
