@@ -40,7 +40,8 @@
   - OfflineGate component shows a clear "Internet required" state offline (never queues/fakes writes). Wrapped platform (tenants/subscriptions/analytics/communications), finance (fees/invoices/payments), and admissions routes via a `G` shorthand in the router.
   - _Requirements: 6_
 
-- [ ] 11. Secure local data: user-namespaced store + wipe on logout/unrecoverable auth; final-push-then-wipe
+- [x] 11. Secure local data: user-namespaced store + wipe on logout/unrecoverable auth; final-push-then-wipe
+  - Logout: best-effort final sync (teacher, online) then wipeOfflineDb(userId) — student PII never lingers. Login/verifyMfa: wipeOtherUsers() drops any other user's offline DB on this device (shared-phone safety). Store already namespaced per user.
   - _Requirements: 8_
 
 - [ ] 12. Sync visibility: last-synced + pending count + "Sync now"; per-row sync chips; "data as of" freshness badge

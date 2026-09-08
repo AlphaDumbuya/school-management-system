@@ -136,6 +136,23 @@ export async function wipeOfflineDb(userId: string): Promise<void> {
   await Dexie.delete(`wiskul-teacher-${userId}`);
 }
 
+/**
+ * On login, drop any OTHER users' offline databases left on this device, so a
+ * shared phone never retains a previous teacher's student data (Req 8.3).
+ */
+export async function wipeOtherUsers(currentUserId: string): Promise<void> {
+  try {
+    const names: string[] = (await (Dexie as any).getDatabaseNames?.()) || [];
+    await Promise.all(
+      names
+        .filter((n) => n.startsWith('wiskul-teacher-') && n !== `wiskul-teacher-${currentUserId}`)
+        .map((n) => Dexie.delete(n).catch(() => undefined))
+    );
+  } catch {
+    /* getDatabaseNames not supported everywhere — safe to ignore */
+  }
+}
+
 /** New idempotency key for a local write. */
 export function newClientId(): string {
   // crypto.randomUUID is available in modern browsers + Android/iOS webviews.
