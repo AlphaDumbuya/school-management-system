@@ -26,6 +26,7 @@ import enrollmentWorkflowRoutes from '@routes/enrollmentWorkflowRoutes';
 import gradeRoutes from '@routes/gradeRoutes';
 import phase5GradeRoutes from '@routes/phase5GradeRoutes';
 import attendanceRoutes from '@routes/attendanceRoutes';
+import syncRoutes from '@routes/syncRoutes';
 import phase5AttendanceRoutes from '@routes/phase5AttendanceRoutes';
 import phase6ScheduleRoutes from '@routes/phase6ScheduleRoutes';
 import phase7ReportingRoutes from '@routes/phase7ReportingRoutes';
@@ -324,6 +325,9 @@ app.use('/api/v1/school-config', schoolConfigRoutes);
 
 // Announcements Routes (Communication)
 app.use('/api/v1/announcements', announcementRoutes);
+
+// Offline sync Routes (teacher offline-first: pull/push)
+app.use('/api/v1/sync', syncRoutes);
 
 // Timetable Routes (Simplified schedule management)
 app.use('/api/v1/timetable', timetableRoutes);

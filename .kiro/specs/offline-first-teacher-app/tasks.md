@@ -16,7 +16,8 @@
   - Migration 123 adds nullable client_id (+ partial unique index) and updated_at to attendance/grades/assignments. Create endpoints accept client_id and return the existing row (200) on repeat — no duplicates on retry.
   - _Requirements: 3, 4, 5_
 
-- [ ] 5. Backend: sync routes — GET /sync/pull (teacher-scoped) + POST /sync/push (batch, per-item result)
+- [x] 5. Backend: sync routes — GET /sync/pull (teacher-scoped) + POST /sync/push (batch, per-item result)
+  - `syncService` resolves teacher scope (assigned + led classes → enrolled students); pull returns changed classes/students/subjects/schedules/attendance/grades/assignments since a timestamp; push applies items idempotently by client_id (attendance last-write-wins per key, grades reject when locked, assignments by client_id) with per-item result. Mounted at /api/v1/sync (teacher-only).
   - _Requirements: 5_
 
 - [ ] 6. Frontend read cache: rosterRepo (classes/students/subjects/timetable) read-through + refresh; wire teacher pages to read local when offline
