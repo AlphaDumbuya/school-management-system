@@ -24,7 +24,8 @@
   - `syncClient` (pull/push wrappers); `rosterRepo` read-through cache into Dexie with incremental refresh + freshness bookmark; `useRoster` hook (serves cache first, refreshes when online, exposes fromCache + lastSyncedAt). Wiring specific teacher pages to useRoster happens alongside the attendance page in Task 8.
   - _Requirements: 2_
 
-- [ ] 7. Frontend sync engine: push outbox + pull changes, triggers (start/online/interval/after-write), backoff
+- [x] 7. Frontend sync engine: push outbox + pull changes, triggers (start/online/interval/after-write), backoff
+  - `syncEngine`: drains Dexie outbox to /sync/push, maps per-item results to local syncStatus (applied/duplicate→synced, rejected→error, MAX_ATTEMPTS cap), then pulls via rosterRepo; serialized + backoff. `useSyncEngine` hook mounted in MainLayout triggers on start/online/interval/after-write (requestSync event); teacher-only.
   - _Requirements: 5_
 
 - [ ] 8. Offline Attendance: attendanceRepo write-behind; page works offline; verify single row + no-duplicate on retry
