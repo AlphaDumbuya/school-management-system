@@ -80,15 +80,9 @@ export const LandingPage: React.FC = () => {
                 Register School Free
                 <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
               </button>
-              <button
-                onClick={() => navigate('/pricing')}
-                className="w-full sm:w-auto border border-white/30 hover:border-white/50 bg-white/5 text-white font-bold text-sm px-6 py-3.5 rounded-lg transition-all duration-300"
-              >
-                View Plans
-              </button>
+              {/* App download (shows once VITE_APK_DOWNLOAD_URL / VITE_PLAY_STORE_URL are set) */}
+              <AppDownloadButtons variant="hero" />
             </div>
-            {/* Mobile app download (shows once VITE_APK_DOWNLOAD_URL / VITE_PLAY_STORE_URL are set) */}
-            <AppDownloadButtons variant="light" className="mt-4" />
             <ul className="mt-8 space-y-2.5">
               {['Admissions, attendance & grading', 'Digital ID cards & fee collection', 'Real-time analytics & reporting', 'Bank-grade data security'].map((t) => (
                 <li key={t} className="flex items-center gap-2.5 text-sm text-blue-50">
