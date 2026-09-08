@@ -7,12 +7,16 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './styles/index.css';
+import { initNativeChrome } from './lib/nativeChrome';
 
 const rootElement = document.getElementById('root');
 
 if (!rootElement) {
   throw new Error('Root element not found');
 }
+
+// Configure the native status bar so app content doesn't hide under it (no-op on web).
+void initNativeChrome();
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>

@@ -20,6 +20,21 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/*
+ * Safe-area fallback for installed/standalone app (PWA + Capacitor). Keeps app
+ * content clear of the phone's status bar / notch when the WebView renders
+ * edge-to-edge (viewport-fit=cover). The native @capacitor/status-bar plugin
+ * handles this on Android; this CSS covers iOS PWA and is a harmless fallback.
+ * Scoped to standalone display so the normal web layout is untouched.
+ */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  body {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background-color: #1a2b6b; /* fill the inset area with brand navy, not white */
+  }
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
