@@ -226,7 +226,9 @@ export const LoginPage: React.FC = () => {
                   </p>
                 )}
                 <p className="text-blue-100/50 text-[11px]">
-                  Students &amp; Staff: Contact your school principal for portal access.
+                  {isAppMode()
+                    ? 'No account? Accounts are created by your school administrator — please contact your school admin for login details.'
+                    : 'Students & Staff: Contact your school principal for portal access.'}
                 </p>
               </div>
             </>
