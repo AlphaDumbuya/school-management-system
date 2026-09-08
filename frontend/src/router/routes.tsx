@@ -148,7 +148,8 @@ const router = createBrowserRouter(
         { path: 'login', element: <LoginPage /> },
         { path: 'forgot-password', element: <ForgotPasswordPage /> },
         { path: 'reset-password', element: <ResetPasswordPage /> },
-        { path: 'register', element: <RegisterPage /> },
+        // School registration is a marketing/web action only — in app mode redirect to login.
+        { path: 'register', element: APP_MODE ? <Navigate to="/login" replace /> : <RegisterPage /> },
         { path: 'newsletter/unsubscribe', element: <UnsubscribePage /> },
         { path: 'privacy-policy', element: <PrivacyPolicyPage /> },
         { path: 'verify-id', element: <VerifyIdPage /> },
