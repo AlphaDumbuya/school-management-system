@@ -114,6 +114,7 @@ const V2Route: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 import RegisterPage from '@pages/RegisterPage';
 import UnsubscribePage from '@pages/UnsubscribePage';
+import PrivacyPolicyPage from '@pages/PrivacyPolicyPage';
 import { isAppMode } from '@lib/appMode';
 import OfflineGate from '@components/offline/OfflineGate';
 
@@ -149,6 +150,7 @@ const router = createBrowserRouter(
         { path: 'reset-password', element: <ResetPasswordPage /> },
         { path: 'register', element: <RegisterPage /> },
         { path: 'newsletter/unsubscribe', element: <UnsubscribePage /> },
+        { path: 'privacy-policy', element: <PrivacyPolicyPage /> },
         { path: 'verify-id', element: <VerifyIdPage /> },
         // Aliases for older/malformed QR paths so previously-printed cards still resolve.
         { path: 'verify/id', element: <VerifyIdPage /> },
