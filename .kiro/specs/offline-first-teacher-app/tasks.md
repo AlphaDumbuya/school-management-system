@@ -44,7 +44,8 @@
   - Logout: best-effort final sync (teacher, online) then wipeOfflineDb(userId) — student PII never lingers. Login/verifyMfa: wipeOtherUsers() drops any other user's offline DB on this device (shared-phone safety). Store already namespaced per user.
   - _Requirements: 8_
 
-- [ ] 12. Sync visibility: last-synced + pending count + "Sync now"; per-row sync chips; "data as of" freshness badge
+- [x] 12. Sync visibility: last-synced + pending count + "Sync now"; per-row sync chips; "data as of" freshness badge
+  - `useSyncStatus` (Dexie: pending=outbox, failed=error rows, lastPulledAt) + syncNow. SyncStatusIndicator upgraded (online/offline/syncing/pending/failed states, last-synced tooltip, Sync now). FreshnessBadge for cached screens (timeAgo). Per-row chips available via row.syncStatus (used by useRoster.fromCache + attendance rows).
   - _Requirements: 9_
 
 - [ ] 13. Conflict/rejection: per-item push results; "Sync issues" view with Retry/Discard
