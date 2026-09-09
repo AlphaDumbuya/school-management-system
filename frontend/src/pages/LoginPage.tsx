@@ -40,6 +40,7 @@ export const LoginPage: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   const mfaToken = useAuthStore((s) => s.mfaToken);
   const supportsPasskeys = typeof window !== 'undefined' && browserSupportsWebAuthn();
+  const suspendedNotice = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('suspended') === '1';
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -238,6 +239,12 @@ export const LoginPage: React.FC = () => {
             </form>
           ) : (
             <>
+              {suspendedNotice && (
+                <div className="max-w-3xl mx-auto mb-5 bg-red-500/20 border border-red-400/40 rounded-xl px-4 py-3 text-xs text-red-100 flex items-start gap-2">
+                  <span className="mt-0.5">⛔</span>
+                  <span>Your school account is currently suspended or inactive. Please contact WiSkul support to restore access.</span>
+                </div>
+              )}
               {!online && (
                 <div className="max-w-3xl mx-auto mb-5 bg-amber-500/20 border border-amber-400/40 rounded-xl px-4 py-3 text-xs text-amber-100 flex items-start gap-2">
                   <span className="mt-0.5">📶</span>

@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize, attachUserContext } from '../middleware/authMiddleware.js';
+import { requirePlanFeature } from '../middleware/subscriptionGuard.js';
 import { UserRole } from '../types/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
@@ -372,6 +373,7 @@ router.get(
 router.post(
   '/generate',
   authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
+  requirePlanFeature('id_cards'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { userId, templateId, format, expirationDate } = req.body;

@@ -5,7 +5,8 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '../middleware/authMiddleware.js';
+import { authenticate, authorize, attachUserContext } from '../middleware/authMiddleware.js';
+import { requirePlanFeature } from '../middleware/subscriptionGuard.js';
 import { validate } from '../middleware/validate.js';
 import {
   recordInfractionSchema,
@@ -35,8 +36,11 @@ import disciplineAnalyticsService from '../services/disciplineAnalyticsService.j
 
 const router = Router();
 
-// Apply authentication middleware to all routes
+// Apply authentication + tenant context to all routes, then gate the whole
+// module behind the 'discipline' plan feature (paid plans only).
 router.use(authenticate);
+router.use(attachUserContext);
+router.use(requirePlanFeature('discipline'));
 
 // ==================== INFRACTION MANAGEMENT ====================
 

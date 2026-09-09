@@ -15,6 +15,7 @@ import OfflineBanner from '@components/offline/OfflineBanner';
 import { useSyncEngine } from '../../offline/useSyncEngine';
 import useInactivityLock from '@hooks/useInactivityLock';
 import VerifyIntroModal from '@components/verification/VerifyIntroModal';
+import { showToast } from '@utils/toast';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -45,6 +46,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   useSyncEngine();
   // Auto-lock the app after inactivity → back to /login (re-auth required).
   useInactivityLock();
+
+  // Global plan-limit / subscription-expiry prompt: apiClient broadcasts a
+  // 'wiskul:plan-limit' event on those 403s; toast it once with an upgrade hint.
+  useEffect(() => {
+    const onLimit = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const isExpired = detail.code === 'SUBSCRIPTION_EXPIRED';
+      const base = detail.message || (isExpired ? 'Your subscription has expired.' : 'Plan limit reached.');
+      showToast.error(`${base} Open Settings → Plan & Billing to upgrade or renew.`);
+    };
+    window.addEventListener('wiskul:plan-limit', onLimit as EventListener);
+    return () => window.removeEventListener('wiskul:plan-limit', onLimit as EventListener);
+  }, []);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024);

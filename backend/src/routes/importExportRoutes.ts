@@ -7,7 +7,8 @@ import BulkOperationService from '../services/bulkOperationService';
 import { StudentImportValidator } from '../validators/studentImportValidator';
 import { GradeImportValidator } from '../validators/gradeImportValidator';
 import { AttendanceImportValidator } from '../validators/attendanceImportValidator';
-import { authMiddleware } from '../middleware/authMiddleware';
+import { authMiddleware, attachUserContext } from '../middleware/authMiddleware';
+import { SubscriptionService } from '../services/subscriptionService';
 
 const router = Router();
 
@@ -26,7 +27,7 @@ const upload = multer({
 });
 
 // POST /api/v1/import/students - Import students from CSV/Excel
-router.post('/students', authenticate, upload.single('file'), async (req: Request, res: Response) => {
+router.post('/students', authenticate, attachUserContext, upload.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
@@ -34,6 +35,26 @@ router.post('/students', authenticate, upload.single('file'), async (req: Reques
 
     const filePath = req.file.path;
     const data = ImportExportService.parseUploadedFile(filePath);
+
+    // Enforce the plan's student limit for the whole batch (blocks bulk-import
+    // bypass of max_students). Expired/suspended subscriptions are blocked too.
+    const tenantId = (req as any).user?.tenant_id;
+    if (tenantId) {
+      const sub = await SubscriptionService.getActiveSubscription(tenantId);
+      if (sub.status === 'expired' || sub.status === 'suspended') {
+        fs.unlinkSync(filePath);
+        return res.status(403).json({ error: `Your school subscription has ${sub.status}. Please renew to import students.`, code: 'SUBSCRIPTION_EXPIRED' });
+      }
+      const limit = await SubscriptionService.checkLimit(tenantId, 'students');
+      const incoming = Array.isArray(data) ? data.length : 0;
+      if (limit.current + incoming > limit.max) {
+        fs.unlinkSync(filePath);
+        return res.status(403).json({
+          error: `Importing ${incoming} students would exceed your plan limit (${limit.current}/${limit.max}). Upgrade your plan or import fewer.`,
+          code: 'PLAN_LIMIT_REACHED',
+        });
+      }
+    }
 
     // Use validator to get rules and perform bulk import
     const validationRules = StudentImportValidator.getValidationRules();

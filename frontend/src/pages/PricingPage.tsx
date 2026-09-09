@@ -201,7 +201,7 @@ export const PricingPage: React.FC = () => {
               { q: 'Is the core plan really free?', a: 'Yes — the Freetong (v1.0) core is 100% free for schools, with no card required. Paid tiers add advanced HR, payroll and messaging features.' },
               { q: 'Can I upgrade later?', a: 'Absolutely. You can move from Freetong to Combra or Bintumani at any time — your data and settings carry over seamlessly.' },
               { q: 'How do I pay for paid tiers?', a: 'We accept mobile money, card, and bank transfer via Monime, plus cash at our office. Reach out to sales to get set up.' },
-              { q: 'What if I exceed my student limit?', a: "You'll get a notification to upgrade. We won't lock you out — there's a grace period while you decide." },
+              { q: 'What if I reach my student limit?', a: "Your existing students and data are never removed — you keep full access to everyone already added. To enrol beyond your plan's limit, simply upgrade; we'll prompt you when you're close." },
               { q: 'Can I get a custom plan?', a: 'Yes — contact us for schools with special needs and we\'ll tailor a package to your budget and requirements.' },
               { q: 'Is my data safe?', a: 'Yes. Data is encrypted with 256-bit encryption, backed up regularly, and isolated per school (multi-tenant).' },
             ].map((faq) => (

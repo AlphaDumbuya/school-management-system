@@ -172,8 +172,33 @@ axiosInstance.interceptors.response.use(
       }
     }
 
-    // Handle 403 - Forbidden (don't redirect, let the UI handle it)
+    // Handle 403 - Forbidden
     if (error.response?.status === 403) {
+      // Tenant-level restriction (suspended/expired by the platform owner) cascades
+      // to all its users: force a logout so the whole session is cut off, not just
+      // scattered 403s. Any authenticated request can carry this.
+      const code = (error.response?.data as any)?.error?.code
+        || (error.response?.data as any)?.code;
+      if (code === 'TENANT_SUSPENDED' || code === 'TENANT_UNAVAILABLE') {
+        try {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
+        } catch { /* ignore */ }
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.assign('/login?suspended=1');
+        }
+      } else if (code === 'SUBSCRIPTION_EXPIRED' || code === 'PLAN_LIMIT_REACHED') {
+        // Broadcast so a single global listener can toast + prompt an upgrade,
+        // instead of every call site handling plan limits individually.
+        const msg = (error.response?.data as any)?.error?.message
+          || (error.response?.data as any)?.message
+          || (error.response?.data as any)?.error
+          || 'Your plan limit was reached. Upgrade to continue.';
+        try {
+          window.dispatchEvent(new CustomEvent('wiskul:plan-limit', { detail: { code, message: msg } }));
+        } catch { /* SSR / non-DOM */ }
+      }
       console.warn('403 Forbidden:', error.response?.config?.url);
     }
 
