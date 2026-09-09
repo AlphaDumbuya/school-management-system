@@ -3,6 +3,7 @@
  * Tenant-facing support: raise a ticket, see your tickets, and follow the thread.
  */
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LifeBuoy, Plus, Loader2, MessageSquare, X, Send } from 'lucide-react';
 import { MainLayout } from '@components/layout/MainLayout';
@@ -121,8 +122,8 @@ const NewTicketModal: React.FC<{ onClose: () => void; onCreated: () => void }> =
 
   const valid = subject.trim() && description.trim();
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-800 shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 px-5 py-4">
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">New Support Ticket</h3>
@@ -159,7 +160,8 @@ const NewTicketModal: React.FC<{ onClose: () => void; onCreated: () => void }> =
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -187,8 +189,8 @@ const TicketThreadModal: React.FC<{ ticket: SupportTicket; onClose: () => void; 
 
   const canReply = ticket.status !== 'closed';
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-800 shadow-xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 px-5 py-4">
           <div className="min-w-0">
@@ -226,7 +228,8 @@ const TicketThreadModal: React.FC<{ ticket: SupportTicket; onClose: () => void; 
           <div className="border-t border-gray-100 dark:border-gray-700 p-3 text-center text-xs text-gray-400">This ticket is closed.</div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

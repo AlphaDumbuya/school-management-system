@@ -176,6 +176,12 @@ app.get('/api', (req: Request, res: Response) => {
 // Authentication Routes
 app.use('/api/v1/auth', authRoutes);
 
+// Public ID verification (UNAUTHENTICATED — QR scan verification).
+// MUST be mounted BEFORE any blanket `app.use('/api/v1', router)` whose router
+// applies `authenticate` at the top (e.g. phase10DashboardRoutes) — otherwise
+// that middleware runs for every /api/v1/* path and 401s this public route.
+app.use('/api/v1/public', publicVerifyRoutes);
+
 // User Management Routes
 app.use('/api/v1/users', userRoutes);
 
@@ -280,9 +286,6 @@ app.use('/api/v1/platform', platformRoutes);
 
 // Admission Management Routes (Phase 1.3: Admissions Officer Enhancement)
 app.use('/api/v1/admissions', admissionRoutes);
-
-// Public ID verification (UNAUTHENTICATED — QR scan verification)
-app.use('/api/v1/public', publicVerifyRoutes);
 
 // ID Card Management Routes (Phase 2.1: Identity Management Module)
 app.use('/api/v1/id-cards', idCardRoutes);

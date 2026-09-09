@@ -10,7 +10,7 @@ import { generateNextId } from '@utils/idGenerator';
 import { linkGuardianForStudent } from '@utils/guardianLinking';
 import { provisionStudentAccounts } from '@utils/studentAccounts';
 import { sendExport } from '@utils/exportResponse';
-import { importStudents, buildStudentTemplate } from '@services/studentImportService';
+import { importStudents } from '@services/studentImportService';
 import multer from 'multer';
 
 const uploadCsv = multer({
@@ -466,19 +466,52 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
 });
 
 /**
- * GET /api/v1/students/import/template
- * Download a CSV template with the expected columns + one sample row.
- * Declared before /:studentId so the literal path isn't captured.
+ * GET /api/v1/students/import/template?format=xlsx|csv
+ * Download a professionally-formatted import template (branded XLSX by default,
+ * matching the export styling) with the expected columns + a couple of sample
+ * rows. Declared before /:studentId so the literal path isn't captured.
  */
 router.get(
   '/import/template',
   authenticate,
   authorize('admin', 'principal', 'super_admin', 'admissions_officer'),
-  async (_req: Request, res: Response) => {
-    const csv = buildStudentTemplate();
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="student_import_template.csv"');
-    res.send(csv);
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.user?.tenant_id;
+      const { IMPORT_COLUMNS } = await import('@services/studentImportService');
+
+      // One column per import field; a couple of clearly-fake example rows so
+      // users see the expected format (dates, phone, class name).
+      const columns: Record<string, string> = {};
+      IMPORT_COLUMNS.forEach((c) => { columns[c.header] = c.field; });
+
+      const sampleRows = [
+        {
+          first_name: 'Aminata', last_name: 'Kamara', gender: 'female', date_of_birth: '2014-05-12',
+          email: '', phone: '+23276000000', address: '12 Circular Rd, Freetown',
+          guardian_name: 'Mariama Kamara', guardian_phone: '+23276111111', guardian_email: '',
+          guardian_relationship: 'Mother', class_name: 'JSS 1',
+        },
+        {
+          first_name: 'Mohamed', last_name: 'Sesay', gender: 'male', date_of_birth: '2013-09-30',
+          email: '', phone: '', address: '5 Kissy Rd, Freetown',
+          guardian_name: 'Ibrahim Sesay', guardian_phone: '+23278222222', guardian_email: '',
+          guardian_relationship: 'Father', class_name: 'JSS 2',
+        },
+      ];
+
+      await sendExport(res, {
+        format: (req.query.format as string) || 'excel',
+        tenantId,
+        rows: sampleRows,
+        columns,
+        filename: 'student_import_template',
+        title: 'Student Import Template',
+        sheetName: 'Import Template',
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 );
 

@@ -4,6 +4,7 @@
  * reply, and change status.
  */
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LifeBuoy, Loader2, X, Send, Building2 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
@@ -135,8 +136,8 @@ const AdminTicketModal: React.FC<{ ticketId: string; onClose: () => void; onChan
     onError: () => showToast.error('Status update failed.'),
   });
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-xl rounded-2xl bg-white dark:bg-gray-800 shadow-xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 px-5 py-4">
           <div className="min-w-0">
@@ -189,7 +190,8 @@ const AdminTicketModal: React.FC<{ ticketId: string; onClose: () => void; onChan
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

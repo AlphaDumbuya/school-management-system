@@ -6,6 +6,7 @@
  * refreshes the student list.
  */
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, UploadCloud, Download, Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
@@ -41,7 +42,7 @@ export const StudentImportModal: React.FC<Props> = ({ isOpen, onClose, onImporte
   const downloadTemplate = async () => {
     try {
       const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
-      const res = await fetch(`${API_CONFIG.baseURL}/api/v1/students/import/template`, {
+      const res = await fetch(`${API_CONFIG.baseURL}/api/v1/students/import/template?format=excel`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         credentials: 'include',
       });
@@ -50,7 +51,7 @@ export const StudentImportModal: React.FC<Props> = ({ isOpen, onClose, onImporte
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'student_import_template.csv';
+      a.download = 'student_import_template.xlsx';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -85,15 +86,15 @@ export const StudentImportModal: React.FC<Props> = ({ isOpen, onClose, onImporte
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-800 shadow-xl max-h-[90vh] overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[60] bg-black/50 flex flex-col sm:items-center sm:justify-center sm:p-4">
+      <div className="w-full h-full sm:h-auto sm:max-w-2xl bg-white dark:bg-gray-800 shadow-xl sm:rounded-2xl flex flex-col sm:max-h-[90vh] overflow-hidden">
         <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 px-5 py-4">
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">Import Students</h3>
           <button onClick={close} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {!result ? (
             <>
               <p className="text-sm text-gray-600 dark:text-gray-300">
@@ -175,7 +176,8 @@ export const StudentImportModal: React.FC<Props> = ({ isOpen, onClose, onImporte
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
