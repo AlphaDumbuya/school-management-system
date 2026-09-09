@@ -25,10 +25,13 @@ uploads, no third-party vendor, no waiting for review.
   - a **recurring, closable reminder popup** each browser session (stops once verified), and
   - a **dashboard banner** CTA.
 - All existing owners are `unverified` after migration 125, so they are all prompted automatically.
-- A gating middleware (`backend/src/middleware/requireVerifiedSchool.ts`) exists and returns
-  403 `SCHOOL_VERIFICATION_REQUIRED`, but is **not applied to any route** — enable it per-route
-  later if hard gating is ever desired (default gated set in the spec: billing/subscription,
-  invite/create staff, issue/print ID cards, bulk export, bulk delete).
+- **Billing plan changes are hard-gated**: `POST /school-config/subscription/change-plan` requires
+  a verified school (`requireVerifiedSchool` → 403 `SCHOOL_VERIFICATION_REQUIRED`). Viewing billing
+  history / subscription stays open; only changing/upgrading the plan is blocked until verified.
+  Super admins are never gated (they aren't tenant owners). The Settings UI catches the 403 and
+  redirects the owner to `/verify-school`.
+- The same `requireVerifiedSchool` middleware can be applied to more routes later (e.g. invite/
+  create staff, issue/print ID cards, bulk export, bulk delete) without further design changes.
 
 ## Data
 
