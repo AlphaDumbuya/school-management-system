@@ -80,14 +80,30 @@ class EmailService {
   }
 
   private platformSender(purpose: PlatformSenderPurpose): { sender: { email: string; name: string }; replyTo: { email: string; name: string } } {
-    const map: Record<PlatformSenderPurpose, { email: string; name: string }> = {
-      info: { email: process.env.INFO_EMAIL || 'info@wiskulsl.com', name: 'WiSkul' },
-      support: { email: process.env.SUPPORT_EMAIL || 'support@wiskulsl.com', name: 'WiSkul Support' },
-      sales: { email: process.env.SALES_EMAIL || 'sales@wiskulsl.com', name: 'WiSkul Sales' },
-      'no-reply': { email: process.env.NOREPLY_EMAIL || process.env.BREVO_SENDER_EMAIL || 'no-reply@wiskulsl.com', name: 'WiSkul' },
+    // Deliverability rule: Brevo REJECTS any send whose From address is not a
+    // verified sender. Only BREVO_SENDER_EMAIL (info@wiskulsl.com) is verified
+    // by default. Purpose-specific mailboxes (sales@, support@, no-reply@) are
+    // used as the From address ONLY when explicitly configured via their env
+    // var — meaning the operator has verified that address in Brevo. Otherwise
+    // we fall back to the verified BREVO_SENDER_EMAIL as the From address and
+    // keep the purpose mailbox as Reply-To so replies still route correctly.
+    // This is why the newsletter welcome (purpose 'sales') previously failed:
+    // sales@ was never verified, so Brevo refused the send.
+    const verifiedFrom = this.SENDER_EMAIL; // info@wiskulsl.com by default
+    const map: Record<PlatformSenderPurpose, { fromEnv?: string; replyTo: string; name: string }> = {
+      info: { fromEnv: process.env.INFO_EMAIL, replyTo: process.env.INFO_EMAIL || 'info@wiskulsl.com', name: 'WiSkul' },
+      support: { fromEnv: process.env.SUPPORT_EMAIL, replyTo: process.env.SUPPORT_EMAIL || 'support@wiskulsl.com', name: 'WiSkul Support' },
+      sales: { fromEnv: process.env.SALES_EMAIL, replyTo: process.env.SALES_EMAIL || 'sales@wiskulsl.com', name: 'WiSkul Sales' },
+      'no-reply': { fromEnv: process.env.NOREPLY_EMAIL, replyTo: process.env.NOREPLY_EMAIL || 'no-reply@wiskulsl.com', name: 'WiSkul' },
     };
-    const s = map[purpose] || map.info;
-    return { sender: s, replyTo: s };
+    const cfg = map[purpose] || map.info;
+    // Use the purpose mailbox as From only when its env var is set (verified);
+    // otherwise use the known-verified platform sender.
+    const fromEmail = cfg.fromEnv || verifiedFrom;
+    return {
+      sender: { email: fromEmail, name: cfg.name },
+      replyTo: { email: cfg.replyTo, name: cfg.name },
+    };
   }
 
   constructor() {
@@ -210,7 +226,21 @@ class EmailService {
         timestamp: new Date().toISOString(),
       };
     } catch (error: any) {
-      logger.error(`Error sending email to ${emailRequest.to}: ${error.message}`);
+      // Brevo returns the actionable reason (e.g. "sender not valid",
+      // "Key not found") in error.response.data — log it so delivery failures
+      // are diagnosable instead of hidden behind a generic axios message.
+      const providerDetail = error?.response?.data
+        ? JSON.stringify(error.response.data)
+        : error?.message;
+      logger.error(
+        `Error sending email to ${emailRequest.to} (from ${emailRequest.sender?.email || this.SENDER_EMAIL}): ${providerDetail}`
+      );
+
+      // A rejected/invalid sender (400) will never succeed on retry — fail fast.
+      const status = error?.response?.status;
+      if (status === 400 || status === 401) {
+        throw new Error(`Email rejected by provider: ${providerDetail}`);
+      }
 
       // Retry logic with exponential backoff
       if (retryCount < this.MAX_RETRIES) {

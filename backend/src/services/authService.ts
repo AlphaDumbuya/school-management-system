@@ -601,10 +601,16 @@ export class AuthService {
         updated_at: new Date(),
       });
 
-      // Delete reset token
-      await this.db('password_resets').where({ id: validReset.id }).del();
+      // Invalidate ALL reset tokens for this user (not just the one used) so a
+      // second outstanding link can't be replayed.
+      await this.db('password_resets').where({ user_id: validReset.user_id }).del();
 
-      logger.info(`Password reset for user: ${validReset.user_id}`);
+      // Revoke every active session for this user. A reset is commonly triggered
+      // after a suspected compromise, so any previously issued refresh tokens
+      // must stop working — the user re-authenticates with the new password.
+      await this.db('refresh_tokens').where({ user_id: validReset.user_id }).del();
+
+      logger.info(`Password reset for user: ${validReset.user_id} (all sessions revoked)`);
     } catch (error) {
       if (error instanceof AppError) {
         throw error;
