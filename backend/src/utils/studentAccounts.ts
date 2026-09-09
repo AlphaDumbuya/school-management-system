@@ -1,25 +1,20 @@
 /**
  * studentAccounts — provision login accounts for a student and their parent.
  *
- * Ensures a `users` row exists (role student / parent) with a known default
- * password so the credentials surfaced in the UI actually work. Best-effort:
- * failures are logged and swallowed so they never block student creation.
+ * Ensures a `users` row exists (role student / parent) with a RANDOM, per-account
+ * temporary password (never a shared/guessable default). The generated password
+ * is stored in `users.temp_password` so a principal can view + hand it out, and
+ * the account holder should change it on first login. Best-effort: failures are
+ * logged and swallowed so they never block student creation.
  *
- * Default passwords:
- *   student → Student123!
- *   parent  → Parent123!
- *
- * Existing accounts are only "healed" (password reset to default + reactivated)
- * when they have NEVER logged in (last_login is null), so a real user's chosen
+ * Existing accounts are only "healed" (fresh temp password + reactivated) when
+ * they have NEVER logged in (last_login is null), so a real user's chosen
  * password is never overwritten.
  */
 
 import type { Knex } from 'knex';
 import { PasswordService } from '../services/passwordService.js';
 import { logger } from './logger.js';
-
-const STUDENT_DEFAULT = 'Student123!';
-const PARENT_DEFAULT = 'Parent123!';
 
 export interface StudentAccountInfo {
   student_id: string;               // internal students.id
@@ -40,9 +35,17 @@ export async function provisionStudentAccounts(
   db: Knex,
   tenantId: string,
   info: StudentAccountInfo,
-): Promise<{ studentUserId: string | null; parentUserId: string | null; parentEmail: string }> {
+): Promise<{
+  studentUserId: string | null;
+  parentUserId: string | null;
+  parentEmail: string;
+  studentPassword: string | null;
+  parentPassword: string | null;
+}> {
   let studentUserId: string | null = null;
   let parentUserId: string | null = null;
+  let studentPassword: string | null = null;
+  let parentPassword: string | null = null;
 
   const reg = (info.reg_id || 'student').toLowerCase();
 
@@ -51,26 +54,35 @@ export async function provisionStudentAccounts(
     const studentEmail = (info.email || `${reg}@student.school.com`).toLowerCase().trim();
     let su = await db('users').where({ tenant_id: tenantId, email: studentEmail }).first();
     if (!su) {
-      const hash = await PasswordService.hashPassword(STUDENT_DEFAULT);
+      const pwd = PasswordService.generateTemporaryPassword();
+      const hash = await PasswordService.hashPassword(pwd);
       const [inserted] = await db('users').insert({
         tenant_id: tenantId,
         email: studentEmail,
         first_name: info.first_name || 'Student',
         last_name: info.last_name || info.reg_id,
         password_hash: hash,
+        temp_password: pwd,
         role: 'student',
         status: 'active',
         created_at: new Date(),
         updated_at: new Date(),
       }).returning('*');
       su = inserted;
+      studentPassword = pwd;
     } else if (!su.last_login) {
-      // Heal never-logged-in default account.
+      // Heal never-logged-in account with a fresh random temp password.
+      const pwd = PasswordService.generateTemporaryPassword();
       await db('users').where('id', su.id).update({
-        password_hash: await PasswordService.hashPassword(STUDENT_DEFAULT),
+        password_hash: await PasswordService.hashPassword(pwd),
+        temp_password: pwd,
         status: 'active',
         updated_at: new Date(),
       });
+      studentPassword = pwd;
+    } else {
+      // Real user (has logged in) — never touch their password; show stored temp if any.
+      studentPassword = su.temp_password || null;
     }
     studentUserId = su?.id ?? null;
     // Link students.user_id
@@ -88,25 +100,33 @@ export async function provisionStudentAccounts(
     const gName = (info.guardian_name || '').trim();
     const [gFirst, ...gRest] = gName ? gName.split(' ') : ['Parent'];
     if (!pu) {
-      const hash = await PasswordService.hashPassword(PARENT_DEFAULT);
+      const pwd = PasswordService.generateTemporaryPassword();
+      const hash = await PasswordService.hashPassword(pwd);
       const [inserted] = await db('users').insert({
         tenant_id: tenantId,
         email: parentEmail,
         first_name: gFirst || 'Parent',
         last_name: gRest.join(' ') || info.last_name || reg,
         password_hash: hash,
+        temp_password: pwd,
         role: 'parent',
         status: 'active',
         created_at: new Date(),
         updated_at: new Date(),
       }).returning('*');
       pu = inserted;
+      parentPassword = pwd;
     } else if (!pu.last_login) {
+      const pwd = PasswordService.generateTemporaryPassword();
       await db('users').where('id', pu.id).update({
-        password_hash: await PasswordService.hashPassword(PARENT_DEFAULT),
+        password_hash: await PasswordService.hashPassword(pwd),
+        temp_password: pwd,
         status: 'active',
         updated_at: new Date(),
       });
+      parentPassword = pwd;
+    } else {
+      parentPassword = pu.temp_password || null;
     }
     parentUserId = pu?.id ?? null;
 
@@ -126,5 +146,5 @@ export async function provisionStudentAccounts(
     logger.warn('provisionStudentAccounts: parent account step failed', { error: e?.message });
   }
 
-  return { studentUserId, parentUserId, parentEmail };
+  return { studentUserId, parentUserId, parentEmail, studentPassword, parentPassword };
 }

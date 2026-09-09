@@ -569,19 +569,90 @@ router.get('/dashboards/accountant/overview', authenticate, async (req: Request,
  */
 router.get('/dashboards/admissions/overview', authenticate, async (req: Request, res: Response) => {
   try {
-    if (req.user?.role !== 'admissionsOfficer') {
+    // Admissions officers and principals may view this dashboard.
+    if (!['admissions_officer', 'principal', 'super_admin'].includes(req.user?.role as string)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context required' });
+    }
 
-    // Admissions dashboard would show pending applications, enrollments, etc.
+    const { db } = await import('@utils/database');
+    const academicYear = (req.query.academic_year as string) || undefined;
+
+    // Base query scoped by tenant (admission_applications carries tenant_id directly).
+    const scoped = () => {
+      let q = db('admission_applications').where('admission_applications.tenant_id', tenantId);
+      if (academicYear) q = q.where('admission_applications.academic_year', academicYear);
+      return q;
+    };
+
+    // Counts grouped by the real status values used by the live admissions module
+    // (pending | under_review | interview_scheduled | approved | rejected | enrolled).
+    const statusRows = await scoped()
+      .select('status')
+      .count('id as count')
+      .groupBy('status');
+
+    const byStatus: Record<string, number> = {
+      pending: 0,
+      under_review: 0,
+      interview_scheduled: 0,
+      approved: 0,
+      rejected: 0,
+      enrolled: 0,
+    };
+    statusRows.forEach((r: any) => {
+      byStatus[r.status] = Number(r.count);
+    });
+
+    const totalApplications = Object.values(byStatus).reduce((a, b) => a + b, 0);
+
+    // Applications received this month
+    const [{ count: thisMonthCount }] = await scoped()
+      .where('admission_applications.created_at', '>=', db.raw("date_trunc('month', NOW())"))
+      .count('id as count');
+
+    // Enrollment rate: enrolled / decided (approved + rejected + enrolled)
+    const decided = byStatus.approved + byStatus.rejected + byStatus.enrolled;
+    const enrollmentRate = decided > 0 ? Math.round((byStatus.enrolled / decided) * 100) : 0;
+
+    // Recent applications (real records) for the list/pipeline view
+    const recent = await scoped()
+      .select(
+        'admission_applications.id',
+        'admission_applications.application_number',
+        'admission_applications.child_first_name',
+        'admission_applications.child_last_name',
+        'admission_applications.guardian_first_name',
+        'admission_applications.guardian_last_name',
+        'admission_applications.status',
+        'admission_applications.created_at',
+        'classes.name as class_name'
+      )
+      .leftJoin('classes', 'admission_applications.class_applying_for', 'classes.id')
+      .orderBy('admission_applications.created_at', 'desc')
+      .limit(50);
+
+    const applications = recent.map((a: any) => ({
+      id: a.id,
+      applicationNumber: a.application_number,
+      studentName: [a.child_first_name, a.child_last_name].filter(Boolean).join(' ') || '—',
+      parentName: [a.guardian_first_name, a.guardian_last_name].filter(Boolean).join(' ') || '—',
+      className: a.class_name || '—',
+      status: a.status,
+      applicationDate: a.created_at,
+    }));
+
     res.json({
       success: true,
-      message: 'Admissions dashboard data would be here',
       data: {
-        pendingApplications: 0,
-        approvedApplications: 0,
-        enrolledStudents: 0,
-        capacityStatus: {},
+        totalApplications,
+        thisMonth: Number(thisMonthCount),
+        enrollmentRate,
+        byStatus,
+        applications,
       },
     });
   } catch (error) {

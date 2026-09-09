@@ -711,7 +711,7 @@ export const StudentProfilesPage: React.FC = () => {
                                 Email: <strong className="text-slate-100">{student.demo_login?.student_email || student.email || `${(student.student_id || 'student').toLowerCase()}@student.school.com`}</strong>
                               </p>
                               <p className="text-slate-400 font-mono text-[11px]">
-                                Password: <strong className="text-emerald-400">{student.demo_login?.student_password || 'Student123!'}</strong>
+                                Password: <strong className="text-emerald-400">{student.demo_login?.student_password || 'Uses their own password'}</strong>
                               </p>
                             </div>
 
@@ -725,7 +725,7 @@ export const StudentProfilesPage: React.FC = () => {
                                 Email: <strong className="text-slate-100">{student.demo_login?.parent_email || (student.email || 'Not Created')}</strong>
                               </p>
                               <p className="text-slate-400 font-mono text-[11px]">
-                                Password: <strong className="text-purple-300">{student.demo_login?.parent_password || 'Parent123!'}</strong>
+                                Password: <strong className="text-purple-300">{student.demo_login?.parent_password || 'Uses their own password'}</strong>
                               </p>
                             </div>
                           </div>
