@@ -23,6 +23,11 @@ import {
   UserPlus,
   Pause,
   Clock,
+  BadgeCheck,
+  ShieldAlert,
+  Fingerprint,
+  ShieldCheck,
+  Smartphone,
 } from 'lucide-react';
 import useAuth from '@hooks/useAuth';
 import MainLayout from '@components/layout/MainLayout';
@@ -288,6 +293,53 @@ const SuperAdminDashboard: React.FC = () => {
             <CompositionCard icon={<Building2 size={18} />} tint="blue" label="Active Schools" value={stats.activeTenants} />
             <CompositionCard icon={<Pause size={18} />} tint="amber" label="Suspended" value={stats.suspendedTenants} />
             <CompositionCard icon={<UserPlus size={18} />} tint="emerald" label="New This Month" value={stats.newTenantsThisMonth ?? 0} />
+          </div>
+        )}
+
+        {/* ── New feature adoption (live) ──────────────────────────────── */}
+        {!loading && stats && (
+          <div className="mt-8">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-bold text-gray-900">Platform Features</h2>
+              <span className="text-xs text-gray-400">Adoption across all schools</span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <CompositionCard
+                icon={<BadgeCheck size={18} />} tint="emerald"
+                label="Verified Schools" value={stats.verifiedSchools ?? 0}
+              />
+              <CompositionCard
+                icon={<ShieldAlert size={18} />} tint="amber"
+                label="Unverified Schools" value={stats.unverifiedSchools ?? Math.max(0, (stats.totalTenants || 0) - (stats.verifiedSchools || 0))}
+              />
+              <CompositionCard
+                icon={<Fingerprint size={18} />} tint="purple"
+                label="Users with Passkeys" value={stats.passkeyUsers ?? 0}
+              />
+              <CompositionCard
+                icon={<ShieldCheck size={18} />} tint="blue"
+                label="2FA Enabled Users" value={stats.twoFactorUsers ?? 0}
+              />
+            </div>
+
+            {/* Mobile app card — honest: we don't instrument download counts.
+                Links to the release/download so admins can see availability. */}
+            <div className="mt-4 bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+              <div className="p-2.5 rounded-lg bg-blue-50 text-blue-600"><Smartphone size={18} /></div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900">WiSkul Android App</p>
+                <p className="text-xs text-gray-500">
+                  Downloadable APK is live. Download counts aren't tracked on the platform yet.
+                </p>
+              </div>
+              <a
+                href="https://www.wiskulsl.com/downloads/wiskul.apk"
+                target="_blank" rel="noopener noreferrer"
+                className="shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 rounded-lg px-3 py-2"
+              >
+                View APK <ExternalLink size={13} />
+              </a>
+            </div>
           </div>
         )}
       </PageShell>
