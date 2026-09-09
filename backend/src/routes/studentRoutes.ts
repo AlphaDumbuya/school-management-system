@@ -509,50 +509,12 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
       throw new AppError('Insufficient permissions to view this student record', 403, 'AUTHORIZATION_ERROR');
     }
 
-    // Ensure student user account exists
-    let studentUser = null;
-    if (student.user_id) {
-      studentUser = await db('users').where('id', student.user_id).first();
-    }
-    if (!studentUser) {
-      const studentEmail = (student.email || `${student.student_id.toLowerCase()}@student.school.com`).toLowerCase();
-      studentUser = await db('users').where('email', studentEmail).first();
-      if (!studentUser) {
-        const passHash = await PasswordService.hashPassword('Student123!');
-        const [inserted] = await db('users').insert({
-          tenant_id: tenantId,
-          email: studentEmail,
-          first_name: student.first_name || 'Student',
-          last_name: student.last_name || student.student_id,
-          password_hash: passHash,
-          role: 'student',
-          status: 'active',
-          created_at: new Date(),
-          updated_at: new Date(),
-        }).returning('*');
-        studentUser = inserted;
-      }
-      if (studentUser && student.id) {
-        await db('students').where('id', student.id).update({ user_id: studentUser.id });
-      }
-    }
-
-    // If the student account is still a system default (never logged in) but is
-    // active, ensure its password matches the advertised default and it can log
-    // in. This heals older accounts that had an unknown/legacy password.
-    if (studentUser && !studentUser.last_login) {
-      const patch: any = { updated_at: new Date() };
-      if (studentUser.status !== 'active') patch.status = 'active';
-      patch.password_hash = await PasswordService.hashPassword('Student123!');
-      await db('users').where('id', studentUser.id).update(patch).catch(() => {});
-    }
-
-    // ── Ensure a parent user account exists (so displayed credentials work) ──
-    // Prefer a real guardian email (from the guardians table or student record).
-    // Falls back to a deterministic address so a demo/default account can exist.
+    // Ensure student + parent login accounts exist with RANDOM per-account temp
+    // passwords (no shared guessable defaults). Delegated to the hardened util,
+    // which only (re)sets a password for accounts that have never logged in, so
+    // a real user's chosen password is never overwritten.
     const safeStudentId = (student.student_id || 'student').toLowerCase();
 
-    // Try to find a linked guardian with an email first.
     let guardianRecord: any = null;
     try {
       if (await db.schema.hasTable('guardians')) {
@@ -564,58 +526,37 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
       }
     } catch (_) { /* ignore */ }
 
-    const parentEmail = (
-      guardianRecord?.email ||
-      `${safeStudentId}@parent.school.com`
-    ).toLowerCase().trim();
+    const { provisionStudentAccounts } = await import('../utils/studentAccounts.js');
+    const provisioned = await provisionStudentAccounts(db, tenantId, {
+      student_id: student.id,
+      reg_id: student.student_id || safeStudentId,
+      email: student.email,
+      first_name: student.first_name,
+      last_name: student.last_name,
+      guardian_name: guardianRecord
+        ? `${guardianRecord.first_name ?? ''} ${guardianRecord.last_name ?? ''}`.trim() || student.guardian_name
+        : student.guardian_name,
+      guardian_email: guardianRecord?.email || null,
+    });
 
-    let parentUser = await db('users').where('email', parentEmail).first();
-    let parentDefaultPassword = 'Parent123!';
+    const studentUser = provisioned.studentUserId
+      ? await db('users').where('id', provisioned.studentUserId).first()
+      : null;
+    const parentUser = provisioned.parentUserId
+      ? await db('users').where('id', provisioned.parentUserId).first()
+      : null;
 
-    if (!parentUser) {
-      // Provision a parent account so the advertised credentials are valid.
-      const parentPassHash = await PasswordService.hashPassword(parentDefaultPassword);
-      const [gFirst, ...gRest] = (student.guardian_name || guardianRecord ? `${guardianRecord?.first_name ?? ''} ${guardianRecord?.last_name ?? ''}`.trim() || student.guardian_name || 'Parent' : 'Parent').split(' ');
-      try {
-        const [insertedParent] = await db('users').insert({
-          tenant_id: tenantId,
-          email: parentEmail,
-          first_name: guardianRecord?.first_name || gFirst || 'Parent',
-          last_name: guardianRecord?.last_name || gRest.join(' ') || student.last_name || safeStudentId,
-          password_hash: parentPassHash,
-          role: 'parent',
-          status: 'active',
-          created_at: new Date(),
-          updated_at: new Date(),
-        }).returning('*');
-        parentUser = insertedParent;
-
-        // Link the guardian record to this parent user for portal aggregation.
-        if (guardianRecord && !guardianRecord.user_id) {
-          await db('guardians').where('id', guardianRecord.id).update({ user_id: parentUser.id, updated_at: new Date() }).catch(() => {});
-        }
-      } catch (e) {
-        // If insert races or fails, re-fetch.
-        parentUser = await db('users').where('email', parentEmail).first();
-      }
-    } else if (!parentUser.last_login) {
-      // Existing parent account that has never logged in — heal it to the
-      // advertised default so the shown credentials work.
-      const patch: any = { updated_at: new Date() };
-      if (parentUser.status !== 'active') patch.status = 'active';
-      patch.password_hash = await PasswordService.hashPassword(parentDefaultPassword);
-      await db('users').where('id', parentUser.id).update(patch).catch(() => {});
-    } else {
-      parentDefaultPassword = '(Existing account — use its own password)';
-    }
-
-    student.demo_login = {
+    student.login_credentials = {
       student_email: studentUser?.email || `${safeStudentId}@student.school.com`,
-      student_password: 'Student123!',
-      parent_email: parentUser?.email || parentEmail,
-      parent_password: parentUser && parentDefaultPassword.startsWith('(') ? parentDefaultPassword : 'Parent123!',
+      // Random temp password if we just provisioned/healed; null if the user
+      // already set their own (then show "use existing password" in the UI).
+      student_password: provisioned.studentPassword,
+      parent_email: parentUser?.email || provisioned.parentEmail,
+      parent_password: provisioned.parentPassword,
       has_parent_account: !!parentUser,
     };
+    // Back-compat alias for existing frontend that reads demo_login.
+    student.demo_login = student.login_credentials;
 
     // Fetch all linked guardians for multi-guardian tracking
     // Gracefully handle cases where the guardians table doesn't exist yet

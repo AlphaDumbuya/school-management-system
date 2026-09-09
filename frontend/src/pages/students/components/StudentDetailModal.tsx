@@ -114,7 +114,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 Email: <strong>{s.demo_login?.student_email || s.email || `${(s.student_id || 'student').toLowerCase()}@student.school.com`}</strong>
               </p>
               <p className="text-xs font-mono text-gray-700 dark:text-gray-300">
-                Default Pass: <strong className="text-green-600 dark:text-green-400">{s.demo_login?.student_password || 'Student123!'}</strong>
+                Default Pass: <strong className="text-green-600 dark:text-green-400">{s.demo_login?.student_password || 'Uses own password'}</strong>
               </p>
             </div>
 
@@ -127,7 +127,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 Email: <strong>{s.demo_login?.parent_email || (s.email || 'Not Created')}</strong>
               </p>
               <p className="text-xs font-mono text-gray-700 dark:text-gray-300">
-                Default Pass: <strong className="text-purple-600 dark:text-purple-400">{s.demo_login?.parent_password || 'Parent123!'}</strong>
+                Default Pass: <strong className="text-purple-600 dark:text-purple-400">{s.demo_login?.parent_password || 'Uses own password'}</strong>
               </p>
             </div>
           </div>
@@ -206,12 +206,12 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 space-y-1">
               <span className="font-bold text-blue-400 text-[11px]">Student Account</span>
               <p className="text-slate-400 font-mono text-[10px] truncate">Email: <strong className="text-slate-100">{s.demo_login?.student_email || `${(s.student_id || 'student').toLowerCase()}@student.school.com`}</strong></p>
-              <p className="text-slate-400 font-mono text-[10px]">Password: <strong className="text-emerald-400">{showCreds ? (s.demo_login?.student_password || 'Student123!') : '••••••••'}</strong></p>
+              <p className="text-slate-400 font-mono text-[10px]">Password: <strong className="text-emerald-400">{showCreds ? (s.demo_login?.student_password || 'Uses own password') : '••••••••'}</strong></p>
             </div>
             <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 space-y-1">
               <span className="font-bold text-purple-400 text-[11px]">Parent Account</span>
               <p className="text-slate-400 font-mono text-[10px] truncate">Email: <strong className="text-slate-100">{s.demo_login?.parent_email || 'Not Created'}</strong></p>
-              <p className="text-slate-400 font-mono text-[10px]">Password: <strong className="text-purple-300">{showCreds ? (s.demo_login?.parent_password || 'Parent123!') : '••••••••'}</strong></p>
+              <p className="text-slate-400 font-mono text-[10px]">Password: <strong className="text-purple-300">{showCreds ? (s.demo_login?.parent_password || 'Uses own password') : '••••••••'}</strong></p>
             </div>
           </div>
         </div>
