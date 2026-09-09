@@ -9,6 +9,7 @@ import { PasswordService } from '@services/passwordService';
 import { generateNextId } from '@utils/idGenerator';
 import { linkGuardianForStudent } from '@utils/guardianLinking';
 import { provisionStudentAccounts } from '@utils/studentAccounts';
+import { sendExport } from '@utils/exportResponse';
 
 const router = Router();
 router.use(authenticate);
@@ -456,6 +457,71 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     next(error);
   }
 });
+
+/**
+ * GET /api/v1/students/export?format=csv|excel|pdf
+ * Download the tenant's students. Staff-managers only (principal/super_admin/
+ * admissions_officer); tenant-scoped. Declared BEFORE /:studentId so the
+ * literal path isn't captured as an id param.
+ */
+router.get(
+  '/export',
+  authenticate,
+  authorize('admin', 'principal', 'super_admin', 'admissions_officer'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+
+      const rows = await db('students')
+        .leftJoin('enrollments', function () {
+          this.on('students.id', '=', 'enrollments.student_id').andOnIn('enrollments.status', ['enrolled', 'active']);
+        })
+        .leftJoin('classes', 'enrollments.class_id', 'classes.id')
+        .where('students.tenant_id', tenantId)
+        .select(
+          'students.student_id as admission_no',
+          'students.first_name',
+          'students.last_name',
+          'students.gender',
+          'classes.name as class_name',
+          'students.guardian_name',
+          'students.guardian_phone',
+          'students.status',
+          'students.enrollment_date',
+        )
+        .orderBy('students.created_at', 'desc')
+        .limit(10000);
+
+      const formatted = rows.map((r: any) => ({
+        ...r,
+        enrollment_date: r.enrollment_date ? new Date(r.enrollment_date).toLocaleDateString() : '',
+      }));
+
+      await sendExport(res, {
+        format: req.query.format as string,
+        tenantId,
+        rows: formatted,
+        columns: {
+          'Admission No': 'admission_no',
+          'First Name': 'first_name',
+          'Last Name': 'last_name',
+          Gender: 'gender',
+          Class: 'class_name',
+          Guardian: 'guardian_name',
+          'Guardian Phone': 'guardian_phone',
+          Status: 'status',
+          Enrolled: 'enrollment_date',
+        },
+        filename: 'students_export',
+        title: 'Students Export',
+        sheetName: 'Students',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 /**
  * GET /api/v1/students/:studentId

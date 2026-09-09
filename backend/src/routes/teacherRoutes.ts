@@ -7,10 +7,73 @@ import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { generateNextId } from '@utils/idGenerator';
+import { sendExport } from '@utils/exportResponse';
 
 const router = Router();
 router.use(authenticate);
 router.use(attachUserContext);
+
+/**
+ * GET /api/v1/teachers/export?format=csv|excel|pdf
+ * Download the tenant's teachers. Principal/super_admin only; tenant-scoped.
+ * Declared before /:id so the literal path isn't captured.
+ */
+router.get('/export', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+
+    const rows = await db('teachers')
+      .join('users', 'teachers.user_id', 'users.id')
+      .where('users.tenant_id', tenantId)
+      .select(
+        'teachers.teacher_id',
+        'users.first_name',
+        'users.last_name',
+        'users.email',
+        'teachers.phone',
+        'teachers.specialization',
+        'teachers.designation',
+        'teachers.department',
+        'teachers.employment_type',
+        'teachers.hire_date',
+        'users.status as status',
+        db.raw('(SELECT name FROM classes WHERE class_teacher_id = teachers.id LIMIT 1) as form_class_name'),
+      )
+      .orderBy('teachers.created_at', 'desc')
+      .limit(10000);
+
+    const formatted = rows.map((r: any) => ({
+      ...r,
+      hire_date: r.hire_date ? new Date(r.hire_date).toLocaleDateString() : '',
+    }));
+
+    await sendExport(res, {
+      format: req.query.format as string,
+      tenantId,
+      rows: formatted,
+      columns: {
+        'Staff ID': 'teacher_id',
+        'First Name': 'first_name',
+        'Last Name': 'last_name',
+        Email: 'email',
+        Phone: 'phone',
+        Specialization: 'specialization',
+        Designation: 'designation',
+        Department: 'department',
+        'Employment Type': 'employment_type',
+        'Form Class': 'form_class_name',
+        Hired: 'hire_date',
+        Status: 'status',
+      },
+      filename: 'teachers_export',
+      title: 'Teachers Export',
+      sheetName: 'Teachers',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * GET /api/v1/teachers

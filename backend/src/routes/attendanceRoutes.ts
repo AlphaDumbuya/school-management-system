@@ -4,8 +4,88 @@ import { AppError } from '@middleware/errorHandler';
 import { UserRole } from '../types/auth';
 import { logger } from '@utils/logger';
 import { db } from '@utils/database';
+import { sendExport } from '@utils/exportResponse';
 
 const router = Router();
+
+const EXPORT_COLUMNS: Record<string, string> = {
+  Student: 'student_name',
+  'Admission No': 'admission_no',
+  Class: 'class_name',
+  Date: 'attendance_date',
+  Session: 'session_type',
+  Status: 'status',
+  Remarks: 'remarks',
+};
+
+/**
+ * GET /api/v1/attendance/export?format=csv|excel|pdf&date=&classId=
+ * Download attendance records. Tenant-scoped; teachers limited to their classes.
+ * Declared before any /:id route so the literal path isn't captured.
+ */
+router.get('/export', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+
+    const date = req.query.date as string;
+    const classId = req.query.classId as string;
+
+    let query = db('attendance')
+      .leftJoin('students', 'attendance.student_id', 'students.id')
+      .leftJoin('classes', 'attendance.class_id', 'classes.id')
+      .where('students.tenant_id', tenantId);
+
+    // Teacher scoping: only classes they teach or lead.
+    if (req.user?.role === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users as u', 'teachers.user_id', 'u.id')
+        .where('teachers.user_id', req.user.id)
+        .where('u.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+      if (!teacher) return sendExport(res, { format: req.query.format as string, tenantId, rows: [], columns: EXPORT_COLUMNS, filename: 'attendance_export', title: 'Attendance Export', sheetName: 'Attendance' });
+      const assigned = await db('teacher_assignments').where('teacher_id', teacher.id).distinct('class_id');
+      const led = await db('classes').where('class_teacher_id', teacher.id).select('id');
+      const classIds = Array.from(new Set<string>([...assigned.map((r: any) => r.class_id), ...led.map((r: any) => r.id)]));
+      if (classIds.length === 0) return sendExport(res, { format: req.query.format as string, tenantId, rows: [], columns: EXPORT_COLUMNS, filename: 'attendance_export', title: 'Attendance Export', sheetName: 'Attendance' });
+      query = query.whereIn('attendance.class_id', classIds);
+    }
+
+    if (date) query = query.where('attendance.attendance_date', date);
+    if (classId) query = query.where('attendance.class_id', classId);
+
+    const rows = await query
+      .select(
+        db.raw("COALESCE(students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
+        'students.student_id as admission_no',
+        'classes.name as class_name',
+        'attendance.attendance_date',
+        'attendance.session_type',
+        'attendance.status',
+        'attendance.remarks',
+      )
+      .orderBy('attendance.attendance_date', 'desc')
+      .limit(20000);
+
+    const formatted = rows.map((r: any) => ({
+      ...r,
+      attendance_date: r.attendance_date ? new Date(r.attendance_date).toLocaleDateString() : '',
+    }));
+
+    await sendExport(res, {
+      format: req.query.format as string,
+      tenantId,
+      rows: formatted,
+      columns: EXPORT_COLUMNS,
+      filename: 'attendance_export',
+      title: 'Attendance Export',
+      sheetName: 'Attendance',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * POST /api/v1/attendance

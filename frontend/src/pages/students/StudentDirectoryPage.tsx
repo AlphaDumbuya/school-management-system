@@ -23,6 +23,7 @@ import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialo
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
+import { ExportButton } from '@components/admin/common/ExportButton';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { useAuth } from '@hooks/useAuth';
@@ -327,6 +328,10 @@ export const StudentDirectoryPage: React.FC = () => {
                 <List size={18} />
               </button>
             </div>
+
+            <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
+              <ExportButton endpoint="/api/v1/students/export" filename="students" />
+            </RoleGuard>
 
             <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
               <Button variant="default" size="sm" onClick={() => { setEditingStudent(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm">

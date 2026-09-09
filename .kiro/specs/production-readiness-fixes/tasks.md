@@ -70,7 +70,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
   - Audit other offline-capable modules for the same defect and fix them
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
-- [ ] 5. Build a shared data export foundation
+- [x] 5. Build a shared data export foundation
   - Create `exportService` with `toCsv(rows, columns)` and `toPdf` where useful;
     format currency as `Le`
   - Evaluate reusing the existing Phase 22 `/api/v1/data/serialize/csv` route
@@ -78,7 +78,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
     attendance
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [~] 5.1 Add export buttons to data pages
+- [x] 5.1 Add export buttons to data pages
   - Create an `ExportButton` (CSV/PDF menu) component that downloads the file
   - Wire it into finance, students, and attendance pages
   - _Requirements: 4.1, 4.3_

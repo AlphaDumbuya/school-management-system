@@ -13,6 +13,20 @@ export interface ExportOptions {
   template?: string;
 }
 
+/** School/report identity rendered on exported documents. */
+export interface ExportBranding {
+  name?: string;
+  logoUrl?: string;
+  address?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  website?: string;
+  /** Report title (e.g. "Payments Export"). */
+  title?: string;
+  /** Academic year shown on every export (e.g. "2026/2027"). */
+  academicYear?: string;
+}
+
 export interface ExportTemplate {
   id: string;
   name: string;
@@ -188,6 +202,404 @@ class ExportService {
       logger.error(`JSON export error: ${error}`);
       throw error;
     }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Generic, reusable ROW exports (tenant-scoped endpoints build on these).
+  //
+  // `columns` maps an output header → the key on each row object. This keeps
+  // exports consistent across finance/students/attendance and reusable by the
+  // backup service.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Rows → CSV string using an ordered { header: rowKey } column map.
+   *
+   * The data table is emitted RFC-4180 clean (properly quoted, one header row,
+   * one row per record) so columns never mis-align in Excel/Sheets. When
+   * `brand` is provided we prepend a small metadata block padded to the SAME
+   * number of columns as the table, then a fully-blank separator row — this
+   * keeps the header row aligned with the data instead of "choking" it.
+   */
+  rowsToCsv(
+    rows: Record<string, any>[],
+    columns: Record<string, string>,
+    brand?: ExportBranding
+  ): string {
+    const headers = Object.keys(columns);
+    const keys = Object.values(columns);
+    const colCount = headers.length;
+
+    // Normalise + trim each cell so stray newlines/whitespace don't break rows.
+    const cell = (v: any): string => {
+      if (v === null || v === undefined) return '';
+      return String(v).replace(/\r?\n/g, ' ').trim();
+    };
+
+    const matrix: string[][] = [];
+
+    if (brand) {
+      const pad = (first: string): string[] => {
+        const row = new Array(colCount).fill('');
+        row[0] = first;
+        return row;
+      };
+      if (brand.name) matrix.push(pad(brand.name));
+      const contact = [brand.address, brand.contactPhone, brand.contactEmail]
+        .filter(Boolean)
+        .join(' | ');
+      if (contact) matrix.push(pad(contact));
+      matrix.push(pad(brand.title || 'Export'));
+      const metaLine = [
+        brand.academicYear ? `Academic Year: ${brand.academicYear}` : '',
+        `Generated: ${new Date().toLocaleString()}`,
+      ].filter(Boolean).join(' | ');
+      matrix.push(pad(metaLine));
+      matrix.push(new Array(colCount).fill('')); // blank separator, full width
+    }
+
+    matrix.push(headers);
+    (rows || []).forEach((r) => matrix.push(keys.map((k) => cell(r[k]))));
+
+    // A single stringify over the whole matrix guarantees consistent quoting
+    // and an equal column count on every line.
+    return stringify(matrix);
+  }
+
+  /** Fetch a logo URL into a Buffer for embedding (best-effort, never throws). */
+  private async fetchLogo(url?: string): Promise<Buffer | null> {
+    if (!url) return null;
+    try {
+      if (!/^https?:\/\//i.test(url)) return null; // only remote http(s) logos
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const arrayBuf = await res.arrayBuffer();
+      const buf = Buffer.from(arrayBuf);
+      if (buf.length < 8) return null;
+      // Validate magic bytes — PDFKit only accepts PNG or JPEG. Relying on the
+      // content-type header isn't enough (some CDNs mislabel), so verify the
+      // actual signature to avoid doc.image() throwing at render time.
+      const isPng = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+      const isJpeg = buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+      if (!isPng && !isJpeg) return null;
+      return buf;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Rows → XLSX Buffer, professionally formatted: a branded title block, a
+   * styled + frozen header row, content-aware column widths, right-aligned
+   * numeric columns, bordered cells, and auto-filter. Nothing is "choked".
+   */
+  async rowsToExcel(
+    rows: Record<string, any>[],
+    columns: Record<string, string>,
+    sheetName = 'Export',
+    brand?: ExportBranding
+  ): Promise<Buffer> {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = brand?.name || 'WiSkul';
+    wb.created = new Date();
+    const ws = wb.addWorksheet((sheetName || 'Export').slice(0, 31), {
+      views: [{ state: 'frozen', ySplit: 0 }], // set properly after we know header row
+    });
+
+    const headers = Object.keys(columns);
+    const keys = Object.values(columns);
+    const lastColLetter = ws.getColumn(Math.max(headers.length, 1)).letter;
+
+    // ── Branded title block (merged across all columns) ──
+    let cursor = 1;
+    if (brand) {
+      ws.mergeCells(`A${cursor}:${lastColLetter}${cursor}`);
+      const t = ws.getCell(`A${cursor}`);
+      t.value = brand.name || 'Export';
+      t.font = { bold: true, size: 15, color: { argb: 'FF1A2B6B' } };
+      t.alignment = { vertical: 'middle' };
+      ws.getRow(cursor).height = 22;
+      cursor++;
+
+      const contact = [brand.address, brand.contactPhone, brand.contactEmail, brand.website]
+        .filter(Boolean)
+        .join('  •  ');
+      if (contact) {
+        ws.mergeCells(`A${cursor}:${lastColLetter}${cursor}`);
+        const c = ws.getCell(`A${cursor}`);
+        c.value = contact;
+        c.font = { size: 9, color: { argb: 'FF666666' } };
+        cursor++;
+      }
+
+      ws.mergeCells(`A${cursor}:${lastColLetter}${cursor}`);
+      const t2 = ws.getCell(`A${cursor}`);
+      t2.value = brand.title || sheetName;
+      t2.font = { size: 12, bold: true, color: { argb: 'FF1D4ED8' } };
+      cursor++;
+
+      ws.mergeCells(`A${cursor}:${lastColLetter}${cursor}`);
+      const sub = ws.getCell(`A${cursor}`);
+      const metaLine = [
+        brand.academicYear ? `Academic Year: ${brand.academicYear}` : '',
+        `Generated ${new Date().toLocaleString()}`,
+      ].filter(Boolean).join('  |  ');
+      sub.value = metaLine;
+      sub.font = { size: 9, italic: true, color: { argb: 'FF888888' } };
+      cursor++;
+
+      cursor++; // spacer row
+    }
+
+    // ── Header row ──
+    const headerRowIndex = cursor;
+    const headerRow = ws.getRow(headerRowIndex);
+    headers.forEach((h, i) => {
+      const cell = headerRow.getCell(i + 1);
+      cell.value = h;
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFBFC7D2' } } };
+    });
+    headerRow.height = 20;
+    headerRow.commit();
+
+    // Detect which columns are numeric (based on the data) for alignment/format.
+    const numericCol: boolean[] = keys.map((k) =>
+      (rows || []).some((r) => r[k] !== null && r[k] !== undefined && r[k] !== '') &&
+      (rows || []).every((r) => r[k] === null || r[k] === undefined || r[k] === '' || !isNaN(Number(r[k])))
+    );
+
+    // Track the widest content per column (start from the header text).
+    const widths = headers.map((h) => h.length);
+
+    // ── Data rows ──
+    (rows || []).forEach((r, idx) => {
+      const rowIndex = headerRowIndex + 1 + idx;
+      const row = ws.getRow(rowIndex);
+      keys.forEach((k, i) => {
+        const raw = r[k];
+        const cell = row.getCell(i + 1);
+        if (numericCol[i] && raw !== null && raw !== undefined && raw !== '') {
+          cell.value = Number(raw);
+          cell.alignment = { horizontal: 'right' };
+        } else {
+          cell.value = raw === null || raw === undefined ? '' : String(raw);
+          cell.alignment = { horizontal: 'left', wrapText: false };
+        }
+        // Zebra striping for readability
+        if (idx % 2 === 1) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F7FA' } };
+        }
+        const len = String(cell.value ?? '').length;
+        if (len > widths[i]) widths[i] = len;
+      });
+      row.commit();
+    });
+
+    // ── Column widths: content-aware, clamped to a sensible range ──
+    headers.forEach((_h, i) => {
+      ws.getColumn(i + 1).width = Math.min(Math.max(widths[i] + 3, 12), 45);
+    });
+
+    // Freeze everything above the first data row, and add an auto-filter.
+    ws.views = [{ state: 'frozen', ySplit: headerRowIndex }];
+    ws.autoFilter = {
+      from: { row: headerRowIndex, column: 1 },
+      to: { row: headerRowIndex, column: headers.length },
+    };
+
+    const buffer = await wb.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  }
+
+  /** Escape HTML-special characters for safe interpolation. */
+  private escHtml(v: any): string {
+    if (v === null || v === undefined) return '';
+    return String(v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /**
+   * Rows → professional, branded PDF via headless Chromium (the same
+   * production-proven path report cards use). This avoids PDFKit's bundled-font
+   * problems on serverless and produces a clean, styled A4 landscape table with
+   * the school logo, name, and contact details in the header.
+   */
+  async rowsToPdf(
+    rows: Record<string, any>[],
+    columns: Record<string, string>,
+    title = 'Export',
+    brand?: ExportBranding
+  ): Promise<Buffer> {
+    const headers = Object.keys(columns);
+    const keys = Object.values(columns);
+
+    const contact = [brand?.address, brand?.contactPhone, brand?.contactEmail, brand?.website]
+      .filter(Boolean)
+      .map((c) => this.escHtml(c))
+      .join(' &nbsp;•&nbsp; ');
+
+    const logoHtml = brand?.logoUrl
+      ? `<img src="${this.escHtml(brand.logoUrl)}" alt="" class="logo" />`
+      : '';
+
+    const headHtml = headers.map((h) => `<th>${this.escHtml(h)}</th>`).join('');
+    const bodyHtml = (rows || [])
+      .map(
+        (r) =>
+          `<tr>${keys.map((k) => `<td>${this.escHtml(r[k])}</td>`).join('')}</tr>`
+      )
+      .join('');
+
+    const metaBits = [
+      brand?.academicYear ? `Academic Year: ${this.escHtml(brand.academicYear)}` : '',
+      `Generated: ${this.escHtml(new Date().toLocaleString())}`,
+    ].filter(Boolean).join(' &nbsp;|&nbsp; ');
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"/>
+      <style>
+        @page { size: A4 landscape; margin: 12mm; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body { font-family: Helvetica, Arial, sans-serif; color: #111; font-size: 12px; margin: 0; }
+
+        /* Centered, professional header block with clear spacing */
+        .hdr { text-align: center; border-bottom: 3px solid #1d4ed8; padding-bottom: 14px; margin-bottom: 18px; }
+        .logo { height: 68px; width: 68px; object-fit: contain; border-radius: 10px; background: #fff; display: block; margin: 0 auto 10px; }
+        .school { font-size: 24px; font-weight: 800; color: #1a2b6b; letter-spacing: 0.3px; line-height: 1.2; }
+        .contact { font-size: 11px; color: #555; margin-top: 6px; }
+        .title { font-size: 16px; font-weight: 700; color: #1d4ed8; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .meta { font-size: 10px; color: #777; margin-top: 4px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        thead th { background: #1d4ed8; color: #fff; text-align: left; padding: 9px 10px; font-size: 11px; font-weight: 700; }
+        tbody td { padding: 8px 10px; border-bottom: 1px solid #eef1f5; font-size: 11px; }
+        tbody tr:nth-child(even) td { background: #f5f7fa; }
+        .foot { margin-top: 16px; text-align: center; font-size: 10px; color: #888; border-top: 1px solid #e5e7eb; padding-top: 8px; }
+      </style></head>
+      <body>
+        <div class="hdr">
+          ${logoHtml}
+          <div class="school">${this.escHtml(brand?.name || 'WiSkul')}</div>
+          ${contact ? `<div class="contact">${contact}</div>` : ''}
+          <div class="title">${this.escHtml(title)}</div>
+          <div class="meta">${metaBits}</div>
+        </div>
+        <table>
+          <thead><tr>${headHtml}</tr></thead>
+          <tbody>${bodyHtml || `<tr><td colspan="${headers.length}" style="text-align:center;color:#888;padding:20px;">No records</td></tr>`}</tbody>
+        </table>
+        <div class="foot">${this.escHtml(brand?.name || 'WiSkul')} — ${(rows || []).length} record(s). Confidential.</div>
+      </body></html>`;
+
+    const { htmlToPdf } = await import('@utils/pdfBrowser');
+    return htmlToPdf(html, { landscape: true });
+  }
+
+  /** Legacy PDFKit tabular renderer (kept for non-serverless/local fallback). */
+  async rowsToPdfKit(
+    rows: Record<string, any>[],
+    columns: Record<string, string>,
+    title = 'Export',
+    brand?: ExportBranding
+  ): Promise<Buffer> {
+    const logo = await this.fetchLogo(brand?.logoUrl);
+    return new Promise((resolve, reject) => {
+      try {
+        const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape' });
+        const buffers: Buffer[] = [];
+        doc.on('data', (c) => buffers.push(c));
+        doc.on('end', () => resolve(Buffer.concat(buffers)));
+        doc.on('error', reject);
+
+        this.brandedPdfHeader(doc, title, brand, logo);
+
+        const headers = Object.keys(columns);
+        const keys = Object.values(columns);
+        const startX = 40;
+        const usableWidth = 762; // A4 landscape width minus margins
+        const colWidth = usableWidth / headers.length;
+
+        const writeRow = (values: any[], bold = false, fill?: boolean) => {
+          const y = doc.y;
+          if (fill) {
+            doc.rect(startX, y - 2, usableWidth, 16).fill('#1d4ed8');
+          }
+          doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8).fillColor(bold && fill ? '#ffffff' : '#111111');
+          values.forEach((v, i) => {
+            doc.text(String(v ?? ''), startX + i * colWidth + 2, y, {
+              width: colWidth - 6,
+              ellipsis: true,
+            });
+          });
+          doc.fillColor('#111111');
+          doc.moveDown(0.7);
+        };
+
+        writeRow(headers, true, true);
+        doc.moveDown(0.2);
+
+        (rows || []).forEach((r, idx) => {
+          if (doc.y > 520) {
+            doc.addPage({ margin: 40, size: 'A4', layout: 'landscape' });
+          }
+          // Zebra striping for readability
+          if (idx % 2 === 1) {
+            doc.rect(startX, doc.y - 2, usableWidth, 14).fill('#f3f4f6');
+            doc.fillColor('#111111');
+          }
+          writeRow(keys.map((k) => r[k]));
+        });
+
+        this.brandedPdfFooter(doc, brand, rows.length);
+        doc.end();
+      } catch (error) {
+        logger.error(`Row PDF export error: ${error}`);
+        reject(error);
+      }
+    });
+  }
+
+  /** Professional branded header: logo + school name + contact + title + date. */
+  private brandedPdfHeader(doc: PDFDocument, title: string, brand?: ExportBranding, logo?: Buffer | null) {
+    const topY = 40;
+    let textX = 40;
+    if (logo) {
+      try {
+        doc.image(logo, 40, topY, { fit: [46, 46] });
+        textX = 96;
+      } catch {
+        /* ignore bad image */
+      }
+    }
+    doc.fillColor('#1a2b6b').font('Helvetica-Bold').fontSize(16).text(brand?.name || 'WiSkul', textX, topY);
+    const contact = [brand?.address, brand?.contactPhone, brand?.contactEmail, brand?.website]
+      .filter(Boolean)
+      .join('  •  ');
+    doc.fillColor('#555555').font('Helvetica').fontSize(8);
+    if (contact) doc.text(contact, textX, doc.y + 1, { width: 700 });
+
+    doc.moveDown(0.6);
+    doc.fillColor('#111111').font('Helvetica-Bold').fontSize(12).text(title, 40, doc.y);
+    doc.fillColor('#888888').font('Helvetica').fontSize(8).text(`Generated: ${new Date().toLocaleString()}`);
+    doc.moveDown(0.4);
+    doc.strokeColor('#1d4ed8').lineWidth(1.5).moveTo(40, doc.y).lineTo(802, doc.y).stroke();
+    doc.strokeColor('#000000').lineWidth(1);
+    doc.moveDown(0.5);
+  }
+
+  private brandedPdfFooter(doc: PDFDocument, brand?: ExportBranding, count?: number) {
+    doc.moveDown(0.5);
+    doc.strokeColor('#e5e7eb').moveTo(40, doc.y).lineTo(802, doc.y).stroke();
+    doc.strokeColor('#000000');
+    doc.moveDown(0.3);
+    const label = `${brand?.name || 'WiSkul'} — ${count ?? 0} record(s). Confidential.`;
+    doc.fillColor('#888888').font('Helvetica').fontSize(8).text(label, 40, doc.y, { align: 'center', width: 762 });
+    doc.fillColor('#111111');
   }
 
   /**

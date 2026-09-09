@@ -6,10 +6,68 @@ import { logger } from '@utils/logger';
 import { generateNextId } from '@utils/idGenerator';
 import { linkGuardianForStudent } from '@utils/guardianLinking';
 import { UserRole } from '../types/auth';
+import { sendExport } from '@utils/exportResponse';
 
 const router = Router();
 router.use(authenticate);
 router.use(attachUserContext);
+
+/**
+ * GET /api/v1/admissions/export?format=csv|excel|pdf
+ * Download admission applications for the tenant. Declared before /:appId.
+ */
+router.get('/export', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+
+    const rows = await db('admission_applications')
+      .leftJoin('classes', 'admission_applications.class_applying_for', 'classes.id')
+      .where('admission_applications.tenant_id', tenantId)
+      .select(
+        'admission_applications.application_number',
+        'admission_applications.child_first_name',
+        'admission_applications.child_last_name',
+        'admission_applications.child_gender',
+        'classes.name as class_name',
+        'admission_applications.guardian_first_name',
+        'admission_applications.guardian_last_name',
+        'admission_applications.guardian_phone',
+        'admission_applications.status',
+        'admission_applications.created_at',
+      )
+      .orderBy('admission_applications.created_at', 'desc')
+      .limit(10000);
+
+    const formatted = rows.map((r: any) => ({
+      applicant: [r.child_first_name, r.child_last_name].filter(Boolean).join(' '),
+      guardian: [r.guardian_first_name, r.guardian_last_name].filter(Boolean).join(' '),
+      ...r,
+      created_at: r.created_at ? new Date(r.created_at).toLocaleDateString() : '',
+    }));
+
+    await sendExport(res, {
+      format: req.query.format as string,
+      tenantId,
+      rows: formatted,
+      columns: {
+        'Application No': 'application_number',
+        Applicant: 'applicant',
+        Gender: 'child_gender',
+        'Class Applied': 'class_name',
+        Guardian: 'guardian',
+        'Guardian Phone': 'guardian_phone',
+        Status: 'status',
+        Received: 'created_at',
+      },
+      filename: 'admissions_export',
+      title: 'Admissions Export',
+      sheetName: 'Admissions',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * POST /api/v1/admissions

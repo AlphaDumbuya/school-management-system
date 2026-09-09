@@ -17,6 +17,7 @@ import { financeService } from '@services/financeService';
 import { classesService } from '@services/classesService';
 import { FinanceOverviewCards, fmtMoney, statusPill, SwipeHint } from './FinanceOverviewCards';
 import { PayFeesButton } from '@components/finance/PayFeesButton';
+import { ExportButton } from '@components/admin/common/ExportButton';
 
 const TERMS = ['First Term', 'Second Term', 'Third Term'];
 
@@ -59,6 +60,7 @@ export const InvoicesPage: React.FC = () => {
         subtitle="Generate and track student fee invoices"
         actions={
           <div className="flex items-center gap-2">
+            <ExportButton endpoint="/api/v1/finance/invoices/export" filename="invoices" params={{ status: statusFilter || undefined }} />
             <Button variant="outline" size="sm" onClick={refetchAll} disabled={isLoading}><RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></Button>
             <Button variant="default" size="sm" onClick={() => setGenOpen(true)}><FileStack size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Generate Invoices</span></Button>
           </div>

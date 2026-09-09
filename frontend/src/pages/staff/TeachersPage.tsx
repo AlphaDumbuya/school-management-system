@@ -16,6 +16,7 @@ import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialo
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
+import { ExportButton } from '@components/admin/common/ExportButton';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { teachersService, TeacherRecord } from '@services/teachersService';
@@ -446,6 +447,10 @@ export const TeachersPage: React.FC = () => {
                 <List size={18} />
               </button>
             </div>
+
+            <RoleGuard roles={['principal', 'super_admin']}>
+              <ExportButton endpoint="/api/v1/teachers/export" filename="teachers" />
+            </RoleGuard>
 
             <RoleGuard roles={['principal', 'super_admin']}>
               <Button

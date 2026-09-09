@@ -22,7 +22,7 @@ import { SearchBar } from '@components/admin/table/SearchBar';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { ChartCard } from '@components/admin/charts/ChartCard';
 import { showToast } from '@utils/toast';
-import { exportToCSV } from '@utils/exportUtils';
+import { ExportButton } from '@components/admin/common/ExportButton';
 import { financeService } from '@services/financeService';
 import { studentsService } from '@services/studentsService';
 import { fmtMoney, statusPill, SwipeHint } from './FinanceOverviewCards';
@@ -72,23 +72,6 @@ export const PaymentsPage: React.FC = () => {
 
   const refetchAll = () => { refetch(); refetchAn(); };
 
-  const handleExport = () => {
-    exportToCSV(
-      filtered.map((p) => ({
-        Date: p.payment_date ? new Date(p.payment_date).toLocaleDateString() : '', Student: p.student_name,
-        Admission: p.admission_no || '', Class: p.class_name || '', Level: p.class_level || '',
-        Amount: Number(p.amount) || 0, Method: p.method || p.payment_method || '',
-        Reference: p.reference_number || p.provider_reference || '', Status: p.status,
-      })),
-      [
-        { header: 'Date', accessor: 'Date' }, { header: 'Student', accessor: 'Student' }, { header: 'Admission', accessor: 'Admission' },
-        { header: 'Class', accessor: 'Class' }, { header: 'Level', accessor: 'Level' }, { header: 'Amount (Le)', accessor: 'Amount' },
-        { header: 'Method', accessor: 'Method' }, { header: 'Reference', accessor: 'Reference' }, { header: 'Status', accessor: 'Status' },
-      ] as any,
-      'payments',
-    );
-  };
-
   const totals = a?.totals ?? { billed: 0, paid: 0, outstanding: 0, collectionRate: 0, invoiceCount: 0, overdueCount: 0 };
   const trendSeries = a?.trend?.length ? { series: [{ name: 'Collected (Le)', data: a.trend.map((t: any) => t.total) }], labels: a.trend.map((t: any) => t.label) } : { series: [], labels: [] };
   const methodSeries = a?.byMethod?.length ? { series: [{ name: 'Amount', data: a.byMethod.map((m: any) => m.total) }], labels: a.byMethod.map((m: any) => methodMeta(m.method).label) } : { series: [], labels: [] };
@@ -103,7 +86,7 @@ export const PaymentsPage: React.FC = () => {
         subtitle="Monitor and manage all fee collections across classes, levels and terms"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleExport} disabled={filtered.length === 0}><Download size={14} className="sm:mr-1.5" /><span className="hidden sm:inline">Export</span></Button>
+            <ExportButton endpoint="/api/v1/finance/export" filename="payments" />
             <Button variant="outline" size="sm" onClick={refetchAll} disabled={isLoading}><RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></Button>
             <Button variant="default" size="sm" onClick={() => setRecordOpen(true)}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Record Payment</span></Button>
           </div>
