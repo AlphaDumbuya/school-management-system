@@ -30,27 +30,32 @@ No uploads, no admin review, no vendor. Pluggable slot left for a stronger tier 
     to live billing/staff routes to avoid locking existing tenants until the frontend flow ships.
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-- [ ] 5. Frontend: verificationService + VerificationPage
-  - verificationService (status/verify/profile-photo). VerificationPage: rationale panel → confirm
-    name + EMIS + gov-ID form (inline validation mirroring backend) → instant result → profile-photo
-    step (UploadThing/camera). Communicate status clearly.
+- [x] 5. Frontend: verificationService + VerificationPage
+  - verificationService (status/verify/profile-photo). VerificationPage at /verify-school: rationale
+    panel → confirm name + EMIS + gov-ID form (inline validation mirroring backend) → instant result
+    → profile-photo step. Auto-fills EMIS/district/founded-year/owner-name from School Settings.
   - _Requirements: 2.1, 2.2, 2.3, 3.x, 5.1, 7.1_
 
-- [ ] 6. Frontend: verified badge, profile photo, gating UI
-  - VerifiedBadge + profile photo on the owner/tenant profile (only when verified). Unverified
-    dashboard CTA; gated buttons show "Verify your school to unlock"; retry on failure.
+- [x] 6. Frontend: verified badge, dashboard CTA, EMIS in Settings
+  - VerifiedBadge component; VerifySchoolBanner CTA on the principal dashboard (unverified only).
+    Added EMIS Code field to School Settings (schools.emis_code, migration 126) end-to-end so it
+    persists and prefills verification.
   - _Requirements: 6.2, 7.3, 7.4, 8.1_
 
-- [ ] 7. Build green + migrate + docs + commit/push
-  - Backend + frontend builds; run migration 125; docs/SCHOOL_VERIFICATION.md (flow, fields, gated
-    set, honest limitation + future tier); commit each stable unit and push.
+- [x] 7. Build green + migrate + docs + commit/push
+  - Backend + frontend builds green; migrations 125 + 126 applied; docs/SCHOOL_VERIFICATION.md
+    (flow, fields, soft-nudge rollout, honest limitation + future tier). Committed + pushed.
   - _Requirements: 8.3_
 
 ## Notes
 
 - Honest limitation: instant verification proves format + name match, not registry existence. A
   stronger EMIS-lookup / super-admin tier can be added later via the pluggable slot (design).
-- Gated-feature set is a sensible default and can be tuned without design changes.
+- DECISION (rollout): verification is a SOFT nudge, not a hard gate. No live features are blocked.
+  Unverified owners see a recurring, closable "not verified" reminder popup each session + a
+  dashboard banner; both stop once verified. The `requireVerifiedSchool` middleware is built and
+  ready but intentionally NOT applied to any route, so no existing tenant is locked out. Gating can
+  be switched on later per-route without further design changes.
 - Only the account owner (tenant owner / principal) is in scope this release.
 
 ## Task Dependency Graph
