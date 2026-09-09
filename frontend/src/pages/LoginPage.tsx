@@ -39,8 +39,25 @@ export const LoginPage: React.FC = () => {
   const isInitialized = useAuthStore((s) => s.isInitialized);
   const user = useAuthStore((s) => s.user);
   const mfaToken = useAuthStore((s) => s.mfaToken);
-  const supportsPasskeys = typeof window !== 'undefined' && browserSupportsWebAuthn();
+  // Passkey support is detected AFTER mount. In the native Android WebView the
+  // WebAuthn globals (window.PublicKeyCredential) can attach slightly late, so a
+  // one-time render-time check would wrongly hide the button. We re-check on
+  // mount and treat a present PublicKeyCredential as supported too.
+  const [supportsPasskeys, setSupportsPasskeys] = useState(false);
   const suspendedNotice = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('suspended') === '1';
+
+  useEffect(() => {
+    const detect = () =>
+      typeof window !== 'undefined' &&
+      (browserSupportsWebAuthn() || typeof (window as any).PublicKeyCredential !== 'undefined');
+    if (detect()) {
+      setSupportsPasskeys(true);
+      return;
+    }
+    // Re-check shortly after mount in case the WebView injects the API late.
+    const t = setTimeout(() => setSupportsPasskeys(detect()), 600);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     const on = () => setOnline(true);
