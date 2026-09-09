@@ -662,8 +662,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
             })()}
           </nav>
 
-          {/* Compact account footer — expands to reveal Guide / Settings / Logout */}
-          <div className="border-t border-gray-800 px-2 sm:px-3 py-2 flex-shrink-0">
+          {/* Compact account footer — expands to reveal Guide / Settings / Logout.
+              pb-safe keeps it clear of the phone's gesture bar in the app. */}
+          <div className="border-t border-gray-800 px-2 sm:px-3 py-2 flex-shrink-0 pb-safe">
             {/* Expandable action menu (only when not collapsed rail) */}
             {footerOpen && !collapsed && (
               <div className="mb-1.5 space-y-1 animate-fade-in">

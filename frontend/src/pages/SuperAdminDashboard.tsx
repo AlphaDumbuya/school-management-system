@@ -345,11 +345,11 @@ const SuperAdminDashboard: React.FC = () => {
                   <div className="text-2xl font-black text-gray-900 leading-none">{appDownloads.toLocaleString()}</div>
                 )}
                 <a
-                  href="https://www.wiskulsl.com/downloads/wiskul.apk"
+                  href="/api/v1/app/download"
                   target="_blank" rel="noopener noreferrer"
                   className="mt-1 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700"
                 >
-                  View APK <ExternalLink size={13} />
+                  Download APK <ExternalLink size={13} />
                 </a>
               </div>
             </div>
