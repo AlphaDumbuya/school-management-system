@@ -36,7 +36,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
 
 ## Tasks
 
-- [ ] 1. Fix newsletter welcome email delivery
+- [x] 1. Fix newsletter welcome email delivery
   - Run `scripts/verifyBrevoApiKey.ts` against the deployed env and confirm the
     `sales` sender identity is verified in Brevo
   - Temporarily log the full provider error in the newsletter welcome `.catch`
@@ -45,7 +45,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
     confirm a real send succeeds
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 2. Fix the update badge not dismissing on first toggle
+- [~] 2. Fix the update badge not dismissing on first toggle
   - Locate the PWA update hook/component (`needRefresh`, `updateServiceWorker`,
     `registerSW`)
   - On "apply update", trigger SKIP_WAITING/`updateServiceWorker(true)` AND clear
@@ -53,7 +53,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
   - Verify the badge does not reappear until a genuinely newer version exists
   - _Requirements: 7.1, 7.2, 7.3_
 
-- [ ] 3. Add consistent refresh across data pages
+- [~] 3. Add consistent refresh across data pages
   - Create a reusable `RefreshButton` that invalidates/refetches page queries and
     shows a spinning state
   - Add it to the shared `PageShell` header actions so pages inherit it
@@ -61,7 +61,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
     queries; show error state while keeping last good data
   - _Requirements: 5.1, 5.2, 5.3_
 
-- [ ] 4. Fix offline modules returning no data (attendance first)
+- [~] 4. Fix offline modules returning no data (attendance first)
   - Reproduce the attendance-offline empty-students case and trace the IndexedDB
     read path (cache key vs read key, tenant/class id, offline fallback)
   - Ensure the class roster is pre-cached on online load using the same key the
@@ -78,7 +78,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
     attendance
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 5.1 Add export buttons to data pages
+- [~] 5.1 Add export buttons to data pages
   - Create an `ExportButton` (CSV/PDF menu) component that downloads the file
   - Wire it into finance, students, and attendance pages
   - _Requirements: 4.1, 4.3_
@@ -90,12 +90,12 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
   - Add `GET /api/v1/import/students/template` returning a CSV template
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [ ] 6.1 Add the import UI
+- [~] 6.1 Add the import UI
   - Create an `ImportModal` (upload, preview, run, summary of imported/skipped/
     failed) and wire it into the student directory/profiles page
   - _Requirements: 2.1, 2.3, 2.4_
 
-- [ ] 7. Implement tenant backups
+- [~] 7. Implement tenant backups
   - Add `backupService` producing a ZIP of a tenant's core tables (students,
     staff, classes, finance, attendance) as CSV/JSON, reusing the export
     serializers
@@ -113,7 +113,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
     numbers
   - _Requirements: 8.1, 8.2, 8.3, 8.4_
 
-- [ ] 8.1 Build the support ticket UI
+- [~] 8.1 Build the support ticket UI
   - Tenant-facing `SupportPage` (create + list + thread) reachable from the app
   - Super-admin triage panel (list across tenants, filters, reply, status/assign)
   - _Requirements: 8.2, 8.3, 8.5_
