@@ -95,7 +95,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
     failed) and wire it into the student directory/profiles page
   - _Requirements: 2.1, 2.3, 2.4_
 
-- [~] 7. Implement tenant backups
+- [x] 7. Implement tenant backups
   - Add `backupService` producing a ZIP of a tenant's core tables (students,
     staff, classes, finance, attendance) as CSV/JSON, reusing the export
     serializers

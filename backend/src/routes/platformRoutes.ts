@@ -380,6 +380,32 @@ router.post('/tenants/:id/restore', authenticate, authorize(UserRole.SUPER_ADMIN
 });
 
 /**
+ * @route   GET /api/platform/tenants/:id/backup
+ * @desc    Download an on-demand data backup (multi-sheet XLSX) of a tenant.
+ * @access  Super Admin only
+ */
+router.get('/tenants/:id/backup', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const tenant = await db('tenants').where({ id }).first();
+    if (!tenant) throw new AppError('Tenant not found', 404, 'NOT_FOUND');
+
+    const { buildTenantBackup } = await import('../services/backupService');
+    const { buffer } = await buildTenantBackup(id);
+
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.backup' });
+
+    const safeName = String(tenant.name || 'tenant').replace(/[^a-z0-9]+/gi, '_');
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="WiSkul_Backup_${safeName}_${date}.xlsx"`);
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * @route   PUT /api/platform/tenants/:id/school-profile
  * @desc    Update the tenant's school profile / branding (schools table)
  * @access  Super Admin only
