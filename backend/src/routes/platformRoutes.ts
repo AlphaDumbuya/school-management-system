@@ -784,4 +784,104 @@ router.get('/audit', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, 
   }
 });
 
+// ── Support tickets (platform triage, cross-tenant) ──────────────────────────
+// Super admins see and manage tickets across ALL tenants here. Tenant users use
+// the tenant-scoped /api/v1/support/* endpoints (Phase 21).
+
+/** GET /api/v1/platform/support/tickets — list all tickets (filters). */
+router.get('/support/tickets', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { default: SupportTicketService } = await import('../services/phase21SupportTicketService');
+    const svc = new SupportTicketService(db);
+    const tickets = await svc.getAllTickets({
+      status: req.query.status as string,
+      priority: req.query.priority as string,
+      search: req.query.search as string,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
+      offset: req.query.offset ? parseInt(req.query.offset as string, 10) : undefined,
+    });
+    res.json({ success: true, data: tickets });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** GET /api/v1/platform/support/tickets/:ticketId — ticket + responses. */
+router.get('/support/tickets/:ticketId', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { default: SupportTicketService } = await import('../services/phase21SupportTicketService');
+    const svc = new SupportTicketService(db);
+    const ticket = await svc.getTicketAdmin(req.params.ticketId);
+    const responses = await svc.getResponses(req.params.ticketId);
+    res.json({ success: true, data: { ticket, responses } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** POST /api/v1/platform/support/tickets/:ticketId/reply — agent reply. */
+router.post('/support/tickets/:ticketId/reply', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { message } = req.body;
+    if (!message) throw new AppError('message is required', 400, 'VALIDATION_ERROR');
+    const { default: SupportTicketService } = await import('../services/phase21SupportTicketService');
+    const svc = new SupportTicketService(db);
+    const response = await svc.addResponse(req.params.ticketId, req.auth!.userId, message, [], true);
+    await PlatformAuditService.record({ ...auditMeta(req), action: 'support.reply', entityId: req.params.ticketId });
+
+    // Notify the requester of the reply.
+    try {
+      const contact = await svc.getRequesterContact(req.params.ticketId);
+      if (contact?.email) {
+        notify(
+          emailService.sendSupportTicketEmail(contact.email, {
+            userName: contact.name || undefined,
+            reference: SupportTicketService.reference(req.params.ticketId),
+            subject: contact.subject,
+            event: 'replied',
+            message,
+          }),
+          'support reply'
+        );
+      }
+    } catch { /* non-blocking */ }
+
+    res.json({ success: true, data: response });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** PATCH /api/v1/platform/support/tickets/:ticketId/status — change status. */
+router.patch('/support/tickets/:ticketId/status', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { status, resolution } = req.body;
+    if (!status) throw new AppError('status is required', 400, 'VALIDATION_ERROR');
+    const { default: SupportTicketService } = await import('../services/phase21SupportTicketService');
+    const svc = new SupportTicketService(db);
+    const updated = await svc.updateTicketStatus(req.params.ticketId, status, resolution);
+    await PlatformAuditService.record({ ...auditMeta(req), action: 'support.status', entityId: req.params.ticketId, changes: { status } });
+
+    try {
+      const contact = await svc.getRequesterContact(req.params.ticketId);
+      if (contact?.email) {
+        notify(
+          emailService.sendSupportTicketEmail(contact.email, {
+            userName: contact.name || undefined,
+            reference: SupportTicketService.reference(req.params.ticketId),
+            subject: contact.subject,
+            event: 'status',
+            status,
+          }),
+          'support status'
+        );
+      }
+    } catch { /* non-blocking */ }
+
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

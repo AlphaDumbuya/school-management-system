@@ -53,6 +53,116 @@ export class SupportTicketService {
     logger.info('SupportTicketService initialized');
   }
 
+  /** Human-friendly reference derived from the ticket UUID (display-only). */
+  static reference(ticketId: string): string {
+    return 'TKT-' + String(ticketId).replace(/-/g, '').slice(0, 8).toUpperCase();
+  }
+
+  /**
+   * Admin (super-admin) cross-tenant ticket list with the requester's name,
+   * email, and school. Not tenant-scoped — for platform support triage only.
+   */
+  async getAllTickets(filters?: {
+    status?: string;
+    priority?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<any[]> {
+    let query = this.db('support_tickets')
+      .leftJoin('users', 'support_tickets.user_id', 'users.id')
+      .leftJoin('tenants', 'support_tickets.tenant_id', 'tenants.id')
+      .select(
+        'support_tickets.*',
+        this.db.raw("COALESCE(users.first_name || ' ' || users.last_name, users.email) as requester_name"),
+        'users.email as requester_email',
+        'tenants.name as tenant_name',
+      );
+
+    if (filters?.status) query = query.where('support_tickets.status', filters.status);
+    if (filters?.priority) query = query.where('support_tickets.priority', filters.priority);
+    if (filters?.search) {
+      const term = `%${filters.search.trim()}%`;
+      query = query.where((b) =>
+        b.where('support_tickets.subject', 'ilike', term).orWhere('tenants.name', 'ilike', term)
+      );
+    }
+
+    const rows = await query
+      .orderBy('support_tickets.created_at', 'desc')
+      .limit(filters?.limit || 100)
+      .offset(filters?.offset || 0);
+
+    return rows.map((t: any) => ({
+      id: t.id,
+      reference: SupportTicketService.reference(t.id),
+      tenantId: t.tenant_id,
+      tenantName: t.tenant_name,
+      requesterName: t.requester_name,
+      requesterEmail: t.requester_email,
+      subject: t.subject,
+      description: t.description,
+      priority: t.priority,
+      status: t.status,
+      category: t.category,
+      assignedTo: t.assigned_to,
+      resolution: t.resolution,
+      createdAt: t.created_at,
+      updatedAt: t.updated_at,
+      resolvedAt: t.resolved_at,
+    }));
+  }
+
+  /** Admin fetch of one ticket (any tenant) with requester + school context. */
+  async getTicketAdmin(ticketId: string): Promise<any> {
+    const t = await this.db('support_tickets')
+      .leftJoin('users', 'support_tickets.user_id', 'users.id')
+      .leftJoin('tenants', 'support_tickets.tenant_id', 'tenants.id')
+      .where('support_tickets.id', ticketId)
+      .select(
+        'support_tickets.*',
+        this.db.raw("COALESCE(users.first_name || ' ' || users.last_name, users.email) as requester_name"),
+        'users.email as requester_email',
+        'tenants.name as tenant_name',
+      )
+      .first();
+    if (!t) throw new AppError('Support ticket not found', 404);
+    return {
+      id: t.id,
+      reference: SupportTicketService.reference(t.id),
+      tenantId: t.tenant_id,
+      tenantName: t.tenant_name,
+      requesterName: t.requester_name,
+      requesterEmail: t.requester_email,
+      subject: t.subject,
+      description: t.description,
+      priority: t.priority,
+      status: t.status,
+      category: t.category,
+      assignedTo: t.assigned_to,
+      resolution: t.resolution,
+      attachments: JSON.parse(t.attachments || '[]'),
+      createdAt: t.created_at,
+      updatedAt: t.updated_at,
+      resolvedAt: t.resolved_at,
+    };
+  }
+
+  /** Resolve the requester's email + name for a ticket (for notifications). */
+  async getRequesterContact(ticketId: string): Promise<{ email: string | null; name: string | null; subject: string } | null> {
+    const t = await this.db('support_tickets')
+      .leftJoin('users', 'support_tickets.user_id', 'users.id')
+      .where('support_tickets.id', ticketId)
+      .select(
+        'support_tickets.subject',
+        'users.email',
+        this.db.raw("COALESCE(users.first_name || ' ' || users.last_name, users.email) as name"),
+      )
+      .first();
+    if (!t) return null;
+    return { email: t.email || null, name: t.name || null, subject: t.subject };
+  }
+
   /**
    * Creates support ticket
    * @param tenantId - Tenant ID
@@ -123,6 +233,7 @@ export class SupportTicketService {
 
       return {
         id: ticket.id,
+        reference: SupportTicketService.reference(ticket.id),
         tenantId: ticket.tenant_id,
         userId: ticket.user_id,
         subject: ticket.subject,
@@ -136,7 +247,7 @@ export class SupportTicketService {
         createdAt: ticket.created_at,
         updatedAt: ticket.updated_at,
         resolvedAt: ticket.resolved_at,
-      };
+      } as any;
     } catch (error) {
       logger.error('Failed to get support ticket', error);
       throw error;
@@ -196,6 +307,7 @@ export class SupportTicketService {
 
       return tickets.map((t: any) => ({
         id: t.id,
+        reference: SupportTicketService.reference(t.id),
         tenantId: t.tenant_id,
         userId: t.user_id,
         subject: t.subject,
@@ -209,7 +321,7 @@ export class SupportTicketService {
         createdAt: t.created_at,
         updatedAt: t.updated_at,
         resolvedAt: t.resolved_at,
-      }));
+      })) as any;
     } catch (error) {
       logger.error('Failed to get support tickets', error);
       throw new AppError('Failed to get support tickets', 500);

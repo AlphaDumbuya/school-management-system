@@ -1191,6 +1191,63 @@ class EmailService {
       isHtml: true,
     });
   }
+
+  /**
+   * Support ticket notification (platform → user). Sent on create, reply, and
+   * status change so the requester always knows where their ticket stands.
+   * Uses the WiSkul "support" sender identity.
+   */
+  async sendSupportTicketEmail(
+    toEmail: string,
+    data: {
+      userName?: string;
+      reference: string;
+      subject: string;
+      event: 'created' | 'replied' | 'status';
+      status?: string;
+      message?: string;
+    }
+  ): Promise<EmailResponse> {
+    const branding = platformBranding();
+    const portalUrl = `${branding.appUrl}/support`;
+    const eyebrowMap = { created: 'Ticket Received', replied: 'New Reply', status: 'Status Update' } as const;
+    const headingMap = {
+      created: 'We received your request',
+      replied: 'There is a new reply on your ticket',
+      status: `Your ticket is now ${data.status || 'updated'}`,
+    } as const;
+
+    const bodyHtml = `
+      <p>Hello ${escapeHtml(data.userName || 'there')},</p>
+      <p>${
+        data.event === 'created'
+          ? 'Thanks for reaching out. Our support team has received your ticket and will respond shortly.'
+          : data.event === 'replied'
+          ? 'Our support team has added a reply to your ticket.'
+          : `The status of your ticket has been updated to <strong>${escapeHtml(data.status || '')}</strong>.`
+      }</p>
+      ${detailsCard([
+        detailRow('Reference', escapeHtml(data.reference)),
+        detailRow('Subject', escapeHtml(data.subject)),
+        ...(data.status ? [detailRow('Status', escapeHtml(data.status))] : []),
+      ])}
+      ${data.message ? `<p style="background:#f8fafc;border-left:3px solid #1d4ed8;padding:10px 14px;">${escapeHtml(data.message).replace(/\n/g, '<br/>')}</p>` : ''}
+      ${emailButton('View your ticket', portalUrl)}`;
+
+    return this.sendEmail({
+      ...this.platformSender('support'),
+      to: toEmail,
+      subject: `[${data.reference}] ${data.subject} — ${eyebrowMap[data.event]}`,
+      body: renderEmail({
+        branding,
+        eyebrow: eyebrowMap[data.event],
+        heading: headingMap[data.event],
+        bodyHtml,
+        preheader: `Ticket ${data.reference}: ${data.subject}`,
+      }),
+      isHtml: true,
+    });
+  }
 }
 
 // ── Contact Form Specific Functions ──────────────────────────────────────────
