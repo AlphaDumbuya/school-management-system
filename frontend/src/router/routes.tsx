@@ -114,6 +114,7 @@ const V2Route: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 import RegisterPage from '@pages/RegisterPage';
 import WelcomePage, { hasOnboarded } from '@pages/WelcomePage';
+import VerificationPage from '@pages/VerificationPage';
 import UnsubscribePage from '@pages/UnsubscribePage';
 import PrivacyPolicyPage from '@pages/PrivacyPolicyPage';
 import { isAppMode } from '@lib/appMode';
@@ -414,6 +415,11 @@ const router = createBrowserRouter(
         {
           path: 'settings',
           element: <P><SettingsPage /></P>,
+        },
+        {
+          // School verification — account owner (principal).
+          path: 'verify-school',
+          element: <P requiredRoles={['principal']}><VerificationPage /></P>,
         },
         {
           path: 'profile',

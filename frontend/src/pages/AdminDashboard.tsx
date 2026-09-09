@@ -26,6 +26,7 @@ import { KPICard } from '@components/dashboard/KPICard';
 import { WelcomeHero } from '@components/dashboard/WelcomeHero';
 import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 import { ChartCard } from '@components/admin/charts/ChartCard';
+import VerifySchoolBanner from '@components/verification/VerifySchoolBanner';
 import { SkeletonCard, SkeletonChart } from '@components/admin/feedback/Skeleton';
 import { ErrorState } from '@components/admin/feedback/ErrorState';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
@@ -92,6 +93,9 @@ export const AdminDashboard: React.FC = () => {
         subtitle="Your school at a glance"
         actions={actions}
       >
+        {/* Verify-school CTA (unverified owner only) */}
+        <VerifySchoolBanner />
+
         {/* ── Welcome hero ── */}
         <WelcomeHero
           firstName={user?.firstName}

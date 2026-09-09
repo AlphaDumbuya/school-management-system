@@ -14,6 +14,7 @@ import ImpersonationBanner from './ImpersonationBanner';
 import OfflineBanner from '@components/offline/OfflineBanner';
 import { useSyncEngine } from '../../offline/useSyncEngine';
 import useInactivityLock from '@hooks/useInactivityLock';
+import VerifyIntroModal from '@components/verification/VerifyIntroModal';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -145,6 +146,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
       {/* First-login onboarding walkthrough */}
       <OnboardingController />
+
+      {/* One-time "verify your school" announcement for existing unverified owners */}
+      <VerifyIntroModal />
     </div>
   );
 };

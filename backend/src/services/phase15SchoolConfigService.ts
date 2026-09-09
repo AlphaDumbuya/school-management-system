@@ -33,6 +33,7 @@ export interface SchoolInfo {
   principal_name?: string;
   principal_email?: string;
   school_registration_number?: string;
+  emis_code?: string;
   accreditation_status?: string;
   timezone?: string;
   language_preference?: string;
@@ -138,6 +139,7 @@ export class Phase15SchoolConfigService {
         principal_name: school.principal_name,
         principal_email: school.principal_email,
         school_registration_number: school.school_registration_number,
+        emis_code: school.emis_code,
         accreditation_status: school.accreditation_status,
         timezone: school.timezone,
         language_preference: school.language_preference,
@@ -201,6 +203,7 @@ export class Phase15SchoolConfigService {
         'principal_name',
         'principal_email',
         'school_registration_number',
+        'emis_code',
         'accreditation_status',
         'timezone',
         'language_preference',

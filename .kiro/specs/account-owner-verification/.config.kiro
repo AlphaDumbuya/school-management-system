@@ -1,0 +1,5 @@
+{
+  "specId": "account-owner-verification",
+  "specType": "feature",
+  "workflowType": "requirements-first"
+}

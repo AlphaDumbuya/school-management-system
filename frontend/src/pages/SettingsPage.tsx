@@ -816,6 +816,16 @@ export const SettingsPage: React.FC = () => {
                               />
                             </div>
                             <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">EMIS Code</label>
+                              <input
+                                type="text"
+                                value={schoolInfo.emis_code ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, emis_code: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="MBSSE / EMIS school code — used for verification"
+                              />
+                            </div>
+                            <div>
                               <label className="text-xs font-semibold text-gray-500 block mb-1">Accreditation Status</label>
                               <select
                                 value={schoolInfo.accreditation_status ?? ''}

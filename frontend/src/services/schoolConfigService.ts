@@ -18,6 +18,7 @@ export interface SchoolInfo {
   principal_name?: string;
   principal_email?: string;
   school_registration_number?: string;
+  emis_code?: string;
   accreditation_status?: string;
   timezone?: string;
   language_preference?: string;
