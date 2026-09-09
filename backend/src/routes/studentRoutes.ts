@@ -10,6 +10,13 @@ import { generateNextId } from '@utils/idGenerator';
 import { linkGuardianForStudent } from '@utils/guardianLinking';
 import { provisionStudentAccounts } from '@utils/studentAccounts';
 import { sendExport } from '@utils/exportResponse';
+import { importStudents, buildStudentTemplate } from '@services/studentImportService';
+import multer from 'multer';
+
+const uploadCsv = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+});
 
 const router = Router();
 router.use(authenticate);
@@ -457,6 +464,49 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     next(error);
   }
 });
+
+/**
+ * GET /api/v1/students/import/template
+ * Download a CSV template with the expected columns + one sample row.
+ * Declared before /:studentId so the literal path isn't captured.
+ */
+router.get(
+  '/import/template',
+  authenticate,
+  authorize('admin', 'principal', 'super_admin', 'admissions_officer'),
+  async (_req: Request, res: Response) => {
+    const csv = buildStudentTemplate();
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="student_import_template.csv"');
+    res.send(csv);
+  }
+);
+
+/**
+ * POST /api/v1/students/import  (multipart: field "file" = CSV)
+ * Bulk-import students. Validates rows, enforces the plan student limit, and
+ * inserts within a transaction scoped to the acting tenant. Returns a summary
+ * { imported, skipped, failed, total, errors[] }.
+ */
+router.post(
+  '/import',
+  authenticate,
+  authorize('admin', 'principal', 'super_admin', 'admissions_officer'),
+  uploadCsv.single('file'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.user?.tenant_id;
+      if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      if (!req.file?.buffer) throw new AppError('No CSV file uploaded (field "file").', 400, 'NO_FILE');
+
+      const csvText = req.file.buffer.toString('utf-8');
+      const result = await importStudents(csvText, tenantId, req.auth?.userId ?? null);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 /**
  * GET /api/v1/students/export?format=csv|excel|pdf
