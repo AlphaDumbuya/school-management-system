@@ -50,7 +50,7 @@ export const Phase13ParentDashboard: React.FC = () => {
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
-  const { data: dashResp, isLoading, error } = useQuery({
+  const { data: dashResp, isLoading, error, refetch } = useQuery({
     queryKey: ['parent-dashboard'],
     queryFn: () => parentDashboardService.getDashboard(),
     staleTime: 60_000,
@@ -111,7 +111,7 @@ export const Phase13ParentDashboard: React.FC = () => {
 
   return (
     <MainLayout>
-      <PageShell title="Parent Portal" subtitle="Monitor your children's progress">
+      <PageShell title="Parent Portal" subtitle="Monitor your children's progress" onRefresh={() => refetch()} isRefreshing={isLoading}>
         <WelcomeHero
           firstName={user?.firstName ?? (user as any)?.first_name}
           role="parent"

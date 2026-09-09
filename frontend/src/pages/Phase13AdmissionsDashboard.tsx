@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { FileText, ArrowRight, AlertCircle, Loader2, Users, CheckCircle, Clock } from 'lucide-react';
 import { MainLayout } from '@components/layout/MainLayout';
 import { WelcomeHero } from '@components/dashboard/WelcomeHero';
+import { HeroRefreshButton } from '@components/dashboard/HeroRefreshButton';
 import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import useAuthStore from '@store/authStore';
@@ -58,7 +59,7 @@ export const Phase13AdmissionsDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'pipeline' | 'list'>('pipeline');
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, refetch } = useQuery({
     queryKey: ['admissions-overview'],
     queryFn: () => admissionsService.getOverview(),
     staleTime: 60_000,
@@ -96,6 +97,7 @@ export const Phase13AdmissionsDashboard: React.FC = () => {
         role="admissions"
         roleLabel="Admissions Officer"
         subtitle="Manage student applications and the enrollment pipeline."
+        actions={<HeroRefreshButton onRefresh={() => refetch()} />}
       />
 
       <div className="mt-2">

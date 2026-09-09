@@ -49,7 +49,7 @@ export const Phase13TeacherDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['teacher-dashboard'],
     queryFn: () => teacherDashboardService.getDashboard(),
     staleTime: 60_000,
@@ -75,6 +75,8 @@ export const Phase13TeacherDashboard: React.FC = () => {
       <PageShell
         title="Teacher Dashboard"
         subtitle="Your classes and schedule"
+        onRefresh={() => refetch()}
+        isRefreshing={isLoading}
       >
         <WelcomeHero
           firstName={user?.firstName ?? (user as any)?.first_name}

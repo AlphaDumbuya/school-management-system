@@ -5,12 +5,13 @@
  * recent payments + top defaulters). No mock data. Currency is Leone (Le).
  */
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import { MainLayout } from '@components/layout/MainLayout';
 import { AlertTriangle, TrendingUp, Banknote, Wallet, Loader2 } from 'lucide-react';
 import useAuthStore from '@store/authStore';
 import { WelcomeHero } from '@components/dashboard/WelcomeHero';
+import { HeroRefreshButton } from '@components/dashboard/HeroRefreshButton';
 import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { financeService } from '@services/financeService';
@@ -20,6 +21,7 @@ const fmtLe = (v: number | string | null | undefined) =>
 
 export const Phase13AccountantDashboard: React.FC = () => {
   const { user } = useAuthStore();
+  const queryClient = useQueryClient();
 
   const { data: overviewResp, isLoading: overviewLoading } = useQuery({
     queryKey: ['acct-overview'],
@@ -55,6 +57,11 @@ export const Phase13AccountantDashboard: React.FC = () => {
           role="accountant"
           roleLabel="Accountant"
           subtitle="Financial management and revenue tracking."
+          actions={
+            <HeroRefreshButton
+              onRefresh={() => queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith('acct-') })}
+            />
+          }
         />
 
         {/* KPIs */}

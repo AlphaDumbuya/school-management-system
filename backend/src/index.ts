@@ -61,6 +61,7 @@ import contactRoutes from '@routes/contactRoutes';
 import newsletterRoutes from '@routes/newsletterRoutes';
 import schoolConfigRoutes from '@routes/schoolConfigRoutes';
 import announcementRoutes from '@routes/announcementRoutes';
+import appStatsRoutes from '@routes/appStatsRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
 import { startEventManagementJobs } from './jobs/eventManagementJobs.js';
 import { startSmsDeliveryJobs } from './jobs/smsDeliveryJobs.js';
@@ -327,6 +328,9 @@ app.use('/api/v1/school-config', schoolConfigRoutes);
 
 // Announcements Routes (Communication)
 app.use('/api/v1/announcements', announcementRoutes);
+
+// App stats (APK download tracking + count)
+app.use('/api/v1', appStatsRoutes);
 
 // Offline sync Routes (teacher offline-first: pull/push)
 app.use('/api/v1/sync', syncRoutes);
