@@ -27,6 +27,9 @@ jobs:
     runs-on: ubuntu-latest
     # Don't re-trigger on the workflow's own auto-publish commit (prevents a loop).
     if: "!contains(github.event.head_commit.message, 'auto-publish latest APK')"
+    env:
+      # Surfaced so the Blob step's `if:` can check whether the token is set.
+      HAS_BLOB_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN != '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -100,16 +103,51 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # PUBLISHING NOTE:
-      # We intentionally DO NOT commit the APK into the git repo. The app has
-      # grown past GitHub's 100 MB per-file limit, and committing large binaries
-      # bloats history and breaks pushes anyway. The APK is published to the
-      # GitHub Release (tag `android-latest`) above.
+      # PUBLISHING (Vercel Blob — fully public, no token proxy):
+      # Upload the built APK to Vercel Blob at a STABLE key (wiskul.apk). Blob
+      # returns a public HTTPS URL that never bloats git and has no 100 MB limit.
+      # The backend's /api/v1/app/download reads this URL (from the app_settings
+      # 'apk_blob_url' row we write here) so downloads are still counted and the
+      # public URL stays consistent.
       #
-      # Public downloads are served by the backend: `GET /api/v1/app/download`
-      # streams the latest Release asset (proxying the private repo's asset with
-      # a token) and counts the download. That endpoint is fronted by our own
-      # domain, so https://www.wiskulsl.com/api/v1/app/download is the public URL.
-      #
-      # Requires the backend env var GITHUB_RELEASE_TOKEN (a read-only PAT with
-      # `contents:read` on this repo) so the proxy can fetch the private asset.
+      # Requires repo secret BLOB_READ_WRITE_TOKEN (Vercel → Storage → Blob →
+      # tokens). If the secret is absent, this step is skipped and the GitHub
+      # Release (published above) remains the source the backend proxies.
+      - name: Publish APK to Vercel Blob
+        if: env.HAS_BLOB_TOKEN == 'true'
+        env:
+          BLOB_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          # Backend base + a shared secret to persist the resulting Blob URL.
+          APK_URL_WEBHOOK: ${{ vars.APK_URL_WEBHOOK || 'https://www.wiskulsl.com/api/v1/app/blob-url' }}
+          APK_URL_WEBHOOK_SECRET: ${{ secrets.APK_URL_WEBHOOK_SECRET }}
+        run: |
+          set -e
+          npm install @vercel/blob@^0.27.0 --no-save
+          node - <<'EOF'
+          const fs = require('fs');
+          const { put } = require('@vercel/blob');
+          (async () => {
+            const data = fs.readFileSync('apk-out/wiskul.apk');
+            const res = await put('wiskul.apk', data, {
+              access: 'public',
+              addRandomSuffix: false,               // stable, overwritable key
+              allowOverwrite: true,
+              contentType: 'application/vnd.android.package-archive',
+              token: process.env.BLOB_TOKEN,
+            });
+            console.log('Blob URL:', res.url);
+            // Tell the backend the new public URL (best-effort).
+            const hook = process.env.APK_URL_WEBHOOK;
+            const secret = process.env.APK_URL_WEBHOOK_SECRET;
+            if (hook && secret) {
+              try {
+                const r = await fetch(hook, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'x-apk-secret': secret },
+                  body: JSON.stringify({ url: res.url }),
+                });
+                console.log('Webhook status:', r.status);
+              } catch (e) { console.warn('Webhook failed:', e.message); }
+            }
+          })().catch((e) => { console.error(e); process.exit(1); });
+          EOF

@@ -18,8 +18,10 @@ const router = Router();
 const GH_REPO = process.env.GITHUB_APK_REPO || 'AlphaDumbuya/school-management-system';
 const GH_RELEASE_TAG = process.env.GITHUB_APK_RELEASE_TAG || 'android-latest';
 const GH_TOKEN = process.env.GITHUB_RELEASE_TOKEN || process.env.GITHUB_TOKEN;
-// Optional direct/public APK URL (e.g. a CDN/Blob). If set, we redirect to it.
+// Optional direct/public APK URL from env (e.g. a CDN/Blob). Highest precedence.
 const APK_DIRECT_URL = process.env.APK_DOWNLOAD_TARGET;
+// Shared secret the APK-build workflow uses to POST the latest Blob URL.
+const APK_URL_WEBHOOK_SECRET = process.env.APK_URL_WEBHOOK_SECRET;
 
 async function countDownload(): Promise<void> {
   try {
@@ -34,6 +36,47 @@ async function countDownload(): Promise<void> {
     logger.warn(`APK download count failed: ${String((err as any)?.message || err)}`);
   }
 }
+
+/** Read the last-published Blob URL persisted by the build workflow. */
+async function storedBlobUrl(): Promise<string | null> {
+  try {
+    const has = await db.schema.hasTable('app_stats');
+    if (!has) return null;
+    const row = await db('app_stats').where({ key: 'apk_blob_url' }).first();
+    return (row?.text_value as string) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * POST /api/v1/app/blob-url  — called by the CI workflow after uploading the APK
+ * to Vercel Blob. Persists the public URL so /app/download can redirect to it.
+ * Auth: shared secret header `x-apk-secret`.
+ */
+router.post('/app/blob-url', async (req: Request, res: Response) => {
+  if (!APK_URL_WEBHOOK_SECRET || req.headers['x-apk-secret'] !== APK_URL_WEBHOOK_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const url = (req.body?.url || '').toString().trim();
+  if (!/^https:\/\//i.test(url)) {
+    return res.status(400).json({ error: 'Invalid url' });
+  }
+  try {
+    const has = await db.schema.hasTable('app_stats');
+    if (has) {
+      const hasTextCol = await db.schema.hasColumn('app_stats', 'text_value');
+      if (hasTextCol) {
+        const updated = await db('app_stats').where({ key: 'apk_blob_url' }).update({ text_value: url, updated_at: new Date() });
+        if (!updated) await db('app_stats').insert({ key: 'apk_blob_url', value: 0, text_value: url }).onConflict('key').ignore();
+      }
+    }
+    res.json({ success: true });
+  } catch (err) {
+    logger.error(`Persist blob url failed: ${String((err as any)?.message || err)}`);
+    res.status(500).json({ error: 'Failed to store url' });
+  }
+});
 
 /**
  * Resolve the browser-download URL of the APK asset on the GitHub Release.
@@ -65,11 +108,20 @@ async function resolveReleaseAssetUrl(): Promise<string | null> {
 router.get('/app/download', async (_req: Request, res: Response) => {
   await countDownload();
 
+  // 1) Explicit env override (a fixed public URL).
   if (APK_DIRECT_URL) {
     res.redirect(302, APK_DIRECT_URL);
     return;
   }
 
+  // 2) The public Vercel Blob URL published by CI (preferred — public, fast).
+  const blobUrl = await storedBlobUrl();
+  if (blobUrl) {
+    res.redirect(302, blobUrl);
+    return;
+  }
+
+  // 3) Fallback: stream the private GitHub Release asset via a token.
   const assetApiUrl = await resolveReleaseAssetUrl();
   if (!assetApiUrl) {
     res.status(503).json({ error: 'App download is temporarily unavailable. Please try again later.' });
