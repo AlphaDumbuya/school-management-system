@@ -578,12 +578,14 @@ router.get(
 router.post(
   '/invoices/:invoiceId/reminder',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { invoiceId } = req.params;
       const userId = (req as any).user.id;
+      const tenantId = (req as any).user.tenant_id;
 
-      const result = await invoiceService.sendInvoiceReminder(invoiceId, userId);
+      const result = await invoiceService.sendInvoiceReminder(invoiceId, userId, tenantId);
 
       res.status(200).json({
         success: true,

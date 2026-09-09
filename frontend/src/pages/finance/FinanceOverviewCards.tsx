@@ -2,7 +2,7 @@
  * Shared finance KPI cards + helpers used by the finance admin pages.
  */
 import React from 'react';
-import { DollarSign, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import { Banknote, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
 import type { FinanceOverview } from '@services/financeService';
 
 export const fmtMoney = (v: number | string | null | undefined) => {
@@ -29,7 +29,7 @@ export const statusPill = (status: string) => {
 
 export const FinanceOverviewCards: React.FC<{ overview?: FinanceOverview; loading?: boolean }> = ({ overview, loading }) => {
   const cards = [
-    { label: 'Total Billed', value: fmtMoney(overview?.totalBilled), icon: <DollarSign size={20} />, color: 'text-blue-600 bg-blue-500/10' },
+    { label: 'Total Billed', value: fmtMoney(overview?.totalBilled), icon: <Banknote size={20} />, color: 'text-blue-600 bg-blue-500/10' },
     { label: 'Collected', value: fmtMoney(overview?.totalPaid), icon: <CheckCircle2 size={20} />, color: 'text-emerald-600 bg-emerald-500/10' },
     { label: 'Outstanding', value: fmtMoney(overview?.totalOutstanding), icon: <AlertTriangle size={20} />, color: 'text-amber-600 bg-amber-500/10' },
     { label: 'Overdue Invoices', value: overview?.overdueInvoices ?? 0, icon: <Clock size={20} />, color: 'text-rose-600 bg-rose-500/10' },

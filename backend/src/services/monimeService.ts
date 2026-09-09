@@ -123,8 +123,14 @@ export class MonimeService {
    */
   verifyWebhookSignature(rawBody: Buffer | string, signatureHeader?: string): boolean {
     if (!this.webhookSecret) {
-      // No secret configured — accept but log (dev/testing only).
-      logger.warn('MONIME_WEBHOOK_SECRET not set — skipping webhook signature verification');
+      // FAIL CLOSED in production: without a secret we cannot verify authenticity,
+      // and accepting unsigned webhooks would let anyone forge a "payment
+      // completed" event. Only allow the unsigned path outside production.
+      if (process.env.NODE_ENV === 'production') {
+        logger.error('MONIME_WEBHOOK_SECRET not set in production — rejecting unverifiable webhook');
+        return false;
+      }
+      logger.warn('MONIME_WEBHOOK_SECRET not set — skipping webhook signature verification (non-production only)');
       return true;
     }
     if (!signatureHeader) return false;
