@@ -72,7 +72,30 @@ export const ADMISSION_STATUSES: { value: AdmissionStatus; label: string }[] = [
   { value: 'enrolled', label: 'Enrolled' },
 ];
 
+export interface AdmissionsOverview {
+  totalApplications: number;
+  thisMonth: number;
+  enrollmentRate: number;
+  byStatus: Record<AdmissionStatus, number>;
+  applications: {
+    id: string;
+    applicationNumber: string;
+    studentName: string;
+    parentName: string;
+    className: string;
+    status: AdmissionStatus;
+    applicationDate: string;
+  }[];
+}
+
 export const admissionsService = {
+  async getOverview(academicYear?: string) {
+    return apiClient.get<{ success: boolean; data: AdmissionsOverview }>(
+      '/api/v1/dashboards/admissions/overview',
+      { params: academicYear ? { academic_year: academicYear } : {} }
+    );
+  },
+
   async listApplications(params: ListAdmissionsParams = {}) {
     return apiClient.get<{ data: AdmissionRecord[]; pagination: any }>('/api/v1/admissions', { params });
   },
