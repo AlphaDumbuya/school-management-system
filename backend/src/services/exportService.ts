@@ -371,23 +371,28 @@ class ExportService {
       (rows || []).every((r) => r[k] === null || r[k] === undefined || r[k] === '' || !isNaN(Number(r[k])))
     );
 
-    // Track the widest content per column (start from the header text).
+    // Track the widest content per column (start from the header text). We use
+    // this to size columns so the sheet reads as a full, well-proportioned
+    // table rather than cramped narrow columns.
     const widths = headers.map((h) => h.length);
 
     // ── Data rows ──
+    const thinBorder = { style: 'thin' as const, color: { argb: 'FFE5E9F0' } };
     (rows || []).forEach((r, idx) => {
       const rowIndex = headerRowIndex + 1 + idx;
       const row = ws.getRow(rowIndex);
+      row.height = 18;
       keys.forEach((k, i) => {
         const raw = r[k];
         const cell = row.getCell(i + 1);
         if (numericCol[i] && raw !== null && raw !== undefined && raw !== '') {
           cell.value = Number(raw);
-          cell.alignment = { horizontal: 'right' };
+          cell.alignment = { horizontal: 'right', vertical: 'middle' };
         } else {
           cell.value = raw === null || raw === undefined ? '' : String(raw);
-          cell.alignment = { horizontal: 'left', wrapText: false };
+          cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: false };
         }
+        cell.border = { bottom: thinBorder, right: thinBorder };
         // Zebra striping for readability
         if (idx % 2 === 1) {
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F7FA' } };
@@ -398,9 +403,14 @@ class ExportService {
       row.commit();
     });
 
-    // ── Column widths: content-aware, clamped to a sensible range ──
+    // ── Column widths ──
+    // Size each column to its content, then pad generously and use a higher
+    // floor so the sheet reads as a full, professional table (no cramped
+    // columns, no awkward empty gutter). Long text columns get more room.
     headers.forEach((_h, i) => {
-      ws.getColumn(i + 1).width = Math.min(Math.max(widths[i] + 3, 12), 45);
+      const content = widths[i];
+      const padded = numericCol[i] ? content + 4 : content + 6;
+      ws.getColumn(i + 1).width = Math.min(Math.max(padded, 16), 55);
     });
 
     // Freeze everything above the first data row, and add an auto-filter.

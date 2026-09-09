@@ -25,6 +25,8 @@ import SuperAdminDashboard from '@pages/SuperAdminDashboard';
 import GuidePage from '@pages/GuidePage';
 import AnnouncementsPage from '@pages/communication/AnnouncementsPage';
 import TenantDetailPage from '@pages/TenantDetailPage';
+import SupportPage from '@pages/SupportPage';
+import PlatformSupportPage from '@pages/PlatformSupportPage';
 import { PlatformTenantsPage } from '@pages/PlatformTenantsPage';
 import { PlatformSubscriptionsPage } from '@pages/PlatformSubscriptionsPage';
 import { PlatformAnalyticsPage } from '@pages/PlatformAnalyticsPage';
@@ -172,6 +174,10 @@ const router = createBrowserRouter(
         {
           path: 'guide',
           element: <P><GuidePage /></P>,
+        },
+        {
+          path: 'support',
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'accountant', 'admissions_officer']}><SupportPage /></P>,
         },
 
         // ── Role dashboards ─────────────────────────────────────────
@@ -405,6 +411,10 @@ const router = createBrowserRouter(
         {
           path: 'platform/communications',
           element: <P requiredRoles={['super_admin']}><G feature="Communications"><PlatformCommunicationPage /></G></P>,
+        },
+        {
+          path: 'platform/support',
+          element: <P requiredRoles={['super_admin']}><G feature="Support triage"><PlatformSupportPage /></G></P>,
         },
 
         // ── SYSTEM ─────────────────────────────────────────────────

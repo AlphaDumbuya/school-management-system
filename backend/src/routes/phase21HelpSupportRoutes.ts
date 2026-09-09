@@ -7,6 +7,30 @@ import { authenticate } from '@middleware/authMiddleware';
 import HelpDocumentationService from '@services/phase21HelpDocumentationService';
 import ErrorHandlingService from '@services/phase21ErrorHandlingService';
 import SupportTicketService from '@services/phase21SupportTicketService';
+import emailService from '@services/emailService';
+
+/** Fire-and-forget support notification — never blocks or fails the request. */
+async function notifyRequester(
+  ticketService: SupportTicketService,
+  ticketId: string,
+  event: 'created' | 'replied' | 'status',
+  extra?: { status?: string; message?: string }
+): Promise<void> {
+  try {
+    const contact = await ticketService.getRequesterContact(ticketId);
+    if (!contact?.email) return;
+    await emailService.sendSupportTicketEmail(contact.email, {
+      userName: contact.name || undefined,
+      reference: SupportTicketService.reference(ticketId),
+      subject: contact.subject,
+      event,
+      status: extra?.status,
+      message: extra?.message,
+    });
+  } catch (err) {
+    logger.warn(`Support ticket notification (${event}) failed for ${ticketId}: ${String((err as any)?.message || err)}`);
+  }
+}
 
 // Extend Express Request to include user context
 declare global {
@@ -329,7 +353,8 @@ export default function registerPhase21Routes(
         attachments: attachments || [],
       });
 
-      res.status(201).json({ success: true, data: ticket });
+      void notifyRequester(ticketService, ticket.id, 'created');
+      res.status(201).json({ success: true, data: { ...ticket, reference: SupportTicketService.reference(ticket.id) } });
     } catch (error) {
       logger.error('Failed to create support ticket', error);
       throw error;
@@ -397,6 +422,7 @@ export default function registerPhase21Routes(
       if (!status) throw new AppError('status required', 400);
 
       const updated = await ticketService.updateTicketStatus(ticketId, status, resolution);
+      void notifyRequester(ticketService, ticketId, 'status', { status });
       res.status(200).json({ success: true, data: updated });
     } catch (error) {
       logger.error('Failed to update ticket status', error);
@@ -425,6 +451,8 @@ export default function registerPhase21Routes(
         isPublic
       );
 
+      // Notify the requester of a public reply (not internal notes).
+      if (isPublic) void notifyRequester(ticketService, ticketId, 'replied', { message });
       res.status(201).json({ success: true, data: response });
     } catch (error) {
       logger.error('Failed to add response', error);

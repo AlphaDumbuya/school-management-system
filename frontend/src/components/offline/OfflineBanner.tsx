@@ -8,11 +8,16 @@
 import React, { useEffect, useState } from 'react';
 import { WifiOff, Download } from 'lucide-react';
 import useOfflineStatus from '@hooks/useOfflineStatus';
+import { isAppMode } from '@lib/appMode';
 
 export const OfflineBanner: React.FC = () => {
   const { online, pending } = useOfflineStatus();
   const [updateReady, setUpdateReady] = useState(false);
   const [updating, setUpdating] = useState(false);
+  // The "new version available" badge only makes sense in the installed app
+  // (native/PWA) where assets are cached by the service worker. On the plain
+  // web the browser always loads the latest bundle, so the badge is noise.
+  const showUpdatePrompt = isAppMode();
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
@@ -78,7 +83,7 @@ export const OfflineBanner: React.FC = () => {
           <span>You're offline — you can keep working and changes will sync automatically.{pending > 0 ? ` (${pending} pending)` : ''}</span>
         </div>
       )}
-      {(updateReady || updating) && (
+      {showUpdatePrompt && (updateReady || updating) && (
         <div className="bg-[#1d4ed8] text-white text-xs sm:text-sm font-semibold px-4 py-1.5 flex items-center justify-center gap-3">
           <Download size={15} />
           {updating ? (

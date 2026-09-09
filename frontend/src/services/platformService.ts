@@ -191,6 +191,11 @@ export const platformService = {
     return apiClient.get<{ success: boolean; data: any[] }>(`/api/v1/platform/communications/broadcasts`);
   },
 
+  // ── App (APK) download stats ────────────────────────────────────────────────
+  async getAppDownloadCount() {
+    return apiClient.get<{ success: boolean; data: { downloads: number; updatedAt: string | null } }>(`/api/v1/app/download-count`);
+  },
+
   // ── Newsletter / Marketing ─────────────────────────────────────────────────
   async getSubscribers(filters?: { status?: string; search?: string; limit?: number; offset?: number }) {
     return apiClient.get<{ success: boolean; data: any[]; total: number; counts: { subscribed: number; unsubscribed: number } }>(`/api/v1/platform/newsletter/subscribers`, { params: filters });

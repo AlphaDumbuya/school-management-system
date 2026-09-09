@@ -54,18 +54,19 @@ const SuperAdminDashboard: React.FC = () => {
 
   const [stats, setStats] = useState<PlatformStatistics | null>(null);
   const [tenants, setTenants] = useState<PlatformTenant[]>([]);
+  const [appDownloads, setAppDownloads] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      setLoading(true);
-      const [statsRes, tenantsRes] = await Promise.all([
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const [statsRes, tenantsRes, dlRes] = await Promise.all([
         platformService.getStatistics().catch(() => ({ success: false, data: null as any })),
         platformService.getTenants({ limit: 6, offset: 0 }).catch(() => ({ success: false, data: [] as any })),
+        platformService.getAppDownloadCount().catch(() => ({ success: false, data: null as any })),
       ]);
-      if (!active) return;
       if ((statsRes as any)?.data) setStats((statsRes as any).data);
+      if ((dlRes as any)?.data) setAppDownloads(Number((dlRes as any).data.downloads ?? 0));
       // The endpoint returns { success, data: [...], total }. Be defensive about
       // any extra nesting so the list always resolves to the tenant array.
       const raw: any = tenantsRes as any;
@@ -77,10 +78,14 @@ const SuperAdminDashboard: React.FC = () => {
             ? raw
             : [];
       setTenants(list);
+    } finally {
       setLoading(false);
-    })();
-    return () => { active = false; };
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Derive live alerts from real counts.
   const alerts = useMemo(() => {
@@ -103,6 +108,8 @@ const SuperAdminDashboard: React.FC = () => {
         title="Platform Overview"
         subtitle="How the platform is performing"
         breadcrumbs={[{ label: 'Platform Dashboard' }]}
+        onRefresh={load}
+        isRefreshing={loading}
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => navigate('/platform/analytics')}>
@@ -322,23 +329,29 @@ const SuperAdminDashboard: React.FC = () => {
               />
             </div>
 
-            {/* Mobile app card — honest: we don't instrument download counts.
-                Links to the release/download so admins can see availability. */}
+            {/* Mobile app card — now with real download tracking. */}
             <div className="mt-4 bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
               <div className="p-2.5 rounded-lg bg-blue-50 text-blue-600"><Smartphone size={18} /></div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900">WiSkul Android App</p>
                 <p className="text-xs text-gray-500">
-                  Downloadable APK is live. Download counts aren't tracked on the platform yet.
+                  {appDownloads !== null
+                    ? `${appDownloads.toLocaleString()} download${appDownloads === 1 ? '' : 's'} tracked via the platform.`
+                    : 'Downloadable APK is live.'}
                 </p>
               </div>
-              <a
-                href="https://www.wiskulsl.com/downloads/wiskul.apk"
-                target="_blank" rel="noopener noreferrer"
-                className="shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 rounded-lg px-3 py-2"
-              >
-                View APK <ExternalLink size={13} />
-              </a>
+              <div className="shrink-0 text-right">
+                {appDownloads !== null && (
+                  <div className="text-2xl font-black text-gray-900 leading-none">{appDownloads.toLocaleString()}</div>
+                )}
+                <a
+                  href="https://www.wiskulsl.com/downloads/wiskul.apk"
+                  target="_blank" rel="noopener noreferrer"
+                  className="mt-1 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700"
+                >
+                  View APK <ExternalLink size={13} />
+                </a>
+              </div>
             </div>
           </div>
         )}

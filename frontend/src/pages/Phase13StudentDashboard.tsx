@@ -49,7 +49,7 @@ export const Phase13StudentDashboard: React.FC = () => {
   const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['student-dashboard'],
     queryFn: () => studentDashboardService.getDashboard(),
     staleTime: 60_000,
@@ -110,6 +110,8 @@ export const Phase13StudentDashboard: React.FC = () => {
       <PageShell
         title="Student Dashboard"
         subtitle="Your grades, attendance, schedule and fees"
+        onRefresh={() => refetch()}
+        isRefreshing={isLoading}
       >
         <WelcomeHero
           firstName={displayName.split(' ')[0]}

@@ -23,13 +23,21 @@ export const RefreshButton: React.FC<RefreshButtonProps> = ({
   className = '',
 }) => {
   const [busy, setBusy] = useState(false);
-  const spinning = isRefreshing ?? busy;
+  // Spin when EITHER the parent reports refreshing OR our own click is in
+  // flight. (Using `??` broke this: a parent passing isRefreshing={false} at
+  // click time suppressed the internal busy spinner, so the button looked dead.)
+  const spinning = !!isRefreshing || busy;
 
   const handleClick = async () => {
-    if (spinning) return;
+    if (busy) return;
     try {
       setBusy(true);
-      await onRefresh();
+      // Keep the spinner visible briefly so a cached/instant refetch still
+      // gives the user clear feedback that something happened.
+      await Promise.all([
+        Promise.resolve(onRefresh()),
+        new Promise((r) => setTimeout(r, 500)),
+      ]);
     } finally {
       setBusy(false);
     }

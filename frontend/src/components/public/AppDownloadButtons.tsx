@@ -13,6 +13,11 @@ import { Download, Smartphone } from 'lucide-react';
 const APK_URL = import.meta.env.VITE_APK_DOWNLOAD_URL as string | undefined;
 const PLAY_URL = import.meta.env.VITE_PLAY_STORE_URL as string | undefined;
 
+// Route APK clicks through the backend so downloads are counted; the endpoint
+// increments the counter then 302-redirects to the actual APK file. Falls back
+// to the direct URL if the tracking endpoint isn't reachable.
+const APK_DOWNLOAD_HREF = APK_URL ? '/api/v1/app/download' : undefined;
+
 interface Props {
   /**
    * 'hero'  → full-size CTA matching the primary hero button (dark background).
@@ -59,8 +64,7 @@ export const AppDownloadButtons: React.FC<Props> = ({ variant = 'light', classNa
         )}
         {APK_URL && (
           <a
-            href={APK_URL}
-            download
+            href={APK_DOWNLOAD_HREF || APK_URL}
             className={`inline-flex items-center justify-center gap-2 rounded-lg transition-colors ${sizing} ${
               isHero ? 'w-full sm:w-auto' : ''
             } ${

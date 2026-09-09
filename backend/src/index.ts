@@ -61,6 +61,7 @@ import contactRoutes from '@routes/contactRoutes';
 import newsletterRoutes from '@routes/newsletterRoutes';
 import schoolConfigRoutes from '@routes/schoolConfigRoutes';
 import announcementRoutes from '@routes/announcementRoutes';
+import appStatsRoutes from '@routes/appStatsRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
 import { startEventManagementJobs } from './jobs/eventManagementJobs.js';
 import { startSmsDeliveryJobs } from './jobs/smsDeliveryJobs.js';
@@ -175,6 +176,12 @@ app.get('/api', (req: Request, res: Response) => {
 // Authentication Routes
 app.use('/api/v1/auth', authRoutes);
 
+// Public ID verification (UNAUTHENTICATED — QR scan verification).
+// MUST be mounted BEFORE any blanket `app.use('/api/v1', router)` whose router
+// applies `authenticate` at the top (e.g. phase10DashboardRoutes) — otherwise
+// that middleware runs for every /api/v1/* path and 401s this public route.
+app.use('/api/v1/public', publicVerifyRoutes);
+
 // User Management Routes
 app.use('/api/v1/users', userRoutes);
 
@@ -280,9 +287,6 @@ app.use('/api/v1/platform', platformRoutes);
 // Admission Management Routes (Phase 1.3: Admissions Officer Enhancement)
 app.use('/api/v1/admissions', admissionRoutes);
 
-// Public ID verification (UNAUTHENTICATED — QR scan verification)
-app.use('/api/v1/public', publicVerifyRoutes);
-
 // ID Card Management Routes (Phase 2.1: Identity Management Module)
 app.use('/api/v1/id-cards', idCardRoutes);
 
@@ -327,6 +331,9 @@ app.use('/api/v1/school-config', schoolConfigRoutes);
 
 // Announcements Routes (Communication)
 app.use('/api/v1/announcements', announcementRoutes);
+
+// App stats (APK download tracking + count)
+app.use('/api/v1', appStatsRoutes);
 
 // Offline sync Routes (teacher offline-first: pull/push)
 app.use('/api/v1/sync', syncRoutes);
