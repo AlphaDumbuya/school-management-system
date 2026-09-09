@@ -100,29 +100,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # HANDS-OFF PUBLISHING (task 20b): commit the built APK back into
-      # frontend/public/downloads so Vercel serves it at
-      # https://www.wiskulsl.com/downloads/wiskul.apk automatically — no manual
-      # download/copy. The repo is private so the GitHub Release asset isn't
-      # publicly downloadable; serving via our own domain is the public path.
+      # PUBLISHING NOTE:
+      # We intentionally DO NOT commit the APK into the git repo. The app has
+      # grown past GitHub's 100 MB per-file limit, and committing large binaries
+      # bloats history and breaks pushes anyway. The APK is published to the
+      # GitHub Release (tag `android-latest`) above.
       #
-      # Only commits on `main` — the single canonical home for the published APK.
-      # Committing on feature branches too would create diverging binary APKs that
-      # can't auto-merge, forcing manual conflict resolution on every PR. Vercel
-      # deploys from main anyway, so main is the right (and only) place to publish.
-      # Skips the commit if the APK is unchanged (avoids empty/no-op commits).
-      - name: Commit APK to frontend/public/downloads
-        if: github.event_name == 'push' && github.ref_name == 'main'
-        run: |
-          set -e
-          mkdir -p frontend/public/downloads
-          cp apk-out/wiskul.apk frontend/public/downloads/wiskul.apk
-          if git diff --quiet -- frontend/public/downloads/wiskul.apk; then
-            echo "APK unchanged — nothing to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/public/downloads/wiskul.apk
-          git commit -m "chore(app): auto-publish latest APK [skip ci]"
-          git push origin HEAD:${GITHUB_REF_NAME}
+      # Public downloads are served by the backend: `GET /api/v1/app/download`
+      # streams the latest Release asset (proxying the private repo's asset with
+      # a token) and counts the download. That endpoint is fronted by our own
+      # domain, so https://www.wiskulsl.com/api/v1/app/download is the public URL.
+      #
+      # Requires the backend env var GITHUB_RELEASE_TOKEN (a read-only PAT with
+      # `contents:read` on this repo) so the proxy can fetch the private asset.
