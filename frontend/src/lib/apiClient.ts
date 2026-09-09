@@ -172,8 +172,23 @@ axiosInstance.interceptors.response.use(
       }
     }
 
-    // Handle 403 - Forbidden (don't redirect, let the UI handle it)
+    // Handle 403 - Forbidden
     if (error.response?.status === 403) {
+      // Tenant-level restriction (suspended/expired by the platform owner) cascades
+      // to all its users: force a logout so the whole session is cut off, not just
+      // scattered 403s. Any authenticated request can carry this.
+      const code = (error.response?.data as any)?.error?.code
+        || (error.response?.data as any)?.code;
+      if (code === 'TENANT_SUSPENDED' || code === 'TENANT_UNAVAILABLE') {
+        try {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
+        } catch { /* ignore */ }
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.assign('/login?suspended=1');
+        }
+      }
       console.warn('403 Forbidden:', error.response?.config?.url);
     }
 

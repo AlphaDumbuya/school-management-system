@@ -319,9 +319,34 @@ export class AuthService {
    * Issue access + refresh tokens for an already-authenticated user row and
    * record the session. Shared by password login and MFA completion.
    */
+  /**
+   * Block sign-in when the user's TENANT is not active (suspended / expired /
+   * archived by the platform owner). Super admins are platform-level and exempt.
+   * Called from every session-issuing path so restrictions cascade to ALL of a
+   * tenant's users automatically.
+   */
+  private async assertTenantActive(user: any): Promise<void> {
+    if (user.role === 'super_admin') return; // platform operator — no tenant gate
+    if (!user.tenant_id) return;
+    const tenant = await this.db('tenants').select('status').where({ id: user.tenant_id }).first();
+    if (!tenant) {
+      throw new AppError('Your school account is unavailable. Contact support.', 403, 'TENANT_UNAVAILABLE');
+    }
+    if (tenant.status !== 'active') {
+      throw new AppError(
+        'Your school account has been suspended or is inactive. Please contact WiSkul support to restore access.',
+        403,
+        'TENANT_SUSPENDED'
+      );
+    }
+  }
+
   private async issueSessionForUser(
     user: any
   ): Promise<{ access_token: string; refresh_token: string; user: UserResponse }> {
+    // Enforce tenant-level restriction before issuing any session.
+    await this.assertTenantActive(user);
+
     const accessToken = JWTService.generateAccessToken({
       userId: user.id,
       email: user.email,
@@ -424,6 +449,9 @@ export class AuthService {
 
       // Get user
       const user = await this.getUserById(decoded.userId);
+
+      // Re-check tenant status — a suspended tenant can't silently renew tokens.
+      await this.assertTenantActive(user);
 
       // Generate new access token
       const accessToken = JWTService.generateAccessToken({

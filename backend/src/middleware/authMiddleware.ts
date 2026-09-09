@@ -67,6 +67,21 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
     }
     const user = await db('users').select('id', 'tenant_id', 'email', 'role').where('id', req.auth.userId).first();
     if (user) {
+      // Cascade tenant restriction to ALL its users on every request: if the
+      // platform owner suspended/expired the tenant, cut off access immediately
+      // (already-issued tokens stop working). Super admins are platform-level
+      // and exempt.
+      if (user.role !== 'super_admin' && user.tenant_id) {
+        const tenant = await db('tenants').select('status').where({ id: user.tenant_id }).first();
+        if (!tenant || tenant.status !== 'active') {
+          throw new AppError(
+            'Your school account has been suspended or is inactive. Please contact WiSkul support.',
+            403,
+            'TENANT_SUSPENDED'
+          );
+        }
+      }
+
       req.user = {
         id: user.id,
         tenant_id: user.tenant_id,
@@ -78,6 +93,11 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
     }
     next();
   } catch (error) {
+    // Deliberate access denials (e.g. TENANT_SUSPENDED) must propagate, not be
+    // swallowed. Only tolerate incidental DB lookup failures.
+    if (error instanceof AppError) {
+      return next(error);
+    }
     logger.warn('Failed to fetch user context from DB', error);
     next(); // Continue without tenant info
   }
