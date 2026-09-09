@@ -28,8 +28,15 @@ router.get('/export', authenticate, attachUserContext, async (req: Request, res:
     const tenantId = req.user?.tenant_id;
     if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
 
-    const date = req.query.date as string;
-    const classId = req.query.classId as string;
+    // Treat literal "undefined"/"null"/empty as absent so a stray query value
+    // (e.g. ?date=undefined) can't become a filter — a non-date string against
+    // the date column would otherwise throw and 500 the request.
+    const clean = (v: any): string => {
+      const s = (v ?? '').toString().trim();
+      return s === '' || s === 'undefined' || s === 'null' ? '' : s;
+    };
+    const date = clean(req.query.date);
+    const classId = clean(req.query.classId);
 
     let query = db('attendance')
       .leftJoin('students', 'attendance.student_id', 'students.id')
