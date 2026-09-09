@@ -475,9 +475,9 @@ class ExportService {
         .title { font-size: 16px; font-weight: 700; color: #1d4ed8; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
         .meta { font-size: 10px; color: #777; margin-top: 4px; }
 
-        table { width: 100%; border-collapse: collapse; }
-        thead th { background: #1d4ed8; color: #fff; text-align: left; padding: 9px 10px; font-size: 11px; font-weight: 700; }
-        tbody td { padding: 8px 10px; border-bottom: 1px solid #eef1f5; font-size: 11px; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        thead th { background: #1d4ed8; color: #fff; text-align: left; padding: 9px 10px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+        tbody td { padding: 8px 10px; border-bottom: 1px solid #eef1f5; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         tbody tr:nth-child(even) td { background: #f5f7fa; }
         .foot { margin-top: 16px; text-align: center; font-size: 10px; color: #888; border-top: 1px solid #e5e7eb; padding-top: 8px; }
       </style></head>
@@ -496,8 +496,132 @@ class ExportService {
         <div class="foot">${this.escHtml(brand?.name || 'WiSkul')} — ${(rows || []).length} record(s). Confidential.</div>
       </body></html>`;
 
-    const { htmlToPdf } = await import('@utils/pdfBrowser');
-    return htmlToPdf(html, { landscape: true });
+    // Primary: headless Chromium (rich HTML/CSS). If it fails for any reason
+    // (serverless Chromium unavailable, timeout, etc.), fall back to a pure-JS
+    // pdf-lib table so PDF export NEVER 500s.
+    try {
+      const { htmlToPdf } = await import('@utils/pdfBrowser');
+      return await htmlToPdf(html, { landscape: true });
+    } catch (err) {
+      logger.warn(`PDF via Chromium failed, using pdf-lib fallback: ${String((err as any)?.message || err)}`);
+      return this.rowsToPdfLib(rows, columns, title, brand);
+    }
+  }
+
+  /**
+   * Pure-JS PDF fallback using pdf-lib (no browser, no external font files —
+   * uses the built-in StandardFonts, so it works anywhere including serverless).
+   * A clean A4 landscape table with a centered branded header.
+   */
+  async rowsToPdfLib(
+    rows: Record<string, any>[],
+    columns: Record<string, string>,
+    title = 'Export',
+    brand?: ExportBranding
+  ): Promise<Buffer> {
+    const { PDFDocument: PDFLibDoc, StandardFonts, rgb } = await import('pdf-lib');
+    const pdf = await PDFLibDoc.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+
+    // A4 landscape in points
+    const PAGE_W = 841.89;
+    const PAGE_H = 595.28;
+    const margin = 32;
+    const usableW = PAGE_W - margin * 2;
+
+    const headers = Object.keys(columns);
+    const keys = Object.values(columns);
+    const colW = usableW / Math.max(headers.length, 1);
+
+    const navy = rgb(0.1, 0.168, 0.42);
+    const blue = rgb(0.114, 0.306, 0.847);
+    const gray = rgb(0.53, 0.53, 0.53);
+    const zebra = rgb(0.96, 0.968, 0.98);
+    const black = rgb(0.07, 0.07, 0.07);
+    const white = rgb(1, 1, 1);
+
+    // Try to embed the logo (PNG/JPEG only).
+    let logoImg: any = null;
+    let logoDims: { w: number; h: number } | null = null;
+    const logoBuf = await this.fetchLogo(brand?.logoUrl);
+    if (logoBuf) {
+      try {
+        logoImg = logoBuf[0] === 0x89 ? await pdf.embedPng(logoBuf) : await pdf.embedJpg(logoBuf);
+        const scale = 44 / logoImg.height;
+        logoDims = { w: logoImg.width * scale, h: 44 };
+      } catch {
+        logoImg = null;
+      }
+    }
+
+    const fit = (text: string, size: number, f: any, maxW: number): string => {
+      let s = String(text ?? '');
+      if (f.widthOfTextAtSize(s, size) <= maxW) return s;
+      while (s.length > 1 && f.widthOfTextAtSize(s + '…', size) > maxW) s = s.slice(0, -1);
+      return s + '…';
+    };
+    const centerText = (page: any, text: string, size: number, f: any, y: number, color: any) => {
+      const w = f.widthOfTextAtSize(text, size);
+      page.drawText(text, { x: (PAGE_W - w) / 2, y, size, font: f, color });
+    };
+
+    let page = pdf.addPage([PAGE_W, PAGE_H]);
+    let y = PAGE_H - margin;
+
+    const drawHeaderBlock = () => {
+      y = PAGE_H - margin;
+      if (logoImg && logoDims) {
+        page.drawImage(logoImg, { x: (PAGE_W - logoDims.w) / 2, y: y - logoDims.h, width: logoDims.w, height: logoDims.h });
+        y -= logoDims.h + 6;
+      }
+      centerText(page, brand?.name || 'WiSkul', 18, fontBold, y - 14, navy);
+      y -= 22;
+      const contact = [brand?.address, brand?.contactPhone, brand?.contactEmail].filter(Boolean).join('  •  ');
+      if (contact) {
+        centerText(page, fit(contact, 9, font, usableW), 9, font, y - 10, gray);
+        y -= 14;
+      }
+      centerText(page, (title || 'Export').toUpperCase(), 13, fontBold, y - 12, blue);
+      y -= 18;
+      const meta = [brand?.academicYear ? `Academic Year: ${brand.academicYear}` : '', `Generated: ${new Date().toLocaleString()}`]
+        .filter(Boolean)
+        .join('   |   ');
+      centerText(page, meta, 8, font, y - 10, gray);
+      y -= 16;
+      page.drawRectangle({ x: margin, y: y - 2, width: usableW, height: 2, color: blue });
+      y -= 14;
+    };
+
+    const drawTableHeader = () => {
+      page.drawRectangle({ x: margin, y: y - 16, width: usableW, height: 18, color: blue });
+      headers.forEach((h, i) => {
+        page.drawText(fit(h, 9, fontBold, colW - 8), { x: margin + i * colW + 4, y: y - 12, size: 9, font: fontBold, color: white });
+      });
+      y -= 20;
+    };
+
+    drawHeaderBlock();
+    drawTableHeader();
+
+    (rows || []).forEach((r, idx) => {
+      if (y < margin + 24) {
+        page = pdf.addPage([PAGE_W, PAGE_H]);
+        y = PAGE_H - margin;
+        drawTableHeader();
+      }
+      if (idx % 2 === 1) {
+        page.drawRectangle({ x: margin, y: y - 14, width: usableW, height: 16, color: zebra });
+      }
+      keys.forEach((k, i) => {
+        const val = r[k] === null || r[k] === undefined ? '' : String(r[k]);
+        page.drawText(fit(val, 9, font, colW - 8), { x: margin + i * colW + 4, y: y - 11, size: 9, font, color: black });
+      });
+      y -= 16;
+    });
+
+    const bytes = await pdf.save();
+    return Buffer.from(bytes);
   }
 
   /** Legacy PDFKit tabular renderer (kept for non-serverless/local fallback). */

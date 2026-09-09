@@ -23,6 +23,9 @@ router.get('/export', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async
     const tenantId = req.user?.tenant_id;
     if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
 
+    const format = (req.query.format as string) || 'csv';
+    const isPdf = format.toLowerCase() === 'pdf';
+
     const rows = await db('teachers')
       .join('users', 'teachers.user_id', 'users.id')
       .where('users.tenant_id', tenantId)
@@ -45,27 +48,43 @@ router.get('/export', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async
 
     const formatted = rows.map((r: any) => ({
       ...r,
+      full_name: [r.first_name, r.last_name].filter(Boolean).join(' '),
       hire_date: r.hire_date ? new Date(r.hire_date).toLocaleDateString() : '',
     }));
 
+    // The PDF has limited width, so use a leaner column set (single Name, no
+    // email) to keep cells on one line — no wrapping. CSV/Excel keep the full
+    // detail since they have unlimited width.
+    const columns = isPdf
+      ? {
+          'Staff ID': 'teacher_id',
+          Name: 'full_name',
+          Phone: 'phone',
+          Specialization: 'specialization',
+          Designation: 'designation',
+          Department: 'department',
+          'Form Class': 'form_class_name',
+          Status: 'status',
+        }
+      : {
+          'Staff ID': 'teacher_id',
+          Name: 'full_name',
+          Email: 'email',
+          Phone: 'phone',
+          Specialization: 'specialization',
+          Designation: 'designation',
+          Department: 'department',
+          'Employment Type': 'employment_type',
+          'Form Class': 'form_class_name',
+          Hired: 'hire_date',
+          Status: 'status',
+        };
+
     await sendExport(res, {
-      format: req.query.format as string,
+      format,
       tenantId,
       rows: formatted,
-      columns: {
-        'Staff ID': 'teacher_id',
-        'First Name': 'first_name',
-        'Last Name': 'last_name',
-        Email: 'email',
-        Phone: 'phone',
-        Specialization: 'specialization',
-        Designation: 'designation',
-        Department: 'department',
-        'Employment Type': 'employment_type',
-        'Form Class': 'form_class_name',
-        Hired: 'hire_date',
-        Status: 'status',
-      },
+      columns,
       filename: 'teachers_export',
       title: 'Teachers Export',
       sheetName: 'Teachers',
