@@ -44,11 +44,11 @@ router.get('/export', authenticate, attachUserContext, async (req: Request, res:
         .where('u.tenant_id', tenantId)
         .select('teachers.id')
         .first();
-      if (!teacher) return sendExport(res, { format: req.query.format as string, rows: [], columns: EXPORT_COLUMNS, filename: 'attendance_export', title: 'Attendance Export', sheetName: 'Attendance' });
+      if (!teacher) return sendExport(res, { format: req.query.format as string, tenantId, rows: [], columns: EXPORT_COLUMNS, filename: 'attendance_export', title: 'Attendance Export', sheetName: 'Attendance' });
       const assigned = await db('teacher_assignments').where('teacher_id', teacher.id).distinct('class_id');
       const led = await db('classes').where('class_teacher_id', teacher.id).select('id');
       const classIds = Array.from(new Set<string>([...assigned.map((r: any) => r.class_id), ...led.map((r: any) => r.id)]));
-      if (classIds.length === 0) return sendExport(res, { format: req.query.format as string, rows: [], columns: EXPORT_COLUMNS, filename: 'attendance_export', title: 'Attendance Export', sheetName: 'Attendance' });
+      if (classIds.length === 0) return sendExport(res, { format: req.query.format as string, tenantId, rows: [], columns: EXPORT_COLUMNS, filename: 'attendance_export', title: 'Attendance Export', sheetName: 'Attendance' });
       query = query.whereIn('attendance.class_id', classIds);
     }
 
@@ -75,6 +75,7 @@ router.get('/export', authenticate, attachUserContext, async (req: Request, res:
 
     await sendExport(res, {
       format: req.query.format as string,
+      tenantId,
       rows: formatted,
       columns: EXPORT_COLUMNS,
       filename: 'attendance_export',

@@ -500,6 +500,7 @@ router.get(
 
       await sendExport(res, {
         format: req.query.format as string,
+        tenantId,
         rows: formatted,
         columns: {
           'Admission No': 'admission_no',
