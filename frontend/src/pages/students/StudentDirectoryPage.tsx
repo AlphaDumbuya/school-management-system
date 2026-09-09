@@ -29,6 +29,7 @@ import { showToast } from '@utils/toast';
 import { useAuth } from '@hooks/useAuth';
 import { studentsService, StudentRecord } from '@services/studentsService';
 import { StudentFormModal } from './components/StudentFormModal';
+import { StudentImportModal } from './components/StudentImportModal';
 import { StudentDetailModal } from './components/StudentDetailModal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -72,6 +73,7 @@ export const StudentDirectoryPage: React.FC = () => {
   const [pageSize] = useState(25);
 
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<StudentRecord | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<StudentRecord | null>(null);
   const [viewingStudent, setViewingStudent] = useState<StudentRecord | null>(null);
@@ -330,6 +332,12 @@ export const StudentDirectoryPage: React.FC = () => {
             </div>
 
             <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
+              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="whitespace-nowrap">
+                Import
+              </Button>
+            </RoleGuard>
+
+            <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
               <ExportButton endpoint="/api/v1/students/export" filename="students" />
             </RoleGuard>
 
@@ -441,6 +449,13 @@ export const StudentDirectoryPage: React.FC = () => {
           />
         )}
       </PageShell>
+
+      {/* Import Modal */}
+      <StudentImportModal
+        isOpen={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => queryClient.invalidateQueries({ queryKey: ['students'] })}
+      />
 
       {/* Form Modal */}
       <StudentFormModal

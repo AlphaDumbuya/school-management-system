@@ -90,7 +90,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
   - Add `GET /api/v1/import/students/template` returning a CSV template
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [~] 6.1 Add the import UI
+- [x] 6.1 Add the import UI
   - Create an `ImportModal` (upload, preview, run, summary of imported/skipped/
     failed) and wire it into the student directory/profiles page
   - _Requirements: 2.1, 2.3, 2.4_

@@ -86,11 +86,31 @@ export interface ListStudentsParams {
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
+export interface StudentImportResult {
+  imported: number;
+  skipped: number;
+  failed: number;
+  total: number;
+  errors: { row: number; message: string }[];
+}
+
 export const studentsService = {
   async listStudents(params: ListStudentsParams = {}) {
     return apiClient.get<{ data: StudentRecord[]; pagination: any }>(
       '/api/v1/students',
       { params }
+    );
+  },
+
+  /** Bulk-import students from a CSV file. */
+  async importStudents(file: File) {
+    const form = new FormData();
+    form.append('file', file);
+    // Let the browser set the multipart Content-Type WITH its boundary — do NOT
+    // set it manually (an explicit value without a boundary breaks the upload).
+    return apiClient.post<{ success: boolean; data: StudentImportResult }>(
+      '/api/v1/students/import',
+      form
     );
   },
 
