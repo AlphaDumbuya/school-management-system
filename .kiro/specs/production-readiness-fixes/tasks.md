@@ -61,7 +61,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
     queries; show error state while keeping last good data
   - _Requirements: 5.1, 5.2, 5.3_
 
-- [~] 4. Fix offline modules returning no data (attendance first)
+- [x] 4. Fix offline modules returning no data (attendance first)
   - Reproduce the attendance-offline empty-students case and trace the IndexedDB
     read path (cache key vs read key, tenant/class id, offline fallback)
   - Ensure the class roster is pre-cached on online load using the same key the

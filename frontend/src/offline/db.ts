@@ -89,6 +89,8 @@ export class TeacherOfflineDB extends Dexie {
   students!: Table<CachedRow, string>;
   subjects!: Table<CachedRow, string>;
   timetable!: Table<CachedRow, string>;
+  /** Student ↔ class linkage so the register can filter students offline. */
+  enrollments!: Table<CachedRow, string>;
   attendance!: Table<AttendanceRow, string>;
   grades!: Table<GradeRow, string>;
   assignments!: Table<AssignmentRow, string>;
@@ -107,6 +109,10 @@ export class TeacherOfflineDB extends Dexie {
       assignments: 'clientId, serverId, syncStatus, classId, updatedAt',
       outbox: '++id, entity, clientId, createdAt',
       sync_meta: 'key',
+    });
+    // v2 adds the enrollments read-cache (student↔class) for offline register.
+    this.version(2).stores({
+      enrollments: 'id, cachedAt',
     });
   }
 }

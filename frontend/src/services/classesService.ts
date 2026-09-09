@@ -4,6 +4,8 @@
  */
 
 import { apiClient } from '@lib/apiClient';
+import useAuthStore from '@store/authStore';
+import { rosterRepo } from '../offline/repositories/rosterRepo';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,12 +69,34 @@ export interface ListClassesParams {
 // ── Service ───────────────────────────────────────────────────────────────────
 
 export const classesService = {
-  /** GET /api/v1/classes — paginated list */
+  /**
+   * GET /api/v1/classes — paginated list.
+   *
+   * Offline fallback: for a teacher offline (or when the network yields
+   * nothing), serve the classes cached by the offline sync engine so the
+   * academic modules (attendance register, grade entry, assignments) still
+   * populate their class selectors without a connection.
+   */
   async listClasses(params: ListClassesParams = {}) {
-    return apiClient.get<{ data: ClassRecord[]; pagination: any }>(
-      '/api/v1/classes',
-      { params }
-    );
+    const res = await apiClient
+      .get<{ data: ClassRecord[]; pagination: any }>('/api/v1/classes', { params })
+      .catch(() => null as any);
+    const list = (res as any)?.data?.data ?? (res as any)?.data ?? [];
+    if (res && (Array.isArray(list) ? list.length > 0 : true) && navigator.onLine) {
+      return res;
+    }
+    const cached = await classesService._cachedClasses();
+    if (cached.length) {
+      return { success: true, data: cached, pagination: { total: cached.length } } as any;
+    }
+    return res ?? ({ success: false, data: [] } as any);
+  },
+
+  /** Read classes from the teacher offline cache (best-effort). */
+  async _cachedClasses(): Promise<ClassRecord[]> {
+    const uid = (useAuthStore.getState().user as any)?.id;
+    if (!uid) return [];
+    return rosterRepo.list(uid, 'classes').catch(() => []);
   },
 
   /** GET /api/v1/classes/:id — single class with enrollment count */
@@ -100,9 +124,39 @@ export const classesService = {
     return apiClient.delete(`/api/v1/classes/${id}/permanent`);
   },
 
-  /** GET /api/v1/classes/:id/students — students enrolled in a class */
+  /**
+   * GET /api/v1/classes/:id/students — students enrolled in a class.
+   *
+   * Offline fallback: resolve the class roster from the cached enrollments +
+   * students so grade entry / attendance / report cards can list students
+   * without a connection.
+   */
   async getClassStudents(id: string | number) {
-    return apiClient.get<ClassStudentsResponse>(`/api/v1/classes/${id}/students`);
+    const res = await apiClient
+      .get<ClassStudentsResponse>(`/api/v1/classes/${id}/students`)
+      .catch(() => null as any);
+    const list = (res as any)?.data?.students ?? (res as any)?.students ?? [];
+    if (res && (list.length > 0 || navigator.onLine)) {
+      return res;
+    }
+    const uid = (useAuthStore.getState().user as any)?.id;
+    if (uid) {
+      const cached = await rosterRepo.studentsForClass(uid, String(id)).catch(() => []);
+      const students = cached.map((s: any) => ({
+        id: s.id,
+        student_id: s.student_id || s.id,
+        first_name: s.first_name,
+        last_name: s.last_name,
+        photo_url: s.photo_url,
+        roll_number: s.roll_number || s.student_id || '',
+        status: s.status || 'active',
+      }));
+      return {
+        success: true,
+        data: { class_id: String(id), class_name: '', total_students: students.length, students },
+      } as any;
+    }
+    return res ?? ({ success: false, data: { students: [] } } as any);
   },
 };
 

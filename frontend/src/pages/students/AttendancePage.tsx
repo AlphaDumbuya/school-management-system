@@ -39,6 +39,7 @@ import { useAuth } from '@hooks/useAuth';
 import { studentsService, StudentRecord } from '@services/studentsService';
 import { parentDashboardService } from '@services/parentDashboardService';
 import { SearchBar } from '@components/admin/table/SearchBar';
+import { rosterRepo } from '../../offline/repositories/rosterRepo';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -174,6 +175,8 @@ export const AttendancePage: React.FC = () => {
   // 3. Register: students in class OR all students
   const { data: classStudentsData, isLoading: studentsLoading } = useQuery({
     queryKey: ['reg-students', regClassId],
+    // classesService.getClassStudents falls back to the offline roster cache
+    // when offline, so the register still lists students without a connection.
     queryFn: () => classesService.getClassStudents(regClassId),
     enabled: !!regClassId && activeTab === 'register' && !isAllStudentsMode,
     staleTime: 60_000,
@@ -183,7 +186,21 @@ export const AttendancePage: React.FC = () => {
   // 3b. All enrolled students
   const { data: allStudentsData, isLoading: allStudentsLoading } = useQuery({
     queryKey: ['all-students'],
-    queryFn: () => studentsService.listStudents({ limit: 1000, status: 'active' }),
+    queryFn: async () => {
+      try {
+        const res: any = await studentsService.listStudents({ limit: 1000, status: 'active' });
+        const list = res?.data ?? [];
+        if (list.length > 0 || navigator.onLine) return res;
+      } catch (_) {
+        /* fall through to cache */
+      }
+      const uid = (user as any)?.id;
+      if (uid) {
+        const cached = await rosterRepo.list(uid, 'students').catch(() => []);
+        return { data: cached };
+      }
+      return { data: [] };
+    },
     enabled: isAllStudentsMode && activeTab === 'register',
     staleTime: 60_000,
   });
