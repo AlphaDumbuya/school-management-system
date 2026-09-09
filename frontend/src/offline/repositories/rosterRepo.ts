@@ -13,7 +13,7 @@ import { getOfflineDb, type CachedRow } from '../db';
 import { syncClient } from '../syncClient';
 import { evictStale } from '../storage';
 
-export type RosterEntity = 'classes' | 'students' | 'subjects' | 'timetable';
+export type RosterEntity = 'classes' | 'students' | 'subjects' | 'timetable' | 'enrollments';
 
 const SYNC_KEY = 'roster';
 
@@ -39,6 +39,28 @@ export const rosterRepo = {
     return row?.data;
   },
 
+  /**
+   * Offline-safe list of students enrolled in a class, resolved from the cached
+   * `enrollments` + `students` tables. Used as the attendance register's
+   * fallback when the network student query returns nothing (offline).
+   */
+  async studentsForClass(userId: string, classId: string): Promise<any[]> {
+    const db = getOfflineDb(userId);
+    const [enrollRows, studentRows] = await Promise.all([
+      db.enrollments.toArray(),
+      db.students.toArray(),
+    ]);
+    const studentIds = new Set(
+      enrollRows
+        .map((e) => e.data)
+        .filter((e) => e && String(e.class_id) === String(classId))
+        .map((e) => String(e.student_id))
+    );
+    return studentRows
+      .map((r) => r.data)
+      .filter((s) => s && studentIds.has(String(s.id)));
+  },
+
   /** When was the roster last refreshed from the server? */
   async lastSyncedAt(userId: string): Promise<string | undefined> {
     const db = getOfflineDb(userId);
@@ -62,11 +84,12 @@ export const rosterRepo = {
     const d = res.data;
 
     let written = 0;
-    await db.transaction('rw', db.classes, db.students, db.subjects, db.timetable, db.sync_meta, async () => {
+    await db.transaction('rw', db.classes, db.students, db.subjects, db.timetable, db.enrollments, db.sync_meta, async () => {
       if (d.classes?.length) { await db.classes.bulkPut(toCached(d.classes)); written += d.classes.length; }
       if (d.students?.length) { await db.students.bulkPut(toCached(d.students)); written += d.students.length; }
       if (d.subjects?.length) { await db.subjects.bulkPut(toCached(d.subjects)); written += d.subjects.length; }
       if (d.timetable?.length) { await db.timetable.bulkPut(toCached(d.timetable)); written += d.timetable.length; }
+      if ((d as any).enrollments?.length) { await db.enrollments.bulkPut(toCached((d as any).enrollments)); written += (d as any).enrollments.length; }
       await db.sync_meta.put({ key: SYNC_KEY, lastPulledAt: d.serverTime, lastPushedAt: meta?.lastPushedAt });
     });
 

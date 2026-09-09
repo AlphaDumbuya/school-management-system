@@ -63,10 +63,10 @@ export class SyncService {
 
     // No classes → nothing to sync (teacher not yet assigned).
     if (scope.classIds.length === 0) {
-      return { serverTime: new Date().toISOString(), classes: [], students: [], subjects: [], timetable: [], attendance: [], grades: [], assignments: [] };
+      return { serverTime: new Date().toISOString(), classes: [], students: [], subjects: [], timetable: [], attendance: [], grades: [], assignments: [], enrollments: [] };
     }
 
-    const [classes, students, subjects, timetable, attendance, grades, assignments] = await Promise.all([
+    const [classes, students, subjects, timetable, attendance, grades, assignments, enrollments] = await Promise.all([
       changedSince(db('classes').whereIn('id', scope.classIds).select('*')),
       scope.studentIds.length
         ? changedSince(db('students').whereIn('id', scope.studentIds).select('*'))
@@ -81,11 +81,20 @@ export class SyncService {
       changedSince(db('attendance').whereIn('class_id', scope.classIds).select('*')),
       changedSince(db('grades').whereIn('class_id', scope.classIds).select('*')),
       changedSince(db('assignments').whereIn('class_id', scope.classIds).select('*')),
+      // Enrollment linkage (student ↔ class) so the device can filter students
+      // by class OFFLINE — the attendance register needs this. Enrollment rows
+      // rarely change, so we always send the full teacher-scoped set (no
+      // incremental filter) to keep the offline mapping complete.
+      db('enrollments')
+        .whereIn('class_id', scope.classIds)
+        .whereIn('status', ['enrolled', 'active'])
+        .select('id', 'student_id', 'class_id', 'status')
+        .catch(() => []),
     ]);
 
     return {
       serverTime: new Date().toISOString(),
-      classes, students, subjects, timetable, attendance, grades, assignments,
+      classes, students, subjects, timetable, attendance, grades, assignments, enrollments,
     };
   }
 

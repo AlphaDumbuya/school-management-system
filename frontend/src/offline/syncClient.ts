@@ -14,6 +14,7 @@ export interface SyncPullData {
   attendance: any[];
   grades: any[];
   assignments: any[];
+  enrollments: any[];
 }
 
 export interface PushItem {

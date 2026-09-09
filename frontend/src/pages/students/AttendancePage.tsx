@@ -39,6 +39,7 @@ import { useAuth } from '@hooks/useAuth';
 import { studentsService, StudentRecord } from '@services/studentsService';
 import { parentDashboardService } from '@services/parentDashboardService';
 import { SearchBar } from '@components/admin/table/SearchBar';
+import { rosterRepo } from '../../offline/repositories/rosterRepo';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -174,7 +175,24 @@ export const AttendancePage: React.FC = () => {
   // 3. Register: students in class OR all students
   const { data: classStudentsData, isLoading: studentsLoading } = useQuery({
     queryKey: ['reg-students', regClassId],
-    queryFn: () => classesService.getClassStudents(regClassId),
+    queryFn: async () => {
+      // Try the network first; if it fails or returns no students (e.g. the
+      // device is offline), fall back to the cached roster so the register
+      // still shows the class's students offline.
+      try {
+        const res: any = await classesService.getClassStudents(regClassId);
+        const list = res?.data?.students ?? res?.students ?? [];
+        if (list.length > 0 || navigator.onLine) return res;
+      } catch (_) {
+        /* fall through to cache */
+      }
+      const uid = (user as any)?.id;
+      if (uid) {
+        const cached = await rosterRepo.studentsForClass(uid, regClassId).catch(() => []);
+        return { data: { students: cached } };
+      }
+      return { data: { students: [] } };
+    },
     enabled: !!regClassId && activeTab === 'register' && !isAllStudentsMode,
     staleTime: 60_000,
   });
@@ -183,7 +201,21 @@ export const AttendancePage: React.FC = () => {
   // 3b. All enrolled students
   const { data: allStudentsData, isLoading: allStudentsLoading } = useQuery({
     queryKey: ['all-students'],
-    queryFn: () => studentsService.listStudents({ limit: 1000, status: 'active' }),
+    queryFn: async () => {
+      try {
+        const res: any = await studentsService.listStudents({ limit: 1000, status: 'active' });
+        const list = res?.data ?? [];
+        if (list.length > 0 || navigator.onLine) return res;
+      } catch (_) {
+        /* fall through to cache */
+      }
+      const uid = (user as any)?.id;
+      if (uid) {
+        const cached = await rosterRepo.list(uid, 'students').catch(() => []);
+        return { data: cached };
+      }
+      return { data: [] };
+    },
     enabled: isAllStudentsMode && activeTab === 'register',
     staleTime: 60_000,
   });
