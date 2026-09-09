@@ -175,24 +175,9 @@ export const AttendancePage: React.FC = () => {
   // 3. Register: students in class OR all students
   const { data: classStudentsData, isLoading: studentsLoading } = useQuery({
     queryKey: ['reg-students', regClassId],
-    queryFn: async () => {
-      // Try the network first; if it fails or returns no students (e.g. the
-      // device is offline), fall back to the cached roster so the register
-      // still shows the class's students offline.
-      try {
-        const res: any = await classesService.getClassStudents(regClassId);
-        const list = res?.data?.students ?? res?.students ?? [];
-        if (list.length > 0 || navigator.onLine) return res;
-      } catch (_) {
-        /* fall through to cache */
-      }
-      const uid = (user as any)?.id;
-      if (uid) {
-        const cached = await rosterRepo.studentsForClass(uid, regClassId).catch(() => []);
-        return { data: { students: cached } };
-      }
-      return { data: { students: [] } };
-    },
+    // classesService.getClassStudents falls back to the offline roster cache
+    // when offline, so the register still lists students without a connection.
+    queryFn: () => classesService.getClassStudents(regClassId),
     enabled: !!regClassId && activeTab === 'register' && !isAllStudentsMode,
     staleTime: 60_000,
   });
