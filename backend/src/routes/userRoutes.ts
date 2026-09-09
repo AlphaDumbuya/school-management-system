@@ -4,15 +4,18 @@ import { authenticate, authorize, attachUserContext, requirePermission } from '@
 import { UserRole } from '../types/auth';
 import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
+import { SubscriptionService } from '@services/subscriptionService';
 import { logger } from '@utils/logger';
 
 const router = Router();
+
+const STAFF_ROLES = ['teacher', 'accountant', 'admissions_officer', 'principal'];
 
 /**
  * POST /api/v1/users
  * Create a new user (principal only)
  */
-router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, first_name, last_name, role, status } = req.body;
     const createdBy = (req as any).user.id;
@@ -20,6 +23,25 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
     // Validate input
     if (!email || !first_name || !last_name || !role) {
       throw new AppError('Missing required fields', 400, 'VALIDATION_ERROR');
+    }
+
+    // Enforce the plan's staff limit when creating a staff-role account (closes
+    // the /users bypass of the staff cap). Blocked when at capacity or the
+    // subscription is expired/suspended.
+    const creatorTenantId = (req as any).user?.tenant_id;
+    if (creatorTenantId && STAFF_ROLES.includes(String(role))) {
+      const sub = await SubscriptionService.getActiveSubscription(creatorTenantId);
+      if (sub.status === 'expired' || sub.status === 'suspended') {
+        throw new AppError(`Your school subscription has ${sub.status}. Renew to add staff.`, 403, 'SUBSCRIPTION_EXPIRED');
+      }
+      const limit = await SubscriptionService.checkLimit(creatorTenantId, 'staff');
+      if (!limit.allowed) {
+        throw new AppError(
+          `You have reached your plan's staff limit (${limit.current}/${limit.max}). Upgrade your plan to add more staff.`,
+          403,
+          'PLAN_LIMIT_REACHED'
+        );
+      }
     }
 
     // Check if user already exists

@@ -64,6 +64,7 @@ import announcementRoutes from '@routes/announcementRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
 import { startEventManagementJobs } from './jobs/eventManagementJobs.js';
 import { startSmsDeliveryJobs } from './jobs/smsDeliveryJobs.js';
+import { startSubscriptionJobs } from './jobs/subscriptionJobs.js';
 
 // Load environment variables
 dotenv.config();
@@ -353,6 +354,12 @@ try {
   startSmsDeliveryJobs();
 } catch (e) {
   logger.warn('Could not start SMS delivery jobs at startup', { error: e });
+}
+
+try {
+  startSubscriptionJobs();
+} catch (e) {
+  logger.warn('Could not start subscription jobs at startup', { error: e });
 }
 
 try {

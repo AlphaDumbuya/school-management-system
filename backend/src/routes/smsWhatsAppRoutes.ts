@@ -1,5 +1,6 @@
 import express, { Router, Request, Response } from 'express';
 import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
+import { SubscriptionService } from '@services/subscriptionService';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
 import smsWhatsAppProviderService from '@services/smsWhatsAppProviderService';
@@ -482,6 +483,18 @@ router.post('/messages/send', authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL
 
     if (!recipient_id || !channel) {
       return res.status(400).json({ success: false, error: 'recipient_id and channel are required' });
+    }
+
+    // WhatsApp is a paid-plan feature; SMS is available on all plans. Gate only
+    // the WhatsApp channel by plan feature (and block if subscription inactive).
+    if (channel === 'whatsapp') {
+      const sub = await SubscriptionService.getActiveSubscription(user.tenant_id);
+      if (sub.status === 'expired' || sub.status === 'suspended') {
+        return res.status(403).json({ success: false, error: `Your subscription has ${sub.status}. Renew to send messages.`, code: 'SUBSCRIPTION_EXPIRED' });
+      }
+      if (sub.features?.whatsapp !== true) {
+        return res.status(403).json({ success: false, error: 'WhatsApp messaging is not included in your plan. Upgrade to enable it.', code: 'PLAN_LIMIT_REACHED' });
+      }
     }
 
     const response = await smsWhatsAppService.sendMessage(
