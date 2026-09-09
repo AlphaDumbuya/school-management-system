@@ -1,5 +1,6 @@
 import { Knex } from 'knex';
 import { logger } from '@utils/logger';
+import { AppError } from '@middleware/errorHandler';
 import { AuditService } from './auditService';
 
 export interface InvoiceData {
@@ -266,11 +267,21 @@ export class InvoiceService {
   /**
    * Send invoice reminder
    */
-  async sendInvoiceReminder(invoiceId: string, userId: string): Promise<any> {
+  async sendInvoiceReminder(invoiceId: string, userId: string, tenantId?: string): Promise<any> {
     try {
       logger.info(`Sending reminder for invoice ${invoiceId}`);
 
       const invoice = await this.getInvoiceById(invoiceId);
+
+      // Tenant isolation: reject sending a reminder for an invoice that doesn't
+      // belong to the caller's school (prevents cross-tenant data/email leakage).
+      if (tenantId) {
+        const owner = await this.db('students').where('id', invoice.student_id).first().catch(() => null);
+        const invoiceTenant = invoice.tenant_id || owner?.tenant_id;
+        if (invoiceTenant && invoiceTenant !== tenantId) {
+          throw new AppError('Invoice not in your school', 403, 'FORBIDDEN');
+        }
+      }
 
       // Resolve the student and the best contact email (guardian first).
       const studentRow = await this.db('students')
