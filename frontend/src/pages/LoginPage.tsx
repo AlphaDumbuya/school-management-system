@@ -116,6 +116,39 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  /** Passwordless: sign in with a passkey directly (no email/password). */
+  const onPasswordlessPasskey = async () => {
+    setPasskeyError(null);
+    setPasskeyBusy(true);
+    try {
+      const optRes = await authService.getPasskeyLoginOptions();
+      if (!optRes.success || !optRes.data) {
+        setPasskeyError(optRes.error || 'Passkey sign-in is unavailable right now.');
+        return;
+      }
+      let assertion;
+      try {
+        assertion = await startAuthentication({ optionsJSON: optRes.data as any });
+      } catch (err: any) {
+        if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') return; // cancelled
+        setPasskeyError('Passkey sign-in was not completed.');
+        return;
+      }
+      const verifyRes = await authService.verifyPasskeyLogin(assertion);
+      const verifiedUser = (verifyRes as any)?.data?.user || (verifyRes as any)?.user;
+      if (verifyRes.success && verifiedUser) {
+        useAuthStore.setState({ user: verifiedUser, isAuthenticated: true, mfaToken: null });
+        navigate(getDashboardPath(verifiedUser.role), { replace: true });
+      } else {
+        setPasskeyError(verifyRes.error || 'No passkey found for this device. Sign in with your password.');
+      }
+    } catch {
+      setPasskeyError('Passkey sign-in failed. Please use your password.');
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
   const displayError =
     typeof error === 'string' ? error : error ? 'Login failed. Please try again.' : null;
 
@@ -274,6 +307,25 @@ export const LoginPage: React.FC = () => {
                   {!isLoading && <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />}
                 </button>
               </form>
+
+              {/* Passwordless passkey sign-in (fallback: password above / 2FA after) */}
+              {supportsPasskeys && (
+                <div className="mt-4">
+                  <div className="flex items-center gap-3 text-blue-100/40 text-[11px] mb-3">
+                    <span className="flex-1 h-px bg-white/15" /> or <span className="flex-1 h-px bg-white/15" />
+                  </div>
+                  {passkeyError && (
+                    <p className="text-[11px] text-red-200 text-center mb-2">{passkeyError}</p>
+                  )}
+                  <button
+                    type="button" onClick={onPasswordlessPasskey} disabled={passkeyBusy || isLoading}
+                    className="w-full flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-sm py-3.5 rounded-xl transition-all disabled:opacity-50 active:scale-[0.98]"
+                  >
+                    {passkeyBusy ? <FaSpinner className="animate-spin w-4 h-4" /> : <Fingerprint size={16} />}
+                    {passkeyBusy ? 'WAITING FOR PASSKEY…' : 'SIGN IN WITH A PASSKEY'}
+                  </button>
+                </div>
+              )}
 
               <div className="mt-6 pt-5 border-t border-white/10 text-center space-y-2">
                 {/* School registration is a public/web action — hide it inside the app. */}

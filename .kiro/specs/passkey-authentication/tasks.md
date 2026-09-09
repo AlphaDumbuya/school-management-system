@@ -100,3 +100,11 @@ and the email+password base credential is retained.
   ]
 }
 ```
+
+- [x] 12. Passwordless passkey login (follow-up)
+  - Usernameless ceremony: getUsernamelessOptions (empty allowCredentials → discoverable) +
+    verifyUsernameless (resolves user FROM the credential; replay/lockout/counter guards).
+    authService.completePasskeyPasswordlessLogin issues the session. Public routes
+    /auth/passkeys/login/{options,verify}. LoginPage: "SIGN IN WITH A PASSKEY" button on the
+    password step; email+password and 2FA remain as fallback if the passkey has issues.
+  - _Requirements: 2 (extends), 7.1_

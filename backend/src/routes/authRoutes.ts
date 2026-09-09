@@ -355,6 +355,46 @@ router.post('/passkeys/authenticate/verify', async (req: Request, res: Response,
   }
 });
 
+/** POST /api/v1/auth/passkeys/login/options  (public; passwordless — no credentials) */
+router.post('/passkeys/login/options', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { default: passkeyService } = await import('@services/passkeyService');
+    const options = await passkeyService.getUsernamelessOptions();
+    res.json({ success: true, data: options });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** POST /api/v1/auth/passkeys/login/verify  (public; passwordless) — issues session */
+router.post('/passkeys/login/verify', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { response } = req.body;
+    if (!response) throw new AppError('Passkey response is required', 400, 'VALIDATION_ERROR');
+    const result = await authService.completePasskeyPasswordlessLogin(response);
+
+    res.cookie('refreshToken', result.refresh_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        accessToken: result.access_token,
+        refreshToken: result.refresh_token,
+        expiresIn: 1800,
+        tokenType: 'Bearer',
+        user: result.user,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /** GET /api/v1/auth/passkeys  (authenticated) — list */
 router.get('/passkeys', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
