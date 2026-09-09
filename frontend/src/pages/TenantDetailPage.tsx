@@ -15,7 +15,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Building2, ArrowLeft, Loader2, Users, GraduationCap, Save, Mail, CreditCard,
   ShieldAlert, Pause, Play, Trash2, Globe, Phone, MapPin, Info, Receipt,
-  UserCog, ScrollText, KeyRound, Unlock, ShieldOff, LogIn, RefreshCw, RotateCcw,
+  UserCog, ScrollText, KeyRound, Unlock, ShieldOff, LogIn, RefreshCw, RotateCcw, Download,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -23,6 +23,7 @@ import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
+import { API_CONFIG } from '@config/api.config';
 import platformService, { PlatformTenant } from '@services/platformService';
 
 type Tab = 'overview' | 'profile' | 'subscription' | 'billing' | 'users' | 'email' | 'audit' | 'danger';
@@ -84,6 +85,35 @@ export const TenantDetailPage: React.FC = () => {
   // Danger
   const [confirm, setConfirm] = useState<null | 'suspend' | 'activate' | 'delete' | 'restore'>(null);
   const [suspendReason, setSuspendReason] = useState('');
+  const [backupBusy, setBackupBusy] = useState(false);
+
+  const downloadBackup = async () => {
+    if (!tenantId) return;
+    setBackupBusy(true);
+    try {
+      const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+      const res = await fetch(`${API_CONFIG.baseURL}/api/v1/platform/tenants/${tenantId}/backup`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Backup failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const date = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `WiSkul_Backup_${(tenant?.name || 'tenant').replace(/[^a-z0-9]+/gi, '_')}_${date}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast.success('Backup downloaded');
+    } catch (e: any) {
+      showToast.error(e?.message || 'Could not create backup.');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
 
   const load = async () => {
     if (!tenantId) return;
@@ -343,9 +373,15 @@ export const TenantDetailPage: React.FC = () => {
           { label: tenant?.name || 'Detail' },
         ]}
         actions={
-          <Button variant="outline" size="sm" onClick={() => navigate('/platform/tenants')}>
-            <ArrowLeft size={15} className="mr-1.5" /> Back
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={downloadBackup} disabled={backupBusy}>
+              {backupBusy ? <Loader2 size={15} className="mr-1.5 animate-spin" /> : <Download size={15} className="mr-1.5" />}
+              {backupBusy ? 'Preparing…' : 'Backup'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate('/platform/tenants')}>
+              <ArrowLeft size={15} className="mr-1.5" /> Back
+            </Button>
+          </div>
         }
       >
         {loading ? (
