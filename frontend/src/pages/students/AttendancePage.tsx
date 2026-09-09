@@ -193,13 +193,6 @@ export const AttendancePage: React.FC = () => {
   const { data: existingAttData, isLoading: existingLoading } = useQuery({
     queryKey: ['reg-existing', regClassId, regDate, regSession, isAllStudentsMode],
     queryFn: async () => {
-      console.log('📡 Fetching existing attendance:', {
-        isAllStudentsMode,
-        regClassId,
-        regDate,
-        regSession,
-      });
-      
       let result;
       if (isAllStudentsMode) {
         // For all students, we need to fetch attendance records by date and session across all classes
@@ -212,8 +205,6 @@ export const AttendancePage: React.FC = () => {
         // For specific class
         result = await attendanceService.getClassAttendanceSummary(regClassId, regDate, regSession);
       }
-      
-      console.log('📥 Fetched attendance data:', result);
       return result;
     },
     enabled: ((!!regClassId && !isAllStudentsMode) || isAllStudentsMode) && !!regDate && activeTab === 'register',
@@ -243,39 +234,18 @@ export const AttendancePage: React.FC = () => {
     const key = `${regClassId}:${regDate}:${regSession}:${isAllStudentsMode}`;
     const currentStudents = isAllStudentsMode ? allStudents : classStudents;
     const isLoadingStudents = isAllStudentsMode ? allStudentsLoading : studentsLoading;
-    
-    // Debug logging
-    console.log('🔍 Attendance Load Debug:', {
-      key,
-      loadedKey,
-      regClassId,
-      regDate,
-      regSession,
-      isAllStudentsMode,
-      studentsCount: currentStudents.length,
-      existingRecordsCount: existingRecords.length,
-      isLoadingStudents,
-      existingLoading,
-      existingRecords: existingRecords.slice(0, 3), // Show first 3 records
-    });
-    
+
     if (
       key !== loadedKey &&
       !isLoadingStudents &&
       !existingLoading &&
       currentStudents.length > 0
     ) {
-      console.log('✅ Merging attendance data...');
       const merged: typeof markRecords = {};
       currentStudents.forEach((st: any) => {
         const existing = existingRecords.find(
           (r: any) => String(r.student_id) === String(st.id) && r.session_type === regSession
         );
-        
-        if (existing) {
-          console.log(`  ✓ Found existing attendance for student ${st.id}:`, existing);
-        }
-        
         merged[st.id] = {
           status: existing?.status ?? undefined,
           remarks: existing?.remarks ?? '',
@@ -283,12 +253,8 @@ export const AttendancePage: React.FC = () => {
           check_out_time: existing?.check_out_time ?? undefined,
         };
       });
-      console.log('📊 Merged records:', Object.keys(merged).length, 'students');
-      console.log('📋 Sample merged data:', Object.entries(merged).slice(0, 2));
       setMarkRecords(merged);
       setLoadedKey(key);
-    } else {
-      console.log('⏭️  Skipping merge - conditions not met');
     }
   }, [classStudents, allStudents, existingRecords, studentsLoading, allStudentsLoading, existingLoading, regClassId, regDate, regSession, loadedKey, isAllStudentsMode]);
 
@@ -364,7 +330,6 @@ export const AttendancePage: React.FC = () => {
       remarks?: string;
       autoTime?: boolean;
     }) => {
-      console.log('💾 Saving attendance for student:', studentId, 'Status:', status);
       setSavingIds((p) => ({ ...p, [studentId]: true }));
       
       // Auto-set current time based on session and status
@@ -393,15 +358,6 @@ export const AttendancePage: React.FC = () => {
         remarks,
       };
       
-      const payload = {
-        class_id: isAllStudentsMode ? undefined : regClassId,
-        date: regDate,
-        session_type: regSession,
-        records: [record],
-      };
-      
-      console.log('📤 Sending bulk attendance payload:', payload);
-      
       // For all students mode, we need to use general attendance API
       if (isAllStudentsMode) {
         return attendanceService.submitBulkAttendance({
@@ -420,13 +376,11 @@ export const AttendancePage: React.FC = () => {
       }
     },
     onSuccess: (_data, vars) => {
-      console.log('✅ Save successful for student:', vars.studentId);
       queryClient.invalidateQueries({ queryKey: ['att-logs'] });
       queryClient.invalidateQueries({ queryKey: ['reg-existing', regClassId, regDate, regSession, isAllStudentsMode] });
       setSavingIds((p) => { const n = { ...p }; delete n[vars.studentId]; return n; });
     },
-    onError: (error, vars) => {
-      console.error('❌ Save failed for student:', vars.studentId, 'Error:', error);
+    onError: (_error, vars) => {
       showToast.error('Failed to save attendance');
       setSavingIds((p) => { const n = { ...p }; delete n[vars.studentId]; return n; });
     },

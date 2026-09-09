@@ -673,9 +673,42 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
 
-    // Check authorization
+    // Check authorization.
+    //  - Owner (the student) may edit their own record.
+    //  - Managers (principal / super_admin / admissions_officer) may edit any
+    //    student in the tenant.
+    //  - Teachers may edit ONLY students enrolled in a class they are assigned to
+    //    (class-scoped, mirroring the directory list scoping).
     const isOwner = student.user_id === currentUser?.userId;
-    const isAuthorized = ['principal', 'teacher'].includes(currentUser.role);
+    const MANAGER_ROLES = ['principal', 'super_admin', 'admissions_officer'];
+    const isManager = MANAGER_ROLES.includes(currentUser.role);
+
+    let isScopedTeacher = false;
+    if (!isManager && currentUser.role === 'teacher') {
+      // Resolve the teacher record for this user (classes/assignments reference
+      // teachers.id, not users.id).
+      const teacher = await db('teachers').where('user_id', currentUser.userId).first().catch(() => null);
+      if (teacher?.id) {
+        const assigned = await db('enrollments')
+          .join('classes', 'enrollments.class_id', 'classes.id')
+          .where('enrollments.student_id', student.id)
+          .whereIn('enrollments.status', ['enrolled', 'active'])
+          .andWhere(function (this: any) {
+            this.where('classes.class_teacher_id', teacher.id)
+              .orWhereExists(function (this: any) {
+                this.select(db.raw('1'))
+                  .from('teacher_assignments')
+                  .whereRaw('teacher_assignments.class_id = classes.id')
+                  .andWhere('teacher_assignments.teacher_id', teacher.id);
+              });
+          })
+          .first()
+          .catch(() => null);
+        isScopedTeacher = !!assigned;
+      }
+    }
+
+    const isAuthorized = isManager || isScopedTeacher;
 
     if (!isOwner && !isAuthorized) {
       throw new AppError('Insufficient permissions to update this student', 403, 'AUTHORIZATION_ERROR');

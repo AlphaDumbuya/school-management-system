@@ -228,6 +228,13 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = (req as any).user?.tenant_id;
+      const role = (req as any).user?.role;
+
+      // Require tenant context (except platform super admins) so stats can never
+      // span tenants — matching every other id-card route.
+      if (!tenantId && role !== 'super_admin') {
+        throw new AppError('Tenant context required', 400, 'TENANT_REQUIRED');
+      }
 
       const baseQuery = db('id_cards');
       const scoped = tenantId ? baseQuery.where('tenant_id', tenantId) : baseQuery;
