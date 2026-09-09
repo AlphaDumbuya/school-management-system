@@ -45,7 +45,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
     confirm a real send succeeds
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [~] 2. Fix the update badge not dismissing on first toggle
+- [x] 2. Fix the update badge not dismissing on first toggle
   - Locate the PWA update hook/component (`needRefresh`, `updateServiceWorker`,
     `registerSW`)
   - On "apply update", trigger SKIP_WAITING/`updateServiceWorker(true)` AND clear
