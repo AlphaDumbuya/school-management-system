@@ -14,6 +14,7 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize, attachUserContext } from '../middleware/authMiddleware.js';
+import { requirePlanFeature } from '../middleware/subscriptionGuard.js';
 import { UserRole } from '../types/auth.js';
 import { logger } from '../utils/logger.js';
 import db from '../utils/database.js';
@@ -316,6 +317,7 @@ router.get(
 router.post(
   '/',
   authorize(UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.SUPER_ADMIN),
+  requirePlanFeature('events'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { title, event_type, start_date, end_date } = req.body;

@@ -180,6 +180,35 @@ export class SubscriptionService {
       }
 
       const limits = PLAN_LIMITS[newPlanType];
+
+      // Guard downgrades: refuse to move to a plan whose limits are below the
+      // tenant's CURRENT usage, so a school can't strand itself over-limit.
+      const [studentCountRow] = await db('students')
+        .join('users', 'students.user_id', 'users.id')
+        .where('users.tenant_id', tenantId)
+        .count('* as count');
+      const [staffCountRow] = await db('users')
+        .where({ tenant_id: tenantId })
+        .whereIn('role', ['teacher', 'accountant', 'admissions_officer', 'principal'])
+        .count('* as count');
+      const currentStudents = parseInt((studentCountRow as any)?.count as string, 10) || 0;
+      const currentStaff = parseInt((staffCountRow as any)?.count as string, 10) || 0;
+      const maxStaff = newPlanType === 'freetong' ? 15 : newPlanType === 'combra' ? 40 : 999999;
+
+      if (currentStudents > limits.max_students) {
+        throw new AppError(
+          `This plan allows up to ${limits.max_students} students but your school has ${currentStudents}. Reduce students or choose a higher plan.`,
+          400,
+          'DOWNGRADE_OVER_LIMIT'
+        );
+      }
+      if (currentStaff > maxStaff) {
+        throw new AppError(
+          `This plan allows up to ${maxStaff} staff but your school has ${currentStaff}. Reduce staff or choose a higher plan.`,
+          400,
+          'DOWNGRADE_OVER_LIMIT'
+        );
+      }
       const price = billingCycle === 'monthly' ? limits.monthly_price : limits.monthly_price * 10;
       
       const startDate = new Date();

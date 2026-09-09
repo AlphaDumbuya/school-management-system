@@ -4,6 +4,7 @@
  */
 
 import { db } from '../utils/database';
+import { AppError } from '../middleware/errorHandler';
 import {
   AdmissionApplication,
   ApplicationStatus,
@@ -318,6 +319,26 @@ export async function updateApplicationStatus(
             .first();
 
           if (!existing) {
+            // Enforce the plan's student limit so admission approval can't bypass
+            // max_students. Blocks when at capacity or the subscription is inactive.
+            const { SubscriptionService } = await import('./subscriptionService');
+            const sub = await SubscriptionService.getActiveSubscription(appTenantId);
+            if (sub.status === 'expired' || sub.status === 'suspended') {
+              throw new AppError(
+                `Your school subscription has ${sub.status}. Renew your plan to enroll students.`,
+                403,
+                'SUBSCRIPTION_EXPIRED'
+              );
+            }
+            const limit = await SubscriptionService.checkLimit(appTenantId, 'students');
+            if (!limit.allowed) {
+              throw new AppError(
+                `You have reached your plan's student limit (${limit.current}/${limit.max}). Upgrade your plan to enroll more students.`,
+                403,
+                'PLAN_LIMIT_REACHED'
+              );
+            }
+
             const { generateNextId } = await import('../utils/idGenerator');
             const studentId = await generateNextId(db, appTenantId, 'student');
             const dob = app.child_dob || app.date_of_birth || null;

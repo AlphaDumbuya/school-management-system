@@ -188,6 +188,16 @@ axiosInstance.interceptors.response.use(
         if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
           window.location.assign('/login?suspended=1');
         }
+      } else if (code === 'SUBSCRIPTION_EXPIRED' || code === 'PLAN_LIMIT_REACHED') {
+        // Broadcast so a single global listener can toast + prompt an upgrade,
+        // instead of every call site handling plan limits individually.
+        const msg = (error.response?.data as any)?.error?.message
+          || (error.response?.data as any)?.message
+          || (error.response?.data as any)?.error
+          || 'Your plan limit was reached. Upgrade to continue.';
+        try {
+          window.dispatchEvent(new CustomEvent('wiskul:plan-limit', { detail: { code, message: msg } }));
+        } catch { /* SSR / non-DOM */ }
       }
       console.warn('403 Forbidden:', error.response?.config?.url);
     }
