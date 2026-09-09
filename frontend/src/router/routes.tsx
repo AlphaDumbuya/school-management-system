@@ -452,7 +452,7 @@ const router = createBrowserRouter(
         { path: 'finance', element: <P requiredRoles={['principal', 'accountant']}><Navigate to="/finance/fees" replace /></P> },
         { path: 'reports', element: <P requiredRoles={['principal', 'accountant']}><Navigate to="/reports/academic" replace /></P> },
         { path: 'users', element: <P requiredRoles={['principal']}><CS /></P> },
-        { path: 'import-export', element: <P requiredRoles={['principal']}><CS /></P> },
+        { path: 'import-export', element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><Navigate to="/students/directory" replace /></P> },
 
         // ── Error pages ─────────────────────────────────────────────
         { path: 'unauthorized', element: <Unauthorized /> },

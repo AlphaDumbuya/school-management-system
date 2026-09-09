@@ -35,6 +35,16 @@ body {
   }
 }
 
+/*
+ * Safe-area bottom padding utility. `fixed`-positioned elements (e.g. the
+ * sidebar) ignore the body's safe-area padding, so their bottom content can be
+ * hidden under the phone's gesture/nav bar. Apply `.pb-safe` to keep the last
+ * item clear of the system UI. Includes a small base gap even on web.
+ */
+.pb-safe {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }

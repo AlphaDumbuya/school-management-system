@@ -399,7 +399,7 @@ export const AdminDashboard: React.FC = () => {
               { label: 'Publish Results',   icon: <ClipboardCheck size={20} />, route: '/academic/results',              tint: 'bg-amber-50 hover:bg-amber-100 border-amber-100 text-amber-700' },
               { label: 'Generate Report',   icon: <BarChart2 size={20} />,      route: '/reports/academic',              tint: 'bg-indigo-50 hover:bg-indigo-100 border-indigo-100 text-indigo-700' },
               { label: 'Send Announcement', icon: <Megaphone size={20} />,      route: '/communication/announcements',   tint: 'bg-rose-50 hover:bg-rose-100 border-rose-100 text-rose-700' },
-              { label: 'Import / Export',   icon: <ArrowLeftRight size={20} />, route: '/import-export',                 tint: 'bg-teal-50 hover:bg-teal-100 border-teal-100 text-teal-700' },
+              { label: 'Import / Export',   icon: <ArrowLeftRight size={20} />, route: '/students/directory',            tint: 'bg-teal-50 hover:bg-teal-100 border-teal-100 text-teal-700' },
             ].map(({ label, icon, route, tint }) => (
               <button
                 key={route}
