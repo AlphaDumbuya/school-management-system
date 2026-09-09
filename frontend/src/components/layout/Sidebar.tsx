@@ -28,6 +28,7 @@ import {
   FaBookOpen,
   FaChevronUp,
   FaChevronDown,
+  FaLifeRing,
 } from 'react-icons/fa';
 import { FaRightFromBracket, FaAnglesLeft, FaAnglesRight } from 'react-icons/fa6';
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
@@ -280,6 +281,15 @@ const navItems: NavItem[] = [
     version: 'v1',
   },
   {
+    label: 'Support',
+    icon: <FaLifeRing className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/support',
+    roles: ['principal', 'teacher', 'accountant', 'admissions_officer'],
+    module: 'Communication',
+    group: 'Communication',
+    version: 'v1',
+  },
+  {
     label: 'Messages',
     icon: <FaComments className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/communication/messages',
@@ -444,6 +454,15 @@ const navItems: NavItem[] = [
     label: 'Communications',
     icon: <FaComments className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/platform/communications',
+    roles: ['super_admin'],
+    module: 'Platform Management',
+    group: 'Platform',
+    version: 'v1',
+  },
+  {
+    label: 'Support Triage',
+    icon: <FaLifeRing className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/platform/support',
     roles: ['super_admin'],
     module: 'Platform Management',
     group: 'Platform',

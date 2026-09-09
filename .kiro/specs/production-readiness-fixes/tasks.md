@@ -104,7 +104,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
     export + restore runbook
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 8. Build the support ticket module (backend)
+- [x] 8. Build the support ticket module (backend)
   - Migration for `support_tickets` and `support_ticket_messages`
   - `supportTicketService` + routes: tenant users create/list/view/reply their
     own tenant's tickets; super-admin/support lists all with filters, assigns,
@@ -113,7 +113,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
     numbers
   - _Requirements: 8.1, 8.2, 8.3, 8.4_
 
-- [~] 8.1 Build the support ticket UI
+- [x] 8.1 Build the support ticket UI
   - Tenant-facing `SupportPage` (create + list + thread) reachable from the app
   - Super-admin triage panel (list across tenants, filters, reply, status/assign)
   - _Requirements: 8.2, 8.3, 8.5_
