@@ -49,11 +49,17 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     setBusy(format);
     setOpen(false);
     try {
-      const qs = new URLSearchParams({ ...params, format } as Record<string, string>);
-      // Drop empty params
-      Array.from(qs.entries()).forEach(([k, v]) => {
-        if (!v) qs.delete(k);
+      // Build the query from only the params that actually have a value —
+      // spreading undefined into URLSearchParams would serialize the literal
+      // string "undefined" (e.g. ?date=undefined), which the backend then tries
+      // to use as a filter.
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && String(v).trim() !== '' && String(v) !== 'undefined') {
+          qs.set(k, String(v));
+        }
       });
+      qs.set('format', format);
       const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
       const res = await fetch(`${API_CONFIG.baseURL}${endpoint}?${qs.toString()}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
