@@ -306,6 +306,8 @@ export const AdmissionsPage: React.FC = () => {
         title="Admissions"
         subtitle="Manage student admission applications"
         breadcrumbs={[{ label: 'Admissions' }]}
+        onRefresh={() => refetch()}
+        isRefreshing={isLoading}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
             {/* View Mode Toggle */}
