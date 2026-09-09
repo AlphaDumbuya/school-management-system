@@ -15,6 +15,8 @@ const requireStaff = (req: Request, res: Response, next: NextFunction) => {
 import { InvoiceService } from '@services/invoiceService';
 import { db } from '@utils/database';
 import { logger } from '@utils/logger';
+import exportService from '@services/exportService';
+import { sendExport } from '@utils/exportResponse';
 import { AuditService } from '@services/auditService';
 
 const router: Router = express.Router();
@@ -1214,6 +1216,61 @@ router.get('/finance/payments', authenticate, requireStaff, async (req: Request,
     res.json({ success: true, data: rows });
   } catch (error) {
     logger.error(`finance/payments error: ${error}`);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// GET /api/v1/finance/export?format=csv|excel|pdf — download tenant payments.
+// Staff-only + tenant-scoped (via the students join). Currency shown as "Le".
+router.get('/finance/export', authenticate, requireStaff, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const rows = await db('payments')
+      .join('students', 'payments.student_id', 'students.id')
+      .leftJoin('users', 'students.user_id', 'users.id')
+      .leftJoin('enrollments', function () {
+        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
+      })
+      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+      .where('students.tenant_id', tenantId)
+      .select(
+        db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
+        'students.student_id as admission_no',
+        'classes.name as class_name',
+        'payments.amount',
+        'payments.payment_method',
+        'payments.status',
+        'payments.reference',
+        'payments.payment_date',
+      )
+      .orderBy('payments.payment_date', 'desc')
+      .limit(10000);
+
+    const formatted = rows.map((r: any) => ({
+      ...r,
+      amount: `Le ${Number(r.amount || 0).toLocaleString()}`,
+      payment_date: r.payment_date ? new Date(r.payment_date).toLocaleDateString() : '',
+    }));
+
+    await sendExport(res, {
+      format: req.query.format as string,
+      rows: formatted,
+      columns: {
+        Student: 'student_name',
+        'Admission No': 'admission_no',
+        Class: 'class_name',
+        Amount: 'amount',
+        Method: 'payment_method',
+        Status: 'status',
+        Reference: 'reference',
+        Date: 'payment_date',
+      },
+      filename: 'payments_export',
+      title: 'Payments Export',
+      sheetName: 'Payments',
+    });
+  } catch (error) {
+    logger.error(`finance/export error: ${error}`);
     res.status(500).json({ success: false, error: (error as Error).message });
   }
 });

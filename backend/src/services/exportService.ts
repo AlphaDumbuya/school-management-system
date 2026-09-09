@@ -190,6 +190,97 @@ class ExportService {
     }
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Generic, reusable ROW exports (tenant-scoped endpoints build on these).
+  //
+  // `columns` maps an output header → the key on each row object. This keeps
+  // exports consistent across finance/students/attendance and reusable by the
+  // backup service.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /** Rows → CSV string using an ordered { header: rowKey } column map. */
+  rowsToCsv(rows: Record<string, any>[], columns: Record<string, string>): string {
+    const headers = Object.keys(columns);
+    const keys = Object.values(columns);
+    const records = (rows || []).map((r) => {
+      const out: Record<string, any> = {};
+      headers.forEach((h, i) => {
+        const v = r[keys[i]];
+        out[h] = v === null || v === undefined ? '' : v;
+      });
+      return out;
+    });
+    return stringify(records, { header: true, columns: headers });
+  }
+
+  /** Rows → XLSX Buffer with a single sheet. */
+  async rowsToExcel(
+    rows: Record<string, any>[],
+    columns: Record<string, string>,
+    sheetName = 'Export'
+  ): Promise<Buffer> {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(sheetName.slice(0, 31) || 'Export');
+    const headers = Object.keys(columns);
+    const keys = Object.values(columns);
+    ws.addRow(headers);
+    (rows || []).forEach((r) => ws.addRow(keys.map((k) => r[k] ?? '')));
+    const buffer = await wb.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  }
+
+  /** Rows → simple tabular PDF Buffer. */
+  async rowsToPdf(
+    rows: Record<string, any>[],
+    columns: Record<string, string>,
+    title = 'Export'
+  ): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      try {
+        const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape' });
+        const buffers: Buffer[] = [];
+        doc.on('data', (c) => buffers.push(c));
+        doc.on('end', () => resolve(Buffer.concat(buffers)));
+        doc.on('error', reject);
+
+        this.generatePDFHeader(doc, title);
+
+        const headers = Object.keys(columns);
+        const keys = Object.values(columns);
+        const startX = 40;
+        const usableWidth = 762; // A4 landscape width minus margins
+        const colWidth = usableWidth / headers.length;
+
+        const writeRow = (values: any[], bold = false) => {
+          doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8);
+          const y = doc.y;
+          values.forEach((v, i) => {
+            doc.text(String(v ?? ''), startX + i * colWidth, y, {
+              width: colWidth - 4,
+              ellipsis: true,
+            });
+          });
+          doc.moveDown(0.6);
+        };
+
+        writeRow(headers, true);
+        doc.moveTo(startX, doc.y).lineTo(startX + usableWidth, doc.y).stroke();
+        doc.moveDown(0.3);
+
+        (rows || []).forEach((r) => {
+          if (doc.y > 520) doc.addPage({ margin: 40, size: 'A4', layout: 'landscape' });
+          writeRow(keys.map((k) => r[k]));
+        });
+
+        this.generatePDFFooter(doc);
+        doc.end();
+      } catch (error) {
+        logger.error(`Row PDF export error: ${error}`);
+        reject(error);
+      }
+    });
+  }
+
   /**
    * Generate PDF header
    */

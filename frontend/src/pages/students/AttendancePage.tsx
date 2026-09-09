@@ -40,6 +40,7 @@ import { studentsService, StudentRecord } from '@services/studentsService';
 import { parentDashboardService } from '@services/parentDashboardService';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { rosterRepo } from '../../offline/repositories/rosterRepo';
+import { ExportButton } from '@components/admin/common/ExportButton';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -547,6 +548,15 @@ export const AttendancePage: React.FC = () => {
         title="Student Attendance"
         subtitle="Track, record and analyse daily class attendance"
         breadcrumbs={[{ label: 'Students' }, { label: 'Attendance' }]}
+        onRefresh={() => refetchLogs()}
+        isRefreshing={logsLoading}
+        actions={
+          <ExportButton
+            endpoint="/api/v1/attendance/export"
+            filename="attendance"
+            params={{ date: dateFilter || undefined, classId: classFilter || undefined }}
+          />
+        }
       >
         <div className="space-y-6">
 
