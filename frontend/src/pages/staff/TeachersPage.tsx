@@ -423,6 +423,8 @@ export const TeachersPage: React.FC = () => {
         title="Teachers Directory"
         subtitle="Manage school teachers, class assignments, and qualifications"
         breadcrumbs={[{ label: 'Teachers' }]}
+        onRefresh={() => refetch()}
+        isRefreshing={isLoading}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
             {/* View Mode Toggle */}

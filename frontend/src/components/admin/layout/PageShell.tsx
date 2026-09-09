@@ -3,6 +3,7 @@ import { Breadcrumb } from './Breadcrumb';
 import { PageHeader } from './PageHeader';
 // SkeletonChart will be created as part of task 3.1 (feedback/Skeleton.tsx)
 import { SkeletonChart } from '../feedback/Skeleton';
+import { RefreshButton } from '../common/RefreshButton';
 
 export type { BreadcrumbItem } from './Breadcrumb';
 export type { BreadcrumbProps } from './Breadcrumb';
@@ -24,6 +25,10 @@ export interface PageShellProps {
   isLoading?: boolean;
   backHref?: string;
   tabs?: TabItem[];
+  /** When provided, a Refresh control is shown in the header actions area. */
+  onRefresh?: () => void | Promise<unknown>;
+  /** Drive the refresh spinner from the parent (optional). */
+  isRefreshing?: boolean;
   children: React.ReactNode;
 }
 
@@ -46,8 +51,20 @@ export const PageShell: React.FC<PageShellProps> = ({
   isLoading = false,
   backHref,
   tabs,
+  onRefresh,
+  isRefreshing,
   children,
 }) => {
+  // Compose a Refresh control (when requested) with the page's own actions so
+  // every page that opts in gets a consistent reload button.
+  const headerActions = onRefresh ? (
+    <div className="flex items-center gap-2">
+      <RefreshButton onRefresh={onRefresh} isRefreshing={isRefreshing} />
+      {actions}
+    </div>
+  ) : (
+    actions
+  );
   return (
     // No horizontal padding on mobile: MainLayout's <main> already provides p-3.
     // Only re-introduce inner gutters at larger breakpoints, keeping the page
@@ -62,7 +79,7 @@ export const PageShell: React.FC<PageShellProps> = ({
       <PageHeader
         title={title}
         subtitle={subtitle}
-        actions={actions}
+        actions={headerActions}
         backHref={backHref}
       />
 

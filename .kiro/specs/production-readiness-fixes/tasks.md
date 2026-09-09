@@ -53,7 +53,7 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
   - Verify the badge does not reappear until a genuinely newer version exists
   - _Requirements: 7.1, 7.2, 7.3_
 
-- [~] 3. Add consistent refresh across data pages
+- [x] 3. Add consistent refresh across data pages
   - Create a reusable `RefreshButton` that invalidates/refetches page queries and
     shows a spinning state
   - Add it to the shared `PageShell` header actions so pages inherit it

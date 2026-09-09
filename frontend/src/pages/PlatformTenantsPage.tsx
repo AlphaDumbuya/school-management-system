@@ -312,6 +312,8 @@ export const PlatformTenantsPage: React.FC = () => {
         title="Tenant Management"
         subtitle="Configure, audit, and onboarding tenants and SaaS partner schools."
         breadcrumbs={[{ label: 'Platform Dashboard', path: '/platform/dashboard' }, { label: 'Tenants' }]}
+        onRefresh={fetchData}
+        isRefreshing={loading}
         actions={
           <Button onClick={() => setIsRegisterOpen(true)} className="flex items-center gap-1.5 bg-[#00d4aa] text-[#1a1a2e] hover:bg-[#00e6b8] font-bold">
             <Plus size={16} />
