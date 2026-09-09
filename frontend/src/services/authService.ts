@@ -322,6 +322,26 @@ export const authService = {
     return apiClient.post('/api/v1/auth/passkeys/authenticate/options', { mfa_token: mfaToken });
   },
 
+  /** Passwordless: options for signing in with a passkey (no email/password). */
+  getPasskeyLoginOptions: async (): Promise<ApiResponse<any>> => {
+    return apiClient.post('/api/v1/auth/passkeys/login/options');
+  },
+
+  /** Passwordless: verify the assertion and start a session (persists tokens). */
+  verifyPasskeyLogin: async (response: unknown): Promise<ApiResponse<any>> => {
+    const res = await apiClient.post('/api/v1/auth/passkeys/login/verify', { response });
+    const resAny = res as any;
+    const dataAny = (res as any)?.data;
+    const accessToken =
+      resAny?.accessToken || dataAny?.accessToken || dataAny?.tokens?.accessToken || dataAny?.token;
+    const refreshToken = resAny?.refreshToken || dataAny?.refreshToken || dataAny?.tokens?.refreshToken;
+    const user = resAny?.user || dataAny?.user;
+    if (accessToken) localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+    if (refreshToken) localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+    if (user) localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+    return res;
+  },
+
   /**
    * Complete a passkey login by verifying the assertion. Persists tokens exactly
    * like verifyTwoFactorLogin so the axios interceptor sends Authorization next.

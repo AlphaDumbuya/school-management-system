@@ -33,6 +33,11 @@ export interface PlatformStatistics {
   totalStudents: number;
   totalStaff?: number;
   newTenantsThisMonth?: number;
+  // Feature adoption (recent features)
+  verifiedSchools?: number;
+  unverifiedSchools?: number;
+  passkeyUsers?: number;
+  twoFactorUsers?: number;
 }
 
 export const platformService = {

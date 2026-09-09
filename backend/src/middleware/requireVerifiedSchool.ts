@@ -18,8 +18,13 @@ export const requireVerifiedSchool = async (req: Request, res: Response, next: N
     const userId = (req as any).auth?.userId;
     if (!userId) throw new AppError('Authentication required', 401, 'NOT_AUTHENTICATED');
 
-    const user = await db('users').select('tenant_id').where({ id: userId }).first();
-    if (!user?.tenant_id) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+    const user = await db('users').select('tenant_id', 'role').where({ id: userId }).first();
+    if (!user) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+
+    // Platform super admins are not tenant owners — never gate them.
+    if (user.role === 'super_admin') return next();
+
+    if (!user.tenant_id) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
 
     // The tenant owner (principal) carries the verification_status for the tenant.
     const owner = await db('users')

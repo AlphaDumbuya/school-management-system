@@ -382,6 +382,22 @@ export class AuthService {
   }
 
   /**
+   * Passwordless login: verify a passkey assertion that resolves the user from
+   * the credential itself (no email/password), then issue the session. Password
+   * + 2FA remain available as a fallback if the passkey has issues.
+   */
+  async completePasskeyPasswordlessLogin(
+    response: any
+  ): Promise<{ access_token: string; refresh_token: string; user: UserResponse }> {
+    const { default: passkeyService } = await import('./passkeyService');
+    const { userId } = await passkeyService.verifyUsernameless(response);
+    const user = await this.db('users').where({ id: userId }).first();
+    if (!user) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+    logger.info(`Passwordless passkey login for ${user.email}`);
+    return await this.issueSessionForUser(user);
+  }
+
+  /**
    * Refresh access token
    */
   async refreshToken(refreshToken: string): Promise<{ access_token: string }> {

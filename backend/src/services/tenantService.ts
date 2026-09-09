@@ -451,14 +451,55 @@ export class TenantService {
         .count('* as count')
         .first();
 
+      // ── New-feature adoption (real counts; guarded so missing tables/columns
+      // never break the dashboard) ──
+      const safeCount = async (fn: () => Promise<any>): Promise<number> => {
+        try {
+          const row = await fn();
+          return parseInt(row?.count as string, 10) || 0;
+        } catch {
+          return 0;
+        }
+      };
+
+      const activeTenantIds = db('tenants').select('id').whereNot({ status: 'expired' });
+
+      const [verifiedSchools, passkeyUsers, twoFactorUsers] = await Promise.all([
+        // Verified schools = tenant owners (principals) with verification_status 'verified'.
+        safeCount(() =>
+          db('users')
+            .where({ role: 'principal', verification_status: 'verified' })
+            .whereIn('tenant_id', activeTenantIds)
+            .countDistinct('tenant_id as count')
+            .first()
+        ),
+        // Distinct users with at least one registered passkey.
+        safeCount(() => db('user_passkeys').countDistinct('user_id as count').first()),
+        // Users with authenticator-app 2FA enabled.
+        safeCount(() =>
+          db('users')
+            .where({ two_factor_enabled: true })
+            .whereIn('tenant_id', activeTenantIds)
+            .count('* as count')
+            .first()
+        ),
+      ]);
+
+      const totalTenantsNum = parseInt(totalTenants?.count as string, 10) || 0;
+
       return {
-        totalTenants: parseInt(totalTenants?.count as string, 10) || 0,
+        totalTenants: totalTenantsNum,
         activeTenants: parseInt(activeTenants?.count as string, 10) || 0,
         suspendedTenants: parseInt(suspendedTenants?.count as string, 10) || 0,
         trialTenants: parseInt(trialTenants?.count as string, 10) || 0,
         totalUsers: parseInt(totalUsers?.count as string, 10) || 0,
         totalStudents: parseInt(totalStudents?.count as string, 10) || 0,
         newTenantsThisMonth: parseInt(newTenantsThisMonth?.count as string, 10) || 0,
+        // Feature adoption
+        verifiedSchools,
+        unverifiedSchools: Math.max(0, totalTenantsNum - verifiedSchools),
+        passkeyUsers,
+        twoFactorUsers,
       };
     } catch (error) {
       logger.error('Error fetching platform statistics:', error);

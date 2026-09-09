@@ -7,6 +7,7 @@ import { SubscriptionService } from '../services/subscriptionService';
 import { AppError } from '../middleware/errorHandler';
 import { db } from '../utils/database';
 import { encryptSecret } from '../utils/encryption';
+import { requireVerifiedSchool } from '../middleware/requireVerifiedSchool';
 
 const router = Router();
 
@@ -250,7 +251,7 @@ router.get('/subscription/active', authenticate, attachUserContext, async (req: 
  * POST /api/v1/school-config/subscription/change-plan
  * Upgrade or change active subscription plan
  */
-router.post('/subscription/change-plan', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/subscription/change-plan', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, requireVerifiedSchool, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = getTenantId(req);
     const userId = req.auth!.userId;

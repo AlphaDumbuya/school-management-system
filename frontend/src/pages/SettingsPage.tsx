@@ -404,6 +404,12 @@ export const SettingsPage: React.FC = () => {
         showToast(`Successfully subscribed to ${planType.toUpperCase()}!`);
         fetchInitialData();
       } else {
+        // Verification gate: guide the owner to verify instead of a raw error.
+        if ((res as any).statusCode === 403 || /verification/i.test(res.error || '')) {
+          showToast('Verify your school to change your billing plan.', 'error');
+          window.location.assign('/verify-school');
+          return;
+        }
         throw new Error(res.error || 'Upgrade failed');
       }
     } catch (err: any) {

@@ -70,7 +70,7 @@ class PasskeyService {
   // ── Challenge helpers ──────────────────────────────────────────────────────
 
   private async storeChallenge(
-    type: 'registration' | 'authentication',
+    type: 'registration' | 'authentication' | 'usernameless',
     challenge: string,
     userId: string | null,
     tenantId: string | null
@@ -87,7 +87,7 @@ class PasskeyService {
 
   /** Consume the most-recent matching challenge; returns it or throws if invalid/expired. */
   private async consumeChallenge(
-    type: 'registration' | 'authentication',
+    type: 'registration' | 'authentication' | 'usernameless',
     userId: string | null
   ): Promise<{ id: string; challenge: string; tenant_id: string | null }> {
     const row = await db('webauthn_challenges')
@@ -312,6 +312,96 @@ class PasskeyService {
     });
 
     return { userId };
+  }
+
+  // ── Usernameless (passwordless) login ───────────────────────────────────────
+
+  /**
+   * Options for a passwordless sign-in: no user known yet. We return an empty
+   * allowCredentials so the platform lets the user pick any discoverable passkey
+   * bound to this RP. The user is resolved from the chosen credential on verify.
+   */
+  async getUsernamelessOptions(): Promise<PublicKeyCredentialRequestOptionsJSON> {
+    const options = await generateAuthenticationOptions({
+      rpID: RP_ID,
+      userVerification: 'preferred',
+      allowCredentials: [], // discoverable credentials — user chooses
+    });
+    await this.storeChallenge('usernameless', options.challenge, null, null);
+    return options;
+  }
+
+  /**
+   * Verify a passwordless assertion. Resolves the user FROM the presented
+   * credential (no password, no mfa_token), then issues the session via the
+   * caller. Full replay/lockout/counter guards apply.
+   */
+  async verifyUsernameless(response: AuthenticationResponseJSON): Promise<{ userId: string }> {
+    // Resolve the credential (and therefore the user + tenant) from its ID.
+    const cred = await db('user_passkeys').where({ credential_id: response.id }).first();
+    if (!cred) {
+      throw new AppError('Passkey not recognized.', 401, 'PASSKEY_NOT_FOUND');
+    }
+
+    if (cred.locked_until && new Date(cred.locked_until) > new Date()) {
+      throw new AppError('Too many attempts. Please try again shortly.', 429, 'PASSKEY_LOCKED');
+    }
+
+    const { challenge } = await this.consumeChallenge('usernameless', null);
+
+    let verification: VerifiedAuthenticationResponse;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response,
+        expectedChallenge: challenge,
+        expectedOrigin: EXPECTED_ORIGINS,
+        expectedRPID: RP_ID,
+        requireUserVerification: false,
+        credential: {
+          id: cred.credential_id,
+          publicKey: fromB64Url(cred.public_key),
+          counter: Number(cred.counter),
+          transports: this.parseTransports(cred.transports),
+        },
+      });
+    } catch (err) {
+      await this.registerFailure(cred);
+      logger.warn(`[passkey] usernameless verify failed: ${(err as any)?.message || err}`);
+      throw new AppError('Passkey sign-in failed.', 401, 'WEBAUTHN_VERIFY_FAILED');
+    }
+
+    if (!verification.verified) {
+      await this.registerFailure(cred);
+      throw new AppError('Passkey sign-in failed.', 401, 'WEBAUTHN_VERIFY_FAILED');
+    }
+
+    const newCounter = verification.authenticationInfo.newCounter;
+    if (Number(cred.counter) > 0 && newCounter <= Number(cred.counter)) {
+      await this.registerFailure(cred);
+      throw new AppError('Passkey sign-in failed (replay detected).', 401, 'WEBAUTHN_REPLAY');
+    }
+
+    // Confirm the owning user still exists and their account is usable.
+    const user = await db('users').where({ id: cred.user_id, tenant_id: cred.tenant_id }).first();
+    if (!user) throw new AppError('Account not found.', 401, 'PASSKEY_NOT_FOUND');
+
+    await db('user_passkeys').where({ id: cred.id }).update({
+      counter: newCounter,
+      failed_attempts: 0,
+      locked_until: null,
+      last_used_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    await PlatformAuditService.record({
+      tenantId: cred.tenant_id,
+      actorUserId: cred.user_id,
+      action: 'passkey_login',
+      entityType: 'passkey',
+      entityId: cred.id,
+    });
+
+    return { userId: cred.user_id };
   }
 
   /** Increment failed attempts; lock the credential when the threshold is hit. */
