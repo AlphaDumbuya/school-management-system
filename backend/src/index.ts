@@ -9,6 +9,7 @@ import { errorHandler } from '@middleware/errorHandler';
 import { requestLogger } from '@middleware/requestLogger';
 import { db } from '@utils/database';
 import authRoutes from '@routes/authRoutes';
+import verificationRoutes from '@routes/verificationRoutes';
 import userRoutes from '@routes/userRoutes';
 import rbacRoutes from '@routes/rbacRoutes';
 import studentRoutes from '@routes/studentRoutes';
@@ -328,6 +329,9 @@ app.use('/api/v1/announcements', announcementRoutes);
 
 // Offline sync Routes (teacher offline-first: pull/push)
 app.use('/api/v1/sync', syncRoutes);
+
+// School verification Routes (account-owner instant verification)
+app.use('/api/v1/verification', verificationRoutes);
 
 // Timetable Routes (Simplified schedule management)
 app.use('/api/v1/timetable', timetableRoutes);
