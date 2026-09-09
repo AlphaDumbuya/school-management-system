@@ -83,14 +83,14 @@ and is reused by 7 (backups). Task 6 enables 6.1; Task 8 enables 8.1.
   - Wire it into finance, students, and attendance pages
   - _Requirements: 4.1, 4.3_
 
-- [ ] 6. Implement student data import
+- [x] 6. Implement student data import
   - Add `POST /api/v1/import/students` (multipart CSV/XLSX) that validates rows,
     enforces the plan student limit, inserts within a transaction scoped to
     `req.user.tenant_id`, and returns `{ imported, skipped, errors }`
   - Add `GET /api/v1/import/students/template` returning a CSV template
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [~] 6.1 Add the import UI
+- [x] 6.1 Add the import UI
   - Create an `ImportModal` (upload, preview, run, summary of imported/skipped/
     failed) and wire it into the student directory/profiles page
   - _Requirements: 2.1, 2.3, 2.4_
