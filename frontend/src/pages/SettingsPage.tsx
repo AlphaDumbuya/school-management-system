@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import useAuthStore from '@store/authStore';
 import schoolConfigService, { SchoolInfo, GradeScale, BillingInvoice, SubscriptionDetails } from '../services/schoolConfigService';
+import { formatCurrency } from '@utils/formatting';
 import authService from '../services/authService';
 import { FileUploader } from '@components/admin/forms/FileUploader';
 import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
@@ -1898,7 +1899,7 @@ export const SettingsPage: React.FC = () => {
                                   <tr key={inv.id} className={`transition-colors hover:bg-sky-100 ${rowIndex % 2 === 1 ? 'bg-sky-50' : 'bg-white'}`}>
                                     <td className="px-6 py-4 font-medium text-gray-900">{new Date(inv.billing_date).toLocaleDateString()}</td>
                                     <td className="px-6 py-4 font-mono text-xs">{inv.transaction_id}</td>
-                                    <td className="px-6 py-4 font-bold text-gray-900">${inv.amount}</td>
+                                    <td className="px-6 py-4 font-bold text-gray-900">{formatCurrency(Number(inv.amount) || 0, inv.currency || 'SLE')}</td>
                                     <td className="px-6 py-4">
                                       <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 uppercase">
                                         {inv.status}
