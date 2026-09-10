@@ -42,29 +42,21 @@ export const LoginPage: React.FC = () => {
   const mfaToken = useAuthStore((s) => s.mfaToken);
   // Passkey support detection.
   //
+  // Passkeys are a WEB/PWA-only feature here. They are intentionally NOT offered
+  // in the native Android app: native passkeys require the app to be
+  // release-signed and its cert bound to the domain via assetlinks.json, and
+  // without that the WebView rejects every ceremony (NotAllowedError). To avoid
+  // that broken/confusing experience we hide passkeys entirely in the app and
+  // let users sign in with password + 2FA.
+  //
   // Plain web: feature-detect WebAuthn and only show the button when supported.
-  //
-  // Native app shell: ALWAYS offer passkeys. The Android WebView supports
-  // passkeys through Google Play Services / androidx.credentials even when
-  // `window.PublicKeyCredential` isn't exposed (or attaches late), so a strict
-  // feature check wrongly hides the button in the app. If the platform can't
-  // fulfil it, the actual WebAuthn call surfaces a friendly error instead.
-  //
-  // IMPORTANT: native Android passkeys only work once the app is release-signed
-  // and its cert is bound to the domain via /.well-known/assetlinks.json (plus
-  // WEBAUTHN_ANDROID_ORIGIN on the backend). Until that setup is done the WebView
-  // rejects every ceremony with NotAllowedError, so showing the button in the app
-  // is just a broken/confusing experience. We therefore hide it in the app by
-  // default and only show it when explicitly enabled via VITE_APK_PASSKEYS_ENABLED
-  // (flip that env to 'true' after completing the signing setup — no code change).
-  const appPasskeysEnabled = String(import.meta.env.VITE_APK_PASSKEYS_ENABLED) === 'true';
-  const [supportsPasskeys, setSupportsPasskeys] = useState(isAppMode() && appPasskeysEnabled);
+  const [supportsPasskeys, setSupportsPasskeys] = useState(false);
   const suspendedNotice = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('suspended') === '1';
 
   useEffect(() => {
-    // In the app: only show passkeys when they've been enabled post-signing-setup.
+    // Never show passkeys inside the native app shell.
     if (isAppMode()) {
-      setSupportsPasskeys(appPasskeysEnabled);
+      setSupportsPasskeys(false);
       return;
     }
     const detect = () =>
@@ -74,7 +66,7 @@ export const LoginPage: React.FC = () => {
       setSupportsPasskeys(true);
       return;
     }
-    // Poll a few times in case the WebView injects the API late.
+    // Poll a few times in case the browser injects the API late.
     let tries = 0;
     const iv = setInterval(() => {
       tries += 1;

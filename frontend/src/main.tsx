@@ -36,12 +36,12 @@ ReactDOM.createRoot(rootElement).render(
   const splash = document.getElementById('wiskul-splash');
   if (!splash) return;
 
-  // Native app holds the splash longer so it reads as a proper branded load
-  // (not a quick flash); plain web stays reasonably snappy.
+  // Native app holds the splash for a full branded load (~5.5s) so it reads as
+  // a proper splash screen; plain web stays reasonably snappy.
   const isNativeShell =
     document.documentElement.classList.contains('wiskul-native') ||
     !!(window as any).Capacitor?.isNativePlatform?.();
-  const MIN_MS = isNativeShell ? 3200 : 1600;
+  const MIN_MS = isNativeShell ? 5500 : 1800;
   const startedAt = performance.now();
   let done = false;
 
