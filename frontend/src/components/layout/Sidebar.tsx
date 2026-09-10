@@ -718,8 +718,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                 aria-expanded={footerOpen}
                 className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-gray-800 transition-colors group"
               >
-                {user?.profileImage ? (
-                  <img src={user.profileImage} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                {(user?.profilePhotoUrl || user?.profileImage) ? (
+                  <img src={user.profilePhotoUrl || user.profileImage} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
                 ) : (
                   <span className="w-8 h-8 rounded-full bg-gradient-to-br from-[#1d4ed8] to-[#3b82f6] text-white text-xs font-black flex items-center justify-center flex-shrink-0">
                     {(user?.firstName?.[0] ?? '') + (user?.lastName?.[0] ?? '') || 'U'}

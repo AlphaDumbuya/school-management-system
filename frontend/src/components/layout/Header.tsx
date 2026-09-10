@@ -141,8 +141,12 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
               aria-expanded={userMenuOpen}
               className="flex items-center gap-2 pl-1 pr-1 sm:pr-2.5 py-1 rounded-full sm:rounded-xl hover:bg-gray-100 transition-colors"
             >
-              <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold flex-shrink-0 shadow-sm ring-2 ring-white">
-                {initials}
+              <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold flex-shrink-0 shadow-sm ring-2 ring-white overflow-hidden">
+                {user?.profilePhotoUrl ? (
+                  <img src={user.profilePhotoUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  initials
+                )}
               </div>
               <div className="hidden sm:block text-left leading-tight max-w-[160px]">
                 <p className="font-semibold text-gray-900 text-sm truncate">{fullName}</p>
@@ -166,8 +170,12 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
                 >
                   {/* Identity block */}
                   <div className="px-4 py-4 bg-gradient-to-br from-blue-50 to-indigo-50/60 flex items-center gap-3">
-                    <div className="w-11 h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-sm ring-2 ring-white">
-                      {initials}
+                    <div className="w-11 h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-sm ring-2 ring-white overflow-hidden">
+                      {user?.profilePhotoUrl ? (
+                        <img src={user.profilePhotoUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        initials
+                      )}
                     </div>
                     <div className="min-w-0">
                       <p className="font-bold text-gray-900 text-sm truncate">{fullName}</p>

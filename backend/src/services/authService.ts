@@ -702,6 +702,21 @@ export class AuthService {
       }
     }
 
+    // Resolve the best available profile photo for the header/sidebar avatar:
+    //   1. verification profile photo (account owner)
+    //   2. the user's general photo (teachers/staff/ID cards)
+    //   3. for students, the photo stored on their students row
+    let profilePhotoUrl: string | null = user.profile_photo_url || user.photo_url || null;
+    if (!profilePhotoUrl && user.role === 'student') {
+      try {
+        const student = await this.db('students')
+          .where({ user_id: user.id })
+          .first()
+          .catch(() => null);
+        if (student?.photo_url) profilePhotoUrl = student.photo_url;
+      } catch { /* non-fatal */ }
+    }
+
     return {
       id: user.id,
       email: user.email,
@@ -712,6 +727,7 @@ export class AuthService {
       tenantId: user.tenant_id,
       schoolLogoUrl,
       schoolName,
+      profilePhotoUrl,
       two_factor_enabled: !!user.two_factor_enabled,
       createdAt: user.created_at,
     } as UserResponse;

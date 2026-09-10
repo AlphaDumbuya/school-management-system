@@ -281,7 +281,7 @@ const ProfilePhotoStep: React.FC<{ onDone: () => void }> = ({ onDone }) => {
     try {
       const res = await verificationService.setProfilePhoto(dataUrl);
       if (res.success) {
-        if (user) setUser({ ...(user as any), profile_photo_url: dataUrl });
+        if (user) setUser({ ...(user as any), profilePhotoUrl: dataUrl });
         showToast.success('Profile photo saved');
         onDone();
       } else {

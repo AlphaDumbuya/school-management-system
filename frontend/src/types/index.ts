@@ -19,6 +19,7 @@ export interface AuthUser {
   role: UserRole;
   status: UserStatus;
   profileImage?: string;
+  profilePhotoUrl?: string | null;
   tenantId?: string;
   schoolLogoUrl?: string;
   schoolName?: string;

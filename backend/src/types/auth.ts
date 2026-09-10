@@ -29,6 +29,7 @@ export interface UserResponse {
   tenantId?: string;
   schoolLogoUrl?: string | null;
   schoolName?: string | null;
+  profilePhotoUrl?: string | null;
   createdAt: Date;
 }
 
