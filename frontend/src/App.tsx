@@ -5,7 +5,6 @@ import 'react-toastify/dist/ReactToastify.css';
 import useAuthStore from '@store/authStore';
 import AppRouter from '@router/routes';
 import '@styles/index.css';
-import { InstallBanner } from '@components/pwa/InstallBanner';
 import { OfflineIndicator } from '@components/pwa/OfflineIndicator';
 
 // Singleton queryClient — but we call .clear() on logout to purge cross-tenant cache
@@ -67,7 +66,6 @@ export const App: React.FC = () => {
       <OfflineIndicator />
       <AppRouter />
       <ToastContainer position="top-right" closeButton={true} aria-live="polite" style={{ zIndex: 2147483647 }} />
-      <InstallBanner />
     </QueryClientProvider>
   );
 };

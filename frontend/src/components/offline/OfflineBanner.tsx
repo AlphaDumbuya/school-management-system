@@ -14,6 +14,10 @@ export const OfflineBanner: React.FC = () => {
   const { online, pending } = useOfflineStatus();
   const [updateReady, setUpdateReady] = useState(false);
   const [updating, setUpdating] = useState(false);
+  // Hold a direct reference to the worker that's ready to take over, so the
+  // FIRST click can message exactly that worker (re-fetching the registration
+  // on click was racy and required a second click).
+  const waitingWorkerRef = React.useRef<ServiceWorker | null>(null);
   // The "new version available" badge only makes sense in the installed app
   // (native/PWA) where assets are cached by the service worker. On the plain
   // web the browser always loads the latest bundle, so the badge is noise.
@@ -22,13 +26,21 @@ export const OfflineBanner: React.FC = () => {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
+    const markReady = (worker: ServiceWorker | null) => {
+      if (!worker) return;
+      waitingWorkerRef.current = worker;
+      setUpdateReady(true);
+    };
+
     const onUpdate = (reg: ServiceWorkerRegistration) => {
-      if (reg.waiting) setUpdateReady(true);
+      // Already-waiting worker (update installed before this mounted).
+      if (reg.waiting) markReady(reg.waiting);
       reg.addEventListener('updatefound', () => {
         const nw = reg.installing;
         nw?.addEventListener('statechange', () => {
+          // Once installed with an existing controller, it's the waiting worker.
           if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-            setUpdateReady(true);
+            markReady(reg.waiting || nw);
           }
         });
       });
@@ -51,28 +63,30 @@ export const OfflineBanner: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const applyUpdate = () => {
-    // Hide the badge on the FIRST click and show an "Updating…" state. The old
-    // behaviour left the badge visible until controllerchange fired, so if the
-    // waiting worker had already activated (no `reg.waiting`) nothing appeared
-    // to happen and the user had to click again. We now dismiss immediately and
-    // fall back to a hard reload when there is no waiting worker to skip.
+  const applyUpdate = async () => {
+    // Dismiss the badge immediately and show an "Updating…" state on the FIRST
+    // click. Message the captured waiting worker directly; controllerchange then
+    // reloads into the new version. A defensive timeout reload covers edge cases.
     setUpdating(true);
     setUpdateReady(false);
-    navigator.serviceWorker
-      .getRegistration()
-      .then((reg) => {
-        if (reg?.waiting) {
-          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-          // controllerchange will reload; also reload defensively after a beat.
-          setTimeout(() => window.location.reload(), 1500);
-        } else {
-          // No waiting worker — the update already activated. Just reload to
-          // pick up the fresh assets.
-          window.location.reload();
-        }
-      })
-      .catch(() => window.location.reload());
+
+    // Prefer the worker we captured; otherwise re-read the registration once.
+    let worker = waitingWorkerRef.current;
+    if (!worker) {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        worker = reg?.waiting || reg?.installing || null;
+      } catch { /* ignore */ }
+    }
+
+    if (worker) {
+      worker.postMessage({ type: 'SKIP_WAITING' });
+      // controllerchange handler reloads; fall back to a reload after a beat.
+      setTimeout(() => window.location.reload(), 1500);
+    } else {
+      // No worker to skip — the update already activated; just reload.
+      window.location.reload();
+    }
   };
 
   return (
