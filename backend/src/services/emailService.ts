@@ -11,6 +11,131 @@ import {
   escapeHtml,
 } from './email/emailLayout.js';
 
+/**
+ * Smart, category-specific suspension resolution guidance.
+ *
+ * The platform admin picks a category when suspending a school. Each category
+ * yields a tailored summary, resolution steps, callout and primary CTA so the
+ * notification email tells the owner exactly how to fix THEIR situation instead
+ * of generic "contact support" boilerplate. Falls back to inferring the category
+ * from the free-text reason, then to a safe generic path.
+ */
+export type SuspensionCategory = 'payment' | 'policy' | 'abuse' | 'review' | 'security' | 'other';
+
+interface SuspensionContacts { supportEmail: string; supportPhone: string; appUrl: string; }
+interface SuspensionCopy {
+  label: string;
+  summary: string;
+  steps: string[];
+  callout: string;
+  ctaLabel: string;
+  ctaHref: string;
+}
+
+export function suspensionGuidance(
+  category: string | undefined,
+  reason: string | undefined,
+  c: SuspensionContacts
+): SuspensionCopy {
+  // Infer a category from the reason text when one wasn't explicitly provided.
+  let cat = (category || '').toLowerCase() as SuspensionCategory;
+  const r = (reason || '').toLowerCase();
+  if (!['payment', 'policy', 'abuse', 'review', 'security', 'other'].includes(cat)) {
+    if (/pay|invoice|overdue|billing|subscription|renew|arrears|balance/.test(r)) cat = 'payment';
+    else if (/abuse|spam|fraud|misuse|violation/.test(r)) cat = 'abuse';
+    else if (/security|breach|compromis|hack|password/.test(r)) cat = 'security';
+    else if (/policy|terms|acceptable use|compliance/.test(r)) cat = 'policy';
+    else if (/review|verify|verification|pending|audit/.test(r)) cat = 'review';
+    else cat = 'other';
+  }
+
+  const mail = (subject: string) => `mailto:${c.supportEmail}?subject=${encodeURIComponent(subject)}`;
+  const phoneLink = `<a href="tel:${c.supportPhone.replace(/\s/g, '')}" style="color:#1d4ed8;">${c.supportPhone}</a>`;
+  const mailLink = `<a href="mailto:${c.supportEmail}" style="color:#1d4ed8;">${c.supportEmail}</a>`;
+
+  switch (cat) {
+    case 'payment':
+      return {
+        label: 'Overdue payment',
+        summary: 'Your subscription payment is overdue. Settle the outstanding balance to restore access.',
+        steps: [
+          'Open Settings → Plan &amp; Billing to review your outstanding balance and due date.',
+          'Make the payment using your usual method (or contact us to arrange it).',
+          `Email proof of payment to ${mailLink} if you paid offline, quoting your school name.`,
+          'Access is reinstated as soon as payment is confirmed — usually within a few hours.',
+        ],
+        callout: `Questions about your invoice or want to pay now? Email ${mailLink} or call ${phoneLink}.`,
+        ctaLabel: 'Resolve Billing',
+        ctaHref: mail('Overdue payment - restore access'),
+      };
+    case 'policy':
+      return {
+        label: 'Policy / terms review',
+        summary: 'Access was paused pending a review of an acceptable-use or terms matter.',
+        steps: [
+          'Read the reason above carefully — it explains the specific concern.',
+          `Reply to ${mailLink} with any clarification or corrective action you have taken.`,
+          'Our team will review your response and confirm reinstatement.',
+        ],
+        callout: `To resolve this quickly, reply to ${mailLink} addressing the reason above, or call ${phoneLink}.`,
+        ctaLabel: 'Contact Support',
+        ctaHref: mail('Policy review - restore access'),
+      };
+    case 'abuse':
+      return {
+        label: 'Suspected misuse',
+        summary: 'Access was paused due to suspected misuse or a security/abuse concern on the account.',
+        steps: [
+          'Review the reason above to understand the specific concern.',
+          `Contact ${mailLink} to discuss the issue and confirm the steps to secure the account.`,
+          'Once verified and resolved with our team, access will be reinstated.',
+        ],
+        callout: `This requires speaking with our team. Email ${mailLink} or call ${phoneLink} as soon as possible.`,
+        ctaLabel: 'Contact Support',
+        ctaHref: mail('Account review - restore access'),
+      };
+    case 'security':
+      return {
+        label: 'Security precaution',
+        summary: 'Access was paused as a security precaution to protect your school’s data.',
+        steps: [
+          'Do not share passwords. Review who has administrator access at your school.',
+          `Contact ${mailLink} to verify your identity as the account owner.`,
+          'After verification, we will help you secure the account and restore access.',
+        ],
+        callout: `For your protection this must be verified with our team. Email ${mailLink} or call ${phoneLink}.`,
+        ctaLabel: 'Verify &amp; Restore',
+        ctaHref: mail('Security hold - verify and restore'),
+      };
+    case 'review':
+      return {
+        label: 'Pending verification',
+        summary: 'Access is paused pending verification/review of your school account.',
+        steps: [
+          'No action may be needed — our team may already be reviewing your account.',
+          `If you have documents to provide, reply to ${mailLink} quoting your school name.`,
+          'We will notify you as soon as the review is complete and access is restored.',
+        ],
+        callout: `Need an update on your review? Email ${mailLink} or call ${phoneLink}.`,
+        ctaLabel: 'Contact Support',
+        ctaHref: mail('Account review status'),
+      };
+    default:
+      return {
+        label: 'Other',
+        summary: 'Access to your account has been paused. Contact our support team to resolve it.',
+        steps: [
+          `Contact our support team, quoting your school name and the reason above.`,
+          'Complete any step our team advises for your situation.',
+          'Once resolved, access is restored immediately — no reinstall needed.',
+        ],
+        callout: `Need help now? Email ${mailLink} or call ${phoneLink}. Our team will confirm the exact steps to reactivate your school.`,
+        ctaLabel: 'Contact Support',
+        ctaHref: mail('Account suspended - restore access'),
+      };
+  }
+}
+
 export interface EmailTemplate {
   id: string;
   templateName: string;
@@ -826,22 +951,93 @@ class EmailService {
   /** Account status changed (suspend / activate / restore) → school contact. */
   async sendTenantStatusEmail(
     toEmail: string,
-    data: { schoolName: string; status: 'suspended' | 'activated' | 'restored'; reason?: string }
+    data: { schoolName: string; status: 'suspended' | 'activated' | 'restored'; reason?: string; category?: string }
   ): Promise<EmailResponse> {
     const branding = platformBranding();
-    const tone: 'info' | 'success' | 'warn' = data.status === 'suspended' ? 'warn' : 'success';
-    const bodyHtml = `
-      <p>Hello,</p>
-      <p>The WiSkul account for <strong>${escapeHtml(data.schoolName)}</strong> has been <strong>${data.status}</strong>.</p>
-      ${data.status === 'suspended'
-        ? calloutBlock(`Access is temporarily paused.${data.reason ? ' Reason: ' + escapeHtml(data.reason) : ''} Please contact support to resolve this.`, tone)
-        : calloutBlock('Your account is active and users can sign in normally.', tone)}
-      ${emailButton('Open WiSkul', `${branding.appUrl}/login`)}`;
+    const supportEmail = process.env.SUPPORT_EMAIL || 'support@wiskulsl.com';
+    const supportPhone = process.env.SUPPORT_PHONE || '+232 78 261 892';
+    const when = new Date().toLocaleString('en-GB', {
+      day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+
+    let eyebrow: string;
+    let heading: string;
+    let subject: string;
+    let preheader: string;
+    let bodyHtml: string;
+
+    if (data.status === 'suspended') {
+      // Smart, category-specific resolution guidance.
+      const cat = suspensionGuidance(data.category, data.reason, { supportEmail, supportPhone, appUrl: branding.appUrl });
+      eyebrow = 'Account Suspended';
+      heading = 'Your WiSkul account has been suspended';
+      subject = `Action required: ${data.schoolName} account suspended`;
+      preheader = `Access to ${data.schoolName} is paused. ${cat.summary}`;
+      const stepsHtml = cat.steps.map((s) => `<li>${s}</li>`).join('');
+      bodyHtml = `
+        <p>Hello,</p>
+        <p>We're writing to let you know that the WiSkul account for
+           <strong>${escapeHtml(data.schoolName)}</strong> has been <strong>suspended</strong>,
+           effective ${escapeHtml(when)}.</p>
+
+        ${detailsCard(
+          detailRow('School', escapeHtml(data.schoolName)) +
+          detailRow('Status', 'Suspended') +
+          detailRow('Category', escapeHtml(cat.label)) +
+          detailRow('Date', escapeHtml(when)) +
+          detailRow('Reason', escapeHtml(data.reason || 'Not specified'))
+        )}
+
+        <p style="font-weight:600;margin-top:20px;">What this means</p>
+        <p>While the account is suspended, all users at your school — administrators,
+           teachers, students, parents and staff — are temporarily unable to sign in to
+           the portal or mobile app. Your data is safe and nothing has been deleted.</p>
+
+        <p style="font-weight:600;margin-top:20px;">How to restore access</p>
+        <p>${cat.summary}</p>
+        <ol style="color:#334155;font-size:14px;line-height:1.7;padding-left:20px;margin:8px 0;">
+          ${stepsHtml}
+        </ol>
+
+        ${calloutBlock(cat.callout, 'warn')}
+        ${emailButton(cat.ctaLabel, cat.ctaHref)}
+        <p style="color:#64748b;font-size:13px;">This message was sent to the account owner/administrator. Individual staff, students and parents should reach out to their school administrator, not WiSkul directly.</p>`;
+    } else {
+      const restored = data.status === 'restored';
+      eyebrow = restored ? 'Account Restored' : 'Access Reinstated';
+      heading = restored ? 'Your WiSkul account has been restored' : 'Your suspension has been lifted';
+      subject = `Good news — ${data.schoolName} access reinstated`;
+      preheader = `${data.schoolName} is active again — all users can sign in normally.`;
+      bodyHtml = `
+        <p>Hello,</p>
+        <p>Good news — the suspension on the WiSkul account for
+           <strong>${escapeHtml(data.schoolName)}</strong> has been <strong>lifted</strong> and full
+           access is reinstated as of ${escapeHtml(when)}.</p>
+
+        ${detailsCard(
+          detailRow('School', escapeHtml(data.schoolName)) +
+          detailRow('Status', 'Active') +
+          detailRow('Reinstated', escapeHtml(when))
+        )}
+
+        <p style="font-weight:600;margin-top:20px;">What happens now</p>
+        <ul style="color:#334155;font-size:14px;line-height:1.7;padding-left:20px;margin:8px 0;">
+          <li>All users — administrators, teachers, students, parents and staff — can sign in immediately on the web and mobile app.</li>
+          <li>Your data, settings, classes and records are exactly as you left them; nothing was lost during the suspension.</li>
+          <li>No reinstall or password reset is needed — just sign in as usual.</li>
+        </ul>
+
+        ${calloutBlock('Thank you for resolving this promptly. If access still fails after a few minutes, sign out fully and sign back in.', 'success')}
+        ${emailButton('Sign in to WiSkul', `${branding.appUrl}/login`)}
+        <p style="color:#64748b;font-size:13px;">Questions or still having trouble? Contact us at
+           <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a> or ${escapeHtml(supportPhone)}. Please let your staff know access has been restored.</p>`;
+    }
+
     return this.sendEmail({
       ...this.platformSender('support'),
       to: toEmail,
-      subject: `Account ${data.status} — ${data.schoolName}`,
-      body: renderEmail({ branding, eyebrow: 'Account', heading: `Account ${data.status}`, bodyHtml, preheader: `${data.schoolName} account ${data.status}.` }),
+      subject,
+      body: renderEmail({ branding, eyebrow, heading, bodyHtml, preheader }),
       isHtml: true,
     });
   }
@@ -1226,11 +1422,11 @@ class EmailService {
           ? 'Our support team has added a reply to your ticket.'
           : `The status of your ticket has been updated to <strong>${escapeHtml(data.status || '')}</strong>.`
       }</p>
-      ${detailsCard([
-        detailRow('Reference', escapeHtml(data.reference)),
-        detailRow('Subject', escapeHtml(data.subject)),
-        ...(data.status ? [detailRow('Status', escapeHtml(data.status))] : []),
-      ])}
+      ${detailsCard(
+        detailRow('Reference', escapeHtml(data.reference)) +
+        detailRow('Subject', escapeHtml(data.subject)) +
+        (data.status ? detailRow('Status', escapeHtml(data.status)) : '')
+      )}
       ${data.message ? `<p style="background:#f8fafc;border-left:3px solid #1d4ed8;padding:10px 14px;">${escapeHtml(data.message).replace(/\n/g, '<br/>')}</p>` : ''}
       ${emailButton('View your ticket', portalUrl)}`;
 

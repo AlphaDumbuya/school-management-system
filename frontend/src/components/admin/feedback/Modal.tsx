@@ -126,6 +126,13 @@ export const Modal: React.FC<ModalProps> = ({
             'focus:outline-none',
             SIZE_CLASSES[size]
           )}
+          style={{
+            // Respect the phone's status bar / notch and gesture bar so the full
+            // mobile sheet (h-dvh) isn't pushed under the system UI, which would
+            // hide the top header or bottom actions and break scrolling.
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          }}
         >
           {/* Header — sticky on scroll */}
           {title && (
@@ -146,8 +153,10 @@ export const Modal: React.FC<ModalProps> = ({
             </div>
           )}
 
-          {/* Body — scrollable content area */}
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 sm:px-6 py-5 scroll-smooth">
+          {/* Body — scrollable content area. Extra bottom padding ensures the
+              last element (e.g. form actions) clears the phone's gesture bar and
+              is always reachable by scrolling on a full-height mobile sheet. */}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 sm:px-6 py-5 pb-8 sm:pb-5 scroll-smooth">
             {children}
           </div>
 

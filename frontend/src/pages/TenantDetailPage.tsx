@@ -85,6 +85,7 @@ export const TenantDetailPage: React.FC = () => {
   // Danger
   const [confirm, setConfirm] = useState<null | 'suspend' | 'activate' | 'delete' | 'restore'>(null);
   const [suspendReason, setSuspendReason] = useState('');
+  const [suspendCategory, setSuspendCategory] = useState('payment');
   const [backupBusy, setBackupBusy] = useState(false);
 
   const downloadBackup = async () => {
@@ -326,7 +327,7 @@ export const TenantDetailPage: React.FC = () => {
     setSaving(true);
     try {
       if (confirm === 'suspend') {
-        const res = await platformService.suspendTenant(tenantId, suspendReason || 'Suspended by platform admin');
+        const res = await platformService.suspendTenant(tenantId, suspendReason || 'Suspended by platform admin', suspendCategory);
         if (res.success) showToast.success('Tenant suspended');
       } else if (confirm === 'activate') {
         const res = await platformService.activateTenant(tenantId);
@@ -341,7 +342,7 @@ export const TenantDetailPage: React.FC = () => {
       load();
     } catch (e: any) {
       showToast.error(e?.response?.data?.error || 'Action failed');
-    } finally { setSaving(false); setConfirm(null); setSuspendReason(''); }
+    } finally { setSaving(false); setConfirm(null); setSuspendReason(''); setSuspendCategory('payment'); }
   };
 
   // Backend getTenantById returns `statistics: { totalUsers, totalStudents, activeUsers }`.
@@ -696,8 +697,18 @@ export const TenantDetailPage: React.FC = () => {
 
                 {confirm === 'suspend' && (
                   <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 space-y-2">
+                    <label className="text-xs font-bold text-amber-800 uppercase tracking-wider">Suspension category</label>
+                    <select className="inp" value={suspendCategory} onChange={(e) => setSuspendCategory(e.target.value)}>
+                      <option value="payment">Overdue payment / billing</option>
+                      <option value="policy">Policy / terms review</option>
+                      <option value="review">Pending verification / review</option>
+                      <option value="security">Security precaution</option>
+                      <option value="abuse">Suspected misuse / abuse</option>
+                      <option value="other">Other</option>
+                    </select>
                     <label className="text-xs font-bold text-amber-800 uppercase tracking-wider">Reason for suspension</label>
                     <input className="inp" value={suspendReason} onChange={(e) => setSuspendReason(e.target.value)} placeholder="e.g. Non-payment" />
+                    <p className="text-[11px] text-amber-700/80">The category tailors the resolution steps in the school's notification email.</p>
                     <div className="flex justify-end gap-2">
                       <Button variant="outline" size="sm" onClick={() => setConfirm(null)}>Cancel</Button>
                       <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={saving} onClick={runDanger}>Confirm Suspend</Button>

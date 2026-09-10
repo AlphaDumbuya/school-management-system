@@ -305,13 +305,19 @@ export class TenantService {
   /**
    * Suspend tenant
    */
-  static async suspendTenant(tenantId: string, reason: string, updatedBy: string) {
+  static async suspendTenant(tenantId: string, reason: string, updatedBy: string, category?: string) {
     try {
+      const validCategories = ['payment', 'policy', 'abuse', 'review', 'security', 'other'];
+      const suspensionCategory = validCategories.includes(String(category)) ? String(category) : 'other';
       const [tenant] = await db('tenants')
         .where({ id: tenantId })
         .update({
           status: 'suspended',
-          settings: db.raw(`settings || ?`, [JSON.stringify({ suspension_reason: reason })]),
+          settings: db.raw(`settings || ?`, [JSON.stringify({
+            suspension_reason: reason,
+            suspension_category: suspensionCategory,
+            suspended_at: new Date().toISOString(),
+          })]),
           updated_at: db.fn.now(),
         })
         .returning('*');

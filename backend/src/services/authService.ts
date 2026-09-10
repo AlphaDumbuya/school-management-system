@@ -333,10 +333,20 @@ export class AuthService {
       throw new AppError('Your school account is unavailable. Contact support.', 403, 'TENANT_UNAVAILABLE');
     }
     if (tenant.status !== 'active') {
+      // The account owner (principal) can act on this — point them to support.
+      // Everyone else can't resolve it, so direct them to their school admin.
+      const isOwner = user.role === 'principal';
+      if (isOwner) {
+        throw new AppError(
+          'Your school account has been suspended or is inactive. Please contact WiSkul support to restore access.',
+          403,
+          'TENANT_SUSPENDED'
+        );
+      }
       throw new AppError(
-        'Your school account has been suspended or is inactive. Please contact WiSkul support to restore access.',
+        'Your school account is currently suspended. Please contact your school administrator — they can restore access.',
         403,
-        'TENANT_SUSPENDED'
+        'TENANT_SUSPENDED_USER'
       );
     }
   }

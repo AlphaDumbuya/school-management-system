@@ -207,6 +207,15 @@ export const LoginPage: React.FC = () => {
   const displayError =
     typeof error === 'string' ? error : error ? 'Login failed. Please try again.' : null;
 
+  // Detect a suspension / inactive-account failure so we can show an actionable
+  // notice instead of a dead-end error. Only the school account OWNER can resolve
+  // it (message mentions "WiSkul support"); other users are told to contact their
+  // school administrator and are NOT shown the support-contact actions.
+  const isSuspensionError =
+    !!displayError && /suspend|inactive|not active|restore access|school administrator/i.test(displayError);
+  const isOwnerSuspension =
+    !!displayError && /wiskul support|restore access/i.test(displayError);
+
   const inputBase =
     'w-full bg-white border rounded-xl px-4 py-3.5 text-sm text-slate-800 placeholder-slate-400 outline-none transition-all disabled:opacity-50';
   const inputState = (bad?: boolean) =>
@@ -301,10 +310,50 @@ export const LoginPage: React.FC = () => {
             </form>
           ) : (
             <>
-              {suspendedNotice && (
-                <div className="max-w-3xl mx-auto mb-5 bg-red-500/20 border border-red-400/40 rounded-xl px-4 py-3 text-xs text-red-100 flex items-start gap-2">
-                  <span className="mt-0.5">⛔</span>
-                  <span>Your school account is currently suspended or inactive. Please contact WiSkul support to restore access.</span>
+              {(suspendedNotice || isSuspensionError) && (
+                <div className="max-w-3xl mx-auto mb-5 bg-red-500/15 border border-red-400/40 rounded-xl px-4 py-4 text-red-50">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 text-base">⛔</span>
+                    {(suspendedNotice || isOwnerSuspension) ? (
+                      // Account OWNER (or generic redirect): show resolution steps + support contacts.
+                      <div className="space-y-2">
+                        <p className="text-sm font-bold">Your school account is suspended or inactive</p>
+                        <p className="text-xs text-red-100/90 leading-relaxed">
+                          Access has been paused by WiSkul. This is usually due to an overdue
+                          subscription or a pending review. To restore access:
+                        </p>
+                        <ul className="text-xs text-red-100/90 list-disc pl-4 space-y-1">
+                          <li>Contact WiSkul support with your school name to confirm the reason.</li>
+                          <li>Settle any outstanding subscription payment if applicable.</li>
+                          <li>Once resolved, sign in again — access is restored immediately.</li>
+                        </ul>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          <a
+                            href="mailto:support@wiskulsl.com?subject=Account%20suspended%20-%20restore%20access"
+                            className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
+                          >
+                            ✉ Email support@wiskulsl.com
+                          </a>
+                          <a
+                            href="tel:+23278261892"
+                            className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
+                          >
+                            📞 +232 78 261 892
+                          </a>
+                        </div>
+                      </div>
+                    ) : (
+                      // Regular user: can't resolve it — point them to their school admin.
+                      <div className="space-y-1.5">
+                        <p className="text-sm font-bold">Your school account is currently suspended</p>
+                        <p className="text-xs text-red-100/90 leading-relaxed">
+                          Access to your school portal has been paused. You can't restore this
+                          yourself — please contact your school administrator, who can get access
+                          reinstated. Your data is safe and nothing has been lost.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               {!online && (
@@ -313,7 +362,7 @@ export const LoginPage: React.FC = () => {
                   <span>You may be offline. If sign in fails, check your connection and try again.</span>
                 </div>
               )}
-              {displayError && (
+              {displayError && !isSuspensionError && (
                 <div className="max-w-3xl mx-auto mb-5 bg-red-500/20 border border-red-400/40 rounded-xl px-4 py-3 text-xs text-red-100 animate-shake flex items-center gap-2">
                   <span>⚠</span> {displayError}
                 </div>

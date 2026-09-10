@@ -79,6 +79,7 @@ export const PlatformTenantsPage: React.FC = () => {
 
   const [selectedTenant, setSelectedTenant] = useState<PlatformTenant | null>(null);
   const [suspensionReason, setSuspensionReason] = useState('');
+  const [suspensionCategory, setSuspensionCategory] = useState('payment');
 
   // Email sender modal state
   const [isEmailSenderOpen, setIsEmailSenderOpen] = useState(false);
@@ -268,7 +269,7 @@ export const PlatformTenantsPage: React.FC = () => {
 
     setSaving(true);
     try {
-      const res = await platformService.suspendTenant(selectedTenant.id, suspensionReason);
+      const res = await platformService.suspendTenant(selectedTenant.id, suspensionReason, suspensionCategory);
       if (res.success) {
         showToast.success(`Tenant "${selectedTenant.name}" has been suspended.`);
         setIsSuspendOpen(false);
@@ -1025,6 +1026,23 @@ export const PlatformTenantsPage: React.FC = () => {
                 <span className="font-bold block mb-1">Temporary lock execution</span>
                 Suspending <strong>{selectedTenant.name}</strong> will instantly block all students, teachers, parents, and administrative staff from logging into their portal.
               </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Suspension Category *</label>
+              <select
+                required
+                value={suspensionCategory}
+                onChange={(e) => setSuspensionCategory(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-100"
+              >
+                <option value="payment">Overdue payment / billing</option>
+                <option value="policy">Policy / terms review</option>
+                <option value="review">Pending verification / review</option>
+                <option value="security">Security precaution</option>
+                <option value="abuse">Suspected misuse / abuse</option>
+                <option value="other">Other</option>
+              </select>
+              <p className="text-[11px] text-gray-400 mt-1">Tailors the resolution steps in the notification email.</p>
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 block mb-1">Suspension Reason *</label>
