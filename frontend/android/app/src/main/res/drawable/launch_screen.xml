@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  WiSkul native launch screen.
+  Brand-blue background with the app logo centered (instead of the stretched
+  dark splash PNG). This shows for the brief moment before the WebView paints
+  the animated web splash defined in index.html.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splashBackground" />
+    <item>
+        <bitmap
+            android:src="@mipmap/ic_launcher_foreground"
+            android:gravity="center" />
+    </item>
+</layer-list>

@@ -19,9 +19,147 @@
     <meta name="description" content="WiSkul — Comprehensive school management platform for academics, attendance, identity, and more." />
     <meta name="theme-color" content="#1d4ed8" />
     <title>WiSkul — School Management</title>
+    <style>
+      /* ── Branded animated splash (paints instantly, before React loads) ──────
+         Covers the "dark blank" gap while the WebView fetches the live app on a
+         mobile network. Removed by main.tsx once React mounts. */
+      #wiskul-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        background: radial-gradient(circle at 30% 20%, #2563eb 0%, #1d4ed8 40%, #1a2b6b 100%);
+        transition: opacity 0.45s ease, visibility 0.45s ease;
+      }
+      #wiskul-splash.wiskul-splash--hide {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .wiskul-splash__glow {
+        position: absolute;
+        width: 320px;
+        height: 320px;
+        border-radius: 50%;
+        background: rgba(245, 158, 11, 0.18);
+        filter: blur(60px);
+        animation: wiskul-breathe 3.2s ease-in-out infinite;
+      }
+      .wiskul-splash__logo-wrap {
+        position: relative;
+        width: 132px;
+        height: 132px;
+        border-radius: 30px;
+        background: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+        animation: wiskul-float 3s ease-in-out infinite;
+        overflow: hidden;
+      }
+      .wiskul-splash__logo-wrap::after {
+        /* sweeping shine across the logo tile */
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -60%;
+        width: 60%;
+        height: 100%;
+        background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+        transform: skewX(-20deg);
+        animation: wiskul-shine 2.8s ease-in-out infinite;
+      }
+      .wiskul-splash__logo-wrap img {
+        width: 96px;
+        height: 96px;
+        object-fit: contain;
+      }
+      .wiskul-splash__word {
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        font-size: 26px;
+        color: #ffffff;
+        opacity: 0;
+        animation: wiskul-fade-up 0.6s ease forwards 0.25s;
+      }
+      .wiskul-splash__word span { color: #f59e0b; }
+      .wiskul-splash__tagline {
+        margin-top: -18px;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-size: 12px;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.75);
+        opacity: 0;
+        animation: wiskul-fade-up 0.6s ease forwards 0.4s;
+      }
+      .wiskul-splash__bar {
+        position: relative;
+        width: 148px;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.22);
+        overflow: hidden;
+      }
+      .wiskul-splash__bar::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: 40%;
+        border-radius: 999px;
+        background: #f59e0b;
+        animation: wiskul-loading 1.4s ease-in-out infinite;
+      }
+      @keyframes wiskul-float {
+        0%, 100% { transform: translateY(0) scale(1); }
+        50% { transform: translateY(-10px) scale(1.03); }
+      }
+      @keyframes wiskul-breathe {
+        0%, 100% { transform: scale(0.9); opacity: 0.55; }
+        50% { transform: scale(1.15); opacity: 0.85; }
+      }
+      @keyframes wiskul-shine {
+        0% { left: -60%; }
+        55%, 100% { left: 130%; }
+      }
+      @keyframes wiskul-loading {
+        0% { left: -40%; }
+        100% { left: 100%; }
+      }
+      @keyframes wiskul-fade-up {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .wiskul-splash__glow,
+        .wiskul-splash__logo-wrap,
+        .wiskul-splash__logo-wrap::after,
+        .wiskul-splash__bar::before,
+        .wiskul-splash__word,
+        .wiskul-splash__tagline { animation: none; }
+        .wiskul-splash__word, .wiskul-splash__tagline { opacity: 1; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="wiskul-splash" aria-hidden="true" role="presentation">
+      <div class="wiskul-splash__glow"></div>
+      <div class="wiskul-splash__logo-wrap">
+        <img src="/logo.png" alt="WiSkul" />
+      </div>
+      <div class="wiskul-splash__word">Wi<span>Skul</span></div>
+      <div class="wiskul-splash__tagline">School Management</div>
+      <div class="wiskul-splash__bar"></div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

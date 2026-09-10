@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WiSkul brand palette -->
+    <color name="brandBlue">#1D4ED8</color>
+    <color name="brandNavy">#1A2B6B</color>
+    <color name="brandAmber">#F59E0B</color>
+    <!-- Launch/splash background — on-brand instead of near-black -->
+    <color name="splashBackground">#1D4ED8</color>
+</resources>

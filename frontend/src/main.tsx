@@ -24,6 +24,27 @@ ReactDOM.createRoot(rootElement).render(
   </React.StrictMode>
 );
 
+// Dismiss the branded animated splash (defined in index.html) once React has
+// painted. A short minimum keeps the animation from flashing on fast loads; the
+// safety timeout guarantees it never gets stuck if something stalls.
+(() => {
+  const splash = document.getElementById('wiskul-splash');
+  if (!splash) return;
+  const MIN_MS = 600;
+  const startedAt = performance.now();
+  const hide = () => {
+    const wait = Math.max(0, MIN_MS - (performance.now() - startedAt));
+    window.setTimeout(() => {
+      splash.classList.add('wiskul-splash--hide');
+      window.setTimeout(() => splash.remove(), 500);
+    }, wait);
+  };
+  // Wait one frame after mount so the first React paint is on screen first.
+  requestAnimationFrame(() => requestAnimationFrame(hide));
+  // Safety net: never let the splash linger.
+  window.setTimeout(hide, 8000);
+})();
+
 // Register the Workbox service worker (PWA — full offline app shell, API/image
 // runtime caching, offline write-queue replay, push notifications).
 // Runs after the app mounts so it never blocks the initial render.
