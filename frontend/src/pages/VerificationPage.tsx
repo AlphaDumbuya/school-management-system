@@ -115,7 +115,7 @@ export const VerificationPage: React.FC = () => {
       if (res.success) {
         setStatus('verified');
         setShowPhotoStep(true);
-        if (user) setUser({ ...(user as any), verification_status: 'verified' });
+        if (user) setUser({ ...(user as any), verificationStatus: 'verified' });
         showToast.success('Your school is verified 🎉');
       } else {
         setLastReason(res.error || 'Verification failed');

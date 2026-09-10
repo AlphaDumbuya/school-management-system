@@ -30,7 +30,7 @@ import {
   FaChevronDown,
   FaLifeRing,
 } from 'react-icons/fa';
-import { FaRightFromBracket, FaAnglesLeft, FaAnglesRight } from 'react-icons/fa6';
+import { FaRightFromBracket, FaAnglesLeft, FaAnglesRight, FaCircleCheck } from 'react-icons/fa6';
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
 import clsx from 'clsx';
 
@@ -718,13 +718,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                 aria-expanded={footerOpen}
                 className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-gray-800 transition-colors group"
               >
-                {(user?.profilePhotoUrl || user?.profileImage) ? (
-                  <img src={user.profilePhotoUrl || user.profileImage} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
-                ) : (
-                  <span className="w-8 h-8 rounded-full bg-gradient-to-br from-[#1d4ed8] to-[#3b82f6] text-white text-xs font-black flex items-center justify-center flex-shrink-0">
-                    {(user?.firstName?.[0] ?? '') + (user?.lastName?.[0] ?? '') || 'U'}
-                  </span>
-                )}
+                <span className="relative flex-shrink-0">
+                  {(user?.profilePhotoUrl || user?.profileImage) ? (
+                    <img src={user.profilePhotoUrl || user.profileImage} alt="" className="w-8 h-8 rounded-full object-cover" />
+                  ) : (
+                    <span className="w-8 h-8 rounded-full bg-gradient-to-br from-[#1d4ed8] to-[#3b82f6] text-white text-xs font-black flex items-center justify-center">
+                      {(user?.firstName?.[0] ?? '') + (user?.lastName?.[0] ?? '') || 'U'}
+                    </span>
+                  )}
+                  {(user as any)?.verificationStatus === 'verified' && (
+                    <span className="absolute -bottom-0.5 -right-0.5 rounded-full" title="Verified school">
+                      <FaCircleCheck className="w-3.5 h-3.5 text-emerald-400 bg-[#1f2937] rounded-full" />
+                    </span>
+                  )}
+                </span>
                 <span className="min-w-0 flex-1 text-left">
                   <span className="block text-sm font-semibold text-white truncate">
                     {[user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Account'}

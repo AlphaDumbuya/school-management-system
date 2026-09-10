@@ -20,6 +20,7 @@ export interface AuthUser {
   status: UserStatus;
   profileImage?: string;
   profilePhotoUrl?: string | null;
+  verificationStatus?: 'unverified' | 'verified' | string | null;
   tenantId?: string;
   schoolLogoUrl?: string;
   schoolName?: string;

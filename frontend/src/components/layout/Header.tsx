@@ -8,6 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaBars, FaUser, FaCog, FaBookOpen } from 'react-icons/fa';
 import { FaRightFromBracket } from 'react-icons/fa6';
+import { BadgeCheck } from 'lucide-react';
 import useAuth from '@hooks/useAuth';
 import useAuthStore from '@store/authStore';
 import schoolConfigService from '@services/schoolConfigService';
@@ -83,6 +84,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
     `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() ||
     (user?.email?.[0]?.toUpperCase() ?? 'U');
   const roleLabel = (user?.role || '').replace(/_/g, ' ');
+  // Verified-school badge shows on the account owner's avatar once verified.
+  const isVerified = (user as any)?.verificationStatus === 'verified';
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
@@ -141,11 +144,18 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
               aria-expanded={userMenuOpen}
               className="flex items-center gap-2 pl-1 pr-1 sm:pr-2.5 py-1 rounded-full sm:rounded-xl hover:bg-gray-100 transition-colors"
             >
-              <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold flex-shrink-0 shadow-sm ring-2 ring-white overflow-hidden">
-                {user?.profilePhotoUrl ? (
-                  <img src={user.profilePhotoUrl} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  initials
+              <div className="relative flex-shrink-0">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold shadow-sm ring-2 ring-white overflow-hidden">
+                  {user?.profilePhotoUrl ? (
+                    <img src={user.profilePhotoUrl} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    initials
+                  )}
+                </div>
+                {isVerified && (
+                  <span className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-[1px] shadow" title="Verified school">
+                    <BadgeCheck className="w-3.5 h-3.5 text-emerald-500" />
+                  </span>
                 )}
               </div>
               <div className="hidden sm:block text-left leading-tight max-w-[160px]">
@@ -170,11 +180,18 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
                 >
                   {/* Identity block */}
                   <div className="px-4 py-4 bg-gradient-to-br from-blue-50 to-indigo-50/60 flex items-center gap-3">
-                    <div className="w-11 h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-sm ring-2 ring-white overflow-hidden">
-                      {user?.profilePhotoUrl ? (
-                        <img src={user.profilePhotoUrl} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        initials
+                    <div className="relative flex-shrink-0">
+                      <div className="w-11 h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm ring-2 ring-white overflow-hidden">
+                        {user?.profilePhotoUrl ? (
+                          <img src={user.profilePhotoUrl} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          initials
+                        )}
+                      </div>
+                      {isVerified && (
+                        <span className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-[1px] shadow" title="Verified school">
+                          <BadgeCheck className="w-4 h-4 text-emerald-500" />
+                        </span>
                       )}
                     </div>
                     <div className="min-w-0">

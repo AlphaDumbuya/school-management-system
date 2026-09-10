@@ -728,6 +728,7 @@ export class AuthService {
       schoolLogoUrl,
       schoolName,
       profilePhotoUrl,
+      verificationStatus: user.verification_status || 'unverified',
       two_factor_enabled: !!user.two_factor_enabled,
       createdAt: user.created_at,
     } as UserResponse;

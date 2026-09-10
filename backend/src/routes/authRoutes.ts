@@ -621,12 +621,22 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
     const userId = (req as any).auth.userId;
 
     const user = await db('users')
-      .select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'tenant_id', 'last_login', 'created_at')
+      .select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'tenant_id', 'last_login', 'created_at', 'profile_photo_url', 'photo_url', 'verification_status')
       .where('id', userId)
       .first();
 
     if (!user) {
       throw new AppError('User not found', 404, 'NOT_FOUND');
+    }
+
+    // Resolve the best available avatar: verification photo → general photo →
+    // (for students) the photo on their students row.
+    let profilePhotoUrl: string | null = user.profile_photo_url || user.photo_url || null;
+    if (!profilePhotoUrl && user.role === 'student') {
+      try {
+        const student = await db('students').where({ user_id: user.id }).first().catch(() => null);
+        if (student?.photo_url) profilePhotoUrl = student.photo_url;
+      } catch { /* non-fatal */ }
     }
 
     let schoolLogoUrl = null;
@@ -685,6 +695,8 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
       tenantId: user.tenant_id,
       schoolLogoUrl,
       schoolName,
+      profilePhotoUrl,
+      verificationStatus: user.verification_status || 'unverified',
       lastLogin: user.last_login,
       createdAt: user.created_at,
     });

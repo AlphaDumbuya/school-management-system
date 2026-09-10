@@ -30,6 +30,7 @@ export interface UserResponse {
   schoolLogoUrl?: string | null;
   schoolName?: string | null;
   profilePhotoUrl?: string | null;
+  verificationStatus?: string | null;
   createdAt: Date;
 }
 
