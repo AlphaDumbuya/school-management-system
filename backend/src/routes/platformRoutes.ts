@@ -259,7 +259,7 @@ router.post('/tenants/:id/suspend', authenticate, authorize(UserRole.SUPER_ADMIN
     const tenant = await TenantService.suspendTenant(id, reason, req.auth!.userId, category, !!override);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.suspend', changes: { reason, category, override: !!override } });
     const to = await tenantContactEmail(id);
-    if (to) notify(emailService.sendTenantStatusEmail(to, { schoolName: tenant.name, status: 'suspended', reason, category }), 'tenant suspend');
+    if (to) notify(emailService.sendTenantStatusEmail(to, { schoolName: tenant.name, status: 'suspended', reason, category, tenantId: id }), 'tenant suspend');
     res.json({ success: true, data: tenant, message: 'Tenant suspended successfully' });
   } catch (error) {
     next(error);

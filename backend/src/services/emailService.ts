@@ -10,6 +10,7 @@ import {
   calloutBlock,
   escapeHtml,
 } from './email/emailLayout.js';
+import { mintRestoreToken } from './restoreAccessService.js';
 
 /**
  * Smart, category-specific suspension resolution guidance.
@@ -951,7 +952,7 @@ class EmailService {
   /** Account status changed (suspend / activate / restore) → school contact. */
   async sendTenantStatusEmail(
     toEmail: string,
-    data: { schoolName: string; status: 'suspended' | 'activated' | 'restored'; reason?: string; category?: string }
+    data: { schoolName: string; status: 'suspended' | 'activated' | 'restored'; reason?: string; category?: string; tenantId?: string }
   ): Promise<EmailResponse> {
     const branding = platformBranding();
     const supportEmail = process.env.SUPPORT_EMAIL || 'support@wiskulsl.com';
@@ -999,8 +1000,23 @@ class EmailService {
           ${stepsHtml}
         </ol>
 
-        ${calloutBlock(cat.callout, 'warn')}
-        ${emailButton(cat.ctaLabel, cat.ctaHref)}
+        ${(() => {
+          // For a payment suspension, offer a NO-LOGIN "pay & restore" link so
+          // the owner can settle and reactivate without needing portal access.
+          if (cat.label === 'Overdue payment' && data.tenantId) {
+            try {
+              const token = mintRestoreToken(data.tenantId);
+              const restoreUrl = `${branding.appUrl}/restore-access?token=${encodeURIComponent(token)}`;
+              return `
+                ${calloutBlock('You can settle the outstanding amount and restore access right away — no login required — using the secure button below. Access is reinstated automatically once payment is confirmed.', 'warn')}
+                ${emailButton('Pay & Restore Access', restoreUrl)}
+                <p style="color:#64748b;font-size:13px;">Prefer to talk to us first? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a> or call ${escapeHtml(supportPhone)}.</p>`;
+            } catch {
+              // Fall through to the generic CTA if token minting fails.
+            }
+          }
+          return `${calloutBlock(cat.callout, 'warn')}${emailButton(cat.ctaLabel, cat.ctaHref)}`;
+        })()}
         <p style="color:#64748b;font-size:13px;">This message was sent to the account owner/administrator. Individual staff, students and parents should reach out to their school administrator, not WiSkul directly.</p>`;
     } else {
       const restored = data.status === 'restored';

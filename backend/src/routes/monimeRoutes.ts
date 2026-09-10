@@ -160,6 +160,14 @@ router.post('/monime/webhook', async (req: Request, res: Response) => {
     const statusRaw = event?.data?.status || event?.result?.status || event?.type;
     const status = monimeService.normaliseStatus(statusRaw);
 
+    // Public "restore access" payments use callbackState "restore:<id>". Handle
+    // these separately: on completion, renew the subscription + reactivate.
+    if (typeof callbackState === 'string' && callbackState.startsWith('restore:')) {
+      const restoreId = callbackState.slice('restore:'.length);
+      await reconcileRestoreSession(restoreId, status);
+      return res.status(200).json({ received: true });
+    }
+
     let session = null as any;
     if (callbackState) session = await db('payment_sessions').where({ id: callbackState }).first();
     if (!session && providerSessionId) session = await db('payment_sessions').where({ provider_session_id: providerSessionId }).first();
@@ -177,6 +185,44 @@ router.post('/monime/webhook', async (req: Request, res: Response) => {
     return res.status(200).json({ received: true });
   }
 });
+
+/**
+ * Reconcile a public "restore access" payment: on completion, renew the tenant's
+ * subscription and reactivate it. Idempotent — only acts once per session.
+ */
+async function reconcileRestoreSession(
+  restoreId: string,
+  status: 'pending' | 'completed' | 'failed' | 'cancelled' | 'expired'
+) {
+  const session = await db('restore_payment_sessions').where({ id: restoreId }).first();
+  if (!session) {
+    logger.warn(`Monime restore webhook: no matching restore session ${restoreId}`);
+    return;
+  }
+  if (session.status === 'completed') return; // already handled
+
+  if (status !== 'completed') {
+    await db('restore_payment_sessions').where({ id: restoreId }).update({ status, updated_at: new Date() });
+    return;
+  }
+
+  const { completeRestore } = await import('../services/restoreAccessService.js');
+  await completeRestore(session.tenant_id);
+  await db('restore_payment_sessions').where({ id: restoreId }).update({ status: 'completed', updated_at: new Date() });
+  logger.info(`Restore payment reconciled — tenant ${session.tenant_id} reactivated (session ${restoreId})`);
+
+  // Notify the school their access is restored (best-effort).
+  try {
+    const tenant = await db('tenants').where({ id: session.tenant_id }).first();
+    const contact = tenant?.contact_email;
+    if (contact) {
+      const { default: emailService } = await import('../services/emailService');
+      await emailService.sendTenantStatusEmail(contact, { schoolName: tenant.name, status: 'restored' });
+    }
+  } catch (mailErr: any) {
+    logger.warn(`Restore confirmation email failed for tenant ${session.tenant_id}: ${mailErr?.message || mailErr}`);
+  }
+}
 
 /**
  * Reconcile a payment session: on completion, record a payment and reduce the

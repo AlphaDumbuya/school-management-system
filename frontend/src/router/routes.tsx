@@ -119,6 +119,7 @@ import WelcomePage, { hasOnboarded } from '@pages/WelcomePage';
 import VerificationPage from '@pages/VerificationPage';
 import UnsubscribePage from '@pages/UnsubscribePage';
 import PrivacyPolicyPage from '@pages/PrivacyPolicyPage';
+import RestoreAccessPage from '@pages/RestoreAccessPage';
 import { isAppMode } from '@lib/appMode';
 import OfflineGate from '@components/offline/OfflineGate';
 
@@ -159,6 +160,8 @@ const router = createBrowserRouter(
         { path: 'register', element: APP_MODE ? <Navigate to="/login" replace /> : <RegisterPage /> },
         { path: 'newsletter/unsubscribe', element: <UnsubscribePage /> },
         { path: 'privacy-policy', element: <PrivacyPolicyPage /> },
+        // Public "pay to restore access" for a suspended school (no login).
+        { path: 'restore-access', element: <RestoreAccessPage /> },
         { path: 'verify-id', element: <VerifyIdPage /> },
         // Aliases for older/malformed QR paths so previously-printed cards still resolve.
         { path: 'verify/id', element: <VerifyIdPage /> },
