@@ -679,7 +679,9 @@ class EmailService {
     detention: any
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
-    const portalUrl = `${branding.appUrl}/discipline`;
+    // Guardian-facing: link to their own dashboard (the /discipline page is
+    // staff-only, so a parent clicking it would hit an access-denied redirect).
+    const portalUrl = `${branding.appUrl}/dashboard`;
 
     const rows =
       detailRow('Type', escapeHtml(this.titleCase(detention.detention_type))) +
@@ -716,7 +718,8 @@ class EmailService {
     infraction: any
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
-    const portalUrl = `${branding.appUrl}/discipline`;
+    // Guardian-facing: link to their own dashboard (/discipline is staff-only).
+    const portalUrl = `${branding.appUrl}/dashboard`;
 
     const rows =
       detailRow('Date of Incident', escapeHtml(this.fmtDate(infraction.incident_date))) +
@@ -751,7 +754,8 @@ class EmailService {
     report: any
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
-    const portalUrl = `${branding.appUrl}/discipline`;
+    // Guardian-facing: link to their own dashboard (/discipline is staff-only).
+    const portalUrl = `${branding.appUrl}/dashboard`;
 
     const rows =
       detailRow('Student', escapeHtml(studentName)) +
@@ -803,7 +807,9 @@ class EmailService {
     notes: string
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
-    const portalUrl = `${branding.appUrl}/discipline`;
+    // Appeal is submitted by a student/parent — link to their own dashboard
+    // (/discipline is staff-only, so it would deny them).
+    const portalUrl = `${branding.appUrl}/dashboard`;
     const approved = decision?.toLowerCase() === 'approved';
 
     const bodyHtml = `
@@ -871,23 +877,37 @@ class EmailService {
     data: { schoolName: string; loginEmail?: string; tempPassword?: string }
   ): Promise<EmailResponse> {
     const branding = platformBranding();
+    const supportEmail = process.env.SUPPORT_EMAIL || 'support@wiskulsl.com';
     const creds = data.tempPassword
       ? detailsCard(
           detailRow('Login email', escapeHtml(data.loginEmail || toEmail)) +
-          detailRow('Temporary password', escapeHtml(data.tempPassword))
-        ) + calloutBlock('For security, change this password right after your first sign-in.', 'warn')
+          detailRow('Temporary password', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">${escapeHtml(data.tempPassword)}</code>`)
+        ) + calloutBlock('For security, change this password right after your first sign-in (Settings → Security).', 'warn')
       : '';
     const bodyHtml = `
       <p>Hello,</p>
-      <p>Welcome to WiSkul! Your school workspace for <strong>${escapeHtml(data.schoolName)}</strong> has been created and is ready to use.</p>
+      <p>Welcome to WiSkul! The workspace for <strong>${escapeHtml(data.schoolName)}</strong> has been created and is ready to use.
+         Here's how to get your school up and running.</p>
       ${creds}
+
+      <p style="font-weight:600;margin-top:20px;">Your first steps</p>
+      <ol style="color:#334155;font-size:14px;line-height:1.7;padding-left:20px;margin:8px 0;">
+        <li><strong>Sign in</strong> and change your temporary password.</li>
+        <li><strong>Verify your school</strong> (Settings → Verify School) to earn the verified badge and unlock full trust.</li>
+        <li><strong>Set up your branding</strong> — add your school logo, name and contact details so emails and ID cards look official.</li>
+        <li><strong>Add your staff</strong> — invite teachers, an accountant and admissions officers.</li>
+        <li><strong>Enrol students</strong> individually or bulk-import a class from a spreadsheet.</li>
+        <li><strong>Explore</strong> classes, timetables, attendance, grades, finance and ID cards.</li>
+      </ol>
+
       ${emailButton('Sign in to WiSkul', `${branding.appUrl}/login`)}
-      <p style="color:#64748b;font-size:13px;">Need help getting set up? Reply to this email and our team will assist you.</p>`;
+      ${calloutBlock(`New to WiSkul? The in-app Guide walks you through everything, and our team is one email away at <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.`, 'info')}
+      <p style="color:#64748b;font-size:13px;">We're excited to help ${escapeHtml(data.schoolName)} run smoothly. Reply to this email anytime you need a hand.</p>`;
     return this.sendEmail({
       ...this.platformSender('info'),
       to: toEmail,
-      subject: `Welcome to WiSkul — ${data.schoolName}`,
-      body: renderEmail({ branding, eyebrow: 'Onboarding', heading: 'Your school is ready', bodyHtml, preheader: `Welcome to WiSkul, ${data.schoolName}.` }),
+      subject: `Welcome to WiSkul — ${data.schoolName} is ready 🎉`,
+      body: renderEmail({ branding, eyebrow: 'Onboarding', heading: `Welcome, ${data.schoolName}!`, bodyHtml, preheader: `Your WiSkul workspace is ready — here's how to get started.` }),
       isHtml: true,
     });
   }
@@ -922,28 +942,61 @@ class EmailService {
   /** Subscription plan changed / renewed → school contact. */
   async sendTenantSubscriptionEmail(
     toEmail: string,
-    data: { schoolName: string; planLabel: string; action: 'changed' | 'renewed' | 'extended' | 'expired'; endDate?: string }
+    data: { schoolName: string; planLabel: string; action: 'changed' | 'renewed' | 'extended' | 'expired'; endDate?: string; tenantId?: string }
   ): Promise<EmailResponse> {
     const branding = platformBranding();
+    const supportEmail = process.env.SUPPORT_EMAIL || 'support@wiskulsl.com';
     const verb = {
       changed: 'updated', renewed: 'renewed', extended: 'extended', expired: 'expired',
     }[data.action];
     const tone: 'info' | 'success' | 'warn' = data.action === 'expired' ? 'warn' : 'success';
-    const bodyHtml = `
-      <p>Hello,</p>
-      <p>The subscription for <strong>${escapeHtml(data.schoolName)}</strong> has been <strong>${verb}</strong>.</p>
-      ${detailsCard(
-        detailRow('Plan', escapeHtml(data.planLabel)) +
-        (data.endDate ? detailRow('Valid until', escapeHtml(new Date(data.endDate).toLocaleDateString())) : '')
-      )}
-      ${data.action === 'expired'
-        ? calloutBlock('Access to premium features is paused until the subscription is renewed.', tone)
-        : calloutBlock('Your plan features and limits are now active.', tone)}
-      ${emailButton('Open WiSkul', `${branding.appUrl}/login`)}`;
+
+    const rows =
+      detailRow('School', escapeHtml(data.schoolName)) +
+      detailRow('Plan', escapeHtml(data.planLabel)) +
+      detailRow('Status', data.action === 'expired' ? 'Expired' : 'Active') +
+      (data.endDate ? detailRow(data.action === 'expired' ? 'Expired on' : 'Valid until', escapeHtml(new Date(data.endDate).toLocaleDateString())) : '');
+
+    let bodyHtml: string;
+    if (data.action === 'expired') {
+      // Offer a no-login "pay & restore" link when we can mint a token.
+      let restoreCta = emailButton('Renew — Sign in', `${branding.appUrl}/login`);
+      if (data.tenantId) {
+        try {
+          const token = mintRestoreToken(data.tenantId);
+          restoreCta = emailButton('Renew &amp; Restore Access', `${branding.appUrl}/restore-access?token=${encodeURIComponent(token)}`);
+        } catch { /* keep the login CTA */ }
+      }
+      bodyHtml = `
+        <p>Hello,</p>
+        <p>The WiSkul subscription for <strong>${escapeHtml(data.schoolName)}</strong> has <strong>expired</strong>.</p>
+        ${detailsCard(rows)}
+        <p style="font-weight:600;margin-top:20px;">What this means</p>
+        <p>Access to your school portal is now paused for all users. Your data is safe and nothing has been deleted — everything is restored the moment you renew.</p>
+        ${calloutBlock('You can renew and restore access right away — no login required — using the secure button below. Access is reinstated automatically once payment is confirmed.', 'warn')}
+        ${restoreCta}
+        <p style="color:#64748b;font-size:13px;">Questions about your plan or billing? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
+    } else {
+      const actionCopy = {
+        changed: 'Your plan has been updated. The new features and limits are active immediately.',
+        renewed: 'Your subscription has been renewed. Thank you — full access continues uninterrupted.',
+        extended: 'Your subscription period has been extended. Enjoy uninterrupted access.',
+      }[data.action as 'changed' | 'renewed' | 'extended'];
+      bodyHtml = `
+        <p>Hello,</p>
+        <p>The subscription for <strong>${escapeHtml(data.schoolName)}</strong> has been <strong>${verb}</strong>.</p>
+        ${detailsCard(rows)}
+        ${calloutBlock(actionCopy, tone)}
+        ${emailButton('Open WiSkul', `${branding.appUrl}/login`)}
+        <p style="color:#64748b;font-size:13px;">Manage your plan anytime in Settings → Plan &amp; Billing.</p>`;
+    }
+
     return this.sendEmail({
-      ...this.platformSender('sales'),
+      ...this.platformSender('support'),
       to: toEmail,
-      subject: `Subscription ${verb} — ${data.schoolName}`,
+      subject: data.action === 'expired'
+        ? `Action required: ${data.schoolName} subscription expired`
+        : `Subscription ${verb} — ${data.schoolName}`,
       body: renderEmail({ branding, eyebrow: 'Billing', heading: `Subscription ${verb}`, bodyHtml, preheader: `${data.schoolName} subscription ${verb}.` }),
       isHtml: true,
     });
