@@ -19,6 +19,7 @@ import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
+import { cardTint } from '@lib/cardTint';
 import { teachersService, TeacherRecord } from '@services/teachersService';
 import { TeacherFormModal } from './components/TeacherFormModal';
 import { TeacherDetailModal } from './components/TeacherDetailModal';
@@ -27,6 +28,7 @@ import useAuth from '@hooks/useAuth';
 
 interface TeacherCardProps {
   teacher: TeacherRecord;
+  index: number;
   onView: (teacher: TeacherRecord) => void;
   onEdit?: (teacher: TeacherRecord) => void;
   onPromote?: (teacher: TeacherRecord) => void;
@@ -36,6 +38,7 @@ interface TeacherCardProps {
 
 const TeacherCard: React.FC<TeacherCardProps> = ({
   teacher,
+  index,
   onView,
   onEdit,
   onPromote,
@@ -54,7 +57,7 @@ const TeacherCard: React.FC<TeacherCardProps> = ({
   const designation = designationMappings[teacher.designation || ''] || teacher.designation || 'Subject Teacher';
 
   return (
-    <div className="group bg-white dark:bg-gray-800 border border-gray-200/60 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-col justify-between h-full">
+    <div className={`group ${cardTint(index)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-200/60 sm:dark:border-gray-700/60 border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-col justify-between h-full`}>
       <div>
         {/* Profile photo and Status badge */}
         <div className="flex items-start justify-between mb-4">
@@ -622,10 +625,11 @@ export const TeachersPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {teachers.map((teacher: TeacherRecord) => (
+                  {teachers.map((teacher: TeacherRecord, idx: number) => (
                     <TeacherCard
                       key={teacher.id}
                       teacher={teacher}
+                      index={idx}
                       onView={setViewingTeacher}
                       onEdit={(t) => { setEditingTeacher(t); setFormOpen(true); }}
                       onPromote={(t) => { setPromotionTeacher(t); setPromotionOpen(true); }}
@@ -728,7 +732,7 @@ export const TeachersPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {teachers.map((teacher: TeacherRecord) => {
+                  {teachers.map((teacher: TeacherRecord, idx: number) => {
                     const designationMap: Record<string, string> = {
                       subject_teacher: 'Subject Teacher',
                       form_teacher: 'Form Teacher',
@@ -757,7 +761,7 @@ export const TeachersPage: React.FC = () => {
                     return (
                       <div
                         key={teacher.id}
-                        className="group bg-white dark:bg-gray-800 border border-gray-200/60 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-col justify-between h-full"
+                        className={`group ${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-200/60 sm:dark:border-gray-700/60 border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-col justify-between h-full`}
                       >
                         <div>
                           {/* Header */}

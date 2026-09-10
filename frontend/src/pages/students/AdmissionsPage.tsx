@@ -15,6 +15,7 @@ import {
   CheckCircle2, XCircle as XCircleIcon, Trash2,
 } from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
+import { cardTint } from '@lib/cardTint';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
@@ -188,7 +189,7 @@ export const AdmissionsPage: React.FC = () => {
   ];
 
   // ── Grid card ─────────────────────────────────────────────────────────────
-  const renderApplicationCard = (app: AdmissionRecord) => {
+  const renderApplicationCard = (app: AdmissionRecord, idx: number) => {
     const cfg = STATUS_CONFIG[app.status] ?? STATUS_CONFIG.pending;
     const gradient = GENDER_GRADIENT[app.child_gender?.toLowerCase() ?? ''] ?? 'from-gray-400 to-gray-600';
     const hasPhoto = !!app.child_photo_url && app.child_photo_url.length > 10;
@@ -196,7 +197,7 @@ export const AdmissionsPage: React.FC = () => {
     return (
       <div
         key={app.id}
-        className="group relative overflow-hidden bg-white dark:bg-gray-800 border border-gray-200/60 dark:border-gray-700/60 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1"
+        className={`group relative overflow-hidden ${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-200/60 sm:dark:border-gray-700/60 border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1`}
       >
         {/* Accent bar */}
         <div className={`h-1 w-full bg-gradient-to-r ${cfg.accent}`} />

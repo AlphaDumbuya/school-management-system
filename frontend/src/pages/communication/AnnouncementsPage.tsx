@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Megaphone, Send, Trash2, Loader2, AlertTriangle, Users, Pencil, Plus, X, CheckCheck } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
+import { cardTint } from '@lib/cardTint';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
@@ -212,7 +213,7 @@ export const AnnouncementsPage: React.FC = () => {
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {announcements.map((a) => {
+            {announcements.map((a, idx) => {
               const mine = a.author_id === user?.id;
               const canManageThis = isAdmin || (canPost && mine);
               const theme = a.priority === 'high'
@@ -221,7 +222,7 @@ export const AnnouncementsPage: React.FC = () => {
               return (
                 <div
                   key={a.id}
-                  className={`relative bg-white rounded-2xl ring-1 shadow-sm hover:shadow-md transition-all flex flex-col overflow-hidden ${a.is_read ? 'ring-gray-200/70' : 'ring-blue-200'}`}
+                  className={`relative ${cardTint(idx)} sm:bg-white rounded-2xl ring-1 shadow-sm hover:shadow-md transition-all flex flex-col overflow-hidden ${a.is_read ? 'ring-gray-200/70' : 'ring-blue-200'}`}
                 >
                   {/* Coloured left accent bar */}
                   <span className={`absolute inset-y-0 left-0 w-1.5 ${theme.bar}`} />

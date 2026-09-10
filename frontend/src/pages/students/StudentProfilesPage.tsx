@@ -22,6 +22,7 @@ import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { Button } from '@components/ui/button';
 import { SearchBar } from '@components/admin/table/SearchBar';
+import { cardTint } from '@lib/cardTint';
 import { studentsService, StudentRecord } from '@services/studentsService';
 import { classesService } from '@services/classesService';
 import { reportCardService } from '@services/reportCardService';
@@ -388,11 +389,11 @@ export const StudentProfilesPage: React.FC = () => {
                 {/* ── GRID VIEW ── */}
                 {viewMode === 'grid' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {filteredStudents.map((s: any) => (
+                    {filteredStudents.map((s: any, idx: number) => (
                       <div
                         key={s.id}
                         onClick={() => handleSelectStudent(s.id)}
-                        className="group flex flex-col items-center p-5 bg-white dark:bg-gray-800 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm hover:shadow-lg hover:border-blue-200 dark:hover:border-blue-900/50 cursor-pointer transition-all duration-300 transform hover:-translate-y-1"
+                        className={`group flex flex-col items-center p-5 ${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-150 sm:dark:border-gray-700/50 border rounded-2xl shadow-sm hover:shadow-lg hover:border-blue-200 dark:hover:border-blue-900/50 cursor-pointer transition-all duration-300 transform hover:-translate-y-1`}
                       >
                         {/* Avatar */}
                         <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 overflow-hidden flex items-center justify-center flex-shrink-0 shadow-inner group-hover:scale-105 transition-transform duration-350">

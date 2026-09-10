@@ -15,6 +15,7 @@ import {
   Calendar, BookOpen, User,
 } from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
+import { cardTint } from '@lib/cardTint';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
@@ -212,14 +213,14 @@ export const StudentDirectoryPage: React.FC = () => {
   ];
 
   // ── Grid card ─────────────────────────────────────────────────────────────
-  const renderStudentCard = (student: StudentRecord) => {
+  const renderStudentCard = (student: StudentRecord, idx: number) => {
     const gradient = GENDER_GRADIENT[student.gender?.toLowerCase() ?? ''] ?? 'from-gray-400 to-gray-600';
     const hasPhoto = !!(student as any).photo_url && ((student as any).photo_url?.length ?? 0) > 10;
 
     return (
       <div
         key={student.id}
-        className="group relative overflow-hidden bg-white dark:bg-gray-800 border border-gray-200/60 dark:border-gray-700/60 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1"
+        className={`group relative overflow-hidden ${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-200/60 sm:dark:border-gray-700/60 border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1`}
       >
         {/* Top accent bar */}
         <div className={`h-1 w-full bg-gradient-to-r ${gradient}`} />

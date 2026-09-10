@@ -20,6 +20,7 @@ import {
   Settings2, Layers, X, Info,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
+import { cardTint } from '@lib/cardTint';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { Button } from '@components/ui/button';
 import { SearchBar } from '@components/admin/table/SearchBar';
@@ -164,7 +165,7 @@ export const FeesPage: React.FC = () => {
             <h3 className="text-sm font-bold text-gray-900 dark:text-white">
               Academic Year Fee Structures ({structures.length})
             </h3>
-            {structures.map((s: any) => {
+            {structures.map((s: any, idx: number) => {
               const isOpen = expanded.has(s.id);
               const t1 = Number(s.term1_tuition) || 0;
               const t2 = Number(s.term2_tuition) || 0;
@@ -173,7 +174,7 @@ export const FeesPage: React.FC = () => {
               const expTotal = exp.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
               const fullYear = t1 + t2 + t3 + expTotal;
               return (
-                <div key={s.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+                <div key={s.id} className={`rounded-2xl ${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-200 sm:dark:border-gray-700 border overflow-hidden`}>
                   <div className="flex items-center gap-3 px-4 py-3 cursor-pointer" onClick={() => toggleExpand(s.id)}>
                     <button className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0">
                       {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}

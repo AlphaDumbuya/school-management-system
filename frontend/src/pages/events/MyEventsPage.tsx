@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import MainLayout from '@components/layout/MainLayout';
+import { cardTint } from '@lib/cardTint';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
@@ -305,13 +306,13 @@ export const MyEventsPage: React.FC = () => {
 
             {!isLoading && filtered.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filtered.map((reg) => {
+                {filtered.map((reg, idx) => {
                   const upcoming = isUpcoming(reg.start_date);
                   return (
                     <div
                       key={reg.registration_id}
                       onClick={() => navigate(`/events/school/${reg.event_id}`)}
-                      className="group rounded-xl border-l-4 border-blue-400 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer hover:-translate-y-0.5"
+                      className={`group rounded-xl border-l-4 border-blue-400 p-4 ${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-200 sm:dark:border-gray-700 border shadow-sm hover:shadow-md transition-all cursor-pointer hover:-translate-y-0.5`}
                     >
                       {/* Header */}
                       <div className="flex items-start justify-between gap-2 mb-3">
