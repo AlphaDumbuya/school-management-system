@@ -25,6 +25,13 @@ import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { API_CONFIG } from '@config/api.config';
 import platformService, { PlatformTenant } from '@services/platformService';
+import {
+  SUSPENSION_CATEGORIES,
+  SUSPENSION_REASONS,
+  CUSTOM_REASON,
+  defaultReasonFor,
+  type SuspensionCategory,
+} from '@lib/suspensionReasons';
 
 type Tab = 'overview' | 'profile' | 'subscription' | 'billing' | 'users' | 'email' | 'audit' | 'danger';
 
@@ -84,8 +91,15 @@ export const TenantDetailPage: React.FC = () => {
 
   // Danger
   const [confirm, setConfirm] = useState<null | 'suspend' | 'activate' | 'delete' | 'restore'>(null);
-  const [suspendReason, setSuspendReason] = useState('');
-  const [suspendCategory, setSuspendCategory] = useState('payment');
+  const [suspendCategory, setSuspendCategory] = useState<SuspensionCategory>('payment');
+  const [reasonPreset, setReasonPreset] = useState<string>(defaultReasonFor('payment'));
+  const [customReason, setCustomReason] = useState('');
+  const suspendReason = reasonPreset === CUSTOM_REASON ? customReason.trim() : reasonPreset;
+  const onCategoryChange = (cat: SuspensionCategory) => {
+    setSuspendCategory(cat);
+    setReasonPreset(defaultReasonFor(cat));
+    setCustomReason('');
+  };
   const [backupBusy, setBackupBusy] = useState(false);
 
   const downloadBackup = async () => {
@@ -351,7 +365,7 @@ export const TenantDetailPage: React.FC = () => {
         return;
       }
       showToast.error(e?.response?.data?.error || 'Action failed');
-    } finally { setSaving(false); setConfirm(null); setSuspendReason(''); setSuspendCategory('payment'); }
+    } finally { setSaving(false); setConfirm(null); onCategoryChange('payment'); }
   };
 
   // Backend getTenantById returns `statistics: { totalUsers, totalStudents, activeUsers }`.
@@ -707,20 +721,25 @@ export const TenantDetailPage: React.FC = () => {
                 {confirm === 'suspend' && (
                   <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 space-y-2">
                     <label className="text-xs font-bold text-amber-800 uppercase tracking-wider">Suspension category</label>
-                    <select className="inp" value={suspendCategory} onChange={(e) => setSuspendCategory(e.target.value)}>
-                      <option value="payment">Overdue payment / billing</option>
-                      <option value="policy">Policy / terms review</option>
-                      <option value="review">Pending verification / review</option>
-                      <option value="security">Security precaution</option>
-                      <option value="abuse">Suspected misuse / abuse</option>
-                      <option value="other">Other</option>
+                    <select className="inp" value={suspendCategory} onChange={(e) => onCategoryChange(e.target.value as SuspensionCategory)}>
+                      {SUSPENSION_CATEGORIES.map((c) => (
+                        <option key={c.value} value={c.value}>{c.label}</option>
+                      ))}
                     </select>
                     <label className="text-xs font-bold text-amber-800 uppercase tracking-wider">Reason for suspension</label>
-                    <input className="inp" value={suspendReason} onChange={(e) => setSuspendReason(e.target.value)} placeholder="e.g. Non-payment" />
+                    <select className="inp" value={reasonPreset} onChange={(e) => setReasonPreset(e.target.value)}>
+                      {SUSPENSION_REASONS[suspendCategory].map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                      <option value={CUSTOM_REASON}>Custom reason…</option>
+                    </select>
+                    {reasonPreset === CUSTOM_REASON && (
+                      <input className="inp" autoFocus value={customReason} onChange={(e) => setCustomReason(e.target.value)} placeholder="Type the specific reason" />
+                    )}
                     <p className="text-[11px] text-amber-700/80">The category tailors the resolution steps in the school's notification email.</p>
                     <div className="flex justify-end gap-2">
                       <Button variant="outline" size="sm" onClick={() => setConfirm(null)}>Cancel</Button>
-                      <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={saving} onClick={() => runDanger(false)}>Confirm Suspend</Button>
+                      <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={saving || !suspendReason} onClick={() => runDanger(false)}>Confirm Suspend</Button>
                     </div>
                   </div>
                 )}

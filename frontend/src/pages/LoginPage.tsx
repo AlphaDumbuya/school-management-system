@@ -51,7 +51,22 @@ export const LoginPage: React.FC = () => {
   //
   // Plain web: feature-detect WebAuthn and only show the button when supported.
   const [supportsPasskeys, setSupportsPasskeys] = useState(false);
-  const suspendedNotice = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('suspended') === '1';
+
+  // Transient suspension banner: only shown right after a suspended session is
+  // redirected here with `?suspended=1`. We read it ONCE, then strip the param
+  // from the URL so it doesn't stick around and alarm users (or fresh visitors)
+  // on subsequent visits / refreshes to the login screen.
+  const [suspendedNotice, setSuspendedNotice] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('suspended') === '1') {
+      setSuspendedNotice(true);
+      params.delete('suspended');
+      const qs = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+    }
+  }, []);
 
   useEffect(() => {
     // Never show passkeys inside the native app shell.

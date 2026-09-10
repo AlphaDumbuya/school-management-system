@@ -33,6 +33,13 @@ import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialo
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { showToast } from '@utils/toast';
 import platformService, { PlatformTenant, PlatformStatistics } from '../services/platformService';
+import {
+  SUSPENSION_CATEGORIES,
+  SUSPENSION_REASONS,
+  CUSTOM_REASON,
+  defaultReasonFor,
+  type SuspensionCategory,
+} from '@lib/suspensionReasons';
 
 export const PlatformTenantsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -78,8 +85,19 @@ export const PlatformTenantsPage: React.FC = () => {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   const [selectedTenant, setSelectedTenant] = useState<PlatformTenant | null>(null);
-  const [suspensionReason, setSuspensionReason] = useState('');
-  const [suspensionCategory, setSuspensionCategory] = useState('payment');
+  const [suspensionCategory, setSuspensionCategory] = useState<SuspensionCategory>('payment');
+  // Selected preset reason (or CUSTOM_REASON sentinel) + the free-text custom reason.
+  const [reasonPreset, setReasonPreset] = useState<string>(defaultReasonFor('payment'));
+  const [customReason, setCustomReason] = useState('');
+  // Effective reason sent to the API.
+  const suspensionReason = reasonPreset === CUSTOM_REASON ? customReason.trim() : reasonPreset;
+
+  // When the category changes, reset the reason to that category's first preset.
+  const onCategoryChange = (cat: SuspensionCategory) => {
+    setSuspensionCategory(cat);
+    setReasonPreset(defaultReasonFor(cat));
+    setCustomReason('');
+  };
 
   // Email sender modal state
   const [isEmailSenderOpen, setIsEmailSenderOpen] = useState(false);
@@ -277,8 +295,7 @@ export const PlatformTenantsPage: React.FC = () => {
       if (res.success) {
         showToast.success(`Tenant "${selectedTenant.name}" has been suspended.`);
         setIsSuspendOpen(false);
-        setSuspensionReason('');
-        setSuspensionCategory('payment');
+        onCategoryChange('payment');
         setSelectedTenant(null);
         fetchData();
       }
@@ -1047,34 +1064,44 @@ export const PlatformTenantsPage: React.FC = () => {
               <select
                 required
                 value={suspensionCategory}
-                onChange={(e) => setSuspensionCategory(e.target.value)}
+                onChange={(e) => onCategoryChange(e.target.value as SuspensionCategory)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-100"
               >
-                <option value="payment">Overdue payment / billing</option>
-                <option value="policy">Policy / terms review</option>
-                <option value="review">Pending verification / review</option>
-                <option value="security">Security precaution</option>
-                <option value="abuse">Suspected misuse / abuse</option>
-                <option value="other">Other</option>
+                {SUSPENSION_CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
               </select>
               <p className="text-[11px] text-gray-400 mt-1">Tailors the resolution steps in the notification email.</p>
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 block mb-1">Suspension Reason *</label>
-              <textarea
-                required
-                rows={3}
-                placeholder="e.g. Subscription payment overdue"
-                value={suspensionReason}
-                onChange={(e) => setSuspensionReason(e.target.value)}
+              <select
+                value={reasonPreset}
+                onChange={(e) => setReasonPreset(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-100"
-              />
+              >
+                {SUSPENSION_REASONS[suspensionCategory].map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+                <option value={CUSTOM_REASON}>Custom reason…</option>
+              </select>
+              {reasonPreset === CUSTOM_REASON && (
+                <textarea
+                  required
+                  rows={2}
+                  autoFocus
+                  placeholder="Type the specific reason"
+                  value={customReason}
+                  onChange={(e) => setCustomReason(e.target.value)}
+                  className="mt-2 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-100"
+                />
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setIsSuspendOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving} className="bg-amber-600 text-white hover:bg-amber-700">
+              <Button type="submit" disabled={saving || !suspensionReason} className="bg-amber-600 text-white hover:bg-amber-700">
                 {saving && <Loader2 className="animate-spin mr-1.5" size={14} />}
                 Suspend Access
               </Button>
