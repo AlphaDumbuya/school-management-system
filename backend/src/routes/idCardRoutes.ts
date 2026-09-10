@@ -325,7 +325,13 @@ router.get(
           });
         }
 
-        const students = await studentsQuery.orderBy('students.student_id', 'asc').limit(5000);
+        // DISTINCT ON (students.id) requires students.id to lead the ORDER BY,
+        // so we sort by id in SQL (for the dedup) and then re-sort by the ID
+        // number (member_id) in memory for the 001, 002, 003 … display order.
+        const studentsRaw = await studentsQuery.orderBy('students.id', 'asc').limit(5000);
+        const students = studentsRaw.sort((a: any, b: any) =>
+          String(a.member_id || '').localeCompare(String(b.member_id || ''), undefined, { numeric: true })
+        );
         results = results.concat(students);
       }
 
