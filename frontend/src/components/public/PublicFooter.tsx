@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, Loader2 } from 'lucide-react';
 import apiClient from '@lib/apiClient';
+import { showToast } from '@utils/toast';
 
 const DOT_PATTERN: React.CSSProperties = {
   backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)',
@@ -30,18 +31,32 @@ export const PublicFooter: React.FC = () => {
     }
     setState('loading');
     try {
-      const res = await apiClient.post<{ success: boolean; message?: string }>('/api/newsletter/subscribe', { email: value });
+      const res = await apiClient.post<{ success: boolean; message?: string; alreadySubscribed?: boolean }>(
+        '/api/newsletter/subscribe',
+        { email: value }
+      );
+      console.log('[Newsletter] subscribe response:', res);
       if (res.success) {
         setState('done');
-        setMessage(res.message || "You're subscribed! Watch your inbox for updates.");
+        const msg = res.message || "You're subscribed! Watch your inbox for updates.";
+        setMessage(msg);
         setEmail('');
+        // Toast so the confirmation is unmistakable even if the inline block is
+        // below the fold.
+        if (res.alreadySubscribed) showToast.info(msg);
+        else showToast.success(msg);
       } else {
         setState('error');
-        setMessage('Could not subscribe. Please try again.');
+        const msg = (res as any)?.error || 'Could not subscribe. Please try again.';
+        setMessage(msg);
+        showToast.error(msg);
       }
-    } catch {
+    } catch (err: any) {
+      console.error('[Newsletter] subscribe failed:', err?.response?.data || err?.message || err);
       setState('error');
-      setMessage('Could not subscribe. Please try again.');
+      const msg = err?.response?.data?.error || 'Could not subscribe. Please try again.';
+      setMessage(msg);
+      showToast.error(msg);
     }
   };
 

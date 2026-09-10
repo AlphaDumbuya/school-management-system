@@ -40,6 +40,8 @@ export class NewsletterService {
     if (existing) {
       const patch: any = {};
       let justSubscribed = false;
+      // Was this email already actively subscribed before this call?
+      const alreadySubscribed = existing.status === 'subscribed';
       if (input.name && !existing.name) patch.name = input.name;
       if (input.tenantId && !existing.tenant_id) patch.tenant_id = input.tenantId;
       if (input.optIn && existing.status !== 'subscribed') {
@@ -49,21 +51,38 @@ export class NewsletterService {
       }
       if (Object.keys(patch).length) await db('newsletter_subscribers').where({ id: existing.id }).update(patch);
       const row = await db('newsletter_subscribers').where({ id: existing.id }).first();
-      return { ...row, justSubscribed };
+      return { ...row, justSubscribed, alreadySubscribed, isNew: false };
     }
-    const [row] = await db('newsletter_subscribers')
-      .insert({
-        email,
-        name: input.name || null,
-        source: input.source,
-        tenant_id: input.tenantId || null,
-        status: input.optIn ? 'subscribed' : 'unsubscribed',
-        unsubscribe_token: this.newToken(),
-        created_at: new Date(),
-      })
-      .returning('*');
+    let row: any;
+    try {
+      [row] = await db('newsletter_subscribers')
+        .insert({
+          email,
+          name: input.name || null,
+          source: input.source,
+          tenant_id: input.tenantId || null,
+          status: input.optIn ? 'subscribed' : 'unsubscribed',
+          unsubscribe_token: this.newToken(),
+          created_at: new Date(),
+        })
+        .returning('*');
+    } catch (err: any) {
+      // Race: another request inserted this email between our check and insert.
+      // The `email` column is UNIQUE, so re-read and treat as an existing row.
+      const raced = await db('newsletter_subscribers').where({ email }).first();
+      if (raced) {
+        const alreadySubscribed = raced.status === 'subscribed';
+        if (input.optIn && !alreadySubscribed) {
+          await db('newsletter_subscribers').where({ id: raced.id }).update({ status: 'subscribed', unsubscribed_at: null });
+          const updated = await db('newsletter_subscribers').where({ id: raced.id }).first();
+          return { ...updated, justSubscribed: true, alreadySubscribed: false, isNew: false };
+        }
+        return { ...raced, justSubscribed: false, alreadySubscribed, isNew: false };
+      }
+      throw err;
+    }
     // A brand-new row counts as "just subscribed" only when it opted in.
-    return { ...row, justSubscribed: !!input.optIn };
+    return { ...row, justSubscribed: !!input.optIn, alreadySubscribed: false, isNew: true };
   }
 
   /** Absolute unsubscribe URL for a subscriber token. */
