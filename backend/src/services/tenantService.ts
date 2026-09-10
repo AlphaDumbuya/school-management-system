@@ -512,4 +512,42 @@ export class TenantService {
       throw new AppError('Failed to fetch platform statistics', 500, 'FETCH_STATS_ERROR');
     }
   }
+
+  /**
+   * Suspension tracking for the platform owner: every currently-suspended tenant
+   * with its category, reason and date, plus per-category counts. Lets the owner
+   * see WHY schools are suspended at a glance (e.g. how many for non-payment vs
+   * policy violations).
+   */
+  static async getSuspensionOverview() {
+    try {
+      const rows = await db('tenants')
+        .select('id', 'name', 'slug', 'contact_email', 'settings', 'updated_at')
+        .where({ status: 'suspended' })
+        .orderBy('updated_at', 'desc');
+
+      const CATEGORIES = ['payment', 'policy', 'abuse', 'review', 'security', 'other'] as const;
+      const counts: Record<string, number> = Object.fromEntries(CATEGORIES.map((c) => [c, 0]));
+
+      const tenants = rows.map((t: any) => {
+        const settings = typeof t.settings === 'string' ? JSON.parse(t.settings || '{}') : (t.settings || {});
+        const category = CATEGORIES.includes(settings.suspension_category) ? settings.suspension_category : 'other';
+        counts[category] = (counts[category] || 0) + 1;
+        return {
+          id: t.id,
+          name: t.name,
+          slug: t.slug,
+          contactEmail: t.contact_email || null,
+          category,
+          reason: settings.suspension_reason || null,
+          suspendedAt: settings.suspended_at || t.updated_at || null,
+        };
+      });
+
+      return { total: tenants.length, counts, tenants };
+    } catch (error) {
+      logger.error('Error fetching suspension overview:', error);
+      throw new AppError('Failed to fetch suspension overview', 500, 'FETCH_SUSPENSIONS_ERROR');
+    }
+  }
 }

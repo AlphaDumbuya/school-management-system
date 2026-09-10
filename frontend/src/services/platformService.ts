@@ -40,9 +40,31 @@ export interface PlatformStatistics {
   twoFactorUsers?: number;
 }
 
+export type SuspensionCategory = 'payment' | 'policy' | 'abuse' | 'review' | 'security' | 'other';
+
+export interface SuspendedTenant {
+  id: string;
+  name: string;
+  slug: string;
+  contactEmail: string | null;
+  category: SuspensionCategory;
+  reason: string | null;
+  suspendedAt: string | null;
+}
+
+export interface SuspensionOverview {
+  total: number;
+  counts: Record<SuspensionCategory, number>;
+  tenants: SuspendedTenant[];
+}
+
 export const platformService = {
   async getStatistics() {
     return apiClient.get<{ success: boolean; data: PlatformStatistics }>('/api/v1/platform/statistics');
+  },
+
+  async getSuspensionOverview() {
+    return apiClient.get<{ success: boolean; data: SuspensionOverview }>('/api/v1/platform/tenants/suspensions');
   },
 
   async getTenants(filters?: { status?: string; search?: string; limit?: number; offset?: number }) {

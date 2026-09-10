@@ -13,7 +13,16 @@ import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
 import { showToast } from '@utils/toast';
-import platformService, { PlatformStatistics, PlatformTenant } from '../services/platformService';
+import platformService, { PlatformStatistics, PlatformTenant, SuspensionOverview, SuspensionCategory } from '../services/platformService';
+
+const SUSPENSION_META: Record<SuspensionCategory, { label: string; dot: string; chip: string }> = {
+  payment:  { label: 'Overdue payment',        dot: 'bg-amber-500',   chip: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  policy:   { label: 'Policy / terms',          dot: 'bg-orange-500',  chip: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
+  abuse:    { label: 'Misuse / abuse',          dot: 'bg-red-500',     chip: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
+  security: { label: 'Security',                dot: 'bg-rose-500',    chip: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' },
+  review:   { label: 'Pending review',          dot: 'bg-blue-500',    chip: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+  other:    { label: 'Other',                   dot: 'bg-gray-400',    chip: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
+};
 
 const PLAN_META: Record<string, { label: string; bar: string }> = {
   freetong: { label: 'Freetong (Basic Trial)', bar: 'bg-blue-500' },
@@ -39,18 +48,21 @@ const timeAgo = (iso: string): string => {
 export const PlatformAnalyticsPage: React.FC = () => {
   const [statistics, setStatistics] = useState<PlatformStatistics | null>(null);
   const [tenants, setTenants] = useState<PlatformTenant[]>([]);
+  const [suspensions, setSuspensions] = useState<SuspensionOverview | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
       try {
-        const [statsRes, tenantsRes] = await Promise.all([
+        const [statsRes, tenantsRes, suspRes] = await Promise.all([
           platformService.getStatistics(),
           platformService.getTenants({ limit: 200 }),
+          platformService.getSuspensionOverview(),
         ]);
         if (statsRes.success && statsRes.data) setStatistics(statsRes.data);
         if (tenantsRes.success && tenantsRes.data) setTenants(tenantsRes.data);
+        if (suspRes.success && suspRes.data) setSuspensions(suspRes.data);
       } catch (err) {
         console.error('Error loading platform analytics:', err);
         showToast.error('Failed to load platform analytics');
@@ -182,6 +194,53 @@ export const PlatformAnalyticsPage: React.FC = () => {
                       <span className="text-[10px] text-gray-400 uppercase font-bold block">Total</span>
                       <span className="text-lg font-black text-gray-800 dark:text-gray-100">{statistics.totalTenants}</span>
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Suspension Tracking — suspended tenants by category (real) */}
+              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5 shadow-sm lg:col-span-2">
+                <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
+                  <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                    <PieChart size={16} className="text-amber-500" /> Suspension Tracking
+                  </h3>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase">{suspensions?.total ?? 0} suspended</span>
+                </div>
+
+                {/* Category counts */}
+                {suspensions && suspensions.total > 0 ? (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-5">
+                      {(Object.keys(SUSPENSION_META) as SuspensionCategory[]).map((cat) => (
+                        <div key={cat} className="border border-gray-100 dark:border-gray-700 rounded-xl p-3 text-center">
+                          <span className={`inline-block w-2 h-2 rounded-full ${SUSPENSION_META[cat].dot} mb-1`} />
+                          <span className="block text-lg font-black text-gray-800 dark:text-gray-100">{suspensions.counts[cat] ?? 0}</span>
+                          <span className="block text-[10px] text-gray-400 leading-tight">{SUSPENSION_META[cat].label}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Per-tenant list */}
+                    <div className="space-y-2">
+                      {suspensions.tenants.map((t) => (
+                        <div key={t.id} className="flex items-start justify-between gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{t.name}</span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${SUSPENSION_META[t.category].chip}`}>
+                                {SUSPENSION_META[t.category].label}
+                              </span>
+                            </div>
+                            {t.reason && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{t.reason}</p>}
+                          </div>
+                          <span className="text-[11px] text-gray-400 whitespace-nowrap shrink-0">{t.suspendedAt ? timeAgo(t.suspendedAt) : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-gray-400 py-6 justify-center">
+                    <Info size={16} /> No suspended schools. Everything's running normally.
                   </div>
                 )}
               </div>

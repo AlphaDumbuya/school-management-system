@@ -67,6 +67,21 @@ router.get('/statistics', authenticate, authorize(UserRole.SUPER_ADMIN), async (
 });
 
 /**
+ * @route   GET /api/platform/tenants/suspensions
+ * @desc    Suspension tracking — suspended tenants by category, with reason/date.
+ * @access  Super Admin only
+ * NOTE: must be declared BEFORE `/tenants/:id` so "suspensions" isn't read as an id.
+ */
+router.get('/tenants/suspensions', authenticate, authorize(UserRole.SUPER_ADMIN), async (_req, res, next) => {
+  try {
+    const data = await TenantService.getSuspensionOverview();
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * @route   GET /api/platform/tenants
  * @desc    Get all tenants with filtering
  * @access  Super Admin only
