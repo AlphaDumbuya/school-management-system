@@ -68,7 +68,7 @@ export const supportService = {
   getMyTicket(id: string) {
     return apiClient.get<{ success: boolean; data: SupportTicket }>(`/api/v1/support/tickets/${id}`);
   },
-  createTicket(data: { subject: string; description: string; category: string; priority?: TicketPriority }) {
+  createTicket(data: { subject: string; description: string; category: string; priority?: TicketPriority; attachments?: { name: string; data: string; mimeType: string }[] }) {
     return apiClient.post<{ success: boolean; data: SupportTicket }>('/api/v1/support/tickets', data);
   },
   getResponses(id: string) {

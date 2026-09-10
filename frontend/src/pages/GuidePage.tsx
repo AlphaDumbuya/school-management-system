@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Settings, Users, GraduationCap, ClipboardCheck, Wallet, CreditCard,
   BookOpen, ClipboardList, FileText, Building, ArrowRight, PlayCircle, LifeBuoy, Mail,
+  CalendarDays, Megaphone, ShieldCheck,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -19,17 +20,17 @@ import { AlertTriangle, ArrowRight as ArrowRightIcon } from 'lucide-react';
 // Resolve the lucide icon name stored in the guide content to a component.
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
   Settings, Users, GraduationCap, ClipboardCheck, Wallet, CreditCard,
-  BookOpen, ClipboardList, FileText, Building,
+  BookOpen, ClipboardList, FileText, Building, CalendarDays, Megaphone, ShieldCheck,
 };
 
 // A gentle rotating palette so the section cards feel colourful and distinct.
 const CARD_TINTS = [
-  { chip: 'bg-blue-50 text-blue-600', ring: 'hover:ring-blue-200' },
-  { chip: 'bg-emerald-50 text-emerald-600', ring: 'hover:ring-emerald-200' },
-  { chip: 'bg-violet-50 text-violet-600', ring: 'hover:ring-violet-200' },
-  { chip: 'bg-amber-50 text-amber-600', ring: 'hover:ring-amber-200' },
-  { chip: 'bg-sky-50 text-sky-600', ring: 'hover:ring-sky-200' },
-  { chip: 'bg-rose-50 text-rose-600', ring: 'hover:ring-rose-200' },
+  { chip: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300', ring: 'hover:ring-blue-200 dark:hover:ring-blue-900/50' },
+  { chip: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300', ring: 'hover:ring-emerald-200 dark:hover:ring-emerald-900/50' },
+  { chip: 'bg-violet-50 text-violet-600 dark:bg-violet-900/20 dark:text-violet-300', ring: 'hover:ring-violet-200 dark:hover:ring-violet-900/50' },
+  { chip: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-300', ring: 'hover:ring-amber-200 dark:hover:ring-amber-900/50' },
+  { chip: 'bg-sky-50 text-sky-600 dark:bg-sky-900/20 dark:text-sky-300', ring: 'hover:ring-sky-200 dark:hover:ring-sky-900/50' },
+  { chip: 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300', ring: 'hover:ring-rose-200 dark:hover:ring-rose-900/50' },
 ];
 
 export const GuidePage: React.FC = () => {
@@ -49,18 +50,18 @@ export const GuidePage: React.FC = () => {
     const Icon = section.icon ? ICONS[section.icon] ?? BookOpen : BookOpen;
     const tint = CARD_TINTS[i % CARD_TINTS.length];
     return (
-      <div className={`bg-white rounded-2xl ring-1 ring-gray-200/70 shadow-sm transition-all duration-300 hover:shadow-lg ${tint.ring} hover:ring-2 p-5`}>
+      <div className={`bg-white dark:bg-gray-800 rounded-2xl ring-1 ring-gray-200/70 dark:ring-gray-700 shadow-sm transition-all duration-300 hover:shadow-lg ${tint.ring} hover:ring-2 p-5`}>
         <div className="flex items-center gap-3 mb-3">
           <span className={`w-11 h-11 rounded-2xl flex items-center justify-center ${tint.chip}`}>
             <Icon size={22} />
           </span>
-          <h3 className="font-bold text-slate-900">{section.title}</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white">{section.title}</h3>
         </div>
-        <p className="text-sm text-slate-600 mb-3">{section.intro}</p>
+        <p className="text-sm text-slate-600 dark:text-gray-300 mb-3">{section.intro}</p>
         <ul className="space-y-1.5 mb-4">
           {section.points.map((p, idx) => (
-            <li key={idx} className="flex items-start gap-2 text-sm text-slate-600">
-              <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-300 flex-shrink-0" />
+            <li key={idx} className="flex items-start gap-2 text-sm text-slate-600 dark:text-gray-300">
+              <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-gray-500 flex-shrink-0" />
               {p}
             </li>
           ))}
@@ -68,7 +69,7 @@ export const GuidePage: React.FC = () => {
         {section.route && (
           <button
             onClick={() => navigate(section.route!)}
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#1d4ed8] hover:text-[#1e40af] transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#1d4ed8] dark:text-blue-400 hover:text-[#1e40af] transition-colors"
           >
             {section.routeLabel ?? 'Open'} <ArrowRight size={15} />
           </button>
@@ -101,6 +102,12 @@ export const GuidePage: React.FC = () => {
                 <PlayCircle size={16} /> {replayed ? 'Restarting…' : 'Replay walkthrough'}
               </button>
               <button
+                onClick={() => navigate('/support')}
+                className="inline-flex items-center gap-2 bg-white/15 backdrop-blur text-white border border-white/25 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-white/25 transition-all"
+              >
+                <LifeBuoy size={15} /> Help Center
+              </button>
+              <button
                 onClick={() => navigate('/dashboard')}
                 className="inline-flex items-center gap-2 bg-white/15 backdrop-blur text-white border border-white/25 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-white/25 transition-all"
               >
@@ -114,11 +121,11 @@ export const GuidePage: React.FC = () => {
         {guide.setupOrder && guide.setupOrder.length > 0 && (
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-lg font-black text-slate-900">Your setup roadmap</h2>
+              <h2 className="text-lg font-black text-slate-900 dark:text-white">Your setup roadmap</h2>
             </div>
-            <p className="text-sm text-slate-600 mb-4">
+            <p className="text-sm text-slate-600 dark:text-gray-300 mb-4">
               Complete these phases <strong>in order</strong>. Steps marked{' '}
-              <span className="inline-flex items-center gap-1 text-amber-700 font-semibold"><AlertTriangle size={13} /> Required</span>{' '}
+              <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400 font-semibold"><AlertTriangle size={13} /> Required</span>{' '}
               must be done before enrolling people or running the school.
             </p>
 
@@ -135,27 +142,27 @@ export const GuidePage: React.FC = () => {
                   </div>
 
                   {/* Phase card */}
-                  <div className="flex-1 min-w-0 bg-white rounded-2xl ring-1 ring-gray-200/70 shadow-sm p-5">
+                  <div className="flex-1 min-w-0 bg-white dark:bg-gray-800 rounded-2xl ring-1 ring-gray-200/70 dark:ring-gray-700 shadow-sm p-5">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <h3 className="font-bold text-slate-900">{phase.title}</h3>
+                      <h3 className="font-bold text-slate-900 dark:text-white">{phase.title}</h3>
                       {phase.required && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 px-2 py-0.5 rounded-full">
                           <AlertTriangle size={11} /> Required
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-slate-500 mb-3">{phase.why}</p>
+                    <p className="text-sm text-slate-500 dark:text-gray-400 mb-3">{phase.why}</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {phase.tasks.map((task, ti) => (
                         <button
                           key={ti}
                           onClick={() => task.route && navigate(task.route)}
                           disabled={!task.route}
-                          className="group flex items-center justify-between gap-2 text-left px-3 py-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 ring-1 ring-transparent hover:ring-blue-200 transition-all disabled:cursor-default"
+                          className="group flex items-center justify-between gap-2 text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-gray-700/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 ring-1 ring-transparent hover:ring-blue-200 dark:hover:ring-blue-900/50 transition-all disabled:cursor-default"
                         >
-                          <span className="text-sm text-slate-700 font-medium">{task.label}</span>
+                          <span className="text-sm text-slate-700 dark:text-gray-200 font-medium">{task.label}</span>
                           {task.route && (
-                            <ArrowRightIcon size={15} className="text-slate-400 group-hover:text-[#1d4ed8] transition-colors flex-shrink-0" />
+                            <ArrowRightIcon size={15} className="text-slate-400 group-hover:text-[#1d4ed8] dark:group-hover:text-blue-400 transition-colors flex-shrink-0" />
                           )}
                         </button>
                       ))}
@@ -169,20 +176,20 @@ export const GuidePage: React.FC = () => {
 
         {/* Quick-start steps */}
         <div className="mb-8">
-          <h2 className="text-lg font-black text-slate-900 mb-3">Quick start</h2>
+          <h2 className="text-lg font-black text-slate-900 dark:text-white mb-3">Quick start</h2>
           <ol className="space-y-3">
             {guide.steps.map((step, i) => (
-              <li key={i} className="flex items-start gap-3 bg-white rounded-xl ring-1 ring-gray-200/70 shadow-sm p-4">
+              <li key={i} className="flex items-start gap-3 bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200/70 dark:ring-gray-700 shadow-sm p-4">
                 <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-[#1d4ed8] to-[#3b82f6] text-white font-black text-sm flex items-center justify-center">
                   {i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <h4 className="font-bold text-slate-900 text-sm">{step.title}</h4>
-                  <p className="text-sm text-slate-600 mt-0.5">{step.body}</p>
+                  <h4 className="font-bold text-slate-900 dark:text-white text-sm">{step.title}</h4>
+                  <p className="text-sm text-slate-600 dark:text-gray-300 mt-0.5">{step.body}</p>
                   {step.route && (
                     <button
                       onClick={() => navigate(step.route!)}
-                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[#1d4ed8] hover:text-[#1e40af] transition-colors"
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[#1d4ed8] dark:text-blue-400 hover:text-[#1e40af] transition-colors"
                     >
                       {step.routeLabel ?? 'Take me there'} <ArrowRight size={13} />
                     </button>
@@ -195,7 +202,7 @@ export const GuidePage: React.FC = () => {
 
         {/* Feature sections */}
         <div className="mb-8">
-          <h2 className="text-lg font-black text-slate-900 mb-3">Explore the platform</h2>
+          <h2 className="text-lg font-black text-slate-900 dark:text-white mb-3">Explore the platform</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {guide.sections.map((s, i) => (
               <SectionCard key={s.id} section={s} i={i} />
@@ -204,22 +211,30 @@ export const GuidePage: React.FC = () => {
         </div>
 
         {/* Help footer */}
-        <div className="rounded-2xl bg-slate-50 ring-1 ring-gray-200/70 p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="rounded-2xl bg-slate-50 dark:bg-gray-800 ring-1 ring-gray-200/70 dark:ring-gray-700 p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-start gap-3">
-            <span className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+            <span className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 flex items-center justify-center flex-shrink-0">
               <LifeBuoy size={22} />
             </span>
             <div>
-              <h3 className="font-bold text-slate-900">Need more help?</h3>
-              <p className="text-sm text-slate-600">Our team is here to support your school.</p>
+              <h3 className="font-bold text-slate-900 dark:text-white">Need more help?</h3>
+              <p className="text-sm text-slate-600 dark:text-gray-300">Browse step-by-step guides in the Help Center, or reach our team.</p>
             </div>
           </div>
-          <a
-            href="mailto:support@wiskulsl.com"
-            className="inline-flex items-center gap-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition-colors self-start sm:self-auto"
-          >
-            <Mail size={16} /> Contact Support
-          </a>
+          <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+            <button
+              onClick={() => navigate('/support')}
+              className="inline-flex items-center gap-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition-colors"
+            >
+              <LifeBuoy size={16} /> Help Center
+            </button>
+            <a
+              href="mailto:support@wiskulsl.com"
+              className="inline-flex items-center gap-2 bg-white dark:bg-gray-700 text-[#1d4ed8] dark:text-blue-300 border border-blue-200 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-gray-600 font-semibold text-sm px-5 py-2.5 rounded-xl transition-colors"
+            >
+              <Mail size={16} /> Contact Support
+            </a>
+          </div>
         </div>
       </PageShell>
     </MainLayout>

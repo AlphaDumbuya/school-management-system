@@ -33,9 +33,11 @@ import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
 import { StorageSettings } from '@components/settings/StorageSettings';
 import { OfflineStorageSettings } from '@components/offline/OfflineStorageSettings';
 import { useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 
 export const SettingsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
   const logout = useAuthStore((s) => s.logout);
@@ -245,6 +247,10 @@ export const SettingsPage: React.FC = () => {
             schoolName: schoolInfo.name ?? user.schoolName,
           });
         }
+        // Refresh anything that shows school branding (report cards, ID cards,
+        // headers, etc.) so the new name/logo take effect immediately without a
+        // reload. The report card page caches this under ['school-info'].
+        queryClient.invalidateQueries({ queryKey: ['school-info'] });
       } else {
         throw new Error(res.error || 'Failed to update school info');
       }

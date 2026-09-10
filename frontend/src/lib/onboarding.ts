@@ -122,7 +122,7 @@ const PRINCIPAL: RoleGuide = {
       tasks: [
         { label: 'Enrol students / import a class', route: '/students/directory', routeLabel: 'Student Directory' },
         { label: 'Review admissions applications', route: '/students/admissions', routeLabel: 'Admissions' },
-        { label: 'Generate ID cards', route: '/identity/id-cards', routeLabel: 'ID Cards' },
+        { label: 'Generate ID cards', route: '/identity/cards', routeLabel: 'ID Cards' },
       ],
     },
     {
@@ -266,7 +266,7 @@ const PRINCIPAL: RoleGuide = {
         'Design card templates.',
         'Generate cards in bulk for a class or the whole school.',
       ],
-      route: '/identity/id-cards',
+      route: '/identity/cards',
       routeLabel: 'ID Cards',
     },
   ],

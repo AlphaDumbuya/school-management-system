@@ -72,7 +72,7 @@ export default function registerPhase21Routes(
   app.get('/api/v1/help/articles/search', authenticate, async (req: Request, res: Response) => {
     try {
       const { query, category, limit = 20 } = req.query;
-      const tenantId = req.user?.tenantId;
+      const tenantId = req.auth?.tenantId;
 
       if (!tenantId) throw new AppError('User context required', 401);
 
@@ -97,7 +97,7 @@ export default function registerPhase21Routes(
   app.get('/api/v1/help/articles/:articleId', authenticate, async (req: Request, res: Response) => {
     try {
       const { articleId } = req.params;
-      const tenantId = req.user?.tenantId;
+      const tenantId = req.auth?.tenantId;
 
       if (!tenantId) throw new AppError('User context required', 401);
 
@@ -116,7 +116,7 @@ export default function registerPhase21Routes(
   app.get('/api/v1/help/context/:contextPath', authenticate, async (req: Request, res: Response) => {
     try {
       const { contextPath } = req.params;
-      const tenantId = req.user?.tenantId;
+      const tenantId = req.auth?.tenantId;
 
       if (!tenantId) throw new AppError('User context required', 401);
 
@@ -169,7 +169,7 @@ export default function registerPhase21Routes(
    */
   app.get('/api/v1/help/categories', authenticate, async (req: Request, res: Response) => {
     try {
-      const tenantId = req.user?.tenantId;
+      const tenantId = req.auth?.tenantId;
 
       if (!tenantId) throw new AppError('User context required', 401);
 
@@ -189,7 +189,7 @@ export default function registerPhase21Routes(
     try {
       const { category } = req.params;
       const { limit = 50 } = req.query;
-      const tenantId = req.user?.tenantId;
+      const tenantId = req.auth?.tenantId;
 
       if (!tenantId) throw new AppError('User context required', 401);
 
@@ -210,7 +210,7 @@ export default function registerPhase21Routes(
   app.get('/api/v1/help/faqs', authenticate, async (req: Request, res: Response) => {
     try {
       const { category } = req.query;
-      const tenantId = req.user?.tenantId;
+      const tenantId = req.auth?.tenantId;
 
       if (!tenantId) throw new AppError('User context required', 401);
 
@@ -232,7 +232,7 @@ export default function registerPhase21Routes(
     try {
       const { errorCode } = req.params;
       const { customMessage } = req.query;
-      const tenantId = req.user?.tenantId;
+      const tenantId = req.auth?.tenantId;
 
       if (!tenantId) throw new AppError('User context required', 401);
 
@@ -256,8 +256,8 @@ export default function registerPhase21Routes(
   app.post('/api/v1/help/errors/log', authenticate, async (req: Request, res: Response) => {
     try {
       const { errorCode, message, stackTrace, context } = req.body;
-      const tenantId = req.user?.tenantId;
-      const userId = req.user?.userId;
+      const tenantId = req.auth?.tenantId;
+      const userId = req.auth?.userId;
 
       if (!tenantId) throw new AppError('User context required', 401);
       if (!errorCode || !message) {
@@ -287,7 +287,7 @@ export default function registerPhase21Routes(
   app.get('/api/v1/help/errors/logs', authenticate, async (req: Request, res: Response) => {
     try {
       const { errorCode, resolved, limit = 100, offset = 0 } = req.query;
-      const tenantId = req.user?.tenantId;
+      const tenantId = req.auth?.tenantId;
 
       if (!tenantId) throw new AppError('User context required', 401);
 
@@ -316,7 +316,7 @@ export default function registerPhase21Routes(
   app.get('/api/v1/help/errors/stats', authenticate, async (req: Request, res: Response) => {
     try {
       const { periodDays = 30 } = req.query;
-      const tenantId = req.user?.tenantId;
+      const tenantId = req.auth?.tenantId;
 
       if (!tenantId) throw new AppError('User context required', 401);
 
@@ -337,8 +337,8 @@ export default function registerPhase21Routes(
   app.post('/api/v1/support/tickets', authenticate, async (req: Request, res: Response) => {
     try {
       const { subject, description, priority, category, attachments } = req.body;
-      const tenantId = req.user?.tenantId;
-      const userId = req.user?.userId;
+      const tenantId = req.auth?.tenantId;
+      const userId = req.auth?.userId;
 
       if (!tenantId || !userId) throw new AppError('User context required', 401);
       if (!subject || !description || !category) {
@@ -368,7 +368,7 @@ export default function registerPhase21Routes(
   app.get('/api/v1/support/tickets/:ticketId', authenticate, async (req: Request, res: Response) => {
     try {
       const { ticketId } = req.params;
-      const tenantId = req.user?.tenantId;
+      const tenantId = req.auth?.tenantId;
 
       if (!tenantId) throw new AppError('User context required', 401);
 
@@ -387,7 +387,7 @@ export default function registerPhase21Routes(
   app.get('/api/v1/support/tickets', authenticate, async (req: Request, res: Response) => {
     try {
       const { status, priority, category, limit = 50, offset = 0 } = req.query;
-      const tenantId = req.user?.tenantId;
+      const tenantId = req.auth?.tenantId;
 
       if (!tenantId) throw new AppError('User context required', 401);
 
@@ -438,7 +438,7 @@ export default function registerPhase21Routes(
     try {
       const { ticketId } = req.params;
       const { message, attachments, isPublic = true } = req.body;
-      const responderId = req.user?.userId;
+      const responderId = req.auth?.userId;
 
       if (!responderId) throw new AppError('User context required', 401);
       if (!message) throw new AppError('message required', 400);
@@ -481,7 +481,7 @@ export default function registerPhase21Routes(
    */
   app.get('/api/v1/support/stats', authenticate, async (req: Request, res: Response) => {
     try {
-      const tenantId = req.user?.tenantId;
+      const tenantId = req.auth?.tenantId;
 
       if (!tenantId) throw new AppError('User context required', 401);
 

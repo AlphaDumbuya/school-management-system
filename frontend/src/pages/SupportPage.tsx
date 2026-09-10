@@ -13,6 +13,9 @@ import {
   ChevronDown, Rocket, HelpCircle, Ticket, Mail,
   Settings, Users, GraduationCap, ClipboardCheck, Wallet, CreditCard,
   CalendarDays, Megaphone, BookOpen, Building, ShieldCheck,
+  Wrench, CreditCard as BillingIcon, UserCog, Lightbulb, BookMarked,
+  MoreHorizontal, AlertTriangle, AlertCircle, CheckCircle2, ChevronLeft,
+  FileQuestion, Star, ImagePlus, Paperclip, Trash2,
 } from 'lucide-react';
 import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -311,61 +314,387 @@ const TopicCard: React.FC<{ module: HelpModule; accent: string }> = ({ module, a
   );
 };
 
+// ── New Ticket Modal — polished multi-step ────────────────────────────────────
+
+const CATEGORY_OPTIONS = [
+  {
+    value: 'Technical Issue',
+    icon: Wrench,
+    color: 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-900/40',
+    selected: 'ring-2 ring-red-400 border-red-400 bg-red-50 dark:bg-red-900/30',
+    desc: 'Something is broken or not working',
+  },
+  {
+    value: 'Billing',
+    icon: BillingIcon,
+    color: 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900/40',
+    selected: 'ring-2 ring-emerald-400 border-emerald-400 bg-emerald-50 dark:bg-emerald-900/30',
+    desc: 'Subscription, payments or invoices',
+  },
+  {
+    value: 'Account',
+    icon: UserCog,
+    color: 'bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-900/40',
+    selected: 'ring-2 ring-blue-400 border-blue-400 bg-blue-50 dark:bg-blue-900/30',
+    desc: 'Login, access, users or settings',
+  },
+  {
+    value: 'Feature Request',
+    icon: Star,
+    color: 'bg-violet-50 text-violet-600 border-violet-200 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-900/40',
+    selected: 'ring-2 ring-violet-400 border-violet-400 bg-violet-50 dark:bg-violet-900/30',
+    desc: 'Suggest an improvement or new feature',
+  },
+  {
+    value: 'How-to / Guidance',
+    icon: BookMarked,
+    color: 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-900/40',
+    selected: 'ring-2 ring-amber-400 border-amber-400 bg-amber-50 dark:bg-amber-900/30',
+    desc: 'How does something work?',
+  },
+  {
+    value: 'Other',
+    icon: MoreHorizontal,
+    color: 'bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600',
+    selected: 'ring-2 ring-gray-400 border-gray-400 bg-gray-100 dark:bg-gray-600',
+    desc: 'Anything else',
+  },
+] as const;
+
+const PRIORITY_OPTIONS = [
+  { value: 'low' as const, label: 'Low', sub: 'General questions', dot: 'bg-gray-400' },
+  { value: 'medium' as const, label: 'Medium', sub: 'Minor impact on work', dot: 'bg-blue-500' },
+  { value: 'high' as const, label: 'High', sub: 'Blocking important tasks', dot: 'bg-amber-500' },
+  { value: 'urgent' as const, label: 'Urgent', sub: 'School operations halted', dot: 'bg-red-500' },
+];
+
+const CATEGORY_TIPS: Record<string, string> = {
+  'Technical Issue': 'Include the page or feature where the issue appears, what you did, what happened, and what you expected.',
+  'Billing': 'Include your subscription plan, the date of the charge or invoice, and the amount in question.',
+  'Account': 'Include the affected user\'s email or role, and whether the issue affects just one account or multiple.',
+  'Feature Request': 'Describe your workflow and what problem the feature would solve. Screenshots or examples help.',
+  'How-to / Guidance': 'Tell us which feature you\'re trying to use and what you\'ve already tried.',
+  'Other': 'Describe the situation clearly so we can route it to the right team.',
+};
+
 const NewTicketModal: React.FC<{ onClose: () => void; onCreated: () => void }> = ({ onClose, onCreated }) => {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [category, setCategory] = useState('');
   const [subject, setSubject] = useState('');
-  const [category, setCategory] = useState(TICKET_CATEGORIES[0]);
   const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
   const [description, setDescription] = useState('');
+  const [attachments, setAttachments] = useState<{ name: string; data: string; mimeType: string; preview: string }[]>([]);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const catOpt = CATEGORY_OPTIONS.find((c) => c.value === category);
+  const tip = category ? CATEGORY_TIPS[category] : '';
+  const valid = subject.trim().length >= 5 && description.trim().length >= 20;
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files) return;
+    const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+    const maxSizeMB = 5;
+    Array.from(files).slice(0, 4 - attachments.length).forEach((file) => {
+      if (!allowed.includes(file.type)) { showToast.error(`${file.name}: only PNG, JPG, WEBP or GIF allowed`); return; }
+      if (file.size > maxSizeMB * 1024 * 1024) { showToast.error(`${file.name}: max ${maxSizeMB}MB per file`); return; }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = e.target?.result as string;
+        setAttachments((prev) => [
+          ...prev,
+          { name: file.name, data, mimeType: file.type, preview: data },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeAttachment = (i: number) =>
+    setAttachments((prev) => prev.filter((_, idx) => idx !== i));
 
   const mutation = useMutation({
-    mutationFn: () => supportService.createTicket({ subject, category, priority, description }),
+    mutationFn: () => supportService.createTicket({
+      subject, category, priority, description,
+      attachments: attachments.map(({ name, data, mimeType }) => ({ name, data, mimeType })),
+    }),
     onSuccess: (res: any) => {
       if (res?.success === false) { showToast.apiError(res.error); return; }
-      showToast.success('Ticket submitted. We\'ll be in touch.');
-      onCreated();
+      setStep(3);
     },
-    onError: () => showToast.error('Could not submit the ticket.'),
+    onError: () => showToast.error('Could not submit the ticket. Please try again.'),
   });
 
-  const valid = subject.trim() && description.trim();
-
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-800 shadow-xl">
-        <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 px-5 py-4">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">New Support Ticket</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+      <div className="w-full sm:max-w-xl rounded-t-3xl sm:rounded-2xl bg-white dark:bg-gray-900 shadow-2xl flex flex-col max-h-[92dvh]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            {step === 2 && (
+              <button onClick={() => setStep(1)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 mr-1">
+                <ChevronLeft size={20} />
+              </button>
+            )}
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                {step === 1 && 'What can we help with?'}
+                {step === 2 && 'Tell us more'}
+                {step === 3 && 'Ticket submitted'}
+              </h3>
+              {step < 3 && (
+                <p className="text-xs text-gray-400 mt-0.5">Step {step} of 2</p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Progress dots */}
+            {step < 3 && (
+              <div className="flex gap-1.5">
+                {[1, 2].map((s) => (
+                  <span key={s} className={`h-1.5 rounded-full transition-all ${step >= s ? 'w-4 bg-blue-600' : 'w-1.5 bg-gray-200 dark:bg-gray-700'}`} />
+                ))}
+              </div>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <X size={20} />
+            </button>
+          </div>
         </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Subject</label>
-            <input value={subject} onChange={(e) => setSubject(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" placeholder="Brief summary of the issue" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Category</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
-                {TICKET_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto">
+
+          {/* Step 1: Category pick */}
+          {step === 1 && (
+            <div className="p-5">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                Choose the type that best describes your issue and we'll route it to the right team.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {CATEGORY_OPTIONS.map((opt) => {
+                  const Icon = opt.icon;
+                  const isSelected = category === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setCategory(opt.value); setStep(2); }}
+                      className={`group relative flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-all
+                        ${isSelected ? opt.selected : `hover:border-blue-300 dark:hover:border-blue-700 ${opt.color}`}`}
+                    >
+                      <span className={`inline-flex h-9 w-9 items-center justify-center rounded-lg
+                        ${isSelected ? '' : opt.color}`}>
+                        <Icon size={18} />
+                      </span>
+                      <div>
+                        <p className="text-sm font-bold text-gray-900 dark:text-white leading-snug">{opt.value}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{opt.desc}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Priority</label>
-              <select value={priority} onChange={(e) => setPriority(e.target.value as any)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
-                {TICKET_PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-              </select>
+          )}
+
+          {/* Step 2: Details */}
+          {step === 2 && (
+            <div className="p-5 space-y-5">
+              {/* Category badge */}
+              {catOpt && (
+                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold ${catOpt.color}`}>
+                  <catOpt.icon size={13} />
+                  {catOpt.value}
+                </div>
+              )}
+
+              {/* Subject */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
+                  Subject <span className="text-red-500">*</span>
+                </label>
+                <input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  maxLength={120}
+                  className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Summarise the issue in a few words…"
+                />
+                <p className="text-xs text-gray-400 mt-1 text-right">{subject.length}/120</p>
+              </div>
+
+              {/* Priority */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+                  Priority <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {PRIORITY_OPTIONS.map((p) => (
+                    <button
+                      key={p.value}
+                      type="button"
+                      onClick={() => setPriority(p.value)}
+                      className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-all
+                        ${priority === p.value
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-400'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'}`}
+                    >
+                      <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${p.dot}`} />
+                      <div>
+                        <p className={`text-xs font-bold ${priority === p.value ? 'text-blue-700 dark:text-blue-300' : 'text-gray-800 dark:text-gray-200'}`}>{p.label}</p>
+                        <p className="text-[10px] text-gray-400 leading-snug">{p.sub}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
+                  Description <span className="text-red-500">*</span>
+                </label>
+                {tip && (
+                  <div className="flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/40 px-3 py-2.5 mb-2">
+                    <Lightbulb size={14} className="text-amber-500 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">{tip}</p>
+                  </div>
+                )}
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={5}
+                  className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  placeholder="Describe the issue in detail. Include what you were doing, what went wrong, and any error messages you saw."
+                />
+                <div className="flex items-center justify-between mt-1">
+                  <p className={`text-xs ${description.trim().length < 20 && description.length > 0 ? 'text-amber-500' : 'text-gray-400'}`}>
+                    {description.trim().length < 20 ? `${20 - description.trim().length} more characters needed` : ''}
+                  </p>
+                  <p className="text-xs text-gray-400">{description.length} chars</p>
+                </div>
+              </div>
+
+              {/* Screenshots (optional) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                    Screenshots <span className="text-xs font-normal text-gray-400 ml-1">Optional · up to 4 images · max 5 MB each</span>
+                  </label>
+                </div>
+
+                {/* Drop zone */}
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
+                  className={`relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-5 cursor-pointer transition-colors
+                    ${attachments.length >= 4
+                      ? 'border-gray-200 dark:border-gray-700 opacity-50 pointer-events-none'
+                      : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 hover:bg-blue-50/40 dark:hover:bg-blue-900/10'}`}
+                >
+                  <ImagePlus size={22} className="text-gray-400" />
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                    <span className="font-semibold text-blue-600 dark:text-blue-400">Click to upload</span> or drag &amp; drop
+                  </p>
+                  <p className="text-xs text-gray-400">PNG, JPG, WEBP or GIF</p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                    multiple
+                    className="sr-only"
+                    onChange={(e) => handleFiles(e.target.files)}
+                  />
+                </div>
+
+                {/* Previews */}
+                {attachments.length > 0 && (
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {attachments.map((a, i) => (
+                      <div key={i} className="relative group rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                        <img src={a.preview} alt={a.name} className="w-full h-24 object-cover" />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={() => removeAttachment(i)}
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full bg-red-500 text-white transition-opacity"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        <p className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-2 py-0.5 truncate">{a.name}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
+          )}
+
+          {/* Step 3: Success */}
+          {step === 3 && (
+            <div className="p-8 flex flex-col items-center text-center">
+              <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 mb-4">
+                <CheckCircle2 size={32} />
+              </span>
+              <h4 className="text-lg font-bold text-gray-900 dark:text-white">We've got your ticket!</h4>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 max-w-xs leading-relaxed">
+                Our team will review it and get back to you. You can track replies here in your{' '}
+                <span className="font-semibold text-gray-700 dark:text-gray-200">Support Tickets</span> list.
+              </p>
+              <div className="mt-6 w-full rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left space-y-2">
+                <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold">Summary</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{subject}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {catOpt && (
+                    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${catOpt.color}`}>
+                      <catOpt.icon size={11} /> {catOpt.value}
+                    </span>
+                  )}
+                  <span className="text-xs text-gray-500">·</span>
+                  <span className={`text-xs font-semibold ${PRIORITY_OPTIONS.find(p => p.value === priority)?.dot.replace('bg-', 'text-').replace('-500', '-600') ?? 'text-gray-600'}`}>
+                    {priority.charAt(0).toUpperCase() + priority.slice(1)} priority
+                  </span>
+                </div>
+                {attachments.length > 0 && (
+                  <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                    <Paperclip size={11} /> {attachments.length} screenshot{attachments.length > 1 ? 's' : ''} attached
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {step < 3 && (
+          <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3 flex-shrink-0">
+            <button onClick={onClose} className="text-sm font-semibold text-gray-500 hover:text-gray-700 dark:hover:text-gray-200">
+              Cancel
+            </button>
+            {step === 1 ? (
+              <Button variant="default" size="sm" disabled={!category} onClick={() => setStep(2)}>
+                Continue <ArrowRight size={14} className="ml-1.5" />
+              </Button>
+            ) : (
+              <Button variant="default" size="sm" disabled={!valid || mutation.isPending} onClick={() => mutation.mutate()}>
+                {mutation.isPending ? (
+                  <><Loader2 size={14} className="animate-spin mr-1.5" /> Submitting…</>
+                ) : (
+                  <><Send size={14} className="mr-1.5" /> Submit ticket</>
+                )}
+              </Button>
+            )}
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Description</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" placeholder="Describe what's happening, and any steps to reproduce." />
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-            <Button variant="default" size="sm" disabled={!valid || mutation.isPending} onClick={() => mutation.mutate()}>
-              {mutation.isPending ? <Loader2 size={15} className="animate-spin mr-1.5" /> : <Send size={15} className="mr-1.5" />} Submit
+        )}
+        {step === 3 && (
+          <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800 flex-shrink-0">
+            <Button variant="default" className="w-full" onClick={onCreated}>
+              Done
             </Button>
           </div>
-        </div>
+        )}
       </div>
     </div>,
     document.body

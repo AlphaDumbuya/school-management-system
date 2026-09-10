@@ -80,11 +80,15 @@ export const ReportCardsPage: React.FC = () => {
     return arr;
   }, [currentYear]);
 
-  // School branding for the front cover
+  // School branding for the front cover. Kept fresh so name/logo edits made in
+  // Settings show on the report card immediately — refetch on mount and treat
+  // the small payload as stale quickly (Settings also invalidates this key).
   const { data: schoolResp } = useQuery({
     queryKey: ['school-info'],
     queryFn: () => schoolConfigService.getSchoolInfo(),
-    staleTime: 300_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
   const school = (schoolResp as any)?.data ?? (schoolResp as any) ?? {};
 
