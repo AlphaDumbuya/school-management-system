@@ -49,13 +49,22 @@ export const LoginPage: React.FC = () => {
   // `window.PublicKeyCredential` isn't exposed (or attaches late), so a strict
   // feature check wrongly hides the button in the app. If the platform can't
   // fulfil it, the actual WebAuthn call surfaces a friendly error instead.
-  const [supportsPasskeys, setSupportsPasskeys] = useState(isAppMode());
+  //
+  // IMPORTANT: native Android passkeys only work once the app is release-signed
+  // and its cert is bound to the domain via /.well-known/assetlinks.json (plus
+  // WEBAUTHN_ANDROID_ORIGIN on the backend). Until that setup is done the WebView
+  // rejects every ceremony with NotAllowedError, so showing the button in the app
+  // is just a broken/confusing experience. We therefore hide it in the app by
+  // default and only show it when explicitly enabled via VITE_APK_PASSKEYS_ENABLED
+  // (flip that env to 'true' after completing the signing setup — no code change).
+  const appPasskeysEnabled = String(import.meta.env.VITE_APK_PASSKEYS_ENABLED) === 'true';
+  const [supportsPasskeys, setSupportsPasskeys] = useState(isAppMode() && appPasskeysEnabled);
   const suspendedNotice = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('suspended') === '1';
 
   useEffect(() => {
-    // In the app we always show it (see rationale above).
+    // In the app: only show passkeys when they've been enabled post-signing-setup.
     if (isAppMode()) {
-      setSupportsPasskeys(true);
+      setSupportsPasskeys(appPasskeysEnabled);
       return;
     }
     const detect = () =>
