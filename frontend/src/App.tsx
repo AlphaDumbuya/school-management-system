@@ -66,7 +66,7 @@ export const App: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <OfflineIndicator />
       <AppRouter />
-      <ToastContainer position="top-right" closeButton={true} aria-live="polite" />
+      <ToastContainer position="top-right" closeButton={true} aria-live="polite" style={{ zIndex: 2147483647 }} />
       <InstallBanner />
     </QueryClientProvider>
   );

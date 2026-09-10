@@ -21,6 +21,7 @@ export interface AuthUser {
   profileImage?: string;
   profilePhotoUrl?: string | null;
   verificationStatus?: 'unverified' | 'verified' | string | null;
+  hasOnboarded?: boolean;
   tenantId?: string;
   schoolLogoUrl?: string;
   schoolName?: string;

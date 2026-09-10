@@ -621,7 +621,7 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
     const userId = (req as any).auth.userId;
 
     const user = await db('users')
-      .select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'tenant_id', 'last_login', 'created_at', 'profile_photo_url', 'photo_url', 'verification_status')
+      .select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'tenant_id', 'last_login', 'created_at', 'profile_photo_url', 'photo_url', 'verification_status', 'onboarded_at')
       .where('id', userId)
       .first();
 
@@ -697,9 +697,28 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
       schoolName,
       profilePhotoUrl,
       verificationStatus: user.verification_status || 'unverified',
+      hasOnboarded: !!user.onboarded_at,
       lastLogin: user.last_login,
       createdAt: user.created_at,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/auth/onboarded
+ * Mark the current user's first-login welcome guide as complete (server-side, so
+ * it's truly one-time across devices — not just per browser).
+ */
+router.post('/onboarded', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).auth.userId;
+    const has = await db.schema.hasColumn('users', 'onboarded_at');
+    if (has) {
+      await db('users').where({ id: userId }).update({ onboarded_at: new Date(), updated_at: new Date() });
+    }
+    res.json({ success: true });
   } catch (error) {
     next(error);
   }

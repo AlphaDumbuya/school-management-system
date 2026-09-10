@@ -188,6 +188,11 @@ export const authService = {
   /**
    * Fetch current user info from server
    */
+  /** Mark the first-login welcome guide as complete server-side (one-time across devices). */
+  markOnboarded: async (): Promise<void> => {
+    try { await apiClient.post('/api/v1/auth/onboarded'); } catch { /* non-fatal */ }
+  },
+
   fetchMe: async (): Promise<ApiResponse<AuthUser>> => {
     const response = await apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.ME);
 

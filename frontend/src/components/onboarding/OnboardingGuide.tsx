@@ -10,6 +10,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, ChevronLeft, ChevronRight, BookOpen, CheckCircle2, ArrowRight } from 'lucide-react';
 import useAuthStore from '@store/authStore';
+import authService from '@services/authService';
 import { getRoleGuide, markOnboardingComplete } from '@lib/onboarding';
 
 interface OnboardingGuideProps {
@@ -28,7 +29,11 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ onClose }) => 
   const progress = Math.round(((index + 1) / steps.length) * 100);
 
   const finish = () => {
+    // Local (per-device) flag for instant effect…
     markOnboardingComplete(user?.id, user?.tenantId);
+    // …and server-side (device-independent) so it's truly one-time per account.
+    void authService.markOnboarded();
+    if (user) useAuthStore.getState().setUser({ ...(user as any), hasOnboarded: true });
     onClose();
   };
 

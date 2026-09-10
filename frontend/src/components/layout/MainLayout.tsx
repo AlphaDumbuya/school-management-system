@@ -28,12 +28,15 @@ const OnboardingController: React.FC = () => {
 
   useEffect(() => {
     if (!user?.id) return;
+    // Server-side flag is authoritative and device-independent; fall back to the
+    // legacy per-device localStorage flag only if the server flag is absent.
+    if ((user as any).hasOnboarded === true) return;
     if (!isOnboardingComplete(user.id, user.tenantId)) {
       // Small delay so the dashboard renders behind the modal first.
       const t = setTimeout(() => setShow(true), 600);
       return () => clearTimeout(t);
     }
-  }, [user?.id, user?.tenantId]);
+  }, [user?.id, user?.tenantId, (user as any)?.hasOnboarded]);
 
   if (!show) return null;
   return <OnboardingGuide onClose={() => setShow(false)} />;

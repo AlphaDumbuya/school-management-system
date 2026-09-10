@@ -31,6 +31,7 @@ export interface UserResponse {
   schoolName?: string | null;
   profilePhotoUrl?: string | null;
   verificationStatus?: string | null;
+  hasOnboarded?: boolean;
   createdAt: Date;
 }
 
