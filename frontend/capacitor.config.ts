@@ -32,7 +32,11 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: false,
+    // Brand-blue WebView background so there's no white flash between the native
+    // launch screen and the HTML splash — the whole startup reads as one splash.
+    backgroundColor: '#1d4ed8',
   },
+  backgroundColor: '#1d4ed8',
 };
 
 export default config;

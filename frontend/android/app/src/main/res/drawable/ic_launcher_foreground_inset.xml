@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive-icon foreground for WiSkul.
+  The raw logo (ic_logo.png) is a full-bleed square. Adaptive-icon launchers
+  mask the icon (circle / squircle / rounded square) and clip the outer ~18%,
+  so a full-bleed logo looks like a cramped square. We inset the logo into the
+  ~66dp safe zone (≈21% padding per side) and center it, so it stays clean and
+  fully visible under every launcher mask shape.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_logo"
+    android:insetLeft="21%"
+    android:insetTop="21%"
+    android:insetRight="21%"
+    android:insetBottom="21%"
+    android:gravity="center" />

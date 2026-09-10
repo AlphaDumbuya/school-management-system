@@ -24,25 +24,43 @@ ReactDOM.createRoot(rootElement).render(
   </React.StrictMode>
 );
 
-// Dismiss the branded animated splash (defined in index.html) once React has
-// painted. A short minimum keeps the animation from flashing on fast loads; the
-// safety timeout guarantees it never gets stuck if something stalls.
+// Dismiss the branded animated splash (defined in index.html). We hold it for a
+// proper minimum so it reads as a real splash screen (not a quick flash), then
+// wait until the app has actually painted its first real screen (login /
+// dashboard) before fading out — so the handoff feels like one continuous
+// splash → screen, with no intermediate blank/white flash.
+//
+// The app dispatches `wiskul:app-ready` once the first authenticated/route view
+// has rendered. We also keep a safety timeout so the splash can never get stuck.
 (() => {
   const splash = document.getElementById('wiskul-splash');
   if (!splash) return;
-  const MIN_MS = 600;
+
+  // Native app gets a slightly longer minimum since it loads the UI over the
+  // network on first launch; plain web keeps it snappy.
+  const isNativeShell =
+    document.documentElement.classList.contains('wiskul-native') ||
+    !!(window as any).Capacitor?.isNativePlatform?.();
+  const MIN_MS = isNativeShell ? 1600 : 900;
   const startedAt = performance.now();
+  let done = false;
+
   const hide = () => {
+    if (done) return;
+    done = true;
     const wait = Math.max(0, MIN_MS - (performance.now() - startedAt));
     window.setTimeout(() => {
       splash.classList.add('wiskul-splash--hide');
       window.setTimeout(() => splash.remove(), 500);
     }, wait);
   };
-  // Wait one frame after mount so the first React paint is on screen first.
-  requestAnimationFrame(() => requestAnimationFrame(hide));
-  // Safety net: never let the splash linger.
-  window.setTimeout(hide, 8000);
+
+  // Primary trigger: the app tells us its first real screen is on-screen.
+  window.addEventListener('wiskul:app-ready', hide, { once: true });
+  // Fallback trigger: two frames after mount (covers routes that don't emit).
+  requestAnimationFrame(() => requestAnimationFrame(() => window.setTimeout(hide, 300)));
+  // Safety net: never let the splash linger indefinitely.
+  window.setTimeout(hide, 9000);
 })();
 
 // Register the Workbox service worker (PWA — full offline app shell, API/image

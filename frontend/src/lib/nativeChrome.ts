@@ -19,6 +19,16 @@ export async function initNativeChrome(): Promise<void> {
   const isNative = !!(cap && (typeof cap.isNativePlatform === 'function' ? cap.isNativePlatform() : cap.isNative));
   if (!isNative && !isAppMode()) return;
 
+  // Tag the document so app-only CSS (viewport lock, safe areas) can target the
+  // native shell without relying on display-mode media queries, which the
+  // Android WebView doesn't reliably report as standalone.
+  try {
+    document.documentElement.classList.add('wiskul-native');
+    document.body.classList.add('wiskul-native');
+  } catch {
+    /* ignore — DOM not ready is not expected here (called after mount) */
+  }
+
   try {
     const { StatusBar, Style } = await import('@capacitor/status-bar');
     // Reserve space for the status bar instead of drawing under it.

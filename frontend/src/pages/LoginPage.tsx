@@ -39,14 +39,24 @@ export const LoginPage: React.FC = () => {
   const isInitialized = useAuthStore((s) => s.isInitialized);
   const user = useAuthStore((s) => s.user);
   const mfaToken = useAuthStore((s) => s.mfaToken);
-  // Passkey support is detected AFTER mount. In the native Android WebView the
-  // WebAuthn globals (window.PublicKeyCredential) can attach slightly late, so a
-  // one-time render-time check would wrongly hide the button. We re-check on
-  // mount and treat a present PublicKeyCredential as supported too.
-  const [supportsPasskeys, setSupportsPasskeys] = useState(false);
+  // Passkey support detection.
+  //
+  // Plain web: feature-detect WebAuthn and only show the button when supported.
+  //
+  // Native app shell: ALWAYS offer passkeys. The Android WebView supports
+  // passkeys through Google Play Services / androidx.credentials even when
+  // `window.PublicKeyCredential` isn't exposed (or attaches late), so a strict
+  // feature check wrongly hides the button in the app. If the platform can't
+  // fulfil it, the actual WebAuthn call surfaces a friendly error instead.
+  const [supportsPasskeys, setSupportsPasskeys] = useState(isAppMode());
   const suspendedNotice = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('suspended') === '1';
 
   useEffect(() => {
+    // In the app we always show it (see rationale above).
+    if (isAppMode()) {
+      setSupportsPasskeys(true);
+      return;
+    }
     const detect = () =>
       typeof window !== 'undefined' &&
       (browserSupportsWebAuthn() || typeof (window as any).PublicKeyCredential !== 'undefined');
@@ -54,9 +64,18 @@ export const LoginPage: React.FC = () => {
       setSupportsPasskeys(true);
       return;
     }
-    // Re-check shortly after mount in case the WebView injects the API late.
-    const t = setTimeout(() => setSupportsPasskeys(detect()), 600);
-    return () => clearTimeout(t);
+    // Poll a few times in case the WebView injects the API late.
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries += 1;
+      if (detect()) {
+        setSupportsPasskeys(true);
+        clearInterval(iv);
+      } else if (tries >= 6) {
+        clearInterval(iv);
+      }
+    }, 500);
+    return () => clearInterval(iv);
   }, []);
 
   useEffect(() => {

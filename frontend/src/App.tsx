@@ -34,6 +34,17 @@ export const App: React.FC = () => {
     initialize();
   }, [initialize]);
 
+  // Once auth has initialized the first real screen (login or dashboard) is
+  // about to render — tell the branded splash (index.html) it can fade out.
+  // This makes the flow feel like one continuous splash → screen with no
+  // intermediate spinner/white flash.
+  useEffect(() => {
+    if (isInitialized) {
+      // Defer to the next frame so the real screen paints before the splash lifts.
+      requestAnimationFrame(() => window.dispatchEvent(new Event('wiskul:app-ready')));
+    }
+  }, [isInitialized]);
+
   // Clear React Query cache the moment a user logs out so the
   // next login never sees stale data from the previous tenant.
   useEffect(() => {
@@ -44,17 +55,11 @@ export const App: React.FC = () => {
     }
   }, [isAuthenticated]);
 
+  // While auth initializes, render nothing — the branded animated splash
+  // (in index.html) stays on screen and covers this gap, so users never see a
+  // separate spinner or a white flash between the splash and the first screen.
   if (!isInitialized) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          </div>
-          <p className="text-gray-600 font-medium">Loading...</p>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (

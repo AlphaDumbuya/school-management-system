@@ -33,6 +33,36 @@ body {
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background-color: #1a2b6b; /* fill the inset area with brand navy, not white */
   }
+
+  /*
+   * App shell lock: pin the document to the viewport so the WebView body can't
+   * rubber-band / scroll. Without this the whole layout (including the sticky
+   * header) drifts up under the status bar when the user swipes — making the
+   * header look like it "auto-scrolls". Only the inner <main> scrolls now.
+   */
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+}
+
+/*
+ * Native app build (Capacitor sets `body.wiskul-native`, see nativeChrome.ts).
+ * Same shell lock as standalone PWA, but not gated on display-mode which the
+ * WebView doesn't always report as standalone.
+ */
+body.wiskul-native,
+body.wiskul-native #root {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+html.wiskul-native {
+  height: 100%;
+  overflow: hidden;
 }
 
 /*
