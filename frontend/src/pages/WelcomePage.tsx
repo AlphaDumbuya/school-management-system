@@ -86,7 +86,16 @@ export const WelcomePage: React.FC = () => {
   const slide = SLIDES[index];
 
   return (
-    <div className="min-h-screen bg-[#1a2b6b] flex flex-col relative overflow-hidden">
+    <div
+      className="bg-[#1a2b6b] flex flex-col relative overflow-hidden"
+      style={{
+        // Use the dynamic viewport height and respect the phone's status bar /
+        // gesture bar so the top "Skip" and bottom CTA are never cut off.
+        minHeight: '100dvh',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      }}
+    >
       {/* Brand gradient backdrop */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#1a2b6b] via-[#25408f] to-[#0b1234]" />
       <div className="absolute -top-24 -left-24 w-[420px] h-[420px] rounded-full bg-[#1d4ed8]/25 blur-[130px] pointer-events-none" />
@@ -110,8 +119,9 @@ export const WelcomePage: React.FC = () => {
         </span>
       </div>
 
-      {/* Slide */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-8 text-center">
+      {/* Slide — flex-1 + min-h-0 so it shrinks on short screens and never
+          pushes the CTA below the safe area; scrolls if content is tall. */}
+      <div className="relative z-10 flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center px-8 text-center">
         <div key={index} className="animate-fade-in w-full max-w-sm">
           <div className="mx-auto mb-8 w-20 h-20 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-amber-400">
             {slide.icon}
@@ -122,7 +132,7 @@ export const WelcomePage: React.FC = () => {
       </div>
 
       {/* Dots + CTA */}
-      <div className="relative z-10 px-8 pb-10 max-w-sm w-full mx-auto">
+      <div className="relative z-10 px-8 pb-6 pt-2 max-w-sm w-full mx-auto shrink-0">
         <div className="flex justify-center gap-2 mb-6">
           {SLIDES.map((_, i) => (
             <span
