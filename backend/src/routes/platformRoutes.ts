@@ -250,14 +250,14 @@ router.post('/tenants/:id/activate', authenticate, authorize(UserRole.SUPER_ADMI
 router.post('/tenants/:id/suspend', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { reason, category } = req.body;
+    const { reason, category, override } = req.body;
 
     if (!reason) {
       throw new AppError('Suspension reason is required', 400, 'VALIDATION_ERROR');
     }
 
-    const tenant = await TenantService.suspendTenant(id, reason, req.auth!.userId, category);
-    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.suspend', changes: { reason, category } });
+    const tenant = await TenantService.suspendTenant(id, reason, req.auth!.userId, category, !!override);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.suspend', changes: { reason, category, override: !!override } });
     const to = await tenantContactEmail(id);
     if (to) notify(emailService.sendTenantStatusEmail(to, { schoolName: tenant.name, status: 'suspended', reason, category }), 'tenant suspend');
     res.json({ success: true, data: tenant, message: 'Tenant suspended successfully' });

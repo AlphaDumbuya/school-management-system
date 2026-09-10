@@ -322,12 +322,12 @@ export const TenantDetailPage: React.FC = () => {
     } finally { setSaving(false); }
   };
 
-  const runDanger = async () => {
+  const runDanger = async (suspendOverride = false) => {
     if (!tenantId || !confirm) return;
     setSaving(true);
     try {
       if (confirm === 'suspend') {
-        const res = await platformService.suspendTenant(tenantId, suspendReason || 'Suspended by platform admin', suspendCategory);
+        const res = await platformService.suspendTenant(tenantId, suspendReason || 'Suspended by platform admin', suspendCategory, suspendOverride);
         if (res.success) showToast.success('Tenant suspended');
       } else if (confirm === 'activate') {
         const res = await platformService.activateTenant(tenantId);
@@ -341,6 +341,15 @@ export const TenantDetailPage: React.FC = () => {
       }
       load();
     } catch (e: any) {
+      // Category/state mismatch — offer to override rather than send a false notice.
+      if (e?.response?.status === 409 && e?.response?.data?.code === 'SUSPENSION_CATEGORY_MISMATCH') {
+        const msg = e.response.data.error || 'The selected category does not match this school’s current status.';
+        setSaving(false);
+        if (window.confirm(`${msg}\n\nSuspend anyway with this category?`)) {
+          await runDanger(true);
+        }
+        return;
+      }
       showToast.error(e?.response?.data?.error || 'Action failed');
     } finally { setSaving(false); setConfirm(null); setSuspendReason(''); setSuspendCategory('payment'); }
   };
@@ -711,7 +720,7 @@ export const TenantDetailPage: React.FC = () => {
                     <p className="text-[11px] text-amber-700/80">The category tailors the resolution steps in the school's notification email.</p>
                     <div className="flex justify-end gap-2">
                       <Button variant="outline" size="sm" onClick={() => setConfirm(null)}>Cancel</Button>
-                      <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={saving} onClick={runDanger}>Confirm Suspend</Button>
+                      <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={saving} onClick={() => runDanger(false)}>Confirm Suspend</Button>
                     </div>
                   </div>
                 )}
@@ -723,7 +732,7 @@ export const TenantDetailPage: React.FC = () => {
         <ConfirmationDialog
           isOpen={confirm === 'delete' || confirm === 'activate' || confirm === 'restore'}
           onClose={() => setConfirm(null)}
-          onConfirm={runDanger}
+          onConfirm={() => runDanger(false)}
           title={confirm === 'delete' ? 'Delete Tenant' : confirm === 'restore' ? 'Restore Tenant' : 'Activate Tenant'}
           message={confirm === 'delete'
             ? `Archive "${tenant?.name}"? The school loses access; you can restore it later.`

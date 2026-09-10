@@ -266,19 +266,34 @@ export const PlatformTenantsPage: React.FC = () => {
   const handleSuspendSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTenant || !suspensionReason) return;
+    await doSuspend(false);
+  };
 
+  const doSuspend = async (override: boolean) => {
+    if (!selectedTenant || !suspensionReason) return;
     setSaving(true);
     try {
-      const res = await platformService.suspendTenant(selectedTenant.id, suspensionReason, suspensionCategory);
+      const res = await platformService.suspendTenant(selectedTenant.id, suspensionReason, suspensionCategory, override);
       if (res.success) {
         showToast.success(`Tenant "${selectedTenant.name}" has been suspended.`);
         setIsSuspendOpen(false);
         setSuspensionReason('');
+        setSuspensionCategory('payment');
         setSelectedTenant(null);
         fetchData();
       }
     } catch (err: any) {
-      showToast.error('Failed to suspend tenant');
+      // Category/state mismatch (e.g. "payment" chosen but plan is active) — let
+      // the admin confirm an override rather than sending a false notice.
+      if (err?.response?.status === 409 && err?.response?.data?.code === 'SUSPENSION_CATEGORY_MISMATCH') {
+        const msg = err.response.data.error || 'The selected category does not match this school’s current status.';
+        if (window.confirm(`${msg}\n\nSuspend anyway with this category?`)) {
+          await doSuspend(true);
+          return;
+        }
+      } else {
+        showToast.error(err?.response?.data?.error || 'Failed to suspend tenant');
+      }
     } finally {
       setSaving(false);
     }

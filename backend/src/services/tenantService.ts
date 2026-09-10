@@ -305,10 +305,52 @@ export class TenantService {
   /**
    * Suspend tenant
    */
-  static async suspendTenant(tenantId: string, reason: string, updatedBy: string, category?: string) {
+  /**
+   * Determine whether a tenant's subscription is genuinely overdue/lapsed.
+   * Used to prevent suspending a paying tenant for "non-payment" by mistake.
+   * Returns { overdue, planStatus, endDate } — overdue=true when there is no
+   * active in-date subscription.
+   */
+  static async getSubscriptionState(tenantId: string): Promise<{ overdue: boolean; planStatus: string | null; endDate: string | null }> {
+    try {
+      const hasSubs = await db.schema.hasTable('subscriptions');
+      if (!hasSubs) return { overdue: false, planStatus: null, endDate: null };
+      // Most recent subscription row for this tenant.
+      const sub = await db('subscriptions')
+        .where({ tenant_id: tenantId })
+        .orderBy('start_date', 'desc')
+        .first();
+      if (!sub) return { overdue: true, planStatus: null, endDate: null }; // no plan on file = treat as overdue
+      const status = String(sub.status || '').toLowerCase();
+      const endDate: string | null = sub.end_date ? new Date(sub.end_date).toISOString() : null;
+      const pastEnd = !!sub.end_date && new Date(sub.end_date).getTime() < Date.now();
+      // Overdue when the plan isn't active, or it's active but past its end date.
+      const overdue = status === 'expired' || status === 'cancelled' || status === 'suspended' || pastEnd;
+      return { overdue, planStatus: status || null, endDate };
+    } catch {
+      // If we can't determine, don't block — return not-overdue so the guard is lenient.
+      return { overdue: false, planStatus: null, endDate: null };
+    }
+  }
+
+  static async suspendTenant(tenantId: string, reason: string, updatedBy: string, category?: string, override?: boolean) {
     try {
       const validCategories = ['payment', 'policy', 'abuse', 'review', 'security', 'other'];
       const suspensionCategory = validCategories.includes(String(category)) ? String(category) : 'other';
+
+      // Integrity guard: don't suspend a tenant for "overdue payment" when their
+      // subscription is actually active/in-date — that would send a false notice.
+      // The platform owner can still proceed by passing override=true (recorded).
+      if (suspensionCategory === 'payment' && !override) {
+        const sub = await this.getSubscriptionState(tenantId);
+        if (!sub.overdue) {
+          throw new AppError(
+            `This school's subscription is currently active${sub.endDate ? ` (valid until ${new Date(sub.endDate).toLocaleDateString()})` : ''}, so suspending for "overdue payment" would be inaccurate. Choose a different category, or confirm to override.`,
+            409,
+            'SUSPENSION_CATEGORY_MISMATCH'
+          );
+        }
+      }
       const [tenant] = await db('tenants')
         .where({ id: tenantId })
         .update({

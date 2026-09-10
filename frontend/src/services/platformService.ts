@@ -108,8 +108,8 @@ export const platformService = {
     return apiClient.post<{ success: boolean; data: PlatformTenant; message: string }>(`/api/v1/platform/tenants/${id}/activate`);
   },
 
-  async suspendTenant(id: string, reason: string, category?: string) {
-    return apiClient.post<{ success: boolean; data: PlatformTenant; message: string }>(`/api/v1/platform/tenants/${id}/suspend`, { reason, category });
+  async suspendTenant(id: string, reason: string, category?: string, override?: boolean) {
+    return apiClient.post<{ success: boolean; data: PlatformTenant; message: string }>(`/api/v1/platform/tenants/${id}/suspend`, { reason, category, override });
   },
 
   async deleteTenant(id: string) {
