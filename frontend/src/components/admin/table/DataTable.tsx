@@ -23,6 +23,7 @@ import {
 import { SkeletonTableRow } from '../feedback/Skeleton';
 import { EmptyState } from '../feedback/EmptyState';
 import { ErrorState } from '../feedback/ErrorState';
+import { cardTint } from '@lib/cardTint';
 
 export interface RowAction<TData = any> {
   label: string;
@@ -129,6 +130,7 @@ function MobileCard<TData>({
   enableRowSelection,
   isSelected,
   onToggleSelect,
+  tintIndex = 0,
 }: {
   row: TData;
   columns: ColumnDef<TData, any>[];
@@ -136,12 +138,14 @@ function MobileCard<TData>({
   enableRowSelection: boolean;
   isSelected: boolean;
   onToggleSelect: () => void;
+  /** Row index — drives a rotating background so cards are separated on mobile. */
+  tintIndex?: number;
 }) {
   // Get visible user-defined columns (skip _select and _actions)
   const visibleCols = columns.filter(c => c.id !== '_select' && c.id !== '_actions');
 
   return (
-    <div className={`bg-white border border-gray-200 rounded-xl p-4 space-y-2.5 ${isSelected ? 'ring-2 ring-blue-500' : ''}`}>
+    <div className={`${cardTint(tintIndex)} border rounded-xl p-4 space-y-2.5 ${isSelected ? 'ring-2 ring-blue-500' : ''}`}>
       {/* Header row: checkbox + first column value + actions */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -415,7 +419,7 @@ export function DataTable<TData>({
                 <span className="text-xs text-gray-500 font-medium">Select all</span>
               </div>
             )}
-            {currentRows.map((row) => (
+            {currentRows.map((row, i) => (
               <MobileCard
                 key={row.id}
                 row={row.original}
@@ -424,6 +428,7 @@ export function DataTable<TData>({
                 enableRowSelection={enableRowSelection}
                 isSelected={row.getIsSelected()}
                 onToggleSelect={row.getToggleSelectedHandler()}
+                tintIndex={i}
               />
             ))}
           </div>
