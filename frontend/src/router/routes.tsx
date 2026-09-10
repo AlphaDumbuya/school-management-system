@@ -120,6 +120,7 @@ import VerificationPage from '@pages/VerificationPage';
 import UnsubscribePage from '@pages/UnsubscribePage';
 import PrivacyPolicyPage from '@pages/PrivacyPolicyPage';
 import RestoreAccessPage from '@pages/RestoreAccessPage';
+import RequestReactivationPage from '@pages/RequestReactivationPage';
 import { isAppMode } from '@lib/appMode';
 import OfflineGate from '@components/offline/OfflineGate';
 
@@ -162,6 +163,8 @@ const router = createBrowserRouter(
         { path: 'privacy-policy', element: <PrivacyPolicyPage /> },
         // Public "pay to restore access" for a suspended school (no login).
         { path: 'restore-access', element: <RestoreAccessPage /> },
+        // Public reactivation request for non-payment suspensions (no login).
+        { path: 'request-reactivation', element: <RequestReactivationPage /> },
         { path: 'verify-id', element: <VerifyIdPage /> },
         // Aliases for older/malformed QR paths so previously-printed cards still resolve.
         { path: 'verify/id', element: <VerifyIdPage /> },

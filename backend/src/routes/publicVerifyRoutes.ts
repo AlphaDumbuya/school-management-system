@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { db } from '../utils/database.js';
 import { QrCodeService } from '../services/qrCodeService.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { getRestoreInfo, verifyRestoreToken } from '../services/restoreAccessService.js';
+import { getRestoreInfo, verifyRestoreToken, getReactivationInfo, submitReactivationRequest } from '../services/restoreAccessService.js';
 import { monimeService } from '../services/monimeService.js';
 import { logger } from '../utils/logger.js';
 
@@ -114,6 +114,30 @@ router.post('/restore/checkout', async (req: Request, res: Response, next: NextF
 
     logger.info(`Restore checkout created for tenant ${tenantId}, session ${session.id}`);
     res.json({ success: true, data: { redirectUrl: checkout.redirectUrl, sessionId: session.id } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** GET /api/v1/public/reactivation/info?token=... → school + suspension reason. */
+router.get('/reactivation/info', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const token = String(req.query.token || '');
+    if (!token) throw new AppError('Missing token', 400, 'RESTORE_TOKEN_MISSING');
+    const info = await getReactivationInfo(token);
+    res.json({ success: true, data: info });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** POST /api/v1/public/reactivation/request { token, message, contactEmail? } */
+router.post('/reactivation/request', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { token, message, contactEmail } = req.body || {};
+    if (!token) throw new AppError('Missing token', 400, 'RESTORE_TOKEN_MISSING');
+    const result = await submitReactivationRequest(String(token), String(message || ''), contactEmail ? String(contactEmail) : undefined);
+    res.json({ success: true, data: result });
   } catch (error) {
     next(error);
   }

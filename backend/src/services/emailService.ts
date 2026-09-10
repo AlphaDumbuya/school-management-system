@@ -1003,14 +1003,24 @@ class EmailService {
         ${(() => {
           // For a payment suspension, offer a NO-LOGIN "pay & restore" link so
           // the owner can settle and reactivate without needing portal access.
-          if (cat.label === 'Overdue payment' && data.tenantId) {
+          if (data.tenantId) {
             try {
               const token = mintRestoreToken(data.tenantId);
-              const restoreUrl = `${branding.appUrl}/restore-access?token=${encodeURIComponent(token)}`;
+              if (cat.label === 'Overdue payment') {
+                // No-login pay & restore link.
+                const restoreUrl = `${branding.appUrl}/restore-access?token=${encodeURIComponent(token)}`;
+                return `
+                  ${calloutBlock('You can settle the outstanding amount and restore access right away — no login required — using the secure button below. Access is reinstated automatically once payment is confirmed.', 'warn')}
+                  ${emailButton('Pay & Restore Access', restoreUrl)}
+                  <p style="color:#64748b;font-size:13px;">Prefer to talk to us first? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a> or call ${escapeHtml(supportPhone)}.</p>`;
+              }
+              // Non-payment: professional reactivation-request page (no login).
+              const requestUrl = `${branding.appUrl}/request-reactivation?token=${encodeURIComponent(token)}`;
               return `
-                ${calloutBlock('You can settle the outstanding amount and restore access right away — no login required — using the secure button below. Access is reinstated automatically once payment is confirmed.', 'warn')}
-                ${emailButton('Pay & Restore Access', restoreUrl)}
-                <p style="color:#64748b;font-size:13px;">Prefer to talk to us first? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a> or call ${escapeHtml(supportPhone)}.</p>`;
+                ${calloutBlock(cat.callout, 'warn')}
+                <p>You can submit a reactivation request to our team directly — no login required — using the button below. We'll review it and get back to you.</p>
+                ${emailButton('Request Reactivation', requestUrl)}
+                <p style="color:#64748b;font-size:13px;">Or email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a> / call ${escapeHtml(supportPhone)}.</p>`;
             } catch {
               // Fall through to the generic CTA if token minting fails.
             }

@@ -27,6 +27,29 @@ export const restoreService = {
       { token }
     );
   },
+
+  // ── Non-payment: reactivation request ──────────────────────────────────────
+  async getReactivationInfo(token: string) {
+    return apiClient.get<{ success: boolean; data: ReactivationInfo }>(
+      `/api/v1/public/reactivation/info?token=${encodeURIComponent(token)}`
+    );
+  },
+
+  async submitReactivationRequest(token: string, message: string, contactEmail?: string) {
+    return apiClient.post<{ success: boolean; data: { reference: string } }>(
+      '/api/v1/public/reactivation/request',
+      { token, message, contactEmail }
+    );
+  },
 };
+
+export interface ReactivationInfo {
+  tenantId: string;
+  schoolName: string;
+  status: string;
+  category: string;
+  reason: string | null;
+  alreadyActive: boolean;
+}
 
 export default restoreService;

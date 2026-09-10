@@ -338,9 +338,9 @@ export const LoginPage: React.FC = () => {
                           subscription or a pending review. To restore access:
                         </p>
                         <ul className="text-xs text-red-100/90 list-disc pl-4 space-y-1">
-                          <li>Contact WiSkul support with your school name to confirm the reason.</li>
-                          <li>Settle any outstanding subscription payment if applicable.</li>
-                          <li>Once resolved, sign in again — access is restored immediately.</li>
+                          <li>Check your email — we sent the account owner a secure link to resolve this (pay to restore, or request reactivation).</li>
+                          <li>Or contact WiSkul support below with your school name.</li>
+                          <li>Once resolved, sign in again — access is restored right away.</li>
                         </ul>
                         <div className="flex flex-wrap gap-2 pt-1">
                           <a
@@ -363,8 +363,8 @@ export const LoginPage: React.FC = () => {
                         <p className="text-sm font-bold">Your school account is currently suspended</p>
                         <p className="text-xs text-red-100/90 leading-relaxed">
                           Access to your school portal has been paused. You can't restore this
-                          yourself — please contact your school administrator, who can get access
-                          reinstated. Your data is safe and nothing has been lost.
+                          yourself — please contact your school administrator, who received an email
+                          with a link to resolve it. Your data is safe and nothing has been lost.
                         </p>
                       </div>
                     )}

@@ -18,6 +18,7 @@
  * to read data or sign in).
  */
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { db } from '../utils/database';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
@@ -77,6 +78,119 @@ export async function getRestoreInfo(token: string): Promise<{
     currency: 'SLE',
     alreadyActive: tenant.status === 'active',
   };
+}
+
+/**
+ * Public info for the reactivation-request page (non-payment suspensions):
+ * school name + why it was suspended, so the owner can respond appropriately.
+ */
+export async function getReactivationInfo(token: string): Promise<{
+  tenantId: string;
+  schoolName: string;
+  status: string;
+  category: string;
+  reason: string | null;
+  alreadyActive: boolean;
+}> {
+  const tenantId = verifyRestoreToken(token);
+  const tenant = await db('tenants').select('id', 'name', 'status', 'settings').where({ id: tenantId }).first();
+  if (!tenant) throw new AppError('School not found', 404, 'TENANT_NOT_FOUND');
+  const settings = typeof tenant.settings === 'string' ? JSON.parse(tenant.settings || '{}') : (tenant.settings || {});
+  return {
+    tenantId,
+    schoolName: tenant.name,
+    status: tenant.status,
+    category: settings.suspension_category || 'other',
+    reason: settings.suspension_reason || null,
+    alreadyActive: tenant.status === 'active',
+  };
+}
+
+/**
+ * Submit a professional reactivation request (non-payment suspensions). Creates
+ * a HIGH-priority platform support ticket attributed to the tenant owner and
+ * notifies the platform support inbox. Does NOT reactivate — the platform owner
+ * reviews and lifts the suspension manually.
+ */
+export async function submitReactivationRequest(
+  token: string,
+  message: string,
+  contactEmail?: string
+): Promise<{ reference: string }> {
+  const tenantId = verifyRestoreToken(token);
+  const cleaned = (message || '').trim();
+  if (cleaned.length < 10) {
+    throw new AppError('Please provide a short explanation (at least 10 characters).', 400, 'REACTIVATION_MESSAGE_TOO_SHORT');
+  }
+
+  const tenant = await db('tenants').select('id', 'name', 'status', 'contact_email', 'settings').where({ id: tenantId }).first();
+  if (!tenant) throw new AppError('School not found', 404, 'TENANT_NOT_FOUND');
+  if (tenant.status === 'active') {
+    return { reference: 'ALREADY_ACTIVE' };
+  }
+
+  const settings = typeof tenant.settings === 'string' ? JSON.parse(tenant.settings || '{}') : (tenant.settings || {});
+  const category = settings.suspension_category || 'other';
+  const suspensionReason = settings.suspension_reason || 'Not specified';
+
+  // Attribute the ticket to the tenant owner (principal) so it links to a real
+  // user (support_tickets.user_id is NOT NULL). Fall back to any tenant user.
+  const owner = await db('users')
+    .where({ tenant_id: tenantId, role: 'principal' })
+    .first()
+    .catch(() => null);
+  const anyUser = owner || (await db('users').where({ tenant_id: tenantId }).first().catch(() => null));
+  if (!anyUser) throw new AppError('No account found for this school.', 404, 'NO_TENANT_USER');
+
+  const ticketId = crypto.randomUUID();
+  const now = new Date();
+  const replyTo = (contactEmail || tenant.contact_email || anyUser.email || '').trim();
+  const description =
+    `REACTIVATION REQUEST\n` +
+    `Suspension category: ${category}\n` +
+    `Suspension reason: ${suspensionReason}\n` +
+    `Contact email: ${replyTo || 'n/a'}\n\n` +
+    `Message from school:\n${cleaned}`;
+
+  await db('support_tickets').insert({
+    id: ticketId,
+    tenant_id: tenantId,
+    user_id: anyUser.id,
+    subject: `Reactivation request — ${tenant.name}`,
+    description,
+    priority: 'high',
+    status: 'open',
+    category: 'reactivation',
+    attachments: JSON.stringify([]),
+    created_at: now,
+    updated_at: now,
+  });
+
+  const reference = 'TKT-' + ticketId.replace(/-/g, '').slice(0, 8).toUpperCase();
+  logger.info(`Reactivation request submitted for tenant ${tenantId} (ticket ${reference})`);
+
+  // Notify the platform support inbox (best-effort).
+  try {
+    const { default: emailService } = await import('./emailService');
+    const supportInbox = process.env.SUPPORT_EMAIL || 'support@wiskulsl.com';
+    await emailService.sendEmail({
+      ...(emailService as any).platformSender?.('support') ?? { to: supportInbox },
+      to: supportInbox,
+      subject: `Reactivation request — ${tenant.name} (${reference})`,
+      body:
+        `<p><strong>${tenant.name}</strong> has requested reactivation.</p>` +
+        `<p><b>Reference:</b> ${reference}<br/>` +
+        `<b>Category:</b> ${category}<br/>` +
+        `<b>Suspension reason:</b> ${suspensionReason}<br/>` +
+        `<b>Reply to:</b> ${replyTo || 'n/a'}</p>` +
+        `<p><b>Message:</b></p><p style="white-space:pre-wrap;">${cleaned.replace(/</g, '&lt;')}</p>`,
+      isHtml: true,
+    });
+  } catch (mailErr: any) {
+    logger.warn(`Reactivation request email failed for tenant ${tenantId}: ${mailErr?.message || mailErr}`);
+  }
+
+  return { reference };
 }
 
 /**
