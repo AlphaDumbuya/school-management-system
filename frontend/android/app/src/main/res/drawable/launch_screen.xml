@@ -1,29 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  WiSkul native launch screen.
+  WiSkul native launch screen (pre-Android-12).
 
-  Designed to be visually identical to the animated web splash (index.html):
-  a WiSkul logo inside a white rounded tile, centered on the brand-blue
-  background. This makes the native-launch → web-splash handoff seamless (no
-  white flash, no jump), so it reads as one continuous splash screen before the
-  login screen appears.
+  Intentionally just the brand-blue background — no logo/white box. The custom
+  animated HTML splash (index.html) provides the branded logo animation once the
+  WebView paints, so the whole startup is: blue → animated splash → login, with
+  no white flash and no duplicate/static logo.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Brand-blue full-bleed background (matches web splash + status bar). -->
     <item android:drawable="@color/splashBackground" />
-
-    <!-- Centered white rounded tile holding the logo. -->
-    <item android:width="132dp" android:height="132dp" android:gravity="center">
-        <shape android:shape="rectangle">
-            <solid android:color="#FFFFFF" />
-            <corners android:radius="30dp" />
-        </shape>
-    </item>
-
-    <!-- Logo, inset inside the tile. -->
-    <item android:width="96dp" android:height="96dp" android:gravity="center">
-        <bitmap
-            android:src="@drawable/ic_logo"
-            android:gravity="center" />
-    </item>
 </layer-list>

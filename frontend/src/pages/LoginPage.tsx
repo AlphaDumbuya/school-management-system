@@ -133,9 +133,14 @@ export const LoginPage: React.FC = () => {
       try {
         assertion = await startAuthentication({ optionsJSON: optRes.data as any });
       } catch (err: any) {
-        // User cancelled / no matching passkey — silent, let them type a code.
-        if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') return;
-        setPasskeyError('Passkey sign-in was not completed.');
+        // Cancelled — silent, let them type a code. In the app, a NotAllowedError
+        // can also mean no usable passkey here; guide them to the code instead.
+        if (err?.name === 'AbortError') return;
+        if (err?.name === 'NotAllowedError') {
+          if (isAppMode()) setPasskeyError('No passkey available on this device. Enter your 6-digit code instead.');
+          return;
+        }
+        setPasskeyError('Passkey sign-in was not completed. Enter your 6-digit code instead.');
         return;
       }
       const verifyRes = await authService.verifyPasskeyAuth(mfaToken, assertion);
@@ -167,8 +172,19 @@ export const LoginPage: React.FC = () => {
       try {
         assertion = await startAuthentication({ optionsJSON: optRes.data as any });
       } catch (err: any) {
-        if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') return; // cancelled
-        setPasskeyError('Passkey sign-in was not completed.');
+        // On the web a NotAllowedError almost always means the user dismissed
+        // the prompt — stay silent. In the app it can ALSO mean the device has
+        // no passkey for this account yet, or the app build isn't bound to the
+        // domain (Digital Asset Links) — so give an actionable message instead
+        // of failing silently.
+        if (err?.name === 'AbortError') return;
+        if (err?.name === 'NotAllowedError') {
+          if (isAppMode()) {
+            setPasskeyError('No passkey available on this device. Sign in with your password — you can add a passkey later in Settings → Security.');
+          }
+          return;
+        }
+        setPasskeyError('Passkey sign-in was not completed. Please sign in with your password.');
         return;
       }
       const verifyRes = await authService.verifyPasskeyLogin(assertion);

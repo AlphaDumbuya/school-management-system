@@ -30,6 +30,11 @@ jobs:
     env:
       # Surfaced so the Blob step's `if:` can check whether the token is set.
       HAS_BLOB_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN != '' }}
+      # When a release keystore is configured we build a RELEASE-signed APK with
+      # a STABLE signing certificate — required for native Android passkeys
+      # (the cert fingerprint must match /.well-known/assetlinks.json). Without
+      # these secrets we fall back to a debug-signed APK (passkeys won't verify).
+      HAS_RELEASE_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -73,14 +78,41 @@ jobs:
         run: chmod +x ./gradlew
         working-directory: frontend/android
 
-      - name: Build debug APK
+      # ── Release signing (only when a keystore secret is configured) ─────────
+      # Decode the base64 keystore and wire gradle signing props so the release
+      # build is signed with a STABLE cert (fingerprint must match assetlinks.json).
+      - name: Decode release keystore
+        if: env.HAS_RELEASE_KEYSTORE == 'true'
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$GITHUB_WORKSPACE/frontend/android/app/release.keystore"
+        working-directory: .
+
+      - name: Build RELEASE APK (signed)
+        if: env.HAS_RELEASE_KEYSTORE == 'true'
+        run: |
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/frontend/android/app/release.keystore" \
+            -Pandroid.injected.signing.store.password="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            -Pandroid.injected.signing.key.alias="${{ secrets.ANDROID_KEY_ALIAS }}" \
+            -Pandroid.injected.signing.key.password="${{ secrets.ANDROID_KEY_PASSWORD }}"
+        working-directory: frontend/android
+
+      - name: Build DEBUG APK (fallback — no release keystore configured)
+        if: env.HAS_RELEASE_KEYSTORE != 'true'
         run: ./gradlew assembleDebug --no-daemon --stacktrace
         working-directory: frontend/android
 
       - name: Rename APK
         run: |
           mkdir -p "$GITHUB_WORKSPACE/apk-out"
-          cp frontend/android/app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/apk-out/wiskul.apk"
+          if [ "$HAS_RELEASE_KEYSTORE" = "true" ]; then
+            SRC=frontend/android/app/build/outputs/apk/release/app-release.apk
+          else
+            SRC=frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          fi
+          cp "$SRC" "$GITHUB_WORKSPACE/apk-out/wiskul.apk"
+          # Print the signing cert SHA-256 (handy for assetlinks.json).
+          "$ANDROID_HOME"/build-tools/36.0.0/apksigner verify --print-certs "$GITHUB_WORKSPACE/apk-out/wiskul.apk" | grep -i "SHA-256" || true
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

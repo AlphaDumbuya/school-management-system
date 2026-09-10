@@ -19,9 +19,26 @@
     </style>
 
 
+    <!--
+      Launch theme.
+
+      Goal: NO white system-splash box — go straight from a brand-blue screen to
+      the custom animated HTML splash.
+
+      Pre-Android-12: uses @drawable/launch_screen (blue background; the icon
+      layer there is intentionally omitted below so it's just blue).
+
+      Android 12+ (Theme.SplashScreen): the OS ignores android:background and
+      draws windowSplashScreenBackground + windowSplashScreenAnimatedIcon. We set
+      the background to brand blue and the icon to a fully transparent drawable,
+      so the system splash is a plain blue screen with no white icon box. It then
+      hands over to the WebView (also blue) → animated HTML splash.
+    -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/launch_screen</item>
+        <item name="android:background">@color/splashBackground</item>
         <item name="android:statusBarColor">@color/splashBackground</item>
         <item name="android:windowSplashScreenBackground" tools:targetApi="s">@color/splashBackground</item>
+        <item name="android:windowSplashScreenAnimatedIcon" tools:targetApi="s">@drawable/splash_transparent</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>
