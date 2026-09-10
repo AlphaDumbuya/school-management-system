@@ -359,24 +359,24 @@ table {
   .hero-float { animation: none; }
 }
 
-/* Animated auth background — drifting aurora blobs on deep navy */
+/* Animated auth background — very subtle ambient glow drift on deep navy.
+   Intentionally gentle: tiny movement + minimal scaling + slow timing so it
+   adds soft depth without pulling attention away from the sign-in card. */
 @keyframes authBlob1 {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  33%      { transform: translate(8vw, 6vh) scale(1.15); }
-  66%      { transform: translate(-6vw, 10vh) scale(0.95); }
+  50%      { transform: translate(1.5vw, 1.5vh) scale(1.03); }
 }
 @keyframes authBlob2 {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  33%      { transform: translate(-10vw, -6vh) scale(1.1); }
-  66%      { transform: translate(6vw, -10vh) scale(1.2); }
+  50%      { transform: translate(-1.5vw, -1vh) scale(1.04); }
 }
 @keyframes authBlob3 {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(5vw, -8vh) scale(1.25); }
+  50%      { transform: translate(1vw, -1.5vh) scale(1.05); }
 }
-.auth-blob-1 { animation: authBlob1 22s ease-in-out infinite; }
-.auth-blob-2 { animation: authBlob2 26s ease-in-out infinite; }
-.auth-blob-3 { animation: authBlob3 30s ease-in-out infinite; }
+.auth-blob-1 { animation: authBlob1 40s ease-in-out infinite; }
+.auth-blob-2 { animation: authBlob2 46s ease-in-out infinite; }
+.auth-blob-3 { animation: authBlob3 52s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   .auth-blob-1, .auth-blob-2, .auth-blob-3 { animation: none; }
