@@ -182,6 +182,13 @@ app.use('/api/v1/auth', authRoutes);
 // that middleware runs for every /api/v1/* path and 401s this public route.
 app.use('/api/v1/public', publicVerifyRoutes);
 
+// App stats (APK download tracking + count). Contains the PUBLIC
+// GET /api/v1/app/download route, so — like publicVerifyRoutes above — it MUST
+// be mounted before any blanket `/api/v1` router that applies `authenticate`
+// router-wide, otherwise the public download 401s. Its protected routes
+// (download-count, blob-url) enforce their own auth internally.
+app.use('/api/v1', appStatsRoutes);
+
 // User Management Routes
 app.use('/api/v1/users', userRoutes);
 
@@ -331,9 +338,6 @@ app.use('/api/v1/school-config', schoolConfigRoutes);
 
 // Announcements Routes (Communication)
 app.use('/api/v1/announcements', announcementRoutes);
-
-// App stats (APK download tracking + count)
-app.use('/api/v1', appStatsRoutes);
 
 // Offline sync Routes (teacher offline-first: pull/push)
 app.use('/api/v1/sync', syncRoutes);
