@@ -17,6 +17,7 @@ import useAuth, { getDashboardPath } from '@hooks/useAuth';
 import useAuthStore from '@store/authStore';
 import authService from '@services/authService';
 import { isAppMode } from '@lib/appMode';
+import CyberBackground from '@components/auth/CyberBackground';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
@@ -213,12 +214,20 @@ export const LoginPage: React.FC = () => {
       : 'border-slate-200 focus:border-[#1d4ed8] focus:ring-1 focus:ring-[#1d4ed8]/20';
 
   return (
-    <div className="min-h-screen bg-[#1a2b6b] flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Brand gradient backdrop (no third-party artwork / watermark). */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#1a2b6b] via-[#25408f] to-[#0b1234]" />
-      {/* Soft brand glows for depth */}
-      <div className="absolute -top-24 -left-24 w-[420px] h-[420px] rounded-full bg-[#1d4ed8]/25 blur-[130px] pointer-events-none" />
-      <div className="absolute -bottom-24 -right-24 w-[420px] h-[420px] rounded-full bg-amber-400/15 blur-[130px] pointer-events-none" />
+    <div className="min-h-screen bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a] flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Animated aurora background (matches Forgot/Reset password pages) */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="auth-blob-1 absolute top-[-20%] left-[-12%] w-[520px] h-[520px] rounded-full bg-[#2563eb]/25 blur-[120px]" />
+        <div className="auth-blob-2 absolute bottom-[-20%] right-[-12%] w-[460px] h-[460px] rounded-full bg-amber-400/15 blur-[130px]" />
+        <div className="auth-blob-3 absolute top-1/4 left-1/2 w-[420px] h-[420px] rounded-full bg-fuchsia-500/15 blur-[120px]" />
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)', backgroundSize: '26px 26px' }}
+        />
+      </div>
+
+      {/* Animated 3D cyber scene */}
+      <CyberBackground />
 
       {/* Portrait card */}
       <div className="relative z-10 w-full max-w-md animate-fade-in">
