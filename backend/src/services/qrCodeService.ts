@@ -26,6 +26,11 @@ export interface QrVerificationResult {
   role?: string;
   expirationDate?: Date;
   failureReason?: string;
+  // Enrichment shown on a successful verification (looked up post-verify).
+  memberId?: string;      // student_id / teacher_id
+  className?: string;     // student's current class
+  photoUrl?: string;      // ID photo
+  schoolName?: string;    // tenant/school name
 }
 
 export interface ScanLog {
@@ -334,17 +339,75 @@ export class QrCodeService {
       // Reset failed verification count on successful scan
       await this.resetFailedVerificationCount(scanningDeviceId);
 
+      // Enrich the result with the member's ID number, class, photo and school
+      // so the public verify screen can show a richer, more trustworthy card.
+      const extra = await this.enrichVerification(content.userId, content.role, tenantId);
+
       return {
         isValid: true,
         userId: content.userId,
         userName: content.name,
         role: content.role,
         expirationDate,
+        ...extra,
       };
     } catch (error) {
       logger.error('Failed to verify QR code', { error });
       throw error;
     }
+  }
+
+  /**
+   * Look up extra display fields for a verified member: their ID number, class
+   * (students), photo and the school name. Never throws — returns {} on failure
+   * so a lookup hiccup can't turn a valid card into an error.
+   */
+  private async enrichVerification(
+    userId: string,
+    role: string,
+    tenantId: string
+  ): Promise<{ memberId?: string; className?: string; photoUrl?: string; schoolName?: string }> {
+    const out: { memberId?: string; className?: string; photoUrl?: string; schoolName?: string } = {};
+    try {
+      // School name (tenant/school).
+      try {
+        const school = await this.db('schools').where({ tenant_id: tenantId }).first().catch(() => null);
+        const tenant = school ? null : await this.db('tenants').where({ id: tenantId }).first().catch(() => null);
+        out.schoolName = school?.name || tenant?.name || undefined;
+      } catch { /* ignore */ }
+
+      const r = (role || '').toLowerCase();
+      if (r === 'student') {
+        // Student row is linked to the user via user_id.
+        const student = await this.db('students')
+          .where({ user_id: userId, tenant_id: tenantId })
+          .first()
+          .catch(() => null);
+        if (student) {
+          out.memberId = student.student_id || undefined;
+          out.photoUrl = student.photo_url || undefined;
+          // Current active class via enrollments → classes.
+          const cls = await this.db('enrollments')
+            .join('classes', 'enrollments.class_id', 'classes.id')
+            .where('enrollments.student_id', student.id)
+            .whereIn('enrollments.status', ['active', 'enrolled'])
+            .orderBy('enrollments.enrollment_date', 'desc')
+            .select('classes.name as name')
+            .first()
+            .catch(() => null);
+          out.className = cls?.name || undefined;
+        }
+      } else {
+        // Teacher / staff: id + photo from users (+ teachers for the staff id).
+        const user = await this.db('users').where({ id: userId }).first().catch(() => null);
+        if (user) out.photoUrl = user.photo_url || out.photoUrl;
+        const teacher = await this.db('teachers').where({ user_id: userId }).first().catch(() => null);
+        if (teacher) out.memberId = teacher.teacher_id || undefined;
+      }
+    } catch (err) {
+      logger.warn(`enrichVerification failed for user ${userId}: ${String((err as any)?.message || err)}`);
+    }
+    return out;
   }
 
   /**

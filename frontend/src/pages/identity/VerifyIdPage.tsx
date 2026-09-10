@@ -18,6 +18,10 @@ type Result = {
   role?: string;
   expirationDate?: string;
   failureReason?: string;
+  memberId?: string;
+  className?: string;
+  photoUrl?: string;
+  schoolName?: string;
 };
 
 const REASON_LABEL: Record<string, string> = {
@@ -96,17 +100,40 @@ export default function VerifyIdPage() {
               </h2>
 
               {valid ? (
-                <div className="mt-4 space-y-2 text-left bg-gray-50 dark:bg-gray-900/40 rounded-xl p-4">
-                  {result?.userName && (
-                    <Row label="Name" value={result.userName} />
+                <>
+                  {/* Photo + school header for a richer, more trustworthy result */}
+                  {(result?.photoUrl || result?.schoolName) && (
+                    <div className="mt-4 flex flex-col items-center gap-2">
+                      {result?.photoUrl && (
+                        <img
+                          src={result.photoUrl}
+                          alt={result.userName || 'ID holder'}
+                          className="w-24 h-24 rounded-2xl object-cover border-2 border-emerald-200 dark:border-emerald-800 shadow-sm"
+                        />
+                      )}
+                      {result?.schoolName && (
+                        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{result.schoolName}</p>
+                      )}
+                    </div>
                   )}
-                  {result?.role && (
-                    <Row label="Role" value={String(result.role).toUpperCase()} />
-                  )}
-                  {result?.expirationDate && (
-                    <Row label="Expires" value={new Date(result.expirationDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} />
-                  )}
-                </div>
+                  <div className="mt-4 space-y-2 text-left bg-gray-50 dark:bg-gray-900/40 rounded-xl p-4">
+                    {result?.userName && (
+                      <Row label="Name" value={result.userName} />
+                    )}
+                    {result?.memberId && (
+                      <Row label="ID Number" value={result.memberId} />
+                    )}
+                    {result?.role && (
+                      <Row label="Role" value={String(result.role).toUpperCase()} />
+                    )}
+                    {result?.className && (
+                      <Row label="Class" value={result.className} />
+                    )}
+                    {result?.expirationDate && (
+                      <Row label="Expires" value={new Date(result.expirationDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} />
+                    )}
+                  </div>
+                </>
               ) : (
                 <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
                   {REASON_LABEL[result?.failureReason || ''] || 'This ID could not be verified.'}
