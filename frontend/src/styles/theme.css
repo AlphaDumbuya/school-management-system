@@ -192,24 +192,41 @@ input, textarea, select {
 }
 
 /* Native <select> option list — force readable, high-contrast colors.
-   Some browsers make <option> inherit the select's bg/color, producing an
-   unreadable blue-bg/black-text popup. Pin options to white + dark ink (and a
-   dark-mode variant) so the dropdown list is always legible. */
-select option {
+   Some browsers (notably Chromium on Windows) draw the dropdown popup using the
+   OS theme, producing an unreadable blue-bg/black-text list and ignoring plain
+   background-color on <option>. We fix this two ways:
+     1. `color-scheme: light` tells the browser to render the popup with the
+        light system palette (dark text on white) instead of a blue accent fill.
+     2. A sensible default background/text on <option>. These use plain
+        specificity (no !important) so a page that intentionally themes its
+        options (e.g. the register form's navy dropdowns via `[&>option]:…`
+        Tailwind classes) can still override them.
+   The whole rule is scoped to light mode; the .dark block below re-themes it. */
+select {
+  color-scheme: light;
+}
+select option,
+select optgroup {
   background-color: #ffffff;
   color: #1f2937; /* slate-800 */
 }
 select option:checked,
-select option:hover {
+select option:hover,
+select option:focus {
   background-color: #eff6ff; /* light blue highlight */
   color: #1e3a8a; /* blue-900 */
 }
-.dark select option {
+.dark select {
+  color-scheme: dark;
+}
+.dark select option,
+.dark select optgroup {
   background-color: #1f2937; /* gray-800 */
   color: #f3f4f6; /* gray-100 */
 }
 .dark select option:checked,
-.dark select option:hover {
+.dark select option:hover,
+.dark select option:focus {
   background-color: #374151; /* gray-700 */
   color: #ffffff;
 }
