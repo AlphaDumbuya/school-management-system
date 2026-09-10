@@ -3,8 +3,8 @@ import { logger } from '@utils/logger';
 import db from '@utils/database';
 
 export interface CreateNotificationRequest {
-  notificationType: string; // 'grade', 'attendance', 'payment', 'schedule', 'enrollment'
-  recipientId: string;
+  notificationType?: string; // 'grade', 'attendance', 'payment', 'schedule', 'enrollment'
+  recipientId?: string;
   subject?: string;
   message: string;
   data?: Record<string, any>;
@@ -12,6 +12,15 @@ export interface CreateNotificationRequest {
   sourceType?: string;
   sourceId?: string;
   createdBy?: string;
+  // ── Legacy field aliases (used by discipline/appeal services) ──────────────
+  // Accepted and normalised so those callers create real, targeted notifications
+  // instead of rows with a null recipient (which never showed in the bell).
+  user_id?: string;
+  tenant_id?: string;
+  type?: string;
+  title?: string;
+  related_entity?: string;
+  related_id?: string;
 }
 
 export interface NotificationFilter {
@@ -47,23 +56,35 @@ class NotificationService {
   async createNotification(req: CreateNotificationRequest): Promise<Notification> {
     try {
       const channels = req.channels || ['in_app'];
-      
+
+      // Normalise legacy field aliases so all callers create targeted rows.
+      const recipientId = req.recipientId || req.user_id;
+      const notificationType = req.notificationType || req.type || 'info';
+      const subject = req.subject || req.title;
+      const sourceType = req.sourceType || req.related_entity;
+      const sourceId = req.sourceId || req.related_id;
+
+      if (!recipientId) {
+        logger.warn('createNotification called without a recipient — skipping');
+        throw new Error('recipientId (or user_id) is required');
+      }
+
       const [notification] = await db('notifications')
         .insert({
-          notificationType: req.notificationType,
-          recipientId: req.recipientId,
-          subject: req.subject,
+          notificationType,
+          recipientId,
+          subject,
           message: req.message,
           data: req.data ? JSON.stringify(req.data) : null,
           channels,
-          sourceType: req.sourceType,
-          sourceId: req.sourceId,
+          sourceType,
+          sourceId,
           createdBy: req.createdBy,
           status: 'pending',
         })
         .returning('*');
 
-      logger.info(`Notification created: ${notification.id} for user: ${req.recipientId}`);
+      logger.info(`Notification created: ${notification.id} for user: ${recipientId}`);
       return this.formatNotification(notification);
     } catch (error) {
       logger.error(`Error creating notification: ${error}`);

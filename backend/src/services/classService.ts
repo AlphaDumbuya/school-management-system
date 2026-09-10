@@ -310,7 +310,8 @@ export class ClassService {
       query = query.where('enrollments.academic_session_id', academicSessionId);
     }
 
-    return query.orderBy('students.first_name');
+    // Ordered by student ID (001, 002, 003 …) for a consistent roster order.
+    return query.orderBy('students.student_id', 'asc');
   }
 
   /**

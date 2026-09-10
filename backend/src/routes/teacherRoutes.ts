@@ -152,7 +152,10 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, U
           .orWhere('users.last_name', 'ilike', term)
           .orWhere('users.email', 'ilike', term)
           .orWhere('teachers.teacher_id', 'ilike', term)
-          .orWhere('teachers.specialization', 'ilike', term);
+          .orWhere('teachers.specialization', 'ilike', term)
+          // Full-name search so typing the whole name finds the teacher.
+          .orWhereRaw("CONCAT_WS(' ', users.first_name, users.last_name) ILIKE ?", [term])
+          .orWhereRaw("CONCAT_WS(' ', users.last_name, users.first_name) ILIKE ?", [term]);
       });
     }
 
@@ -162,6 +165,8 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, U
     const teachersList = await query
       .limit(limit)
       .offset(offset)
+      // Ordered by staff ID (001, 002, 003 …); staff without an ID sort last.
+      .orderByRaw('teachers.teacher_id ASC NULLS LAST')
       .orderBy('users.first_name', 'asc');
 
     res.json({

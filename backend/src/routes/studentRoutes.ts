@@ -406,7 +406,11 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
         this.where('students.first_name', 'ilike', term)
           .orWhere('students.last_name', 'ilike', term)
           .orWhere('students.student_id', 'ilike', term)
-          .orWhere('students.email', 'ilike', term);
+          .orWhere('students.email', 'ilike', term)
+          // Full-name search: match "First Last" (and "Last First") so typing the
+          // whole name finds the student, not just a single name part or the ID.
+          .orWhereRaw("CONCAT_WS(' ', students.first_name, students.last_name) ILIKE ?", [term])
+          .orWhereRaw("CONCAT_WS(' ', students.last_name, students.first_name) ILIKE ?", [term]);
       });
     }
 
@@ -434,18 +438,23 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
         this.where('students.first_name', 'ilike', term)
           .orWhere('students.last_name', 'ilike', term)
           .orWhere('students.student_id', 'ilike', term)
-          .orWhere('students.email', 'ilike', term);
+          .orWhere('students.email', 'ilike', term)
+          .orWhereRaw("CONCAT_WS(' ', students.first_name, students.last_name) ILIKE ?", [term])
+          .orWhereRaw("CONCAT_WS(' ', students.last_name, students.first_name) ILIKE ?", [term]);
       });
     }
 
     const totalResult: any = await countQuery.first();
     const totalRaw = totalResult?.totalCount ?? totalResult?.count;
 
-    // Get paginated results
+    // Get paginated results — ordered by student ID (001, 002, 003 …). IDs are
+    // zero-padded with a shared prefix so a plain ascending sort is correct;
+    // students without an ID sort last, then by enrollment date.
     const students = await query
       .limit(limit)
       .offset(offset)
-      .orderBy('created_at', 'desc');
+      .orderByRaw('students.student_id ASC NULLS LAST')
+      .orderBy('created_at', 'asc');
 
     const total = Math.max(Number(totalRaw ?? 0), students.length);
 

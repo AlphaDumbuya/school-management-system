@@ -940,7 +940,8 @@ export class SLReportCardService {
         'students.student_id as roll_number',
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.student_id) as student_name"),
       )
-      .orderBy('student_name', 'asc');
+      // Ordered by student ID (001, 002, 003 …) for a consistent results roster.
+      .orderBy('students.student_id', 'asc');
 
     const existing = await db('sl_subject_results')
       .where({ tenant_id: tenantId, class_id: classId, subject_id: subjectId, term, academic_year: academicYear })
