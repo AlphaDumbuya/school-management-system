@@ -69,7 +69,7 @@ export const PageShell: React.FC<PageShellProps> = ({
     // No horizontal padding on mobile: MainLayout's <main> already provides p-3.
     // Only re-introduce inner gutters at larger breakpoints, keeping the page
     // centred with a max width. This avoids the "choked" double-padding on phones.
-    <div className="max-w-7xl mx-auto sm:px-2 lg:px-4 py-2 sm:py-4">
+    <div className="max-w-7xl mx-auto sm:px-2 lg:px-4 py-2 sm:py-4 pb-[calc(env(safe-area-inset-bottom,0px)+5rem)] sm:pb-6">
       {/* Breadcrumb — only when breadcrumbs array is non-empty */}
       {breadcrumbs && breadcrumbs.length > 0 && (
         <Breadcrumb items={breadcrumbs} />

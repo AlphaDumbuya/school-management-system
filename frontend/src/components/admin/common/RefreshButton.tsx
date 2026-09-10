@@ -8,6 +8,7 @@
  */
 import React, { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { showToast } from '@utils/toast';
 
 export interface RefreshButtonProps {
   onRefresh: () => void | Promise<unknown>;
@@ -36,14 +37,20 @@ export const RefreshButton: React.FC<RefreshButtonProps> = ({
       // gives the user clear feedback that something happened. Errors from the
       // refetch are swallowed here: a single failing query shouldn't throw an
       // unhandled rejection to the console or break the refresh control.
+      let failed = false;
       await Promise.all([
         Promise.resolve()
           .then(() => onRefresh())
           .catch((err) => {
+            failed = true;
             console.warn('[Refresh] a query failed to refetch:', err);
           }),
         new Promise((r) => setTimeout(r, 500)),
       ]);
+      // Confirm to the user that the reload happened (data may look identical if
+      // nothing changed, so an explicit toast avoids "did it work?" confusion).
+      if (failed) showToast.error('Could not refresh. Check your connection and try again.');
+      else showToast.success('Refreshed');
     } finally {
       setBusy(false);
     }

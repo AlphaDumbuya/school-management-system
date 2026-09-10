@@ -7,6 +7,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Calendar, Clock, Users, BookOpen, Plus, Trash2, Edit, ChevronDown } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
+import { cardTint } from '@lib/cardTint';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
@@ -430,7 +431,7 @@ export const TimetablesPage: React.FC = () => {
                     className={`flex items-center gap-3 p-3 rounded-xl border shadow-sm ${
                       slot
                         ? catBg
-                        : 'border-dashed border-gray-300 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30'
+                        : `border-dashed ${cardTint(periodIndex)}`
                     }`}
                   >
                     {/* Time */}

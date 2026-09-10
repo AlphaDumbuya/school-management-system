@@ -9,6 +9,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import { BookOpen, Layers, ToggleRight, CheckCircle, LayoutGrid, List, Edit, Trash2, X, ChevronDown, ChevronRight, SlidersHorizontal, Check, Power } from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import MainLayout from '@components/layout/MainLayout';
+import { cardTint } from '@lib/cardTint';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
 import { DataTable } from '@components/admin/table/DataTable';
@@ -464,14 +465,14 @@ export const SubjectsPage: React.FC = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {subjects.map((subj) => {
+              {subjects.map((subj, idx) => {
                 const cat = subj.category || 'core';
                 const catColor = CATEGORY_COLORS[cat] || CATEGORY_COLORS.core;
 
                 return (
                   <div
                     key={subj.id}
-                    className="group relative overflow-hidden bg-white dark:bg-gray-800 border border-gray-200/60 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1"
+                    className={`group relative overflow-hidden ${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-200/60 sm:dark:border-gray-700/60 border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1`}
                   >
                     {/* Header: Subject Name and Code Badge */}
                     <div className="flex items-start justify-between mb-3">

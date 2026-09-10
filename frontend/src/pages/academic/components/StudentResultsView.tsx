@@ -8,6 +8,7 @@ import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { GraduationCap, Loader2 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
+import { cardTint } from '@lib/cardTint';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { studentDashboardService, StudentGrade } from '@services/studentDashboardService';
@@ -78,8 +79,8 @@ export const StudentResultsView: React.FC = () => {
           />
         ) : (
           <div className="space-y-6">
-            {byTerm.map(([term, rows]) => (
-              <div key={term} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+            {byTerm.map(([term, rows], idx) => (
+              <div key={term} className={`${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-200 sm:dark:border-gray-700 border rounded-2xl shadow-sm overflow-hidden`}>
                 <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
                   <GraduationCap size={16} className="text-blue-500" />
                   <h3 className="font-bold text-gray-900 dark:text-white">{termName(term)}</h3>
