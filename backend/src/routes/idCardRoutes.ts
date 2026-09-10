@@ -319,11 +319,13 @@ router.get(
           studentsQuery = studentsQuery.where(function() {
             this.where('students.first_name', 'ilike', term)
               .orWhere('students.last_name', 'ilike', term)
-              .orWhere('students.student_id', 'ilike', term);
+              .orWhere('students.student_id', 'ilike', term)
+              .orWhereRaw("CONCAT_WS(' ', students.first_name, students.last_name) ILIKE ?", [term])
+              .orWhereRaw("CONCAT_WS(' ', students.last_name, students.first_name) ILIKE ?", [term]);
           });
         }
 
-        const students = await studentsQuery.orderBy('students.id').limit(5000);
+        const students = await studentsQuery.orderBy('students.student_id', 'asc').limit(5000);
         results = results.concat(students);
       }
 
@@ -348,11 +350,13 @@ router.get(
           teachersQuery = teachersQuery.where(function() {
             this.where('users.first_name', 'ilike', term)
               .orWhere('users.last_name', 'ilike', term)
-              .orWhere('teachers.teacher_id', 'ilike', term);
+              .orWhere('teachers.teacher_id', 'ilike', term)
+              .orWhereRaw("CONCAT_WS(' ', users.first_name, users.last_name) ILIKE ?", [term])
+              .orWhereRaw("CONCAT_WS(' ', users.last_name, users.first_name) ILIKE ?", [term]);
           });
         }
 
-        const teachers = await teachersQuery.limit(5000);
+        const teachers = await teachersQuery.orderBy('teachers.teacher_id', 'asc').limit(5000);
         results = results.concat(teachers);
       }
 
