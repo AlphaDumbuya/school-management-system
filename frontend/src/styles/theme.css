@@ -191,6 +191,29 @@ input, textarea, select {
   border-color: var(--color-border);
 }
 
+/* Native <select> option list — force readable, high-contrast colors.
+   Some browsers make <option> inherit the select's bg/color, producing an
+   unreadable blue-bg/black-text popup. Pin options to white + dark ink (and a
+   dark-mode variant) so the dropdown list is always legible. */
+select option {
+  background-color: #ffffff;
+  color: #1f2937; /* slate-800 */
+}
+select option:checked,
+select option:hover {
+  background-color: #eff6ff; /* light blue highlight */
+  color: #1e3a8a; /* blue-900 */
+}
+.dark select option {
+  background-color: #1f2937; /* gray-800 */
+  color: #f3f4f6; /* gray-100 */
+}
+.dark select option:checked,
+.dark select option:hover {
+  background-color: #374151; /* gray-700 */
+  color: #ffffff;
+}
+
 input:focus, textarea:focus, select:focus {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
