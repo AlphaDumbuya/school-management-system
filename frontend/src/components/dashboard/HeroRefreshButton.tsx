@@ -19,7 +19,9 @@ export const HeroRefreshButton: React.FC<HeroRefreshButtonProps> = ({ onRefresh,
     try {
       setBusy(true);
       await Promise.all([
-        Promise.resolve(onRefresh()),
+        Promise.resolve()
+          .then(() => onRefresh())
+          .catch((err) => console.warn('[Refresh] a query failed to refetch:', err)),
         new Promise((r) => setTimeout(r, 500)),
       ]);
     } finally {

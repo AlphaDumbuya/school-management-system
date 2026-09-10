@@ -33,9 +33,15 @@ export const RefreshButton: React.FC<RefreshButtonProps> = ({
     try {
       setBusy(true);
       // Keep the spinner visible briefly so a cached/instant refetch still
-      // gives the user clear feedback that something happened.
+      // gives the user clear feedback that something happened. Errors from the
+      // refetch are swallowed here: a single failing query shouldn't throw an
+      // unhandled rejection to the console or break the refresh control.
       await Promise.all([
-        Promise.resolve(onRefresh()),
+        Promise.resolve()
+          .then(() => onRefresh())
+          .catch((err) => {
+            console.warn('[Refresh] a query failed to refetch:', err);
+          }),
         new Promise((r) => setTimeout(r, 500)),
       ]);
     } finally {

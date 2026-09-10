@@ -7,7 +7,6 @@
 import React, { useEffect } from 'react';
 import {
   RefreshCw,
-  Download,
   Users,
   Briefcase,
   BookOpen,
@@ -61,29 +60,24 @@ export const AdminDashboard: React.FC = () => {
 
   const isInitialLoad = loading && dashboard === null;
 
-  // Page actions for PageShell
+  // Refresh the whole dashboard; never let a failing fetch throw an unhandled
+  // rejection to the console.
+  const safeRefresh = () => Promise.resolve(refreshDashboard()).catch((err) =>
+    console.warn('[Dashboard] refresh failed:', err)
+  );
+
+  // Page actions for PageShell — a single Refresh control (no export/print here).
   const actions = (
-    <>
-      <Button
-        variant="default"
-        size="sm"
-        disabled={loading}
-        onClick={refreshDashboard}
-        aria-label="Refresh dashboard"
-      >
-        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-        <span className="hidden sm:inline">Refresh</span>
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => window.print()}
-        aria-label="Export dashboard"
-      >
-        <Download size={14} />
-        <span className="hidden sm:inline">Export</span>
-      </Button>
-    </>
+    <Button
+      variant="default"
+      size="sm"
+      disabled={loading}
+      onClick={safeRefresh}
+      aria-label="Refresh dashboard"
+    >
+      <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+      <span className="hidden sm:inline">Refresh</span>
+    </Button>
   );
 
   return (
@@ -402,7 +396,7 @@ export const AdminDashboard: React.FC = () => {
               { label: 'Import / Export',   icon: <ArrowLeftRight size={20} />, route: '/students/directory',            tint: 'bg-teal-50 hover:bg-teal-100 border-teal-100 text-teal-700' },
             ].map(({ label, icon, route, tint }) => (
               <button
-                key={route}
+                key={label}
                 onClick={() => navigate(route)}
                 className={`group flex flex-col items-center gap-2 h-auto py-5 px-3 rounded-2xl border shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${tint}`}
               >
