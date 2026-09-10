@@ -131,8 +131,17 @@ class VerificationService {
 
   // ── Profile photo (Req 7) ──────────────────────────────────────────────────
   async setProfilePhoto(userId: string, tenantId: string, url: string): Promise<void> {
-    if (!url || !/^https?:\/\//i.test(url)) {
-      throw new AppError('A valid photo URL is required.', 400, 'VERIFICATION_FIELD_INVALID');
+    if (!url || typeof url !== 'string') {
+      throw new AppError('A valid photo is required.', 400, 'VERIFICATION_FIELD_INVALID');
+    }
+    const isHttp = /^https?:\/\//i.test(url);
+    const isDataImage = /^data:image\/(png|jpe?g|webp);base64,/i.test(url);
+    if (!isHttp && !isDataImage) {
+      throw new AppError('A valid photo is required.', 400, 'VERIFICATION_FIELD_INVALID');
+    }
+    // Guard against oversized base64 payloads (column is TEXT; ~3MB decoded max).
+    if (isDataImage && url.length > 4 * 1024 * 1024) {
+      throw new AppError('Photo is too large. Please use an image under 3MB.', 400, 'VERIFICATION_PHOTO_TOO_LARGE');
     }
     const updated = await db('users').where({ id: userId, tenant_id: tenantId }).update({
       profile_photo_url: url,

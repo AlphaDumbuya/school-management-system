@@ -2,12 +2,12 @@
  * VerificationPage — simple, instant school verification for the account owner.
  *
  * Flow: rationale ("why verify") → confirm name + EMIS + government-ID → instant
- * result → prompt for a profile photo. No file uploads, no waiting for review.
+ * result → prompt for a profile photo (upload from device, no waiting for review).
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
-import { ShieldCheck, BadgeCheck, Loader2, Lock, Info, Camera } from 'lucide-react';
+import { ShieldCheck, BadgeCheck, Loader2, Lock, Info, Camera, Upload, X } from 'lucide-react';
 import useAuthStore from '@store/authStore';
 import verificationService, { IdType } from '@services/verificationService';
 import schoolConfigService from '@services/schoolConfigService';
@@ -239,19 +239,49 @@ export const VerificationPage: React.FC = () => {
 };
 
 /** Post-verification: prompt for a profile photo (optional, non-blocking). */
+const MAX_PHOTO_BYTES = 3 * 1024 * 1024; // 3MB
+const ACCEPTED_PHOTO_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+
 const ProfilePhotoStep: React.FC<{ onDone: () => void }> = ({ onDone }) => {
-  const [url, setUrl] = useState('');
+  const [dataUrl, setDataUrl] = useState('');
+  const [fileName, setFileName] = useState('');
   const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
 
+  const handleFile = (file: File | undefined) => {
+    if (!file) return;
+    if (!ACCEPTED_PHOTO_TYPES.includes(file.type)) {
+      showToast.error('Please choose a PNG, JPG or WEBP image.');
+      return;
+    }
+    if (file.size > MAX_PHOTO_BYTES) {
+      showToast.error('Image is too large. Please use one under 3MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setDataUrl(String(reader.result || ''));
+      setFileName(file.name);
+    };
+    reader.onerror = () => showToast.error('Could not read the image file.');
+    reader.readAsDataURL(file);
+  };
+
+  const clear = () => {
+    setDataUrl('');
+    setFileName('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const save = async () => {
-    if (!url.trim()) return;
+    if (!dataUrl) return;
     setSaving(true);
     try {
-      const res = await verificationService.setProfilePhoto(url.trim());
+      const res = await verificationService.setProfilePhoto(dataUrl);
       if (res.success) {
-        if (user) setUser({ ...(user as any), profile_photo_url: url.trim() });
+        if (user) setUser({ ...(user as any), profile_photo_url: dataUrl });
         showToast.success('Profile photo saved');
         onDone();
       } else {
@@ -265,25 +295,63 @@ const ProfilePhotoStep: React.FC<{ onDone: () => void }> = ({ onDone }) => {
   };
 
   return (
-    <div className="max-w-lg mx-auto bg-white rounded-2xl border border-emerald-200 p-8 text-center space-y-4">
+    <div className="max-w-lg mx-auto bg-white rounded-2xl border border-emerald-200 p-8 text-center space-y-5">
       <BadgeCheck size={48} className="mx-auto text-emerald-600" />
       <div>
         <h3 className="text-xl font-black text-gray-900">Verified! Add your photo</h3>
         <p className="text-sm text-gray-500 mt-1">Your photo appears on your profile with the Verified School badge.</p>
       </div>
-      <div className="flex items-center gap-2">
-        <input
-          className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#1d4ed8]"
-          placeholder="Paste your photo URL"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <button onClick={save} disabled={!url.trim() || saving}
-          className="inline-flex items-center gap-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold text-sm px-4 py-3 rounded-xl disabled:opacity-50">
-          {saving ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />} Save
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+
+      {dataUrl ? (
+        <div className="space-y-3">
+          <div className="relative w-32 h-32 mx-auto">
+            <img src={dataUrl} alt="Selected" className="w-32 h-32 rounded-2xl object-cover border border-gray-200" />
+            <button
+              type="button"
+              onClick={clear}
+              className="absolute -top-2 -right-2 bg-white border border-gray-200 rounded-full p-1 shadow hover:bg-gray-50"
+              aria-label="Remove photo"
+            >
+              <X size={14} className="text-gray-600" />
+            </button>
+          </div>
+          {fileName && <p className="text-xs text-gray-400 truncate">{fileName}</p>}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="text-xs font-semibold text-[#1d4ed8] hover:underline"
+          >
+            Choose a different photo
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-[#1d4ed8] rounded-2xl py-8 text-gray-500 hover:text-[#1d4ed8] transition-colors"
+        >
+          <Upload size={28} />
+          <span className="text-sm font-semibold">Upload a photo</span>
+          <span className="text-[11px] text-gray-400">PNG, JPG or WEBP · up to 3MB</span>
         </button>
-      </div>
-      <button onClick={onDone} className="text-xs text-gray-400 hover:text-gray-600">Skip for now</button>
+      )}
+
+      <button
+        onClick={save}
+        disabled={!dataUrl || saving}
+        className="w-full inline-flex items-center justify-center gap-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold text-sm px-4 py-3 rounded-xl disabled:opacity-50"
+      >
+        {saving ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />} Save photo
+      </button>
+      <button onClick={onDone} className="block mx-auto text-xs text-gray-400 hover:text-gray-600">Skip for now</button>
     </div>
   );
 };
