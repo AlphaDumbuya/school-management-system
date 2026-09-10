@@ -402,7 +402,15 @@ class NotificationService {
       recipientId: notification.recipientId,
       subject: notification.subject,
       message: notification.message,
-      data: notification.data ? JSON.parse(notification.data) : undefined,
+      // The `data` column is a Postgres json type, so the pg driver already
+      // returns it parsed. Only JSON.parse when it's actually a string, and
+      // never let a malformed value crash the whole notifications list.
+      data: (() => {
+        const d = notification.data;
+        if (d == null) return undefined;
+        if (typeof d === 'object') return d;
+        try { return JSON.parse(d); } catch { return undefined; }
+      })(),
       channels: Array.isArray(notification.channels) ? notification.channels : [],
       readAt: notification.readAt,
       status: notification.status,

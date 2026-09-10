@@ -291,12 +291,19 @@ export class QrCodeService {
         };
       }
 
-      // Check if QR code is revoked
-      const qrCode = await this.db('qr_codes')
-        .where({ security_hash: content.securityHash })
+      // Check if QR code is revoked.
+      //
+      // IMPORTANT: the security_hash is derived from userId+name+role+expiry, so
+      // regenerating a card produces MULTIPLE qr_codes rows that share the SAME
+      // hash (older ones is_valid=false, the current one is_valid=true). A naive
+      // `.first()` on the hash returns the OLDEST row and wrongly reports a valid
+      // card as revoked. We instead treat the card as valid if ANY qr row with
+      // this hash is still valid (i.e. it hasn't been fully revoked/replaced).
+      const anyValidQr = await this.db('qr_codes')
+        .where({ security_hash: content.securityHash, is_valid: true })
         .first();
 
-      if (qrCode && !qrCode.is_valid) {
+      if (!anyValidQr) {
         await this.logScan({
           scannedUserId: content.userId,
           scanningUserId,
