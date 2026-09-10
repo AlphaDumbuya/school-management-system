@@ -10,7 +10,7 @@ import {
   Users,
   Briefcase,
   BookOpen,
-  DollarSign,
+  Wallet,
   UserPlus,
   CalendarDays,
   ClipboardCheck,
@@ -151,9 +151,12 @@ export const AdminDashboard: React.FC = () => {
               <KPICard
                 title="Outstanding Fees"
                 value={dashboard ? formatCurrency(dashboard.metrics.outstandingFees) : '—'}
-                icon={<DollarSign size={32} />}
+                icon={<Wallet size={32} />}
                 color="red"
                 isLoading={loading && !dashboard}
+                // 5th card: span full width on mobile (2-col grid) so it isn't
+                // left cramped/alone on the last row; normal size on desktop.
+                className="col-span-2 lg:col-span-1"
               />
             </>
           )}

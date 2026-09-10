@@ -22,6 +22,8 @@ interface KPICardProps {
   color?: 'blue' | 'green' | 'red' | 'amber' | 'purple' | 'indigo' | 'gray';
   onClick?: () => void;
   isLoading?: boolean;
+  /** Extra classes on the card container (e.g. grid column spans). */
+  className?: string;
 }
 
 const accentClasses = {
@@ -54,6 +56,7 @@ export const KPICard: React.FC<KPICardProps> = ({
   color = 'blue',
   onClick,
   isLoading,
+  className,
 }) => {
   return (
     <div
@@ -64,7 +67,8 @@ export const KPICard: React.FC<KPICardProps> = ({
         'before:absolute before:inset-y-0 before:left-0 before:w-1 before:rounded-r-full',
         accentClasses[color],
         onClick && 'cursor-pointer hover:shadow-lg hover:-translate-y-0.5 hover:ring-gray-300',
-        isLoading && 'opacity-60 pointer-events-none'
+        isLoading && 'opacity-60 pointer-events-none',
+        className
       )}
       onClick={onClick}
     >
