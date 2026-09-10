@@ -26,6 +26,7 @@ import GuidePage from '@pages/GuidePage';
 import AnnouncementsPage from '@pages/communication/AnnouncementsPage';
 import TenantDetailPage from '@pages/TenantDetailPage';
 import SupportPage from '@pages/SupportPage';
+import SupportTopicPage from '@pages/SupportTopicPage';
 import PlatformSupportPage from '@pages/PlatformSupportPage';
 import { PlatformTenantsPage } from '@pages/PlatformTenantsPage';
 import { PlatformSubscriptionsPage } from '@pages/PlatformSubscriptionsPage';
@@ -184,6 +185,10 @@ const router = createBrowserRouter(
         {
           path: 'support',
           element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'accountant', 'admissions_officer']}><SupportPage /></P>,
+        },
+        {
+          path: 'support/:topicId',
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'accountant', 'admissions_officer']}><SupportTopicPage /></P>,
         },
 
         // ── Role dashboards ─────────────────────────────────────────

@@ -1,11 +1,8 @@
 /**
  * SupportPage — /support
- * Comprehensive, role-aware help center for tenant users:
- *  - Searchable hero
- *  - Quick-action shortcuts
- *  - Role-based help topics (each links to the relevant area or expands an article)
- *  - FAQ accordion
- *  - Contact / support-ticket system (list + new ticket + thread)
+ * The help-center HOME: a clean directory of module topics (role-aware), a
+ * search, a short FAQ, and the support-ticket system. Each topic links to its
+ * own descriptive guide at /support/:topicId (see SupportTopicPage).
  */
 import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -13,9 +10,9 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   LifeBuoy, Plus, Loader2, MessageSquare, X, Send, Search, ArrowRight,
-  ChevronDown, ChevronRight, BookOpen, Settings, Users, GraduationCap,
-  ClipboardCheck, Wallet, CreditCard, FileText, ClipboardList, Building,
-  Mail, ShieldCheck, Rocket, HelpCircle, Ticket,
+  ChevronDown, Rocket, HelpCircle, Ticket, Mail,
+  Settings, Users, GraduationCap, ClipboardCheck, Wallet, CreditCard,
+  CalendarDays, Megaphone, BookOpen, Building, ShieldCheck,
 } from 'lucide-react';
 import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -23,7 +20,7 @@ import { Button } from '@components/ui/button';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { showToast } from '@utils/toast';
 import { useAuth } from '@hooks/useAuth';
-import { getRoleGuide, GuideSection } from '@lib/onboarding';
+import { getModulesForRole, richToPlain, HelpModule } from '@lib/helpCenter';
 import {
   supportService, SupportTicket, TicketStatus,
   TICKET_CATEGORIES, TICKET_PRIORITIES,
@@ -43,26 +40,24 @@ const PRIORITY_BADGE: Record<string, string> = {
   urgent: 'text-red-600',
 };
 
-// Resolve the lucide icon named in a GuideSection (from onboarding.ts) to a component.
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
   Settings, Users, GraduationCap, ClipboardCheck, Wallet, CreditCard,
-  FileText, ClipboardList, Building, BookOpen, HelpCircle,
+  CalendarDays, Megaphone, BookOpen, Building, ShieldCheck,
 };
-const iconFor = (name?: string) => ICONS[name || ''] || BookOpen;
 
-// Topic accent colors, rotating for a friendly help-center look.
 const TOPIC_ACCENTS = [
-  'bg-blue-50 text-blue-700 ring-blue-100 dark:bg-blue-900/20 dark:text-blue-300 dark:ring-blue-900/40',
-  'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-900/40',
-  'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-900/40',
-  'bg-violet-50 text-violet-700 ring-violet-100 dark:bg-violet-900/20 dark:text-violet-300 dark:ring-violet-900/40',
-  'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-900/20 dark:text-rose-300 dark:ring-rose-900/40',
-  'bg-sky-50 text-sky-700 ring-sky-100 dark:bg-sky-900/20 dark:text-sky-300 dark:ring-sky-900/40',
+  'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300',
+  'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300',
+  'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
+  'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300',
+  'bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300',
+  'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300',
+  'bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300',
+  'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300',
 ];
 
 interface Faq { q: string; a: string }
 
-// Role-aware FAQ. Common items appear for everyone; role-specific ones are appended.
 const COMMON_FAQ: Faq[] = [
   { q: 'How do I secure my account with two-factor authentication?', a: 'Open Settings → Security and follow the prompts to enable 2FA using an authenticator app. We strongly recommend this for every account.' },
   { q: 'I forgot my password — what do I do?', a: 'Sign out and use the "Forgot password" link on the login screen. A secure reset link is emailed to you. If you don\'t receive it, check spam or raise a ticket below.' },
@@ -70,37 +65,14 @@ const COMMON_FAQ: Faq[] = [
   { q: 'The app isn\'t showing my latest changes.', a: 'The app caches for offline use. Pull to refresh, or if an update badge appears at the top, tap it to load the newest version.' },
 ];
 
-const ROLE_FAQ: Record<string, Faq[]> = {
-  principal: [
-    { q: 'Why are my ID cards or report cards showing a blank logo?', a: 'Complete School Info in Settings first — the logo, name and contacts there appear on every ID card, report card, invoice and email.' },
-    { q: 'Why can\'t I enrol students yet?', a: 'Create at least one class first (Academic → Classes). Students are enrolled into classes, so the class must exist before enrolment.' },
-    { q: 'How do I change how student/staff ID numbers look?', a: 'Settings → ID Format lets you set the prefix, year and padding. Set this before enrolling people so numbers are consistent.' },
-    { q: 'How do I suspend or restore access for my school?', a: 'Billing and subscription controls live in Settings. If your account is suspended, the login screen and our emails include a secure link to resolve it without signing in.' },
-  ],
-  teacher: [
-    { q: 'How do I mark attendance quickly?', a: 'Open Attendance, pick your class, and tap each student\'s status. It saves instantly, even offline — it syncs when you\'re back online.' },
-    { q: 'Where do I enter test scores and ratings?', a: 'Results & Grades. Enter Test 1 and Test 2 cognitive scores plus affective and psychomotor ratings, then generate report cards.' },
-  ],
-  accountant: [
-    { q: 'How do I record a part-payment?', a: 'Open the student\'s invoice under Invoices and record the amount received. The outstanding balance updates automatically.' },
-    { q: 'Can I generate receipts?', a: 'Yes — from the Payments page you can view any payment and generate or share a receipt.' },
-  ],
-  admissions_officer: [
-    { q: 'How do applicants get notified of a decision?', a: 'When you approve or reject an application, the applicant is emailed automatically with the outcome.' },
-  ],
-};
-
 export const SupportPage: React.FC = () => {
   const qc = useQueryClient();
   const { user } = useAuth();
   const role = user?.role;
-  const guide = getRoleGuide(role);
 
   const [creating, setCreating] = useState(false);
   const [active, setActive] = useState<SupportTicket | null>(null);
-  const [prefillSubject, setPrefillSubject] = useState('');
   const [search, setSearch] = useState('');
-  const [openArticle, setOpenArticle] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const { data: resp, isLoading, refetch } = useQuery({
@@ -110,41 +82,34 @@ export const SupportPage: React.FC = () => {
   });
   const tickets: SupportTicket[] = (resp as any)?.data ?? [];
 
-  const faqs = useMemo<Faq[]>(
-    () => [...COMMON_FAQ, ...(ROLE_FAQ[role || ''] || [])],
-    [role]
-  );
-
+  const modules = useMemo(() => getModulesForRole(role), [role]);
   const q = search.trim().toLowerCase();
-  const sections = useMemo(() => {
-    if (!q) return guide.sections;
-    return guide.sections.filter((s) =>
-      s.title.toLowerCase().includes(q) ||
-      s.intro.toLowerCase().includes(q) ||
-      s.points.some((p) => p.toLowerCase().includes(q))
+
+  const filteredModules = useMemo(() => {
+    if (!q) return modules;
+    return modules.filter((m) =>
+      m.title.toLowerCase().includes(q) ||
+      m.summary.toLowerCase().includes(q) ||
+      richToPlain(m.intro).toLowerCase().includes(q) ||
+      m.articles.some((a) => a.heading.toLowerCase().includes(q))
     );
-  }, [guide.sections, q]);
+  }, [modules, q]);
 
   const filteredFaqs = useMemo(() => {
-    if (!q) return faqs;
-    return faqs.filter((f) => f.q.toLowerCase().includes(q) || f.a.toLowerCase().includes(q));
-  }, [faqs, q]);
-
-  const openNewTicket = (subject = '') => {
-    setPrefillSubject(subject);
-    setCreating(true);
-  };
+    if (!q) return COMMON_FAQ;
+    return COMMON_FAQ.filter((f) => f.q.toLowerCase().includes(q) || f.a.toLowerCase().includes(q));
+  }, [q]);
 
   return (
     <MainLayout>
       <PageShell
         title="Help & Support"
-        subtitle="Guides, answers and a direct line to the WiSkul team"
+        subtitle="Browse guides by topic, or reach the WiSkul team"
         breadcrumbs={[{ label: 'Support' }]}
         onRefresh={() => refetch()}
         isRefreshing={isLoading}
         actions={
-          <Button variant="default" size="sm" onClick={() => openNewTicket()}>
+          <Button variant="default" size="sm" onClick={() => setCreating(true)}>
             <Plus size={15} className="mr-1.5" /> New Ticket
           </Button>
         }
@@ -156,14 +121,14 @@ export const SupportPage: React.FC = () => {
           </div>
           <h2 className="mt-2 text-xl sm:text-2xl font-bold">How can we help you today?</h2>
           <p className="mt-1 text-sm text-blue-100 max-w-xl">
-            {guide.intro}
+            Pick a topic to see a step-by-step guide, search for something specific, or raise a ticket.
           </p>
           <div className="mt-4 relative max-w-xl">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search help topics and FAQs…"
+              placeholder="Search help topics…"
               className="w-full rounded-xl border border-transparent bg-white pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white/60"
             />
           </div>
@@ -172,30 +137,24 @@ export const SupportPage: React.FC = () => {
         {/* Quick actions */}
         <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <QuickAction icon={Rocket} label="Getting started" to="/guide" accent="blue" />
-          <QuickAction icon={Ticket} label="My tickets" onClick={() => { const el = document.getElementById('tickets-section'); el?.scrollIntoView({ behavior: 'smooth' }); }} accent="violet" />
+          <QuickAction icon={Ticket} label="My tickets" onClick={() => document.getElementById('tickets-section')?.scrollIntoView({ behavior: 'smooth' })} accent="violet" />
           <QuickAction icon={Mail} label="Email support" href="mailto:support@wiskulsl.com" accent="emerald" />
           <QuickAction icon={ShieldCheck} label="Account security" to="/settings?tab=security" accent="amber" />
         </div>
 
-        {/* Help topics (role-aware) */}
+        {/* Topic directory */}
         <section className="mt-8">
           <div className="flex items-center gap-2 mb-3">
             <BookOpen size={18} className="text-blue-600" />
-            <h3 className="text-base font-bold text-gray-900 dark:text-white">Help topics for you</h3>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">Browse by topic</h3>
           </div>
 
-          {sections.length === 0 ? (
+          {filteredModules.length === 0 ? (
             <p className="text-sm text-gray-500">No topics match “{search}”. Try a different search or raise a ticket below.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sections.map((s, i) => (
-                <TopicCard
-                  key={s.id}
-                  section={s}
-                  accent={TOPIC_ACCENTS[i % TOPIC_ACCENTS.length]}
-                  expanded={openArticle === s.id}
-                  onToggle={() => setOpenArticle(openArticle === s.id ? null : s.id)}
-                />
+              {filteredModules.map((m, i) => (
+                <TopicCard key={m.id} module={m} accent={TOPIC_ACCENTS[i % TOPIC_ACCENTS.length]} />
               ))}
             </div>
           )}
@@ -205,10 +164,10 @@ export const SupportPage: React.FC = () => {
         <section className="mt-8">
           <div className="flex items-center gap-2 mb-3">
             <HelpCircle size={18} className="text-blue-600" />
-            <h3 className="text-base font-bold text-gray-900 dark:text-white">Frequently asked questions</h3>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">Quick answers</h3>
           </div>
           {filteredFaqs.length === 0 ? (
-            <p className="text-sm text-gray-500">No FAQs match “{search}”.</p>
+            <p className="text-sm text-gray-500">No answers match “{search}”.</p>
           ) : (
             <div className="rounded-2xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700 overflow-hidden bg-white dark:bg-gray-800">
               {filteredFaqs.map((f, i) => (
@@ -237,7 +196,7 @@ export const SupportPage: React.FC = () => {
               Raise a ticket and the WiSkul team will follow up. You can also email <a href="mailto:support@wiskulsl.com" className="text-blue-600 font-medium underline">support@wiskulsl.com</a>.
             </p>
           </div>
-          <Button variant="default" onClick={() => openNewTicket()} className="shrink-0">
+          <Button variant="default" onClick={() => setCreating(true)} className="shrink-0">
             <Plus size={16} className="mr-1.5" /> Contact support
           </Button>
         </section>
@@ -249,7 +208,7 @@ export const SupportPage: React.FC = () => {
               <Ticket size={18} className="text-blue-600" />
               <h3 className="text-base font-bold text-gray-900 dark:text-white">Your support tickets</h3>
             </div>
-            <Button variant="outline" size="sm" onClick={() => openNewTicket()}>
+            <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
               <Plus size={14} className="mr-1" /> New
             </Button>
           </div>
@@ -260,7 +219,7 @@ export const SupportPage: React.FC = () => {
             <EmptyState
               message="No support tickets yet"
               description="Need help beyond the guides above? Raise a ticket and our team will get back to you."
-              action={{ label: 'New Ticket', onClick: () => openNewTicket() }}
+              action={{ label: 'New Ticket', onClick: () => setCreating(true) }}
             />
           ) : (
             <div className="space-y-3">
@@ -292,7 +251,6 @@ export const SupportPage: React.FC = () => {
 
       {creating && (
         <NewTicketModal
-          initialSubject={prefillSubject}
           onClose={() => setCreating(false)}
           onCreated={() => { setCreating(false); qc.invalidateQueries({ queryKey: ['my-tickets'] }); }}
         />
@@ -321,7 +279,7 @@ const QuickAction: React.FC<{
   accent: keyof typeof QUICK_ACCENT;
 }> = ({ icon: Icon, label, to, href, onClick, accent }) => {
   const inner = (
-    <div className={`flex flex-col items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 text-center hover:border-blue-300 transition-colors h-full`}>
+    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 text-center hover:border-blue-300 transition-colors h-full">
       <span className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${QUICK_ACCENT[accent]}`}>
         <Icon size={20} />
       </span>
@@ -333,54 +291,28 @@ const QuickAction: React.FC<{
   return <button type="button" onClick={onClick} className="w-full">{inner}</button>;
 };
 
-// ── Topic card (expandable article + link) ─────────────────────────────────────
-const TopicCard: React.FC<{
-  section: GuideSection;
-  accent: string;
-  expanded: boolean;
-  onToggle: () => void;
-}> = ({ section, accent, expanded, onToggle }) => {
-  const Icon = iconFor(section.icon);
+// ── Topic card → links to the module guide ─────────────────────────────────────
+const TopicCard: React.FC<{ module: HelpModule; accent: string }> = ({ module, accent }) => {
+  const Icon = ICONS[module.icon] || BookOpen;
   return (
-    <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 flex flex-col">
-      <div className="flex items-start gap-3">
-        <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ${accent}`}>
-          <Icon size={20} />
-        </span>
-        <div className="min-w-0">
-          <h4 className="font-bold text-gray-900 dark:text-white">{section.title}</h4>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{section.intro}</p>
-        </div>
-      </div>
-
-      {expanded && (
-        <ul className="mt-3 space-y-1.5 text-sm text-gray-600 dark:text-gray-300">
-          {section.points.map((p, i) => (
-            <li key={i} className="flex items-start gap-2">
-              <ChevronRight size={15} className="mt-0.5 shrink-0 text-blue-500" />
-              <span>{p}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <div className="mt-auto pt-4 flex items-center justify-between gap-2">
-        <button onClick={onToggle} className="text-xs font-semibold text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 inline-flex items-center gap-1">
-          {expanded ? 'Show less' : 'Learn more'}
-          <ChevronDown size={14} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
-        </button>
-        {section.route && (
-          <Link to={section.route} className="text-xs font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
-            {section.routeLabel || 'Open'} <ArrowRight size={14} />
-          </Link>
-        )}
-      </div>
-    </div>
+    <Link
+      to={`/support/${module.id}`}
+      className="group rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 flex flex-col hover:border-blue-300 hover:shadow-sm transition-all"
+    >
+      <span className={`inline-flex h-11 w-11 items-center justify-center rounded-xl ${accent}`}>
+        <Icon size={22} />
+      </span>
+      <h4 className="mt-3 font-bold text-gray-900 dark:text-white">{module.title}</h4>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex-1">{module.summary}</p>
+      <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 group-hover:gap-1.5 transition-all">
+        View guide <ArrowRight size={14} />
+      </span>
+    </Link>
   );
 };
 
-const NewTicketModal: React.FC<{ initialSubject?: string; onClose: () => void; onCreated: () => void }> = ({ initialSubject = '', onClose, onCreated }) => {
-  const [subject, setSubject] = useState(initialSubject);
+const NewTicketModal: React.FC<{ onClose: () => void; onCreated: () => void }> = ({ onClose, onCreated }) => {
+  const [subject, setSubject] = useState('');
   const [category, setCategory] = useState(TICKET_CATEGORIES[0]);
   const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
   const [description, setDescription] = useState('');
