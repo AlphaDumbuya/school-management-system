@@ -9,24 +9,33 @@ import ErrorHandlingService from '@services/phase21ErrorHandlingService';
 import SupportTicketService from '@services/phase21SupportTicketService';
 import emailService from '@services/emailService';
 
-/** Fire-and-forget support notification — never blocks or fails the request. */
+/** Fire-and-forget support notification — never blocks or fails the request.
+ *  Has a hard 8s timeout so a cold-start DB/email call never hangs the function. */
 async function notifyRequester(
   ticketService: SupportTicketService,
   ticketId: string,
   event: 'created' | 'replied' | 'status',
   extra?: { status?: string; message?: string }
 ): Promise<void> {
+  const timeout = new Promise<void>((_, reject) =>
+    setTimeout(() => reject(new Error('notify timeout')), 8_000)
+  );
   try {
-    const contact = await ticketService.getRequesterContact(ticketId);
-    if (!contact?.email) return;
-    await emailService.sendSupportTicketEmail(contact.email, {
-      userName: contact.name || undefined,
-      reference: SupportTicketService.reference(ticketId),
-      subject: contact.subject,
-      event,
-      status: extra?.status,
-      message: extra?.message,
-    });
+    await Promise.race([
+      (async () => {
+        const contact = await ticketService.getRequesterContact(ticketId);
+        if (!contact?.email) return;
+        await emailService.sendSupportTicketEmail(contact.email, {
+          userName: contact.name || undefined,
+          reference: SupportTicketService.reference(ticketId),
+          subject: contact.subject,
+          event,
+          status: extra?.status,
+          message: extra?.message,
+        });
+      })(),
+      timeout,
+    ]);
   } catch (err) {
     logger.warn(`Support ticket notification (${event}) failed for ${ticketId}: ${String((err as any)?.message || err)}`);
   }

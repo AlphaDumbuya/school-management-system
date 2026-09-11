@@ -13,7 +13,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 export const API_CONFIG = {
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
