@@ -1481,10 +1481,15 @@ class EmailService {
       event: 'created' | 'replied' | 'status';
       status?: string;
       message?: string;
+      /** Optional ticket ID — used to build a deep-link directly to the thread. */
+      ticketId?: string;
     }
   ): Promise<EmailResponse> {
     const branding = platformBranding();
-    const portalUrl = `${branding.appUrl}/support`;
+    // Deep-link directly to the ticket thread when we have the ID.
+    const portalUrl = data.ticketId
+      ? `${branding.appUrl}/support?ticket=${encodeURIComponent(data.ticketId)}`
+      : `${branding.appUrl}/support`;
     const eyebrowMap = { created: 'Ticket Received', replied: 'New Reply', status: 'Status Update' } as const;
     const headingMap = {
       created: 'We received your request',

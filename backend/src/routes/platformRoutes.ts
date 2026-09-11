@@ -855,6 +855,7 @@ router.post('/support/tickets/:ticketId/reply', authenticate, authorize(UserRole
             subject: contact.subject,
             event: 'replied',
             message,
+            ticketId: req.params.ticketId,
           }),
           'support reply'
         );
@@ -887,6 +888,7 @@ router.patch('/support/tickets/:ticketId/status', authenticate, authorize(UserRo
             subject: contact.subject,
             event: 'status',
             status,
+            ticketId: req.params.ticketId,
           }),
           'support status'
         );

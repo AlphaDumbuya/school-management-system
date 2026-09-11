@@ -46,6 +46,7 @@ async function notifyRequester(
           event,
           status: extra?.status,
           message: extra?.message,
+          ticketId,
         });
       })(),
       timeout,

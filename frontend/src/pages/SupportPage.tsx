@@ -4,9 +4,9 @@
  * search, a short FAQ, and the support-ticket system. Each topic links to its
  * own descriptive guide at /support/:topicId (see SupportTopicPage).
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   LifeBuoy, Plus, Loader2, MessageSquare, X, Send, Search, ArrowRight,
@@ -72,18 +72,34 @@ export const SupportPage: React.FC = () => {
   const qc = useQueryClient();
   const { user } = useAuth();
   const role = user?.role;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [creating, setCreating] = useState(false);
   const [active, setActive] = useState<SupportTicket | null>(null);
   const [search, setSearch] = useState('');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
-  const { data: resp, isLoading, refetch } = useQuery({
+  const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['my-tickets'],
     queryFn: () => supportService.listMyTickets(),
     staleTime: 30_000,
+    retry: 1,
   });
   const tickets: SupportTicket[] = (resp as any)?.data ?? [];
+
+  // Deep-link: ?ticket=<id> from email notification auto-opens the thread.
+  useEffect(() => {
+    const ticketId = searchParams.get('ticket');
+    if (!ticketId || tickets.length === 0) return;
+    const found = tickets.find((t) => t.id === ticketId);
+    if (found) {
+      setActive(found);
+      // Strip the param so back/reload doesn't re-open it.
+      setSearchParams({}, { replace: true });
+      // Scroll to tickets section.
+      setTimeout(() => document.getElementById('tickets-section')?.scrollIntoView({ behavior: 'smooth' }), 200);
+    }
+  }, [searchParams, tickets, setSearchParams]);
 
   const modules = useMemo(() => getModulesForRole(role), [role]);
   const q = search.trim().toLowerCase();
@@ -218,6 +234,12 @@ export const SupportPage: React.FC = () => {
 
           {isLoading ? (
             <div className="py-12 flex justify-center text-gray-400"><Loader2 className="animate-spin" size={22} /></div>
+          ) : isError ? (
+            <div className="py-8 flex flex-col items-center gap-3 text-red-500">
+              <AlertCircle size={24} />
+              <p className="text-sm font-semibold">Could not load your tickets.</p>
+              <button onClick={() => refetch()} className="text-sm text-blue-600 underline">Try again</button>
+            </div>
           ) : tickets.length === 0 ? (
             <EmptyState
               message="No support tickets yet"
@@ -705,10 +727,11 @@ const TicketThreadModal: React.FC<{ ticket: SupportTicket; onClose: () => void; 
   const qc = useQueryClient();
   const [message, setMessage] = useState('');
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isError } = useQuery({
     queryKey: ['ticket-responses', ticket.id],
     queryFn: () => supportService.getResponses(ticket.id),
     staleTime: 10_000,
+    retry: 1,
   });
   const responses = (resp as any)?.data ?? [];
 
@@ -743,6 +766,12 @@ const TicketThreadModal: React.FC<{ ticket: SupportTicket; onClose: () => void; 
           </div>
           {isLoading ? (
             <div className="py-6 flex justify-center text-gray-400"><Loader2 className="animate-spin" size={18} /></div>
+          ) : isError ? (
+            <div className="py-4 flex flex-col items-center gap-2 text-red-500">
+              <AlertCircle size={18} />
+              <p className="text-xs font-semibold">Could not load replies.</p>
+              <button onClick={() => qc.invalidateQueries({ queryKey: ['ticket-responses', ticket.id] })} className="text-xs text-blue-600 underline">Retry</button>
+            </div>
           ) : (
             responses.map((r: any) => (
               <div key={r.id} className="rounded-xl border border-gray-100 dark:border-gray-700 p-3">
