@@ -3,11 +3,25 @@ import type { Request } from 'express';
 import type { Knex } from 'knex';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
-import { authenticate } from '@middleware/authMiddleware';
+import { authenticate, attachUserContext } from '@middleware/authMiddleware';
 import HelpDocumentationService from '@services/phase21HelpDocumentationService';
 import ErrorHandlingService from '@services/phase21ErrorHandlingService';
 import SupportTicketService from '@services/phase21SupportTicketService';
 import emailService from '@services/emailService';
+
+/** Resolve tenantId — reads req.user.tenant_id (set by attachUserContext) which
+ *  is populated from the DB, so it's always present for authenticated users. */
+const getTenantId = (req: Request): string => {
+  const tenantId = (req.user as any)?.tenant_id || (req.user as any)?.tenantId || req.auth?.tenantId;
+  if (!tenantId) throw new AppError('User context required', 401);
+  return tenantId;
+};
+
+const getUserId = (req: Request): string => {
+  const userId = (req.user as any)?.id || req.auth?.userId;
+  if (!userId) throw new AppError('User context required', 401);
+  return userId;
+};
 
 /** Fire-and-forget support notification — never blocks or fails the request.
  *  Has a hard 8s timeout so a cold-start DB/email call never hangs the function. */
@@ -38,19 +52,6 @@ async function notifyRequester(
     ]);
   } catch (err) {
     logger.warn(`Support ticket notification (${event}) failed for ${ticketId}: ${String((err as any)?.message || err)}`);
-  }
-}
-
-// Extend Express Request to include user context
-declare global {
-  namespace Express {
-    interface Request {
-      user?: {
-        tenantId: string;
-        userId: string;
-        email: string;
-      };
-    }
   }
 }
 
@@ -340,16 +341,14 @@ export default function registerPhase21Routes(
   // ==================== SUPPORT TICKET ENDPOINTS ====================
 
   /**
-   * POST /api/v1/support/tickets
-   * Creates support ticket
+   * POST /api/v1/support/tickets — create a support ticket
    */
-  app.post('/api/v1/support/tickets', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/support/tickets', authenticate, attachUserContext, async (req: Request, res: Response) => {
     try {
       const { subject, description, priority, category, attachments } = req.body;
-      const tenantId = req.auth?.tenantId;
-      const userId = req.auth?.userId;
+      const tenantId = getTenantId(req);
+      const userId = getUserId(req);
 
-      if (!tenantId || !userId) throw new AppError('User context required', 401);
       if (!subject || !description || !category) {
         throw new AppError('subject, description, and category required', 400);
       }
@@ -371,16 +370,12 @@ export default function registerPhase21Routes(
   });
 
   /**
-   * GET /api/v1/support/tickets/:ticketId
-   * Gets support ticket
+   * GET /api/v1/support/tickets/:ticketId — get one ticket
    */
-  app.get('/api/v1/support/tickets/:ticketId', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/support/tickets/:ticketId', authenticate, attachUserContext, async (req: Request, res: Response) => {
     try {
       const { ticketId } = req.params;
-      const tenantId = req.auth?.tenantId;
-
-      if (!tenantId) throw new AppError('User context required', 401);
-
+      const tenantId = getTenantId(req);
       const ticket = await ticketService.getTicket(ticketId, tenantId);
       res.status(200).json({ success: true, data: ticket });
     } catch (error) {
@@ -390,15 +385,12 @@ export default function registerPhase21Routes(
   });
 
   /**
-   * GET /api/v1/support/tickets
-   * Gets support tickets with filtering
+   * GET /api/v1/support/tickets — list tickets with filtering
    */
-  app.get('/api/v1/support/tickets', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/support/tickets', authenticate, attachUserContext, async (req: Request, res: Response) => {
     try {
       const { status, priority, category, limit = 50, offset = 0 } = req.query;
-      const tenantId = req.auth?.tenantId;
-
-      if (!tenantId) throw new AppError('User context required', 401);
+      const tenantId = getTenantId(req);
 
       const tickets = await ticketService.getTickets(tenantId, {
         status: status as string | undefined,
@@ -408,11 +400,7 @@ export default function registerPhase21Routes(
         offset: parseInt(offset as string),
       });
 
-      res.status(200).json({
-        success: true,
-        data: tickets,
-        pagination: { limit, offset },
-      });
+      res.status(200).json({ success: true, data: tickets, pagination: { limit, offset } });
     } catch (error) {
       logger.error('Failed to get support tickets', error);
       throw error;
@@ -420,16 +408,13 @@ export default function registerPhase21Routes(
   });
 
   /**
-   * PATCH /api/v1/support/tickets/:ticketId/status
-   * Updates ticket status
+   * PATCH /api/v1/support/tickets/:ticketId/status — update status
    */
-  app.patch('/api/v1/support/tickets/:ticketId/status', authenticate, async (req: Request, res: Response) => {
+  app.patch('/api/v1/support/tickets/:ticketId/status', authenticate, attachUserContext, async (req: Request, res: Response) => {
     try {
       const { ticketId } = req.params;
       const { status, resolution } = req.body;
-
       if (!status) throw new AppError('status required', 400);
-
       const updated = await ticketService.updateTicketStatus(ticketId, status, resolution);
       void notifyRequester(ticketService, ticketId, 'status', { status });
       res.status(200).json({ success: true, data: updated });
@@ -440,27 +425,16 @@ export default function registerPhase21Routes(
   });
 
   /**
-   * POST /api/v1/support/tickets/:ticketId/responses
-   * Adds response to ticket
+   * POST /api/v1/support/tickets/:ticketId/responses — add a reply
    */
-  app.post('/api/v1/support/tickets/:ticketId/responses', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/support/tickets/:ticketId/responses', authenticate, attachUserContext, async (req: Request, res: Response) => {
     try {
       const { ticketId } = req.params;
       const { message, attachments, isPublic = true } = req.body;
-      const responderId = req.auth?.userId;
-
-      if (!responderId) throw new AppError('User context required', 401);
+      const responderId = getUserId(req);
       if (!message) throw new AppError('message required', 400);
 
-      const response = await ticketService.addResponse(
-        ticketId,
-        responderId,
-        message,
-        attachments || [],
-        isPublic
-      );
-
-      // Notify the requester of a public reply (not internal notes).
+      const response = await ticketService.addResponse(ticketId, responderId, message, attachments || [], isPublic);
       if (isPublic) void notifyRequester(ticketService, ticketId, 'replied', { message });
       res.status(201).json({ success: true, data: response });
     } catch (error) {
@@ -470,10 +444,9 @@ export default function registerPhase21Routes(
   });
 
   /**
-   * GET /api/v1/support/tickets/:ticketId/responses
-   * Gets ticket responses
+   * GET /api/v1/support/tickets/:ticketId/responses — get responses
    */
-  app.get('/api/v1/support/tickets/:ticketId/responses', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/support/tickets/:ticketId/responses', authenticate, attachUserContext, async (req: Request, res: Response) => {
     try {
       const { ticketId } = req.params;
       const responses = await ticketService.getResponses(ticketId);
@@ -485,15 +458,11 @@ export default function registerPhase21Routes(
   });
 
   /**
-   * GET /api/v1/support/stats
-   * Gets support statistics
+   * GET /api/v1/support/stats — ticket statistics for this tenant
    */
-  app.get('/api/v1/support/stats', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/support/stats', authenticate, attachUserContext, async (req: Request, res: Response) => {
     try {
-      const tenantId = req.auth?.tenantId;
-
-      if (!tenantId) throw new AppError('User context required', 401);
-
+      const tenantId = getTenantId(req);
       const stats = await ticketService.getStatistics(tenantId);
       res.status(200).json({ success: true, data: stats });
     } catch (error) {
