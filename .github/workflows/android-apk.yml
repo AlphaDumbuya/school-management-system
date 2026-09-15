@@ -52,6 +52,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: ''  # skip default 'tools' package (removed from SDK)
 
       - name: Accept SDK licenses & install packages (API 36 — Capacitor 8)
         run: |
