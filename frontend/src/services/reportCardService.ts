@@ -165,6 +165,8 @@ export interface TermSummary {
 export interface ReportCard {
   tenant_id?: string;
   class_id?: string;
+  student_id?: string;
+  verify_url?: string;
   student: {
     id: string;
     admission_no: string;

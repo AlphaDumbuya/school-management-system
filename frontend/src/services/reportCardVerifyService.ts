@@ -29,9 +29,11 @@ export async function verifyReportCard(
   academicYear: string,
 ): Promise<VerifyReportCardResponse> {
   const base = (import.meta as any).env?.VITE_API_URL || '';
-  const params = new URLSearchParams({ s: studentId, c: classId, y: academicYear });
+  const params: Record<string, string> = { s: studentId, y: academicYear };
+  if (classId) params.c = classId;
+  const qs = new URLSearchParams(params);
   const res = await fetch(
-    `${base}/api/v1/public/verify-report-card/${hash}?${params}`,
+    `${base}/api/v1/public/verify-report-card/${hash}?${qs}`,
     { headers: { 'Content-Type': 'application/json' } },
   );
   return res.json();

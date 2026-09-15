@@ -3,9 +3,11 @@
  * Mounted at /api/v1/public/verify-report-card
  *
  * No authentication required — reached by scanning the QR code on a printed
- * report card. The QR encodes a verification hash + student/class/year params.
- * The endpoint recomputes the hash from the params, confirms it matches, then
+ * report card. The QR encodes a unique verification code + student/class/year
+ * params. The endpoint looks up the code in the database, and if found,
  * returns the full report card data for display on the verification page.
+ *
+ * Also supports legacy deterministic-hash QR codes for backwards compatibility.
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
@@ -17,17 +19,22 @@ import db from '../utils/database.js';
 const router = Router();
 
 /**
- * GET /api/v1/public/verify-report-card/:hash?s=&c=&y=
- * Public endpoint (no auth) to verify and retrieve a report card by QR hash.
+ * GET /api/v1/public/verify-report-card/:code?s=&c=&y=
+ * Public endpoint (no auth) to verify and retrieve a report card by QR code.
+ *
+ * Supports THREE verification code formats:
+ * 1. NEW (DB-stored unique code): 32-char hex token stored in sl_report_card_verification_codes
+ * 2. Old 24-char hash: sha256(tenant:student:class:year)[:24] — requires c= param
+ * 3. Old 16-char hash: sha256(tenant:student:year)[:16] — no class_id; looked up from enrollments
  */
 router.get('/verify-report-card/:hash', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { hash } = req.params;
+    const { hash: code } = req.params;
     const studentId = req.query.s as string;
-    const classId = req.query.c as string;
+    const classId = (req.query.c as string) || '';
     const academicYear = req.query.y as string;
 
-    if (!hash || !studentId || !classId || !academicYear) {
+    if (!code || !studentId || !academicYear) {
       return res.status(400).json({
         success: false,
         error: 'Missing verification parameters. Please scan the QR code on the report card.',
@@ -49,37 +56,74 @@ router.get('/verify-report-card/:hash', async (req: Request, res: Response, next
 
     const tenantId = student.tenant_id;
 
-    // Recompute the verification hash and compare
-    const expectedHash = crypto
-      .createHash('sha256')
-      .update(`${tenantId}:${studentId}:${classId}:${academicYear}`)
-      .digest('hex')
-      .slice(0, 24);
-
-    if (hash !== expectedHash) {
-      return res.status(403).json({
-        success: false,
-        error: 'Verification failed: the QR code does not match this report card.',
-      });
-    }
-
-    // Fetch the full report card data
-    const card = await slReportCardService.getReportCard(tenantId, studentId, classId, academicYear);
-
-    // Fetch school branding for display
-    const school = await db('schools')
-      .where({ tenant_id: tenantId })
-      .select('name', 'short_name', 'logo_url', 'address', 'motto', 'phone', 'email', 'website')
-      .first();
-
-    res.json({
-      success: true,
-      data: {
+    // ── Helper: build the full verification response ──
+    const buildResponse = async (cId: string) => {
+      const card = await slReportCardService.getReportCard(tenantId, studentId, cId, academicYear);
+      const school = await db('schools')
+        .where({ tenant_id: tenantId })
+        .select('name', 'short_name', 'logo_url', 'address', 'motto', 'phone', 'email', 'website')
+        .first();
+      return {
         verified: true,
         verified_at: new Date().toISOString(),
         school: school || {},
         report_card: card,
-      },
+      };
+    };
+
+    // ── 1. Try NEW format: DB-stored unique verification code (32-char hex) ──
+    const dbMatch = await db('sl_report_card_verification_codes')
+      .where({ verification_code: code })
+      .where({ student_id: studentId })
+      .where({ academic_year: academicYear })
+      .first();
+
+    if (dbMatch) {
+      return res.json({ success: true, data: await buildResponse(dbMatch.class_id) });
+    }
+
+    // ── 2. Try old 24-char deterministic hash (requires class_id) ──
+    if (classId && classId !== 'old' && classId !== 'missing') {
+      const expectedHash = crypto
+        .createHash('sha256')
+        .update(`${tenantId}:${studentId}:${classId}:${academicYear}`)
+        .digest('hex')
+        .slice(0, 24);
+
+      if (code === expectedHash) {
+        return res.json({ success: true, data: await buildResponse(classId) });
+      }
+    }
+
+    // ── 3. Try old 16-char deterministic hash (no class_id) ──
+    const oldExpectedHash = crypto
+      .createHash('sha256')
+      .update(`${tenantId}:${studentId}:${academicYear}`)
+      .digest('hex')
+      .slice(0, 16);
+
+    if (code === oldExpectedHash || code === 'old-format' || code === 'missing') {
+      // Look up the student's class from enrollments for this academic year
+      const enrollment = await db('enrollments')
+        .where({ student_id: studentId, academic_year: academicYear })
+        .select('class_id')
+        .orderBy('updated_at', 'desc')
+        .first();
+
+      if (!enrollment) {
+        return res.status(404).json({
+          success: false,
+          error: 'Could not find the student\'s class for this academic year.',
+        });
+      }
+
+      return res.json({ success: true, data: await buildResponse(enrollment.class_id) });
+    }
+
+    // ── Code doesn't match any format ──
+    return res.status(403).json({
+      success: false,
+      error: 'Verification failed: the QR code does not match this report card.',
     });
   } catch (error: any) {
     logger.error('Error verifying report card:', error);

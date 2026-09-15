@@ -56,15 +56,8 @@ export default function VerifyReportCardPage() {
     const classId = params.get('c') || '';
     const academicYear = params.get('y') || '';
 
-    if (!hash || !studentId || !classId || !academicYear) {
+    if (!hash || !studentId || !academicYear) {
       setError('Missing verification parameters. Please scan the QR code on the report card.');
-      setLoading(false);
-      return;
-    }
-
-    // Old QR format (pre-update) had no class_id — can't verify with the new system.
-    if (classId === 'old' || hash === 'old-format' || hash === 'missing') {
-      setError('This report card uses an older QR format. Please reprint the report card to get an updated QR code that can be digitally verified.');
       setLoading(false);
       return;
     }

@@ -16,6 +16,7 @@
  */
 
 import db from '../utils/database.js';
+import crypto from 'crypto';
 import { logger } from '../utils/logger.js';
 import promotionService from './promotionService.js';
 import { getTenantGradingScale, computeGradeWithScale } from '../utils/gradingScaleHelper.js';
@@ -1045,6 +1046,156 @@ export class SLReportCardService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Verification codes — a fresh code is generated on every report card
+  // generation, so each printed copy has a unique QR.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Generate and persist a NEW verification code for a student/class/year.
+   * Called every time a report card is generated (viewed or PDF-exported)
+   * so each copy gets a unique QR.
+   */
+  async generateVerificationCode(
+    tenantId: string,
+    studentId: string,
+    classId: string,
+    academicYear: string,
+    generatedBy?: string,
+  ): Promise<string> {
+    // 32-char hex token — unique per generation
+    const code = crypto.randomBytes(16).toString('hex');
+
+    await db('sl_report_card_verification_codes').insert({
+      tenant_id: tenantId,
+      student_id: studentId,
+      class_id: classId,
+      academic_year: academicYear,
+      verification_code: code,
+      generated_by: generatedBy ?? null,
+    });
+
+    return code;
+  }
+
+  /**
+   * Look up the latest active verification code for a student/class/year.
+   * Returns null if none exists yet (caller should generate one).
+   */
+  async getLatestVerificationCode(
+    tenantId: string,
+    studentId: string,
+    classId: string,
+    academicYear: string,
+  ): Promise<string | null> {
+    const row = await db('sl_report_card_verification_codes')
+      .where({
+        tenant_id: tenantId,
+        student_id: studentId,
+        class_id: classId,
+        academic_year: academicYear,
+      })
+      .orderBy('created_at', 'desc')
+      .first();
+    return row?.verification_code ?? null;
+  }
+
+  /**
+   * Validate a verification code from a scanned QR.
+   * Looks up the code in the DB; if found, returns the report card params.
+   * Also supports the OLD deterministic-hash format as a fallback so
+   * already-printed report cards continue to verify.
+   */
+  async resolveVerificationCode(
+    code: string,
+    studentId: string,
+    academicYear: string,
+  ): Promise<{ tenant_id: string; class_id: string; student_id: string; academic_year: string } | null> {
+    // ── New format: look up the code in the DB ──
+    const row = await db('sl_report_card_verification_codes')
+      .where({ verification_code: code })
+      .where({ student_id: studentId })
+      .where({ academic_year: academicYear })
+      .first();
+
+    if (row) {
+      return {
+        tenant_id: row.tenant_id,
+        class_id: row.class_id,
+        student_id: row.student_id,
+        academic_year: row.academic_year,
+      };
+    }
+
+    // ── Old deterministic-hash fallback ──
+    // The old hash was sha256(tenant:student:class:year)[:24].
+    // We don't have the tenant_id here yet — try to find it from the student.
+    const student = await db('students')
+      .where({ id: studentId })
+      .select('tenant_id')
+      .first();
+
+    if (!student) return null;
+
+    // Try old 24-char hash format
+    const oldHash = crypto.createHash('sha256')
+      .update(`${student.tenant_id}:${studentId}:${code}:${academicYear}`)
+      .digest('hex').slice(0, 24);
+    // The code in the URL path IS the old hash, so compare directly:
+    // (handled by the verify route, which calls this with code = hash)
+    if (code.length === 24 && code === oldHash) {
+      // Look up the class from enrollments for the old format
+      const enrollment = await db('enrollments')
+        .where({ student_id: studentId, academic_year: academicYear })
+        .select('class_id')
+        .orderBy('updated_at', 'desc')
+        .first();
+      if (!enrollment) return null;
+      return {
+        tenant_id: student.tenant_id,
+        class_id: enrollment.class_id,
+        student_id: studentId,
+        academic_year: academicYear,
+      };
+    }
+
+    // Try old 16-char hash format (no class_id)
+    const oldHash16 = crypto.createHash('sha256')
+      .update(`${student.tenant_id}:${studentId}:${academicYear}`)
+      .digest('hex').slice(0, 16);
+    if (code.length === 16 && code === oldHash16) {
+      const enrollment = await db('enrollments')
+        .where({ student_id: studentId, academic_year: academicYear })
+        .select('class_id')
+        .orderBy('updated_at', 'desc')
+        .first();
+      if (!enrollment) return null;
+      return {
+        tenant_id: student.tenant_id,
+        class_id: enrollment.class_id,
+        student_id: studentId,
+        academic_year: academicYear,
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Build the full verification URL for a given code + params.
+   */
+  buildVerifyUrl(
+    code: string,
+    studentId: string,
+    classId: string,
+    academicYear: string,
+  ): string {
+    const verifyBase = (process.env.REPORT_CARD_VERIFY_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '');
+    const path = `/verify-report-card/${code}`;
+    const qs = `?s=${studentId}&c=${classId}&y=${encodeURIComponent(academicYear)}`;
+    return verifyBase ? `${verifyBase}${path}${qs}` : `${path}${qs}`;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
   // Read: full report card booklet for one student for the whole year
   // ──────────────────────────────────────────────────────────────────────────
 
@@ -1286,11 +1437,23 @@ export class SLReportCardService {
       .where({ tenant_id: tenantId, student_id: studentId, class_id: classId, academic_year: academicYear })
       .first();
 
+    // Build the verification QR URL. Uses the latest stored verification code,
+    // or generates a new one if none exists yet. Each report card generation
+    // (via the route layer) triggers a fresh code, so every printed copy
+    // has a unique QR.
+    let verifyCode = await this.getLatestVerificationCode(tenantId, studentId, classId, academicYear);
+    if (!verifyCode) {
+      // Fallback: generate one now if the route didn't already
+      verifyCode = await this.generateVerificationCode(tenantId, studentId, classId, academicYear);
+    }
+    const verifyUrl = this.buildVerifyUrl(verifyCode, studentId, classId, academicYear);
+
     return {
       id: `${studentId}:${classId}:${academicYear}`,
       student_id: studentId,
       class_id: classId,
       tenant_id: tenantId,
+      verify_url: verifyUrl,
       student: {
         ...student,
         class_name: cls?.name,

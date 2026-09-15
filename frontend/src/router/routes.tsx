@@ -174,7 +174,9 @@ const router = createBrowserRouter(
         // Aliases for older/malformed QR paths so previously-printed cards still resolve.
         { path: 'verify/id', element: <VerifyIdPage /> },
         // Old QR format: /verify?type=report-card&student=...&year=...
-        // Redirect to the new verification page (which will show an error for old hashes).
+        // Redirect to the new verification page. Old QR codes don't have class_id,
+        // so we pass 'old-format' as the hash — the backend will look up the class
+        // from the student's enrollments and return the report card data.
         {
           path: 'verify',
           element: (() => {
@@ -184,10 +186,8 @@ const router = createBrowserRouter(
               if (type === 'report-card') {
                 const student = params.get('student') || '';
                 const year = params.get('year') || '';
-                const ref = params.get('ref') || '';
-                // Old QR codes don't have class_id, so we can't verify them via the new system.
-                // Show the verification page with an error.
-                return <Navigate to={`/verify-report-card/${ref || 'old-format'}?s=${student}&c=old&y=${encodeURIComponent(year)}`} replace />;
+                const ref = params.get('ref') || 'old-format';
+                return <Navigate to={`/verify-report-card/${ref}?s=${student}&y=${encodeURIComponent(year)}`} replace />;
               }
               return <VerifyIdPage />;
             };

@@ -76,6 +76,10 @@ function ordinal(n: number | null | undefined): string {
 }
 
 interface ReportCardData {
+  tenant_id?: string;
+  student_id?: string;
+  class_id?: string;
+  verify_url?: string;
   student: any;
   academic_year: string;
   subjects: any[];
@@ -121,11 +125,16 @@ export async function renderReportCardHtml(
   const schoolWebsite = school?.website;
   const gm = gradingMethod?.length ? gradingMethod : GRADING_METHOD;
 
-  // Digital verification QR code for the back cover
-  const verificationBaseUrl = process.env.REPORT_CARD_VERIFY_URL || process.env.FRONTEND_URL || 'https://example.com';
-  const crypto = await import('crypto');
-  const verifyHash = crypto.createHash('sha256').update(`${card.tenant_id}:${card.student_id}:${card.class_id}:${card.academic_year}`).digest('hex').slice(0, 24);
-  const verifyUrl = `${verificationBaseUrl.replace(/\/$/, '')}/verify-report-card/${verifyHash}?s=${card.student_id}&c=${card.class_id}&y=${encodeURIComponent(card.academic_year)}`;
+  // Digital verification QR code for the grading page.
+  // The verify_url is pre-computed by slReportCardService.getReportCard() and
+  // contains a unique verification code stored in the DB — each report card
+  // generation produces a new code, so every printed copy has a unique QR.
+  const verificationBaseUrl = (process.env.REPORT_CARD_VERIFY_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '');
+  const verifyUrl = card.verify_url
+    ? (card.verify_url.startsWith('http')
+      ? card.verify_url
+      : verificationBaseUrl + card.verify_url)
+    : `${verificationBaseUrl}/verify-report-card/missing?s=${card.student_id}&c=${card.class_id}&y=${encodeURIComponent(card.academic_year)}`;
   const qrDataUrl = await QRCode.toDataURL(verifyUrl, { width: 200, margin: 1, color: { dark: '#111827', light: '#ffffff' } }).catch(() => '');
   const ys = card.yearly_summary || {};
 
