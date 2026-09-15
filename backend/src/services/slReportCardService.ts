@@ -1287,6 +1287,10 @@ export class SLReportCardService {
       .first();
 
     return {
+      id: `${studentId}:${classId}:${academicYear}`,
+      student_id: studentId,
+      class_id: classId,
+      tenant_id: tenantId,
       student: {
         ...student,
         class_name: cls?.name,

@@ -121,9 +121,11 @@ export async function renderReportCardHtml(
   const schoolWebsite = school?.website;
   const gm = gradingMethod?.length ? gradingMethod : GRADING_METHOD;
 
-  // Digital verification QR code for the grading page
-  const verificationBaseUrl = process.env.REPORT_CARD_VERIFY_URL || process.env.FRONTEND_URL || 'https://example.com/verify';
-  const verifyUrl = `${verificationBaseUrl.replace(/\/$/, '')}/verify-report-card/${card.id || card.student?.admission_no || ''}`;
+  // Digital verification QR code for the back cover
+  const verificationBaseUrl = process.env.REPORT_CARD_VERIFY_URL || process.env.FRONTEND_URL || 'https://example.com';
+  const crypto = await import('crypto');
+  const verifyHash = crypto.createHash('sha256').update(`${card.tenant_id}:${card.student_id}:${card.class_id}:${card.academic_year}`).digest('hex').slice(0, 24);
+  const verifyUrl = `${verificationBaseUrl.replace(/\/$/, '')}/verify-report-card/${verifyHash}?s=${card.student_id}&c=${card.class_id}&y=${encodeURIComponent(card.academic_year)}`;
   const qrDataUrl = await QRCode.toDataURL(verifyUrl, { width: 200, margin: 1, color: { dark: '#111827', light: '#ffffff' } }).catch(() => '');
   const ys = card.yearly_summary || {};
 
@@ -370,25 +372,25 @@ export async function renderReportCardHtml(
   .blank { background: #fff; }
 
   /* ── Front cover (sheet 1 — has border) ── */
-  .cover-front { text-align: center; justify-content: space-between; border: 2px solid #111827; padding: 10mm; }
-  .cover-front .brand { padding: 5mm 0; }
-  .cover-front .logo { width: 40mm; height: 40mm; object-fit: contain; margin: 0 auto; display: block; }
-  .cover-front .logo-fallback { width: 40mm; height: 40mm; border-radius: 50%; background: #111827; color: #fff; font-size: 28px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin: 0 auto; }
-  .cover-front h1 { font-size: 22px; font-weight: 800; text-transform: uppercase; margin: 5px 0 4px; line-height: 1.15; }
-  .cover-front .addr { font-size: 13px; font-weight: 600; color: #4b5563; }
-  .cover-front .motto { font-size: 13px; font-style: italic; color: #4b5563; }
-  .cover-front .contact { font-size: 12px; color: #6b7280; margin-top: 2px; }
-  .cover-front .rc-badge { display: inline-block; background: #111827; color: #fff; font-weight: 700; padding: 6px 16px; font-size: 16px; text-transform: uppercase; margin: 5px 0; }
-  .cover-front .lvl { font-size: 15px; font-weight: 700; color: #374151; text-transform: uppercase; }
-  .cover-front .pupil { border-top: 2px solid #111827; border-bottom: 2px solid #111827; padding: 10px 0; margin: 5px 0; font-size: 15px; }
-  .cover-front .prow { display: flex; justify-content: space-between; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin-bottom: 6px; }
+  .cover-front { text-align: center; justify-content: space-between; border: 2px solid #111827; padding: 8mm; }
+  .cover-front .brand { padding: 3mm 0; }
+  .cover-front .logo { width: 32mm; height: 32mm; object-fit: contain; margin: 0 auto; display: block; }
+  .cover-front .logo-fallback { width: 32mm; height: 32mm; border-radius: 50%; background: #111827; color: #fff; font-size: 22px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin: 0 auto; }
+  .cover-front h1 { font-size: 18px; font-weight: 800; text-transform: uppercase; margin: 4px 0 2px; line-height: 1.15; }
+  .cover-front .addr { font-size: 12px; font-weight: 600; color: #4b5563; }
+  .cover-front .motto { font-size: 12px; font-style: italic; color: #4b5563; }
+  .cover-front .contact { font-size: 11px; color: #6b7280; margin-top: 2px; }
+  .cover-front .rc-badge { display: inline-block; background: #111827; color: #fff; font-weight: 700; padding: 4px 14px; font-size: 14px; text-transform: uppercase; margin: 4px 0; }
+  .cover-front .lvl { font-size: 13px; font-weight: 700; color: #374151; text-transform: uppercase; }
+  .cover-front .pupil { border-top: 2px solid #111827; border-bottom: 2px solid #111827; padding: 6px 0; margin: 4px 0; font-size: 13px; }
+  .cover-front .prow { display: flex; justify-content: space-between; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; margin-bottom: 4px; }
   .cover-front .prow.last { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
   .cover-front .prow span { font-weight: 700; color: #4b5563; }
-  .cover-front .sigrow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px; }
-  .cover-front .sigbox { border: 1px dashed #9ca3af; height: 28mm; display: flex; flex-direction: column; justify-content: space-between; padding: 6px; }
-  .cover-front .sigbox span { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
-  .cover-front .seal { width: 18mm; height: 18mm; border: 2px solid #1e40af; border-radius: 50%; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; color: #1e3a8a; text-transform: uppercase; transform: rotate(-12deg); opacity: .7; }
-  .cover-front .sig { font-style: italic; font-family: Georgia, serif; font-weight: 700; color: #1e40af; font-size: 17px; }
+  .cover-front .sigrow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; }
+  .cover-front .sigbox { border: 1px dashed #9ca3af; height: 22mm; display: flex; flex-direction: column; justify-content: space-between; padding: 4px; }
+  .cover-front .sigbox span { font-size: 10px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
+  .cover-front .seal { width: 14mm; height: 14mm; border: 2px solid #1e40af; border-radius: 50%; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: 700; color: #1e3a8a; text-transform: uppercase; transform: rotate(-12deg); opacity: .7; }
+  .cover-front .sig { font-style: italic; font-family: Georgia, serif; font-weight: 700; color: #1e40af; font-size: 14px; }
 
   /* ── Grading system ── */
   .grading { font-size: 15px; line-height: 1.5; display: flex; flex-direction: column; justify-content: space-between; padding: 8mm; }

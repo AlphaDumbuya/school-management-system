@@ -284,42 +284,42 @@ export const BookletContent: React.FC<BookletContentProps> = ({
   );
 
   const frontCover = (
-    <div className="p-8 flex flex-col justify-between text-center h-full">
-      <div className="space-y-4">
+    <div className="p-6 flex flex-col justify-between text-center h-full overflow-hidden">
+      <div className="space-y-2">
         <div className="flex items-center justify-center">
-          {schoolLogo ? (<img src={schoolLogo} alt="School logo" className="w-40 h-40 object-contain" />) : (<div className="w-40 h-40 rounded-full bg-gray-900 text-white flex items-center justify-center text-4xl font-extrabold shadow">{shortName}</div>)}
+          {schoolLogo ? (<img src={schoolLogo} alt="School logo" className="w-28 h-28 object-contain" />) : (<div className="w-28 h-28 rounded-full bg-gray-900 text-white flex items-center justify-center text-3xl font-extrabold shadow">{shortName}</div>)}
         </div>
-        <h1 className="text-3xl font-extrabold uppercase tracking-wide leading-tight text-gray-900">{schoolName}</h1>
-        {schoolAddress && <p className="text-[16px] font-semibold text-gray-600">{schoolAddress}</p>}
-        {school?.motto && <p className="text-[16px] italic font-semibold text-gray-600">Motto: {school.motto}</p>}
+        <h1 className="text-2xl font-extrabold uppercase tracking-wide leading-tight text-gray-900">{schoolName}</h1>
+        {schoolAddress && <p className="text-[14px] font-semibold text-gray-600">{schoolAddress}</p>}
+        {school?.motto && <p className="text-[14px] italic font-semibold text-gray-600">Motto: {school.motto}</p>}
         {(school?.phone || school?.email || school?.website) && (
-          <p className="text-[14px] text-gray-500">
+          <p className="text-[12px] text-gray-500">
             {[school?.phone, school?.email, school?.website].filter(Boolean).join(' · ')}
           </p>
         )}
-        <div className="inline-block bg-gray-900 text-white font-bold px-6 py-2 text-[17px] uppercase tracking-wider">Report Card</div>
-        {card.student.class_level && <p className="text-[16px] font-bold text-gray-700 uppercase">{card.student.class_level}</p>}
+        <div className="inline-block bg-gray-900 text-white font-bold px-5 py-1.5 text-[15px] uppercase tracking-wider">Report Card</div>
+        {card.student.class_level && <p className="text-[14px] font-bold text-gray-700 uppercase">{card.student.class_level}</p>}
       </div>
       {showStudentPhoto && (
-        <div className="flex justify-center my-2">
-          {card.student.photo_url ? (<img src={card.student.photo_url} alt={`${card.student.name} photo`} className="w-32 h-40 object-cover border-4 border-gray-900 shadow-lg" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />) : (<div className="w-32 h-40 border-4 border-gray-900 shadow-lg flex flex-col items-center justify-center bg-gray-50 text-gray-400"><ImageIcon size={36} /><span className="text-[12px] uppercase font-semibold mt-1">No Photo</span></div>)}
+        <div className="flex justify-center">
+          {card.student.photo_url ? (<img src={card.student.photo_url} alt={`${card.student.name} photo`} className="w-24 h-32 object-cover border-4 border-gray-900 shadow-lg" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />) : (<div className="w-24 h-32 border-4 border-gray-900 shadow-lg flex flex-col items-center justify-center bg-gray-50 text-gray-400"><ImageIcon size={32} /><span className="text-[11px] uppercase font-semibold mt-1">No Photo</span></div>)}
         </div>
       )}
-      <div className="w-full space-y-3 text-[17px] border-t-2 border-b-2 border-gray-900 py-5 my-2">
-        <div className="flex justify-between border-b border-gray-300 pb-2"><span className="font-bold text-gray-600">Name of pupil:</span><span className="font-bold">{card.student.name}</span></div>
-        <div className="flex justify-between border-b border-gray-300 pb-2"><span className="font-bold text-gray-600">Admission No:</span><span className="font-bold">{card.student.admission_no}</span></div>
-        <div className="flex justify-between border-b border-gray-300 pb-2"><span className="font-bold text-gray-600">Class / Form:</span><span className="font-bold">{card.student.class_name || '—'}</span></div>
+      <div className="w-full space-y-2 text-[15px] border-t-2 border-b-2 border-gray-900 py-3 my-1">
+        <div className="flex justify-between border-b border-gray-300 pb-1.5"><span className="font-bold text-gray-600">Name of pupil:</span><span className="font-bold">{card.student.name}</span></div>
+        <div className="flex justify-between border-b border-gray-300 pb-1.5"><span className="font-bold text-gray-600">Admission No:</span><span className="font-bold">{card.student.admission_no}</span></div>
+        <div className="flex justify-between border-b border-gray-300 pb-1.5"><span className="font-bold text-gray-600">Class / Form:</span><span className="font-bold">{card.student.class_name || '—'}</span></div>
         <div className="flex justify-between"><span className="font-bold text-gray-600">Academic Year:</span><span className="font-bold">{card.academic_year}</span></div>
       </div>
-      <div className="grid grid-cols-2 gap-8 w-full text-[15px]">
-        <div className="border-2 border-dashed border-gray-400 h-36 flex flex-col justify-between p-3">
-          <span className="text-[13px] font-bold text-gray-500 uppercase">Official Stamp</span>
-          <div className="w-20 h-20 border-2 border-blue-900 rounded-full flex items-center justify-center text-[11px] font-bold text-blue-900 mx-auto transform -rotate-12 opacity-70">{shortName}<br/>SEAL</div>
+      <div className="grid grid-cols-2 gap-4 w-full text-[14px]">
+        <div className="border-2 border-dashed border-gray-400 h-28 flex flex-col justify-between p-2">
+          <span className="text-[12px] font-bold text-gray-500 uppercase">Official Stamp</span>
+          <div className="w-16 h-16 border-2 border-blue-900 rounded-full flex items-center justify-center text-[10px] font-bold text-blue-900 mx-auto transform -rotate-12 opacity-70">{shortName}<br/>SEAL</div>
         </div>
-        <div className="border-2 border-dashed border-gray-400 h-36 flex flex-col justify-between p-3">
-          <span className="text-[13px] font-bold text-gray-500 uppercase">Principal's Signature</span>
-          {school?.principal_name && <span className="italic font-bold font-serif text-xl text-blue-900/40 text-center">{school.principal_name}</span>}
-          <div className="border-b border-gray-500 pb-0.5"><span className="text-[12px] text-gray-500 uppercase">Date:</span></div>
+        <div className="border-2 border-dashed border-gray-400 h-28 flex flex-col justify-between p-2">
+          <span className="text-[12px] font-bold text-gray-500 uppercase">Principal's Signature</span>
+          {school?.principal_name && <span className="italic font-bold font-serif text-lg text-blue-900/40 text-center">{school.principal_name}</span>}
+          <div className="border-b border-gray-500 pb-0.5"><span className="text-[11px] text-gray-500 uppercase">Date:</span></div>
         </div>
       </div>
     </div>
@@ -428,7 +428,7 @@ const ResultsFullSpread: React.FC<{ card: ReportCard }> = ({ card }) => {
   return (
     <div className="p-4 flex flex-col h-full text-gray-900 overflow-hidden">
       {/* Header row */}
-      <div className="grid grid-cols-3 gap-2 text-[12px] border-b-2 border-gray-900 pb-2 mb-2">
+      <div className="grid grid-cols-3 gap-2 text-[12px] border-b-2 border-gray-900 pb-2 mb-2 flex-shrink-0">
         <div className="space-y-1">
           <div><span className="font-bold">Name:</span> {card.student.name}</div>
           <div><span className="font-bold">No. in Form:</span> {card.student.number_in_form ?? card.yearly_summary?.class_size ?? '—'}</div>

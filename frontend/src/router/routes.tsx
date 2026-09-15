@@ -119,6 +119,7 @@ const V2Route: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 import RegisterPage from '@pages/RegisterPage';
 import WelcomePage, { hasOnboarded } from '@pages/WelcomePage';
 import VerificationPage from '@pages/VerificationPage';
+import VerifyReportCardPage from '@pages/VerifyReportCardPage';
 import UnsubscribePage from '@pages/UnsubscribePage';
 import PrivacyPolicyPage from '@pages/PrivacyPolicyPage';
 import RestoreAccessPage from '@pages/RestoreAccessPage';
@@ -168,6 +169,8 @@ const router = createBrowserRouter(
         // Public reactivation request for non-payment suspensions (no login).
         { path: 'request-reactivation', element: <RequestReactivationPage /> },
         { path: 'verify-id', element: <VerifyIdPage /> },
+        // Report card verification — reached by scanning QR on printed report card.
+        { path: 'verify-report-card/:hash', element: <VerifyReportCardPage /> },
         // Aliases for older/malformed QR paths so previously-printed cards still resolve.
         { path: 'verify/id', element: <VerifyIdPage /> },
         { path: 'verify', element: <VerifyIdPage /> },

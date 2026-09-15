@@ -1,144 +1,88 @@
+/**
+ * Public Report Card Verification Routes
+ * Mounted at /api/v1/public/verify-report-card
+ *
+ * No authentication required — reached by scanning the QR code on a printed
+ * report card. The QR encodes a verification hash + student/class/year params.
+ * The endpoint recomputes the hash from the params, confirms it matches, then
+ * returns the full report card data for display on the verification page.
+ */
+
 import { Router, Request, Response, NextFunction } from 'express';
-import { db } from '../utils/database.js';
-import { QrCodeService } from '../services/qrCodeService.js';
-import { AppError } from '../middleware/errorHandler.js';
-import { getRestoreInfo, verifyRestoreToken, getReactivationInfo, submitReactivationRequest } from '../services/restoreAccessService.js';
-import { monimeService } from '../services/monimeService.js';
+import crypto from 'crypto';
 import { logger } from '../utils/logger.js';
+import slReportCardService from '../services/slReportCardService.js';
+import db from '../utils/database.js';
 
-/**
- * Public ID verification routes.
- *
- * These endpoints are intentionally UNAUTHENTICATED so that a QR code printed
- * on an ID card can be scanned by anyone (a gate guard, another staff member)
- * with a phone camera and instantly verified. Tenant context is resolved from
- * the signed payload embedded in the QR, so no login is required.
- *
- * Security is preserved by the SHA-256 tenant-secret hash inside the payload,
- * plus rate-limiting / brute-force protection in QrCodeService.
- */
 const router = Router();
-const qrCodeService = new QrCodeService(db);
 
 /**
- * POST /api/v1/public/verify-id
- * Body: { value: string, deviceId?: string }
- * `value` may be the raw QR content, a full verify URL, or a base64url payload.
+ * GET /api/v1/public/verify-report-card/:hash?s=&c=&y=
+ * Public endpoint (no auth) to verify and retrieve a report card by QR hash.
  */
-router.post('/verify-id', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/verify-report-card/:hash', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { value, deviceId } = req.body || {};
-    if (!value || typeof value !== 'string') {
-      throw new AppError('Missing verification value', 400);
-    }
-    const device = (typeof deviceId === 'string' && deviceId) || `public-${req.ip || 'unknown'}`;
-    const verification = await qrCodeService.verifyScannedValue(value, device);
-    res.json({ verification });
-  } catch (error) {
-    next(error);
-  }
-});
+    const { hash } = req.params;
+    const studentId = req.query.s as string;
+    const classId = req.query.c as string;
+    const academicYear = req.query.y as string;
 
-/**
- * Public "restore access" flow — lets a SUSPENDED school pay to reactivate
- * WITHOUT logging in. Access is granted only via a signed token (in the emailed
- * link), which only permits paying — never reading data or signing in.
- */
-
-/** GET /api/v1/public/restore/info?token=... → school name, plan, amount due. */
-router.get('/restore/info', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const token = String(req.query.token || '');
-    if (!token) throw new AppError('Missing restore token', 400, 'RESTORE_TOKEN_MISSING');
-    const info = await getRestoreInfo(token);
-    res.json({ success: true, data: info });
-  } catch (error) {
-    next(error);
-  }
-});
-
-function publicOrigin(req: Request): string {
-  const envBase = process.env.PUBLIC_APP_URL || process.env.APP_URL || process.env.FRONTEND_URL;
-  if (envBase && !/localhost|127\.0\.0\.1/.test(envBase)) return envBase.replace(/\/+$/, '');
-  const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim() || req.protocol || 'https';
-  const host = (req.headers['x-forwarded-host'] as string)?.split(',')[0]?.trim() || req.get('host');
-  return `${proto}://${host}`;
-}
-
-/** POST /api/v1/public/restore/checkout { token } → Monime redirect URL. */
-router.post('/restore/checkout', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    if (!monimeService.isConfigured()) {
-      return res.status(503).json({ success: false, error: 'Online payments are not configured yet. Please contact support.' });
-    }
-    const token = String(req.body?.token || '');
-    if (!token) throw new AppError('Missing restore token', 400, 'RESTORE_TOKEN_MISSING');
-    const tenantId = verifyRestoreToken(token);
-    const info = await getRestoreInfo(token);
-    if (info.alreadyActive) {
-      return res.json({ success: true, data: { alreadyActive: true } });
-    }
-    if (!(info.amountDue > 0)) {
-      return res.status(400).json({ success: false, error: 'No payable amount for this account. Please contact support.' });
+    if (!hash || !studentId || !classId || !academicYear) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing verification parameters. Please scan the QR code on the report card.',
+      });
     }
 
-    // Track a restore session so the webhook can reconcile it.
-    const [session] = await db('restore_payment_sessions')
-      .insert({
-        tenant_id: tenantId,
-        amount: info.amountDue,
-        currency: 'SLE',
-        provider: 'monime',
-        status: 'pending',
-        created_at: new Date(),
-        updated_at: new Date(),
-      })
-      .returning('*');
+    // Look up the student's tenant_id
+    const student = await db('students')
+      .where({ id: studentId })
+      .select('tenant_id', 'student_id as admission_no')
+      .first();
 
-    const origin = publicOrigin(req);
-    const successUrl = `${origin}/restore-access?token=${encodeURIComponent(token)}&status=success`;
-    const cancelUrl = `${origin}/restore-access?token=${encodeURIComponent(token)}&status=cancelled`;
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: 'Student not found. The report card may be invalid.',
+      });
+    }
 
-    const checkout = await monimeService.createCheckoutSession({
-      name: `WiSkul access restore — ${info.schoolName}`,
-      amount: info.amountDue,
-      successUrl,
-      cancelUrl,
-      metadata: { purpose: 'restore', tenantId, restoreSessionId: session.id },
-      callbackState: `restore:${session.id}`,
+    const tenantId = student.tenant_id;
+
+    // Recompute the verification hash and compare
+    const expectedHash = crypto
+      .createHash('sha256')
+      .update(`${tenantId}:${studentId}:${classId}:${academicYear}`)
+      .digest('hex')
+      .slice(0, 24);
+
+    if (hash !== expectedHash) {
+      return res.status(403).json({
+        success: false,
+        error: 'Verification failed: the QR code does not match this report card.',
+      });
+    }
+
+    // Fetch the full report card data
+    const card = await slReportCardService.getReportCard(tenantId, studentId, classId, academicYear);
+
+    // Fetch school branding for display
+    const school = await db('schools')
+      .where({ tenant_id: tenantId })
+      .select('name', 'short_name', 'logo_url', 'address', 'motto', 'phone', 'email', 'website')
+      .first();
+
+    res.json({
+      success: true,
+      data: {
+        verified: true,
+        verified_at: new Date().toISOString(),
+        school: school || {},
+        report_card: card,
+      },
     });
-
-    await db('restore_payment_sessions')
-      .where({ id: session.id })
-      .update({ provider_session_id: checkout.sessionId, redirect_url: checkout.redirectUrl, updated_at: new Date() });
-
-    logger.info(`Restore checkout created for tenant ${tenantId}, session ${session.id}`);
-    res.json({ success: true, data: { redirectUrl: checkout.redirectUrl, sessionId: session.id } });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/** GET /api/v1/public/reactivation/info?token=... → school + suspension reason. */
-router.get('/reactivation/info', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const token = String(req.query.token || '');
-    if (!token) throw new AppError('Missing token', 400, 'RESTORE_TOKEN_MISSING');
-    const info = await getReactivationInfo(token);
-    res.json({ success: true, data: info });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/** POST /api/v1/public/reactivation/request { token, message, contactEmail? } */
-router.post('/reactivation/request', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { token, message, contactEmail } = req.body || {};
-    if (!token) throw new AppError('Missing token', 400, 'RESTORE_TOKEN_MISSING');
-    const result = await submitReactivationRequest(String(token), String(message || ''), contactEmail ? String(contactEmail) : undefined);
-    res.json({ success: true, data: result });
-  } catch (error) {
+  } catch (error: any) {
+    logger.error('Error verifying report card:', error);
     next(error);
   }
 });

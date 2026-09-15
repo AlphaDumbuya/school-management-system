@@ -52,6 +52,7 @@ import idCardReportingRoutes from '@routes/idCardReportingRoutes';
 import printConfigRoutes from '@routes/printConfigRoutes';
 import eventRoutes from '@routes/eventRoutes';
 import slReportCardRoutes from '@routes/slReportCardRoutes';
+import publicVerifyRoutes from '@routes/publicVerifyRoutes';
 import promotionRoutes from '@routes/promotionRoutes';
 import disciplineRoutes from '@routes/disciplineRoutes';
 import smsWhatsAppRoutes from '@routes/smsWhatsAppRoutes';
@@ -311,6 +312,9 @@ app.use('/api/v1/events', eventRoutes);
 
 // Sierra Leone Report Card / Booklet Routes
 app.use('/api/v1/report-cards', slReportCardRoutes);
+
+// Public (unauthenticated) report card verification — reached by QR scan
+app.use('/api/v1/public', publicVerifyRoutes);
 
 // Student Promotion Routes
 app.use('/api/v1/promotions', promotionRoutes);
