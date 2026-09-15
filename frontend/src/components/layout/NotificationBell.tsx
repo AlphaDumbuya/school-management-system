@@ -1,27 +1,30 @@
 /**
  * NotificationBell — production-ready notifications dropdown.
  *
- * Captures:
+ * Displays a single unified feed that merges:
  *  - The user's in-app notifications (/api/v1/notifications) — admissions,
  *    discipline, payments, appeals, report cards, etc.
- *  - System alerts (principals/super_admins) from the dashboard alerts feed.
+ *  - School-wide announcements.
+ *  - System alerts (principals/super_admins only) from the dashboard alerts feed.
  *
- * Features: unread badge (notifications + alerts), tabbed view, per-item
- * mark-read + navigate, mark-all-read, relative timestamps, type icons,
- * empty/loading states, click-away, polling with focus refresh.
+ * All items are role-scoped (user only sees their own notifications) and
+ * tenant-scoped (notifications belong to the user's school).
+ *
+ * Features: unread badge, per-item mark-read + navigate, mark-all-read,
+ * relative timestamps, type icons, empty/loading states, click-away,
+ * polling with focus refresh.
  */
 import React, { useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bell, CheckCheck, GraduationCap, Wallet, ShieldAlert, CalendarCheck,
-  UserPlus, FileText, Info, X, Loader2,
+  UserPlus, FileText, Info, X, Loader2, Megaphone,
 } from 'lucide-react';
 import clsx from 'clsx';
 import notificationService, { type AppNotification } from '@services/notificationService';
 import { dashboardService } from '@services/dashboardService';
 import announcementService, { type Announcement } from '@services/announcementService';
-import { Megaphone } from 'lucide-react';
 
 interface SystemAlert {
   id: string;
@@ -29,6 +32,26 @@ interface SystemAlert {
   message: string;
   severity?: string;
   actionUrl?: string;
+  dismissible?: boolean;
+}
+
+/** A single unified feed item — normalised from notifications, announcements, and alerts. */
+interface FeedItem {
+  id: string;
+  kind: 'notification' | 'announcement' | 'alert';
+  title: string;
+  body: string;
+  createdAt: string;
+  read: boolean;
+  url?: string;
+  icon: React.ReactNode;
+  tint: string;
+  severity?: string;
+  /** For notifications — the original object (to call markRead). */
+  notif?: AppNotification;
+  /** For announcements — navigate to announcements page. */
+  isAnnouncement?: boolean;
+  /** For alerts — dismissible. */
   dismissible?: boolean;
 }
 
@@ -73,6 +96,14 @@ const ALERT_TONE: Record<string, string> = {
   success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
 };
 
+const ALERT_ICON_TINT: Record<string, { icon: React.ReactNode; tint: string }> = {
+  critical: { icon: <ShieldAlert size={15} />, tint: 'bg-red-50 text-red-600' },
+  error: { icon: <ShieldAlert size={15} />, tint: 'bg-red-50 text-red-600' },
+  warning: { icon: <Info size={15} />, tint: 'bg-amber-50 text-amber-600' },
+  info: { icon: <Info size={15} />, tint: 'bg-blue-50 text-blue-600' },
+  success: { icon: <CheckCheck size={15} />, tint: 'bg-emerald-50 text-emerald-600' },
+};
+
 interface NotificationBellProps {
   canSeeAlerts: boolean;
 }
@@ -81,13 +112,12 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<'notifications' | 'announcements' | 'alerts'>('notifications');
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
 
   // Notifications — poll every 60s, refetch on window focus.
   const { data: notifResp, isLoading: notifLoading } = useQuery({
     queryKey: ['bell-notifications'],
-    queryFn: () => notificationService.list({ limit: 20 }),
+    queryFn: () => notificationService.list({ limit: 30 }),
     staleTime: 30_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
@@ -112,7 +142,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
   // Announcements — recent list + unread count.
   const { data: annResp } = useQuery({
     queryKey: ['bell-announcements'],
-    queryFn: () => announcementService.list({ limit: 10 }),
+    queryFn: () => announcementService.list({ limit: 15 }),
     staleTime: 30_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
@@ -129,26 +159,99 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
 
   const totalUnread = unreadNotifications.length + announcementsUnread + (canSeeAlerts ? visibleAlerts.length : 0);
 
+  // ── Build the unified feed ──────────────────────────────────────────
+  const feed: FeedItem[] = useMemo(() => {
+    const items: FeedItem[] = [];
+
+    // System alerts first (highest priority)
+    if (canSeeAlerts) {
+      for (const a of visibleAlerts) {
+        const av = ALERT_ICON_TINT[a.severity || 'info'] ?? ALERT_ICON_TONE.info;
+        items.push({
+          id: `alert-${a.id}`,
+          kind: 'alert',
+          title: a.title,
+          body: a.message,
+          createdAt: new Date().toISOString(), // alerts don't have timestamps
+          read: false,
+          url: a.actionUrl,
+          icon: av.icon,
+          tint: av.tint,
+          severity: a.severity,
+          dismissible: a.dismissible !== false,
+        });
+      }
+    }
+
+    // In-app notifications
+    for (const n of notifications) {
+      const v = typeVisual(n.notificationType);
+      items.push({
+        id: `notif-${n.id}`,
+        kind: 'notification',
+        title: n.subject || n.notificationType,
+        body: n.message,
+        createdAt: n.createdAt,
+        read: !!n.readAt,
+        url: (n.data as any)?.url || (n.data as any)?.actionUrl,
+        icon: v.icon,
+        tint: v.tint,
+        notif: n,
+      });
+    }
+
+    // Announcements
+    for (const a of announcements) {
+      items.push({
+        id: `ann-${a.id}`,
+        kind: 'announcement',
+        title: a.title,
+        body: a.body,
+        createdAt: a.created_at,
+        read: !!a.is_read,
+        url: '/communication/announcements',
+        icon: <Megaphone size={15} />,
+        tint: a.priority === 'high' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600',
+        isAnnouncement: true,
+      });
+    }
+
+    // Sort: unread first, then by recency
+    items.sort((a, b) => {
+      if (a.read !== b.read) return a.read ? 1 : -1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    return items.slice(0, 30); // cap at 30 for performance
+  }, [canSeeAlerts, visibleAlerts, notifications, announcements]);
+
   const refresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['bell-notifications'] });
   }, [queryClient]);
 
-  const openItem = useCallback(async (n: AppNotification) => {
-    if (!n.readAt) {
-      try { await notificationService.markRead(n.id); refresh(); } catch { /* ignore */ }
+  const openItem = useCallback(async (item: FeedItem) => {
+    // Mark as read if applicable
+    if (item.kind === 'notification' && item.notif && !item.read) {
+      try { await notificationService.markRead(item.notif.id); refresh(); } catch { /* ignore */ }
+    } else if (item.isAnnouncement && !item.read) {
+      // Announcements are marked read via the announcements API
+      try {
+        await announcementService.markAllRead();
+        queryClient.invalidateQueries({ queryKey: ['bell-announcements'] });
+        queryClient.invalidateQueries({ queryKey: ['announcements-unread'] });
+      } catch { /* ignore */ }
     }
-    const url = (n.data as any)?.url || (n.data as any)?.actionUrl;
     setOpen(false);
-    if (url) navigate(url);
-  }, [navigate, refresh]);
+    if (item.url) navigate(item.url);
+  }, [navigate, refresh, queryClient]);
 
-  const markAll = useCallback(async () => {
-    try { await notificationService.markAllRead(); refresh(); } catch { /* ignore */ }
-  }, [refresh]);
-
-  const markAllAnnouncements = useCallback(async () => {
+  const markAllRead = useCallback(async () => {
     try {
+      // Mark all notifications read
+      await notificationService.markAllRead();
+      // Mark all announcements read
       await announcementService.markAllRead();
+      queryClient.invalidateQueries({ queryKey: ['bell-notifications'] });
       queryClient.invalidateQueries({ queryKey: ['bell-announcements'] });
       queryClient.invalidateQueries({ queryKey: ['announcements-unread'] });
     } catch { /* ignore */ }
@@ -179,133 +282,70 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
             {/* Header */}
             <div className="px-4 pt-3 pb-2 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 text-sm">Notifications</h3>
-              {tab === 'announcements' && announcementsUnread > 0 ? (
+              {totalUnread > 0 && (
                 <button
-                  onClick={markAllAnnouncements}
+                  onClick={markAllRead}
                   className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
                 >
                   <CheckCheck size={14} /> Mark all read
                 </button>
-              ) : tab === 'notifications' && unreadNotifications.length > 0 ? (
-                <button
-                  onClick={markAll}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
-                >
-                  <CheckCheck size={14} /> Mark all read
-                </button>
-              ) : null}
-            </div>
-
-            {/* Tabs */}
-            <div className="px-3 flex gap-1 border-b border-gray-100">
-              <TabBtn active={tab === 'notifications'} onClick={() => setTab('notifications')}
-                label="Activity" count={unreadNotifications.length} />
-              <TabBtn active={tab === 'announcements'} onClick={() => setTab('announcements')}
-                label="Announcements" count={announcementsUnread} />
-              {canSeeAlerts && (
-                <TabBtn active={tab === 'alerts'} onClick={() => setTab('alerts')}
-                  label="System" count={visibleAlerts.length} />
               )}
             </div>
 
             <div className="max-h-[70vh] sm:max-h-96 overflow-y-auto">
-              {/* Activity / notifications */}
-              {tab === 'notifications' && (
-                notifLoading ? (
-                  <div className="py-10 flex justify-center text-gray-400"><Loader2 className="animate-spin" size={22} /></div>
-                ) : notifications.length === 0 ? (
-                  <EmptyBlock text="You're all caught up — no notifications yet." />
-                ) : (
-                  <ul className="divide-y divide-gray-50">
-                    {notifications.map((n) => {
-                      const v = typeVisual(n.notificationType);
-                      return (
-                        <li key={n.id}>
-                          <button
-                            onClick={() => openItem(n)}
-                            className={clsx(
-                              'w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors',
-                              !n.readAt && 'bg-blue-50/40'
+              {notifLoading && feed.length === 0 ? (
+                <div className="py-10 flex justify-center text-gray-400"><Loader2 className="animate-spin" size={22} /></div>
+              ) : feed.length === 0 ? (
+                <EmptyBlock text="You're all caught up — no notifications yet." />
+              ) : (
+                <ul className="divide-y divide-gray-50">
+                  {feed.map((item) => (
+                    <li key={item.id}>
+                      {item.kind === 'alert' ? (
+                        // Alert items have a card-style layout with dismiss
+                        <div className="px-3 py-2">
+                          <div className={clsx('p-3 rounded-xl border text-xs flex items-start justify-between gap-2',
+                            ALERT_TONE[item.severity || 'info'] ?? ALERT_TONE.info)}>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold">{item.title}</p>
+                              <p className="mt-0.5 opacity-80">{item.body}</p>
+                              {item.url && (
+                                <button onClick={() => { setOpen(false); navigate(item.url!); }}
+                                  className="mt-1 text-xs font-medium underline underline-offset-2 hover:opacity-80">
+                                  View details
+                                </button>
+                              )}
+                            </div>
+                            {item.dismissible && (
+                              <button aria-label="Dismiss" onClick={() => dismissAlert(item.id.replace('alert-', ''))}
+                                className="flex-shrink-0 opacity-60 hover:opacity-100">
+                                <X size={14} />
+                              </button>
                             )}
-                          >
-                            <span className={clsx('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5', v.tint)}>
-                              {v.icon}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              {n.subject && <span className="block text-sm font-semibold text-gray-900 truncate">{n.subject}</span>}
-                              <span className="block text-xs text-gray-600 line-clamp-2">{n.message}</span>
-                              <span className="block text-[11px] text-gray-400 mt-0.5">{relativeTime(n.createdAt)}</span>
-                            </span>
-                            {!n.readAt && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )
-              )}
-
-              {/* Announcements */}
-              {tab === 'announcements' && (
-                announcements.length === 0 ? (
-                  <EmptyBlock text="No announcements yet." />
-                ) : (
-                  <ul className="divide-y divide-gray-50">
-                    {announcements.map((a) => (
-                      <li key={a.id}>
+                          </div>
+                        </div>
+                      ) : (
                         <button
-                          onClick={() => { setOpen(false); navigate('/communication/announcements'); }}
+                          onClick={() => openItem(item)}
                           className={clsx(
                             'w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors',
-                            !a.is_read && 'bg-blue-50/40'
+                            !item.read && 'bg-blue-50/40'
                           )}
                         >
-                          <span className={clsx('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5',
-                            a.priority === 'high' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600')}>
-                            <Megaphone size={15} />
+                          <span className={clsx('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5', item.tint)}>
+                            {item.icon}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-semibold text-gray-900 truncate">{a.title}</span>
-                            <span className="block text-xs text-gray-600 line-clamp-2">{a.body}</span>
-                            <span className="block text-[11px] text-gray-400 mt-0.5">
-                              {(a.author_display || a.author_name) ? `${a.author_display || a.author_name} · ` : ''}{relativeTime(a.created_at)}
-                            </span>
+                            <span className="block text-sm font-semibold text-gray-900 truncate">{item.title}</span>
+                            <span className="block text-xs text-gray-600 line-clamp-2">{item.body}</span>
+                            <span className="block text-[11px] text-gray-400 mt-0.5">{relativeTime(item.createdAt)}</span>
                           </span>
-                          {!a.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />}
+                          {!item.read && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />}
                         </button>
-                      </li>
-                    ))}
-                  </ul>
-                )
-              )}
-
-              {/* System alerts */}
-              {canSeeAlerts && tab === 'alerts' && (
-                visibleAlerts.length === 0 ? (
-                  <EmptyBlock text="No active system alerts." />
-                ) : (
-                  <div className="p-3 space-y-2">
-                    {visibleAlerts.map((a) => (
-                      <div key={a.id} className={clsx('p-3 rounded-xl border text-xs flex items-start justify-between gap-2', ALERT_TONE[a.severity || 'info'] ?? ALERT_TONE.info)}>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold">{a.title}</p>
-                          <p className="mt-0.5 opacity-80">{a.message}</p>
-                          {a.actionUrl && (
-                            <button onClick={() => { setOpen(false); navigate(a.actionUrl!); }}
-                              className="mt-1 text-xs font-medium underline underline-offset-2 hover:opacity-80">
-                              View details
-                            </button>
-                          )}
-                        </div>
-                        {a.dismissible !== false && (
-                          <button aria-label="Dismiss" onClick={() => dismissAlert(a.id)} className="flex-shrink-0 opacity-60 hover:opacity-100">
-                            <X size={14} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )
+                      )}
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           </div>
@@ -314,21 +354,6 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
     </div>
   );
 };
-
-const TabBtn: React.FC<{ active: boolean; onClick: () => void; label: string; count: number }> = ({ active, onClick, label, count }) => (
-  <button
-    onClick={onClick}
-    className={clsx(
-      'px-3 py-2 text-xs font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5',
-      active ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-    )}
-  >
-    {label}
-    {count > 0 && (
-      <span className="min-w-[16px] h-4 px-1 bg-red-100 text-red-600 text-[10px] font-bold rounded-full flex items-center justify-center">{count}</span>
-    )}
-  </button>
-);
 
 const EmptyBlock: React.FC<{ text: string }> = ({ text }) => (
   <div className="py-10 px-6 text-center">

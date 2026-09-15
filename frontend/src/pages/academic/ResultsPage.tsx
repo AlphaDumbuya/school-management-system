@@ -6,7 +6,7 @@
  * Report cards are generated on the Report Cards page.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ClipboardList, Star, BookOpen, Settings } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
@@ -19,7 +19,8 @@ import { classesService } from '@services/classesService';
 import { ScoreEntryGrid } from './components/ScoreEntryGrid';
 import { DomainRatingsModal } from './components/DomainRatingsModal';
 import { ReportSettingsPanel } from './components/ReportSettingsPanel';
-import { SL_TERMS, SLTerm, SL_GRADING_METHOD, CONDUCT_CODES } from '@services/reportCardService';
+import { SL_TERMS, SLTerm, SL_GRADING_METHOD, CONDUCT_CODES, getGradingMethod } from '@services/reportCardService';
+
 import { StudentResultsView } from './components/StudentResultsView';
 import { ParentResultsView } from './components/ParentResultsView';
 
@@ -29,6 +30,13 @@ export const ResultsPage: React.FC = () => {
   const isPrincipal = user?.role === 'principal' || user?.role === 'super_admin';
   const isStudent = user?.role === 'student';
   const isParent = user?.role === 'parent' || user?.role === 'guardian';
+
+  // Pre-warm the grading method cache once the user is authenticated.
+  // Previously this was a module-level call that fired before auth was ready,
+  // causing repeated 401 errors on GET /api/v1/report-cards/config.
+  useEffect(() => {
+    getGradingMethod();
+  }, []);
   const [academicYear, setAcademicYear] = useState(`${currentYear}/${currentYear + 1}`);
   const [tab, setTab] = useState<'cognitive' | 'ratings' | 'settings'>('cognitive');
 

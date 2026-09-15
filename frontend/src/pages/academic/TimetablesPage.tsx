@@ -24,7 +24,7 @@ import {
   PeriodDefinition,
   getSchoolLevel,
   SchoolLevel,
-  getCustomPeriods,
+  getCustomPeriodsAsync,
 } from '@services/timetableService';
 import { TimetableSlotModal } from './components/TimetableSlotModal';
 import { PeriodSettingsModal } from './components/PeriodSettingsModal';
@@ -99,7 +99,13 @@ export const TimetablesPage: React.FC = () => {
   // Determine period structure dynamically based on class level & custom settings
   const selectedClass = classes.find((c) => String(c.id) === selectedClassId);
   const schoolLevel: SchoolLevel = selectedClass ? getSchoolLevel(selectedClass.level) : 'sss';
-  const periods: PeriodDefinition[] = getCustomPeriods(schoolLevel);
+
+  // Fetch custom periods from API (tenant-scoped) with localStorage fallback
+  const [periods, setPeriods] = useState<PeriodDefinition[]>(PERIOD_STRUCTURES.sss);
+  useEffect(() => {
+    getCustomPeriodsAsync(schoolLevel).then(setPeriods);
+  }, [schoolLevel]);
+
   const teachablePeriods = periods.filter((p) => !p.isBreak).length;
 
   // KPI calculations

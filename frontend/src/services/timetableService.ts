@@ -150,7 +150,65 @@ export function getSchoolLevel(classLevel: string): SchoolLevel {
   return 'sss'; // fallback
 }
 
-/** Get custom periods for level (or fallback to system defaults) */
+/** Get custom periods for level — tries API first, falls back to localStorage, then system defaults */
+export async function getCustomPeriodsAsync(level: SchoolLevel): Promise<PeriodDefinition[]> {
+  // 1. Try API (tenant-scoped, shared across all users/devices)
+  try {
+    const res = await apiClient.get<{ data: { periods: PeriodDefinition[] } | null }>(`/api/v1/timetable/period-configs/${level}`);
+    const periods = (res as any)?.data?.periods;
+    if (Array.isArray(periods) && periods.length > 0) {
+      // Cache to localStorage for offline use
+      try { localStorage.setItem(`wiskul_period_config_${level}`, JSON.stringify(periods)); } catch { /* ignore */ }
+      return periods;
+    }
+  } catch {
+    // API failed — fall through to localStorage
+  }
+
+  // 2. Try localStorage (offline cache or legacy config)
+  try {
+    const raw = localStorage.getItem(`wiskul_period_config_${level}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {
+    // fallback
+  }
+
+  // 3. System defaults
+  return PERIOD_STRUCTURES[level] || SSS_PERIODS;
+}
+
+/** Save custom periods for level (API + localStorage) */
+export async function saveCustomPeriodsAsync(level: SchoolLevel, periods: PeriodDefinition[]): Promise<void> {
+  // Save to API (tenant-scoped, shared)
+  try {
+    await apiClient.put(`/api/v1/timetable/period-configs/${level}`, { periods });
+  } catch {
+    // API failed — still save to localStorage as fallback
+  }
+
+  // Also cache to localStorage for offline use
+  try { localStorage.setItem(`wiskul_period_config_${level}`, JSON.stringify(periods)); } catch { /* ignore */ }
+}
+
+/** Reset custom periods for level (API + localStorage) */
+export async function resetPeriodsToDefaultAsync(level: SchoolLevel): Promise<void> {
+  // Reset on API
+  try {
+    await apiClient.delete(`/api/v1/timetable/period-configs/${level}`);
+  } catch {
+    // API failed — still reset localStorage
+  }
+
+  // Clear localStorage
+  try { localStorage.removeItem(`wiskul_period_config_${level}`); } catch { /* ignore */ }
+}
+
+// ── Legacy sync helpers (kept for components that can't be async) ───────────
+
+/** Get custom periods for level — localStorage only (sync). Use getCustomPeriodsAsync for API-backed. */
 export function getCustomPeriods(level: SchoolLevel): PeriodDefinition[] {
   try {
     const raw = localStorage.getItem(`wiskul_period_config_${level}`);
@@ -158,20 +216,10 @@ export function getCustomPeriods(level: SchoolLevel): PeriodDefinition[] {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
-  } catch (e) {
+  } catch {
     // fallback
   }
   return PERIOD_STRUCTURES[level] || SSS_PERIODS;
-}
-
-/** Save custom periods for level */
-export function saveCustomPeriods(level: SchoolLevel, periods: PeriodDefinition[]): void {
-  localStorage.setItem(`wiskul_period_config_${level}`, JSON.stringify(periods));
-}
-
-/** Reset custom periods for level */
-export function resetPeriodsToDefault(level: SchoolLevel): void {
-  localStorage.removeItem(`wiskul_period_config_${level}`);
 }
 
 /** Helper interface for period auto-generator */

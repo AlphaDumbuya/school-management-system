@@ -368,7 +368,7 @@ export const SubjectsPage: React.FC = () => {
               placeholder="Search subject name or code..."
               onSearch={setSearch}
               isLoading={isLoading}
-              resultCount={search ? classes.length : undefined}
+              resultCount={search ? subjects.length : undefined}
               className="w-full lg:max-w-md"
             />
 

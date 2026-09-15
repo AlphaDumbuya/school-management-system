@@ -268,9 +268,11 @@ router.get('/:classId/students', authenticate, async (req: Request, res: Respons
       )
       .where('enrollments.class_id', classData.id)
       .where(function () {
+        // Tenant scoping: student must belong to this tenant either directly
+        // or via the linked user account. The previous OR NULL was overly
+        // permissive and could leak students from other tenants.
         this.where('students.tenant_id', tenantId)
-          .orWhere('users.tenant_id', tenantId)
-          .orWhereNull('students.tenant_id');
+          .orWhere('users.tenant_id', tenantId);
       })
       .where(function () {
         this.whereIn('enrollments.status', ['enrolled', 'active'])

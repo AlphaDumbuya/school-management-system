@@ -422,7 +422,7 @@ class DashboardService {
           message: `You have ${pendingApprovals.totalPending} pending approvals requiring action`,
           severity: pendingApprovals.totalPending > 5 ? 'warning' : 'info',
           timestamp: new Date().toISOString(),
-          actionUrl: '/admin/approvals',
+          actionUrl: '/students/admissions',
           dismissible: true,
         });
       }
@@ -445,7 +445,7 @@ class DashboardService {
             message: `${overdueCount?.count} students have overdue fees. Check financial summary for details.`,
             severity: 'warning',
             timestamp: new Date().toISOString(),
-            actionUrl: '/admin/finances',
+            actionUrl: '/finance/invoices',
             dismissible: true,
           });
         }
@@ -477,7 +477,7 @@ class DashboardService {
             message: `${lowCount} students have attendance below 75% threshold`,
             severity: 'warning',
             timestamp: new Date().toISOString(),
-            actionUrl: '/admin/attendance',
+            actionUrl: '/students/attendance',
             dismissible: true,
           });
         }
@@ -504,7 +504,7 @@ class DashboardService {
             message: `${atRiskStudents?.count} students have grades below passing threshold`,
             severity: 'warning',
             timestamp: new Date().toISOString(),
-            actionUrl: '/admin/grades',
+            actionUrl: '/academic/results',
             dismissible: true,
           });
         }

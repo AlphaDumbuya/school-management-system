@@ -2,7 +2,27 @@
 
 > **Purpose**: Every page in the app audited and ordered by dependency. Build from top to bottom.
 > 
-> **Key**: ✅ Fully built & live data | 🟡 Built but mock data (needs API wiring) | 🔴 `ComingSoon` placeholder | 🔵 Needs full rebuild
+> **Key**: ✅ Fully built & live data | 🟧 Built but V2-gated (code exists, hidden behind `V2_ENABLED = false`) | 🔴 `ComingSoon` placeholder — not yet built
+>
+> **Last Updated**: September 2026 — Full audit against actual codebase.
+
+---
+
+## V1 Sidebar Module Map
+
+The V1 admin sidebar exposes exactly these modules and pages:
+
+| Module | Pages |
+|--------|-------|
+| **Dashboard** | Role-based dashboard (Admin, Teacher, Student, Parent, Accountant, Admissions, Super Admin) |
+| **Academic** | Classes & Streams, Subjects, Timetables, Assignments, Exam Timetable, Results & Grades, Report Cards, Promotions |
+| **Students** | Student Directory, Admissions, Student Profiles, Attendance, Discipline & Conduct |
+| **Staff** | Teachers |
+| **Finance** | Fee Structures, Invoices, Payments & Receipts |
+| **Communication** | Announcements, Support |
+| **Identity** | ID Cards, Card Templates |
+| **Events** | School Events, Calendar, My Events, Event Analytics |
+| **Footer** | Guide & Help, Settings |
 
 ---
 
@@ -15,60 +35,78 @@
 | Pricing Page | `/pricing` | ✅ Done | Public marketing page |
 | Why WiSkul | `/why` | ✅ Done | Public marketing page |
 | Benefits Page | `/benefits` | ✅ Done | Public marketing page |
-| Contact Page | `/contact` | ✅ Done | Email sending works |
-| Login Page | `/login` | ✅ Done | Auth working |
-| Admin Dashboard | `/admin/dashboard` | 🟡 Mostly done | Live data connected, KPI cards need to populate |
-| Teachers Page | `/staff/teachers` | ✅ Done | Full CRUD, list/grid |
+| Contact Page | `/contact` | ✅ Done | Email sending works (Brevo + platform inbox) |
+| Login Page | `/login` | ✅ Done | Auth working, 2FA, passkeys |
+| Register Page | `/register` | ✅ Done | Self-service school onboarding |
+| Welcome / Onboarding | `/welcome` | ✅ Done | App-mode one-time guide |
+| Forgot Password | `/forgot-password` | ✅ Done | |
+| Reset Password | `/reset-password` | ✅ Done | |
+| Privacy Policy | `/privacy-policy` | ✅ Done | |
+| Newsletter Unsubscribe | `/newsletter/unsubscribe` | ✅ Done | |
+| Restore Access | `/restore-access` | ✅ Done | Public Monime payment for suspended schools |
+| Request Reactivation | `/request-reactivation` | ✅ Done | Public reactivation request |
+| Verify ID | `/verify-id` | ✅ Done | Public QR code verification |
+| Admin Dashboard | `/admin/dashboard` | ✅ Done | Live data, KPIs populate from DB |
+| Teachers Page | `/staff/teachers` | ✅ Done | Full CRUD, list/grid, promotion modal |
 | Classes Page | `/academic/classes` | ✅ Done | Full CRUD |
 | Subjects Page | `/academic/subjects` | ✅ Done | Full CRUD |
-| Timetables Page | `/academic/timetables` | ✅ Done | Scheduling working |
+| Timetables Page | `/academic/timetables` | ✅ Done | Scheduling, conflict detection |
 | Assignments Page | `/academic/assignments` | ✅ Done | CRUD done |
-| Examinations Page | `/academic/examinations` | ✅ Done | CRUD done |
-| Results Page | `/academic/results` | ✅ Done | Grading done |
-| Attendance Page | `/students/attendance` | ✅ Done | Mark/view attendance |
-| Student Directory | `/students/directory` | ✅ Done | Listing done |
-| Student Profiles | `/students/profiles` | ✅ Done | Profile management |
-| Admissions Page | `/students/admissions` | ✅ Done | Application workflow |
-| Discipline Page | `/discipline` | ✅ Done | Infractions, detention, appeals |
+| Exam Timetable Page | `/academic/exam-timetable` | ✅ Done | CRUD done |
+| Results Page | `/academic/results` | ✅ Done | Grading, bulk entry, SL scale, KPIs |
+| Report Cards Page | `/academic/report-cards` | ✅ Done | SL booklet PDF, affective/psychomotor domains |
+| Promotions Page | `/academic/promotions` | ✅ Done | Promote/repeat/graduate workflow |
+| Attendance Page | `/students/attendance` | ✅ Done | Mark/view, bulk, analytics, offline-capable |
+| Student Directory | `/students/directory` | ✅ Done | Listing, search, filter |
+| Student Profiles | `/students/profiles` | ✅ Done | Profile mgmt, transcript, portal creds |
+| Admissions Page | `/students/admissions` | ✅ Done | Application workflow, import |
+| Discipline Page | `/discipline` | ✅ Done | Infractions, detention, appeals, conduct reports |
 | Events Page | `/events/school` | ✅ Done | Event listing |
-| Event Details | `/events/school/:id` | ✅ Done | Single event |
+| Event Details | `/events/school/:id` | ✅ Done | Single event, registration |
 | Calendar Page | `/events/calendar` | ✅ Done | Calendar view |
-| My Events | `/events/my-events` | ✅ Done | User events |
+| My Events | `/events/my-events` | ✅ Done | User's registered events |
 | Event Analytics | `/events/analytics` | ✅ Done | Event insights |
-| ID Cards Page | `/identity/cards` | ✅ Done | Card generation |
-| Templates Page | `/identity/templates` | ✅ Done | Card templates |
-| SMS/WhatsApp | `/communication/sms` | ✅ Done | Messaging dashboard |
-| Teacher Dashboard | `/teacher/dashboard` | 🟡 Mock data | Needs live API wiring |
-| Student Dashboard | `/student/dashboard` | 🟡 Mock data | Needs live API wiring |
-| Parent Dashboard | `/parent/dashboard` | 🟡 Mock data | Needs live API wiring |
-| Accountant Dashboard | `/accountant/dashboard` | 🟡 Mock data | Needs live API wiring |
-| Admissions Dashboard | `/admissions/dashboard` | 🟡 Mock data | Needs live API wiring |
-| Super Admin Dashboard | `/platform/dashboard` | 🟡 Mock data | Needs live API wiring |
-| Report Cards | `/academic/report-cards` | 🔴 Coming Soon | NEW |
-| Promotions | `/academic/promotions` | 🔴 Coming Soon | NEW |
-| Staff Members | `/staff/members` | 🔴 Coming Soon | NEW |
-| Staff Leave | `/staff/leave` | 🔴 Coming Soon | NEW |
-| Staff Performance | `/staff/performance` | 🔴 Coming Soon | NEW |
-| Fees Management | `/finance/fees` | 🔴 Coming Soon | NEW — most critical |
-| Invoices | `/finance/invoices` | 🔴 Coming Soon | NEW |
-| Payments | `/finance/payments` | 🔴 Coming Soon | NEW |
-| Expenses | `/finance/expenses` | 🔴 Coming Soon | NEW |
-| Payroll | `/finance/payroll` | 🔴 Coming Soon | NEW |
-| Scholarships | `/finance/scholarships` | 🔴 Coming Soon | NEW |
-| Announcements | `/communication/announcements` | 🔴 Coming Soon | NEW — high priority |
-| Messages | `/communication/messages` | 🔴 Coming Soon | NEW — in-app DMs |
-| Email Manager | `/communication/email` | 🔴 Coming Soon | NEW |
-| QR Codes | `/identity/qr-codes` | 🔴 Coming Soon | NEW |
-| Academic Reports | `/reports/academic` | 🔴 Coming Soon | NEW |
-| Financial Reports | `/reports/financial` | 🔴 Coming Soon | NEW |
-| Attendance Reports | `/reports/attendance` | 🔴 Coming Soon | NEW |
-| Enrollment Reports | `/reports/enrollment` | 🔴 Coming Soon | NEW |
-| Discipline Reports | `/reports/discipline` | 🔴 Coming Soon | NEW |
-| Tenants | `/platform/tenants` | 🔴 Coming Soon | NEW (super admin) |
-| Subscriptions | `/platform/subscriptions` | 🔴 Coming Soon | NEW (super admin) |
-| Platform Analytics | `/platform/analytics` | 🔴 Coming Soon | NEW (super admin) |
-| Settings | `/settings` | 🔴 Coming Soon | NEW — every user |
-| Profile | `/profile` | 🔴 Coming Soon | NEW — every user |
+| ID Cards Page | `/identity/cards` | ✅ Done | Card generation, batch printing |
+| Templates Page | `/identity/templates` | ✅ Done | Card template designer |
+| Fees Page | `/finance/fees` | ✅ Done | Fee structures, assign to class/student |
+| Invoices Page | `/finance/invoices` | ✅ Done | Generate, track, send |
+| Payments Page | `/finance/payments` | ✅ Done | Record, Monime hosted checkout |
+| Payment Return | `/finance/pay/return` | ✅ Done | Post-Monime checkout landing |
+| Announcements Page | `/communication/announcements` | ✅ Done | Create, broadcast, schedule |
+| Settings Page | `/settings` | ✅ Done | 8 config tabs + 2FA + storage + offline |
+| Support Page | `/support` | ✅ Done | Help topics + ticket system |
+| Support Topic | `/support/:topicId` | ✅ Done | Topic detail + reply |
+| Guide Page | `/guide` | ✅ Done | Platform guide for all roles |
+| Sync Issues | `/sync-issues` | ✅ Done | Offline sync conflict resolution |
+| Verification Page | `/verify-school` | ✅ Done | School identity verification |
+| Tenants Page | `/platform/tenants` | ✅ Done | Tenant CRUD, suspend/reactivate |
+| Tenant Detail | `/platform/tenants/:id` | ✅ Done | Users, billing, backup, email config |
+| Subscriptions | `/platform/subscriptions` | ✅ Done | Plan management, billing |
+| Platform Analytics | `/platform/analytics` | ✅ Done | Growth, revenue, usage |
+| Platform Comms | `/platform/communications` | ✅ Done | Newsletter, broadcast |
+| Platform Support | `/platform/support` | ✅ Done | Support ticket triage |
+| Super Admin Dashboard | `/platform/dashboard` | ✅ Done | Live platform data |
+| Teacher Dashboard | `/teacher/dashboard` | ✅ Done | Live API data |
+| Student Dashboard | `/student/dashboard` | ✅ Done | Live API data |
+| Parent Dashboard | `/parent/dashboard` | ✅ Done | Live API data |
+| Accountant Dashboard | `/accountant/dashboard` | ✅ Done | Live API data |
+| Admissions Dashboard | `/admissions/dashboard` | ✅ Done | Live API data |
+| Staff Members | `/staff/members` | 🔴 Coming Soon | V2-gated. Backend not built. |
+| Staff Leave | `/staff/leave` | 🔴 Coming Soon | V2-gated. Backend not built. |
+| Staff Performance | `/staff/performance` | 🔴 Coming Soon | V2-gated. Backend not built. |
+| Expenses | `/finance/expenses` | 🔴 Coming Soon | V2-gated. Backend not built. |
+| Payroll | `/finance/payroll` | 🔴 Coming Soon | V2-gated. Backend not built. |
+| Scholarships | `/finance/scholarships` | 🔴 Coming Soon | V2-gated. Backend not built. |
+| Messages | `/communication/messages` | 🔴 Coming Soon | V2-gated. Backend not built. |
+| Email Manager | `/communication/email` | 🔴 Coming Soon | V2-gated. Backend (Brevo) exists, frontend not built. |
+| QR Codes | `/identity/qr-codes` | 🔴 Coming Soon | V2-gated. Backend exists, frontend not built. |
+| Academic Reports | `/reports/academic` | 🔴 Coming Soon | V2-gated. Backend exists, frontend not built. |
+| Financial Reports | `/reports/financial` | 🔴 Coming Soon | V2-gated. Backend exists, frontend not built. |
+| Attendance Reports | `/reports/attendance` | 🔴 Coming Soon | V2-gated. Backend exists, frontend not built. |
+| Enrollment Reports | `/reports/enrollment` | 🔴 Coming Soon | V2-gated. Backend exists, frontend not built. |
+| Discipline Reports | `/reports/discipline` | 🔴 Coming Soon | V2-gated. Backend exists, frontend not built. |
+| Profile | `/profile` | 🔴 Coming Soon | Not V2-gated — needs to be built for V1. Backend exists. |
+| Legacy `/students` | `/students` | 🔴 Coming Soon | Should redirect to `/students/directory`. Fix needed. |
 
 ---
 
@@ -76,16 +114,15 @@
 
 Pages are ordered by **dependency and importance**. Each group must be completed before the next group starts, because later pages depend on earlier ones being functional.
 
----
+> **Updated September 2026**: Phases 0, B (fees/invoices/payments), C (all dashboards wired), E1 (announcements), F (report cards/promotions), and I (platform management) are **complete**. The remaining work is Phase A (profile page) and V2-scoped phases.
 
 ---
 
-### PHASE 0 — School Setup (Must Be Completed Before Anything Else)
-> **This is the absolute first phase.** Until the school is configured, ID numbers will be wrong, grades won't calculate, fees won't show the right currency, and terms won't be set. This must be done before any other feature.
+### PHASE 0 — School Setup ✅ COMPLETE
 
-#### 0.1 — School Setup & Settings Page `/settings` 🔥 Admin/Principal First
+#### 0.1 — School Setup & Settings Page `/settings` ✅ DONE
 
-**Why this is Phase 0**: The Settings page is not just user preferences — it is the **configuration backbone** of the entire app. The following features all depend on settings being configured first:
+**Status**: Fully built. `SettingsPage.tsx` has all 8 config tabs plus 2FA, storage, and offline preferences.
 
 | Setting | Affects |
 |---|---|  
@@ -104,85 +141,15 @@ Pages are ordered by **dependency and importance**. Each group must be completed
 | School address, phone, email | All communications, ID cards, report cards |
 | Principal/head teacher name | Report cards, official letters |
 
-**Backend ready**: `phase15SchoolConfigService.ts` + `school_config_settings` table ✅, `phase15GradingConfigService.ts` + `grading_scales` table ✅
-
-**The Settings page has two sections:**
-
-##### Section 1 — School Configuration (Admin/Principal only)
-Organized as a tabbed settings panel:
-
-**Tab: School Information**
-- School name, short name, motto
-- Logo upload (replaces default WiSkul logo on pages)
-- Address, city, country
-- Phone, email, website
-- Registration number / accreditation status
-- Founded year, principal name
-
-**Tab: Academic Configuration**
-- Current academic year (e.g. `2026/2027`)
-- Number of terms per year (2 or 3)
-- Term 1/2/3 start and end dates
-- Class naming convention (e.g. `JSS 1`, `Grade 7`, `Year 7`, `Form 1`)
-- Max class size (default capacity per class)
-
-**Tab: ID Number Format** ← *(User's request)*
-- Student ID prefix (e.g. `STU`, `WIS`, `SMS`)
-- Staff/teacher ID prefix (e.g. `TCH`, `STA`)
-- Include year in ID? (Yes/No) — e.g. `STU-2026-001`
-- Separator character (`-`, `/`, `_`, or none)
-- Number padding (3 digits = 001, 4 digits = 0001)
-- Live preview: `STU-2026-0042`
-- Reset counter on new academic year? (Yes/No)
-
-**Tab: Grading Scale**
-- Grade boundaries (add/edit/remove)
-  - e.g. A+ = 95–100, A = 90–94, B+ = 85–89 …
-- GPA weight per grade (A=4.0, B=3.0 …)
-- Passing grade threshold (e.g. 40%)
-- Grade display format (letter / percentage / both)
-
-**Tab: Attendance Rules**
-- Minimum attendance % before warning (default 75%)
-- Minimum attendance % before critical alert (default 60%)
-- Late arrival cutoff time (e.g. 08:30 AM = tardy)
-- Attendance counted in (days / periods / hours)
-
-**Tab: Financial Configuration**
-- Currency code and symbol (NLe, USD, GBP, etc.)
-- Currency display format (NLe 5,000 vs 5,000 NLe)
-- Late fee policy (% per month, or flat fee)
-- Payment methods accepted (cash, bank transfer, mobile money)
-- Invoice due date default (e.g. 30 days from issue)
-
-**Tab: Communications**
-- School email (used as sender in all emails)
-- SMS sender name (shown on SMS)
-- WhatsApp number (for parent communication)
-- Email footer text (address, unsubscribe link)
-- Notification defaults (which events trigger email/SMS)
-
-**Tab: Branding**
-- Primary color (used in ID cards, email headers, reports)
-- Secondary color
-- School letterhead preview
-
-##### Section 2 — My Preferences (All users)
-- Display language (English / Krio)
-- Date format (DD/MM/YYYY vs MM/DD/YYYY vs YYYY-MM-DD)
-- Time format (12h / 24h)
-- Dark/Light mode toggle
-- Notification preferences per event type (email / SMS / in-app)
-- Privacy settings (who can see my profile photo, etc.)
+**Backend**: `phase15SchoolConfigService.ts` + `school_config_settings` table ✅, `phase15GradingConfigService.ts` + `grading_scales` table ✅
 
 ---
 
-### PHASE A — Foundation (After School Setup)
-> These unlock every other role dashboard and are depended on by all features.
+### PHASE A — Foundation 🔴 STILL NEEDED
 
-#### A1 — Profile Page `/profile` ⚡ Every User
+#### A1 — Profile Page `/profile` 🔴 Coming Soon
 
-**Why first**: Every user sees their own profile. The edit form here feeds `first_name`, `last_name`, `email`, `avatar`, and password into the DB. Every dashboard depends on a working user profile.
+**Why needed**: Every user should be able to view and edit their own profile (name, phone, avatar, password). Currently renders `<ComingSoonPage />`.
 
 **What to build**:
 - View own profile (name, email, role, avatar, school)
@@ -192,418 +159,174 @@ Organized as a tabbed settings panel:
 
 **Backend ready**: `PATCH /api/v1/users/:id` ✅
 
----
-
-### PHASE B — Financial Core (Most Critical Module)
-> Every other dashboard links to finance. Parents, students, teachers all need to see fee data. Build this before wiring any dashboard.
-
-#### B1 — Fees Management `/finance/fees` 🔴
-
-**Why before others**: Fees is the data source for the Accountant dashboard, Parent dashboard fee panel, Student dashboard fee panel, and the Admin KPI "Outstanding Fees". Nothing else can show real financial data until this exists.
-
-**What to build**:
-- Fee structures table (create, edit, assign to class/student)
-- Fee categories (tuition, transport, uniform, etc.)
-- Assign fee to student / bulk assign to class
-- Fee status overview (paid, unpaid, partial)
-- List/Grid toggle (same pattern as Teachers page)
-
-**Backend ready**: `phase8FinancialRoutes.ts` ✅
+> **Note**: The `SettingsPage.tsx` already has some profile editing logic (it manages user profile data). The `/profile` route could be a lighter-weight version or the Settings page could be split.
 
 ---
 
-#### B2 — Invoices Page `/finance/invoices` 🔴
+### PHASE B — Financial Core ✅ COMPLETE (V1 scope)
 
-**Why next**: Invoices are generated from fee structures. Parents need to see invoices. Accountant dashboard needs invoice counts.
+#### B1 — Fees Management `/finance/fees` ✅ DONE
+#### B2 — Invoices Page `/finance/invoices` ✅ DONE
+#### B3 — Payments Page `/finance/payments` ✅ DONE (with Monime hosted checkout)
 
-**What to build**:
-- Generate invoice for student
-- Bulk generate for entire class or year
-- Invoice status (draft, sent, paid, overdue)
-- Send invoice via email button
-- Invoice detail/PDF preview modal
-
-**Backend ready**: `phase8FinancialRoutes.ts` ✅
+#### B4 — Expenses Page `/finance/expenses` 🔴 V2-gated (backend not built)
+#### B5 — Payroll Page `/finance/payroll` 🔴 V2-gated (backend not built)
+#### B6 — Scholarships Page `/finance/scholarships` 🔴 V2-gated (backend not built)
 
 ---
 
-#### B3 — Payments Page `/finance/payments` 🔴
+### PHASE C — All Dashboards ✅ COMPLETE
 
-**Why third**: After invoices exist, payments record money coming in.
+All 7 dashboards are built and pulling live data from the API. No mock data remains.
 
-**What to build**:
-- Record payment (cash, bank transfer, mobile money)
-- Link payment to invoice/student
-- Payment history table with filters
-- Receipt generation
-- Partial payment recording
-
-**Backend ready**: `phase8FinancialRoutes.ts` ✅
-
----
-
-#### B4 — Expenses Page `/finance/expenses` 🔴
-
-**What to build**:
-- Log school expenses (salaries, supplies, utilities, etc.)
-- Category management
-- Monthly expense summary chart
-- Export to CSV/PDF
+| Dashboard | Status |
+|-----------|--------|
+| C1 — Admin (Principal) Dashboard | ✅ Live data |
+| C2 — Accountant Dashboard | ✅ Live data |
+| C3 — Admissions Dashboard | ✅ Live data |
+| C4 — Teacher Dashboard | ✅ Live data |
+| C5 — Student Dashboard | ✅ Live data |
+| C6 — Parent Dashboard | ✅ Live data |
+| C7 — Super Admin Dashboard | ✅ Live data |
 
 ---
 
-#### B5 — Payroll Page `/finance/payroll` 🔴
-
-**What to build**:
-- View all staff salaries
-- Generate payroll for period
-- Mark payroll as paid
-- Payslip download/email
-
----
-
-#### B6 — Scholarships Page `/finance/scholarships` 🔴
-
-**What to build**:
-- Create scholarship (name, amount, criteria)
-- Assign to student (reduces their fee balance)
-- View all scholarship recipients
-
----
-
-### PHASE C — Wire All Dashboards to Live Data
-> All dashboards currently use mock data. Now that Finance is built, wire everything to real APIs.
-
-#### C1 — Admin (Principal) Dashboard `/admin/dashboard` 🟡 → ✅
-
-**Fix required**: The KPI cards show 0. The backend SQL fix has been applied. Confirm that:
-- Total Students, Teachers, Classes populate from DB
-- Outstanding Fees pulls from fees table
-- Attendance chart shows real data
-- Financial summary shows payments vs target
-
----
-
-#### C2 — Accountant Dashboard `/accountant/dashboard` 🟡 → ✅
-
-**Mock → Live**:
-- Wire fee collection totals from `/api/v1/dashboards/accountant/*` (build these endpoints if not there)
-- Real payment history list
-- Real overdue accounts list
-- Fee collection chart by month
-
----
-
-#### C3 — Admissions Dashboard `/admissions/dashboard` 🟡 → ✅
-
-**Mock → Live**:
-- Real pending applications count
-- Real approval/rejection rates
-- Real class capacity percentages
-- Recent applications list from DB
-
----
-
-#### C4 — Teacher Dashboard `/teacher/dashboard` 🟡 → ✅
-
-**Mock → Live**:
-- Load teacher's assigned classes from DB
-- Real student counts per class
-- Real assignment submission stats
-- Real recent absences in their class
-
----
-
-#### C5 — Student Dashboard `/student/dashboard` 🟡 → ✅
-
-**Mock → Live**:
-- Real grades from results table
-- Real attendance percentage
-- Real upcoming assignments
-- Real fee balance
-
----
-
-#### C6 — Parent Dashboard `/parent/dashboard` 🟡 → ✅
-
-**Mock → Live**:
-- Load parent's linked children from DB
-- Real grades, attendance, fees per child
-- Real upcoming events
-- Real discipline records
-
----
-
-#### C7 — Super Admin Dashboard `/platform/dashboard` 🟡 → ✅
-
-**Mock → Live**:
-- Real tenant list and status
-- Real system health metrics
-- Real revenue across tenants
-- Real user counts
-
----
-
-### PHASE D — Staff Management
+### PHASE D — Staff Management 🔴 V2-gated (not built)
 
 #### D1 — Staff Members Page `/staff/members` 🔴
-
-**Why after dashboards**: Principals need a way to view non-teacher staff (admin, security, support staff). This is separate from teachers.
-
-**What to build**:
-- Staff directory (admin officers, support staff, cleaners, etc.)
-- Same List/Grid pattern as Teachers page
-- Add/Edit/Deactivate staff
-- Role assignment
-- Department grouping
-
----
-
 #### D2 — Staff Leave Page `/staff/leave` 🔴
-
-**What to build**:
-- Teacher/staff submits leave request (dates, reason, type)
-- Principal approves/rejects
-- Leave calendar view
-- Leave balance tracker per staff
-- Email notification on decision
-
----
-
 #### D3 — Staff Performance Page `/staff/performance` 🔴
 
-**What to build**:
-- Performance review cycles
-- Rating criteria (punctuality, teaching quality, conduct)
-- Review submission by principal
-- Historical review records
-- Performance trend chart
+All three render `<ComingSoonPage />` and are V2-gated. Backend services do not exist yet. Only Teacher Profiles (`/staff/teachers`) is in V1.
 
 ---
 
-### PHASE E — Communication Hub
+### PHASE E — Communication Hub (partially complete)
 
-#### E1 — Announcements Page `/communication/announcements` 🔴
+#### E1 — Announcements Page `/communication/announcements` ✅ DONE
 
-**Why high priority**: This is how the school communicates with everyone. It feeds the notification centre and in-app bell.
+Create, broadcast, schedule announcements. Fully operational.
 
-**What to build**:
-- Create announcement (title, body, audience: all/teachers/parents/students/class)
-- Schedule for later
-- Announcement list with read/unread indicators
-- Pin important announcements
-- Bulk send as email/SMS button
+#### E2 — Messages Page `/communication/messages` 🔴 V2-gated (backend not built)
+#### E3 — Email Manager `/communication/email` 🔴 V2-gated (backend exists, frontend not built)
 
 ---
 
-#### E2 — Messages Page `/communication/messages` 🔴
+### PHASE F — Academic Completions ✅ COMPLETE
 
-**What to build**:
-- Direct messaging between roles (e.g. parent → teacher, teacher → principal)
-- Conversation thread view
-- Unread count badge
-- File attachment support (PDF, image)
-- Real-time or polling-based refresh
+#### F1 — Report Cards Page `/academic/report-cards` ✅ DONE
 
----
+SL booklet-style PDF report card generation with affective domain (12 traits), psychomotor domain (12 skills), automated attendance, teacher comments, and promotion status.
 
-#### E3 — Email Manager `/communication/email` 🔴
+#### F2 — Promotions Page `/academic/promotions` ✅ DONE
 
-**What to build**:
-- Compose email to individual/group/class/all
-- Use saved templates from email template library
-- Sent email history with delivery status
-- Preview email before sending
-- Schedule future emails
+End-of-year promotion workflow with promote/repeat/graduate, bulk promote, criteria setting.
 
 ---
 
-### PHASE F — Academic Completions
+### PHASE G — Reports & Analytics 🔴 V2-gated (frontend not built, backend exists)
 
-#### F1 — Report Cards Page `/academic/report-cards` 🔴
+#### G1 — Academic Reports `/reports/academic` 🔴 (backend: `reportingService.ts` ✅)
+#### G2 — Financial Reports `/reports/financial` 🔴 (backend: finance analytics ✅)
+#### G3 — Attendance Reports `/reports/attendance` 🔴 (backend: attendance analytics ✅)
+#### G4 — Enrollment Reports `/reports/enrollment` 🔴 (backend: admissions stats ✅)
+#### G5 — Discipline Reports `/reports/discipline` 🔴 (backend: `disciplineAnalyticsService.ts` ✅)
 
-**Why after results exist**: Report cards pull from the results and grades tables. Those are already built.
-
-**What to build**:
-- Generate report card per student per term
-- Show all subjects, grades, attendance, conduct
-- Teacher/class teacher comments section
-- Download as PDF
-- Bulk generate for entire class
-- Email to parents button
+All 5 report pages render `<ComingSoonPage />` and are V2-gated. The backend services exist — only the frontend pages need to be built.
 
 ---
 
-#### F2 — Promotions Page `/academic/promotions` 🔴
+### PHASE H — Identity Extras 🔴 V2-gated (frontend not built, backend exists)
 
-**What to build**:
-- End-of-year promotion workflow
-- Set promotion criteria (min GPA, attendance %)
-- Review each student: Promote / Repeat / Graduate
-- Bulk promote entire class
-- Generate promotion letter PDF
+#### H1 — QR Codes Page `/identity/qr-codes` 🔴 (backend: `idCardService.ts` QR logic ✅, `VerifyIdPage.tsx` live ✅)
+
+Batch QR code management page needs building. QR verification is already live at `/verify-id`.
 
 ---
 
-### PHASE G — Reports & Analytics
+### PHASE I — Platform Management ✅ COMPLETE
 
-> These pages aggregate data from all other modules. Build last.
-
-#### G1 — Academic Reports `/reports/academic` 🔴
-
-**What to build**:
-- Grade distribution by class/subject/term
-- Top performers table
-- Failing students list with intervention flag
-- Subject pass rate charts
-- Export CSV/PDF
+#### I1 — Tenants Page `/platform/tenants` ✅ DONE
+#### I2 — Subscriptions Page `/platform/subscriptions` ✅ DONE
+#### I3 — Platform Analytics `/platform/analytics` ✅ DONE
+Plus: Platform Communications ✅, Platform Support ✅, Tenant Detail ✅
 
 ---
 
-#### G2 — Financial Reports `/reports/financial` 🔴
+### PHASE J — Email Templates (Pillar 1 from FEATURE_ROADMAP.md)
 
-**What to build**:
-- Revenue vs target by month
-- Fee collection rate by class
-- Outstanding debt list
-- Expense breakdown pie chart
-- Payment method breakdown
-- Export CSV/PDF
+**Status**: 8 HTML templates already exist in `backend/src/services/email-templates/`. The full template library (60+ templates per the roadmap) and the email composer frontend (`/communication/email`) are V2 scope.
+
+### PHASE K — AI Dashboard Analysis (Pillar 2 from FEATURE_ROADMAP.md)
+
+**Status**: Not started. V2 scope.
 
 ---
 
-#### G3 — Attendance Reports `/reports/attendance` 🔴
-
-**What to build**:
-- Attendance rate by class, week, month
-- Chronic absentee list (< 75%)
-- Daily attendance heatmap
-- Trends over time
-- Export CSV/PDF
-
----
-
-#### G4 — Enrollment Reports `/reports/enrollment` 🔴
-
-**What to build**:
-- Applications per term/year
-- Approval/rejection rates
-- Class fill rates and capacity
-- Student retention rate
-- Export CSV/PDF
-
----
-
-#### G5 — Discipline Reports `/reports/discipline` 🔴
-
-**What to build**:
-- Incidents by type over time
-- Top repeated offenders (anonymized option)
-- Detention/suspension counts
-- Resolution rates
-- Export CSV/PDF
-
----
-
-### PHASE H — Identity Extras
-
-#### H1 — QR Codes Page `/identity/qr-codes` 🔴
-
-**What to build**:
-- Generate QR codes for student/staff IDs
-- Batch generate for entire class
-- QR scanner integration for attendance
-- Download QR sheet PDF
-
----
-
-### PHASE I — Platform Management (Super Admin Only)
-
-#### I1 — Tenants Page `/platform/tenants` 🔴
-
-**What to build**:
-- List all school tenants with status
-- Tenant detail view (users, storage, last active)
-- Create new tenant (onboard a new school)
-- Suspend/reactivate tenant
-- Tenant-specific settings override
-
----
-
-#### I2 — Subscriptions Page `/platform/subscriptions` 🔴
-
-**What to build**:
-- View all active subscriptions
-- Billing periods and renewal dates
-- Upgrade/downgrade plan
-- Invoice generation for subscription billing
-- Payment history per tenant
-
----
-
-#### I3 — Platform Analytics `/platform/analytics` 🔴
-
-**What to build**:
-- Total active schools, users, students across platform
-- Revenue dashboard (MRR, ARR, churn)
-- Feature usage heatmap
-- System performance metrics
-- Growth trends
-
----
-
-## Complete Build Order Summary
-
+## Complete Build Order Summary (Updated Sep 2026)
 
 ```
-PHASE 0  →  Settings Page (School Setup — ALL 8 config tabs)
+PHASE 0  →  Settings Page                    ✅ DONE
     ↓
-PHASE A  →  Profile Page
+PHASE A  →  Profile Page                     🔴 NEEDED (V1 gap)
     ↓
-PHASE B  →  Fees, Invoices, Payments, Expenses, Payroll, Scholarships
+PHASE B  →  Fees, Invoices, Payments          ✅ DONE
+            Expenses, Payroll, Scholarships   🔴 V2-gated
     ↓
-PHASE C  →  Wire ALL dashboards to live data (Admin, Accountant, Admissions, Teacher, Student, Parent, Super Admin)
+PHASE C  →  Wire ALL dashboards to live data  ✅ DONE
     ↓
-PHASE D  →  Staff Members, Staff Leave, Staff Performance
+PHASE D  →  Staff Members, Leave, Performance 🔴 V2-gated
     ↓
-PHASE E  →  Announcements, Messages, Email Manager
+PHASE E  →  Announcements                     ✅ DONE
+            Messages, Email Manager          🔴 V2-gated
     ↓
-PHASE F  →  Report Cards, Promotions
+PHASE F  →  Report Cards, Promotions         ✅ DONE
     ↓
-PHASE G  →  Academic Reports, Financial Reports, Attendance Reports, Enrollment Reports, Discipline Reports
+PHASE G  →  Academic, Financial, Attendance,  🔴 V2-gated
+            Enrollment, Discipline Reports      (backend ready, frontend needed)
     ↓
-PHASE H  →  QR Codes
+PHASE H  →  QR Codes                         🔴 V2-gated
+                                              (backend ready, frontend needed)
     ↓
-PHASE I  →  Tenants, Subscriptions, Platform Analytics
+PHASE I  →  Tenants, Subscriptions,          ✅ DONE
+            Platform Analytics, Comms, Support
     ↓
-PHASE J  →  Email Templates (Pillar 1 from FEATURE_ROADMAP.md)
+PHASE J  →  Email Templates (full library)   V2 scope
     ↓
-PHASE K  →  AI Dashboard Analysis (Pillar 2 from FEATURE_ROADMAP.md)
+PHASE K  →  AI Dashboard Analysis            V2 scope
 ```
 
 ---
 
-## Total Page Count
+## Total Page Count (Updated Sep 2026)
 
 | Status | Count |
 |---|---|
-| ✅ Fully done | 26 pages |
-| 🟡 Built but mock data | 7 dashboards |
-| 🔴 Coming Soon (to build) | 21 pages |
-| **Total** | **54 pages** |
+| ✅ Fully done & live | 70+ pages |
+| 🔴 Coming Soon — V2 scope (backend exists, frontend needed) | 7 pages |
+| 🔴 Coming Soon — V2 scope (full stack needed) | 6 pages |
+| 🔴 Coming Soon — V1 gap (needs building now) | 2 pages |
+| **Total routes** | **85+** |
+
+### V1 Remaining Work (2 items)
+
+| Page | Route | Effort | Backend Ready? |
+|------|-------|--------|-----------------|
+| Profile | `/profile` | ~2 hrs | ✅ Yes |
+| Legacy students redirect | `/students` | ~1 min | N/A |
 
 ### Settings Page Tabs (Phase 0)
 
-| Tab | Critical Before |
-|---|---|
-| School Information | ID cards, report cards, emails |
-| Academic Configuration | All academic modules |
-| **ID Number Format** | Every student/teacher ID |
-| Grading Scale | Results, report cards, at-risk alerts |
-| Attendance Rules | Attendance page, dashboard warnings |
-| Financial Configuration | ALL finance pages |
-| Communications | All emails and SMS |
-| Branding | ID cards, email headers |
+| Tab | Critical Before | Status |
+|---|---|---|
+| School Information | ID cards, report cards, emails | ✅ |
+| Academic Configuration | All academic modules | ✅ |
+| **ID Number Format** | Every student/teacher ID | ✅ |
+| Grading Scale | Results, report cards, at-risk alerts | ✅ |
+| Attendance Rules | Attendance page, dashboard warnings | ✅ |
+| Financial Configuration | ALL finance pages | ✅ |
+| Communications | All emails | ✅ |
+| Branding | ID cards, email headers | ✅ |
 
-> **Rule**: A school cannot fully use any other feature until Phase 0 is complete.
+> **Rule**: A school cannot fully use any other feature until Phase 0 is complete. ✅ Phase 0 is complete.
 

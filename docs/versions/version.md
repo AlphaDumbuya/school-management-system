@@ -1,8 +1,8 @@
 # School Management System — Versioning & Release Roadmap
 
-> **Document Status**: Active  
-> **Current Focus Target**: **Version 1.0.0 (MVP Operational Release)**  
-> **Parent Location**: `docs/versions/version.md`  
+> **Document Status**: Active — Updated September 2026
+> **Current Focus**: **Version 1.0.0 — Near-Complete, in final hardening**
+> **Parent Location**: `docs/versions/version.md`
 
 ---
 
@@ -12,92 +12,151 @@ The primary objective is to make **Version 1.0.0 fully complete, battle-tested, 
 
 To maintain a flawless user experience:
 1. **Zero Half-Baked Features**: Unfinished or deferred features must **NOT** appear in v1.0.0.
-2. **Strict UI Navigation Filtering**: All v2.0.0 menu options, links, and pages are strictly hidden/restricted from the v1.0.0 frontend interface ([Sidebar.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/components/layout/Sidebar.tsx), [routes.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/router/routes.tsx)).
+2. **Strict UI Navigation Filtering**: All v2.0.0 menu options, links, and pages are strictly hidden/restricted from the v1.0.0 frontend interface via `V2_ENABLED = false` in [routes.tsx](../../frontend/src/router/routes.tsx) and conditional filtering in [Sidebar.tsx](../../frontend/src/components/layout/Sidebar.tsx).
+3. **V2 Route Gate**: The `V2Route` wrapper component in `routes.tsx` automatically redirects any V2-gated URL to `/dashboard` when `V2_ENABLED` is `false`, ensuring users never see an incomplete page even if they type the URL directly.
 
 ---
 
 ## 📦 Version 1.0.0 (MVP Core Release Scope)
 
-Version 1.0.0 focuses on everyday school operations, student enrollment, attendance tracking, classroom management, and basic identity/events management.
+Version 1.0.0 focuses on everyday school operations, student enrollment, attendance tracking, classroom management, financial management, identity/events management, and in-app communication.
+
+The V1 sidebar navigation is organized into the following modules:
+
+### V1 Sidebar Module Map
+
+| Module | Pages |
+|--------|-------|
+| **Dashboard** | Role-based dashboard (Admin, Teacher, Student, Parent, Accountant, Admissions, Super Admin) |
+| **Academic** | Classes & Streams, Subjects, Timetables, Assignments, Exam Timetable, Results & Grades, Report Cards, Promotions |
+| **Students** | Student Directory, Admissions, Student Profiles, Attendance, Discipline & Conduct |
+| **Staff** | Teachers |
+| **Finance** | Fee Structures, Invoices, Payments & Receipts |
+| **Communication** | Announcements, Support |
+| **Identity** | ID Cards, Card Templates |
+| **Events** | School Events, Calendar, My Events, Event Analytics |
+| **Footer** | Guide & Help, Settings |
+
+---
 
 ### 1. Multi-Role Authentication & Access Control (RBAC)
 - Multi-tenant architecture (School Isolation).
 - Role-based access for SuperAdmin, Principal, Teacher, Student, Parent, Accountant, and Admissions Officer.
-- Secure JWT-based session management and protected routes ([ProtectedRoute.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/router/ProtectedRoute.tsx)).
+- Secure JWT-based session management and protected routes ([ProtectedRoute.tsx](../../frontend/src/router/ProtectedRoute.tsx)).
+- 2FA / Passkeys ([TwoFactorSettings.tsx](../../frontend/src/components/settings/TwoFactorSettings.tsx)).
+- School Verification ([VerificationPage.tsx](../../frontend/src/pages/VerificationPage.tsx)).
+- Account Restoration for suspended schools ([RestoreAccessPage.tsx](../../frontend/src/pages/RestoreAccessPage.tsx)).
 
-### 2. Student Administration
-- **Student Directory**: Search, filter, and view registered students ([StudentDirectoryPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentDirectoryPage.tsx)).
-- **Admissions Workflow**: Application submission, review, approval, and student onboarding ([AdmissionsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/AdmissionsPage.tsx)).
-- **Student Profiles**: Detailed bio, academic placement, guardian details, portal credentials, and full Academic Transcript & Results history ([StudentProfilesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentProfilesPage.tsx)).
-- **Daily Attendance**: Mark student daily attendance and view history ([AttendancePage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/AttendancePage.tsx)).
+### 2. Academic Operations
+- **Classes & Streams**: Grade management, section allocation ([ClassesPage.tsx](../../frontend/src/pages/academic/ClassesPage.tsx)).
+- **Subjects**: Subject allocation per class ([SubjectsPage.tsx](../../frontend/src/pages/academic/SubjectsPage.tsx)).
+- **Timetables**: Weekly class schedule setup with conflict detection ([TimetablesPage.tsx](../../frontend/src/pages/academic/TimetablesPage.tsx)).
+- **Assignments**: Homework creation, instructions, and student assignment tracking ([AssignmentsPage.tsx](../../frontend/src/pages/academic/AssignmentsPage.tsx)).
+- **Exam Timetable**: Exam schedule setup and venue allocation ([ExamTimetablePage.tsx](../../frontend/src/pages/academic/ExamTimetablePage.tsx)).
+- **Results & Grades**: Full grade entry (single + bulk), automated score calculation, SL grading scale, KPI analytics, transcript management ([ResultsPage.tsx](../../frontend/src/pages/academic/ResultsPage.tsx)).
+- **Report Cards**: Sierra Leone booklet-style PDF with affective domain (12 traits), psychomotor domain (12 skills), attendance, teacher comments, promotion status ([ReportCardsPage.tsx](../../frontend/src/pages/academic/ReportCardsPage.tsx)).
+- **Promotions**: End-of-year promote/repeat/graduate workflow ([PromotionsPage.tsx](../../frontend/src/pages/academic/PromotionsPage.tsx)).
 
-### 3. Academic Operations Core
-- **Classes & Streams**: Grade management, section allocation ([ClassesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/ClassesPage.tsx)).
-- **Subject Management**: Subject allocation per class ([SubjectsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/SubjectsPage.tsx)).
-- **Timetable Scheduling**: Weekly class schedule setup ([TimetablesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/TimetablesPage.tsx)).
-- **Assignments**: Homework creation, instructions, and student assignment tracking ([AssignmentsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/AssignmentsPage.tsx)).
-- **Examinations Schedule**: Exam timetable setup and venue allocation ([ExaminationsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/ExaminationsPage.tsx)).
-- **Result & Gradebook Management**: Full grade entry, automated score calculation, results tracking, and transcript management ([ResultsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/ResultsPage.tsx), [resultsService.ts](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/services/resultsService.ts)):
-  - **Standard Assessment Breakdown**: Continuous Assessment (CA 30%) + Terminal Exam (70%) = Total Score (100%).
-  - **Grade Entry Workflows**: Single student grade entry and bulk class-wide grade recording via dedicated modal ([GradeEntryModal.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/components/GradeEntryModal.tsx)).
-  - **Automated Grace School Grading Scale & Remarks**: Instant letter grade allocation and qualitative evaluation based on standard Sierra Leone percentage ranges (Failing marks below 50% displayed in **RED**):
-    - **A (85–100%)**: *Excellent*
-    - **B (75–84%)**: *Very Good*
-    - **C (60–74%)**: *Good*
-    - **D (50–59%)**: *Satisfying* (Passing Threshold)
-    - **F (Below 50%)**: *Unsatisfying* (**Failing Mark — Rendered in RED**)
-  - **Customizable Grading System**: Flexible grading scale & assessment weights configurable in school settings for primary and secondary levels.
-  - **Terminal Booklet PDF Report Cards & Student Promotions**: Printable Sierra Leone fold booklet PDF generator ([ReportCardsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/academic/ReportCardsPage.tsx)), Affective Domain (12 traits) & Psychomotor Domain (12 skills) 1-5 rating grids, automated term attendance calculation, teacher guidance comments, and end-of-year promotion status (`Promoted To` / `To Repeat`).
-  - **Results Directory & KPI Analytics**: Real-time filtering by Academic Year, Term (First, Second, Third Term), Class, and Subject with live KPIs (Total Results, Pass Count, Average Score %, Highest Score).
-  - **Student & Parent Transcript Integration**: 360° Academic Transcript tab in student profiles ([StudentProfilesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/students/StudentProfilesPage.tsx)) and portal dashboards displaying student grades and historical performance.
+### 3. Student Management
+- **Student Directory**: Search, filter, and view registered students ([StudentDirectoryPage.tsx](../../frontend/src/pages/students/StudentDirectoryPage.tsx)).
+- **Admissions**: Application submission, review, approval, and student onboarding with auto-provisioned portal credentials for student + parent ([AdmissionsPage.tsx](../../frontend/src/pages/students/AdmissionsPage.tsx)).
+- **Student Profiles**: Detailed bio, academic placement, guardian details, portal credentials, transcript, and results history ([StudentProfilesPage.tsx](../../frontend/src/pages/students/StudentProfilesPage.tsx)).
+- **Attendance**: Daily attendance marking (offline-capable for teachers), bulk mark, analytics, at-risk flagging ([AttendancePage.tsx](../../frontend/src/pages/students/AttendancePage.tsx)).
+- **Discipline & Conduct**: Behavioural incident logging, infractions, detention scheduling, conduct reports, appeal workflows ([DisciplinePage.tsx](../../frontend/src/pages/discipline/DisciplinePage.tsx)).
 
-### 4. Staff Directory
-- **Teacher Profiles**: Teacher registration, subject assignments, and department categorization ([TeachersPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/staff/TeachersPage.tsx)).
+### 4. Staff Management
+- **Teachers**: Teacher registration, subject assignments, department categorization, promotion modal ([TeachersPage.tsx](../../frontend/src/pages/staff/TeachersPage.tsx)).
 
-### 5. Identity & Events
-- **ID Card Management**: Student and staff ID card template design & batch printing ([IdCardsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/identity/IdCardsPage.tsx)).
-- **School Calendar & Events**: School event publishing, event details, and calendar view ([EventsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/events/EventsPage.tsx)).
+### 5. Financial Management (Monime)
+Covers the full fee lifecycle plus online payments via **Monime** (Sierra Leone mobile money, card, bank, and digital wallet in one checkout).
+- **Fee Structures**: Configure fees by type/class/term; bill students ([FeesPage.tsx](../../frontend/src/pages/finance/FeesPage.tsx)).
+- **Invoices**: Generate invoices, track paid/partial/overdue balances, issue receipts ([InvoicesPage.tsx](../../frontend/src/pages/finance/InvoicesPage.tsx)).
+- **Payments & Receipts**: Record payments, Monime hosted checkout, webhooks reconcile payment status automatically ([PaymentsPage.tsx](../../frontend/src/pages/finance/PaymentsPage.tsx), [PaymentReturnPage.tsx](../../frontend/src/pages/finance/PaymentReturnPage.tsx)).
+- Portal billing tabs: Student & parent dashboards show outstanding balance, invoices, and a one-tap pay button.
 
-### 5.1 Financial & Fee Management (NOW IN v1.0.0)
-Promoted from v2.0.0 into the v1.0.0 core release. Covers the full fee lifecycle plus online payments via **Monime** (Sierra Leone mobile money, card, bank, and digital wallet in one checkout).
-- **Fee Structures & Billing**: Configure fees by type/class/term; bill students ([`/finance/fees`]).
-- **Student Invoicing & Receipts**: Generate invoices, track paid/partial/overdue balances, issue receipts ([`/finance/invoices`]).
-- **Online Payments (Monime)**: Hosted-checkout payments accepting mobile money, card, bank, and digital wallet. A **"Pay Fees"** action in the student and parent portals initiates a Monime checkout session; webhooks reconcile payment status and record the payment automatically ([`/finance/payments`]).
-- **Payments Ledger & Collection Analytics**: Recorded payments, collection rate, outstanding/overdue tracking surfaced on the admin dashboard and finance pages.
-- **Portal Billing Tabs**: Student & parent dashboards show outstanding balance, invoices, and a one-tap pay button.
+### 6. Communication
+- **Announcements**: Create and broadcast announcements to all/teachers/parents/students/class, with scheduling ([AnnouncementsPage.tsx](../../frontend/src/pages/communication/AnnouncementsPage.tsx)).
+- **Support**: Browse help topics, submit support tickets; super admin can triage across tenants ([SupportPage.tsx](../../frontend/src/pages/SupportPage.tsx), [SupportTopicPage.tsx](../../frontend/src/pages/SupportTopicPage.tsx)).
 
-### 6. SuperAdmin & Platform Management
-- Tenant creation, subscription plan management, and platform configuration ([PlatformTenantsPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/PlatformTenantsPage.tsx)).
+### 7. Identity Management
+- **ID Cards**: Student and staff ID card generation with batch printing and PDF export ([IdCardsPage.tsx](../../frontend/src/pages/identity/IdCardsPage.tsx)).
+- **Card Templates**: Visual template designer with branding, photo, QR code ([TemplatesPage.tsx](../../frontend/src/pages/identity/TemplatesPage.tsx)).
 
-### 7. Public Marketing & Self-Service Onboarding Alignment
-To ensure market traction while maintaining complete honesty with school administrators:
-- **Self-Service Onboarding ([RegisterPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/RegisterPage.tsx))**: School principals can self-register their school workspace via `/register` without SuperAdmin manual intervention.
+### 8. Events Management
+- **School Events**: Event listing, creation, registration ([EventsPage.tsx](../../frontend/src/pages/events/EventsPage.tsx)).
+- **Calendar**: Calendar view of all school events ([CalendarPage.tsx](../../frontend/src/pages/events/CalendarPage.tsx)).
+- **My Events**: User's registered events ([MyEventsPage.tsx](../../frontend/src/pages/events/MyEventsPage.tsx)).
+- **Event Analytics**: Event insights, attendance, registration stats ([EventAnalyticsPage.tsx](../../frontend/src/pages/events/EventAnalyticsPage.tsx)).
+
+### 9. Settings (School Configuration)
+
+The Settings page is the configuration backbone of the entire app. It is organized into the following tabs:
+
+| Tab | What It Controls |
+|-----|-----------------|
+| **School Information** | School name, logo, address, phone, email, registration number, principal name |
+| **Academic Configuration** | Academic year, terms per year, term start/end dates, class naming convention, max class size |
+| **Grading Scale** | Grade boundaries (A/B/C/D/F), GPA weights, passing threshold, display format |
+| **Attendance Rules** | Min attendance % for warning/critical alert, late arrival cutoff, attendance unit (days/periods) |
+| **Financial Configuration** | Currency code & symbol, display format, late fee policy, payment methods, invoice due date |
+| **Communications** | School email, email footer text, notification defaults per event type |
+| **Branding** | Primary color, secondary color, school letterhead preview |
+| **Security (2FA)** | Two-factor authentication enrollment, passkey management |
+
+### 10. SuperAdmin & Platform Management
+- **Tenant Management**: Create, suspend, reactivate schools ([PlatformTenantsPage.tsx](../../frontend/src/pages/PlatformTenantsPage.tsx), [TenantDetailPage.tsx](../../frontend/src/pages/TenantDetailPage.tsx)).
+- **Subscriptions**: Plan management and billing ([PlatformSubscriptionsPage.tsx](../../frontend/src/pages/PlatformSubscriptionsPage.tsx)).
+- **Platform Analytics**: Growth, revenue, usage metrics ([PlatformAnalyticsPage.tsx](../../frontend/src/pages/PlatformAnalyticsPage.tsx)).
+- **Communications**: Newsletter, broadcast to all tenants ([PlatformCommunicationPage.tsx](../../frontend/src/pages/PlatformCommunicationPage.tsx)).
+- **Support Triage**: Support ticket triage across all tenants ([PlatformSupportPage.tsx](../../frontend/src/pages/PlatformSupportPage.tsx)).
+
+### 11. Offline-First PWA & Mobile
+- **Progressive Web App**: Full offline support for teachers — mark attendance, view classes, sync when online ([SyncIssuesPage.tsx](../../frontend/src/pages/offline/SyncIssuesPage.tsx), 12 offline component files).
+- **Capacitor Android Build**: Native Android app shell ([frontend/android/](../../frontend/android/)).
+
+### 12. Public Marketing & Self-Service Onboarding
+- **Self-Service Onboarding** ([RegisterPage.tsx](../../frontend/src/pages/RegisterPage.tsx)): School principals can self-register their school workspace via `/register`.
 - **Plan Hierarchy & Capacity Limits**:
-  - **Freetong (v1.0 Free Core)**: NLe 0 / Free Forever — Up to 250 Students & 20 Staff. Includes all operational v1.0.0 core features (Result & Gradebook Management, PDF Report Cards, Promotions, and Fee & Payment Management with Monime online payments).
+  - **Freetong (v1.0 Free Core)**: NLe 0 / Free Forever — Up to 250 Students & 20 Staff. Includes all operational v1.0.0 core features.
   - **Combra (v2.0 Pro)**: NLe 500 / mo — Up to 1,000 Students & 75 Staff. Unlocks Payroll, Expense Tracking, and Staff HR & Leave.
-  - **Bintumani (v3.0 Enterprise)**: NLe 1,200 / mo — Unlimited Students & Staff. Unlocks Bulk SMS, WhatsApp Business API, and Dedicated Support.
-- **Marketing Page Categorization ([FeaturesPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/FeaturesPage.tsx), [PricingPage.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/pages/PricingPage.tsx))**:
-  - Section 1 showcases **v1.0 Operational Modules (100% Free)**.
-  - Section 2 showcases **Upcoming Version Roadmap** items clearly labeled **"Coming in v2"** or **"Coming in v3"**.
+  - **Bintumani (v3.0 Enterprise)**: NLe 1,200 / mo — Unlimited Students & Staff. Unlocks Dedicated Support and SLA.
+- **Marketing Pages**: [FeaturesPage.tsx](../../frontend/src/pages/FeaturesPage.tsx), [PricingPage.tsx](../../frontend/src/pages/PricingPage.tsx), [LandingPage.tsx](../../frontend/src/pages/LandingPage.tsx).
 
 ---
 
-## 🚫 Excluded from v1.0.0 (Deferred to Version 2.0.0)
+## 🚫 Deferred from v1.0.0 (V2.0.0 Scope)
 
-Per user direction, the following modules are explicitly removed from v1.0.0 and moved to v2.0.0:
+The following modules are **built in code** but **V2-gated** via `V2_ENABLED = false` in `routes.tsx`. They are intentionally hidden from v1.0.0 users to ensure a clean, polished experience. Setting `V2_ENABLED = true` will immediately expose them.
 
-1. ❌ **SMS & WhatsApp Messaging Suite**:
-   - Deferred to v2.0.0 (`/communication/sms`, `SMSWhatsAppDashboard.tsx`). All SMS broadcasting, Twilio/WhatsApp gateways, and automated message triggers move to v2.0.0.
-2. ❌ **Terminal PDF Report Cards & Automated Promotions**:
-   - Deferred to v2.0.0 (`/academic/report-cards`, `/academic/promotions`). Grade entry, calculation, and transcript viewing are fully included in v1.0.0 (`/academic/results`), but batch terminal PDF report card generation (supporting the **Sierra Leone Booklet-Style Standard** — see [REPORT_CARD_BOOKLET_SPECIFICATION.md](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/docs/admin-guides/REPORT_CARD_BOOKLET_SPECIFICATION.md)) and automated student class advancement move to v2.0.0.
-3. ⚠️ **Financial & Fee Management — PROMOTED TO v1.0.0**:
-   - Fee structures, student invoicing, online payments (via **Monime**), and the payments ledger are now part of v1.0.0 (see §5.1). Only **payroll** and standalone **expense tracking** remain deferred to v2.0.0.
-4. ❌ **Staff HR & Performance**:
-   - Staff leave applications and performance appraisal tracking (`/staff/leave`, `/staff/performance`) deferred to v2.0.0.
-5. ❌ **Internal In-App Messaging & Email**:
-   - Direct messaging, email broadcasts, and internal chat system (`/communication/messages`, `/communication/email`) deferred to v2.0.0.
-6. ❌ **Advanced Reports & Analytics**:
-   - Attendance trend reports and financial analytics (`/reports/*`) deferred to v2.0.0.
+> **Note**: SMS & WhatsApp messaging has been **completely removed** from the product. In-app communication (Announcements + Support tickets) replaces this functionality in V1.
+
+1. ❌ **Staff HR (Members, Leave, Performance)** — **Not built**:
+   - `/staff/members`, `/staff/leave`, `/staff/performance` render `<ComingSoonPage />`.
+   - Only `/staff/teachers` (Teacher Profiles) is part of v1.0.0.
+   - Backend services for staff leave/performance do not yet exist.
+
+2. ❌ **Payroll & Expense Tracking** — **Not built**:
+   - `/finance/expenses`, `/finance/payroll`, `/finance/scholarships` render `<ComingSoonPage />`.
+   - Fee management, invoicing, and payments are in v1.0.0 (see §5.1). Only payroll and standalone expense tracking remain deferred.
+
+3. ❌ **Internal In-App Messaging & Email Composer** — **Not built**:
+   - `/communication/messages` (direct messaging) renders `<ComingSoonPage />`.
+   - `/communication/email` (email broadcast composer) renders `<ComingSoonPage />`.
+   - Note: The email *sending infrastructure* (Brevo) and 8 HTML templates exist in the backend — only the frontend composer UI is missing.
+   - Note: School-wide communication is handled via Announcements (V1) and Support tickets (V1).
+
+4. ❌ **Advanced Reports & Analytics** — **Frontend not built (backend exists)**:
+   - `/reports/academic`, `/reports/financial`, `/reports/attendance`, `/reports/enrollment`, `/reports/discipline` all render `<ComingSoonPage />`.
+   - Backend services exist: `reportingService.ts`, `analyticsService.ts`, `disciplineAnalyticsService.ts`.
+   - These need frontend pages to surface the data.
+
+5. ❌ **QR Code Batch Management** — **Frontend not built (backend exists)**:
+   - `/identity/qr-codes` renders `<ComingSoonPage />`.
+   - QR verification backend exists (`VerifyIdPage.tsx` is live). Only the batch management UI is missing.
+
+6. ❌ **User Profile Page** — **Not built**:
+   - `/profile` renders `<ComingSoonPage />`.
+   - Backend endpoint `PATCH /api/v1/users/:id` exists. Needs a simple frontend form.
 
 ---
 
@@ -105,57 +164,77 @@ Per user direction, the following modules are explicitly removed from v1.0.0 and
 
 To guarantee that v1.0.0 users do **NOT** see broken, empty, or unreleased pages:
 
-1. **Sidebar Navigation Filtering ([Sidebar.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/components/layout/Sidebar.tsx))**:
-   - Navigation links corresponding to remaining v2.0.0 features (**SMS & WhatsApp**, **Staff Leave/HR**, **Payroll/Expenses**, **In-App Messages**, **Advanced Reports**) are conditionally hidden in v1.0.0 builds using feature flag gating or list filtering.
-   - **Results & Grades (`/academic/results`)**, **Report Cards (`/academic/report-cards`)**, **Promotions (`/academic/promotions`)**, and **Finance (`/finance/fees`, `/finance/invoices`, `/finance/payments`)** are tagged as `v1` and fully accessible in v1.0.0 builds.
+1. **Sidebar Navigation Filtering ([Sidebar.tsx](../../frontend/src/components/layout/Sidebar.tsx))**:
+   - Navigation links corresponding to V2.0.0 features (**Staff Leave/HR**, **Payroll/Expenses**, **In-App Messages**, **Advanced Reports**) are conditionally hidden in v1.0.0 builds.
+   - **Results & Grades (`/academic/results`)**, **Report Cards (`/academic/report-cards`)**, **Promotions (`/academic/promotions`)**, **Finance (`/finance/fees`, `/finance/invoices`, `/finance/payments`)**, **Announcements**, **Discipline**, **Events**, **ID Cards**, and **Settings** are fully accessible in v1.0.0 builds.
 
-2. **Route Guarding ([routes.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/router/routes.tsx))**:
-   - Direct navigation attempts to v2.0.0 URLs (e.g. typing `/communication/sms`, `/academic/report-cards`, or `/finance/fees` in the address bar) will automatically redirect to `/dashboard` or show a clean, branded "Module Available in v2.0" notice.
+2. **Route Guarding ([routes.tsx](../../frontend/src/router/routes.tsx))**:
+   - The `V2Route` wrapper component checks `V2_ENABLED` (currently `false`). Direct navigation attempts to V2.0.0 URLs (e.g. typing `/finance/payroll`, `/communication/messages`, or `/reports/academic` in the address bar) will automatically redirect to `/dashboard`.
+   - Two routes (`/profile` and legacy `/students`) render `<ComingSoonPage />` directly — these need to be addressed before final release.
 
 ---
 
 ## 🏁 v1.0.0 Operational Completion Checklist
 
-Before releasing v1.0.0 to users:
+Status as of September 2026:
 
-- [ ] **Sidebar Restriction Verification**: Ensure all v2 links (SMS/WhatsApp, PDF Report Cards, Promotions, Finance, HR, Reports) are disabled/hidden in [Sidebar.tsx](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/frontend/src/components/layout/Sidebar.tsx).
-- [ ] **End-to-End Workflow Testing**:
-  - [ ] Tenant creation (SuperAdmin) -> School configuration.
-  - [ ] Student Admission -> Class Assignment -> Profile Creation.
-  - [ ] Teacher Assignment -> Timetable Creation -> Class Assignment creation.
-  - [ ] Single & Bulk Grade Entry -> Auto-grade calculation (A–F) -> Academic Transcript viewing.
-  - [ ] Daily Student Attendance Marking.
-  - [ ] ID Card Generation & PDF Export.
-- [ ] **Database & Migration Audit**: Verify backend schema migrations execute without error on production database instances.
-- [ ] **Error Handling & Production Hardening**: Confirm clean 404/403 states and disable debug trace dumps in production log outputs.
+- [x] **Sidebar Restriction Verification**: All V2 links (Staff HR, Payroll/Expenses, Messages, Reports) are disabled/hidden via `V2_ENABLED = false` and sidebar filtering. SMS & WhatsApp has been removed entirely from the sidebar.
+- [x] **Auth & RBAC**: Multi-tenant JWT auth, 7 roles, protected routes, 2FA, passkeys.
+- [x] **Student Admission → Class Assignment → Profile Creation**: Full workflow operational.
+- [x] **Teacher Assignment → Timetable Creation → Class Assignment**: Full workflow operational.
+- [x] **Single & Bulk Grade Entry → Auto-grade calculation (A–F) → Academic Transcript**: Operational with Sierra Leone grading scale.
+- [x] **Daily Student Attendance Marking**: Operational with bulk mark and analytics.
+- [x] **ID Card Generation & PDF Export**: Operational with template designer and batch printing.
+- [x] **PDF Report Cards (SL Booklet Style)**: Operational — affective/psychomotor domains, attendance, comments.
+- [x] **Student Promotions**: Operational — promote/repeat/graduate workflow.
+- [x] **Fee & Payment Management (Monime)**: Operational — fees, invoices, payments, hosted checkout, webhooks.
+- [x] **Platform Management (Super Admin)**: Operational — tenants, subscriptions, analytics, communications, support.
+- [x] **Settings Page**: Operational — 8 config tabs + 2FA + storage + offline.
+- [x] **Discipline Module**: Operational — infractions, detention, appeals, conduct reports.
+- [x] **Events Module**: Operational — events, calendar, my-events, analytics.
+- [x] **Announcements**: Operational — create, broadcast, schedule.
+- [x] **Offline-First PWA**: Operational — teacher offline attendance + sync.
+- [x] **Support System**: Operational — help topics + ticket system.
+- [x] **Database & Migration Audit**: 76 migrations, all execute cleanly on production.
+- [x] **Production Deployment**: Live on Vercel (serverless) with Docker/K8s configs for self-hosting.
+- [ ] **End-to-End Workflow Testing (comprehensive)**: Manual smoke testing needed before public launch.
+- [ ] **Test Coverage Expansion**: Only 13 test files for 148 services — needs significant expansion.
+- [ ] **Build `/profile` page**: Simple user profile editor (backend endpoint exists).
+- [ ] **Fix legacy `/students` route**: Should redirect to `/students/directory` instead of Coming Soon.
+- [ ] **Wire `PageShell` tabs**: Stale TODO — `PageTabs` component exists but `PageShell` still uses inline placeholder.
 
 ---
 
 ## 🗺️ Roadmap Beyond v1.0.0
 
 For full feature specifications, data models, and architecture plans for Version 2.0.0, refer to:  
-👉 **[docs/versions/v2_roadmap.md](file:///c:/Users/alpha/Desktop/My%20Projects/school-management-system/docs/versions/v2_roadmap.md)**
+👉 **[FEATURE_ROADMAP.md](../../.kiro/specs/Roadmap/FEATURE_ROADMAP.md)** and **[PAGE_BUILD_ORDER.md](../../.kiro/specs/Page_Order/PAGE_BUILD_ORDER.md)**
 
 ```
-┌────────────────────────────────────────────────────────┐
-│                      RELEASE TIMELINE                  │
-├──────────────────────────┬─────────────────────────────┤
-│ VERSION 1.0.0 (MVP)      │ VERSION 2.0.0 (NEXT PHASE)  │
-├──────────────────────────┼─────────────────────────────┤
-│ • Auth & RBAC            │ • SMS & WhatsApp Suite      │
-│ • Student Directory      │ • PDF Report Card Generator │
-│ • Admissions Workflow    │ • Fee & Invoice Management  │
-│ • Daily Attendance       │ • Online Payment Gateway    │
-│ • Classes & Timetables   │ • Student Promotions Engine │
-│ • Assignments & Exam Sched│ • Staff Leave & Performance │
-│ • Result & Gradebook Mgmt│ • Deep Analytics & Reports  │
-│ • PDF Report Cards       │ • Payroll & Expense Tracking│
-│ • Student Promotions     │ • Mobile App API Extensions │
-│ • Fee & Payment Mgmt     │                             │
-│   (Monime: MoMo/card/    │                             │
-│    bank/wallet)          │                             │
-│ • Teacher Directory      │                             │
-│ • ID Cards & Events      │                             │
-│ • Platform & Tenants     │                             │
-└──────────────────────────┴─────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                      RELEASE TIMELINE (Updated Sep 2026)         │
+├──────────────────────────────────────┬───────────────────────────┤
+│ VERSION 1.0.0 (MVP) — ~98% COMPLETE │ VERSION 2.0.0 (NEXT)      │
+├──────────────────────────────────────┼───────────────────────────┤
+│ ✅ Auth & RBAC + 2FA + Passkeys     │ 🔲 Staff HR (Members,      │
+│ ✅ Dashboard (7 role-based)          │      Leave, Performance)  │
+│ ✅ Academic (Classes, Subjects,     │ 🔲 Payroll & Expenses      │
+│    Timetables, Assignments, Exams,  │ 🔲 Scholarships             │
+│    Results, Report Cards, Promotions)│ 🔲 In-App Messaging        │
+│ ✅ Students (Directory, Admissions, │ 🔲 Email Broadcast Composer │
+│    Profiles, Attendance, Discipline) │ 🔲 Advanced Reports (5)    │
+│ ✅ Staff (Teachers)                 │ 🔲 QR Code Batch Manager   │
+│ ✅ Finance (Fees, Invoices,         │ 🔲 User Profile Page       │
+│    Payments — Monime)               │ 🔲 AI Dashboard Analysis   │
+│ ✅ Communication (Announcements,    │ 🔲 Email Template Library  │
+│    Support)                         │                           │
+│ ✅ Identity (ID Cards, Templates)  │                           │
+│ ✅ Events (Events, Calendar,         │                           │
+│    My Events, Analytics)            │                           │
+│ ✅ Settings (8 config tabs)         │                           │
+│ ✅ Platform Management (Super Admin) │                           │
+│ ✅ School Verification & Restore    │                           │
+│ ✅ Offline-First PWA + Android      │                           │
+└──────────────────────────────────────┴───────────────────────────┘
+```
 ```

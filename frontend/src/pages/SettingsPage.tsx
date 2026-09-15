@@ -23,6 +23,8 @@ import {
   EyeOff,
   ShieldCheck,
   HardDrive,
+  Image as ImageIcon,
+  Droplet,
 } from 'lucide-react';
 import useAuthStore from '@store/authStore';
 import schoolConfigService, { SchoolInfo, GradeScale, BillingInvoice, SubscriptionDetails } from '../services/schoolConfigService';
@@ -34,6 +36,8 @@ import { StorageSettings } from '@components/settings/StorageSettings';
 import { OfflineStorageSettings } from '@components/offline/OfflineStorageSettings';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { BookletContent } from './academic/components/BookletContent';
+import type { ReportCard as ReportCardType } from '../services/reportCardService';
 
 export const SettingsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -459,6 +463,7 @@ export const SettingsPage: React.FC = () => {
     { id: 'comms', label: 'Communications', icon: <Mail size={18} />, adminOnly: true },
     { id: 'storage', label: 'File Storage', icon: <HardDrive size={18} />, adminOnly: true },
     { id: 'billing', label: 'Plan & Billing', icon: <CreditCard size={18} />, adminOnly: true },
+    { id: 'report-card', label: 'Report Card', icon: <GraduationCap size={18} />, adminOnly: true },
   ];
 
   return (
@@ -816,6 +821,16 @@ export const SettingsPage: React.FC = () => {
                                 onChange={(e) => setSchoolInfo({ ...schoolInfo, founded_year: e.target.value ? parseInt(e.target.value) : undefined })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
                                 placeholder="e.g. 1845"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">School Motto</label>
+                              <input
+                                type="text"
+                                value={(schoolInfo as any).motto ?? (schoolInfo as any).school_motto ?? ''}
+                                onChange={(e) => setSchoolInfo({ ...schoolInfo, motto: e.target.value } as any)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
+                                placeholder="e.g. Learning for Success"
                               />
                             </div>
                             <div>
@@ -1645,6 +1660,12 @@ export const SettingsPage: React.FC = () => {
                   </Card>
                 )}
 
+                {/* ── REPORT CARD CUSTOMIZATION TAB ──
+                    Includes: border styles, watermark, student photo, and display options */}
+                {activeTab === 'report-card' && (
+                  <ReportCardBorderSettings schoolInfo={schoolInfo} />
+                )}
+
                 {/* ── PLAN & BILLING TAB ── */}
                 {activeTab === 'billing' && (
                   <div className="space-y-6">
@@ -1928,6 +1949,734 @@ export const SettingsPage: React.FC = () => {
         </div>
       </PageShell>
     </MainLayout>
+  );
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Report Card Border Settings (admin-only)
+// Lets principals pick a border style for the Sierra Leone booklet report card.
+// Persisted to school_config_settings under key 'report_card_border_style'.
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface BorderPreset {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  width: number;
+  padding: number;
+  style: 'solid' | 'double' | 'dashed' | 'dotted' | 'groove' | 'ridge' | 'inset' | 'outset' | 'none';
+  radius: number;
+  previewClass: string;
+}
+
+const BORDER_PRESETS: BorderPreset[] = [
+  {
+    id: 'classic',
+    name: 'Classic Black',
+    description: 'Bold solid black border — traditional school look.',
+    color: '#1f2937',
+    width: 2,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-gray-900',
+  },
+  {
+    id: 'modern',
+    name: 'Modern Blue',
+    description: 'Clean blue solid border with rounded corners — contemporary branding.',
+    color: '#2563eb',
+    width: 3,
+    padding: 10,
+    style: 'solid',
+    radius: 8,
+    previewClass: 'border-blue-600',
+  },
+  {
+    id: 'minimal',
+    name: 'Minimal Gray',
+    description: 'Thin subtle gray border — clean and professional.',
+    color: '#9ca3af',
+    width: 1,
+    padding: 6,
+    style: 'solid',
+    radius: 4,
+    previewClass: 'border-gray-400',
+  },
+  {
+    id: 'decorative',
+    name: 'Decorative Brown',
+    description: 'Double brown border — formal and elegant.',
+    color: '#7c2d12',
+    width: 4,
+    padding: 8,
+    style: 'double',
+    radius: 0,
+    previewClass: 'border-amber-900',
+  },
+  {
+    id: 'royal',
+    name: 'Royal Purple',
+    description: 'Double purple border — prestigious and regal.',
+    color: '#4c1d95',
+    width: 4,
+    padding: 10,
+    style: 'double',
+    radius: 0,
+    previewClass: 'border-violet-900',
+  },
+  {
+    id: 'forest',
+    name: 'Forest Green',
+    description: 'Deep green solid border — natural and grounded.',
+    color: '#14532d',
+    width: 3,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-green-900',
+  },
+  {
+    id: 'navy',
+    name: 'Navy Blue',
+    description: 'Navy solid border with slight rounding — trustworthy.',
+    color: '#1e3a8a',
+    width: 3,
+    padding: 8,
+    style: 'solid',
+    radius: 6,
+    previewClass: 'border-blue-900',
+  },
+  {
+    id: 'maroon',
+    name: 'Maroon',
+    description: 'Rich maroon border — classic academic colour.',
+    color: '#7f1d1d',
+    width: 3,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-red-900',
+  },
+  {
+    id: 'teal',
+    name: 'Teal',
+    description: 'Teal border with rounded corners — fresh and modern.',
+    color: '#0f766e',
+    width: 2,
+    padding: 8,
+    style: 'solid',
+    radius: 8,
+    previewClass: 'border-teal-700',
+  },
+  {
+    id: 'sunrise',
+    name: 'Sunrise Orange',
+    description: 'Warm orange border — energetic and vibrant.',
+    color: '#c2410c',
+    width: 3,
+    padding: 8,
+    style: 'solid',
+    radius: 6,
+    previewClass: 'border-orange-700',
+  },
+  {
+    id: 'elegant',
+    name: 'Elegant Groove',
+    description: 'Groove-style gray border — sophisticated 3D effect.',
+    color: '#374151',
+    width: 2,
+    padding: 10,
+    style: 'groove',
+    radius: 0,
+    previewClass: 'border-gray-700',
+  },
+  {
+    id: 'playful',
+    name: 'Playful Dashed',
+    description: 'Dashed purple border with rounded corners — fun and approachable.',
+    color: '#7c3aed',
+    width: 3,
+    padding: 8,
+    style: 'dashed',
+    radius: 12,
+    previewClass: 'border-violet-600',
+  },
+  {
+    id: 'dashed_blue',
+    name: 'Dashed Blue',
+    description: 'Dashed blue border — clean and distinctive.',
+    color: '#1d4ed8',
+    width: 2,
+    padding: 8,
+    style: 'dashed',
+    radius: 0,
+    previewClass: 'border-blue-700',
+  },
+  {
+    id: 'dotted_green',
+    name: 'Dotted Green',
+    description: 'Dotted green border — subtle and organic.',
+    color: '#15803d',
+    width: 2,
+    padding: 8,
+    style: 'dotted',
+    radius: 0,
+    previewClass: 'border-green-700',
+  },
+  {
+    id: 'double_gold',
+    name: 'Double Gold',
+    description: 'Double gold border — premium and luxurious.',
+    color: '#a16207',
+    width: 4,
+    padding: 8,
+    style: 'double',
+    radius: 0,
+    previewClass: 'border-yellow-700',
+  },
+  {
+    id: 'none',
+    name: 'No Border',
+    description: 'No visible border — just inner padding.',
+    color: 'transparent',
+    width: 0,
+    padding: 4,
+    style: 'none',
+    radius: 0,
+    previewClass: '',
+  },
+  // ── Microsoft-style ornamental borders (rendered as SVG patterns) ──
+  {
+    id: 'ornamental_chain_black',
+    name: '⛓ Chain (Black) — Microsoft Style',
+    description: 'Linked chain pattern — formal and decorative.',
+    color: '#1f2937',
+    width: 20,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-gray-900',
+  },
+  {
+    id: 'ornamental_floral_brown',
+    name: '🌸 Floral (Brown) — Microsoft Style',
+    description: 'Decorative floral motifs — elegant and ornate.',
+    color: '#7c2d12',
+    width: 20,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-amber-900',
+  },
+  {
+    id: 'ornamental_gold_ornate',
+    name: '✨ Gold Ornate — Microsoft Style',
+    description: 'Gold decorative trim — premium and luxurious.',
+    color: '#a16207',
+    width: 22,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-yellow-700',
+  },
+  {
+    id: 'ornamental_dots_gold',
+    name: '• Dotted Gold — Microsoft Style',
+    description: 'Gold dotted pattern — subtle and refined.',
+    color: '#a16207',
+    width: 16,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-yellow-700',
+  },
+  {
+    id: 'ornamental_zigzag_navy',
+    name: '⚡ Zigzag (Navy) — Microsoft Style',
+    description: 'Navy zigzag pattern — modern and distinctive.',
+    color: '#1e3a8a',
+    width: 14,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-blue-900',
+  },
+];
+
+const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> = ({ schoolInfo }) => {
+  // ── Border state ──
+  const [selectedPreset, setSelectedPreset] = useState<string>('classic');
+  const [customColor, setCustomColor] = useState('#1f2937');
+  const [customWidth, setCustomWidth] = useState(2);
+  const [customStyle, setCustomStyle] = useState<'solid' | 'double' | 'dashed' | 'dotted' | 'groove' | 'ridge' | 'inset' | 'outset' | 'none'>('solid');
+  const [customPadding, setCustomPadding] = useState(8);
+  const [customRadius, setCustomRadius] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const queryClient = useQueryClient();
+
+  // ── Display options state (watermark + student photo) ──
+  const [showWatermark, setShowWatermark] = useState(true);
+  const [watermarkOpacity, setWatermarkOpacity] = useState(0.06);
+  const [watermarkSize, setWatermarkSize] = useState(450);
+  const [showStudentPhoto, setShowStudentPhoto] = useState(true);
+  const [savingDisplay, setSavingDisplay] = useState(false);
+
+  // ── Mock data for the live BookletContent preview ──
+  const previewSchool = schoolInfo ?? {};
+  const previewSchoolName = previewSchool.name || 'Demo School International';
+  const previewSchoolAddress = [previewSchool.address, previewSchool.city].filter(Boolean).join(', ') || '123 Education Drive, Freetown';
+  const previewSchoolLogo = previewSchool.logo_url || undefined;
+  const previewShortName = previewSchool.short_name || 'DSI';
+  const previewMotto = (previewSchool as any).motto || (previewSchool as any).school_motto || 'Learning for Success';
+
+  const previewCard: ReportCardType = {
+    student: {
+      id: 'preview-student',
+      admission_no: 'ADM-2026-001',
+      name: 'Jane Mariama Sesay',
+      class_name: 'JSS 2A',
+      class_level: 'Junior Secondary School',
+      form_teacher_name: 'Mr. A. Kamara',
+      pupil_age: 13,
+      class_average_age: 12.8,
+      number_in_form: 35,
+      photo_url: undefined, // no real photo in Settings preview
+    },
+    academic_year: '2026',
+    subjects: [
+      { subject_id: '1', subject_name: 'English Language', subject_code: 'ENG', terms: { first_term: { test1: 75, test2: 80, mean: 77.5, rank: 3 }, second_term: { test1: 82, test2: 78, mean: 80, rank: 2 }, third_term: { test1: 85, test2: 88, mean: 86.5, rank: 1 } }, yearly_mean: 81.3, yearly_rank: 2 },
+      { subject_id: '2', subject_name: 'Mathematics', subject_code: 'MTH', terms: { first_term: { test1: 60, test2: 65, mean: 62.5, rank: 5 }, second_term: { test1: 70, test2: 72, mean: 71, rank: 4 }, third_term: { test1: 75, test2: 78, mean: 76.5, rank: 3 } }, yearly_mean: 70, yearly_rank: 4 },
+      { subject_id: '3', subject_name: 'Integrated Science', subject_code: 'SCI', terms: { first_term: { test1: 80, test2: 85, mean: 82.5, rank: 2 }, second_term: { test1: 78, test2: 82, mean: 80, rank: 3 }, third_term: { test1: 88, test2: 90, mean: 89, rank: 1 } }, yearly_mean: 83.8, yearly_rank: 2 },
+      { subject_id: '4', subject_name: 'Social Studies', subject_code: 'SST', terms: { first_term: { test1: 70, test2: 75, mean: 72.5, rank: 4 }, second_term: { test1: 72, test2: 78, mean: 75, rank: 3 }, third_term: { test1: 80, test2: 82, mean: 81, rank: 2 } }, yearly_mean: 76.2, yearly_rank: 3 },
+    ],
+    term_summaries: {
+      first_term: { combined_score: 294, percentage: 73.5, position: 4, class_size: 35, on_time: 38, late: 2, absent: 0, conduct: 'B', teacher_comment: 'Jane is making good progress. Keep it up!' },
+      second_term: { combined_score: 306, percentage: 76.5, position: 3, class_size: 35, on_time: 39, late: 1, absent: 0, conduct: 'A', teacher_comment: 'Steady improvement. Well done.' },
+      third_term: null,
+    },
+    yearly_summary: { combined_score: 600, percentage: 75.0, position: 3, class_size: 35, promotion_recommendation: 'Promoted to SSS 1', outcome: 'promoted' },
+    domain_ratings: { affective: {}, psychomotor: {} },
+    affective_traits: [],
+    psychomotor_skills: [],
+    conduct_legend: { 'A': 'Excellent', 'B': 'Good', 'C': 'Satisfactory', 'D': 'Needs Improvement' },
+    meta: { principal_comment: 'A diligent and respectful pupil. Continue to work hard.', promotion_status: 'Promoted', average_age: '12.8 yrs' },
+  };
+
+  // Build the current border style object for the preview
+  const previewBorderStyle = {
+    preset: selectedPreset,
+    color: customColor,
+    width: customWidth,
+    style: customStyle,
+    padding: customPadding,
+    radius: customRadius,
+  };
+
+  // Load saved border settings on mount
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const value = await schoolConfigService.getSetting('report_card_border_style');
+        if (mounted && value) {
+          if (value.preset && BORDER_PRESETS.some((p) => p.id === value.preset)) {
+            setSelectedPreset(value.preset);
+          }
+          if (value.color) setCustomColor(value.color);
+          if (typeof value.width === 'number') setCustomWidth(value.width);
+          const validStyles = ['solid', 'double', 'dashed', 'dotted', 'groove', 'ridge', 'inset', 'outset', 'none'];
+          if (value.style && validStyles.includes(value.style)) {
+            setCustomStyle(value.style);
+          }
+          if (typeof value.padding === 'number') setCustomPadding(value.padding);
+          if (typeof value.radius === 'number') setCustomRadius(value.radius);
+        }
+      } catch {
+        // ignore — use defaults
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  // Load saved display options on mount
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const value = await schoolConfigService.getSetting('report_card_display_opts');
+        if (mounted && value && typeof value === 'object') {
+          if (typeof value.show_watermark === 'boolean') setShowWatermark(value.show_watermark);
+          if (typeof value.watermark_opacity === 'number') setWatermarkOpacity(value.watermark_opacity);
+          if (typeof value.watermark_size === 'number') setWatermarkSize(value.watermark_size);
+          if (typeof value.show_student_photo === 'boolean') setShowStudentPhoto(value.show_student_photo);
+        }
+      } catch {
+        // ignore — use defaults
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const handleSaveBorder = async () => {
+    setSaving(true);
+    try {
+      await schoolConfigService.updateSetting('report_card_border_style', {
+        preset: selectedPreset,
+        color: customColor,
+        width: customWidth,
+        style: customStyle,
+        padding: customPadding,
+        radius: customRadius,
+      });
+      showToast('Report card border style saved.');
+      queryClient.invalidateQueries({ queryKey: ['report-card-border-style'] });
+    } catch {
+      showToast('Failed to save border style', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePresetChange = (presetId: string) => {
+    setSelectedPreset(presetId);
+    const p = BORDER_PRESETS.find((bp) => bp.id === presetId);
+    if (p) {
+      setCustomColor(p.color);
+      setCustomWidth(p.width);
+      setCustomPadding(p.padding);
+      setCustomRadius(p.radius);
+      if (p.style !== 'none') setCustomStyle(p.style);
+    }
+  };
+
+  const handleResetBorder = async () => {
+    setSelectedPreset('classic');
+    setCustomColor('#1f2937');
+    setCustomWidth(2);
+    setCustomStyle('solid');
+    setCustomPadding(8);
+    setCustomRadius(0);
+    try {
+      await schoolConfigService.updateSetting('report_card_border_style', { preset: 'classic', color: '#1f2937', width: 2, style: 'solid', padding: 8, radius: 0 });
+      queryClient.invalidateQueries({ queryKey: ['report-card-border-style'] });
+      showToast('Reset to classic style.');
+    } catch {
+      showToast('Failed to reset border style', 'error');
+    }
+  };
+
+  const handleSaveDisplay = async () => {
+    setSavingDisplay(true);
+    try {
+      await schoolConfigService.updateSetting('report_card_display_opts', {
+        show_watermark: showWatermark,
+        watermark_opacity: watermarkOpacity,
+        watermark_size: watermarkSize,
+        show_student_photo: showStudentPhoto,
+      });
+      showToast('Display options saved.');
+      queryClient.invalidateQueries({ queryKey: ['report-card-display-opts'] });
+    } catch {
+      showToast('Failed to save display options', 'error');
+    } finally {
+      setSavingDisplay(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* ══════════════════════════════════════════════════════════════════════════
+          SECTION 1 — BORDER STYLE
+          ══════════════════════════════════════════════════════════════════════════ */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Report Card Border</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <p className="text-sm text-gray-600">
+            Choose how the outer border of each Sierra Leone booklet report card looks.
+            Select a preset below — there are {BORDER_PRESETS.length} styles to choose from,
+            including classic solid borders and Microsoft-style ornamental borders.
+          </p>
+
+          {/* Dropdown for border preset */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Border Style
+            </label>
+            <select
+              value={selectedPreset}
+              onChange={(e) => handlePresetChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {BORDER_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {BORDER_PRESETS.find((p) => p.id === selectedPreset)?.description}
+            </p>
+          </div>
+
+          {/* Advanced customization (collapsible) */}
+          <details className="border-t pt-4">
+            <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900">
+              Advanced customization
+            </summary>
+            <div className="mt-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Color */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Color</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={customColor}
+                      onChange={(e) => setCustomColor(e.target.value)}
+                      className="h-10 w-14 rounded border border-gray-300 cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={customColor}
+                      onChange={(e) => setCustomColor(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
+                      placeholder="#1f2937"
+                    />
+                  </div>
+                </div>
+                {/* Width */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Width (px)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={20}
+                    value={customWidth}
+                    onChange={(e) => setCustomWidth(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  />
+                </div>
+                {/* Style */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Style</label>
+                  <select
+                    value={customStyle}
+                    onChange={(e) => setCustomStyle(e.target.value as any)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  >
+                    <option value="solid">Solid</option>
+                    <option value="double">Double</option>
+                    <option value="dashed">Dashed</option>
+                    <option value="dotted">Dotted</option>
+                    <option value="groove">Groove</option>
+                    <option value="ridge">Ridge</option>
+                    <option value="inset">Inset</option>
+                    <option value="outset">Outset</option>
+                    <option value="none">None</option>
+                  </select>
+                </div>
+                {/* Radius */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Corner Radius (px)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={customRadius}
+                    onChange={(e) => setCustomRadius(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  />
+                </div>
+                {/* Padding */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Padding (px)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={40}
+                    value={customPadding}
+                    onChange={(e) => setCustomPadding(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          </details>
+
+          {/* Live preview — real BookletContent (front + back cover) */}
+          <div className="border-t pt-4">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">Complete Front &amp; Back Page Preview</h4>
+            <p className="text-xs text-gray-500 mb-3">This is the actual report card layout using your school's name, logo, and the border settings above.</p>
+            <div className="bg-gray-100 p-3 sm:p-6 rounded-lg overflow-x-auto">
+              <div className="mx-auto w-full" style={{ maxWidth: 600, transformOrigin: 'top center' }}>
+                <BookletContent
+                  card={previewCard}
+                  school={{ ...previewSchool, motto: previewMotto }}
+                  schoolName={previewSchoolName}
+                  schoolAddress={previewSchoolAddress}
+                  schoolLogo={previewSchoolLogo}
+                  shortName={previewShortName}
+                  showCover
+                  showInner={false}
+                  showGrading={false}
+                  borderStyle={previewBorderStyle}
+                  showWatermark={showWatermark}
+                  watermarkOpacity={watermarkOpacity}
+                  watermarkSize={watermarkSize}
+                  showStudentPhoto={showStudentPhoto}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex flex-wrap gap-3 pt-2 border-t">
+            <Button onClick={handleSaveBorder} disabled={saving} className="gap-2">
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+              {saving ? 'Saving…' : 'Save Border Style'}
+            </Button>
+            <Button variant="ghost" onClick={handleResetBorder}>
+              Reset to Classic
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ══════════════════════════════════════════════════════════════════════════
+          SECTION 2 — WATERMARK (inner sheet background)
+          ══════════════════════════════════════════════════════════════════════════ */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Watermark</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <p className="text-sm text-gray-600">
+            Display the school logo as a faint watermark behind the inner results sheet (Sheet 2).
+            This adds a professional security overlay to the printed report card.
+          </p>
+
+          {/* Toggle */}
+          <div className="flex items-start justify-between gap-4 py-2 border-b border-gray-100">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-900">Show logo watermark</p>
+                <p className="text-xs text-gray-500">Display the school logo faintly behind the results grid.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showWatermark}
+              onClick={() => setShowWatermark(!showWatermark)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                showWatermark ? 'bg-blue-600' : 'bg-gray-300'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showWatermark ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          {showWatermark && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              {/* Opacity */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  Opacity: {(watermarkOpacity * 100).toFixed(0)}%
+                </label>
+                <input
+                  type="range"
+                  min={0.01}
+                  max={0.3}
+                  step={0.01}
+                  value={watermarkOpacity}
+                  onChange={(e) => setWatermarkOpacity(Number(e.target.value))}
+                  className="w-full"
+                />
+                <p className="text-[10px] text-gray-400 mt-1">6% is the recommended subtle overlay.</p>
+              </div>
+              {/* Size */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Logo Size (px)</label>
+                <input
+                  type="number"
+                  min={100}
+                  max={800}
+                  value={watermarkSize}
+                  onChange={(e) => setWatermarkSize(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                />
+                <p className="text-[10px] text-gray-400 mt-1">450px fills a standard A4 landscape page.</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ══════════════════════════════════════════════════════════════════════════
+          SECTION 3 — STUDENT PHOTO (front cover)
+          ══════════════════════════════════════════════════════════════════════════ */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Student Photo</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <p className="text-sm text-gray-600">
+            Show or hide the student's passport photo on the front cover of the report card.
+            The photo appears as the focal point in the centre of the cover sheet.
+            If a student has no photo on file, a placeholder box is shown instead.
+          </p>
+
+          {/* Toggle */}
+          <div className="flex items-start justify-between gap-4 py-2 border-b border-gray-100">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-900">Show student photo on front cover</p>
+                <p className="text-xs text-gray-500">Displays the student's uploaded photo in the centre of the cover.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showStudentPhoto}
+              onClick={() => setShowStudentPhoto(!showStudentPhoto)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                showStudentPhoto ? 'bg-blue-600' : 'bg-gray-300'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showStudentPhoto ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          {/* Note — preview is in the Border section above */}
+          <div className="border-t pt-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+              <ImageIcon size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-blue-900">Preview available above</p>
+                <p className="text-xs text-blue-700 mt-1">
+                  The complete front &amp; back page preview in the <strong>Border</strong> section above
+                  updates in real-time with this photo toggle. {showStudentPhoto
+                    ? 'The student photo is currently shown in the centre of the front cover.'
+                    : 'The student photo is currently hidden from the front cover.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ══════════════════════════════════════════════════════════════════════════
+          SAVE DISPLAY OPTIONS
+          ══════════════════════════════════════════════════════════════════════════ */}
+      <div className="flex flex-wrap gap-3">
+        <Button onClick={handleSaveDisplay} disabled={savingDisplay} className="gap-2">
+          {savingDisplay ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+          {savingDisplay ? 'Saving…' : 'Save Display Options'}
+        </Button>
+      </div>
+    </div>
   );
 };
 

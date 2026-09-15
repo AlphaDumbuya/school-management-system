@@ -35,7 +35,6 @@ import PlatformCommunicationPage from '@pages/PlatformCommunicationPage';
 import SyncIssuesPage from '@pages/offline/SyncIssuesPage';
 import { ComingSoonPage } from '@pages/ComingSoonPage';
 import { SettingsPage } from '@pages/SettingsPage';
-import SMSWhatsAppDashboard from '@pages/SMSWhatsAppDashboard';
 
 // Built pages
 import ClassesPage from '@pages/academic/ClassesPage';
@@ -64,6 +63,8 @@ import FeesPage from '@pages/finance/FeesPage';
 import InvoicesPage from '@pages/finance/InvoicesPage';
 import PaymentsPage from '@pages/finance/PaymentsPage';
 import TeachersPage from '@pages/staff/TeachersPage';
+// SMS & WhatsApp module removed — in-app communication (Announcements + Support)
+// replaces this feature in V1.
 
 import useAuthStore from '@store/authStore';
 import { getDashboardPath } from '@hooks/useAuth';
@@ -224,15 +225,15 @@ const router = createBrowserRouter(
         // ── ACADEMIC MANAGEMENT ────────────────────────────────────
         {
           path: 'academic/classes',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><ClassesPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'admissions_officer']}><ClassesPage /></P>,
         },
         {
           path: 'academic/subjects',
-          element: <P requiredRoles={['principal', 'super_admin']}><SubjectsPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'admissions_officer']}><SubjectsPage /></P>,
         },
         {
           path: 'academic/timetables',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><TimetablesPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'admissions_officer']}><TimetablesPage /></P>,
         },
         {
           path: 'academic/assignments',
@@ -240,15 +241,15 @@ const router = createBrowserRouter(
         },
         {
           path: 'academic/exam-timetable',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><ExamTimetablePage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent', 'admissions_officer']}><ExamTimetablePage /></P>,
         },
         {
           path: 'academic/results',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent']}><ResultsPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent', 'admissions_officer']}><ResultsPage /></P>,
         },
         {
           path: 'academic/report-cards',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent']}><ReportCardsPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent', 'admissions_officer']}><ReportCardsPage /></P>,
         },
         {
           path: 'academic/promotions',
@@ -334,10 +335,6 @@ const router = createBrowserRouter(
         {
           path: 'communication/messages',
           element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'parent', 'student']}><V2Route><CS /></V2Route></P>,
-        },
-        {
-          path: 'communication/sms',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><V2Route><SMSWhatsAppDashboard /></V2Route></P>,
         },
         {
           path: 'communication/email',

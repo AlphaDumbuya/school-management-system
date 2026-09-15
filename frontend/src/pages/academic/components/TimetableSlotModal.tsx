@@ -19,7 +19,7 @@ import {
   PERIOD_STRUCTURES,
   PeriodDefinition,
   getSchoolLevel,
-  getCustomPeriods,
+  getCustomPeriodsAsync,
 } from '@services/timetableService';
 import { subjectsService } from '@services/subjectsService';
 
@@ -64,9 +64,12 @@ export const TimetableSlotModal: React.FC<TimetableSlotModalProps> = ({
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  // Get dynamic periods based on class level and custom settings
+  // Get dynamic periods based on class level and custom settings (API-backed)
   const schoolLevel = classLevel ? getSchoolLevel(classLevel) : 'sss';
-  const periods: PeriodDefinition[] = getCustomPeriods(schoolLevel);
+  const [periods, setPeriods] = React.useState<PeriodDefinition[]>(PERIOD_STRUCTURES[schoolLevel]);
+  React.useEffect(() => {
+    getCustomPeriodsAsync(schoolLevel).then(setPeriods);
+  }, [schoolLevel]);
 
   // Fetch subjects
   const { data: subjectsData } = useQuery({

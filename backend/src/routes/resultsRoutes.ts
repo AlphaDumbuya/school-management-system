@@ -4,20 +4,13 @@ import { authenticate, authorize, attachUserContext } from '../middleware/authMi
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import { UserRole } from '../types/auth.js';
+import { computeGrade, getTenantGradingScale, computeGradeWithScale } from '../utils/gradingScaleHelper.js';
 
 const router = Router();
 router.use(authenticate);
 router.use(attachUserContext);
 
-// ── Grace School of Science Standard Sierra Leone Grading Scale ────────────────
-
-function getGrade(totalScore: number): { letter: string; remark: string } {
-  if (totalScore >= 85) return { letter: 'A', remark: 'Excellent' };
-  if (totalScore >= 75) return { letter: 'B', remark: 'Very Good' };
-  if (totalScore >= 60) return { letter: 'C', remark: 'Good' };
-  if (totalScore >= 50) return { letter: 'D', remark: 'Satisfying' };
-  return { letter: 'F', remark: 'Unsatisfying' };
-}
+// ── Grading: now uses the tenant's configured grading scale from Settings ────
 
 /**
  * POST /api/v1/results
@@ -62,7 +55,7 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
     if (exam_score < 0 || exam_score > 70) throw new AppError('Exam score must be 0-70', 400, 'VALIDATION_ERROR');
 
     const totalScore = Number(ca_score) + Number(exam_score);
-    const { letter, remark } = getGrade(totalScore);
+    const { letter, remark } = await computeGrade(totalScore, tenantId);
 
     const [inserted] = await db('results').insert({
       student_id,
@@ -123,9 +116,12 @@ router.post('/bulk', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_
       throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
     }
 
+    // Load tenant's configured grading scale once for all records
+    const gradingScale = await getTenantGradingScale(tenantId);
+
     const records = grades.map((g: { student_id: string; ca_score: number; exam_score: number }) => {
       const total = Number(g.ca_score) + Number(g.exam_score);
-      const { letter, remark } = getGrade(total);
+      const { letter, remark } = computeGradeWithScale(total, gradingScale);
       return {
         student_id: g.student_id,
         subject_id,
@@ -317,7 +313,7 @@ router.put('/:resultId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
     const newCa = ca_score !== undefined ? ca_score : result.ca_score;
     const newExam = exam_score !== undefined ? exam_score : result.exam_score;
     const totalScore = Number(newCa) + Number(newExam);
-    const { letter, remark } = getGrade(totalScore);
+    const { letter, remark } = await computeGrade(totalScore, tenantId);
 
     await db('results').where('id', resultId).update({
       ca_score: newCa,

@@ -18,6 +18,7 @@
 import db from '../utils/database.js';
 import { logger } from '../utils/logger.js';
 import promotionService from './promotionService.js';
+import { getTenantGradingScale, computeGradeWithScale } from '../utils/gradingScaleHelper.js';
 
 export const SL_TERMS = ['first_term', 'second_term', 'third_term'] as const;
 export type SLTerm = (typeof SL_TERMS)[number];
@@ -49,7 +50,25 @@ export const CONDUCT_LEGEND: Record<string, string> = {
 
 // ── Grading ─────────────────────────────────────────────────────────────────
 
-export function getGrade(score: number): { letter: string; remark: string; isFail: boolean } {
+export function getGrade(score: number, scale?: { grades: { grade: string; min_score: number; max_score: number; description?: string; grade_points?: number }[] } | null): { letter: string; remark: string; isFail: boolean } {
+  if (scale?.grades?.length) {
+    for (const entry of scale.grades) {
+      if (score >= entry.min_score && score <= entry.max_score) {
+        return {
+          letter: entry.grade,
+          remark: entry.description || '',
+          isFail: entry.grade === 'F' || entry.grade_points === 0,
+        };
+      }
+    }
+    const failEntry = scale.grades.find((g) => g.grade === 'F');
+    return {
+      letter: failEntry?.grade || 'F',
+      remark: failEntry?.description || 'Unsatisfactory',
+      isFail: true,
+    };
+  }
+  // Fallback to default SL scale
   if (score >= 85) return { letter: 'A', remark: 'Excellent', isFail: false };
   if (score >= 75) return { letter: 'B', remark: 'Very Good', isFail: false };
   if (score >= 60) return { letter: 'C', remark: 'Good', isFail: false };
@@ -534,8 +553,9 @@ export class SLReportCardService {
   // ──────────────────────────────────────────────────────────────────────────
 
   /**
-   * Subject rank = rank of each subject's mean among a student's OWN subjects
-   * for that term (1 = highest mean). Recomputed per student.
+   * Subject rank = rank of each student's mean among ALL classmates for that
+   * subject+term (1 = highest mean in the class for that subject).
+   * Standard competition ranking (ties share the rank).
    */
   private async recomputeSubjectRanks(
     tenantId: string,
@@ -546,26 +566,26 @@ export class SLReportCardService {
     const rows = await db('sl_subject_results')
       .where({ tenant_id: tenantId, class_id: classId, term, academic_year: academicYear })
       .whereNotNull('mean')
-      .select('id', 'student_id', 'mean');
+      .select('id', 'subject_id', 'student_id', 'mean');
 
-    // Group by student
-    const byStudent: Record<string, { id: string; mean: number }[]> = {};
+    // Group by subject → rank students within each subject
+    const bySubject: Record<string, { id: string; mean: number }[]> = {};
     for (const r of rows) {
-      (byStudent[r.student_id] ??= []).push({ id: r.id, mean: Number(r.mean) });
+      (bySubject[r.subject_id] ??= []).push({ id: r.id, mean: Number(r.mean) });
     }
 
     await db.transaction(async (trx) => {
-      for (const studentId of Object.keys(byStudent)) {
-        const subjects = byStudent[studentId].sort((a, b) => b.mean - a.mean);
+      for (const subjectId of Object.keys(bySubject)) {
+        const students = bySubject[subjectId].sort((a, b) => b.mean - a.mean);
         // Standard competition ranking (ties share the rank)
         let rank = 0;
         let prevMean: number | null = null;
-        for (let i = 0; i < subjects.length; i++) {
-          if (prevMean === null || subjects[i].mean !== prevMean) {
+        for (let i = 0; i < students.length; i++) {
+          if (prevMean === null || students[i].mean !== prevMean) {
             rank = i + 1;
-            prevMean = subjects[i].mean;
+            prevMean = students[i].mean;
           }
-          await trx('sl_subject_results').where({ id: subjects[i].id }).update({ subject_rank: rank });
+          await trx('sl_subject_results').where({ id: students[i].id }).update({ subject_rank: rank });
         }
       }
     });
@@ -1047,6 +1067,7 @@ export class SLReportCardService {
         'students.id',
         'students.student_id as admission_no',
         'students.date_of_birth',
+        db.raw("COALESCE(students.photo_url, users.photo_url) as photo_url"),
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.student_id) as name"),
       )
       .first();
@@ -1150,18 +1171,45 @@ export class SLReportCardService {
       return { ...s, yearly_mean: yearlyMean };
     });
 
-    // Yearly subject rank (rank of yearly means among the student's subjects)
-    const ranked = subjects
-      .filter((s: any) => s.yearly_mean != null)
-      .sort((a: any, b: any) => b.yearly_mean - a.yearly_mean);
-    let yrRank = 0;
-    let prevYr: number | null = null;
-    ranked.forEach((s: any, i: number) => {
-      if (prevYr === null || s.yearly_mean !== prevYr) {
-        yrRank = i + 1;
-        prevYr = s.yearly_mean;
+    // Yearly subject rank — rank of this student's yearly mean for each subject
+    // among ALL classmates' yearly means for that same subject (class ranking).
+    const classYearlyRows = await db('sl_subject_results')
+      .where({ tenant_id: tenantId, class_id: classId, academic_year: academicYear })
+      .whereNotNull('mean')
+      .select('student_id', 'subject_id', 'term', 'mean');
+
+    // Per subject → list of per-student yearly means (avg of 3 terms)
+    const bySubject: Record<string, { studentId: string; yearlyMean: number }[]> = {};
+    const perStudentSubject: Record<string, Record<string, number[]>> = {};
+    for (const r of classYearlyRows) {
+      const subj = (perStudentSubject[r.student_id] ??= {});
+      (subj[r.subject_id] ??= []).push(Number(r.mean));
+    }
+    for (const [sid, subjMeans] of Object.entries(perStudentSubject)) {
+      for (const [subjectId, means] of Object.entries(subjMeans)) {
+        const ym = means.reduce((a, b) => a + b, 0) / means.length;
+        (bySubject[subjectId] ??= []).push({ studentId: sid, yearlyMean: round1(ym) });
       }
-      s.yearly_rank = yrRank;
+    }
+
+    // Rank within each subject (competition ranking by yearly mean desc)
+    const subjectYearlyRank: Record<string, number> = {}; // key = subjectId → this student's rank
+    for (const [subjectId, entries] of Object.entries(bySubject)) {
+      entries.sort((a, b) => b.yearlyMean - a.yearlyMean);
+      let rank = 0;
+      let prev: number | null = null;
+      for (let i = 0; i < entries.length; i++) {
+        if (prev === null || entries[i].yearlyMean !== prev) {
+          rank = i + 1;
+          prev = entries[i].yearlyMean;
+        }
+        if (entries[i].studentId === studentId) {
+          subjectYearlyRank[subjectId] = rank;
+        }
+      }
+    }
+    subjects.forEach((s: any) => {
+      s.yearly_rank = subjectYearlyRank[s.subject_id] ?? null;
     });
 
     // Term summaries (combined, %, position, conduct, comment)
@@ -1351,13 +1399,31 @@ export class SLReportCardService {
       return { combined_score: null, percentage: null, position: null, class_size: classSize, promotion_recommendation: null, outcome: null };
     }
 
+    // Promotion thresholds — configurable via school_config_settings
+    // (keys: promotion_fail_threshold, promotion_effort_threshold)
+    const schoolRow = await db('schools').where({ tenant_id: tenantId }).first().catch(() => null);
+    let failThreshold = 50;
+    let effortThreshold = 55;
+    if (schoolRow?.school_id) {
+      const settings = await db('school_config_settings')
+        .where({ school_id: schoolRow.school_id })
+        .whereIn('setting_key', ['promotion_fail_threshold', 'promotion_effort_threshold'])
+        .catch(() => []);
+      for (const s of settings) {
+        const v = Number(s.setting_value);
+        if (isNaN(v)) continue;
+        if (s.setting_key === 'promotion_fail_threshold') failThreshold = v;
+        if (s.setting_key === 'promotion_effort_threshold') effortThreshold = v;
+      }
+    }
+
     // Promotion recommendation from the yearly percentage
     let outcome: 'fail' | 'promoted_effort' | 'promoted';
     let recommendation: string;
-    if (me.percentage < 50) {
+    if (me.percentage < failThreshold) {
       outcome = 'fail';
-      recommendation = 'TO REPEAT (Below 50%)';
-    } else if (me.percentage <= 55) {
+      recommendation = `TO REPEAT (Below ${failThreshold}%)`;
+    } else if (me.percentage <= effortThreshold) {
       outcome = 'promoted_effort';
       recommendation = 'PROMOTED — Needs More Effort';
     } else {
@@ -1403,6 +1469,9 @@ export class SLReportCardService {
   }> {
     await this.assertStudentInTenant(studentId, tenantId);
 
+    // Load tenant's configured grading scale
+    const gradingScale = await getTenantGradingScale(tenantId);
+
     const rows = await db('sl_subject_results as sr')
       .join('subjects as s', 'sr.subject_id', 's.id')
       .where('sr.tenant_id', tenantId)
@@ -1424,7 +1493,7 @@ export class SLReportCardService {
 
     const results = rows.map((r: any) => {
       const mean = r.mean != null ? Number(r.mean) : null;
-      const g = mean != null ? getGrade(mean) : { letter: '—', remark: '—' };
+      const g = mean != null ? computeGradeWithScale(mean, gradingScale) : { letter: '—', remark: '—' };
       return {
         id: r.id,
         subject_name: r.subject_name,

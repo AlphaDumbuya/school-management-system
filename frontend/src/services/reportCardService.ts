@@ -22,9 +22,9 @@ export const SL_TERMS = [
 
 export type SLTerm = 'first_term' | 'second_term' | 'third_term';
 
-// ── Grading method (Method of Grading page) ────────────────────────────────────
+// ── Grading method (fetched from tenant config, falls back to SL default) ────
 
-export const SL_GRADING_METHOD = [
+export const SL_GRADING_METHOD_DEFAULT = [
   { letter: 'A', remark: 'Excellent', min: 85, max: 100, isFail: false },
   { letter: 'B', remark: 'Very Good', min: 75, max: 84, isFail: false },
   { letter: 'C', remark: 'Good', min: 60, max: 74, isFail: false },
@@ -32,9 +32,36 @@ export const SL_GRADING_METHOD = [
   { letter: 'F', remark: 'Unsatisfactory', min: 0, max: 49, isFail: true },
 ];
 
+/** Active grading method — fetched from API on first use, cached in memory */
+let _cachedGradingMethod: typeof SL_GRADING_METHOD_DEFAULT | null = null;
+
+/** @deprecated Use SL_GRADING_METHOD_DEFAULT or getGradingMethod() instead */
+export const SL_GRADING_METHOD = SL_GRADING_METHOD_DEFAULT;
+
+export async function getGradingMethod() {
+  if (_cachedGradingMethod) return _cachedGradingMethod;
+  try {
+    const res = await apiClient.get<{ data: { grading_method: { letter: string; remark: string; min: number; max: number }[] } }>(`${BASE}/config`);
+    const gm = (res as any)?.data?.grading_method;
+    if (Array.isArray(gm) && gm.length > 0) {
+      _cachedGradingMethod = gm.map((g: any) => ({ ...g, isFail: g.letter === 'F' }));
+      return _cachedGradingMethod;
+    }
+  } catch {
+    // API failed (e.g. 401 during module pre-load before auth is ready).
+    // Don't cache the failure — return a non-cached copy of the default so
+    // a later authenticated call can still populate the real tenant grading scale.
+    return SL_GRADING_METHOD_DEFAULT.map((g) => ({ ...g }));
+  }
+  _cachedGradingMethod = SL_GRADING_METHOD_DEFAULT;
+  return _cachedGradingMethod;
+}
+
+/** Sync helper — uses cached grading method or SL default */
 export function getGrade(score: number | null): { letter: string; remark: string; isFail: boolean } {
   if (score == null) return { letter: '-', remark: '', isFail: false };
-  for (const g of SL_GRADING_METHOD) {
+  const method = _cachedGradingMethod || SL_GRADING_METHOD_DEFAULT;
+  for (const g of method) {
     if (score >= g.min && score <= g.max) return { letter: g.letter, remark: g.remark, isFail: g.isFail };
   }
   return { letter: 'F', remark: 'Unsatisfactory', isFail: true };
@@ -146,6 +173,7 @@ export interface ReportCard {
     pupil_age?: number | null;
     class_average_age?: number | null;
     number_in_form?: number | null;
+    photo_url?: string | null;
   };
   academic_year: string;
   subjects: ReportSubject[];

@@ -12,9 +12,9 @@ import {
   PeriodDefinition,
   SchoolLevel,
   PERIOD_STRUCTURES,
-  getCustomPeriods,
-  saveCustomPeriods,
-  resetPeriodsToDefault,
+  getCustomPeriodsAsync,
+  saveCustomPeriodsAsync,
+  resetPeriodsToDefaultAsync,
   generatePeriodsSchedule,
 } from '@services/timetableService';
 import { Clock, Plus, Trash2, RotateCcw, Zap, Coffee, Check, SlidersHorizontal } from 'lucide-react';
@@ -46,20 +46,20 @@ export const PeriodSettingsModal: React.FC<PeriodSettingsModalProps> = ({
   const [lunchAfter, setLunchAfter] = useState<number>(6);
   const [lunchDuration, setLunchDuration] = useState<number>(30);
 
+  const [isSaving, setIsSaving] = useState(false);
+
   // Load periods when modal opens or level changes
   useEffect(() => {
     if (isOpen) {
       setSelectedLevel(currentLevel);
-      const loaded = getCustomPeriods(currentLevel);
-      setPeriods(loaded);
+      getCustomPeriodsAsync(currentLevel).then(setPeriods);
     }
   }, [isOpen, currentLevel]);
 
   // When level tab changes within modal
   const handleLevelChange = (lvl: SchoolLevel) => {
     setSelectedLevel(lvl);
-    const loaded = getCustomPeriods(lvl);
-    setPeriods(loaded);
+    getCustomPeriodsAsync(lvl).then(setPeriods);
   };
 
   // Modify individual period
@@ -120,19 +120,30 @@ export const PeriodSettingsModal: React.FC<PeriodSettingsModalProps> = ({
   };
 
   // Save changes
-  const handleSave = () => {
-    saveCustomPeriods(selectedLevel, periods);
-    showToast.success(`Timetable periods for ${selectedLevel.toUpperCase()} saved!`);
-    onSaved();
-    onClose();
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await saveCustomPeriodsAsync(selectedLevel, periods);
+      showToast.success(`Timetable periods for ${selectedLevel.toUpperCase()} saved!`);
+      onSaved();
+      onClose();
+    } catch {
+      showToast.apiError('Failed to save period configuration');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Reset to system default
-  const handleResetDefault = () => {
-    resetPeriodsToDefault(selectedLevel);
-    const defaults = PERIOD_STRUCTURES[selectedLevel];
-    setPeriods(defaults);
-    showToast.info(`Reset to standard default schedule.`);
+  const handleResetDefault = async () => {
+    try {
+      await resetPeriodsToDefaultAsync(selectedLevel);
+      const defaults = PERIOD_STRUCTURES[selectedLevel];
+      setPeriods(defaults);
+      showToast.info(`Reset to standard default schedule.`);
+    } catch {
+      showToast.apiError('Failed to reset period configuration');
+    }
   };
 
   return (
@@ -152,11 +163,11 @@ export const PeriodSettingsModal: React.FC<PeriodSettingsModalProps> = ({
             <RotateCcw size={14} /> Reset Defaults
           </Button>
           <div className="flex items-center gap-3">
-            <Button variant="ghost" onClick={onClose}>
+            <Button variant="ghost" onClick={onClose} disabled={isSaving}>
               Cancel
             </Button>
-            <Button variant="default" onClick={handleSave} className="gap-2">
-              <Check size={16} /> Save Period Schedule
+            <Button variant="default" onClick={handleSave} disabled={isSaving} className="gap-2">
+              <Check size={16} /> {isSaving ? 'Saving…' : 'Save Period Schedule'}
             </Button>
           </div>
         </div>

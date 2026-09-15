@@ -2,9 +2,16 @@
  * ReportCardsPage — /academic/report-cards
  * Real, data-bound Sierra Leone terminal report BOOKLET.
  *
- * Physical form = one A4 LANDSCAPE sheet folded in half → 4 pages:
- *   SHEET 1 (outer): [ left = BACK COVER / legends ] | [ right = FRONT COVER / branding ]
- *   SHEET 2 (inner): the full RESULTS GRID (cognitive + affective + psychomotor + summaries)
+ * 8-page booklet on 2 physical A4 sheets, printed double-sided and folded.
+ * Each sheet is rendered as one A4 landscape spread with a left/right half:
+ *   Page 1: Front cover        Page 5: Results right half (affective / psychomotor / footer)
+ *   Page 2: BLANK               Page 6: BLANK
+ *   Page 3: Grading system       Page 7: BLANK
+ *   Page 4: Results left half (subject / cognitive)       Page 8: Back cover
+ *
+ * Booklet imposition (physical sheet layout):
+ *   Sheet 1 outside: [8 | 1]   Sheet 1 inside: [2 | 7]
+ *   Sheet 2 outside: [6 | 3]   Sheet 2 inside: [4 | 5]
  *
  * Attendance (On Time / Late / Absent) is sourced live from the attendance system.
  */
@@ -91,6 +98,26 @@ export const ReportCardsPage: React.FC = () => {
     refetchOnWindowFocus: true,
   });
   const school = (schoolResp as any)?.data ?? (schoolResp as any) ?? {};
+
+  // Fetch tenant-configured report card border style from Settings
+  const { data: borderStyle } = useQuery({
+    queryKey: ['report-card-border-style'],
+    queryFn: () => schoolConfigService.getSetting('report_card_border_style'),
+    staleTime: 30_000,
+    refetchOnMount: 'always',
+  });
+
+  // Fetch tenant-configured report card display options (watermark, student photo)
+  const { data: displayOpts } = useQuery({
+    queryKey: ['report-card-display-opts'],
+    queryFn: () => schoolConfigService.getSetting('report_card_display_opts'),
+    staleTime: 30_000,
+    refetchOnMount: 'always',
+  });
+  const showWatermark = displayOpts?.show_watermark !== false; // default true
+  const watermarkOpacity = typeof displayOpts?.watermark_opacity === 'number' ? displayOpts.watermark_opacity : 0.06;
+  const watermarkSize = typeof displayOpts?.watermark_size === 'number' ? displayOpts.watermark_size : 450;
+  const showStudentPhoto = displayOpts?.show_student_photo !== false; // default true
 
   const { data: classesData } = useQuery({
     queryKey: ['report-card-classes'],
@@ -265,9 +292,15 @@ export const ReportCardsPage: React.FC = () => {
   };
 
   /**
-   * Capture each .booklet-sheet as a high-res PNG and place one per A4-landscape
-   * page in a jsPDF document. Returns the PDF as a Blob — pixel-faithful and
-   * completely free of any browser header/footer or site URL.
+   * Capture each .booklet-sheet as a high-res PNG and write it to one A4
+   * landscape PDF page. The sheets are already rendered in booklet order:
+   *   Sheet 1 outside: [8 | 1]
+   *   Sheet 1 inside:  [2 | 7]
+   *   Sheet 2 outside: [6 | 3]
+   *   Sheet 2 inside:  [4 | 5]
+   *
+   * Returns the PDF as a Blob — pixel-faithful and completely free of any
+   * browser header/footer or site URL.
    */
   const buildBookletPdfBlob = async (): Promise<Blob> => {
     const root = bookletRef.current;
@@ -281,9 +314,9 @@ export const ReportCardsPage: React.FC = () => {
   };
 
   /**
-   * Capture every .booklet-sheet inside `root` as a high-res PNG and add one per
-   * A4-landscape page to the given jsPDF. Reused for both single-student and
-   * whole-class batch export. Returns the number of sheets added.
+   * Capture every .booklet-sheet inside `root` as a high-res PNG and add it as
+   * one full A4-landscape PDF page. Reused for both single-student and
+   * whole-class batch export. Returns the number of sheets captured.
    */
   const appendBookletSheetsToPdf = async (root: HTMLElement, pdf: any, isFirst: boolean): Promise<number> => {
     const { toPng } = await import('html-to-image');
@@ -291,15 +324,11 @@ export const ReportCardsPage: React.FC = () => {
     const sheets = Array.from(root.querySelectorAll<HTMLElement>('.booklet-sheet'));
     if (sheets.length === 0) return 0;
 
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
+    // Each sheet is rendered at A4-landscape dimensions on screen
+    const SHEET_W = 1123;
+    const SHEET_H = 794;
 
-    // A4 landscape aspect at ~96dpi — pin sheets to full size before capture so
-    // the WHOLE sheet renders (not just the visible region in a scroll wrapper).
-    const SHEET_W = 1123; // 297mm
-    const SHEET_H = 794;  // 210mm
-
-    let added = 0;
+    const sheetImages: string[] = [];
     for (let i = 0; i < sheets.length; i++) {
       const node = sheets[i];
 
@@ -320,6 +349,7 @@ export const ReportCardsPage: React.FC = () => {
       node.style.width = `${SHEET_W}px`;
       node.style.maxWidth = 'none';
       node.style.minHeight = `${SHEET_H}px`;
+      node.style.height = `${SHEET_H}px`;
       node.style.boxShadow = 'none';
       node.style.borderRadius = '0';
       node.style.margin = '0';
@@ -354,20 +384,18 @@ export const ReportCardsPage: React.FC = () => {
         node.style.margin = prev.margin;
         node.style.overflow = prev.overflow;
       }
-
-      if (!(isFirst && i === 0)) pdf.addPage('a4', 'landscape');
-
-      const imgRatio = fullW / fullH;
-      const pageRatio = pageW / pageH;
-      let drawW = pageW, drawH = pageH;
-      if (imgRatio > pageRatio) drawH = pageW / imgRatio;
-      else drawW = pageH * imgRatio;
-      const offX = (pageW - drawW) / 2;
-      const offY = (pageH - drawH) / 2;
-      pdf.addImage(dataUrl, 'PNG', offX, offY, drawW, drawH, undefined, 'FAST');
-      added++;
+      sheetImages.push(dataUrl);
     }
-    return added;
+
+    const sheetW = pdf.internal.pageSize.getWidth();   // 297mm
+    const sheetH = pdf.internal.pageSize.getHeight();  // 210mm
+
+    for (let i = 0; i < sheetImages.length; i++) {
+      if (!(isFirst && i === 0)) pdf.addPage('a4', 'landscape');
+      pdf.addImage(sheetImages[i], 'PNG', 0, 0, sheetW, sheetH, undefined, 'FAST');
+    }
+
+    return sheetImages.length;
   };
 
   /**
@@ -514,9 +542,9 @@ export const ReportCardsPage: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wider w-full sm:w-auto">Booklet view:</span>
             {([
-              { key: 'all', short: 'Full', label: 'Full Booklet (2 sheets)' },
-              { key: 'cover', short: 'Covers', label: 'Sheet 1 — Covers' },
-              { key: 'inner', short: 'Results', label: 'Sheet 2 — Results' },
+              { key: 'all', short: 'Full', label: 'Full Booklet (8 pages)' },
+              { key: 'cover', short: 'Covers', label: 'Cover + Grading (pages 1-3, 8)' },
+              { key: 'inner', short: 'Results', label: 'Results (pages 4-5)' },
             ] as const).map((o) => (
               <button
                 key={o.key}
@@ -551,7 +579,7 @@ export const ReportCardsPage: React.FC = () => {
           #booklet-print-portal { display: none; }
 
           @media print {
-            @page { size: A4 landscape; margin: 0; }
+            @page { size: 148mm 210mm; margin: 0; }
 
             html, body {
               background: #fff !important;
@@ -574,15 +602,13 @@ export const ReportCardsPage: React.FC = () => {
             }
             #booklet-print-portal > * { margin: 0 !important; }
 
-            /* Each sheet fills the full A4 landscape page. Height auto → no blank page. */
+            /* Each page = A5 portrait (148mm × 210mm). One per printed page. */
             #booklet-print-portal .booklet-sheet {
               box-shadow: none !important;
-              border: none !important;
               border-radius: 0 !important;
               margin: 0 !important;
-              padding: 6mm !important;
-              width: 297mm !important;
-              max-width: 297mm !important;
+              width: 148mm !important;
+              max-width: 148mm !important;
               min-height: 0 !important;
               height: auto !important;
               overflow: hidden !important;
@@ -604,7 +630,7 @@ export const ReportCardsPage: React.FC = () => {
         {batchCard && createPortal(
           <div
             aria-hidden
-            style={{ position: 'fixed', left: -100000, top: 0, width: 1123, pointerEvents: 'none', opacity: 1, zIndex: -1, background: '#fff' }}
+            style={{ position: 'fixed', left: -100000, top: 0, width: 560, pointerEvents: 'none', opacity: 1, zIndex: -1, background: '#fff' }}
           >
             <div ref={batchRef} className="w-max">
               <BookletContent
@@ -616,6 +642,12 @@ export const ReportCardsPage: React.FC = () => {
                 shortName={shortName}
                 showCover
                 showInner
+                showGrading
+                borderStyle={borderStyle}
+                showWatermark={showWatermark}
+                watermarkOpacity={watermarkOpacity}
+                watermarkSize={watermarkSize}
+                showStudentPhoto={showStudentPhoto}
               />
             </div>
           </div>,
@@ -634,6 +666,12 @@ export const ReportCardsPage: React.FC = () => {
               shortName={shortName}
               showCover
               showInner
+              showGrading
+              borderStyle={borderStyle}
+              showWatermark={showWatermark}
+              watermarkOpacity={watermarkOpacity}
+              watermarkSize={watermarkSize}
+              showStudentPhoto={showStudentPhoto}
             />
           </div>,
           document.body,
@@ -644,10 +682,10 @@ export const ReportCardsPage: React.FC = () => {
             {/* On small screens the A4-landscape booklet is wider than the
                 viewport, so allow horizontal scroll (disabled on print). */}
             <p className="sm:hidden text-[11px] text-gray-400 mb-2 print:hidden">
-              Tip: swipe sideways to view the full booklet, or use Download PDF.
+              Tip: use Download PDF for the best print-ready booklet.
             </p>
             <div className="overflow-x-auto -mx-2 px-2 print:overflow-visible print:mx-0 print:px-0">
-              <div id="booklet-print-root" ref={bookletRef} className="space-y-6 print:space-y-0 w-max mx-auto print:w-auto">
+              <div id="booklet-print-root" ref={bookletRef} className="space-y-6 print:space-y-0 mx-auto print:w-auto">
                 <BookletContent
                   card={card}
                   school={school}
@@ -657,6 +695,12 @@ export const ReportCardsPage: React.FC = () => {
                   shortName={shortName}
                   showCover={showCover}
                   showInner={showInner}
+                  showGrading={spread === 'all' || spread === 'cover'}
+                  borderStyle={borderStyle}
+                  showWatermark={showWatermark}
+                  watermarkOpacity={watermarkOpacity}
+                  watermarkSize={watermarkSize}
+                  showStudentPhoto={showStudentPhoto}
                 />
               </div>
             </div>

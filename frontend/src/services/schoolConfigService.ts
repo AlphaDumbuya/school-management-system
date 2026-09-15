@@ -14,6 +14,7 @@ export interface SchoolInfo {
   postal_code?: string;
   country?: string;
   logo_url?: string;
+  motto?: string;
   founded_year?: number;
   principal_name?: string;
   principal_email?: string;
@@ -92,6 +93,18 @@ export const schoolConfigService = {
 
   async getSettings() {
     return apiClient.get<Record<string, any>>('/api/v1/school-config/settings');
+  },
+
+  /** Get a single setting by key from the school's settings map. */
+  async getSetting(key: string) {
+    const res = await apiClient.get<Record<string, any>>('/api/v1/school-config/settings');
+    const data = (res as any)?.data ?? res ?? {};
+    return data?.[key] ?? null;
+  },
+
+  /** Update a single setting by key. */
+  async updateSetting(key: string, value: any) {
+    return apiClient.post<{ message: string }>('/api/v1/school-config/settings', { [key]: value });
   },
 
   async updateSettings(settings: Record<string, any>) {

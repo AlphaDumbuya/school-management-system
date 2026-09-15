@@ -246,8 +246,8 @@ const LevelFilterPopover: React.FC<LevelFilterPopoverProps> = ({ value, onChange
 export const ClassesPage: React.FC = () => {
   const queryClient = useQueryClient();
   const { canAccess } = useAuth();
-  // Only principals/super-admins manage classes. Teachers get a read-only,
-  // assignment-scoped view.
+  // Only principals/super-admins manage classes. Teachers and admissions
+  // officers get a read-only, assignment-scoped view.
   const canManage = canAccess(['principal', 'super_admin']);
 
   // Filter state

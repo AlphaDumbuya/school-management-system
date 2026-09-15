@@ -126,6 +126,49 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       query = query.whereIn('examinations.class_id', teacherClassIds);
     }
 
+    // Student scoping: only see exams for classes they're enrolled in
+    let studentClassIds: string[] | null = null;
+    if (req.user?.role === 'student') {
+      const student = await db('students')
+        .where('user_id', req.user.id)
+        .select('id')
+        .first();
+      if (!student) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      const enrolled = await db('enrollments')
+        .where('student_id', student.id)
+        .whereIn('status', ['enrolled', 'active'])
+        .distinct('class_id');
+      studentClassIds = enrolled.map((r: any) => r.class_id);
+      if (studentClassIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      query = query.whereIn('examinations.class_id', studentClassIds);
+    }
+
+    // Parent/guardian scoping: only see exams for their children's classes
+    let parentClassIds: string[] | null = null;
+    if (req.user?.role === 'parent' || req.user?.role === 'guardian') {
+      const children = await db('students')
+        .join('guardians', 'students.guardian_id', 'guardians.id')
+        .where('guardians.user_id', req.user.id)
+        .select('students.id');
+      if (children.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      const childIds = children.map((c: any) => c.id);
+      const enrolled = await db('enrollments')
+        .whereIn('student_id', childIds)
+        .whereIn('status', ['enrolled', 'active'])
+        .distinct('class_id');
+      parentClassIds = enrolled.map((r: any) => r.class_id);
+      if (parentClassIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      query = query.whereIn('examinations.class_id', parentClassIds);
+    }
+
     if (type) query = query.where('examinations.type', type as string);
     if (term) query = query.where('examinations.term', term as string);
     if (academic_year) query = query.where('examinations.academic_year', academic_year as string);
@@ -145,6 +188,8 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       .where('users.tenant_id', tenantId)
       .count('examinations.id as count');
     if (teacherClassIds) countQuery = countQuery.whereIn('examinations.class_id', teacherClassIds);
+    if (studentClassIds) countQuery = countQuery.whereIn('examinations.class_id', studentClassIds);
+    if (parentClassIds) countQuery = countQuery.whereIn('examinations.class_id', parentClassIds);
     if (type) countQuery = countQuery.where('examinations.type', type as string);
     if (term) countQuery = countQuery.where('examinations.term', term as string);
     if (academic_year) countQuery = countQuery.where('examinations.academic_year', academic_year as string);

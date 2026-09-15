@@ -29,6 +29,7 @@ export interface SchoolInfo {
   postal_code?: string;
   country?: string;
   logo_url?: string;
+  motto?: string;
   founded_year?: number;
   principal_name?: string;
   principal_email?: string;
@@ -121,6 +122,7 @@ export class Phase15SchoolConfigService {
         school = inserted;
       }
 
+      // motto is now a column on the schools table
       return {
         school_id: school.school_id,
         tenant_id: school.tenant_id,
@@ -135,6 +137,7 @@ export class Phase15SchoolConfigService {
         postal_code: school.postal_code,
         country: school.country,
         logo_url: school.logo_url,
+        motto: school.motto,
         founded_year: school.founded_year,
         principal_name: school.principal_name,
         principal_email: school.principal_email,
@@ -199,6 +202,7 @@ export class Phase15SchoolConfigService {
         'postal_code',
         'country',
         'logo_url',
+        'motto',
         'founded_year',
         'principal_name',
         'principal_email',

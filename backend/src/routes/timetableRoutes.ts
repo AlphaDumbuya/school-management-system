@@ -408,4 +408,145 @@ router.delete('/:slotId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
   }
 });
 
+// ── Period Configuration (tenant-scoped) ──────────────────────────────────────
+
+/**
+ * GET /api/v1/timetable/period-configs
+ * Get all period configs for the current tenant
+ */
+router.get('/period-configs', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const configs = await db('timetable_period_configs')
+      .where({ tenant_id: tenantId, is_active: true })
+      .select('id', 'school_level', 'periods', 'is_active', 'created_at', 'updated_at');
+
+    res.json({ data: configs });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/timetable/period-configs/:level
+ * Get period config for a specific school level
+ */
+router.get('/period-configs/:level', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.user?.tenant_id;
+    const { level } = req.params;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const validLevels = ['nursery', 'primary', 'jss', 'sss'];
+    if (!validLevels.includes(level)) {
+      throw new AppError('Invalid school level', 400, 'VALIDATION_ERROR');
+    }
+
+    const config = await db('timetable_period_configs')
+      .where({ tenant_id: tenantId, school_level: level, is_active: true })
+      .first();
+
+    res.json({ data: config || null });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/v1/timetable/period-configs/:level
+ * Create or update period config for a school level (upsert)
+ */
+router.put('/period-configs/:level', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.user?.tenant_id;
+    const { level } = req.params;
+    const { periods } = req.body;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    const validLevels = ['nursery', 'primary', 'jss', 'sss'];
+    if (!validLevels.includes(level)) {
+      throw new AppError('Invalid school level', 400, 'VALIDATION_ERROR');
+    }
+
+    if (!Array.isArray(periods) || periods.length === 0) {
+      throw new AppError('Periods array is required and must not be empty', 400, 'VALIDATION_ERROR');
+    }
+
+    // Validate each period has the required fields
+    for (const p of periods) {
+      if (!p.label || !p.start || !p.end) {
+        throw new AppError('Each period must have label, start, and end', 400, 'VALIDATION_ERROR');
+      }
+    }
+
+    // Upsert: insert or update if exists
+    const existing = await db('timetable_period_configs')
+      .where({ tenant_id: tenantId, school_level: level })
+      .first();
+
+    if (existing) {
+      await db('timetable_period_configs')
+        .where({ id: existing.id })
+        .update({
+          periods: JSON.stringify(periods),
+          updated_at: new Date(),
+        });
+    } else {
+      await db('timetable_period_configs').insert({
+        tenant_id: tenantId,
+        school_level: level,
+        periods: JSON.stringify(periods),
+        is_active: true,
+        created_by: req.user?.id || null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+    }
+
+    logger.info(`Period config saved for level ${level} (tenant: ${tenantId})`);
+
+    res.json({
+      message: 'Period configuration saved successfully',
+      data: { school_level: level, periods },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/v1/timetable/period-configs/:level
+ * Reset period config for a school level (reverts to system defaults)
+ */
+router.delete('/period-configs/:level', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.user?.tenant_id;
+    const { level } = req.params;
+
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    await db('timetable_period_configs')
+      .where({ tenant_id: tenantId, school_level: level })
+      .del();
+
+    logger.info(`Period config reset for level ${level} (tenant: ${tenantId})`);
+
+    res.json({ message: 'Period configuration reset to system defaults' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
