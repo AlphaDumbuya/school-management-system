@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate, useSearchParams } from 'react-router-dom';
 import ProtectedRoute from './ProtectedRoute';
 import LoginPage from '@pages/LoginPage';
 import ForgotPasswordPage from '@pages/ForgotPasswordPage';
@@ -173,7 +173,27 @@ const router = createBrowserRouter(
         { path: 'verify-report-card/:hash', element: <VerifyReportCardPage /> },
         // Aliases for older/malformed QR paths so previously-printed cards still resolve.
         { path: 'verify/id', element: <VerifyIdPage /> },
-        { path: 'verify', element: <VerifyIdPage /> },
+        // Old QR format: /verify?type=report-card&student=...&year=...
+        // Redirect to the new verification page (which will show an error for old hashes).
+        {
+          path: 'verify',
+          element: (() => {
+            const Redirect: React.FC = () => {
+              const [params] = useSearchParams();
+              const type = params.get('type');
+              if (type === 'report-card') {
+                const student = params.get('student') || '';
+                const year = params.get('year') || '';
+                const ref = params.get('ref') || '';
+                // Old QR codes don't have class_id, so we can't verify them via the new system.
+                // Show the verification page with an error.
+                return <Navigate to={`/verify-report-card/${ref || 'old-format'}?s=${student}&c=old&y=${encodeURIComponent(year)}`} replace />;
+              }
+              return <VerifyIdPage />;
+            };
+            return <Redirect />;
+          })(),
+        },
 
         // ── Generic dashboard redirect ──────────────────────────────
         {

@@ -167,12 +167,34 @@ export const BookletContent: React.FC<BookletContentProps> = ({
   useEffect(() => {
     (async () => {
       try {
-        const verifyUrl = `${window.location.origin}/verify?type=report-card&student=${card.student.id}&year=${card.academic_year}`;
+        // Build the same verification hash as the backend: sha256(tenant:student:class:year)
+        // The frontend can't compute SHA-256 natively, so we use the backend QR endpoint
+        // to get the proper signed URL. Fall back to a relative URL if the API call fails.
+        const studentId = card.student.id;
+        const classId = card.class_id || '';
+        const academicYear = card.academic_year;
+        const base = (import.meta as any).env?.VITE_API_URL || '';
+        let verifyUrl = '';
+        if (classId) {
+          try {
+            const res = await fetch(`${base}/api/v1/sl/report-cards/${studentId}/qr?class_id=${classId}&academic_year=${encodeURIComponent(academicYear)}`, {
+              headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+            });
+            const json = await res.json();
+            if (json?.success && json.data?.verify_url) {
+              verifyUrl = json.data.verify_url;
+            }
+          } catch { /* fall through to fallback */ }
+        }
+        if (!verifyUrl) {
+          // Fallback: relative URL to the verify page (page will show an error without hash)
+          verifyUrl = `${window.location.origin}/verify-report-card/missing?s=${studentId}&c=${classId}&y=${encodeURIComponent(academicYear)}`;
+        }
         const dataUrl = await QRCode.toDataURL(verifyUrl, { width: 200, margin: 1, color: { dark: '#1f2937', light: '#ffffff' }, errorCorrectionLevel: 'M' });
         setQrDataUrl(dataUrl);
       } catch { /* QR generation failed */ }
     })();
-  }, [card.student.id, card.academic_year]);
+  }, [card.student.id, card.class_id, card.academic_year]);
 
   const border = resolveBorderStyle(borderStyle);
   const sheetStyle: React.CSSProperties = { border: `${border.width}px ${border.style} ${border.color}`, padding: `${border.padding}px`, borderRadius: `${border.radius}px` };

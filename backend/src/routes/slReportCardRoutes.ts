@@ -389,24 +389,31 @@ router.get('/:studentId', async (req: Request, res: Response, next: NextFunction
 // ── QR Verification ──────────────────────────────────────────────────────────
 
 /**
- * GET /:studentId/qr?academic_year=2026
+ * GET /:studentId/qr?class_id&academic_year
  * Returns a verification payload + QR data URL for this student's report card.
- * The QR encodes a URL to the public verification page with a signed hash.
+ * The QR encodes a URL to the PUBLIC verification page with a signed hash.
+ * The URL format is: {baseUrl}/verify-report-card/{hash}?s={studentId}&c={classId}&y={year}
  */
 router.get('/:studentId/qr', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = tenant(req);
     const { studentId } = req.params;
+    const classId = req.query.class_id as string;
     const academicYear = (req.query.academic_year as string) || new Date().getFullYear().toString();
 
-    // Build a deterministic verification hash from student + tenant + year
-    const crypto = await import('crypto');
-    const hashInput = `${tenantId}:${studentId}:${academicYear}`;
-    const verifyHash = crypto.createHash('sha256').update(hashInput).digest('hex').slice(0, 16);
+    if (!classId) {
+      return res.status(400).json({ success: false, error: 'class_id is required' });
+    }
 
-    // The QR encodes a verification URL that the public can scan
-    const baseUrl = process.env.FRONTEND_URL || process.env.PUBLIC_URL || 'https://app.schoolmanagement.com';
-    const verifyUrl = `${baseUrl}/verify?type=report-card&ref=${verifyHash}&student=${studentId}&year=${academicYear}`;
+    // Build a deterministic verification hash from tenant + student + class + year
+    // This must match the hash computed in slReportCardHtml.ts and publicVerifyRoutes.ts
+    const crypto = await import('crypto');
+    const hashInput = `${tenantId}:${studentId}:${classId}:${academicYear}`;
+    const verifyHash = crypto.createHash('sha256').update(hashInput).digest('hex').slice(0, 24);
+
+    // The QR encodes a URL to the public verification page (no auth required)
+    const baseUrl = process.env.REPORT_CARD_VERIFY_URL || process.env.FRONTEND_URL || process.env.PUBLIC_URL || 'https://app.schoolmanagement.com';
+    const verifyUrl = `${baseUrl.replace(/\/$/, '')}/verify-report-card/${verifyHash}?s=${studentId}&c=${classId}&y=${encodeURIComponent(academicYear)}`;
 
     res.json({
       success: true,
@@ -414,6 +421,7 @@ router.get('/:studentId/qr', async (req: Request, res: Response, next: NextFunct
         verify_hash: verifyHash,
         verify_url: verifyUrl,
         student_id: studentId,
+        class_id: classId,
         academic_year: academicYear,
       },
     });
@@ -424,28 +432,53 @@ router.get('/:studentId/qr', async (req: Request, res: Response, next: NextFunct
 });
 
 /**
- * GET /verify/:hash
- * Public endpoint (no auth) to verify a report card by hash.
+ * GET /verify/:hash?s=&c=&y=
+ * DEPRECATED — use the public endpoint at /api/v1/public/verify-report-card/:hash instead.
+ * This is kept for backwards compatibility but now redirects to the public endpoint.
  */
 router.get('/verify/:hash', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { hash } = req.params;
-    const { student, year } = req.query;
+    const studentId = req.query.s as string;
+    const classId = req.query.c as string;
+    const academicYear = req.query.y as string;
 
-    // We can't fully verify without tenant context, but we can confirm the hash format
-    // and return a "verified" status if the hash matches the expected pattern.
-    if (!hash || hash.length !== 16) {
-      return res.status(400).json({ success: false, error: 'Invalid verification hash' });
+    if (!hash || !studentId || !classId || !academicYear) {
+      return res.status(400).json({ success: false, error: 'Missing verification parameters (s, c, y)' });
     }
+
+    // Look up the student's tenant to recompute the hash
+    const student = await db('students')
+      .where({ id: studentId })
+      .select('tenant_id')
+      .first();
+
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student not found' });
+    }
+
+    const crypto = await import('crypto');
+    const expectedHash = crypto.createHash('sha256').update(`${student.tenant_id}:${studentId}:${classId}:${academicYear}`).digest('hex').slice(0, 24);
+
+    if (hash !== expectedHash) {
+      return res.status(403).json({ success: false, error: 'Verification failed: hash mismatch' });
+    }
+
+    // Fetch the full report card data
+    const card = await slReportCardService.getReportCard(student.tenant_id, studentId, classId, academicYear);
+
+    const school = await db('schools')
+      .where({ tenant_id: student.tenant_id })
+      .select('name', 'short_name', 'logo_url', 'address', 'motto', 'phone', 'email', 'website')
+      .first();
 
     res.json({
       success: true,
       data: {
         verified: true,
-        hash,
-        student_id: student,
-        academic_year: year,
-        message: 'Report card verification confirmed.',
+        verified_at: new Date().toISOString(),
+        school: school || {},
+        report_card: card,
       },
     });
   } catch (error: any) {

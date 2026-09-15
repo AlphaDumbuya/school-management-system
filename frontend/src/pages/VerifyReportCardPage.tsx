@@ -62,6 +62,13 @@ export default function VerifyReportCardPage() {
       return;
     }
 
+    // Old QR format (pre-update) had no class_id — can't verify with the new system.
+    if (classId === 'old' || hash === 'old-format' || hash === 'missing') {
+      setError('This report card uses an older QR format. Please reprint the report card to get an updated QR code that can be digitally verified.');
+      setLoading(false);
+      return;
+    }
+
     (async () => {
       try {
         const res = await verifyReportCard(hash, studentId, classId, academicYear);
