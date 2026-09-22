@@ -175,6 +175,8 @@ export const AnnouncementsPage: React.FC = () => {
         title="Announcements"
         subtitle="Broadcast updates to your school community"
         breadcrumbs={[{ label: 'Communication' }, { label: 'Announcements' }]}
+        onRefresh={() => refetch()}
+        isRefreshing={isLoading}
         actions={
           canPost ? (
             <Button onClick={openCompose} size="sm" className="whitespace-nowrap shadow-sm">

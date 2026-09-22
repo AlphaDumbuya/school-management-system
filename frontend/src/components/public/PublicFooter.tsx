@@ -133,13 +133,21 @@ export const PublicFooter: React.FC = () => {
             <h5 className="text-white font-bold text-xs mb-4 uppercase tracking-wider">Contact</h5>
             <ul className="space-y-2.5 text-sm text-blue-100/70">
               <li><a href="mailto:info@wiskulsl.com" className="hover:text-amber-400 transition-colors">info@wiskulsl.com</a></li>
-              <li><a href="tel:+23278261892" className="hover:text-amber-400 transition-colors">+232 78 261 892</a></li>
+              <li><a href="tel:+23234330610" className="hover:text-amber-400 transition-colors">+232 34 330 610</a></li>
               <li className="text-blue-100/50">Kossoh Town, Sierra Leone</li>
             </ul>
             <div className="flex items-center gap-2.5 mt-4">
-              {['𝕏', 'f', 'in'].map((s) => (
-                <div key={s} className="w-9 h-9 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-blue-100/70 hover:text-white hover:bg-[#f59e0b] hover:border-[#f59e0b] cursor-pointer transition-colors text-sm">{s}</div>
-              ))}
+              <a
+                href="https://www.facebook.com/wiskulsl"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-9 h-9 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-blue-100/70 hover:text-white hover:bg-[#1877F2] hover:border-[#1877F2] transition-colors"
+                aria-label="WiSkul on Facebook"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.791-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.874v2.25h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>
+                </svg>
+              </a>
             </div>
           </div>
         </div>

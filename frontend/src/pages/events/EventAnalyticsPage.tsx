@@ -75,6 +75,8 @@ export const EventAnalyticsPage: React.FC = () => {
         title="Event Analytics"
         subtitle="Comprehensive insights into event performance and engagement"
         breadcrumbs={[{ label: 'Events', href: '/events/school' }, { label: 'Analytics' }]}
+        onRefresh={() => refetch()}
+        isRefreshing={isLoading}
       >
         {/* ── Date Filter Bar ── */}
         <div className="flex flex-col gap-3 sm:gap-4 mb-8">

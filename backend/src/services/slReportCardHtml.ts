@@ -111,10 +111,57 @@ export interface GradingMethodEntry {
   isFail: boolean;
 }
 
+export interface BorderStyleConfig {
+  preset?: string;
+  color?: string;
+  width?: number;
+  padding?: number;
+  style?: 'solid' | 'double' | 'dashed' | 'dotted' | 'groove' | 'ridge' | 'inset' | 'outset' | 'none';
+  radius?: number;
+}
+
+// ── Microsoft Word-style art borders (SVG pattern-based, like MS Word Page Border "Art" styles) ──
+function svgArtUrl(svg: string): string {
+  const enc = svg.replace(/"/g, "'").replace(/#/g, '%23').replace(/\n/g, '').replace(/\s{2,}/g, ' ');
+  return `url("data:image/svg+xml;utf8,${enc}")`;
+}
+
+const ART_BORDERS: Record<string, { pattern: string; thickness: number; color: string }> = {
+  stars: { color: '#a16207', thickness: 18, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'><path d='M12 2 L14 8 L20 8 L15 12 L17 18 L12 14 L7 18 L9 12 L4 8 L10 8 Z' fill='#a16207' opacity='0.8'/></svg>`) },
+  hearts: { color: '#be123c', thickness: 18, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'><path d='M12 16 C12 16 4 11 4 7 C4 4 6 2 8 2 C10 2 12 4 12 6 C12 4 14 2 16 2 C18 2 20 4 20 7 C20 11 12 16 12 16 Z' fill='#be123c' opacity='0.7'/></svg>`) },
+  dots: { color: '#4b5563', thickness: 10, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='16' height='10' viewBox='0 0 16 10'><circle cx='8' cy='5' r='3' fill='#4b5563'/></svg>`) },
+  dash_long: { color: '#1e3a8a', thickness: 12, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='12' viewBox='0 0 32 12'><rect x='2' y='4' width='20' height='4' fill='#1e3a8a' rx='1'/></svg>`) },
+  triple_line: { color: '#374151', thickness: 14, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='14' viewBox='0 0 32 14'><rect x='2' y='2' width='28' height='2' fill='#374151'/><rect x='2' y='6' width='28' height='2' fill='#374151'/><rect x='2' y='10' width='28' height='2' fill='#374151'/></svg>`) },
+  wavy: { color: '#0f766e', thickness: 14, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='14' viewBox='0 0 32 14'><path d='M0 7 Q8 0 16 7 Q24 14 32 7' fill='none' stroke='#0f766e' stroke-width='2'/></svg>`) },
+  diamonds: { color: '#7c2d12', thickness: 16, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='20' height='16' viewBox='0 0 20 16'><path d='M10 2 L16 8 L10 14 L4 8 Z' fill='#7c2d12' opacity='0.8'/></svg>`) },
+  leaves: { color: '#14532d', thickness: 18, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'><path d='M12 2 C6 6 6 12 12 16 C18 12 18 6 12 2 Z' fill='#14532d' opacity='0.7'/><line x1='12' y1='2' x2='12' y2='16' stroke='#14532d' stroke-width='0.5'/></svg>`) },
+  apples: { color: '#b91c1c', thickness: 18, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='18' viewBox='0 0 22 18'><circle cx='11' cy='10' r='6' fill='#b91c1c' opacity='0.7'/><rect x='10' y='2' width='2' height='4' fill='#14532d'/><path d='M13 4 Q16 2 16 4' fill='none' stroke='#14532d' stroke-width='1'/></svg>`) },
+  classical_wave: { color: '#1e3a8a', thickness: 20, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'><path d='M0 10 Q5 2 10 10 Q15 18 20 10 Q25 2 30 10 Q35 18 40 10' fill='none' stroke='#1e3a8a' stroke-width='2'/><path d='M0 12 Q5 4 10 12 Q15 20 20 12 Q25 4 30 12 Q35 20 40 12' fill='none' stroke='#1e3a8a' stroke-width='1' opacity='0.5'/></svg>`) },
+};
+
+function isArtBorder(preset?: string): boolean {
+  return !!preset && preset.startsWith('art_') && ART_BORDERS[preset.slice(4)] !== undefined;
+}
+
+function resolveBorderCss(cfg?: BorderStyleConfig): { borderCss: string; paddingCss: string; radiusCss: string; artBorder?: typeof ART_BORDERS[string] } {
+  if (!cfg || cfg.style === 'none' || cfg.width === 0) {
+    return { borderCss: 'none', paddingCss: '0', radiusCss: '0' };
+  }
+  if (isArtBorder(cfg.preset)) {
+    const art = ART_BORDERS[cfg.preset!.slice(4)];
+    return { borderCss: 'none', paddingCss: `${art.thickness + (cfg.padding ?? 4)}px`, radiusCss: '0', artBorder: art };
+  }
+  const w = cfg.width ?? 2;
+  const s = cfg.style ?? 'solid';
+  const c = cfg.color ?? '#111827';
+  return { borderCss: `${w}px ${s} ${c}`, paddingCss: `${cfg.padding ?? 8}px`, radiusCss: `${cfg.radius ?? 0}px` };
+}
+
 export async function renderReportCardHtml(
   card: ReportCardData,
   school: SchoolInfo,
   gradingMethod?: GradingMethodEntry[],
+  borderStyle?: BorderStyleConfig,
 ): Promise<string> {
   const schoolName = school?.name || 'SCHOOL NAME';
   const schoolAddress = [school?.address, school?.city, school?.state, school?.country].filter(Boolean).join(', ');
@@ -138,9 +185,23 @@ export async function renderReportCardHtml(
   const qrDataUrl = await QRCode.toDataURL(verifyUrl, { width: 200, margin: 1, color: { dark: '#111827', light: '#ffffff' } }).catch(() => '');
   const ys = card.yearly_summary || {};
 
+  // Resolve border style (from settings) for cover-front and cover-back pages
+  const bCfg = resolveBorderCss(borderStyle);
+  const artKey = borderStyle?.preset?.startsWith('art_') ? borderStyle.preset.slice(4) : null;
+  const artBorder = artKey ? ART_BORDERS[artKey] : undefined;
+  const artBandBg = artBorder
+    ? (artBorder.thickness === 10 ? '20px 10px' : artBorder.thickness === 12 ? '32px 12px' : artBorder.thickness === 14 ? '32px 14px' : '24px 18px')
+    : '';
+  const artPadding = artBorder ? `${artBorder.thickness + (borderStyle?.padding ?? 4)}` : bCfg.paddingCss;
+
   // ── PAGE 1: FRONT COVER ──────────────────────────────────────────────────────
+  const artBandsHtml = artBorder ? `<div class="art-band top"></div><div class="art-band bottom"></div><div class="art-band left"></div><div class="art-band right"></div>` : '';
+  const artContentOpen = artBorder ? '<div class="art-content" style="text-align:center;justify-content:space-between;display:flex;flex-direction:column;height:100%;">' : '';
+  const artContentClose = artBorder ? '</div>' : '';
   const page1 = `
   <section class="page cover-front">
+    ${artBandsHtml}
+    ${artContentOpen}
     <div class="brand">
       ${logo ? `<img class="logo" src="${esc(logo)}" alt="logo" />` : `<div class="logo-fallback">${esc(shortName)}</div>`}
       <h1>${esc(schoolName)}</h1>
@@ -160,6 +221,7 @@ export async function renderReportCardHtml(
       <div class="sigbox"><span>Official Stamp</span><div class="seal">${esc(shortName)} Seal</div></div>
       <div class="sigbox"><span>Principal's Signature</span><div class="sig">${esc(school?.principal_name || 'Principal')}</div></div>
     </div>
+    ${artContentClose}
   </section>`;
 
   // ── PAGE 2: GRADING SYSTEM ────────────────────────────────────────────────────
@@ -355,6 +417,7 @@ export async function renderReportCardHtml(
     : `<div class="watermark"><div class="wm-fallback">${esc(shortName)}</div></div>`;
   const page8 = `
   <section class="page cover-back">
+    ${artBandsHtml}
     ${watermarkHtml}
     <div class="cover-content">
     <div class="ckey">Key: Mn = Average &nbsp;·&nbsp; Rnk = Position</div>
@@ -381,7 +444,7 @@ export async function renderReportCardHtml(
   .blank { background: #fff; }
 
   /* ── Front cover (sheet 1 — has border) ── */
-  .cover-front { text-align: center; justify-content: space-between; border: 2px solid #111827; padding: 8mm; }
+  .cover-front { text-align: center; justify-content: space-between; border: ${artBorder ? 'none' : bCfg.borderCss}; padding: ${artBorder ? artPadding + 'px' : '8mm'}; border-radius: ${artBorder ? '0' : bCfg.radiusCss}; position: relative; }
   .cover-front .brand { padding: 3mm 0; }
   .cover-front .logo { width: 32mm; height: 32mm; object-fit: contain; margin: 0 auto; display: block; }
   .cover-front .logo-fallback { width: 32mm; height: 32mm; border-radius: 50%; background: #111827; color: #fff; font-size: 22px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin: 0 auto; }
@@ -488,7 +551,7 @@ export async function renderReportCardHtml(
   .seekey { font-size: 8px; font-style: italic; color: #9ca3af; margin-top: 3px; }
 
   /* ── Back cover (sheet 1 — has border, has watermark) ── */
-  .cover-back { font-size: 14px; line-height: 1.5; border: 2px solid #111827; padding: 10mm; }
+  .cover-back { font-size: 14px; line-height: 1.5; border: ${artBorder ? 'none' : bCfg.borderCss}; padding: ${artBorder ? artPadding + 'px' : '10mm'}; border-radius: ${artBorder ? '0' : bCfg.radiusCss}; position: relative; }
   .cover-back .watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0.06; z-index: 0; pointer-events: none; }
   .cover-back .watermark img { width: 140mm; height: 140mm; object-fit: contain; }
   .cover-back .watermark .wm-fallback { width: 70mm; height: 70mm; border-radius: 50%; background: #111827; color: #fff; font-size: 28px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
@@ -503,6 +566,14 @@ export async function renderReportCardHtml(
   .cover-back .note { font-style: italic; color: #4b5563; margin-top: 4px; font-size: 12px; line-height: 1.45; }
   .cover-back .cover-bottom { margin-top: auto; }
   .cover-back .parents { border: 1px solid #6b7280; border-radius: 4px; padding: 8px; }
+
+  /* ── Art border bands (Microsoft Word-style page border art) ── */
+  .art-band { position: absolute; z-index: 0; pointer-events: none; }
+  .art-band.top { top: 0; left: 0; right: 0; height: ${artBorder?.thickness ?? 0}px; background-image: ${artBorder?.pattern ?? 'none'}; background-repeat: repeat; background-size: ${artBandBg || 'contain'}; }
+  .art-band.bottom { bottom: 0; left: 0; right: 0; height: ${artBorder?.thickness ?? 0}px; background-image: ${artBorder?.pattern ?? 'none'}; background-repeat: repeat; background-size: ${artBandBg || 'contain'}; }
+  .art-band.left { top: ${artBorder?.thickness ?? 0}px; bottom: ${artBorder?.thickness ?? 0}px; left: 0; width: ${artBorder?.thickness ?? 0}px; background-image: ${artBorder?.pattern ?? 'none'}; background-repeat: repeat; background-size: ${artBandBg || 'contain'}; transform: rotate(180deg); }
+  .art-band.right { top: ${artBorder?.thickness ?? 0}px; bottom: ${artBorder?.thickness ?? 0}px; right: 0; width: ${artBorder?.thickness ?? 0}px; background-image: ${artBorder?.pattern ?? 'none'}; background-repeat: repeat; background-size: ${artBandBg || 'contain'}; }
+  .art-content { position: relative; z-index: 1; }
 </style>
 </head>
 <body>

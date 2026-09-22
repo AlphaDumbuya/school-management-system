@@ -856,6 +856,8 @@ export const IdCardsPage: React.FC = () => {
         title="ID Card Management"
         subtitle="Generate, manage and track identity cards — scoped to your school"
         breadcrumbs={[{ label: 'Identity' }, { label: 'ID Cards' }]}
+        onRefresh={() => refetch()}
+        isRefreshing={isLoading}
         actions={
           <div className="flex items-center gap-2">
             {activeTab === 'cards' && (

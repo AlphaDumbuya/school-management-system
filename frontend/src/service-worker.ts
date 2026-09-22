@@ -45,9 +45,13 @@ registerRoute(navigationRoute);
 
 // ---------------------------------------------------------------------------
 // API GET requests — network-first, fall back to cache when offline.
+// Dashboard endpoints are excluded from caching — they must always be fresh.
 // ---------------------------------------------------------------------------
 registerRoute(
-  ({ url, request }) => url.pathname.startsWith('/api/') && request.method === 'GET',
+  ({ url, request }) =>
+    url.pathname.startsWith('/api/') &&
+    !url.pathname.startsWith('/api/v1/dashboards/') &&
+    request.method === 'GET',
   new NetworkFirst({
     cacheName: 'wiskul-api',
     networkTimeoutSeconds: 5,

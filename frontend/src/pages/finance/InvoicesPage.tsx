@@ -6,7 +6,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, ChevronDown, FileStack, Eye, Bell, X, Loader2 } from 'lucide-react';
+import { ChevronDown, FileStack, Eye, Bell, X, Loader2 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { Button } from '@components/ui/button';
@@ -46,7 +46,9 @@ export const InvoicesPage: React.FC = () => {
     return matchSearch && (!levelFilter || i.class_level === levelFilter);
   });
 
-  const refetchAll = () => { refetch(); refetchOv(); };
+  const refetchAll = async () => {
+    await Promise.all([refetch(), refetchOv()]);
+  };
 
   const remind = async (id: string) => {
     try { await financeService.sendInvoiceReminder(id); showToast.success('Reminder sent'); }
@@ -58,10 +60,11 @@ export const InvoicesPage: React.FC = () => {
       <PageShell
         title="Invoices"
         subtitle="Generate and track student fee invoices"
+        onRefresh={refetchAll}
+        isRefreshing={isLoading || ovLoading}
         actions={
           <div className="flex items-center gap-2">
             <ExportButton endpoint="/api/v1/finance/invoices/export" filename="invoices" params={{ status: statusFilter || undefined }} />
-            <Button variant="outline" size="sm" onClick={refetchAll} disabled={isLoading}><RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></Button>
             <Button variant="default" size="sm" onClick={() => setGenOpen(true)}><FileStack size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Generate Invoices</span></Button>
           </div>
         }

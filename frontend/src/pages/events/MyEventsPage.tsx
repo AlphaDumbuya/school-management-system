@@ -206,6 +206,8 @@ export const MyEventsPage: React.FC = () => {
         title="My Events"
         subtitle="Events you are registered for"
         breadcrumbs={[{ label: 'Events', href: '/events/school' }, { label: 'My Events' }]}
+        onRefresh={() => refetch()}
+        isRefreshing={isLoading}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
             {/* View Toggle */}

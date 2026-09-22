@@ -3,8 +3,8 @@
  * =========================
  * Real, tenant + parent-scoped data for the parent portal.
  * A parent only ever sees THEIR OWN children:
- *   - Children resolved via guardians.user_id (authoritative) with email +
- *     guardian_name fallbacks for legacy records.
+ *   - Children resolved via guardians.user_id/email, with a narrow legacy
+ *     registration-email fallback. Names alone are not proof of guardianship.
  *   - Per-child: class, attendance rate, average grade, outstanding fees.
  *   - Aggregate KPIs across all children.
  */
@@ -32,7 +32,6 @@ class ParentDashboardService {
   private async resolveChildren(userId: string, tenantId: string): Promise<any[]> {
     const parent = await db('users').where({ id: userId, tenant_id: tenantId }).first();
     const email = (parent?.email || '').toLowerCase().trim();
-    const name = `${parent?.first_name || ''} ${parent?.last_name || ''}`.toLowerCase().trim();
 
     // 1) Authoritative: guardians linked to this parent user.
     let studentIds: string[] = [];
@@ -61,20 +60,17 @@ class ParentDashboardService {
       studentIds = derived.map((r: any) => r.id);
     }
 
-    // 3) Fallback: students whose own email or guardian_name matches the parent.
+    // 3) Legacy fallback: exact email only. A matching name is not sufficient
+    // to grant access to a child's private attendance records.
     let query = db('students').where('tenant_id', tenantId);
     if (studentIds.length > 0) {
       query = query.whereIn('id', studentIds);
     } else {
       // Avoid leaking: only match when we have a real email or name signal, and
       // never match the synthetic parent-email domain against student emails.
-      if (!email && !name) return [];
       const realEmail = email && !email.endsWith('@parent.school.com') ? email : '';
-      if (!realEmail && !name) return [];
-      query = query.where(function (this: any) {
-        if (realEmail) this.orWhereRaw('LOWER(email) = ?', [realEmail]);
-        if (name) this.orWhereRaw('LOWER(guardian_name) LIKE ?', [`%${name}%`]);
-      });
+      if (!realEmail) return [];
+      query = query.whereRaw('LOWER(email) = ?', [realEmail]);
     }
 
     return query.select('*').orderBy('created_at', 'desc');
@@ -234,7 +230,8 @@ class ParentDashboardService {
     const attendanceRows = await db('attendance')
       .where('student_id', student.id)
       .orderBy('attendance_date', 'desc')
-      .select('id', 'attendance_date', 'status', 'remarks')
+      .orderBy('session_type', 'asc')
+      .select('id', 'attendance_date', 'status', 'session_type', 'check_in_time', 'check_out_time', 'marked_at', 'remarks')
       .catch(() => []);
     let present = 0, absent = 0, late = 0, excused = 0;
     for (const a of attendanceRows as any[]) {
@@ -294,8 +291,10 @@ class ParentDashboardService {
       grades,
       attendance: {
         present, absent, late, excused, total: totalAtt, percentage: attendanceRate,
-        records: (attendanceRows as any[]).slice(0, 20).map((a) => ({
-          id: a.id, date: a.attendance_date, status: (a.status || '').toLowerCase(), remarks: a.remarks || null,
+        records: (attendanceRows as any[]).map((a) => ({
+          id: a.id, date: a.attendance_date, status: (a.status || '').toLowerCase(),
+          session_type: a.session_type, check_in_time: a.check_in_time,
+          check_out_time: a.check_out_time, marked_at: a.marked_at, remarks: a.remarks || null,
         })),
       },
       schedule,

@@ -396,6 +396,8 @@ export const TenantDetailPage: React.FC = () => {
           { label: 'Tenants', path: '/platform/tenants' },
           { label: tenant?.name || 'Detail' },
         ]}
+        onRefresh={load}
+        isRefreshing={loading}
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={downloadBackup} disabled={backupBusy}>

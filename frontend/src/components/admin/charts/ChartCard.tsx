@@ -8,7 +8,7 @@ import {
   CartesianGrid, Tooltip, Legend,
   TooltipProps,
 } from 'recharts';
-import { Download } from 'lucide-react';
+import { Download, TrendingUp } from 'lucide-react';
 import { SkeletonChart } from '../feedback/Skeleton';
 import { EmptyState } from '../feedback/EmptyState';
 import { Button } from '../../ui/button';
@@ -39,25 +39,83 @@ export interface ChartCardProps {
   };
 }
 
-const PALETTE = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'];
+// Premium palette — vibrant but harmonious
+const PALETTE = [
+  '#3b82f6', // blue
+  '#10b981', // emerald
+  '#f59e0b', // amber
+  '#8b5cf6', // violet
+  '#ef4444', // red
+  '#315B8C', // brand navy
+];
 
-// Dark tooltip
+// Gradient stop pairs per color
+const GRAD_STOPS: Record<string, [string, string]> = {
+  '#3b82f6': ['#3b82f6', '#1d4ed8'],
+  '#10b981': ['#10b981', '#059669'],
+  '#f59e0b': ['#f59e0b', '#d97706'],
+  '#8b5cf6': ['#8b5cf6', '#7c3aed'],
+  '#ef4444': ['#ef4444', '#dc2626'],
+  '#315B8C': ['#4a7db5', '#1f3d60'],
+};
+
+// ── Premium tooltip ──────────────────────────────────────────────────────────
 const CustomTooltip: React.FC<TooltipProps<any, any>> = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-gray-900/95 backdrop-blur text-white rounded-lg px-3 py-2 text-xs shadow-xl border border-white/10">
-      {label && <p className="font-semibold mb-1.5 text-white/90">{label}</p>}
+    <div className="bg-gray-950/95 backdrop-blur-md text-white rounded-xl px-3 py-2.5 text-xs shadow-2xl border border-white/10 min-w-[110px] sm:min-w-[130px] sm:px-4 sm:py-3">
+      {label && (
+        <p className="font-bold text-white/80 mb-2 pb-1.5 border-b border-white/10 text-[10px] sm:text-[11px] uppercase tracking-wider truncate">
+          {label}
+        </p>
+      )}
       {payload.map((entry: any, i: number) => (
-        <div key={i} className="flex items-center gap-2 py-0.5">
-          <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: entry.color ?? '#fff' }} />
-          <span className="text-white/70">{entry.name}</span>
-          <span className="font-bold ml-auto">{entry.value}</span>
+        <div key={i} className="flex items-center justify-between gap-3 sm:gap-4 py-0.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-full ring-1 ring-white/20 flex-shrink-0"
+              style={{ backgroundColor: entry.color ?? '#fff' }}
+            />
+            <span className="text-white/60 truncate">{entry.name}</span>
+          </div>
+          <span className="font-black text-white flex-shrink-0">{entry.value?.toLocaleString()}</span>
         </div>
       ))}
     </div>
   );
 };
 
+// ── Pie tooltip ──────────────────────────────────────────────────────────────
+const PieTooltip: React.FC<TooltipProps<any, any>> = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const entry = payload[0];
+  return (
+    <div className="bg-gray-950/95 backdrop-blur-md text-white rounded-xl px-4 py-3 text-xs shadow-2xl border border-white/10">
+      <div className="flex items-center gap-2">
+        <span className="w-2.5 h-2.5 rounded-full ring-1 ring-white/20" style={{ backgroundColor: entry.payload?.fill }} />
+        <span className="font-semibold">{entry.name}</span>
+        <span className="font-black ml-auto">{entry.value?.toLocaleString()}</span>
+      </div>
+    </div>
+  );
+};
+
+// ── Custom legend ────────────────────────────────────────────────────────────
+const CustomLegend: React.FC<{ payload?: any[]; colorOverrides?: string[] }> = ({ payload, colorOverrides }) => (
+  <div className="flex flex-wrap items-center justify-center gap-x-3 sm:gap-x-4 gap-y-1.5 mt-2 sm:mt-3">
+    {(payload ?? []).map((entry: any, i: number) => (
+      <div key={i} className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-semibold text-gray-500 min-w-0">
+        <span
+          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+          style={{ backgroundColor: colorOverrides?.[i] ?? entry.color }}
+        />
+        <span className="truncate">{entry.value}</span>
+      </div>
+    ))}
+  </div>
+);
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function isSeriesEmpty(series: ChartSeries[], labels?: string[]): boolean {
   if (!labels?.length && !series.length) return true;
   if (series.every((s) => s.data.length === 0)) return true;
@@ -73,12 +131,12 @@ function toRecharts(series: ChartSeries[], labels: string[] = []) {
 }
 
 function toPieData(series: ChartSeries[], labels: string[] = []) {
-  // For pie/donut we use the first series
   const s = series[0];
   if (!s) return [];
   return s.data.map((value, i) => ({ name: labels[i] ?? `Segment ${i + 1}`, value }));
 }
 
+// ── Chart Card ───────────────────────────────────────────────────────────────
 export const ChartCard: React.FC<ChartCardProps> = ({
   title,
   subtitle,
@@ -97,7 +155,6 @@ export const ChartCard: React.FC<ChartCardProps> = ({
 
   const handleExport = () => {
     if (onExport) { onExport(); return; }
-    // Fallback: serialize SVG inside container
     const svg = containerRef.current?.querySelector('svg');
     if (!svg) return;
     const svgData = new XMLSerializer().serializeToString(svg);
@@ -106,14 +163,11 @@ export const ChartCard: React.FC<ChartCardProps> = ({
     const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(svgBlob);
     img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx?.drawImage(img, 0, 0);
+      canvas.width = img.width; canvas.height = img.height;
+      canvas.getContext('2d')?.drawImage(img, 0, 0);
       URL.revokeObjectURL(url);
       const link = document.createElement('a');
-      const date = new Date().toISOString().slice(0, 10);
-      link.download = `chart-${title.toLowerCase().replace(/\s+/g, '-')}-${date}.png`;
+      link.download = `chart-${title.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
     };
@@ -123,40 +177,43 @@ export const ChartCard: React.FC<ChartCardProps> = ({
   const renderChart = () => {
     const needsRotation = labels.length > 8;
     const xAxisProps = needsRotation
-      ? { angle: -45, textAnchor: 'end' as const, interval: 0, height: 60 }
+      ? { angle: -40, textAnchor: 'end' as const, interval: 0, height: 56 }
       : {};
 
+    // ── AREA / LINE ──────────────────────────────────────────────────────────
     if (type === 'line') {
       const chartData = toRecharts(series, labels);
+      // Closure so CustomLegend gets real hex colours (not gradient refs)
+      const lineLegend = (props: any) => <CustomLegend {...props} colorOverrides={colors} />;
       return (
-        <AreaChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+        <AreaChart data={chartData} margin={{ top: 10, right: 12, left: -8, bottom: 0 }}>
           <defs>
             {series.map((s, i) => {
               const c = colors[i % colors.length];
               return (
                 <linearGradient key={s.name} id={`area-grad-${i}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={c} stopOpacity={0.28} />
+                  <stop offset="0%"   stopColor={c} stopOpacity={0.35} />
                   <stop offset="100%" stopColor={c} stopOpacity={0.02} />
                 </linearGradient>
               );
             })}
           </defs>
-          <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="#EEF1F6" />
+          <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#F1F5F9" />
           <XAxis
             dataKey="name"
-            tick={{ fontSize: 11, fill: '#9CA3AF' }}
+            tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 500 }}
             tickLine={false}
-            axisLine={{ stroke: '#E5E7EB' }}
+            axisLine={{ stroke: '#E2E8F0' }}
             {...xAxisProps}
           />
           <YAxis
-            tick={{ fontSize: 11, fill: '#9CA3AF' }}
+            tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 500 }}
             tickLine={false}
             axisLine={false}
-            width={36}
+            width={38}
           />
-          <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#CBD5E1', strokeDasharray: '4 4' }} />
-          <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
+          <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#CBD5E1', strokeDasharray: '4 4', strokeWidth: 1 }} />
+          <Legend content={lineLegend} />
           {series.map((s, i) => {
             const c = colors[i % colors.length];
             return (
@@ -168,7 +225,7 @@ export const ChartCard: React.FC<ChartCardProps> = ({
                 strokeWidth={2.5}
                 fill={`url(#area-grad-${i})`}
                 dot={false}
-                activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }}
+                activeDot={{ r: 5, strokeWidth: 2.5, stroke: '#fff', fill: c }}
               />
             );
           })}
@@ -176,88 +233,177 @@ export const ChartCard: React.FC<ChartCardProps> = ({
       );
     }
 
+    // ── BAR ─────────────────────────────────────────────────────────────────
     if (type === 'bar') {
       const chartData = toRecharts(series, labels);
+      // Closure so CustomLegend gets real hex colours (not gradient url() refs)
+      const barLegend = (props: any) => <CustomLegend {...props} colorOverrides={colors} />;
       return (
-        <BarChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-          <XAxis dataKey="name" tick={{ fontSize: 11 }} {...xAxisProps} />
-          <YAxis tick={{ fontSize: 11 }} />
-          <Tooltip content={<CustomTooltip />} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
+        <BarChart data={chartData} margin={{ top: 10, right: 12, left: -8, bottom: 0 }} barCategoryGap="30%">
+          <defs>
+            {series.map((s, i) => {
+              const c = colors[i % colors.length];
+              const [top, btm] = GRAD_STOPS[c] ?? [c, c];
+              return (
+                <linearGradient key={s.name} id={`bar-grad-${i}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stopColor={top} stopOpacity={1} />
+                  <stop offset="100%" stopColor={btm} stopOpacity={0.75} />
+                </linearGradient>
+              );
+            })}
+          </defs>
+          <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#F1F5F9" />
+          <XAxis
+            dataKey="name"
+            tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 500 }}
+            tickLine={false}
+            axisLine={{ stroke: '#E2E8F0' }}
+            {...xAxisProps}
+          />
+          <YAxis
+            tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 500 }}
+            tickLine={false}
+            axisLine={false}
+            width={38}
+          />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
+          <Legend content={barLegend} />
           {series.map((s, i) => (
-            <Bar key={s.name} dataKey={s.name} fill={colors[i % colors.length]} radius={[3, 3, 0, 0]} />
+            <Bar
+              key={s.name}
+              dataKey={s.name}
+              fill={`url(#bar-grad-${i})`}
+              radius={[5, 5, 0, 0]}
+              maxBarSize={52}
+            />
           ))}
         </BarChart>
       );
     }
 
+    // ── PIE / DONUT ──────────────────────────────────────────────────────────
     const pieData = toPieData(series, labels);
-
-    if (type === 'pie') {
-      return (
-        <PieChart>
-          <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius="80%">
-            {pieData.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}
-          </Pie>
-          <Tooltip content={<CustomTooltip />} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-        </PieChart>
-      );
-    }
-
-    // donut
+    const isDonut = type === 'donut';
     const total = pieData.reduce((acc, d) => acc + d.value, 0);
+    const pieLegend = (props: any) => <CustomLegend {...props} colorOverrides={colors} />;
+
     return (
       <PieChart>
-        <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="55%" outerRadius="80%">
-          {pieData.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}
+        <defs>
+          {pieData.map((_, i) => {
+            const c = colors[i % colors.length];
+            const [top, btm] = GRAD_STOPS[c] ?? [c, c];
+            return (
+              <linearGradient key={i} id={`pie-grad-${i}`} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%"   stopColor={top} stopOpacity={1} />
+                <stop offset="100%" stopColor={btm} stopOpacity={0.9} />
+              </linearGradient>
+            );
+          })}
+          {/* Outer ghost ring for depth on donut */}
+          {isDonut && (
+            <radialGradient id="donut-ring-shadow" cx="50%" cy="50%" r="50%">
+              <stop offset="80%" stopColor="#315B8C" stopOpacity={0.08} />
+              <stop offset="100%" stopColor="#315B8C" stopOpacity={0} />
+            </radialGradient>
+          )}
+        </defs>
+
+        {/* Ghost outer ring */}
+        {isDonut && (
+          <Pie
+            data={[{ value: 1 }]}
+            dataKey="value"
+            cx="50%" cy="50%"
+            outerRadius="84%"
+            innerRadius="78%"
+            fill="url(#donut-ring-shadow)"
+            stroke="none"
+            paddingAngle={0}
+            isAnimationActive={false}
+          />
+        )}
+
+        <Pie
+          data={pieData}
+          dataKey="value"
+          nameKey="name"
+          cx="50%"
+          cy="50%"
+          outerRadius="76%"
+          innerRadius={isDonut ? '50%' : '0%'}
+          paddingAngle={isDonut ? 3 : 2}
+          strokeWidth={0}
+        >
+          {pieData.map((_, i) => (
+            <Cell key={i} fill={`url(#pie-grad-${i})`} />
+          ))}
         </Pie>
-        <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="text-sm font-semibold" fill="#111827">
-          {donutCenterLabel ?? String(total)}
-        </text>
-        <Tooltip content={<CustomTooltip />} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        {isDonut && (
+          <>
+            <text x="50%" y="47%" textAnchor="middle" dominantBaseline="middle" fill="#111827" style={{ fontSize: 22, fontWeight: 900 }}>
+              {donutCenterLabel ?? total.toLocaleString()}
+            </text>
+            <text x="50%" y="58%" textAnchor="middle" dominantBaseline="middle" fill="#94a3b8" style={{ fontSize: 11, fontWeight: 600 }}>
+              Total
+            </text>
+          </>
+        )}
+        <Tooltip content={<PieTooltip />} />
+        <Legend content={<CustomLegend />} />
       </PieChart>
     );
   };
 
+  // ── Card wrapper ─────────────────────────────────────────────────────────
   return (
-    <div className="bg-white rounded-2xl ring-1 ring-gray-200/70 shadow-sm hover:shadow-md transition-shadow duration-300 p-4 sm:p-6">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4 gap-2">
-        <div>
-          <h3 className="text-sm sm:text-base font-bold text-gray-900 tracking-tight">{title}</h3>
-          {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
+    <div className="relative bg-white rounded-2xl ring-1 ring-gray-200/80 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden">
+      {/* Top accent — brand colours */}
+      <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-[#315B8C] via-[#8b5cf6] to-[#3b82f6]" />
+
+      <div className="p-3 sm:p-5 lg:p-6">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-4 sm:mb-5 gap-2 sm:gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                <TrendingUp size={12} className="text-blue-600" />
+              </div>
+              <h3 className="text-xs sm:text-[0.9rem] font-bold text-gray-900 tracking-tight truncate">{title}</h3>
+            </div>
+            {subtitle && <p className="text-[11px] text-gray-400 mt-1.5 ml-8 truncate">{subtitle}</p>}
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            {dateRangeFilter}
+            <button
+              onClick={handleExport}
+              aria-label="Export chart"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gray-50 hover:bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <Download size={12} />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {dateRangeFilter}
-          {(onExport || true) && (
-            <Button variant="ghost" size="icon" onClick={handleExport} aria-label="Export chart">
-              <Download size={14} />
-            </Button>
+
+        {/* Chart area */}
+        <div ref={containerRef}>
+          {isLoading ? (
+            <SkeletonChart height={height} />
+          ) : isSeriesEmpty(series, labels) ? (
+            <div style={{ height }} className="flex items-center justify-center">
+              <EmptyState
+                message={emptyState?.message ?? 'No data available'}
+                description={emptyState?.description}
+                action={emptyState?.action}
+                className="min-h-0"
+              />
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={height}>
+              {renderChart() as React.ReactElement}
+            </ResponsiveContainer>
           )}
         </div>
-      </div>
-
-      {/* Chart area */}
-      <div ref={containerRef}>
-        {isLoading ? (
-          <SkeletonChart height={height} />
-        ) : isSeriesEmpty(series, labels) ? (
-          <div style={{ height }} className="flex items-center justify-center">
-            <EmptyState
-              message={emptyState?.message ?? 'No data available'}
-              description={emptyState?.description}
-              action={emptyState?.action}
-              className="min-h-0"
-            />
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height={height}>
-            {renderChart() as React.ReactElement}
-          </ResponsiveContainer>
-        )}
       </div>
     </div>
   );

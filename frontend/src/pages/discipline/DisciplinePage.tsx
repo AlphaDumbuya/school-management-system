@@ -494,6 +494,8 @@ export const DisciplinePage: React.FC = () => {
         title="Discipline & Conduct"
         subtitle="Manage student infractions, actions, appeals, and behavioral observations"
         breadcrumbs={[{ label: 'Discipline & Conduct' }]}
+        onRefresh={invalidate}
+        isRefreshing={dashLoading}
         actions={tabAction()}
       >
         {/* ── Tab Navigation ─────────────────────────────────────────── */}

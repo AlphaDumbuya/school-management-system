@@ -42,6 +42,8 @@ export interface AttendanceRow extends LocalMeta {
   date: string;          // YYYY-MM-DD
   sessionType: string;   // e.g. 'full_day' | 'morning' | 'afternoon'
   status: string;        // present | absent | late | excused
+  checkInTime?: string;
+  checkOutTime?: string;
   remarks?: string;
 }
 

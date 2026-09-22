@@ -167,6 +167,12 @@ export const PlatformCommunicationPage: React.FC = () => {
         title="Communications"
         subtitle="Manage inbound messages and broadcast announcements to schools"
         breadcrumbs={[{ label: 'Platform Dashboard', path: '/platform/dashboard' }, { label: 'Communications' }]}
+        onRefresh={async () => {
+          if (tab === 'inbox') await loadMessages();
+          else if (tab === 'broadcast') await loadBroadcasts();
+          else if (tab === 'newsletter') await Promise.all([loadSubs(), loadCampaigns()]);
+        }}
+        isRefreshing={loading || subsLoading}
       >
         {/* Tabs */}
         <div className="flex flex-wrap gap-2 mb-6 p-1.5 bg-slate-100 rounded-2xl w-fit">

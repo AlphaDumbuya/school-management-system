@@ -28,6 +28,7 @@ import { classesService } from '@services/classesService';
 import { reportCardService } from '@services/reportCardService';
 import { disciplineService } from '@services/disciplineService';
 import { showToast } from '@utils/toast';
+import { AttendanceTimeDetails } from '@components/attendance/AttendanceTimeDetails';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -109,7 +110,7 @@ export const StudentProfilesPage: React.FC = () => {
   }, []);
 
   // 1. Fetch Students list
-  const { data: studentsData, isLoading: isStudentsLoading } = useQuery({
+  const { data: studentsData, isLoading: isStudentsLoading, refetch } = useQuery({
     queryKey: ['students-profiles', { search, statusFilter, classFilter, page, pageSize }],
     queryFn: () => studentsService.listStudents({
       page,
@@ -308,6 +309,8 @@ export const StudentProfilesPage: React.FC = () => {
             ? [{ label: 'Profiles' }, { label: student ? `${student.first_name} ${student.last_name}` : 'Details' }]
             : [{ label: 'Profiles' }]
         }
+        onRefresh={() => refetch()}
+        isRefreshing={isStudentsLoading}
       >
         {/* ── SCREEN 1: DIRECTORY GRID ────────────────────────────────────────── */}
         {!selectedStudentId ? (
@@ -879,6 +882,7 @@ export const StudentProfilesPage: React.FC = () => {
                                 <tr>
                                   <th className="p-4">Date</th>
                                   <th className="p-4">Status</th>
+                                  <th className="p-4">Times</th>
                                   <th className="p-4">Remarks</th>
                                 </tr>
                               </thead>
@@ -901,6 +905,7 @@ export const StudentProfilesPage: React.FC = () => {
                                         {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
                                       </span>
                                     </td>
+                                    <td className="p-4"><AttendanceTimeDetails record={r} className="min-w-[230px]" /></td>
                                     <td className="p-4 text-xs font-medium text-gray-555 dark:text-gray-400">
                                       {r.remarks || '—'}
                                     </td>

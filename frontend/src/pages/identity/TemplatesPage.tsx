@@ -13,7 +13,6 @@ import {
     Trash2,
     Check,
     X,
-    RefreshCw,
     Star,
     CheckCircle,
     Clock,
@@ -232,18 +231,10 @@ export const TemplatesPage: React.FC = () => {
                 title="Card Templates"
                 subtitle="Manage ID card design templates and branding"
                 breadcrumbs={[{ label: 'Identity' }, { label: 'Templates' }]}
+                onRefresh={() => refetch()}
+                isRefreshing={isLoading}
                 actions={
                     <div className="flex items-center gap-2 sm:gap-3">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => refetch()}
-                            disabled={isLoading}
-                            className="flex items-center gap-1.5"
-                        >
-                            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
-                            <span className="hidden sm:inline">Refresh</span>
-                        </Button>
                         <RoleGuard roles={['principal', 'super_admin']}>
                             <Button
                                 variant="default"

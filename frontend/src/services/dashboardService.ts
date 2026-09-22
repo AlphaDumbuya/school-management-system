@@ -14,10 +14,10 @@ class DashboardService {
    * Get complete principal dashboard with all data
    * Falls back to individual endpoint calls if complete endpoint not available
    */
-  async getCompleteDashboard(): Promise<CompleteDashboard> {
+  async getCompleteDashboard(cacheBust?: string): Promise<CompleteDashboard> {
     try {
-      // Try the complete endpoint first
-      const response = await apiClient.get<CompleteDashboard>('/api/v1/dashboards/admin/complete');
+      const params = cacheBust ? { _t: cacheBust } : undefined;
+      const response = await apiClient.get<CompleteDashboard>('/api/v1/dashboards/admin/complete', { params });
       const payload = this.unwrapResponse(response);
       if (payload) {
         return payload;
@@ -26,7 +26,7 @@ class DashboardService {
     } catch (error) {
       // Fallback to individual endpoint calls
       console.warn('Complete dashboard endpoint not available, using individual endpoints:', error);
-      
+
       const safeCall = async <T>(promise: Promise<any>, fallback: T): Promise<T> => {
         try {
           const res = await promise;
@@ -37,16 +37,18 @@ class DashboardService {
         }
       };
 
+      // Pass the cache-buster to every individual endpoint too
+      const p = cacheBust ? { _t: cacheBust } : undefined;
       const [metrics, alerts, financialSummary, atRiskStudents, systemHealth, academicChart, attendanceChart, feeChart, distributionChart] = await Promise.all([
-        safeCall(this.getMetrics(), null),
-        safeCall(this.getAlerts(), []),
-        safeCall(this.getFinancialSummary(), null),
-        safeCall(this.getStudentsAtRisk(10), []),
-        safeCall(this.getSystemHealth(), null),
-        safeCall(this.getAcademicPerformanceChart(), { labels: [], datasets: [] }),
-        safeCall(this.getAttendanceTrendChart(), { labels: [], datasets: [] }),
-        safeCall(this.getFeeCollectionChart(), { labels: [], datasets: [] }),
-        safeCall(this.getStudentDistributionChart(), { labels: [], datasets: [] }),
+        safeCall(this.getMetrics(p), null),
+        safeCall(this.getAlerts(p), []),
+        safeCall(this.getFinancialSummary(p), null),
+        safeCall(this.getStudentsAtRisk(10, p), []),
+        safeCall(this.getSystemHealth(p), null),
+        safeCall(this.getAcademicPerformanceChart(p), { labels: [], datasets: [] }),
+        safeCall(this.getAttendanceTrendChart(p), { labels: [], datasets: [] }),
+        safeCall(this.getFeeCollectionChart(p), { labels: [], datasets: [] }),
+        safeCall(this.getStudentDistributionChart(p), { labels: [], datasets: [] }),
       ]);
 
       return {
@@ -94,33 +96,21 @@ class DashboardService {
     }
   }
 
-  /**
-   * Get principal dashboard metrics (KPIs)
-   */
-  async getMetrics() {
-    const response = await apiClient.get('/api/v1/dashboards/admin/metrics');
+  async getMetrics(params?: Record<string, string>) {
+    const response = await apiClient.get('/api/v1/dashboards/admin/metrics', { params });
     return this.unwrapResponse(response);
   }
 
-  /**
-   * Get financial summary
-   */
-  async getFinancialSummary() {
-    const response = await apiClient.get('/api/v1/dashboards/admin/financial-summary');
+  async getFinancialSummary(params?: Record<string, string>) {
+    const response = await apiClient.get('/api/v1/dashboards/admin/financial-summary', { params });
     return this.unwrapResponse(response);
   }
 
-  /**
-   * Get dashboard alerts
-   */
-  async getAlerts() {
-    const response = await apiClient.get('/api/v1/dashboards/admin/alerts');
+  async getAlerts(params?: Record<string, string>) {
+    const response = await apiClient.get('/api/v1/dashboards/admin/alerts', { params });
     return this.unwrapResponse(response);
   }
 
-  /**
-   * Get recent activities
-   */
   async getRecentActivities(limit: number = 20) {
     const response = await apiClient.get('/api/v1/dashboards/admin/recent-activities', {
       params: { limit },
@@ -128,53 +118,35 @@ class DashboardService {
     return this.unwrapResponse(response);
   }
 
-  /**
-   * Get students at risk
-   */
-  async getStudentsAtRisk(limit: number = 10) {
+  async getStudentsAtRisk(limit: number = 10, params?: Record<string, string>) {
     const response = await apiClient.get('/api/v1/dashboards/admin/students-at-risk', {
-      params: { limit },
+      params: { limit, ...params },
     });
     return this.unwrapResponse(response);
   }
 
-  /**
-   * Get system health status
-   */
-  async getSystemHealth() {
-    const response = await apiClient.get('/api/v1/dashboards/admin/system-health');
+  async getSystemHealth(params?: Record<string, string>) {
+    const response = await apiClient.get('/api/v1/dashboards/admin/system-health', { params });
     return this.unwrapResponse(response);
   }
 
-  /**
-   * Get academic performance chart data
-   */
-  async getAcademicPerformanceChart() {
-    const response = await apiClient.get('/api/v1/dashboards/admin/chart/academic-performance');
+  async getAcademicPerformanceChart(params?: Record<string, string>) {
+    const response = await apiClient.get('/api/v1/dashboards/admin/chart/academic-performance', { params });
     return this.unwrapResponse(response);
   }
 
-  /**
-   * Get attendance trend chart data
-   */
-  async getAttendanceTrendChart() {
-    const response = await apiClient.get('/api/v1/dashboards/admin/chart/attendance-trend');
+  async getAttendanceTrendChart(params?: Record<string, string>) {
+    const response = await apiClient.get('/api/v1/dashboards/admin/chart/attendance-trend', { params });
     return this.unwrapResponse(response);
   }
 
-  /**
-   * Get fee collection chart data
-   */
-  async getFeeCollectionChart() {
-    const response = await apiClient.get('/api/v1/dashboards/admin/chart/fee-collection');
+  async getFeeCollectionChart(params?: Record<string, string>) {
+    const response = await apiClient.get('/api/v1/dashboards/admin/chart/fee-collection', { params });
     return this.unwrapResponse(response);
   }
 
-  /**
-   * Get student distribution chart data
-   */
-  async getStudentDistributionChart() {
-    const response = await apiClient.get('/api/v1/dashboards/admin/chart/student-distribution');
+  async getStudentDistributionChart(params?: Record<string, string>) {
+    const response = await apiClient.get('/api/v1/dashboards/admin/chart/student-distribution', { params });
     return this.unwrapResponse(response);
   }
 

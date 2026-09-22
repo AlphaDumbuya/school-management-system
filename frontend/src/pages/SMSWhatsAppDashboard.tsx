@@ -184,6 +184,7 @@ const TEMPLATE_TYPES = [
 
 export const SMSWhatsAppDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('send');
+  const [refreshKey, setRefreshKey] = useState(0);
   const { user } = useAuth();
   const isAdmin = ['principal', 'super_admin'].includes(user?.role || '');
   const visibleTabs = TABS.filter(t => !t.adminOnly || isAdmin);
@@ -194,6 +195,7 @@ export const SMSWhatsAppDashboard: React.FC = () => {
         title="SMS & WhatsApp"
         subtitle="Manage messaging providers, templates, and communications"
         breadcrumbs={[{ label: 'SMS & WhatsApp' }]}
+        onRefresh={async () => setRefreshKey(k => k + 1)}
       >
         {/* Tab bar */}
         <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
@@ -215,14 +217,14 @@ export const SMSWhatsAppDashboard: React.FC = () => {
           ))}
         </div>
 
-        {activeTab === 'providers' && <ProvidersTab />}
-        {activeTab === 'templates' && <TemplatesTab />}
-        {activeTab === 'send'      && <SendTab />}
-        {activeTab === 'schedules' && <SchedulesTab />}
-        {activeTab === 'history'   && <HistoryTab />}
-        {activeTab === 'phones'    && <PhonesTab />}
-        {activeTab === 'optouts'   && <OptOutsTab />}
-        {activeTab === 'analytics' && <AnalyticsTab />}
+        {activeTab === 'providers' && <ProvidersTab key={refreshKey} />}
+        {activeTab === 'templates' && <TemplatesTab key={refreshKey} />}
+        {activeTab === 'send'      && <SendTab key={refreshKey} />}
+        {activeTab === 'schedules' && <SchedulesTab key={refreshKey} />}
+        {activeTab === 'history'   && <HistoryTab key={refreshKey} />}
+        {activeTab === 'phones'    && <PhonesTab key={refreshKey} />}
+        {activeTab === 'optouts'   && <OptOutsTab key={refreshKey} />}
+        {activeTab === 'analytics' && <AnalyticsTab key={refreshKey} />}
 
         {/* Tips footer */}
         <div className={`mt-8 p-4 ${cardCls} border-l-4 border-l-gray-400`}>

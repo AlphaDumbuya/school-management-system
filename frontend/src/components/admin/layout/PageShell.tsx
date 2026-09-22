@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Breadcrumb } from './Breadcrumb';
 import { PageHeader } from './PageHeader';
 // SkeletonChart will be created as part of task 3.1 (feedback/Skeleton.tsx)
@@ -55,15 +55,21 @@ export const PageShell: React.FC<PageShellProps> = ({
   isRefreshing,
   children,
 }) => {
-  // Compose a Refresh control (when requested) with the page's own actions so
-  // every page that opts in gets a consistent reload button.
-  const headerActions = onRefresh ? (
+  // Most data-heavy pages provide a targeted refetch through `onRefresh`.
+  // For the remaining admin pages, use a full browser reload so the control is
+  // never cosmetic: all page state and server data are fetched again.
+  const reloadPage = useCallback(() => {
+    window.location.reload();
+  }, []);
+  const refresh = onRefresh ?? reloadPage;
+
+  // Compose a Refresh control with the page's own actions so every PageShell
+  // page gets a consistent, working reload button.
+  const headerActions = (
     <div className="flex items-center gap-2">
-      <RefreshButton onRefresh={onRefresh} isRefreshing={isRefreshing} />
+      <RefreshButton onRefresh={refresh} isRefreshing={isRefreshing} />
       {actions}
     </div>
-  ) : (
-    actions
   );
   return (
     // No horizontal padding on mobile: MainLayout's <main> already provides p-3.

@@ -137,6 +137,8 @@ export const PlatformSubscriptionsPage: React.FC = () => {
         title="SaaS Subscriptions"
         subtitle="Manage school plans, adjust user/storage limits, and configure free trial durations."
         breadcrumbs={[{ label: 'Platform Dashboard', path: '/platform/dashboard' }, { label: 'Subscriptions' }]}
+        onRefresh={fetchData}
+        isRefreshing={loading}
       >
         {/* Plan Cards Information */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

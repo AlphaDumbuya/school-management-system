@@ -2,20 +2,22 @@
  * RefreshButton — a small, reusable control for reloading a page's data.
  *
  * Pass an `onRefresh` that refetches the page's react-query queries (or calls
- * `queryClient.invalidateQueries`). The icon spins while the returned promise
- * is in flight. If the parent already tracks a refreshing state it can pass
- * `isRefreshing` to drive the spinner instead.
+ * `queryClient.invalidateQueries`). Shows idle → loading → done/error states
+ * with clear visual feedback so the user always knows something happened.
  */
-import React, { useState } from 'react';
-import { RefreshCw } from 'lucide-react';
-import { showToast } from '@utils/toast';
+import React, { useState, useCallback } from 'react';
+import { RefreshCw, Check, X } from 'lucide-react';
+import clsx from 'clsx';
 
 export interface RefreshButtonProps {
   onRefresh: () => void | Promise<unknown>;
+  /** Drive the spinner externally (optional — internal state takes precedence). */
   isRefreshing?: boolean;
   label?: string;
   className?: string;
 }
+
+type State = 'idle' | 'loading' | 'done' | 'error';
 
 export const RefreshButton: React.FC<RefreshButtonProps> = ({
   onRefresh,
@@ -23,50 +25,55 @@ export const RefreshButton: React.FC<RefreshButtonProps> = ({
   label = 'Refresh',
   className = '',
 }) => {
-  const [busy, setBusy] = useState(false);
-  // Spin when EITHER the parent reports refreshing OR our own click is in
-  // flight. (Using `??` broke this: a parent passing isRefreshing={false} at
-  // click time suppressed the internal busy spinner, so the button looked dead.)
-  const spinning = !!isRefreshing || busy;
+  const [state, setState] = useState<State>('idle');
+  const spinning = state === 'loading' || !!isRefreshing;
 
-  const handleClick = async () => {
-    if (busy) return;
+  const handleClick = useCallback(async () => {
+    if (spinning) return;
+    setState('loading');
     try {
-      setBusy(true);
-      // Keep the spinner visible briefly so a cached/instant refetch still
-      // gives the user clear feedback that something happened. Errors from the
-      // refetch are swallowed here: a single failing query shouldn't throw an
-      // unhandled rejection to the console or break the refresh control.
-      let failed = false;
-      await Promise.all([
-        Promise.resolve()
-          .then(() => onRefresh())
-          .catch((err) => {
-            failed = true;
-            console.warn('[Refresh] a query failed to refetch:', err);
-          }),
-        new Promise((r) => setTimeout(r, 500)),
-      ]);
-      // Confirm to the user that the reload happened (data may look identical if
-      // nothing changed, so an explicit toast avoids "did it work?" confusion).
-      if (failed) showToast.error('Could not refresh. Check your connection and try again.');
-      else showToast.success('Refreshed');
-    } finally {
-      setBusy(false);
+      await Promise.resolve(onRefresh());
+      setState('done');
+      setTimeout(() => setState('idle'), 1500);
+    } catch (err) {
+      console.warn('[RefreshButton] refresh failed:', err);
+      setState('error');
+      setTimeout(() => setState('idle'), 2000);
     }
-  };
+  }, [spinning, onRefresh]);
+
+  const icon =
+    state === 'done'  ? <Check size={15} /> :
+    state === 'error' ? <X size={15} /> :
+                        <RefreshCw size={15} className={spinning ? 'animate-spin' : ''} />;
+
+  const display =
+    state === 'loading' ? 'Refreshing…' :
+    state === 'done'    ? 'Updated'     :
+    state === 'error'   ? 'Failed'      : label;
+
+  const style =
+    state === 'done'  ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-500' :
+    state === 'error' ? 'bg-red-500 hover:bg-red-600 text-white border-red-500' :
+                        'bg-[#315B8C] hover:bg-[#1d4ed8] text-white border-[#315B8C]';
 
   return (
     <button
       type="button"
       onClick={handleClick}
       disabled={spinning}
-      aria-label={label}
-      title={label}
-      className={`inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${className}`}
+      aria-label={display}
+      title={display}
+      className={clsx(
+        'inline-flex items-center gap-1.5 rounded-xl border px-3 py-2',
+        'text-xs font-bold shadow-sm transition-all duration-200',
+        'active:scale-95 select-none disabled:opacity-70 disabled:cursor-not-allowed',
+        style,
+        className,
+      )}
     >
-      <RefreshCw size={16} className={spinning ? 'animate-spin' : ''} />
-      <span className="hidden sm:inline">{label}</span>
+      {icon}
+      <span className="hidden sm:inline">{display}</span>
     </button>
   );
 };

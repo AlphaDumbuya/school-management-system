@@ -99,7 +99,7 @@ class StudentDashboardService {
       const attendanceRows = await db('attendance')
         .where('student_id', student.id)
         .orderBy('attendance_date', 'desc')
-        .select('id', 'attendance_date', 'status', 'class_id', 'remarks')
+        .select('id', 'attendance_date', 'status', 'class_id', 'session_type', 'check_in_time', 'check_out_time', 'marked_at', 'remarks')
         .catch(() => []);
 
       let present = 0, absent = 0, late = 0, excused = 0;
@@ -119,6 +119,10 @@ class StudentDashboardService {
         id: a.id,
         date: a.attendance_date,
         status: (a.status || '').toLowerCase(),
+        session_type: a.session_type,
+        check_in_time: a.check_in_time,
+        check_out_time: a.check_out_time,
+        marked_at: a.marked_at,
         remarks: a.remarks || null,
       }));
 

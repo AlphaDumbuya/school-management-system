@@ -413,6 +413,8 @@ export const ClassesPage: React.FC = () => {
           ? 'Manage school classes, streams, and enrolment capacity'
           : 'Your assigned classes and their students'}
         breadcrumbs={[{ label: 'Classes & Streams' }]}
+        onRefresh={() => refetch()}
+        isRefreshing={isLoading}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
             {/* View Mode Toggle */}

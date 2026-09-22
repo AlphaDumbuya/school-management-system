@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, requirePermission, attachUserContext } from '@middleware/authMiddleware';
+import { authenticate, authorize, requirePermission, attachUserContext } from '@middleware/authMiddleware';
+import { UserRole } from '../types/auth';
 import { db } from '@utils/database';
 import { AttendanceService } from '@services/attendanceService';
 import { AuditService } from '@services/auditService';
@@ -9,6 +10,27 @@ import { AppError } from '@middleware/errorHandler';
 const router = Router();
 router.use(authenticate);
 router.use(attachUserContext);
+
+// Legacy class report endpoints must obey the same teacher class boundary as
+// the main attendance register routes.
+router.use('/class/:classId', authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.TEACHER), async (req: Request, _res: Response, next: NextFunction) => {
+  try {
+    if (req.user?.role === UserRole.TEACHER) {
+      const tenantId = req.user.tenant_id;
+      if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      const teacher = await db('teachers')
+        .join('users', 'teachers.user_id', 'users.id')
+        .where('teachers.user_id', req.user.id)
+        .where('users.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+      const assigned = teacher && await db('teacher_assignments').where({ teacher_id: teacher.id, class_id: req.params.classId }).first();
+      const led = teacher && await db('classes').where({ id: req.params.classId, class_teacher_id: teacher.id }).first();
+      if (!assigned && !led) throw new AppError('You are not assigned to this class', 403, 'FORBIDDEN');
+    }
+    next();
+  } catch (error) { next(error); }
+});
 const attendanceService = new AttendanceService(db);
 const auditService = new AuditService(db);
 
@@ -232,6 +254,7 @@ router.get(
 router.get(
   '/student/:studentId/percentage',
   authenticate,
+  authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.STUDENT),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { studentId } = req.params;
@@ -253,6 +276,16 @@ router.get(
       const student = await db('students').where({ id: studentId, tenant_id: tenantId }).first();
       if (!student) {
         throw new AppError('Student not found or access denied', 404, 'NOT_FOUND');
+      }
+      if (req.user?.role === UserRole.STUDENT && student.user_id !== req.user.id) {
+        throw new AppError('Insufficient permissions', 403, 'FORBIDDEN');
+      }
+      if (req.user?.role === UserRole.TEACHER) {
+        const teacher = await db('teachers').where('user_id', req.user.id).select('id').first();
+        const assigned = teacher && await db('teacher_assignments').where({ teacher_id: teacher.id, class_id: classId }).first();
+        const led = teacher && await db('classes').where({ id: classId, class_teacher_id: teacher.id }).first();
+        const enrollment = await db('enrollments').where({ student_id: student.id, class_id: classId }).first();
+        if ((!assigned && !led) || !enrollment) throw new AppError('Insufficient permissions', 403, 'FORBIDDEN');
       }
 
       // Verify class belongs to this tenant

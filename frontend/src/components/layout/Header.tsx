@@ -1,18 +1,13 @@
-/**
- * Main Header Component
- * Navigation and user menu
- * Phase 11: Frontend Dashboard Implementation
- */
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaBars, FaUser, FaCog, FaBookOpen } from 'react-icons/fa';
+import { FaUser, FaCog, FaBookOpen } from 'react-icons/fa';
 import { FaRightFromBracket } from 'react-icons/fa6';
-import { BadgeCheck } from 'lucide-react';
+import { BadgeCheck, Search as SearchIcon } from 'lucide-react';
 import useAuth from '@hooks/useAuth';
 import useAuthStore from '@store/authStore';
 import schoolConfigService from '@services/schoolConfigService';
 import { NotificationBell } from './NotificationBell';
+import { GlobalSearchBar } from './GlobalSearchBar';
 import { SyncStatusIndicator } from '@components/offline/SyncStatusIndicator';
 import clsx from 'clsx';
 
@@ -21,17 +16,15 @@ interface HeaderProps {
   sidebarOpen?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
+export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
-  // System alerts feed is principal/super_admin only.
   const canSeeAlerts = user?.role === 'principal' || user?.role === 'super_admin';
   const isSuperAdmin = user?.role === 'super_admin';
 
-  // Sync missing tenant school info — NOT for the super admin, who is the
-  // platform operator and must never be branded as a specific tenant school.
   useEffect(() => {
     if (!isSuperAdmin && user && (!user.schoolName || !user.schoolLogoUrl)) {
       schoolConfigService
@@ -41,11 +34,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
             const fetchedName = res.data.name;
             const fetchedLogo = res.data.logo_url;
             if (fetchedName && (user.schoolName !== fetchedName || user.schoolLogoUrl !== fetchedLogo)) {
-              const updatedUser = {
-                ...user,
-                schoolName: fetchedName || user.schoolName,
-                schoolLogoUrl: fetchedLogo ?? user.schoolLogoUrl,
-              };
+              const updatedUser = { ...user, schoolName: fetchedName || user.schoolName, schoolLogoUrl: fetchedLogo ?? user.schoolLogoUrl };
               useAuthStore.getState().setUser(updatedUser);
               localStorage.setItem('user', JSON.stringify(updatedUser));
             }
@@ -55,102 +44,105 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
     }
   }, [user]);
 
-  const handleLogout = async () => {
-    await logout();
-  };
+  const handleLogout = async () => { await logout(); };
+  const handleProfile  = () => { navigate('/settings?tab=profile');  setUserMenuOpen(false); };
+  const handleGuide    = () => { navigate('/guide');                   setUserMenuOpen(false); };
+  const handleSettings = () => { navigate('/settings?tab=security'); setUserMenuOpen(false); };
 
-  const handleProfile = () => {
-    // The dedicated /profile route is a placeholder; the real profile editor
-    // lives in Settings → My Profile.
-    navigate('/settings?tab=profile');
-    setUserMenuOpen(false);
-  };
-
-  const handleGuide = () => {
-    navigate('/guide');
-    setUserMenuOpen(false);
-  };
-
-  const handleSettings = () => {
-    // Open the broader configuration (defaults to the Security tab so it's
-    // clearly distinct from "My Profile").
-    navigate('/settings?tab=security');
-    setUserMenuOpen(false);
-  };
-
-  // Derived display values for the user menu.
-  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Your Account';
-  const initials =
-    `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() ||
-    (user?.email?.[0]?.toUpperCase() ?? 'U');
-  const roleLabel = (user?.role || '').replace(/_/g, ' ');
-  // Verified-school badge shows on the account owner's avatar once verified.
+  const fullName   = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Your Account';
+  const initials   = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() || (user?.email?.[0]?.toUpperCase() ?? 'U');
+  const roleLabel  = (user?.role || '').replace(/_/g, ' ');
   const isVerified = (user as any)?.verificationStatus === 'verified';
 
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-      <div className="px-3 sm:px-6 py-2 sm:py-4 flex items-center justify-between">
-        {/* Left side - Logo and menu toggle */}
-        <div className="flex items-center gap-2 sm:gap-4">
+    <header className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm">
+      <div className="px-2 sm:px-5 py-2 flex items-center gap-1.5 sm:gap-3">
+
+        {/* ── Left: hamburger + logo ── */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
           {onMenuClick && (
             <button
               onClick={onMenuClick}
-              className="text-gray-600 hover:text-gray-900 p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 lg:hidden"
+              className="text-gray-500 hover:text-gray-800 p-1.5 rounded-lg hover:bg-gray-100 lg:hidden transition-colors"
               title="Toggle sidebar"
             >
-              <FaBars className="w-5 h-5 sm:w-6 sm:h-6" />
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
             </button>
           )}
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             {isSuperAdmin ? (
               <>
-                <img src="/logo.png" alt="WiSkul" className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain bg-white p-0.5 border border-gray-200" />
-                <h1 className="text-sm sm:text-xl font-bold text-gray-900 whitespace-nowrap">
-                  Wi<span className="text-amber-500">Skul</span>
-                  <span className="hidden sm:inline font-medium text-gray-400 text-sm"> · Platform</span>
-                </h1>
+                <div className="w-8 h-8 rounded-xl overflow-hidden bg-[#0f2a5e] flex items-center justify-center flex-shrink-0 shadow-md">
+                  <img src="/logo.png" alt="WiSkul" className="w-full h-full object-contain p-1" />
+                </div>
+                <div className="hidden sm:block leading-tight min-w-0">
+                  <span className="font-black text-base text-[#0f2a5e]">Wi<span className="text-amber-500">Skul</span></span>
+                  <span className="block text-[10px] text-gray-400 font-semibold uppercase tracking-wider -mt-0.5">Platform</span>
+                </div>
               </>
             ) : (
               <>
-                {user?.schoolLogoUrl && (
-                  <img
-                    src={user.schoolLogoUrl}
-                    alt={user.schoolName || 'School Logo'}
-                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain bg-white p-0.5 border border-gray-200"
-                  />
-                )}
-                <h1 className="text-sm sm:text-xl font-bold text-gray-900 whitespace-nowrap">
-                  <span className="sm:hidden">{user?.schoolName || 'SMS'}</span>
-                  <span className="hidden sm:inline">{user?.schoolName || (sidebarOpen ? 'School Management' : 'SMS')}</span>
-                </h1>
+                <div className="w-8 h-8 rounded-xl overflow-hidden bg-[#0f2a5e] flex items-center justify-center flex-shrink-0 shadow-md">
+                  {user?.schoolLogoUrl
+                    ? <img src={user.schoolLogoUrl} alt={user.schoolName || 'School'} className="w-full h-full object-contain p-0.5" />
+                    : <img src="/logo.png" alt="WiSkul" className="w-full h-full object-contain p-1" />
+                  }
+                </div>
+                <div className="hidden sm:block leading-tight min-w-0 max-w-[140px] sm:max-w-[180px]">
+                  <span className="block font-black text-sm text-gray-900 truncate">{user?.schoolName || 'WiSkul'}</span>
+                  <span className="block text-[10px] text-gray-400 font-semibold uppercase tracking-wider -mt-0.5">School Management</span>
+                </div>
               </>
             )}
           </div>
         </div>
 
-        {/* Right side - Notifications and user menu */}
-        <div className="flex items-center gap-2 sm:gap-4">
-          {/* Connectivity / sync status */}
-          <SyncStatusIndicator compact />
+        {/* ── Center: GlobalSearchBar (desktop) ── */}
+        <div className="hidden sm:flex flex-1 max-w-xl mx-auto">
+          <GlobalSearchBar />
+        </div>
+
+        {/* ── Right: actions + user ── */}
+        <div className="flex items-center gap-1 sm:gap-1.5 lg:gap-2 flex-shrink-0 ml-auto sm:ml-0">
+
+          {/* Mobile search toggle */}
+          <button
+            onClick={() => setMobileSearchOpen((v) => !v)}
+            className="sm:hidden w-8 h-8 rounded-xl flex items-center justify-center text-gray-500 hover:text-[#315B8C] hover:bg-gray-100 transition-colors flex-shrink-0"
+            title="Search"
+          >
+            <SearchIcon size={17} />
+          </button>
+
+          {/* Sync status (teachers only, online → null) */}
+          <div className="hidden xs:block flex-shrink-0">
+            <SyncStatusIndicator compact />
+          </div>
 
           {/* Notifications */}
-          <NotificationBell canSeeAlerts={!!canSeeAlerts} />
+          <div className="flex-shrink-0">
+            <NotificationBell canSeeAlerts={!!canSeeAlerts} />
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-6 bg-gray-200 mx-0.5 hidden sm:block" />
 
           {/* User menu */}
-          <div className="relative">
+          <div className="relative flex-shrink-0">
             <button
-              onClick={() => setUserMenuOpen(!userMenuOpen)}
+              onClick={() => setUserMenuOpen((v) => !v)}
               aria-haspopup="menu"
               aria-expanded={userMenuOpen}
-              className="flex items-center gap-2 pl-1 pr-1 sm:pr-2.5 py-1 rounded-full sm:rounded-xl hover:bg-gray-100 transition-colors"
+              className="flex items-center gap-2 pl-1 pr-1 sm:pr-2 py-1 rounded-xl hover:bg-gray-100 transition-colors"
             >
               <div className="relative flex-shrink-0">
-                <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold shadow-sm ring-2 ring-white overflow-hidden">
-                  {user?.profilePhotoUrl ? (
-                    <img src={user.profilePhotoUrl} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    initials
-                  )}
+                <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-[#315B8C] to-[#1d4ed8] rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold shadow-sm ring-2 ring-white overflow-hidden">
+                  {user?.profilePhotoUrl
+                    ? <img src={user.profilePhotoUrl} alt="" className="w-full h-full object-cover" />
+                    : initials}
                 </div>
                 {isVerified && (
                   <span className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-[1px] shadow" title="Verified school">
@@ -158,12 +150,12 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
                   </span>
                 )}
               </div>
-              <div className="hidden sm:block text-left leading-tight max-w-[160px]">
-                <p className="font-semibold text-gray-900 text-sm truncate">{fullName}</p>
-                <p className="text-gray-500 text-[11px] capitalize truncate">{roleLabel}</p>
+              <div className="hidden sm:block text-left leading-tight max-w-[120px] lg:max-w-[140px]">
+                <p className="font-bold text-gray-900 text-sm truncate">{fullName}</p>
+                <p className="text-gray-400 text-[11px] capitalize truncate">{roleLabel}</p>
               </div>
               <svg
-                className={clsx('hidden sm:block w-4 h-4 text-gray-400 transition-transform', userMenuOpen && 'rotate-180')}
+                className={clsx('hidden sm:block w-4 h-4 text-gray-400 transition-transform flex-shrink-0', userMenuOpen && 'rotate-180')}
                 viewBox="0 0 20 20" fill="currentColor"
               >
                 <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
@@ -172,68 +164,37 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
 
             {userMenuOpen && (
               <>
-                {/* click-away backdrop */}
                 <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
-                <div
-                  role="menu"
-                  className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
-                >
-                  {/* Identity block */}
-                  <div className="px-4 py-4 bg-gradient-to-br from-blue-50 to-indigo-50/60 flex items-center gap-3">
-                    <div className="relative flex-shrink-0">
-                      <div className="w-11 h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm ring-2 ring-white overflow-hidden">
-                        {user?.profilePhotoUrl ? (
-                          <img src={user.profilePhotoUrl} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          initials
-                        )}
-                      </div>
-                      {isVerified && (
-                        <span className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-[1px] shadow" title="Verified school">
-                          <BadgeCheck className="w-4 h-4 text-emerald-500" />
-                        </span>
-                      )}
+                <div role="menu" className="absolute right-0 mt-2 w-60 sm:w-64 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden">
+                  {/* Profile header */}
+                  <div className="px-4 py-4 bg-gradient-to-br from-[#f0f4ff] to-[#e8f0fe] flex items-center gap-3">
+                    <div className="w-11 h-11 bg-gradient-to-br from-[#315B8C] to-[#1d4ed8] rounded-xl flex items-center justify-center text-white text-base font-bold shadow-md ring-2 ring-white flex-shrink-0 overflow-hidden">
+                      {user?.profilePhotoUrl
+                        ? <img src={user.profilePhotoUrl} alt="" className="w-full h-full object-cover" />
+                        : initials}
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="font-bold text-gray-900 text-sm truncate">{fullName}</p>
-                      {user?.email && (
-                        <p className="text-gray-500 text-xs truncate">{user.email}</p>
-                      )}
-                      <span className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                      <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                      <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#315B8C] text-white capitalize">
                         {roleLabel}
                       </span>
                     </div>
                   </div>
 
-                  <div className="py-1.5">
-                    <MenuItem
-                      icon={<FaUser className="w-4 h-4" />}
-                      label="My Profile"
-                      hint="Edit your name, email & password"
-                      onClick={handleProfile}
-                    />
-                    <MenuItem
-                      icon={<FaCog className="w-4 h-4" />}
-                      label="Settings"
-                      hint="Security, 2FA & configuration"
-                      onClick={handleSettings}
-                    />
-                    <MenuItem
-                      icon={<FaBookOpen className="w-4 h-4" />}
-                      label="Guide & Help"
-                      hint="Learn how to use the platform"
-                      onClick={handleGuide}
-                    />
+                  <div className="py-1">
+                    <MenuItem icon={<FaUser size={13} />}     label="My Profile"           hint="Account & details"        onClick={handleProfile} />
+                    <MenuItem icon={<FaBookOpen size={13} />} label="Platform Guide"        hint="Learn how to use WiSkul"  onClick={handleGuide} />
+                    <MenuItem icon={<FaCog size={13} />}      label="Settings & Security"   hint="Password & preferences"   onClick={handleSettings} />
                   </div>
 
-                  <div className="border-t border-gray-100 py-1.5">
+                  <div className="p-2 border-t border-gray-100 bg-gray-50/50">
                     <button
-                      role="menuitem"
                       onClick={handleLogout}
-                      className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                      className="w-full px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-2 transition-colors"
                     >
-                      <FaRightFromBracket className="w-4 h-4" />
-                      <span className="font-medium">Sign out</span>
+                      <FaRightFromBracket size={13} />
+                      Sign Out
                     </button>
                   </div>
                 </div>
@@ -242,23 +203,23 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, sidebarOpen }) => {
           </div>
         </div>
       </div>
+
+      {/* ── Mobile search bar (slides open below header) ── */}
+      {mobileSearchOpen && (
+        <div className="px-3 pb-3 pt-1.5 border-t border-gray-100 sm:hidden bg-white">
+          <GlobalSearchBar
+            mobile
+            onClose={() => setMobileSearchOpen(false)}
+          />
+        </div>
+      )}
     </header>
   );
 };
 
-/** A single dropdown menu row with an icon, label and a subtle hint line. */
-const MenuItem: React.FC<{
-  icon: React.ReactNode;
-  label: string;
-  hint?: string;
-  onClick: () => void;
-}> = ({ icon, label, hint, onClick }) => (
-  <button
-    role="menuitem"
-    onClick={onClick}
-    className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition-colors group"
-  >
-    <span className="w-8 h-8 rounded-lg bg-gray-100 text-gray-500 group-hover:bg-blue-100 group-hover:text-blue-600 flex items-center justify-center flex-shrink-0 transition-colors">
+const MenuItem: React.FC<{ icon: React.ReactNode; label: string; hint?: string; onClick: () => void }> = ({ icon, label, hint, onClick }) => (
+  <button role="menuitem" onClick={onClick} className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition-colors group">
+    <span className="w-8 h-8 rounded-lg bg-gray-100 text-gray-500 group-hover:bg-[#315B8C]/10 group-hover:text-[#315B8C] flex items-center justify-center flex-shrink-0 transition-colors">
       {icon}
     </span>
     <span className="min-w-0">

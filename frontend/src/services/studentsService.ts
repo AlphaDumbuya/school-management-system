@@ -166,6 +166,10 @@ export const studentsService = {
         class_id?: string;
         date: string;
         status: 'present' | 'absent' | 'late' | 'excused';
+        session_type?: string | null;
+        check_in_time?: string | null;
+        check_out_time?: string | null;
+        marked_at?: string | null;
         remarks?: string;
       }>;
     }>(`/api/v1/attendance/student/${studentId}`);

@@ -38,6 +38,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { BookletContent } from './academic/components/BookletContent';
 import type { ReportCard as ReportCardType } from '../services/reportCardService';
+import { showToast } from '@utils/toast';
 
 export const SettingsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -107,7 +108,6 @@ export const SettingsPage: React.FC = () => {
   // Loading States
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // States for Settings fields
   const [schoolInfo, setSchoolInfo] = useState<Partial<SchoolInfo>>({});
@@ -177,12 +177,6 @@ export const SettingsPage: React.FC = () => {
     recommendations: string[];
   } | null>(null);
 
-  // Trigger temporary Toast notifications
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
-
   // Initial Data Fetch
   useEffect(() => {
     fetchInitialData();
@@ -231,7 +225,7 @@ export const SettingsPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to load settings data', error);
-      showToast('Error loading configuration data', 'error');
+      showToast.error('Error loading configuration data');
     } finally {
       setLoading(false);
     }
@@ -243,7 +237,7 @@ export const SettingsPage: React.FC = () => {
     try {
       const res = await schoolConfigService.updateSchoolInfo(schoolInfo);
       if (res.success) {
-        showToast('School information updated successfully!');
+        showToast.success('School information updated successfully!');
         if (user) {
           setUser({
             ...user,
@@ -259,7 +253,7 @@ export const SettingsPage: React.FC = () => {
         throw new Error(res.error || 'Failed to update school info');
       }
     } catch (err: any) {
-      showToast(err.message || 'Error updating school info', 'error');
+      showToast.error(err.message || 'Error updating school info');
     } finally {
       setSaving(false);
     }
@@ -270,12 +264,12 @@ export const SettingsPage: React.FC = () => {
     try {
       const res = await schoolConfigService.updateSettings(settings);
       if (res.success) {
-        showToast('Settings saved successfully!');
+        showToast.success('Settings saved successfully!');
       } else {
         throw new Error(res.error || 'Failed to save settings');
       }
     } catch (err: any) {
-      showToast(err.message || 'Error saving settings', 'error');
+      showToast.error(err.message || 'Error saving settings');
     } finally {
       setSaving(false);
     }
@@ -286,7 +280,7 @@ export const SettingsPage: React.FC = () => {
     if (!user?.id) return;
     
     if (!profileForm.firstName.trim() || !profileForm.lastName.trim() || !profileForm.email.trim()) {
-      showToast('Please fill in all personal details fields.', 'error');
+      showToast.error('Please fill in all personal details fields.');
       return;
     }
 
@@ -300,12 +294,12 @@ export const SettingsPage: React.FC = () => {
 
       if (res.success && res.data) {
         setUser(res.data);
-        showToast('Profile updated successfully!');
+        showToast.success('Profile updated successfully!');
       } else {
         throw new Error(res.error || 'Failed to update profile');
       }
     } catch (err: any) {
-      showToast(err.message || 'Error updating profile', 'error');
+      showToast.error(err.message || 'Error updating profile');
     } finally {
       setSavingProfile(false);
     }
@@ -314,19 +308,19 @@ export const SettingsPage: React.FC = () => {
   const handleSavePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
-      showToast('All password fields are required.', 'error');
+      showToast.error('All password fields are required.');
       return;
     }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      showToast('New password and confirm password do not match.', 'error');
+      showToast.error('New password and confirm password do not match.');
       return;
     }
     if (passwordForm.newPassword.length < 8) {
-      showToast('New password must be at least 8 characters long.', 'error');
+      showToast.error('New password must be at least 8 characters long.');
       return;
     }
     if (passwordForm.currentPassword === passwordForm.newPassword) {
-      showToast('New password must be different from current password.', 'error');
+      showToast.error('New password must be different from current password.');
       return;
     }
 
@@ -338,7 +332,7 @@ export const SettingsPage: React.FC = () => {
       );
 
       if (res.success) {
-        showToast('Password changed successfully! Logging you out...');
+        showToast.success('Password changed successfully! Logging you out...');
         setPasswordForm({
           currentPassword: '',
           newPassword: '',
@@ -351,7 +345,7 @@ export const SettingsPage: React.FC = () => {
         throw new Error(res.error || 'Failed to change password');
       }
     } catch (err: any) {
-      showToast(err.message || 'Error changing password', 'error');
+      showToast.error(err.message || 'Error changing password');
     } finally {
       setSavingPassword(false);
     }
@@ -363,7 +357,7 @@ export const SettingsPage: React.FC = () => {
     try {
       const res = await schoolConfigService.saveGradingScale(newGradeScale);
       if (res.success) {
-        showToast('Grading scale created!');
+        showToast.success('Grading scale created!');
         fetchInitialData();
         // Reset scale form
         setNewGradeScale({
@@ -386,7 +380,7 @@ export const SettingsPage: React.FC = () => {
         throw new Error(res.error || 'Failed to save grading scale');
       }
     } catch (err: any) {
-      showToast(err.message || 'Error creating grading scale', 'error');
+      showToast.error(err.message || 'Error creating grading scale');
     } finally {
       setSaving(false);
     }
@@ -397,13 +391,13 @@ export const SettingsPage: React.FC = () => {
     try {
       const res = await schoolConfigService.deleteGradingScale(id);
       if (res.success) {
-        showToast('Grading scale deleted');
+        showToast.success('Grading scale deleted');
         fetchInitialData();
       } else {
         throw new Error(res.error || 'Failed to delete scale');
       }
     } catch (err: any) {
-      showToast(err.message || 'Error deleting scale', 'error');
+      showToast.error(err.message || 'Error deleting scale');
     }
   };
 
@@ -412,19 +406,19 @@ export const SettingsPage: React.FC = () => {
     try {
       const res = await schoolConfigService.changePlan(planType, billingCycle);
       if (res.success) {
-        showToast(`Successfully subscribed to ${planType.toUpperCase()}!`);
+        showToast.success(`Successfully subscribed to ${planType.toUpperCase()}!`);
         fetchInitialData();
       } else {
         // Verification gate: guide the owner to verify instead of a raw error.
         if ((res as any).statusCode === 403 || /verification/i.test(res.error || '')) {
-          showToast('Verify your school to change your billing plan.', 'error');
+          showToast.error('Verify your school to change your billing plan.');
           window.location.assign('/verify-school');
           return;
         }
         throw new Error(res.error || 'Upgrade failed');
       }
     } catch (err: any) {
-      showToast(err.message || 'Error upgrading subscription plan', 'error');
+      showToast.error(err.message || 'Error upgrading subscription plan');
     } finally {
       setSaving(false);
     }
@@ -474,19 +468,6 @@ export const SettingsPage: React.FC = () => {
           ? 'Manage your platform account profile and security.'
           : 'Configure your personal preferences and school-wide administrative variables.'}
       >
-        {/* ── Toast Feedback ── */}
-        {toast && (
-          <div className="fixed top-6 right-6 z-[100] animate-in fade-in slide-in-from-top-4">
-            <div className={`rounded-xl px-5 py-3 shadow-lg flex items-center gap-3 border ${
-              toast.type === 'success' 
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-                : 'bg-rose-50 text-rose-800 border-rose-200'
-            }`}>
-              {toast.type === 'success' ? <CheckCircle2 size={18} className="text-emerald-500" /> : <AlertCircle size={18} className="text-rose-500" />}
-              <span className="text-sm font-semibold">{toast.message}</span>
-            </div>
-          </div>
-        )}
 
         <div className="flex flex-col lg:flex-row gap-8 items-start">
           {/* ── Mobile Navigation Tabs ── */}
@@ -2203,6 +2184,117 @@ const BORDER_PRESETS: BorderPreset[] = [
     radius: 0,
     previewClass: 'border-blue-900',
   },
+  // ── Microsoft Word-style "Art" page borders (like MS Word > Page Borders > Art) ──
+  {
+    id: 'art_stars',
+    name: '★ Stars (Gold) — MS Word Art',
+    description: 'Gold star pattern border — like MS Word page border art.',
+    color: '#a16207',
+    width: 18,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-yellow-700',
+  },
+  {
+    id: 'art_hearts',
+    name: '♥ Hearts (Rose) — MS Word Art',
+    description: 'Heart pattern border — playful and warm.',
+    color: '#be123c',
+    width: 18,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-rose-800',
+  },
+  {
+    id: 'art_dots',
+    name: '• Dots (Gray) — MS Word Art',
+    description: 'Simple dotted pattern border — clean and minimal.',
+    color: '#4b5563',
+    width: 10,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-gray-600',
+  },
+  {
+    id: 'art_dash_long',
+    name: '— Long Dash (Blue) — MS Word Art',
+    description: 'Long blue dash pattern border — clean and formal.',
+    color: '#1e3a8a',
+    width: 12,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-blue-900',
+  },
+  {
+    id: 'art_triple_line',
+    name: '≡ Triple Line (Gray) — MS Word Art',
+    description: 'Triple parallel lines — classic formal border.',
+    color: '#374151',
+    width: 14,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-gray-700',
+  },
+  {
+    id: 'art_wavy',
+    name: '~ Wavy (Teal) — MS Word Art',
+    description: 'Wavy line pattern — organic and flowing.',
+    color: '#0f766e',
+    width: 14,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-teal-700',
+  },
+  {
+    id: 'art_diamonds',
+    name: '◆ Diamonds (Brown) — MS Word Art',
+    description: 'Diamond pattern border — geometric and elegant.',
+    color: '#7c2d12',
+    width: 16,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-amber-900',
+  },
+  {
+    id: 'art_leaves',
+    name: '🍃 Leaves (Green) — MS Word Art',
+    description: 'Leaf pattern border — natural and organic.',
+    color: '#14532d',
+    width: 18,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-green-900',
+  },
+  {
+    id: 'art_apples',
+    name: '🍎 Apples (Red) — MS Word Art',
+    description: 'Apple pattern border — school-themed and fun.',
+    color: '#b91c1c',
+    width: 18,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-red-700',
+  },
+  {
+    id: 'art_classical_wave',
+    name: '〰 Classical Wave (Navy) — MS Word Art',
+    description: 'Double classical wave — ornate and formal.',
+    color: '#1e3a8a',
+    width: 20,
+    padding: 8,
+    style: 'solid',
+    radius: 0,
+    previewClass: 'border-blue-900',
+  },
 ];
 
 const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> = ({ schoolInfo }) => {
@@ -2330,10 +2422,10 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
         padding: customPadding,
         radius: customRadius,
       });
-      showToast('Report card border style saved.');
+      showToast.success('Report card border style saved.');
       queryClient.invalidateQueries({ queryKey: ['report-card-border-style'] });
     } catch {
-      showToast('Failed to save border style', 'error');
+      showToast.error('Failed to save border style');
     } finally {
       setSaving(false);
     }
@@ -2361,9 +2453,9 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
     try {
       await schoolConfigService.updateSetting('report_card_border_style', { preset: 'classic', color: '#1f2937', width: 2, style: 'solid', padding: 8, radius: 0 });
       queryClient.invalidateQueries({ queryKey: ['report-card-border-style'] });
-      showToast('Reset to classic style.');
+      showToast.success('Reset to classic style.');
     } catch {
-      showToast('Failed to reset border style', 'error');
+      showToast.error('Failed to reset border style');
     }
   };
 
@@ -2376,10 +2468,10 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
         watermark_size: watermarkSize,
         show_student_photo: showStudentPhoto,
       });
-      showToast('Display options saved.');
+      showToast.success('Display options saved.');
       queryClient.invalidateQueries({ queryKey: ['report-card-display-opts'] });
     } catch {
-      showToast('Failed to save display options', 'error');
+      showToast.error('Failed to save display options');
     } finally {
       setSavingDisplay(false);
     }

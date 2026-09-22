@@ -1,25 +1,17 @@
 /**
- * WelcomeHero — a friendly greeting banner shown at the top of role dashboards.
- *
- * Gives every role a warm, consistent welcome: a time-of-day greeting, the user's
- * first name, a role label, the current date, and an optional slot for actions or
- * a quick stat. Uses a role-tinted gradient so each role feels a little distinct
- * while staying on-brand.
+ * WelcomeHero — a premium animated greeting banner for role dashboards.
+ * Features: live clock, animated gradient mesh, floating orbs, shimmer
+ * greeting, glassmorphism date pill, and role-tinted identity.
  */
-import React from 'react';
-import { Sun, Sunrise, Moon } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Sun, Sunrise, Moon, Sparkles } from 'lucide-react';
 
 export interface WelcomeHeroProps {
   firstName?: string;
-  /** Human-readable role label, e.g. "Principal", "Teacher", "Parent". */
   roleLabel?: string;
-  /** School or org name shown as a subtle sub-line. */
   schoolName?: string;
-  /** Optional short line replacing the default contextual subtitle. */
   subtitle?: string;
-  /** Right-aligned slot for actions or a highlight (badge, quick stat, etc.). */
   actions?: React.ReactNode;
-  /** Role key drives the gradient tint. */
   role?: string;
 }
 
@@ -30,25 +22,20 @@ const timeGreeting = (): { text: string; Icon: React.ComponentType<{ size?: numb
   return { text: 'Good evening', Icon: Moon };
 };
 
-// Role → gradient. Falls back to brand blue for anything unmapped.
-const ROLE_GRADIENT: Record<string, string> = {
-  principal: 'from-[#1d4ed8] via-[#2563eb] to-[#3b82f6]',
-  super_admin: 'from-[#3730a3] via-[#4f46e5] to-[#6366f1]',
-  teacher: 'from-[#047857] via-[#059669] to-[#10b981]',
-  accountant: 'from-[#b45309] via-[#d97706] to-[#f59e0b]',
-  student: 'from-[#0e7490] via-[#0891b2] to-[#06b6d4]',
-  parent: 'from-[#7c3aed] via-[#8b5cf6] to-[#a78bfa]',
-  guardian: 'from-[#7c3aed] via-[#8b5cf6] to-[#a78bfa]',
-  admissions: 'from-[#be185d] via-[#db2777] to-[#ec4899]',
+// Role → rich gradient pair [from-color, via-color, to-color, orb-color]
+const ROLE_THEME: Record<string, { gradient: string; orb: string; ring: string }> = {
+  principal:        { gradient: 'from-[#0f2a8a] via-[#1d4ed8] to-[#3b82f6]',   orb: 'bg-blue-400',   ring: 'ring-blue-400/30' },
+  super_admin:      { gradient: 'from-[#1e1b4b] via-[#4338ca] to-[#6366f1]',   orb: 'bg-indigo-400', ring: 'ring-indigo-400/30' },
+  teacher:          { gradient: 'from-[#064e3b] via-[#059669] to-[#34d399]',   orb: 'bg-emerald-400',ring: 'ring-emerald-400/30' },
+  accountant:       { gradient: 'from-[#78350f] via-[#d97706] to-[#fbbf24]',   orb: 'bg-amber-400',  ring: 'ring-amber-400/30' },
+  student:          { gradient: 'from-[#0c4a6e] via-[#0891b2] to-[#38bdf8]',   orb: 'bg-sky-400',    ring: 'ring-sky-400/30' },
+  parent:           { gradient: 'from-[#4a1d96] via-[#7c3aed] to-[#a78bfa]',   orb: 'bg-violet-400', ring: 'ring-violet-400/30' },
+  guardian:         { gradient: 'from-[#4a1d96] via-[#7c3aed] to-[#a78bfa]',   orb: 'bg-violet-400', ring: 'ring-violet-400/30' },
+  admissions_officer:{ gradient: 'from-[#831843] via-[#db2777] to-[#f472b6]',  orb: 'bg-pink-400',   ring: 'ring-pink-400/30' },
 };
 
 const prettyRole = (role?: string) =>
-  role
-    ? role
-        .split('_')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ')
-    : '';
+  role ? role.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '';
 
 export const WelcomeHero: React.FC<WelcomeHeroProps> = ({
   firstName,
@@ -59,55 +46,81 @@ export const WelcomeHero: React.FC<WelcomeHeroProps> = ({
   role = 'principal',
 }) => {
   const { text: greeting, Icon } = timeGreeting();
-  const gradient = ROLE_GRADIENT[role] ?? ROLE_GRADIENT.principal;
-  const dateStr = new Date().toLocaleDateString('en-GB', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const theme = ROLE_THEME[role] ?? ROLE_THEME.principal;
   const label = roleLabel ?? prettyRole(role);
 
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const dateStr = now.toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+  const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
   return (
-    <div
-      className={`relative overflow-hidden rounded-2xl bg-gradient-to-r ${gradient} text-white shadow-lg mb-6`}
-    >
-      {/* Decorative glows */}
-      <div className="pointer-events-none absolute -top-10 -right-10 w-56 h-56 rounded-full bg-white/10 blur-2xl" />
-      <div className="pointer-events-none absolute -bottom-16 -left-10 w-64 h-64 rounded-full bg-black/10 blur-3xl" />
-      {/* Dot texture */}
+    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${theme.gradient} text-white shadow-2xl mb-6 ring-1 ${theme.ring}`}>
+      {/* ── Animated mesh orbs ── */}
+      <div className={`pointer-events-none absolute -top-12 -right-12 w-64 h-64 rounded-full ${theme.orb} opacity-20 blur-3xl animate-pulse`} />
+      <div className={`pointer-events-none absolute -bottom-16 -left-12 w-72 h-72 rounded-full ${theme.orb} opacity-10 blur-[80px]`} style={{ animation: 'pulse 4s ease-in-out infinite 1s' }} />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[180px] bg-white/5 blur-[50px] rounded-full" />
+
+      {/* ── Dot texture ── */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.08]"
+        className="pointer-events-none absolute inset-0 opacity-[0.06]"
         style={{
-          backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.7) 1px, transparent 0)',
-          backgroundSize: '22px 22px',
+          backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.9) 1px, transparent 0)',
+          backgroundSize: '20px 20px',
         }}
       />
 
-      <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-7">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-white/80 text-xs font-semibold uppercase tracking-wider">
-            <Icon size={15} />
-            {greeting}
+      {/* ── Top shimmer line ── */}
+      <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+
+      {/* ── Content ── */}
+      <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-5 p-4 sm:p-7">
+        {/* Left: greeting */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-white/75 text-[11px] sm:text-xs font-bold uppercase tracking-[0.15em] sm:tracking-[0.18em] mb-1">
+            <Icon size={13} className="opacity-90 flex-shrink-0" />
+            <span className="truncate">{greeting}</span>
+            <Sparkles size={11} className="text-amber-300 opacity-80 flex-shrink-0" />
           </div>
-          <h1 className="mt-1 text-xl sm:text-3xl font-black tracking-tight truncate">
-            {firstName ? `Welcome back, ${firstName}!` : 'Welcome back!'}
+
+          <h1 className="text-xl sm:text-[2rem] font-black tracking-tight leading-tight drop-shadow-sm">
+            {firstName ? (
+              <>
+                Welcome back,{' '}
+                <span className="relative inline-block">
+                  <span className="relative z-10">{firstName}!</span>
+                  <span className="absolute bottom-0 inset-x-0 h-[3px] bg-amber-400/70 rounded-full" />
+                </span>
+              </>
+            ) : (
+              'Welcome back!'
+            )}
           </h1>
-          <p className="mt-1 text-sm text-white/85">
+
+          <p className="mt-1.5 text-xs sm:text-sm text-white/80 leading-relaxed">
             {subtitle ?? (
               <>
                 {label && <span className="font-semibold">{label}</span>}
-                {label && schoolName ? ' · ' : ''}
-                {schoolName}
+                {label && schoolName ? <span className="opacity-60 mx-1.5">·</span> : ''}
+                {schoolName && <span className="opacity-80">{schoolName}</span>}
               </>
             )}
           </p>
         </div>
 
-        <div className="flex flex-col items-start sm:items-end gap-2 flex-shrink-0">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 backdrop-blur px-3 py-1 text-xs font-semibold ring-1 ring-white/20">
-            {dateStr}
-          </span>
+        {/* Right: date + time pill + actions */}
+        <div className="flex flex-col items-start sm:items-end gap-2 sm:gap-2.5 flex-shrink-0">
+          {/* Date pill */}
+          <div className="inline-flex flex-col items-start sm:items-end gap-0.5 rounded-xl bg-white/10 backdrop-blur-sm ring-1 ring-white/20 px-3 sm:px-4 py-2 sm:py-2.5 shadow-inner">
+            <span className="text-[10px] sm:text-[11px] font-semibold text-white/70 uppercase tracking-wider">{dateStr}</span>
+            <span className="text-lg sm:text-xl font-black text-white tabular-nums tracking-tight leading-none">{timeStr}</span>
+          </div>
           {actions}
         </div>
       </div>

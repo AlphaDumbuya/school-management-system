@@ -20,6 +20,10 @@ export interface StudentAttendanceRecord {
   id: string;
   date: string;
   status: 'present' | 'absent' | 'late' | 'excused' | string;
+  session_type?: string | null;
+  check_in_time?: string | null;
+  check_out_time?: string | null;
+  marked_at?: string | null;
   remarks?: string | null;
 }
 

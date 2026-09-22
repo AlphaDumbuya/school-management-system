@@ -121,6 +121,25 @@ const ORNAMENTAL_BORDERS: Record<string, OrnamentalBorder> = {
   'zigzag_navy': { pattern: ORNAMENTAL_PATTERNS.zigzag, verticalPattern: ORNAMENTAL_PATTERNS.zigzag, thickness: 14, bandColor: 'rgba(30,58,138,0.05)' },
 };
 
+// ── Microsoft Word-style "Art" page borders (like MS Word > Page Borders > Art) ──
+interface ArtBorder { pattern: string; thickness: number; color: string; }
+const ART_BORDERS: Record<string, ArtBorder> = {
+  stars:         { color: '#a16207', thickness: 18, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'><path d='M12 2 L14 8 L20 8 L15 12 L17 18 L12 14 L7 18 L9 12 L4 8 L10 8 Z' fill='#a16207' opacity='0.8'/></svg>`) },
+  hearts:        { color: '#be123c', thickness: 18, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'><path d='M12 16 C12 16 4 11 4 7 C4 4 6 2 8 2 C10 2 12 4 12 6 C12 4 14 2 16 2 C18 2 20 4 20 7 C20 11 12 16 12 16 Z' fill='#be123c' opacity='0.7'/></svg>`) },
+  dots:          { color: '#4b5563', thickness: 10, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='16' height='10' viewBox='0 0 16 10'><circle cx='8' cy='5' r='3' fill='#4b5563'/></svg>`) },
+  dash_long:     { color: '#1e3a8a', thickness: 12, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='12' viewBox='0 0 32 12'><rect x='2' y='4' width='20' height='4' fill='#1e3a8a' rx='1'/></svg>`) },
+  triple_line:   { color: '#374151', thickness: 14, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='14' viewBox='0 0 32 14'><rect x='2' y='2' width='28' height='2' fill='#374151'/><rect x='2' y='6' width='28' height='2' fill='#374151'/><rect x='2' y='10' width='28' height='2' fill='#374151'/></svg>`) },
+  wavy:          { color: '#0f766e', thickness: 14, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='14' viewBox='0 0 32 14'><path d='M0 7 Q8 0 16 7 Q24 14 32 7' fill='none' stroke='#0f766e' stroke-width='2'/></svg>`) },
+  diamonds:      { color: '#7c2d12', thickness: 16, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='20' height='16' viewBox='0 0 20 16'><path d='M10 2 L16 8 L10 14 L4 8 Z' fill='#7c2d12' opacity='0.8'/></svg>`) },
+  leaves:        { color: '#14532d', thickness: 18, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'><path d='M12 2 C6 6 6 12 12 16 C18 12 18 6 12 2 Z' fill='#14532d' opacity='0.7'/><line x1='12' y1='2' x2='12' y2='16' stroke='#14532d' stroke-width='0.5'/></svg>`) },
+  apples:        { color: '#b91c1c', thickness: 18, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='18' viewBox='0 0 22 18'><circle cx='11' cy='10' r='6' fill='#b91c1c' opacity='0.7'/><rect x='10' y='2' width='2' height='4' fill='#14532d'/><path d='M13 4 Q16 2 16 4' fill='none' stroke='#14532d' stroke-width='1'/></svg>`) },
+  classical_wave:{ color: '#1e3a8a', thickness: 20, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'><path d='M0 10 Q5 2 10 10 Q15 18 20 10 Q25 2 30 10 Q35 18 40 10' fill='none' stroke='#1e3a8a' stroke-width='2'/><path d='M0 12 Q5 4 10 12 Q15 20 20 12 Q25 4 30 12 Q35 20 40 12' fill='none' stroke='#1e3a8a' stroke-width='1' opacity='0.5'/></svg>`) },
+};
+
+function isArtBorderPreset(preset?: string): boolean {
+  return !!preset && preset.startsWith('art_') && ART_BORDERS[preset.slice(4)] !== undefined;
+}
+
 export function resolveBorderStyle(cfg?: ReportCardBorderStyle): Required<ReportCardBorderStyle> {
   if (!cfg) return DEFAULT_BORDER;
   const presetBase = cfg.preset && BORDER_PRESETS[cfg.preset] ? BORDER_PRESETS[cfg.preset] : DEFAULT_BORDER;
@@ -152,6 +171,30 @@ const OrnamentalSheet: React.FC<{
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: t, backgroundColor: ornamental.bandColor, ...horizontalBg }} />
       <div style={{ position: 'absolute', top: t, bottom: t, left: 0, width: t, backgroundColor: ornamental.bandColor, ...verticalBg }} />
       <div style={{ position: 'absolute', top: t, bottom: t, right: 0, width: t, backgroundColor: ornamental.bandColor, ...verticalBg }} />
+      <div className={contentClassName} style={{ padding: `${t + border.padding}px`, position: 'relative', zIndex: 1, ...contentStyle }}>{children}</div>
+    </div>
+  );
+};
+
+const ArtSheet: React.FC<{
+  border: Required<ReportCardBorderStyle>;
+  art: ArtBorder;
+  className?: string;
+  style?: React.CSSProperties;
+  contentClassName?: string;
+  contentStyle?: React.CSSProperties;
+  children: React.ReactNode;
+}> = ({ border, art, className, style, contentClassName, contentStyle, children }) => {
+  const t = art.thickness;
+  const wrapperStyle: React.CSSProperties = { position: 'relative', padding: 0, borderRadius: 0, overflow: 'hidden', background: '#ffffff', ...style };
+  const bandBg: React.CSSProperties = { backgroundImage: art.pattern, backgroundRepeat: 'repeat', backgroundSize: '24px 18px' };
+  const vBandBg: React.CSSProperties = { backgroundImage: art.pattern, backgroundRepeat: 'repeat', backgroundSize: '24px 18px' };
+  return (
+    <div className={className} style={wrapperStyle}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: t, ...bandBg }} />
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: t, ...bandBg }} />
+      <div style={{ position: 'absolute', top: t, bottom: t, left: 0, width: t, ...vBandBg }} />
+      <div style={{ position: 'absolute', top: t, bottom: t, right: 0, width: t, ...vBandBg }} />
       <div className={contentClassName} style={{ padding: `${t + border.padding}px`, position: 'relative', zIndex: 1, ...contentStyle }}>{children}</div>
     </div>
   );
@@ -190,6 +233,8 @@ export const BookletContent: React.FC<BookletContentProps> = ({
   if (border.preset === 'none' || border.width === 0 || border.style === 'none') { sheetStyle.border = 'none'; }
   const ornamentalKey = border.preset?.startsWith('ornamental_') ? border.preset.slice('ornamental_'.length) : border.preset;
   const ornamental = ornamentalKey ? ORNAMENTAL_BORDERS[ornamentalKey] : undefined;
+  const artKey = border.preset?.startsWith('art_') ? border.preset.slice(4) : null;
+  const artBorder = artKey ? ART_BORDERS[artKey] : undefined;
 
   const PAGE_W = 1404;
   const PAGE_H = 993;
@@ -206,6 +251,13 @@ export const BookletContent: React.FC<BookletContentProps> = ({
         <div className="relative overflow-hidden">{right}</div>
       </div>
     );
+    if (artBorder) {
+      return (
+        <ArtSheet key={key} border={border} art={artBorder} className={`${commonPageClass} ${extraClass} relative`} style={commonPageStyle} contentClassName="w-full h-full flex" contentStyle={{ padding: 0 }}>
+          {inner}
+        </ArtSheet>
+      );
+    }
     if (ornamental) {
       return (
         <OrnamentalSheet key={key} border={border} ornamental={ornamental} className={`${commonPageClass} ${extraClass} relative`} style={commonPageStyle} contentClassName="w-full h-full flex" contentStyle={{ padding: 0 }}>

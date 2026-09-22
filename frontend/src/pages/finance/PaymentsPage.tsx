@@ -12,7 +12,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  RefreshCw, Smartphone, CreditCard, Banknote, Landmark, Wallet, Plus, Download,
+  Smartphone, CreditCard, Banknote, Landmark, Wallet, Plus, Download,
   TrendingUp, Receipt, ChevronDown, X, Users, AlertTriangle,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
@@ -84,10 +84,11 @@ export const PaymentsPage: React.FC = () => {
       <PageShell
         title="Payments & Collections"
         subtitle="Monitor and manage all fee collections across classes, levels and terms"
+        onRefresh={refetchAll}
+        isRefreshing={isLoading || anLoading}
         actions={
           <div className="flex items-center gap-2">
             <ExportButton endpoint="/api/v1/finance/export" filename="payments" />
-            <Button variant="outline" size="sm" onClick={refetchAll} disabled={isLoading}><RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></Button>
             <Button variant="default" size="sm" onClick={() => setRecordOpen(true)}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Record Payment</span></Button>
           </div>
         }

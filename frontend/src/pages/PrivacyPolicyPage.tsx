@@ -109,7 +109,7 @@ export const PrivacyPolicyPage: React.FC = () => {
           <p>
             Questions about this policy or your data? Email{' '}
             <a href="mailto:support@wiskulsl.com" className="text-[#1d4ed8] font-semibold">support@wiskulsl.com</a>{' '}
-            or call +232 78 261 892.
+            or call +232 34 330 610.
           </p>
         </Section>
 

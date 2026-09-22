@@ -80,7 +80,7 @@ export const CalendarPage: React.FC = () => {
   const lastDay = getDaysInMonth(currentYear, currentMonth);
   const endDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59`;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['calendar-events', currentYear, currentMonth],
     queryFn: () => eventsService.getCalendarEvents({
       start_date: startDate,
@@ -146,6 +146,8 @@ export const CalendarPage: React.FC = () => {
         title="School Calendar"
         subtitle="Monthly view of all school events and activities"
         breadcrumbs={[{ label: 'Events', href: '/events/school' }, { label: 'Calendar' }]}
+        onRefresh={() => refetch()}
+        isRefreshing={isLoading}
         actions={
           <RoleGuard roles={['principal', 'super_admin', 'teacher']}>
             <Button variant="default" size="sm" onClick={() => { setPrefillDate(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm hover:shadow">

@@ -134,9 +134,17 @@ export class SyncService {
     const { entity, clientId, payload } = item;
 
     if (entity === 'attendance') {
-      const existing = await db('attendance').where('client_id', clientId).first();
-      if (existing) return { result: 'duplicate', serverId: existing.id };
       if (!this.classAllowed(scope, payload.class_id)) return { result: 'rejected', reason: 'Not assigned to this class' };
+      if (!scope.studentIds.includes(payload.student_id)) return { result: 'rejected', reason: 'Student is not enrolled in your classes' };
+      const student = await db('students').where({ id: payload.student_id, tenant_id: scope.tenantId }).first();
+      if (!student) return { result: 'rejected', reason: 'Student is not in this school' };
+      const enrollment = await db('enrollments')
+        .where({ student_id: payload.student_id, class_id: payload.class_id })
+        .whereIn('status', ['enrolled', 'active'])
+        .first();
+      if (!enrollment) return { result: 'rejected', reason: 'Student is not enrolled in this class' };
+      const existing = await db('attendance').where({ client_id: clientId, student_id: payload.student_id, class_id: payload.class_id }).first();
+      if (existing) return { result: 'duplicate', serverId: existing.id };
 
       // Last-write-wins per (student, date, session): update if a row exists, else insert.
       const key = await db('attendance')
@@ -147,6 +155,8 @@ export class SyncService {
       if (key) {
         await db('attendance').where('id', key.id).update({
           status: payload.status, remarks: payload.remarks ?? key.remarks,
+          check_in_time: ['absent', 'excused'].includes(payload.status) ? null : (payload.check_in_time ?? key.check_in_time ?? null),
+          check_out_time: ['absent', 'excused'].includes(payload.status) ? null : (payload.check_out_time ?? key.check_out_time ?? null),
           client_id: clientId, marked_by: userId, marked_at: new Date(), updated_at: new Date(),
         });
         return { result: 'applied', serverId: key.id };
@@ -155,6 +165,8 @@ export class SyncService {
         student_id: payload.student_id, class_id: payload.class_id || null,
         attendance_date: payload.date, session_type: payload.session_type || 'full_day',
         status: payload.status, remarks: payload.remarks || null,
+        check_in_time: ['absent', 'excused'].includes(payload.status) ? null : (payload.check_in_time || null),
+        check_out_time: ['absent', 'excused'].includes(payload.status) ? null : (payload.check_out_time || null),
         marked_by: userId, marked_at: new Date(), client_id: clientId,
         created_at: new Date(), updated_at: new Date(),
       }).returning('id');

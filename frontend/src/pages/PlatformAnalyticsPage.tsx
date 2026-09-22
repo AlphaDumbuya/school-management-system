@@ -51,25 +51,26 @@ export const PlatformAnalyticsPage: React.FC = () => {
   const [suspensions, setSuspensions] = useState<SuspensionOverview | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const fetchAll = async () => {
+    setLoading(true);
+    try {
+      const [statsRes, tenantsRes, suspRes] = await Promise.all([
+        platformService.getStatistics(),
+        platformService.getTenants({ limit: 200 }),
+        platformService.getSuspensionOverview(),
+      ]);
+      if (statsRes.success && statsRes.data) setStatistics(statsRes.data);
+      if (tenantsRes.success && tenantsRes.data) setTenants(tenantsRes.data);
+      if (suspRes.success && suspRes.data) setSuspensions(suspRes.data);
+    } catch (err) {
+      console.error('Error loading platform analytics:', err);
+      showToast.error('Failed to load platform analytics');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchAll = async () => {
-      setLoading(true);
-      try {
-        const [statsRes, tenantsRes, suspRes] = await Promise.all([
-          platformService.getStatistics(),
-          platformService.getTenants({ limit: 200 }),
-          platformService.getSuspensionOverview(),
-        ]);
-        if (statsRes.success && statsRes.data) setStatistics(statsRes.data);
-        if (tenantsRes.success && tenantsRes.data) setTenants(tenantsRes.data);
-        if (suspRes.success && suspRes.data) setSuspensions(suspRes.data);
-      } catch (err) {
-        console.error('Error loading platform analytics:', err);
-        showToast.error('Failed to load platform analytics');
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchAll();
   }, []);
 
@@ -104,6 +105,8 @@ export const PlatformAnalyticsPage: React.FC = () => {
         title="Platform Analytics"
         subtitle="Live signups, tenant growth, and subscription tier distribution across all schools."
         breadcrumbs={[{ label: 'Platform Dashboard', path: '/platform/dashboard' }, { label: 'Platform Analytics' }]}
+        onRefresh={fetchAll}
+        isRefreshing={loading}
       >
         {loading ? (
           <div className="flex items-center justify-center py-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">

@@ -57,6 +57,8 @@ export const SyncIssuesPage: React.FC = () => {
         title="Sync Issues"
         subtitle="Changes that couldn't be saved to the server"
         breadcrumbs={[{ label: 'Sync Issues' }]}
+        onRefresh={load}
+        isRefreshing={loading}
       >
         {loading ? (
           <div className="py-20 flex justify-center text-gray-400"><Loader2 className="animate-spin" size={26} /></div>

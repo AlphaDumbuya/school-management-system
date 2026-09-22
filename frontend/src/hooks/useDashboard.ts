@@ -93,12 +93,18 @@ export const useDashboard = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await dashboardService.getCompleteDashboard();
+      // Append a cache-buster so the service worker never serves a stale cached
+      // response — the SW matches on URL, so a unique `_t` param bypasses it.
+      const data = await dashboardService.getCompleteDashboard(`${Date.now()}`);
       setDashboard(data);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load dashboard';
       setError(errorMessage);
       console.error('Dashboard error:', err);
+      // Let an explicit refresh caller know that no new dashboard snapshot was
+      // loaded. The existing dashboard remains on screen, while the refresh
+      // control can accurately show its failure state.
+      throw err;
     } finally {
       setLoading(false);
     }

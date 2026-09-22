@@ -17,7 +17,7 @@ import slReportCardService, {
   CONDUCT_LEGEND,
   SL_TERMS,
 } from '../services/slReportCardService.js';
-import { renderReportCardHtml, imposeBooklet } from '../services/slReportCardHtml.js';
+import { renderReportCardHtml, imposeBooklet, type BorderStyleConfig } from '../services/slReportCardHtml.js';
 import { htmlToPdf } from '../utils/pdfBrowser.js';
 import { getTenantGradingScale } from '../utils/gradingScaleHelper.js';
 import db from '../utils/database.js';
@@ -334,7 +334,27 @@ router.get('/:studentId/pdf', async (req: Request, res: Response, next: NextFunc
       isFail: g.grade === 'F' || g.grade_points === 0,
     }));
 
-    const html = await renderReportCardHtml(card, schoolInfo, gradingMethod);
+    // Fetch saved border style from school config settings
+    let borderStyle: BorderStyleConfig | undefined;
+    try {
+      const borderSetting = await db('school_config_settings')
+        .where({ tenant_id: tenantId, setting_key: 'report_card_border_style' })
+        .select('setting_value', 'data_type')
+        .first();
+      if (borderSetting) {
+        let val = borderSetting.setting_value;
+        if (borderSetting.data_type === 'json' && typeof val === 'string') {
+          val = JSON.parse(val);
+        }
+        if (val && typeof val === 'object') {
+          borderStyle = val as BorderStyleConfig;
+        }
+      }
+    } catch {
+      // setting may not exist yet — use default border
+    }
+
+    const html = await renderReportCardHtml(card, schoolInfo, gradingMethod, borderStyle);
     // Puppeteer generates 6 A4-landscape pages in logical reading order.
     // imposeBooklet() then reorders them into 3 A3-landscape physical sheets
     // for booklet printing (6|1, 2|5, 4|3).

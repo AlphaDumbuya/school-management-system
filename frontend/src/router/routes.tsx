@@ -297,6 +297,10 @@ const router = createBrowserRouter(
           element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'parent', 'student']}><AttendancePage /></P>,
         },
         {
+          path: 'staff/attendance',
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><AttendancePage /></P>,
+        },
+        {
           path: 'discipline',
           element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><DisciplinePage /></P>,
         },

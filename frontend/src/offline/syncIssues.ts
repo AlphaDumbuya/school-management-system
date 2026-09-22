@@ -56,7 +56,7 @@ export async function retryIssue(userId: string, issue: SyncIssue): Promise<void
   // Rebuild the outbox payload from the stored row.
   const payload =
     issue.entity === 'attendance'
-      ? { student_id: row.studentId, class_id: row.classId, date: row.date, session_type: row.sessionType, status: row.status, remarks: row.remarks }
+      ? { student_id: row.studentId, class_id: row.classId, date: row.date, session_type: row.sessionType, status: row.status, check_in_time: row.checkInTime, check_out_time: row.checkOutTime, remarks: row.remarks }
       : issue.entity === 'grade'
       ? { student_id: row.studentId, class_id: row.classId, subject_id: row.subjectId, marks_obtained: row.score, total_marks: row.extra?.total_marks, grade: row.extra?.grade, remarks: row.extra?.remarks, grade_id: row.extra?.grade_id }
       : { title: row.title, description: row.description, class_id: row.classId, subject_id: row.subjectId, type: row.extra?.type, assigned_date: row.extra?.assigned_date, due_date: row.dueDate, max_marks: row.extra?.max_marks, instructions: row.extra?.instructions, status: row.extra?.status };

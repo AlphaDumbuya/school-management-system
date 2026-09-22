@@ -16,7 +16,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  RefreshCw, Plus, Trash2, CheckCircle2, ChevronDown, ChevronRight,
+  Plus, Trash2, CheckCircle2, ChevronDown, ChevronRight,
   Settings2, Layers, X, Info,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
@@ -88,6 +88,8 @@ export const FeesPage: React.FC = () => {
       <PageShell
         title="Fee Structures"
         subtitle="Configure term tuition & academic-year expenses per class"
+        onRefresh={() => refetch()}
+        isRefreshing={structLoading}
         actions={
           <div className="flex items-center gap-2">
             <div className="relative w-36">
@@ -96,9 +98,6 @@ export const FeesPage: React.FC = () => {
               </select>
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
             </div>
-            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={structLoading}>
-              <RefreshCw size={14} className={structLoading ? 'animate-spin' : ''} />
-            </Button>
           </div>
         }
       >

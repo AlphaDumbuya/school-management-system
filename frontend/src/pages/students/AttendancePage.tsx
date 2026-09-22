@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Calendar,
@@ -41,6 +42,8 @@ import { parentDashboardService } from '@services/parentDashboardService';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { rosterRepo } from '../../offline/repositories/rosterRepo';
 import { ExportButton } from '@components/admin/common/ExportButton';
+import { TeacherAttendancePanel } from '@components/attendance/TeacherAttendancePanel';
+import { AttendanceTimeDetails, TimedAttendanceRecord } from '@components/attendance/AttendanceTimeDetails';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -55,6 +58,10 @@ function fmt(dateStr: string | null | undefined): string {
   } catch {
     return '—';
   }
+}
+
+function localDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function getStatusColor(status: string): string {
@@ -82,7 +89,7 @@ function getDotColor(status: string): string {
   }
 }
 
-type ActiveTab = 'logs' | 'register' | 'analytics';
+type ActiveTab = 'logs' | 'register' | 'analytics' | 'teachers';
 
 // ── Session Options ───────────────────────────────────────────────────────────
 
@@ -113,13 +120,21 @@ const STATUS_ACTIVE: Record<AttendanceStatus, string> = {
 export const AttendancePage: React.FC = () => {
   const queryClient = useQueryClient();
   const { canAccess, user } = useAuth();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   // Only staff-admins can mark attendance across all students at once.
   const canMarkAllStudents = canAccess(['principal', 'super_admin']);
   const isStudent = user?.role === 'student';
-  const isParent = user?.role === 'parent' || user?.role === 'guardian';
+  const isParent = user?.role === 'parent' || (user?.role as string | undefined) === 'guardian';
 
   // ── Tabs ──────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<ActiveTab>('logs');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(
+    location.pathname === '/staff/attendance' || searchParams.get('tab') === 'teachers' ? 'teachers' : 'logs'
+  );
+  const requestedTab = searchParams.get('tab');
+  React.useEffect(() => {
+    setActiveTab(location.pathname === '/staff/attendance' || requestedTab === 'teachers' ? 'teachers' : 'logs');
+  }, [location.pathname, requestedTab]);
 
   // ── Log tab state ─────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
@@ -133,10 +148,12 @@ export const AttendancePage: React.FC = () => {
   const [editRecord, setEditRecord] = useState<AttendanceRecord | null>(null);
   const [editStatus, setEditStatus] = useState<AttendanceStatus>('present');
   const [editRemarks, setEditRemarks] = useState('');
+  const [editCheckInTime, setEditCheckInTime] = useState('');
+  const [editCheckOutTime, setEditCheckOutTime] = useState('');
 
   // ── Register tab state ────────────────────────────────────────────────────
   const [regClassId, setRegClassId] = useState('');
-  const [regDate, setRegDate] = useState(new Date().toISOString().split('T')[0]);
+  const [regDate, setRegDate] = useState(localDateKey(new Date()));
   const [regSession, setRegSession] = useState<SessionType>('morning');
   const [markRecords, setMarkRecords] = useState<
     Record<string, { status: AttendanceStatus | undefined; remarks: string; check_in_time?: string; check_out_time?: string }>
@@ -148,7 +165,7 @@ export const AttendancePage: React.FC = () => {
   // ── Queries ───────────────────────────────────────────────────────────────
 
   // 1. Attendance log
-  const { data: logsData, isLoading: logsLoading, refetch: refetchLogs } = useQuery({
+  const { data: logsData, isLoading: logsLoading, isFetching: logsFetching, refetch: refetchLogs } = useQuery({
     queryKey: ['att-logs', { search, classFilter, statusFilter, dateFilter, page }],
     queryFn: () =>
       attendanceService.listAttendance({
@@ -208,7 +225,7 @@ export const AttendancePage: React.FC = () => {
   const allStudents = (allStudentsData as any)?.data ?? [];
 
   // 4. Register: existing attendance for selected class/date/session OR all students/date/session
-  const { data: existingAttData, isLoading: existingLoading } = useQuery({
+  const { data: existingAttData, isLoading: existingLoading, isFetching: existingFetching } = useQuery({
     queryKey: ['reg-existing', regClassId, regDate, regSession, isAllStudentsMode],
     queryFn: async () => {
       let result;
@@ -235,7 +252,7 @@ export const AttendancePage: React.FC = () => {
     : (existingAttData as any)?.data?.attendance_records ?? (existingAttData as any)?.attendance_records ?? [];
 
   // 5. Analytics: all logs (no pagination for stats)
-  const { data: analyticsData, isLoading: analyticsLoading } = useQuery({
+  const { data: analyticsData, isLoading: analyticsLoading, isFetching: analyticsFetching } = useQuery({
     queryKey: ['att-analytics', classFilter],
     queryFn: () =>
       attendanceService.listAttendance({
@@ -352,18 +369,18 @@ export const AttendancePage: React.FC = () => {
       
       // Auto-set current time based on session and status
       const now = new Date();
-      const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
+      const currentTime = now.toTimeString().slice(0, 8); // HH:MM:SS school-local time
       
       let check_in_time: string | undefined = undefined;
       let check_out_time: string | undefined = undefined;
       
-      if (autoTime && status === 'present') {
+      if (autoTime && (status === 'present' || status === 'late') && regDate === localDateKey(now)) {
         if (regSession === 'morning') {
-          check_in_time = currentTime;
+          check_in_time = markRecords[studentId]?.check_in_time || currentTime;
         } else if (regSession === 'afternoon') {
-          check_out_time = currentTime;
+          check_out_time = markRecords[studentId]?.check_out_time || currentTime;
         } else if (regSession === 'full_day') {
-          check_in_time = currentTime;
+          check_in_time = markRecords[studentId]?.check_in_time || currentTime;
         }
       }
       
@@ -393,9 +410,10 @@ export const AttendancePage: React.FC = () => {
         });
       }
     },
-    onSuccess: (_data, vars) => {
+    onSuccess: async (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['att-logs'] });
-      queryClient.invalidateQueries({ queryKey: ['reg-existing', regClassId, regDate, regSession, isAllStudentsMode] });
+      await queryClient.refetchQueries({ queryKey: ['reg-existing', regClassId, regDate, regSession, isAllStudentsMode], type: 'active' });
+      setLoadedKey('');
       setSavingIds((p) => { const n = { ...p }; delete n[vars.studentId]; return n; });
     },
     onError: (_error, vars) => {
@@ -431,18 +449,17 @@ export const AttendancePage: React.FC = () => {
     mutationFn: () => {
       const currentStudents = isAllStudentsMode ? allStudents : classStudents;
       const now = new Date();
-      const currentTime = now.toTimeString().slice(0, 5);
+      const currentTime = now.toTimeString().slice(0, 8);
+      const isToday = regDate === localDateKey(now);
       
       const records = currentStudents.map((st: any) => {
         let check_in_time: string | undefined = undefined;
         let check_out_time: string | undefined = undefined;
         
-        if (regSession === 'morning') {
-          check_in_time = currentTime;
-        } else if (regSession === 'afternoon') {
-          check_out_time = currentTime;
-        } else if (regSession === 'full_day') {
-          check_in_time = currentTime;
+        if (isToday && (regSession === 'morning' || regSession === 'full_day')) {
+          check_in_time = markRecords[st.id]?.check_in_time || currentTime;
+        } else if (isToday && regSession === 'afternoon') {
+          check_out_time = markRecords[st.id]?.check_out_time || currentTime;
         }
         
         return {
@@ -470,22 +487,21 @@ export const AttendancePage: React.FC = () => {
         });
       }
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       const currentStudents = isAllStudentsMode ? allStudents : classStudents;
       const now = new Date();
-      const currentTime = now.toTimeString().slice(0, 5);
+      const currentTime = now.toTimeString().slice(0, 8);
+      const isToday = regDate === localDateKey(now);
       
       const updated: typeof markRecords = {};
       currentStudents.forEach((st: any) => {
         let check_in_time: string | undefined = undefined;
         let check_out_time: string | undefined = undefined;
         
-        if (regSession === 'morning') {
-          check_in_time = currentTime;
-        } else if (regSession === 'afternoon') {
-          check_out_time = currentTime;
-        } else if (regSession === 'full_day') {
-          check_in_time = currentTime;
+        if (isToday && (regSession === 'morning' || regSession === 'full_day')) {
+          check_in_time = markRecords[st.id]?.check_in_time || currentTime;
+        } else if (isToday && regSession === 'afternoon') {
+          check_out_time = markRecords[st.id]?.check_out_time || currentTime;
         }
         
         updated[st.id] = { 
@@ -497,7 +513,8 @@ export const AttendancePage: React.FC = () => {
       });
       setMarkRecords(updated);
       queryClient.invalidateQueries({ queryKey: ['att-logs'] });
-      queryClient.invalidateQueries({ queryKey: ['reg-existing', regClassId, regDate, regSession, isAllStudentsMode] });
+      await queryClient.refetchQueries({ queryKey: ['reg-existing', regClassId, regDate, regSession, isAllStudentsMode], type: 'active' });
+      setLoadedKey('');
       showToast.success('All students marked present!');
     },
     onError: () => showToast.error('Failed to mark all present'),
@@ -530,6 +547,9 @@ export const AttendancePage: React.FC = () => {
     { id: 'logs',      label: 'Attendance Logs',  icon: <ClipboardList size={16} /> },
     { id: 'register',  label: 'Class Register',    icon: <UserCheck size={16} /> },
     { id: 'analytics', label: 'Analytics',         icon: <BarChart2 size={16} /> },
+    ...(user?.role === 'principal' || user?.role === 'super_admin' || user?.role === 'teacher'
+      ? [{ id: 'teachers', label: user.role === 'teacher' ? 'My Attendance' : 'Teacher Attendance', icon: <Users size={16} /> }]
+      : []),
   ] as const;
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -545,13 +565,22 @@ export const AttendancePage: React.FC = () => {
   return (
     <MainLayout>
       <PageShell
-        title="Student Attendance"
-        subtitle="Track, record and analyse daily class attendance"
-        breadcrumbs={[{ label: 'Students' }, { label: 'Attendance' }]}
-        onRefresh={() => refetchLogs()}
-        isRefreshing={logsLoading}
+        title={activeTab === 'teachers' ? 'Teacher Attendance' : 'Attendance'}
+        subtitle={activeTab === 'teachers' ? 'Daily staff sign-in and sign-out' : 'Track student and teacher attendance'}
+        breadcrumbs={[{ label: activeTab === 'teachers' ? 'Staff' : 'Students' }, { label: 'Attendance' }]}
+        onRefresh={() => {
+          if (activeTab === 'teachers') return queryClient.refetchQueries({ queryKey: ['teacher-attendance'], type: 'active' }, { throwOnError: true });
+          if (activeTab === 'register') return Promise.all([
+            queryClient.refetchQueries({ queryKey: ['reg-students'], type: 'active' }, { throwOnError: true }),
+            queryClient.refetchQueries({ queryKey: ['all-students'], type: 'active' }, { throwOnError: true }),
+            queryClient.refetchQueries({ queryKey: ['reg-existing'], type: 'active' }, { throwOnError: true }),
+          ]).then(() => { setLoadedKey(''); });
+          if (activeTab === 'analytics') return queryClient.refetchQueries({ queryKey: ['att-analytics'], type: 'active' }, { throwOnError: true });
+          return refetchLogs();
+        }}
+        isRefreshing={activeTab === 'register' ? existingFetching : activeTab === 'analytics' ? analyticsFetching : logsFetching}
         actions={
-          <ExportButton
+          activeTab !== 'teachers' && <ExportButton
             endpoint="/api/v1/attendance/export"
             filename="attendance"
             params={{ date: dateFilter || undefined, classId: classFilter || undefined }}
@@ -575,11 +604,13 @@ export const AttendancePage: React.FC = () => {
                 {tab.icon}
                 <span className="hidden sm:inline">{tab.label}</span>
                 <span className="inline sm:hidden">
-                  {tab.id === 'logs' ? 'Logs' : tab.id === 'register' ? 'Register' : 'Analytics'}
+                  {tab.id === 'logs' ? 'Logs' : tab.id === 'register' ? 'Register' : tab.id === 'teachers' ? 'Teachers' : 'Analytics'}
                 </span>
               </button>
             ))}
           </div>
+
+          {activeTab === 'teachers' && user && <TeacherAttendancePanel role={user.role} />}
 
           {/* ══════════════════════════════════════════════════════════════ */}
           {/* TAB 1: LOGS                                                   */}
@@ -716,6 +747,7 @@ export const AttendancePage: React.FC = () => {
                           <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Class</th>
                           <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Date</th>
                           <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Status</th>
+                          <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Times</th>
                           <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Remarks</th>
                           <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white text-right">Edit</th>
                         </tr>
@@ -769,6 +801,7 @@ export const AttendancePage: React.FC = () => {
                                 {log.status.charAt(0).toUpperCase() + log.status.slice(1)}
                               </span>
                             </td>
+                            <td className="px-5 py-3.5"><AttendanceTimeDetails record={log} className="min-w-[230px]" /></td>
                             <td className="px-5 py-3.5 text-xs text-gray-500 dark:text-gray-400 max-w-[180px] truncate">
                               {log.remarks || <span className="text-gray-300 dark:text-gray-600">—</span>}
                             </td>
@@ -778,6 +811,8 @@ export const AttendancePage: React.FC = () => {
                                   setEditRecord(log);
                                   setEditStatus(log.status);
                                   setEditRemarks(log.remarks || '');
+                                  setEditCheckInTime(log.check_in_time || '');
+                                  setEditCheckOutTime(log.check_out_time || '');
                                 }}
                                 className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all"
                                 title="Edit record"
@@ -1401,7 +1436,7 @@ export const AttendancePage: React.FC = () => {
               <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-gray-900 dark:text-white">Edit Attendance</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">Update status or remarks for this record</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Correct the status, arrival/departure times or remarks</p>
                 </div>
                 <button
                   onClick={() => setEditRecord(null)}
@@ -1414,7 +1449,7 @@ export const AttendancePage: React.FC = () => {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  updateMutation.mutate({ id: editRecord.id, data: { status: editStatus, remarks: editRemarks } });
+                  updateMutation.mutate({ id: editRecord.id, data: { status: editStatus, check_in_time: editCheckInTime || null, check_out_time: editCheckOutTime || null, remarks: editRemarks } });
                 }}
               >
                 <div className="p-6 space-y-4">
@@ -1449,6 +1484,16 @@ export const AttendancePage: React.FC = () => {
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Remarks */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="text-xs font-bold text-gray-500">Arrival time
+                      <input type="time" step="1" value={editCheckInTime} onChange={(e) => setEditCheckInTime(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600" />
+                    </label>
+                    <label className="text-xs font-bold text-gray-500">Departure time
+                      <input type="time" step="1" value={editCheckOutTime} onChange={(e) => setEditCheckOutTime(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600" />
+                    </label>
                   </div>
 
                   {/* Remarks */}
@@ -1494,7 +1539,7 @@ export const AttendancePage: React.FC = () => {
 // ── Student read-only "My Attendance" view ──────────────────────────────────
 
 const StudentAttendanceView: React.FC = () => {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['my-attendance'],
     queryFn: () => attendanceService.getMyAttendance(),
     staleTime: 60_000,
@@ -1502,11 +1547,11 @@ const StudentAttendanceView: React.FC = () => {
 
   const resp = (data as any)?.data ?? (data as any);
   const summary = resp?.summary ?? { total_days: 0, present: 0, late: 0, absent: 0, excused: 0, attendance_percentage: 0, at_risk: false };
-  const records: Array<{ id: string; date: string; status: string; remarks?: string }> = resp?.records ?? [];
+  const records: Array<TimedAttendanceRecord & { id: string; date: string; status: string; remarks?: string }> = resp?.records ?? [];
 
   return (
     <MainLayout>
-      <PageShell title="My Attendance" subtitle="Your daily attendance record">
+      <PageShell title="My Attendance" subtitle="Your daily attendance record" onRefresh={() => refetch()} isRefreshing={isFetching}>
         {isLoading ? (
           <div className="flex items-center justify-center py-20 text-gray-500">
             <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading…
@@ -1544,8 +1589,8 @@ const StudentAttendanceView: React.FC = () => {
               ) : (
                 <div className="divide-y divide-gray-100 dark:divide-gray-700/50 max-h-[28rem] overflow-y-auto">
                   {records.map((r) => (
-                    <div key={r.id} className="flex items-center justify-between px-5 py-3">
-                      <span className="text-sm text-gray-700 dark:text-gray-200">{fmt(r.date)}</span>
+                    <div key={r.id} className="flex flex-wrap items-start justify-between gap-2 px-5 py-3">
+                      <div><span className="text-sm text-gray-700 dark:text-gray-200">{fmt(r.date)}</span><AttendanceTimeDetails record={r} className="mt-1" /></div>
                       <div className="flex items-center gap-3">
                         {r.remarks && <span className="text-xs text-gray-400 truncate max-w-[10rem]">{r.remarks}</span>}
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>
@@ -1569,6 +1614,7 @@ const StudentAttendanceView: React.FC = () => {
 
 const ParentAttendanceView: React.FC = () => {
   const [childId, setChildId] = useState('');
+  const queryClient = useQueryClient();
 
   const { data: dashResp } = useQuery({
     queryKey: ['parent-dashboard'],
@@ -1578,7 +1624,7 @@ const ParentAttendanceView: React.FC = () => {
   const children = ((dashResp as any)?.data ?? (dashResp as any))?.children ?? [];
   const currentId = childId || children[0]?.id || '';
 
-  const { data: childResp, isLoading } = useQuery({
+  const { data: childResp, isLoading, isFetching } = useQuery({
     queryKey: ['parent-child-detail', currentId],
     queryFn: () => parentDashboardService.getChildDetail(currentId),
     enabled: !!currentId,
@@ -1586,11 +1632,14 @@ const ParentAttendanceView: React.FC = () => {
   });
   const detail = (childResp as any)?.data ?? (childResp as any);
   const summary = detail?.attendance ?? { total: 0, present: 0, late: 0, absent: 0, excused: 0, percentage: 0 };
-  const records: Array<{ id: string; date: string; status: string; remarks?: string }> = detail?.attendance?.records ?? [];
+  const records: Array<TimedAttendanceRecord & { id: string; date: string; status: string; remarks?: string }> = detail?.attendance?.records ?? [];
 
   return (
     <MainLayout>
-      <PageShell title="Children's Attendance" subtitle="View your children's attendance records">
+      <PageShell title="Children's Attendance" subtitle="View your children's attendance records" onRefresh={() => Promise.all([
+        queryClient.refetchQueries({ queryKey: ['parent-dashboard'], type: 'active' }, { throwOnError: true }),
+        queryClient.refetchQueries({ queryKey: ['parent-child-detail', currentId], type: 'active' }, { throwOnError: true }),
+      ])} isRefreshing={isFetching}>
         {children.length === 0 ? (
           <div className="py-16 text-center text-gray-500">No children linked to your account.</div>
         ) : (
@@ -1633,8 +1682,8 @@ const ParentAttendanceView: React.FC = () => {
                   ) : (
                     <div className="divide-y divide-gray-100 dark:divide-gray-700/50 max-h-[28rem] overflow-y-auto">
                       {records.map((r) => (
-                        <div key={r.id} className="flex items-center justify-between px-5 py-3">
-                          <span className="text-sm text-gray-700 dark:text-gray-200">{fmt(r.date)}</span>
+                        <div key={r.id} className="flex flex-wrap items-start justify-between gap-2 px-5 py-3">
+                          <div><span className="text-sm text-gray-700 dark:text-gray-200">{fmt(r.date)}</span><AttendanceTimeDetails record={r} className="mt-1" /></div>
                           <div className="flex items-center gap-3">
                             {r.remarks && <span className="text-xs text-gray-400 truncate max-w-[10rem]">{r.remarks}</span>}
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>

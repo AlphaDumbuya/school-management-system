@@ -27,9 +27,9 @@ const StatusBadge: React.FC<{ status: 'healthy' | 'warning' | 'error'; label: st
 }) => {
   const colors = statusColors[status];
   return (
-    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${colors.bg} ${colors.text}`}>
-      <div className={`w-2 h-2 rounded-full ${colors.indicator}`}></div>
-      <span className="text-sm font-medium">{label}</span>
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full ${colors.bg} ${colors.text}`}>
+      <div className={`w-1.5 h-1.5 rounded-full ${colors.indicator}`} />
+      <span className="text-xs font-semibold">{label}</span>
     </div>
   );
 };
@@ -50,16 +50,16 @@ export const SystemHealthPanel: React.FC<SystemHealthProps> = ({
   // metrics are platform-internal and reserved for the super admin.
   if (!isPlatformAdmin) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h3 className="text-lg font-semibold mb-6 text-gray-800">School Activity</h3>
-        <div className="flex items-start gap-4">
+      <div className="bg-white rounded-2xl ring-1 ring-gray-200/80 shadow-sm p-4 sm:p-5">
+        <h3 className="text-sm font-bold text-gray-900 mb-4">School Activity</h3>
+        <div className="flex items-center gap-4">
           <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
             <Users size={22} />
           </div>
           <div className="flex-1">
-            <p className="text-sm text-gray-600 mb-1">Active Users</p>
+            <p className="text-xs text-gray-500 mb-0.5">Active Users</p>
             <p className="text-2xl font-extrabold text-gray-900">{activeUsers}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Signed in during the last 24 hours</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Signed in during the last 24 hours</p>
           </div>
         </div>
       </div>
@@ -67,75 +67,75 @@ export const SystemHealthPanel: React.FC<SystemHealthProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h3 className="text-lg font-semibold mb-6 text-gray-800">System Health</h3>
+    <div className="bg-white rounded-2xl ring-1 ring-gray-200/80 shadow-sm p-4 sm:p-5">
+      <h3 className="text-sm font-bold text-gray-900 mb-4">System Health</h3>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6">
         {/* Database Status */}
-        <div className="flex items-start gap-4">
-          <div className="text-2xl text-blue-500">
-            <Database size={24} />
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+            <Database size={18} />
           </div>
-          <div className="flex-1">
-            <p className="text-sm text-gray-600 mb-2">Database</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-500 mb-1.5">Database</p>
             <StatusBadge status={databaseStatus} label={databaseStatus.toUpperCase()} />
           </div>
         </div>
 
         {/* Last Backup */}
-        <div className="flex items-start gap-4">
-          <div className="text-2xl text-green-500">
-            <Clock size={24} />
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-green-50 text-green-600 flex items-center justify-center flex-shrink-0">
+            <Clock size={18} />
           </div>
-          <div className="flex-1">
-            <p className="text-sm text-gray-600 mb-2">Last Backup</p>
-            <p className="font-semibold text-sm">{hoursAgo}h ago</p>
-            <p className="text-xs text-gray-500">{formattedBackupTime}</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-500 mb-1">Last Backup</p>
+            <p className="text-sm font-bold text-gray-900">{hoursAgo}h ago</p>
+            <p className="text-[10px] text-gray-400 truncate">{formattedBackupTime}</p>
           </div>
         </div>
 
         {/* API Response Time */}
-        <div className="flex items-start gap-4">
-          <div className="text-2xl text-purple-500">
-            <Clock size={24} />
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
+            <Clock size={18} />
           </div>
-          <div className="flex-1">
-            <p className="text-sm text-gray-600 mb-2">API Response Time</p>
-            <p className="font-semibold text-sm">{apiResponseTime}ms</p>
-            <p className={`text-xs ${apiResponseTime < 200 ? 'text-green-600' : 'text-amber-600'}`}>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-500 mb-1">API Response</p>
+            <p className="text-sm font-bold text-gray-900">{apiResponseTime}ms</p>
+            <p className={`text-[10px] font-medium ${apiResponseTime < 200 ? 'text-green-600' : 'text-amber-600'}`}>
               {apiResponseTime < 200 ? 'Optimal' : 'Good'}
             </p>
           </div>
         </div>
 
         {/* Storage Usage */}
-        <div className="flex items-start gap-4">
-          <div className="text-2xl text-amber-500">
-            <HardDrive size={24} />
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+            <HardDrive size={18} />
           </div>
-          <div className="flex-1">
-            <p className="text-sm text-gray-600 mb-2">Storage Usage</p>
-            <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-500 mb-1">Storage</p>
+            <div className="w-full bg-gray-100 rounded-full h-1.5 mb-1.5">
               <div
-                className={`h-2 rounded-full transition-all ${
+                className={`h-1.5 rounded-full transition-all ${
                   storageUsage < 60 ? 'bg-green-500' : storageUsage < 80 ? 'bg-amber-500' : 'bg-red-500'
                 }`}
                 style={{ width: `${storageUsage}%` }}
-              ></div>
+              />
             </div>
-            <p className="font-semibold text-sm">{storageUsage}% Used</p>
+            <p className="text-sm font-bold text-gray-900">{storageUsage}% Used</p>
           </div>
         </div>
 
         {/* Active Users */}
-        <div className="flex items-start gap-4">
-          <div className="text-2xl text-blue-500">
-            <Users size={24} />
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+            <Users size={18} />
           </div>
-          <div className="flex-1">
-            <p className="text-sm text-gray-600 mb-2">Active Users</p>
-            <p className="font-semibold text-sm">{activeUsers}</p>
-            <p className="text-xs text-gray-500">Last 24 hours</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-500 mb-1">Active Users</p>
+            <p className="text-sm font-bold text-gray-900">{activeUsers}</p>
+            <p className="text-[10px] text-gray-400">Last 24 hours</p>
           </div>
         </div>
       </div>

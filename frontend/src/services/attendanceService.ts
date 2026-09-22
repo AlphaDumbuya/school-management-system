@@ -19,9 +19,9 @@ export interface AttendanceRecord {
   date: string;
   status: AttendanceStatus;
   session_type?: SessionType;
-  check_in_time?: string;
-  check_out_time?: string;
-  marked_at?: string;
+  check_in_time?: string | null;
+  check_out_time?: string | null;
+  marked_at?: string | null;
   remarks?: string;
   created_at?: string;
   student_name?: string;
@@ -68,7 +68,7 @@ export interface MyAttendanceResponse {
     attendance_percentage: number;
     at_risk: boolean;
   };
-  records: Array<{ id: string; class_id?: string; date: string; status: string; remarks?: string }>;
+  records: Array<{ id: string; class_id?: string; date: string; status: string; session_type?: SessionType; check_in_time?: string | null; check_out_time?: string | null; marked_at?: string | null; remarks?: string }>;
 }
 
 export const attendanceService = {
@@ -96,6 +96,8 @@ export const attendanceService = {
           date: payload.date,
           sessionType: (rec.session_type || payload.session_type) as string | undefined,
           status: rec.status,
+          checkInTime: rec.check_in_time,
+          checkOutTime: rec.check_out_time,
           remarks: rec.remarks,
         });
       }
@@ -110,8 +112,8 @@ export const attendanceService = {
   async updateAttendance(id: string, data: { 
     status?: AttendanceStatus; 
     session_type?: SessionType;
-    check_in_time?: string;
-    check_out_time?: string;
+    check_in_time?: string | null;
+    check_out_time?: string | null;
     remarks?: string;
   }) {
     return apiClient.put<{ message: string; attendance: AttendanceRecord }>(

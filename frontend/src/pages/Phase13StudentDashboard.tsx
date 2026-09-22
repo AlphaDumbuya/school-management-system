@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import useAuthStore from '@store/authStore';
 import { studentDashboardService, StudentDashboardData } from '@services/studentDashboardService';
 import { PayFeesButton } from '@components/finance/PayFeesButton';
+import { AttendanceTimeDetails } from '@components/attendance/AttendanceTimeDetails';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -65,7 +66,7 @@ export const Phase13StudentDashboard: React.FC = () => {
   const weekly = dash?.weekly_schedule ?? [];
   const fees = dash?.fees ?? { total: 0, paid: 0, outstanding: 0, invoices: [] };
 
-  const displayName = profile?.full_name || `${user?.first_name ?? ''} ${user?.last_name ?? ''}`.trim() || 'Student';
+  const displayName = profile?.full_name || `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'Student';
   const classLabel = profile?.class_name
     ? `${profile.class_name}${profile.class_section ? ` (${profile.class_section})` : ''}`
     : 'Not enrolled';
@@ -300,8 +301,8 @@ export const Phase13StudentDashboard: React.FC = () => {
                         : s === 'absent' ? <XCircle className="w-4 h-4 text-red-600" />
                         : <AlertTriangle className="w-4 h-4 text-amber-600" />;
                       return (
-                        <div key={r.id} className="flex items-center justify-between p-2.5 border border-gray-100 dark:border-gray-800 rounded-lg text-sm">
-                          <span className="text-gray-600 dark:text-gray-300">{new Date(r.date).toLocaleDateString()}</span>
+                        <div key={r.id} className="flex flex-wrap items-start justify-between gap-2 p-2.5 border border-gray-100 dark:border-gray-800 rounded-lg text-sm">
+                          <div><span className="text-gray-600 dark:text-gray-300">{new Date(r.date).toLocaleDateString()}</span><AttendanceTimeDetails record={r} className="mt-1" /></div>
                           <span className="flex items-center gap-1.5 font-medium">{icon} {cap(s)}</span>
                         </div>
                       );

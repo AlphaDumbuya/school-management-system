@@ -350,10 +350,10 @@ export const LoginPage: React.FC = () => {
                             ✉ Email support@wiskulsl.com
                           </a>
                           <a
-                            href="tel:+23278261892"
+                            href="tel:+23234330610"
                             className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
                           >
-                            📞 +232 78 261 892
+                            📞 +232 34 330 610
                           </a>
                         </div>
                       </div>

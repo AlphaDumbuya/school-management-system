@@ -16,6 +16,8 @@ export interface MarkAttendanceInput {
   date: string;              // YYYY-MM-DD
   sessionType?: string;      // default 'full_day'
   status: string;            // present | absent | late | excused
+  checkInTime?: string;
+  checkOutTime?: string;
   remarks?: string;
 }
 
@@ -42,6 +44,8 @@ export const attendanceRepo = {
       date: input.date,
       sessionType,
       status: input.status,
+      checkInTime: ['absent', 'excused'].includes(input.status) ? undefined : (input.checkInTime ?? existing?.checkInTime),
+      checkOutTime: ['absent', 'excused'].includes(input.status) ? undefined : (input.checkOutTime ?? existing?.checkOutTime),
       remarks: input.remarks,
       syncStatus: 'pending',
       updatedAt: Date.now(),
@@ -54,6 +58,8 @@ export const attendanceRepo = {
       date: input.date,
       session_type: sessionType,
       status: input.status,
+      check_in_time: row.checkInTime,
+      check_out_time: row.checkOutTime,
       remarks: input.remarks,
     };
 

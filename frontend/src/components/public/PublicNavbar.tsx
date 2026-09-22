@@ -111,8 +111,8 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-              <a href="tel:+23278261892" style={{ color: '#e0e7ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                📞 +232 78 261 892
+              <a href="tel:+23234330610" style={{ color: '#e0e7ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                📞 +232 34 330 610
               </a>
               <a href="mailto:info@wiskulsl.com" style={{ color: '#e0e7ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 ✉️ info@wiskulsl.com

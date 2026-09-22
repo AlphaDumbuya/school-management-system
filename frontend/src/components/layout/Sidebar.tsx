@@ -187,6 +187,15 @@ const navItems: NavItem[] = [
     version: 'v1',
   },
   {
+    label: 'Teacher Attendance',
+    icon: <FaCalendar className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/staff/attendance',
+    roles: ['principal', 'teacher'],
+    module: 'Staff Management',
+    group: 'Staff',
+    version: 'v1',
+  },
+  {
     label: 'Non-Teaching Staff',
     icon: <FaUsers className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/staff/members',
@@ -467,6 +476,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
   const { user, logout, canAccess } = useAuth();
   // Footer account menu (Guide/Settings/Logout) — collapsed by default to save space.
   const [footerOpen, setFooterOpen] = React.useState(false);
+  // Accordion: which group is currently open. null = all collapsed.
+  const [openGroup, setOpenGroup] = React.useState<string | null>(null);
 
   const dashboardPath = user ? getDashboardPath(user.role) : '/dashboard';
 
@@ -509,15 +520,46 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
 
   const isSuperAdmin = user?.role === 'super_admin';
 
-  // Filter nav items based on user role & release version.
-  // The super admin is the PLATFORM operator — they should only see platform
-  // management, NOT tenant/school modules (which `canAccess` would otherwise
-  // grant them via the implicit "super_admin has all roles" rule).
-  const filteredNavItems = navItems.filter((item) => {
+  // Memoize so filteredNavItems has a stable reference — required for groupedNav
+  // useMemo and the auto-open useEffect to not fire on every render.
+  const filteredNavItems = React.useMemo(() => navItems.filter((item) => {
     if (!ENABLE_V2_FEATURES && item.version === 'v2') return false;
     if (isSuperAdmin) return item.group === 'Platform';
     return canAccess(item.roles as any[]);
-  });
+    // canAccess is derived from user.role which is stable after login
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [isSuperAdmin]);
+
+  // Group the filtered items.
+  const groupedNav = React.useMemo(() => {
+    const map = new Map<string, NavItem[]>();
+    filteredNavItems.forEach((item) => {
+      const g = item.group || 'Other';
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(item);
+    });
+    return map;
+  }, [filteredNavItems]);
+
+  // Auto-open the group that contains the current active route.
+  // Only runs when the pathname changes — does NOT fight manual accordion clicks
+  // because the group-header toggle doesn't change the route.
+  React.useEffect(() => {
+    const currentPath = location.pathname.replace(/\/+$/, '') || '/';
+    for (const [group, items] of groupedNav.entries()) {
+      const hasActive = items.some((item) => {
+        const ip = item.path.replace(/\/+$/, '');
+        return currentPath === ip || currentPath.startsWith(ip + '/');
+      });
+      if (hasActive) {
+        setOpenGroup(group);
+        return;
+      }
+    }
+    // Note: groupedNav intentionally omitted from deps — we only want this to
+    // run on route change, not on every render cycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   return (
     <>
@@ -577,7 +619,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
           <nav
             ref={navScrollRef}
             onScroll={rememberScroll}
-            className="flex-1 px-3 sm:px-4 py-4 sm:py-6 space-y-1 sm:space-y-2 overflow-y-auto min-h-0"
+            className="flex-1 px-2 sm:px-4 py-3 sm:py-6 space-y-1 sm:space-y-2 overflow-y-auto min-h-0"
           >
             {/* Dashboard — always visible, role-aware path */}
             <button
@@ -585,69 +627,84 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
               title={collapsed ? 'Dashboard' : undefined}
               aria-current={location.pathname === dashboardPath ? 'page' : undefined}
               className={clsx(
-                'relative w-full flex items-center gap-2 sm:gap-3 py-2.5 sm:py-3 rounded-lg transition-colors duration-200 text-sm',
-                collapsed ? 'px-3 lg:px-0 lg:justify-center' : 'px-3 sm:px-4',
+                'relative w-full flex items-center gap-2 sm:gap-3 py-2 sm:py-2.5 lg:py-3 rounded-lg transition-colors duration-200 text-xs sm:text-sm',
+                collapsed ? 'px-3 lg:px-0 lg:justify-center' : 'px-2.5 sm:px-4',
                 location.pathname === dashboardPath
                   ? 'bg-blue-600 text-white font-semibold shadow-sm shadow-blue-900/40 before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-6 before:w-1 before:rounded-r before:bg-amber-400'
                   : 'text-gray-300 hover:bg-gray-800 hover:text-white'
               )}
             >
-              <FaHome className="w-4 sm:w-5 h-4 sm:h-5 flex-shrink-0" />
+              <FaHome className="w-4 sm:h-4 sm:w-5 lg:h-5 flex-shrink-0" />
               <span className={clsx('flex-1 text-left font-medium truncate', collapsed && 'lg:hidden')}>Dashboard</span>
               {!collapsed && location.pathname === dashboardPath && <FaChevronRight className="w-3 sm:w-4 h-3 sm:h-4 flex-shrink-0" />}
             </button>
 
-            {/* Role-filtered nav items with group headers */}
+            {/* Role-filtered nav items — accordion by group */}
             {(() => {
-              let lastGroup = '';
-              // Current path without query/hash, for reliable active matching.
               const currentPath = location.pathname.replace(/\/+$/, '') || '/';
-              return filteredNavItems.map((item) => {
-                const showGroup = item.group && item.group !== lastGroup;
-                if (item.group) lastGroup = item.group;
-                const itemPath = item.path.replace(/\/+$/, '');
-                // Active when exactly on the item path OR on a nested sub-route of it
-                // (segment-aware so "/students" never matches "/students-x").
-                const isActive = currentPath === itemPath || currentPath.startsWith(itemPath + '/');
+              return Array.from(groupedNav.entries()).map(([group, items]) => {
+                const isGroupOpen = collapsed || openGroup === group;
+                const groupHasActive = items.some((item) => {
+                  const ip = item.path.replace(/\/+$/, '');
+                  return currentPath === ip || currentPath.startsWith(ip + '/');
+                });
+
                 return (
-                  <React.Fragment key={item.path}>
-                    {showGroup && (
-                      collapsed ? (
-                        <div className="hidden lg:block mx-2 my-2 border-t border-gray-800" aria-hidden />
-                      ) : (
-                        <p className="px-3 sm:px-4 pt-3 sm:pt-4 pb-1 sm:pb-2 text-xs font-semibold uppercase tracking-widest text-gray-500">
-                          {item.group}
-                        </p>
-                      )
-                    )}
-                    <button
-                      onClick={() => handleNavigation(item.path)}
-                      title={collapsed ? item.label : undefined}
-                      aria-current={isActive ? 'page' : undefined}
-                      className={clsx(
-                        'relative w-full flex items-center gap-2 sm:gap-3 py-2.5 sm:py-3 rounded-lg transition-colors duration-200 text-sm',
-                        collapsed ? 'px-3 lg:px-0 lg:justify-center' : 'px-3 sm:px-4',
-                        isActive
-                          ? 'bg-blue-600 text-white font-semibold shadow-sm shadow-blue-900/40 before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-6 before:w-1 before:rounded-r before:bg-amber-400'
-                          : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                      )}
-                    >
-                      <div className="relative w-4 sm:w-5 h-4 sm:h-5 flex-shrink-0 flex items-center justify-center">
-                        {item.icon}
-                        {/* Collapsed: show a dot for items that have a badge */}
-                        {collapsed && item.badge && (
-                          <span className="hidden lg:block absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500" />
+                  <div key={group}>
+                    {/* Group header / toggle */}
+                    {collapsed ? (
+                      <div className="hidden lg:block mx-2 my-2 border-t border-gray-800" aria-hidden />
+                    ) : (
+                      <button
+                        onClick={() => setOpenGroup((prev) => (prev === group ? null : group))}
+                        className={clsx(
+                          'w-full flex items-center justify-between px-2.5 sm:px-4 pt-2.5 sm:pt-4 pb-1 sm:pb-1.5 sm:pb-2 text-[11px] sm:text-xs font-semibold uppercase tracking-widest transition-colors duration-150',
+                          groupHasActive ? 'text-amber-400' : 'text-gray-500 hover:text-gray-300'
                         )}
-                      </div>
-                      <span className={clsx('flex-1 text-left font-medium truncate', collapsed && 'lg:hidden')}>{item.label}</span>
-                      {!collapsed && item.badge && (
-                        <span className="bg-red-600 text-white text-xs px-1.5 sm:px-2 py-0.5 rounded-full flex-shrink-0">
-                          {item.badge}
-                        </span>
-                      )}
-                      {!collapsed && isActive && <FaChevronRight className="w-3 sm:w-4 h-3 sm:h-4 flex-shrink-0" />}
-                    </button>
-                  </React.Fragment>
+                        aria-expanded={isGroupOpen}
+                      >
+                        <span>{group}</span>
+                        {isGroupOpen
+                          ? <FaChevronUp className="w-2.5 h-2.5 flex-shrink-0" />
+                          : <FaChevronDown className="w-2.5 h-2.5 flex-shrink-0" />}
+                      </button>
+                    )}
+
+                    {/* Group items — collapse/expand */}
+                    {isGroupOpen && items.map((item) => {
+                      const itemPath = item.path.replace(/\/+$/, '');
+                      const isActive = currentPath === itemPath || currentPath.startsWith(itemPath + '/');
+                      return (
+                        <button
+                          key={item.path}
+                          onClick={() => handleNavigation(item.path)}
+                          title={collapsed ? item.label : undefined}
+                          aria-current={isActive ? 'page' : undefined}
+                          className={clsx(
+                            'relative w-full flex items-center gap-2 sm:gap-3 py-2 sm:py-2.5 lg:py-3 rounded-lg transition-colors duration-200 text-xs sm:text-sm',
+                            collapsed ? 'px-3 lg:px-0 lg:justify-center' : 'px-2.5 sm:px-4',
+                            isActive
+                              ? 'bg-blue-600 text-white font-semibold shadow-sm shadow-blue-900/40 before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-6 before:w-1 before:rounded-r before:bg-amber-400'
+                              : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                          )}
+                        >
+                          <div className="relative w-4 sm:w-5 h-4 sm:h-5 flex-shrink-0 flex items-center justify-center">
+                            {item.icon}
+                            {collapsed && item.badge && (
+                              <span className="hidden lg:block absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500" />
+                            )}
+                          </div>
+                          <span className={clsx('flex-1 text-left font-medium truncate', collapsed && 'lg:hidden')}>{item.label}</span>
+                          {!collapsed && item.badge && (
+                            <span className="bg-red-600 text-white text-xs px-1.5 sm:px-2 py-0.5 rounded-full flex-shrink-0">
+                              {item.badge}
+                            </span>
+                          )}
+                          {!collapsed && isActive && <FaChevronRight className="w-3 sm:w-4 h-3 sm:h-4 flex-shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
                 );
               });
             })()}

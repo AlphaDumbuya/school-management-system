@@ -367,6 +367,8 @@ export const AssignmentsPage: React.FC = () => {
         title="Assignments"
         subtitle={canManage ? 'Create and manage student assignments' : 'Your class assignments'}
         breadcrumbs={[{ label: 'Assignments' }]}
+        onRefresh={() => refetch()}
+        isRefreshing={isLoading}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
             <RoleGuard roles={['principal', 'super_admin', 'teacher']}>

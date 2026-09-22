@@ -5,8 +5,23 @@ import { UserRole } from '../types/auth';
 import { logger } from '@utils/logger';
 import { db } from '@utils/database';
 import { sendExport } from '@utils/exportResponse';
+import teacherAttendanceRoutes from './teacherAttendanceRoutes';
 
 const router = Router();
+router.use('/teachers', teacherAttendanceRoutes);
+
+async function teacherClassIds(userId: string, tenantId: string): Promise<string[]> {
+  const teacher = await db('teachers')
+    .join('users as u', 'teachers.user_id', 'u.id')
+    .where('teachers.user_id', userId)
+    .where('u.tenant_id', tenantId)
+    .select('teachers.id')
+    .first();
+  if (!teacher) return [];
+  const assigned = await db('teacher_assignments').where('teacher_id', teacher.id).distinct('class_id');
+  const led = await db('classes').where('class_teacher_id', teacher.id).select('id');
+  return Array.from(new Set<string>([...assigned.map((r: any) => r.class_id), ...led.map((r: any) => r.id)]));
+}
 
 const EXPORT_COLUMNS: Record<string, string> = {
   Student: 'student_name',
@@ -15,6 +30,9 @@ const EXPORT_COLUMNS: Record<string, string> = {
   Date: 'attendance_date',
   Session: 'session_type',
   Status: 'status',
+  'Arrived at': 'check_in_time',
+  'Left at': 'check_out_time',
+  'Recorded at': 'marked_at',
   Remarks: 'remarks',
 };
 
@@ -23,7 +41,7 @@ const EXPORT_COLUMNS: Record<string, string> = {
  * Download attendance records. Tenant-scoped; teachers limited to their classes.
  * Declared before any /:id route so the literal path isn't captured.
  */
-router.get('/export', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/export', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = req.user?.tenant_id;
     if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
@@ -45,16 +63,7 @@ router.get('/export', authenticate, attachUserContext, async (req: Request, res:
 
     // Teacher scoping: only classes they teach or lead.
     if (req.user?.role === 'teacher') {
-      const teacher = await db('teachers')
-        .join('users as u', 'teachers.user_id', 'u.id')
-        .where('teachers.user_id', req.user.id)
-        .where('u.tenant_id', tenantId)
-        .select('teachers.id')
-        .first();
-      if (!teacher) return sendExport(res, { format: req.query.format as string, tenantId, rows: [], columns: EXPORT_COLUMNS, filename: 'attendance_export', title: 'Attendance Export', sheetName: 'Attendance' });
-      const assigned = await db('teacher_assignments').where('teacher_id', teacher.id).distinct('class_id');
-      const led = await db('classes').where('class_teacher_id', teacher.id).select('id');
-      const classIds = Array.from(new Set<string>([...assigned.map((r: any) => r.class_id), ...led.map((r: any) => r.id)]));
+      const classIds = await teacherClassIds(req.user.id, tenantId);
       if (classIds.length === 0) return sendExport(res, { format: req.query.format as string, tenantId, rows: [], columns: EXPORT_COLUMNS, filename: 'attendance_export', title: 'Attendance Export', sheetName: 'Attendance' });
       query = query.whereIn('attendance.class_id', classIds);
     }
@@ -70,6 +79,9 @@ router.get('/export', authenticate, attachUserContext, async (req: Request, res:
         'attendance.attendance_date',
         'attendance.session_type',
         'attendance.status',
+        'attendance.check_in_time',
+        'attendance.check_out_time',
+        'attendance.marked_at',
         'attendance.remarks',
       )
       .orderBy('attendance.attendance_date', 'desc')
@@ -123,19 +135,46 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
-    // Idempotency: if this exact offline write (same client_id) already landed,
-    // return it as success so a retried sync push never errors or duplicates.
-    if (client_id) {
-      const byClient = await db('attendance').where('client_id', client_id).first();
-      if (byClient) {
-        return res.status(200).json({ message: 'Attendance already recorded (idempotent)', attendance: byClient });
-      }
-    }
-
     // Verify student exists and belongs to this tenant
     const student = await db('students').where('id', student_id).andWhere('tenant_id', tenantId).first();
     if (!student) {
       throw new AppError('Student not found', 404, 'NOT_FOUND');
+    }
+
+    if (req.user?.role === 'teacher') {
+      if (!class_id || !(await teacherClassIds(req.user.id, tenantId)).includes(class_id)) {
+        throw new AppError('You are not assigned to this class', 403, 'FORBIDDEN');
+      }
+      const enrollment = await db('enrollments')
+        .where({ student_id, class_id })
+        .where(function () { this.whereIn('status', ['active', 'enrolled']).orWhereNull('status'); })
+        .first();
+      if (!enrollment) throw new AppError('Student is not enrolled in this class', 403, 'FORBIDDEN');
+    }
+    if (class_id) {
+      const classCheck = await db('classes')
+        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+        .where('classes.id', class_id)
+        .where(function () {
+          this.where('academic_sessions.tenant_id', tenantId)
+            .orWhere(function () { this.whereNull('classes.academic_session_id').where('class_creator.tenant_id', tenantId); });
+        })
+        .first();
+      if (!classCheck) throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+    }
+
+    // Idempotency must be checked only within this tenant and permitted class.
+    if (client_id) {
+      const byClient = await db('attendance as a')
+        .join('students as s', 'a.student_id', 's.id')
+        .where('a.client_id', client_id)
+        .where('s.tenant_id', tenantId)
+        .where('a.student_id', student_id)
+        .where('a.class_id', class_id || null)
+        .select('a.*')
+        .first();
+      if (byClient) return res.status(200).json({ message: 'Attendance already recorded (idempotent)', attendance: byClient });
     }
 
     // Check duplicate attendance record for same student, date, and session
@@ -159,8 +198,8 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       attendance_date: date,
       status,
       session_type: sessionType,
-      check_in_time: check_in_time || null,
-      check_out_time: check_out_time || null,
+      check_in_time: ['absent', 'excused'].includes(status) ? null : (check_in_time || null),
+      check_out_time: ['absent', 'excused'].includes(status) ? null : (check_out_time || null),
       remarks: remarks || null,
       marked_by: recordedBy,
       marked_at: new Date(),
@@ -195,7 +234,7 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
  * GET /api/v1/attendance
  * List attendance records with filtering, joins, search, pagination, and session support
  */
-router.get('/', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
@@ -219,21 +258,7 @@ router.get('/', authenticate, attachUserContext, async (req: Request, res: Respo
 
     // Teacher scoping: teachers only see attendance for classes they teach or lead.
     if (req.user?.role === 'teacher') {
-      const teacher = await db('teachers')
-        .join('users as u', 'teachers.user_id', 'u.id')
-        .where('teachers.user_id', req.user.id)
-        .where('u.tenant_id', tenantId)
-        .select('teachers.id')
-        .first();
-      if (!teacher) {
-        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
-      }
-      const assigned = await db('teacher_assignments').where('teacher_id', teacher.id).distinct('class_id');
-      const led = await db('classes').where('class_teacher_id', teacher.id).select('id');
-      const classIds = Array.from(new Set<string>([
-        ...assigned.map((r: any) => r.class_id),
-        ...led.map((r: any) => r.id),
-      ]));
+      const classIds = await teacherClassIds(req.user.id, tenantId);
       if (classIds.length === 0) {
         return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
       }
@@ -311,7 +336,7 @@ router.get('/', authenticate, attachUserContext, async (req: Request, res: Respo
  * Attendance records & summary for the currently logged-in student.
  * Resolves the student's own record from the auth context (no id needed).
  */
-router.get('/my', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/my', authenticate, attachUserContext, authorize(UserRole.STUDENT), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const currentUser = (req as any).user;
     const tenantId = req.user?.tenant_id;
@@ -332,9 +357,10 @@ router.get('/my', authenticate, attachUserContext, async (req: Request, res: Res
     }
 
     const attendance = await db('attendance')
-      .select('id', 'class_id', 'attendance_date as date', 'status', 'remarks')
+      .select('id', 'class_id', 'attendance_date as date', 'status', 'session_type', 'check_in_time', 'check_out_time', 'marked_at', 'remarks')
       .where('student_id', student.id)
-      .orderBy('attendance_date', 'desc');
+      .orderBy('attendance_date', 'desc')
+      .orderBy('session_type', 'asc');
 
     const total = attendance.length;
     const present = attendance.filter((a: any) => a.status === 'present').length;
@@ -365,7 +391,7 @@ router.get('/my', authenticate, attachUserContext, async (req: Request, res: Res
  * GET /api/v1/attendance/student/:studentId
  * Get attendance records & summary statistics for a specific student
  */
-router.get('/student/:studentId', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/student/:studentId', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.STUDENT), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const currentUser = (req as any).user;
@@ -374,20 +400,38 @@ router.get('/student/:studentId', authenticate, attachUserContext, async (req: R
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
-    const student = await db('students').where('id', studentId).orWhere('student_id', studentId).andWhere('tenant_id', tenantId).first();
+    const student = await db('students')
+      .where('tenant_id', tenantId)
+      .where(function () { this.where('id', studentId).orWhere('student_id', studentId); })
+      .first();
     if (!student) {
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
 
     // Check authorization
-    if (currentUser.role === 'student' && student.user_id !== currentUser.id && currentUser.role !== 'principal') {
+    if (currentUser.role === 'student' && student.user_id !== currentUser.id) {
       throw new AppError('Insufficient permissions', 403, 'AUTHORIZATION_ERROR');
     }
 
-    const attendance = await db('attendance')
-      .select('id', 'class_id', 'attendance_date as date', 'status')
+    let allowedClassIds: string[] | undefined;
+    if (currentUser.role === 'teacher') {
+      allowedClassIds = await teacherClassIds(currentUser.id, tenantId);
+      if (allowedClassIds.length === 0) throw new AppError('Insufficient permissions', 403, 'AUTHORIZATION_ERROR');
+      const enrollment = await db('enrollments')
+        .where('student_id', student.id)
+        .whereIn('class_id', allowedClassIds)
+        .where(function () { this.whereIn('status', ['active', 'enrolled']).orWhereNull('status'); })
+        .first();
+      if (!enrollment) throw new AppError('Insufficient permissions', 403, 'AUTHORIZATION_ERROR');
+    }
+
+    let attendanceQuery = db('attendance')
+      .select('id', 'class_id', 'attendance_date as date', 'status', 'session_type', 'check_in_time', 'check_out_time', 'marked_at', 'remarks')
       .where('student_id', student.id)
-      .orderBy('attendance_date', 'desc');
+      .orderBy('attendance_date', 'desc')
+      .orderBy('session_type', 'asc');
+    if (allowedClassIds) attendanceQuery = attendanceQuery.whereIn('class_id', allowedClassIds);
+    const attendance = await attendanceQuery;
 
     const total = attendance.length;
     const present = attendance.filter((a: any) => a.status === 'present').length;
@@ -439,6 +483,10 @@ router.put('/:attendanceId', authenticate, attachUserContext, authorize(UserRole
       throw new AppError('Attendance record not found', 404, 'NOT_FOUND');
     }
 
+    if (req.user?.role === 'teacher' && !(await teacherClassIds(req.user.id, tenantId)).includes(attendance.class_id)) {
+      throw new AppError('You are not assigned to this class', 403, 'FORBIDDEN');
+    }
+
     const updateData: any = {};
     
     if (status) {
@@ -459,6 +507,10 @@ router.put('/:attendanceId', authenticate, attachUserContext, authorize(UserRole
 
     if (check_in_time !== undefined) updateData.check_in_time = check_in_time;
     if (check_out_time !== undefined) updateData.check_out_time = check_out_time;
+    if (['absent', 'excused'].includes(status || attendance.status)) {
+      updateData.check_in_time = null;
+      updateData.check_out_time = null;
+    }
     if (remarks !== undefined) updateData.remarks = remarks;
 
     updateData.updated_at = new Date();
@@ -484,7 +536,7 @@ router.put('/:attendanceId', authenticate, attachUserContext, authorize(UserRole
  * GET /api/v1/attendance/class/:classId
  * Get class attendance summary with session support
  */
-router.get('/class/:classId', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/class/:classId', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
     const date = req.query.date as string;
@@ -510,6 +562,10 @@ router.get('/class/:classId', authenticate, attachUserContext, async (req: Reque
       .first();
     if (!classData) {
       throw new AppError('Class not found', 404, 'NOT_FOUND');
+    }
+
+    if (req.user?.role === 'teacher' && !(await teacherClassIds(req.user.id, tenantId)).includes(classId)) {
+      throw new AppError('You are not assigned to this class', 403, 'FORBIDDEN');
     }
 
     let query = db('attendance').where('class_id', classData.id);
@@ -625,6 +681,13 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
         // Verify student belongs to this tenant
         const studentCheck = await trx('students').where({ id: student_id, tenant_id: tenantId }).first();
         if (!studentCheck) continue;
+        if (req.user?.role === 'teacher') {
+          const enrollment = await trx('enrollments')
+            .where({ student_id, class_id })
+            .where(function () { this.whereIn('status', ['active', 'enrolled']).orWhereNull('status'); })
+            .first();
+          if (!enrollment) continue;
+        }
 
         // Check if duplicate exists (same student, date, and session)
         const existing = await trx('attendance')
@@ -644,8 +707,8 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
             .where('id', existing.id)
             .update({
               status,
-              check_in_time: check_in_time || existing.check_in_time || null,
-              check_out_time: check_out_time || existing.check_out_time || null,
+              check_in_time: ['absent', 'excused'].includes(status) ? null : (check_in_time ?? existing.check_in_time ?? null),
+              check_out_time: ['absent', 'excused'].includes(status) ? null : (check_out_time ?? existing.check_out_time ?? null),
               remarks: remarks || null,
               marked_by: recordedBy,
               marked_at: new Date(),
@@ -658,8 +721,8 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
             attendance_date: date,
             status,
             session_type: sessionTypeValue,
-            check_in_time: check_in_time || null,
-            check_out_time: check_out_time || null,
+            check_in_time: ['absent', 'excused'].includes(status) ? null : (check_in_time || null),
+            check_out_time: ['absent', 'excused'].includes(status) ? null : (check_out_time || null),
             remarks: remarks || null,
             marked_by: recordedBy,
             marked_at: new Date(),

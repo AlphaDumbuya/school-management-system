@@ -112,7 +112,7 @@ export const ContactPage: React.FC = () => {
                 </div>
                 <div className="flex items-start gap-4">
                   <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0"><Phone size={18} /></div>
-                  <div><p className="text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Phone</p><p className="text-slate-800 text-sm font-medium">+232 78 261 892</p><p className="text-slate-400 text-xs">Mon–Fri, 9AM – 5PM</p></div>
+                  <div><p className="text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Phone</p><p className="text-slate-800 text-sm font-medium">+232 34 330 610</p><p className="text-slate-400 text-xs">Mon–Fri, 9AM – 5PM</p></div>
                 </div>
                 <div className="flex items-start gap-4">
                   <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><MapPin size={18} /></div>
