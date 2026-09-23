@@ -25,6 +25,9 @@ import {
 } from '@services/examinationsService';
 import { ExamSlotModal } from './components/ExamSlotModal';
 import { AddExamDayModal } from './components/AddExamDayModal';
+import { useAuth } from '@hooks/useAuth';
+import { studentDashboardService } from '@services/studentDashboardService';
+import { parentDashboardService } from '@services/parentDashboardService';
 
 const TYPE_LABELS: Record<string, string> = Object.fromEntries(EXAM_TYPES.map((t) => [t.value, t.label]));
 
@@ -40,6 +43,10 @@ function formatDateLabel(dateStr: string): { weekday: string; date: string } {
 export const ExamTimetablePage: React.FC = () => {
   const queryClient = useQueryClient();
   const currentYear = new Date().getFullYear();
+  const { user } = useAuth();
+  const isStudent = user?.role === 'student';
+  const isParent = user?.role === 'parent' || user?.role === 'guardian';
+  const isViewerOnly = isStudent || isParent;
 
   const [selectedClassId, setSelectedClassId] = useState('');
   const [term, setTerm] = useState<ExamTerm>('first_term');
@@ -59,22 +66,50 @@ export const ExamTimetablePage: React.FC = () => {
     return arr;
   }, [currentYear]);
 
-  // Classes
+  // Classes (staff only — students/parents auto-resolve their own class).
   const { data: classesData } = useQuery({
     queryKey: ['classes-selector'],
     queryFn: () => classesService.listClasses({ limit: 100 }),
+    enabled: !isViewerOnly,
     staleTime: 60_000,
   });
   const classes: ClassRecord[] = (classesData as any)?.data ?? [];
   const selectedClass = classes.find((c) => String(c.id) === selectedClassId);
 
-  // Auto-select the first class once loaded (teacher list is already scoped),
-  // so users see the exam grid without picking a class first.
+  // Student: resolve own class. Parent: resolve a child's class.
+  const { data: studentDash } = useQuery({
+    queryKey: ['exam-student-self'],
+    queryFn: () => studentDashboardService.getDashboard(),
+    enabled: isStudent,
+    staleTime: 60_000,
+  });
+  const { data: parentDash } = useQuery({
+    queryKey: ['exam-parent-children'],
+    queryFn: () => parentDashboardService.getDashboard(),
+    enabled: isParent,
+    staleTime: 60_000,
+  });
+  const parentChildren = ((parentDash as any)?.data ?? (parentDash as any))?.children ?? [];
+  const [selectedChildId, setSelectedChildId] = useState('');
+  const activeChildId = selectedChildId || parentChildren[0]?.id || '';
+
+  // Auto-select the class.
   useEffect(() => {
+    if (isStudent) {
+      const profile = ((studentDash as any)?.data ?? (studentDash as any))?.profile;
+      if (profile?.class_id) setSelectedClassId(String(profile.class_id));
+      return;
+    }
+    if (isParent) {
+      const child = parentChildren.find((c: any) => String(c.id) === String(activeChildId)) || parentChildren[0];
+      if (child?.class_id) setSelectedClassId(String(child.class_id));
+      return;
+    }
     if (!selectedClassId && classes.length > 0) {
       setSelectedClassId(String(classes[0].id));
     }
-  }, [classes, selectedClassId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classes, selectedClassId, isStudent, isParent, studentDash, parentChildren, activeChildId]);
 
   // Exams for this class + term + year
   const canLoad = !!(selectedClassId && term && academicYear);
@@ -142,8 +177,8 @@ export const ExamTimetablePage: React.FC = () => {
       return (
         <td className="p-1.5 border border-gray-100 dark:border-gray-700/50 align-top">
           <div
-            onClick={() => openEdit(exam)}
-            className="group relative rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-2 cursor-pointer hover:ring-2 hover:ring-blue-400/50 transition-all min-w-[120px]"
+            onClick={isViewerOnly ? undefined : () => openEdit(exam)}
+            className={`group relative rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-2 transition-all min-w-[120px] ${isViewerOnly ? '' : 'cursor-pointer hover:ring-2 hover:ring-blue-400/50'}`}
           >
             <p className="text-xs font-bold text-gray-900 dark:text-white truncate leading-tight">
               {exam.subject_name || exam.subject_code || exam.title}
@@ -191,7 +226,7 @@ export const ExamTimetablePage: React.FC = () => {
     <MainLayout>
       <PageShell
         title="Exam Timetable"
-        subtitle="Build the examination schedule by date and session"
+        subtitle={isViewerOnly ? 'Your class examination schedule' : 'Build the examination schedule by date and session'}
         breadcrumbs={[{ label: 'Exam Timetable' }]}
         actions={
           <RoleGuard roles={['principal', 'super_admin']}>
@@ -206,22 +241,45 @@ export const ExamTimetablePage: React.FC = () => {
           </RoleGuard>
         }
       >
+        {/* Parent multi-child switcher */}
+        {isParent && parentChildren.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-1 mb-4">
+            {parentChildren.map((c: any) => (
+              <button
+                key={c.id}
+                onClick={() => setSelectedChildId(c.id)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
+                  activeChildId === c.id
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300'
+                }`}
+              >
+                <span className="font-medium">{c.name}</span>
+                {c.class_name && <span className="text-xs text-gray-400">· {c.class_name}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Selectors */}
         <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-6">
-          <div className="flex-1 sm:max-w-xs">
-            <label className="text-sm font-medium text-gray-600 dark:text-gray-400 block mb-1">Class</label>
-            <div className="relative">
-              <select
-                value={selectedClassId}
-                onChange={(e) => setSelectedClassId(e.target.value)}
-                className="w-full appearance-none pl-3 pr-8 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-              >
-                <option value="">Select a class...</option>
-                {classes.map((cls) => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+          {/* Class picker — staff only. Students/parents are auto-scoped. */}
+          {!isViewerOnly && (
+            <div className="flex-1 sm:max-w-xs">
+              <label className="text-sm font-medium text-gray-600 dark:text-gray-400 block mb-1">Class</label>
+              <div className="relative">
+                <select
+                  value={selectedClassId}
+                  onChange={(e) => setSelectedClassId(e.target.value)}
+                  className="w-full appearance-none pl-3 pr-8 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="">Select a class...</option>
+                  {classes.map((cls) => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+              </div>
             </div>
-          </div>
+          )}
           <div className="sm:w-40">
             <label className="text-sm font-medium text-gray-600 dark:text-gray-400 block mb-1">Term</label>
             <select value={term} onChange={(e) => setTerm(e.target.value as ExamTerm)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -240,8 +298,12 @@ export const ExamTimetablePage: React.FC = () => {
         {!selectedClassId && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <FileText size={56} className="text-gray-300 dark:text-gray-600 mb-4" />
-            <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">Select a class to build its exam timetable</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Choose a class, term and year above.</p>
+            <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
+              {isViewerOnly ? 'No exam timetable available yet' : 'Select a class to build its exam timetable'}
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              {isViewerOnly ? 'Your exam schedule will appear here once your class is enrolled and exams are scheduled.' : 'Choose a class, term and year above.'}
+            </p>
           </div>
         )}
 
