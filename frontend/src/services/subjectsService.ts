@@ -78,6 +78,17 @@ export const subjectsService = {
     return res ?? ({ success: false, data: [] } as any);
   },
 
+  /**
+   * GET /api/v1/subjects/my — subjects for the caller's OWN class only.
+   * Students: their class's subjects. Parents: a child's subjects (pass childId).
+   */
+  async listMySubjects(childId?: string) {
+    return apiClient.get<{ data: SubjectRecord[]; pagination: any }>(
+      '/api/v1/subjects/my',
+      { params: childId ? { child_id: childId } : {} },
+    );
+  },
+
   /** GET /api/v1/subjects/:id — single subject */
   async getSubject(id: string | number) {
     return apiClient.get<SubjectRecord>(`/api/v1/subjects/${id}`);

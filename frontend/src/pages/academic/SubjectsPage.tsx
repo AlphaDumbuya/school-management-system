@@ -22,6 +22,7 @@ import { showToast } from '@utils/toast';
 import { subjectsService, SubjectRecord } from '@services/subjectsService';
 import { SubjectFormModal } from './components/SubjectFormModal';
 import { useAuth } from '@hooks/useAuth';
+import { parentDashboardService } from '@services/parentDashboardService';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -162,8 +163,22 @@ const CategoryFilterPopover: React.FC<CategoryFilterPopoverProps> = ({ value, on
 
 export const SubjectsPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { canAccess } = useAuth();
+  const { canAccess, user } = useAuth();
   const canManage = canAccess(['principal', 'super_admin']);
+  const isStudent = user?.role === 'student';
+  const isParent = user?.role === 'parent' || user?.role === 'guardian';
+  const isViewerOnly = isStudent || isParent;
+
+  // Parent multi-child switcher.
+  const { data: parentDash } = useQuery({
+    queryKey: ['subjects-parent-children'],
+    queryFn: () => parentDashboardService.getDashboard(),
+    enabled: isParent,
+    staleTime: 60_000,
+  });
+  const parentChildren = ((parentDash as any)?.data ?? (parentDash as any))?.children ?? [];
+  const [selectedChildId, setSelectedChildId] = useState('');
+  const activeChildId = selectedChildId || parentChildren[0]?.id || '';
 
   // Filter state
   const [search, setSearch] = useState('');
@@ -181,20 +196,32 @@ export const SubjectsPage: React.FC = () => {
   const [statusToggleTarget, setStatusToggleTarget] = useState<SubjectRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SubjectRecord | null>(null);
 
-  // Fetch subjects
+  // Fetch subjects. Students/parents get ONLY their own class's subjects; staff
+  // get the full tenant list.
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['subjects', { search, categoryFilter, statusFilter, page, pageSize }],
-    queryFn: () => subjectsService.listSubjects({
-      page,
-      limit: pageSize,
-      category: categoryFilter.length === 1 ? categoryFilter[0] : undefined,
-      status: statusFilter.length === 1 ? statusFilter[0] : undefined,
-      search: search || undefined,
-    }),
+    queryKey: isViewerOnly
+      ? ['my-subjects', isParent ? activeChildId : 'self']
+      : ['subjects', { search, categoryFilter, statusFilter, page, pageSize }],
+    queryFn: () => isViewerOnly
+      ? subjectsService.listMySubjects(isParent ? activeChildId : undefined)
+      : subjectsService.listSubjects({
+          page,
+          limit: pageSize,
+          category: categoryFilter.length === 1 ? categoryFilter[0] : undefined,
+          status: statusFilter.length === 1 ? statusFilter[0] : undefined,
+          search: search || undefined,
+        }),
+    enabled: !isParent || !!activeChildId || parentChildren.length === 0,
     staleTime: 30_000,
   });
 
-  const subjects: SubjectRecord[] = (data as any)?.data ?? [];
+  const allSubjects: SubjectRecord[] = (data as any)?.data ?? [];
+  // Client-side search filter for the viewer-only list (no server pagination).
+  const subjects: SubjectRecord[] = isViewerOnly && search
+    ? allSubjects.filter((s) =>
+        (s.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (s.code || '').toLowerCase().includes(search.toLowerCase()))
+    : allSubjects;
   const pagination = (data as any)?.pagination ?? { total: 0, total_pages: 1 };
 
   // KPI calculations
@@ -315,8 +342,8 @@ export const SubjectsPage: React.FC = () => {
   return (
     <MainLayout>
       <PageShell
-        title="Subjects"
-        subtitle={canManage ? 'Manage school subjects and curriculum' : 'School subjects and curriculum'}
+        title={isViewerOnly ? 'My Subjects' : 'Subjects'}
+        subtitle={canManage ? 'Manage school subjects and curriculum' : isViewerOnly ? 'Subjects offered in your class' : 'School subjects and curriculum'}
         breadcrumbs={[{ label: 'Subjects' }]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
@@ -348,6 +375,25 @@ export const SubjectsPage: React.FC = () => {
           </div>
         }
       >
+        {/* Parent multi-child switcher */}
+        {isParent && parentChildren.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-1 mb-4">
+            {parentChildren.map((c: any) => (
+              <button
+                key={c.id}
+                onClick={() => setSelectedChildId(c.id)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
+                  activeChildId === c.id
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300'
+                }`}
+              >
+                <span className="font-medium">{c.name}</span>
+                {c.class_name && <span className="text-xs text-gray-400">· {c.class_name}</span>}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* KPI Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
@@ -375,30 +421,32 @@ export const SubjectsPage: React.FC = () => {
               className="w-full lg:max-w-md"
             />
 
-            {/* Filter Dropdowns */}
-            <div className="flex items-center gap-2 sm:gap-2.5 w-full lg:w-auto">
-              {/* Category Filter — popover */}
-              <CategoryFilterPopover
-                value={categoryFilter[0] || ''}
-                onChange={(val) => setCategoryFilter(val ? [val] : [])}
-              />
+            {/* Filter Dropdowns — staff only (viewers see just their own list) */}
+            {!isViewerOnly && (
+              <div className="flex items-center gap-2 sm:gap-2.5 w-full lg:w-auto">
+                {/* Category Filter — popover */}
+                <CategoryFilterPopover
+                  value={categoryFilter[0] || ''}
+                  onChange={(val) => setCategoryFilter(val ? [val] : [])}
+                />
 
-              {/* Status Select */}
-              <div className="relative flex-1 sm:flex-initial sm:min-w-[140px]">
-                <select
-                  value={statusFilter[0] || ''}
-                  onChange={(e) => setStatusFilter(e.target.value ? [e.target.value] : [])}
-                  className="w-full appearance-none pl-3 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all"
-                >
-                  <option value="">All Statuses</option>
-                  <option value="active" className="bg-white dark:bg-gray-800">Active</option>
-                  <option value="inactive" className="bg-white dark:bg-gray-800">Inactive</option>
-                </select>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 dark:text-gray-500">
-                  <ChevronDown size={14} />
+                {/* Status Select */}
+                <div className="relative flex-1 sm:flex-initial sm:min-w-[140px]">
+                  <select
+                    value={statusFilter[0] || ''}
+                    onChange={(e) => setStatusFilter(e.target.value ? [e.target.value] : [])}
+                    className="w-full appearance-none pl-3 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all"
+                  >
+                    <option value="">All Statuses</option>
+                    <option value="active" className="bg-white dark:bg-gray-800">Active</option>
+                    <option value="inactive" className="bg-white dark:bg-gray-800">Inactive</option>
+                  </select>
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 dark:text-gray-500">
+                    <ChevronDown size={14} />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Active Filter Badges */}

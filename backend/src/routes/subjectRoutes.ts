@@ -136,6 +136,91 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 });
 
 /**
+ * GET /api/v1/subjects/my?child_id=
+ * Subjects for the CALLER's own class:
+ *   - student → their active class's subjects
+ *   - parent  → their ward's class's subjects (pick a child via ?child_id)
+ * Resolved robustly from class_subjects ∪ sl_subject_results ∪ timetable for
+ * the class (class_subjects is often unpopulated in real tenants). Declared
+ * BEFORE /:subjectId so "my" isn't captured as a subjectId param.
+ */
+router.get('/my', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.user?.tenant_id;
+    const userId = req.user?.id;
+    const role = req.user?.role;
+    if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+
+    // Resolve the target student for this viewer.
+    let studentId: string | null = null;
+    if (role === 'student') {
+      const stu = await db('students').where({ tenant_id: tenantId, user_id: userId }).first();
+      studentId = stu?.id ?? null;
+    } else if (role === 'parent' || role === 'guardian') {
+      const childId = req.query.child_id as string | undefined;
+      // Verify the requested child (or the parent's first ward) is linked.
+      let g = db('guardians as g')
+        .join('students as s', 'g.student_id', 's.id')
+        .where('g.user_id', userId)
+        .where('s.tenant_id', tenantId);
+      if (childId) g = g.where('s.id', childId);
+      const row = await g.orderBy('g.is_primary_guardian', 'desc').select('s.id').first();
+      studentId = row?.id ?? null;
+    } else {
+      // Staff hitting this endpoint → no self-scope; return empty (they use the
+      // full list). Keeps the endpoint student/parent-focused.
+      return res.json({ data: [], pagination: { page: 1, limit: 0, total: 0, total_pages: 0 } });
+    }
+
+    if (!studentId) {
+      return res.json({ data: [], pagination: { page: 1, limit: 0, total: 0, total_pages: 0 } });
+    }
+
+    // Active class for the student.
+    const enrolment = await db('enrollments')
+      .where('student_id', studentId)
+      .whereIn('status', ['active', 'enrolled'])
+      .orderBy('created_at', 'desc')
+      .select('class_id')
+      .first();
+    const classId = enrolment?.class_id ?? null;
+    if (!classId) {
+      return res.json({ data: [], pagination: { page: 1, limit: 0, total: 0, total_pages: 0 } });
+    }
+
+    // Union of subject ids linked to this class from all reliable sources.
+    const subjectIds = new Set<string>();
+    const collect = (rows: any[], key: string) => rows.forEach((r) => { if (r[key]) subjectIds.add(r[key]); });
+
+    collect(await db('class_subjects').where('class_id', classId).select('subject_id').catch(() => []), 'subject_id');
+    collect(await db('sl_subject_results').where({ tenant_id: tenantId, class_id: classId }).distinct('subject_id').catch(() => []), 'subject_id');
+    collect(await db('results').where('class_id', classId).distinct('subject_id').catch(() => []), 'subject_id');
+    // Timetable (schedules) subjects for the class.
+    collect(await db('schedules').where('class_id', classId).whereNotNull('subject_id').distinct('subject_id').catch(() => []), 'subject_id');
+
+    if (subjectIds.size === 0) {
+      return res.json({ data: [], pagination: { page: 1, limit: 0, total: 0, total_pages: 0 } });
+    }
+
+    const subjects = await db('subjects')
+      .join('users', 'subjects.created_by', 'users.id')
+      .where('users.tenant_id', tenantId)
+      .whereIn('subjects.id', Array.from(subjectIds))
+      .where('subjects.status', 'active')
+      .select('subjects.*')
+      .orderBy('subjects.code', 'asc');
+
+    res.json({
+      data: subjects.map(mapSubject),
+      pagination: { page: 1, limit: subjects.length, total: subjects.length, total_pages: 1 },
+    });
+  } catch (error) {
+    logger.error('Error getting my subjects:', error);
+    next(error);
+  }
+});
+
+/**
  * GET /api/v1/subjects/:subjectId
  * Get subject details
  */
