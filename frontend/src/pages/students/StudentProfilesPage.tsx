@@ -75,6 +75,8 @@ export const StudentProfilesPage: React.FC = () => {
 
   // Parent Account Modal State
   const [parentModalOpen, setParentModalOpen] = useState(false);
+  // Password reset state (which account is resetting).
+  const [resettingRole, setResettingRole] = useState<'student' | 'parent' | null>(null);
 
   useEffect(() => {
     if (location.state?.studentId) {
@@ -299,6 +301,28 @@ export const StudentProfilesPage: React.FC = () => {
       showToast.error(err?.response?.data?.message || err?.message || 'Error creating parent account.');
     } finally {
       setIsCreatingParent(false);
+    }
+  };
+
+  /** Reset a student's or parent's password back to a fresh demo password. */
+  const handleResetPassword = async (role: 'student' | 'parent') => {
+    const creds = (student as any)?.demo_login || (student as any)?.login_credentials;
+    const userId = role === 'student' ? creds?.student_user_id : creds?.parent_user_id;
+    if (!userId) {
+      showToast.error(role === 'parent' ? 'No parent account to reset. Provision one first.' : 'No student account found to reset.');
+      return;
+    }
+    setResettingRole(role);
+    try {
+      const res: any = await studentsService.resetUserPassword(userId);
+      const data = res?.data ?? res;
+      const pwd = data?.temporary_password;
+      showToast.success(`${role === 'student' ? 'Student' : 'Parent'} password reset. New demo password: ${pwd}`);
+      queryClient.invalidateQueries({ queryKey: ['student-profile-details', student!.id] });
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.error || err?.response?.data?.message || 'Failed to reset password.');
+    } finally {
+      setResettingRole(null);
     }
   };
 
@@ -720,6 +744,16 @@ export const StudentProfilesPage: React.FC = () => {
                               <p className="text-slate-400 font-mono text-[11px]">
                                 Password: <strong className="text-emerald-400">{student.demo_login?.student_password || 'Uses their own password'}</strong>
                               </p>
+                              {canManage && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetPassword('student')}
+                                  disabled={resettingRole === 'student'}
+                                  className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 hover:text-amber-200 disabled:opacity-50"
+                                >
+                                  {resettingRole === 'student' ? 'Resetting…' : '↺ Reset to demo password'}
+                                </button>
+                              )}
                             </div>
 
                             {/* Parent Credentials */}
@@ -734,6 +768,16 @@ export const StudentProfilesPage: React.FC = () => {
                               <p className="text-slate-400 font-mono text-[11px]">
                                 Password: <strong className="text-purple-300">{student.demo_login?.parent_password || 'Uses their own password'}</strong>
                               </p>
+                              {canManage && student.demo_login?.parent_user_id && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetPassword('parent')}
+                                  disabled={resettingRole === 'parent'}
+                                  className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 hover:text-amber-200 disabled:opacity-50"
+                                >
+                                  {resettingRole === 'parent' ? 'Resetting…' : '↺ Reset to demo password'}
+                                </button>
+                              )}
                             </div>
                           </div>
 

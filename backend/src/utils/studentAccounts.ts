@@ -81,9 +81,10 @@ export async function provisionStudentAccounts(
       }).returning('*');
       su = inserted;
       studentPassword = pwd;
-    } else if (!su.last_login) {
-      // Heal never-logged-in account with a fresh demo password + ensure the
-      // username (ID number) is set.
+    } else if (!su.last_login && !su.temp_password) {
+      // Never-logged-in account that has NO demo password on file yet — set one
+      // ONCE. We must NOT regenerate on every profile view (that would rotate
+      // the password so the displayed one never matches the stored hash).
       const pwd = PasswordService.generateTemporaryPassword();
       await db('users').where('id', su.id).update({
         password_hash: await PasswordService.hashPassword(pwd),
@@ -94,8 +95,9 @@ export async function provisionStudentAccounts(
       });
       studentPassword = pwd;
     } else {
-      // Real user (has logged in) — never touch their password; just make sure
-      // the username (ID number) is set so they can sign in with it.
+      // Existing account (logged in OR already has a demo password) — NEVER
+      // touch the password. Just ensure the username (ID number) is set and
+      // surface the stored demo password (if any).
       if (studentUsername && !su.username) {
         await db('users').where('id', su.id).update({ username: studentUsername, updated_at: new Date() }).catch(() => {});
       }
@@ -133,7 +135,10 @@ export async function provisionStudentAccounts(
       }).returning('*');
       pu = inserted;
       parentPassword = pwd;
-    } else if (!pu.last_login) {
+    } else if (!pu.last_login && !pu.temp_password) {
+      // Set a demo password ONCE for a never-logged-in account with none on
+      // file. Do NOT regenerate on every profile view (that rotates it so the
+      // displayed password never matches the stored hash).
       const pwd = PasswordService.generateTemporaryPassword();
       await db('users').where('id', pu.id).update({
         password_hash: await PasswordService.hashPassword(pwd),

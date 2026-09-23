@@ -712,6 +712,9 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
       // temp_password on the account (both student & parent). Only null when a
       // real user has changed their own password (temp_password cleared).
       student_password: provisioned.studentPassword || studentUser?.temp_password || null,
+      // User ids so the principal can trigger a password reset for either account.
+      student_user_id: studentUser?.id || provisioned.studentUserId || null,
+      parent_user_id: parentUser?.id || provisioned.parentUserId || null,
       parent_email: parentUser?.email || provisioned.parentEmail,
       parent_password: provisioned.parentPassword || parentUser?.temp_password || null,
       has_parent_account: !!parentUser,

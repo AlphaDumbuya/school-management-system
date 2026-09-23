@@ -145,6 +145,15 @@ export const studentsService = {
     return apiClient.post<{ success: boolean; message: string; user: any; temporary_password?: string }>(`/api/v1/students/${studentId}/parent-account`, data);
   },
 
+  /**
+   * Principal/super_admin resets ANY tenant user's password back to a fresh
+   * demo password. `userId` is the users.id (student's user_id, guardian's
+   * user_id, teacher's user_id, etc.).
+   */
+  async resetUserPassword(userId: string) {
+    return apiClient.post<{ success: boolean; message: string; data: { user_id: string; role: string; login_id: string; email: string; username: string | null; temporary_password: string } }>(`/api/v1/users/${userId}/reset-password`);
+  },
+
   async reactivateStudent(id: string) {
     return apiClient.post(`/api/v1/students/${id}/reactivate`);
   },

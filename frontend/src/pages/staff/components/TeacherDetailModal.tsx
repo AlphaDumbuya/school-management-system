@@ -7,7 +7,9 @@ import { Modal } from '@components/admin/feedback/Modal';
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { Button } from '@components/ui/button';
 import { teachersService, TeacherRecord } from '@services/teachersService';
-import { User, Mail, Phone, Calendar, KeyRound, ShieldAlert, Loader2, MapPin, Award, GraduationCap, ShieldCheck, Building, Briefcase, BookOpen } from 'lucide-react';
+import { studentsService } from '@services/studentsService';
+import { showToast } from '@utils/toast';
+import { User, Mail, Phone, Calendar, KeyRound, ShieldAlert, Loader2, MapPin, Award, GraduationCap, ShieldCheck, Building, Briefcase, BookOpen, RotateCcw } from 'lucide-react';
 
 interface TeacherDetailModalProps {
   isOpen: boolean;
@@ -75,6 +77,7 @@ export const TeacherDetailModal: React.FC<TeacherDetailModalProps> = ({
 }) => {
   const [detailedTeacher, setDetailedTeacher] = useState<TeacherRecord | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     if (isOpen && teacher) {
@@ -98,6 +101,23 @@ export const TeacherDetailModal: React.FC<TeacherDetailModalProps> = ({
       setDetailedTeacher(null);
     }
   }, [isOpen, teacher]);
+
+  const handleResetPassword = async () => {
+    const uid = (currentTeacher as any)?.user_id;
+    if (!uid) { showToast.error('No login account found for this staff member.'); return; }
+    setResetting(true);
+    try {
+      const res: any = await studentsService.resetUserPassword(uid);
+      const pwd = (res?.data ?? res)?.temporary_password;
+      // Reflect the new demo password immediately in the modal.
+      setDetailedTeacher((prev) => prev ? { ...prev, temp_password: pwd, last_login: null } as TeacherRecord : prev);
+      showToast.success(`Password reset. New demo password: ${pwd}`);
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.error || err?.response?.data?.message || 'Failed to reset password.');
+    } finally {
+      setResetting(false);
+    }
+  };
 
   if (!teacher) return null;
   const currentTeacher = detailedTeacher || teacher;
@@ -235,6 +255,18 @@ export const TeacherDetailModal: React.FC<TeacherDetailModalProps> = ({
                     </span>
                   </div>
                 )}
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800/60">
+                <Button
+                  variant="outline"
+                  onClick={handleResetPassword}
+                  disabled={resetting || !(currentTeacher as any)?.user_id}
+                  className="text-xs h-8 px-3 border-amber-300 text-amber-600 hover:bg-amber-50 dark:border-amber-900/40 dark:text-amber-500 dark:hover:bg-amber-950/20"
+                >
+                  {resetting ? <Loader2 size={13} className="mr-1.5 animate-spin" /> : <RotateCcw size={13} className="mr-1.5" />}
+                  Reset password to demo
+                </Button>
+                <p className="mt-1.5 text-[10px] text-gray-400">Generates a new demo password the staff member can use to sign in again.</p>
               </div>
             </div>
           </div>

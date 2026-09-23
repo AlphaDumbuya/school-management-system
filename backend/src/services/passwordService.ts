@@ -76,29 +76,27 @@ export class PasswordService {
   }
 
   /**
-   * Generate temporary password
+   * Generate temporary password.
+   *
+   * Uses an UNAMBIGUOUS character set — no 0/O, 1/l/I — so principals can read
+   * out the demo password and account holders can type it without the common
+   * "invalid password" confusion. Still meets the policy (upper, lower, digit,
+   * special) and stays 12 chars long.
    */
   static generateTemporaryPassword(): string {
     const length = 12;
-    const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let password = '';
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';   // no I, O
+    const lower = 'abcdefghijkmnpqrstuvwxyz';    // no l, o
+    const digits = '23456789';                   // no 0, 1
+    const special = '!@#$%^&*';
+    const all = upper + lower + digits + special;
+    const pick = (set: string) => set.charAt(Math.floor(Math.random() * set.length));
 
-    // Ensure at least one of each required character type
-    password += 'A'; // uppercase
-    password += 'a'; // lowercase
-    password += '1'; // number
-    password += '!'; // special
+    let password = pick(upper) + pick(lower) + pick(digits) + pick(special);
+    for (let i = password.length; i < length; i++) password += pick(all);
 
-    // Fill the rest randomly
-    for (let i = password.length; i < length; i++) {
-      password += charset.charAt(Math.floor(Math.random() * charset.length));
-    }
-
-    // Shuffle the password
-    return password
-      .split('')
-      .sort(() => Math.random() - 0.5)
-      .join('');
+    // Shuffle so the guaranteed chars aren't always in the same position.
+    return password.split('').sort(() => Math.random() - 0.5).join('');
   }
 
   /**
