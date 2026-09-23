@@ -484,6 +484,66 @@ export class SLReportCardService {
         logger.warn(`Report card notify failed for student ${s.student_id}: ${(err as any)?.message || err}`);
       }
     }
+
+    // ── Notify STAFF (teachers of this class + principals/admins) ────────────
+    // So teachers and school administrators know results have gone live for
+    // parents/students. Best-effort; never blocks the publish action.
+    try {
+      const staffMap = new Map<string, { user_id: string; email: string | null; name: string }>();
+
+      // Teachers assigned to this class (via teacher_assignments) + the class
+      // teacher (classes.class_teacher_id).
+      const teacherRows = await db('teachers as t')
+        .join('users as u', 't.user_id', 'u.id')
+        .leftJoin('teacher_assignments as ta', 'ta.teacher_id', 't.id')
+        .where('t.tenant_id', tenantId)
+        .where((qb) => {
+          qb.where('ta.class_id', classId).orWhereIn('t.id', db('classes').where({ id: classId }).select('class_teacher_id'));
+        })
+        .whereNotNull('t.user_id')
+        .distinct('u.id as user_id', 'u.email', 'u.first_name', 'u.last_name')
+        .catch(() => [] as any[]);
+      for (const r of teacherRows) {
+        staffMap.set(r.user_id, { user_id: r.user_id, email: r.email || null, name: [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Teacher' });
+      }
+
+      // Principals for this tenant (school administrators).
+      const adminRows = await db('users')
+        .where('tenant_id', tenantId)
+        .where('role', 'principal')
+        .whereNotNull('email')
+        .select('id as user_id', 'email', 'first_name', 'last_name')
+        .catch(() => [] as any[]);
+      for (const r of adminRows) {
+        if (!staffMap.has(r.user_id)) {
+          staffMap.set(r.user_id, { user_id: r.user_id, email: r.email || null, name: [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Administrator' });
+        }
+      }
+
+      const staffSubject = `Results released — ${className || 'a class'}${term ? ` (${termLabel})` : ''}`;
+      const staffMessage = `Results for ${className || 'a class'}${term ? ` (${termLabel})` : ''} have been released to parents and students.`;
+      const staffData = {
+        kind: 'result_released_staff',
+        class_id: classId, class_name: className, academic_year: academicYear,
+        term: term || null, term_label: termLabel, is_year: isYear,
+        url: '/academic/report-cards',
+      };
+
+      for (const staff of staffMap.values()) {
+        await notificationService.createNotification({
+          notificationType: 'result_released', recipientId: staff.user_id,
+          subject: staffSubject, message: staffMessage, data: staffData,
+          channels: ['in_app'], sourceType: 'report_card', sourceId: classId,
+        }).catch(() => {});
+        if (staff.email) {
+          await emailService.sendResultsReleasedStaffEmail(tenantId, staff.email, {
+            recipientName: staff.name, className, term: termLabel, academicYear, studentCount: students.length,
+          }).catch((e) => logger.warn(`Results staff email failed for ${staff.user_id}: ${e?.message || e}`));
+        }
+      }
+    } catch (err) {
+      logger.warn(`Staff results notification failed for class ${classId}: ${(err as any)?.message || err}`);
+    }
   }
 
   /** Whether results for a class+year (optionally term) are published. */
@@ -536,6 +596,141 @@ export class SLReportCardService {
     if (wholeYear) return { terms: [...SL_TERMS], wholeYear: true };
     const terms = rows.map((r: any) => r.term).filter((t: any): t is string => !!t);
     return { terms, wholeYear: false };
+  }
+
+  /**
+   * Class ranking (results directory): students ordered by position (1st, 2nd,
+   * 3rd …) for a term, or by yearly position when `term` is null/'full'.
+   *
+   * Access is publish-gated for non-staff (students/parents/accountant/
+   * admissions_officer): they only get a ranking for released terms. Staff see
+   * the live ranking any time. Returns the top position(s) flagged so the UI
+   * can celebrate the class leader(s).
+   */
+  async getClassRanking(
+    tenantId: string,
+    viewerUserId: string,
+    role: string,
+    classId: string,
+    academicYear: string,
+    term?: string | null,
+  ): Promise<{
+    class_id: string;
+    class_name: string | null;
+    academic_year: string;
+    term: string | null;
+    is_year: boolean;
+    published: boolean;
+    students: Array<{
+      student_id: string;
+      name: string;
+      admission_no: string | null;
+      photo_url: string | null;
+      combined_score: number | null;
+      percentage: number | null;
+      position: number | null;
+      class_size: number | null;
+      is_top: boolean;
+    }>;
+  }> {
+    await this.assertClassInTenant(classId, tenantId);
+    const isStaff = ['principal', 'super_admin', 'teacher'].includes(role);
+    const isYear = !term || term === 'full';
+    const normTerm = isYear ? null : term!;
+
+    // Publish gate for non-staff.
+    let published = true;
+    if (!isStaff) {
+      published = normTerm
+        ? await this.isPublished(tenantId, classId, academicYear, normTerm)
+        : await this.isPublished(tenantId, classId, academicYear);
+      // Teacher class-scope is enforced elsewhere; students/parents may only see
+      // their own class — restrict by checking their linkage.
+      if (role === 'student') {
+        const stu = await db('students').where({ tenant_id: tenantId, user_id: viewerUserId }).first();
+        const enrolled = stu && await db('enrollments').where({ student_id: stu.id, class_id: classId }).first();
+        if (!enrolled) throw new Error('You can only view your own class ranking');
+      } else if (role === 'parent') {
+        const linked = await db('guardians as g')
+          .join('enrollments as e', 'g.student_id', 'e.student_id')
+          .where('g.user_id', viewerUserId)
+          .where('e.class_id', classId)
+          .first();
+        if (!linked) throw new Error('You can only view your ward\'s class ranking');
+      }
+      if (!published) {
+        const cls = await db('classes').where({ id: classId }).first().catch(() => null);
+        return { class_id: classId, class_name: cls?.name || cls?.class_name || null, academic_year: academicYear, term: normTerm, is_year: isYear, published: false, students: [] };
+      }
+    }
+
+    const cls = await db('classes').where({ id: classId }).first().catch(() => null);
+    const className = cls?.name || cls?.class_name || null;
+
+    // Roster (active enrollments) joined to students for names/photos.
+    const roster = await db('enrollments as e')
+      .join('students as s', 'e.student_id', 's.id')
+      .where('e.class_id', classId)
+      .where('e.status', 'active')
+      .where('s.tenant_id', tenantId)
+      .select('s.id as student_id', 's.first_name', 's.last_name', 's.student_id as admission_no', 's.photo_url');
+
+    // Build the ranked list.
+    let ranked: Array<{ student_id: string; name: string; admission_no: string | null; photo_url: string | null; combined_score: number | null; percentage: number | null; position: number | null; class_size: number | null; is_top: boolean }> = [];
+
+    if (isYear) {
+      // Yearly: compute each student's yearly summary (position across the class).
+      const results = await Promise.all(roster.map(async (r: any) => {
+        const ys = await this.computeYearlySummary(tenantId, classId, academicYear, r.student_id).catch(() => null);
+        return {
+          student_id: r.student_id,
+          name: [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Student',
+          admission_no: r.admission_no || null,
+          photo_url: r.photo_url || null,
+          combined_score: ys?.combined_score ?? null,
+          percentage: ys?.percentage ?? null,
+          position: ys?.position ?? null,
+          class_size: ys?.class_size ?? roster.length,
+          is_top: false,
+        };
+      }));
+      ranked = results;
+    } else {
+      // Single term: use the stored term summaries.
+      const summaries = await db('sl_term_summaries')
+        .where({ tenant_id: tenantId, class_id: classId, academic_year: academicYear, term: normTerm })
+        .select('student_id', 'combined_score', 'percentage', 'position', 'class_size');
+      const byStudent = new Map<string, any>();
+      summaries.forEach((s: any) => byStudent.set(s.student_id, s));
+      ranked = roster.map((r: any) => {
+        const sm = byStudent.get(r.student_id);
+        return {
+          student_id: r.student_id,
+          name: [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Student',
+          admission_no: r.admission_no || null,
+          photo_url: r.photo_url || null,
+          combined_score: sm?.combined_score != null ? Number(sm.combined_score) : null,
+          percentage: sm?.percentage != null ? Number(sm.percentage) : null,
+          position: sm?.position ?? null,
+          class_size: sm?.class_size ?? roster.length,
+          is_top: false,
+        };
+      });
+    }
+
+    // Sort: ranked students first (by position asc), unranked (no results) last.
+    ranked.sort((a, b) => {
+      if (a.position == null && b.position == null) return a.name.localeCompare(b.name);
+      if (a.position == null) return 1;
+      if (b.position == null) return -1;
+      return a.position - b.position;
+    });
+
+    // Flag the top position(s) (handles ties for 1st).
+    const topPos = ranked.find((s) => s.position != null)?.position ?? null;
+    if (topPos != null) ranked.forEach((s) => { s.is_top = s.position === topPos; });
+
+    return { class_id: classId, class_name: className, academic_year: academicYear, term: normTerm, is_year: isYear, published: true, students: ranked };
   }
 
   // ──────────────────────────────────────────────────────────────────────────

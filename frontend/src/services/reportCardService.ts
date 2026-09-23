@@ -162,6 +162,28 @@ export interface TermSummary {
   teacher_comment: string | null;
 }
 
+export interface ClassRankingStudent {
+  student_id: string;
+  name: string;
+  admission_no: string | null;
+  photo_url: string | null;
+  combined_score: number | null;
+  percentage: number | null;
+  position: number | null;
+  class_size: number | null;
+  is_top: boolean;
+}
+
+export interface ClassRanking {
+  class_id: string;
+  class_name: string | null;
+  academic_year: string;
+  term: string | null;
+  is_year: boolean;
+  published: boolean;
+  students: ClassRankingStudent[];
+}
+
 export interface ReportCard {
   tenant_id?: string;
   class_id?: string;
@@ -271,6 +293,11 @@ export const reportCardService = {
   /** Full report card booklet (or single-term data) for a student */
   async getReportCard(studentId: string, params: { class_id: string; academic_year: string; term?: string }) {
     return apiClient.get<{ success: boolean; data: ReportCard }>(`${BASE}/${studentId}`, { params });
+  },
+
+  /** Class ranking (results directory) ordered by position; flags the leader(s). */
+  async getClassRanking(params: { class_id: string; academic_year: string; term?: string }) {
+    return apiClient.get<{ success: boolean; data: ClassRanking }>(`${BASE}/ranking`, { params });
   },
 
   /**

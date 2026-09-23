@@ -1412,6 +1412,46 @@ class EmailService {
   }
 
   /**
+   * Results released → staff (teachers / principal / admin). Informs staff that
+   * a class's results have gone live so they know parents & students can see them.
+   */
+  async sendResultsReleasedStaffEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      recipientName: string;
+      className?: string;
+      term?: string;
+      academicYear?: string;
+      studentCount?: number;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/academic/report-cards`;
+
+    const rows =
+      (data.className ? detailRow('Class', escapeHtml(data.className)) : '') +
+      (data.term ? detailRow('Term', escapeHtml(data.term)) : '') +
+      (data.academicYear ? detailRow('Academic Year', escapeHtml(data.academicYear)) : '') +
+      (typeof data.studentCount === 'number' ? detailRow('Students', String(data.studentCount)) : '');
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(data.recipientName)},</p>
+      <p><strong>${escapeHtml(branding.name)}</strong> has released results for <strong>${escapeHtml(data.className || 'a class')}</strong>${data.term ? ` (${escapeHtml(data.term)})` : ''}. Parents and students can now view and download them from their portals.</p>
+      ${detailsCard(rows)}
+      ${calloutBlock('You can review the released report cards and result sheets from the Report Cards page.', 'info')}
+      ${emailButton('Open Report Cards', portalUrl)}`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: `Results Released — ${data.className || 'Class'}${data.term ? ` (${data.term})` : ''} — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: 'Results', heading: 'Results Released', bodyHtml, preheader: `${data.className || 'Class'} results are now live for parents and students.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
    * Fee reminder → guardian. For upcoming or overdue balances.
    */
   async sendFeeReminderEmail(

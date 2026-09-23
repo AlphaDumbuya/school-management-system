@@ -13,6 +13,7 @@ import { PageShell } from '@components/admin/layout/PageShell';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { studentDashboardService, StudentGrade } from '@services/studentDashboardService';
 import { SL_TERMS, SL_GRADING_METHOD } from '@services/reportCardService';
+import { ClassRankingView } from './ClassRankingView';
 
 const TERM_LABEL: Record<string, string> = Object.fromEntries(
   (SL_TERMS as any[]).map((t: any) => [t.value ?? t, t.label ?? t]),
@@ -115,6 +116,14 @@ export const StudentResultsView: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Class ranking — where you stand + who leads the class (published only) */}
+        {profile?.class_id && grades.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider mb-3">Class Ranking</h2>
+            <ClassRankingView classId={String(profile.class_id)} academicYear={String(profile.academic_year || '')} />
           </div>
         )}
       </PageShell>

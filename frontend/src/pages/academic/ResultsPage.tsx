@@ -9,7 +9,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardList, Star, BookOpen } from 'lucide-react';
+import { ClipboardList, Star, BookOpen, Trophy } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
@@ -23,6 +23,7 @@ import { SL_TERMS, SLTerm, SL_GRADING_METHOD, CONDUCT_CODES, getGradingMethod } 
 
 import { StudentResultsView } from './components/StudentResultsView';
 import { ParentResultsView } from './components/ParentResultsView';
+import { ClassRankingView } from './components/ClassRankingView';
 
 export const ResultsPage: React.FC = () => {
   const currentYear = new Date().getFullYear();
@@ -39,7 +40,10 @@ export const ResultsPage: React.FC = () => {
     getGradingMethod();
   }, []);
   const [academicYear, setAcademicYear] = useState(`${currentYear}/${currentYear + 1}`);
-  const [tab, setTab] = useState<'cognitive' | 'ratings'>('cognitive');
+  const [tab, setTab] = useState<'cognitive' | 'ratings' | 'ranking'>('cognitive');
+
+  // Ranking tab state
+  const [rankingClassId, setRankingClassId] = useState('');
 
   // Ratings tab state
   const [ratingsClassId, setRatingsClassId] = useState('');
@@ -152,6 +156,18 @@ export const ResultsPage: React.FC = () => {
             <span className="sm:hidden">Ratings</span>
             <span className="hidden sm:inline">Affective &amp; Psychomotor</span>
           </button>
+          <button
+            onClick={() => setTab('ranking')}
+            className={`flex-1 min-w-max text-center px-3 sm:px-4 py-2 text-sm rounded-xl transition-all whitespace-nowrap ${
+              tab === 'ranking'
+                ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold shadow-md shadow-emerald-500/30'
+                : 'text-gray-600 dark:text-gray-400 hover:text-emerald-700 hover:bg-white/70 dark:hover:bg-gray-700/50'
+            }`}
+          >
+            <Trophy size={15} className="inline mr-1.5" />
+            <span className="sm:hidden">Ranking</span>
+            <span className="hidden sm:inline">Class Ranking</span>
+          </button>
         </div>
 
         {/* Grade controls & result release moved to Settings → Grading & Results */}
@@ -211,6 +227,23 @@ export const ResultsPage: React.FC = () => {
               )}
             </div>
           </RoleGuard>
+        )}
+
+        {/* Class Ranking tab — results directory ordered by position */}
+        {tab === 'ranking' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+              <SearchableSelect label="Class" options={classOptions} value={rankingClassId} onChange={setRankingClassId} placeholder="Select class..." />
+            </div>
+            {rankingClassId ? (
+              <ClassRankingView classId={rankingClassId} academicYear={academicYear} />
+            ) : (
+              <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl">
+                <Trophy size={28} className="mx-auto mb-2 text-gray-400" />
+                Select a class to see students ranked by position and celebrate the class leader.
+              </div>
+            )}
+          </div>
         )}
 
       </PageShell>

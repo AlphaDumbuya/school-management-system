@@ -288,6 +288,33 @@ router.get('/student/:studentId/summary', async (req: Request, res: Response, ne
   }
 });
 
+/**
+ * GET /ranking?class_id&academic_year&term
+ * Class results directory ordered by position (1st, 2nd, 3rd …). Publish-gated
+ * for non-staff. Flags the class leader(s) so the UI can celebrate them.
+ * Declared BEFORE /:studentId so "ranking" isn't captured as a studentId.
+ */
+router.get('/ranking', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { class_id, academic_year, term } = req.query;
+    if (!class_id || !academic_year) {
+      return res.status(400).json({ success: false, error: 'class_id and academic_year are required' });
+    }
+    const termParam = (term && ['first_term', 'second_term', 'third_term'].includes(term as string)) ? (term as string) : null;
+    const data = await slReportCardService.getClassRanking(
+      tenant(req), req.user!.id, req.user!.role,
+      class_id as string, academic_year as string, termParam,
+    );
+    res.json({ success: true, data });
+  } catch (error: any) {
+    logger.error('Error getting class ranking:', error);
+    if (error.message?.includes('only view') || error.message?.includes('authorized')) {
+      return res.status(403).json({ success: false, error: error.message });
+    }
+    next(error);
+  }
+});
+
 // ── Server-side PDF (clean, no browser header/footer) ───────────────────────
 
 /**

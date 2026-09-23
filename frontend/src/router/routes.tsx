@@ -270,11 +270,11 @@ const router = createBrowserRouter(
         },
         {
           path: 'academic/results',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent', 'admissions_officer']}><ResultsPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent', 'admissions_officer', 'accountant']}><ResultsPage /></P>,
         },
         {
           path: 'academic/report-cards',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent', 'admissions_officer']}><ReportCardsPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent', 'admissions_officer', 'accountant']}><ReportCardsPage /></P>,
         },
         {
           path: 'academic/promotions',
