@@ -21,6 +21,7 @@ import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { subjectsService, SubjectRecord } from '@services/subjectsService';
 import { SubjectFormModal } from './components/SubjectFormModal';
+import { useAuth } from '@hooks/useAuth';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -161,6 +162,8 @@ const CategoryFilterPopover: React.FC<CategoryFilterPopoverProps> = ({ value, on
 
 export const SubjectsPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const { canAccess } = useAuth();
+  const canManage = canAccess(['principal', 'super_admin']);
 
   // Filter state
   const [search, setSearch] = useState('');
@@ -313,7 +316,7 @@ export const SubjectsPage: React.FC = () => {
     <MainLayout>
       <PageShell
         title="Subjects"
-        subtitle="Manage school subjects and curriculum"
+        subtitle={canManage ? 'Manage school subjects and curriculum' : 'School subjects and curriculum'}
         breadcrumbs={[{ label: 'Subjects' }]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
@@ -586,8 +589,8 @@ export const SubjectsPage: React.FC = () => {
             totalRows={Number(pagination.total)}
             onPageChange={setPage}
             emptyMessage="No subjects found"
-            emptyAction={{ label: 'Add your first subject', onClick: () => { setEditingSubject(null); setFormOpen(true); } }}
-            rowActions={(subj) => [
+            emptyAction={canManage ? { label: 'Add your first subject', onClick: () => { setEditingSubject(null); setFormOpen(true); } } : undefined}
+            rowActions={canManage ? ((subj) => [
               {
                 label: 'Edit',
                 onClick: (row) => { setEditingSubject(row); setFormOpen(true); },
@@ -602,7 +605,7 @@ export const SubjectsPage: React.FC = () => {
                 variant: 'destructive',
                 onClick: (row) => setDeleteTarget(row),
               },
-            ]}
+            ]) : undefined}
           />
         )}
       </PageShell>

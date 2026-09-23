@@ -29,6 +29,9 @@ import {
 import { TimetableSlotModal } from './components/TimetableSlotModal';
 import { PeriodSettingsModal } from './components/PeriodSettingsModal';
 import { Settings } from 'lucide-react';
+import { useAuth } from '@hooks/useAuth';
+import { studentDashboardService } from '@services/studentDashboardService';
+import { parentDashboardService } from '@services/parentDashboardService';
 
 // ── Subject category colors ───────────────────────────────────────────────────
 
@@ -53,6 +56,10 @@ const CATEGORY_TEXT: Record<string, string> = {
 
 export const TimetablesPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isStudent = user?.role === 'student';
+  const isParent = user?.role === 'parent' || user?.role === 'guardian';
+  const isViewerOnly = isStudent || isParent;
 
   // Class selector
   const [selectedClassId, setSelectedClassId] = useState<string>('');
@@ -68,22 +75,51 @@ export const TimetablesPage: React.FC = () => {
   const [prefillPeriod, setPrefillPeriod] = useState<number | undefined>();
   const [deleteTarget, setDeleteTarget] = useState<TimetableSlot | null>(null);
 
-  // Fetch classes for selector
+  // Fetch classes for selector (staff only — students/parents auto-resolve
+  // their own class from the dashboard, never a class picker).
   const { data: classesData } = useQuery({
     queryKey: ['classes-selector'],
     queryFn: () => classesService.listClasses({ limit: 100 }),
+    enabled: !isViewerOnly,
     staleTime: 60_000,
   });
   const classes: ClassRecord[] = (classesData as any)?.data ?? [];
 
-  // Auto-select the first class once classes load so users (especially teachers,
-  // whose list is already scoped to their own classes) see a timetable
-  // immediately without picking a class first.
+  // Student: resolve their own class from the dashboard.
+  const { data: studentDash } = useQuery({
+    queryKey: ['timetable-student-self'],
+    queryFn: () => studentDashboardService.getDashboard(),
+    enabled: isStudent,
+    staleTime: 60_000,
+  });
+  // Parent: resolve their (first) child's class.
+  const { data: parentDash } = useQuery({
+    queryKey: ['timetable-parent-children'],
+    queryFn: () => parentDashboardService.getDashboard(),
+    enabled: isParent,
+    staleTime: 60_000,
+  });
+  const parentChildren = ((parentDash as any)?.data ?? (parentDash as any))?.children ?? [];
+  const [selectedChildId, setSelectedChildId] = useState('');
+  const activeChildId = selectedChildId || parentChildren[0]?.id || '';
+
+  // Auto-select the class.
   useEffect(() => {
+    if (isStudent) {
+      const profile = ((studentDash as any)?.data ?? (studentDash as any))?.profile;
+      if (profile?.class_id) setSelectedClassId(String(profile.class_id));
+      return;
+    }
+    if (isParent) {
+      const child = parentChildren.find((c: any) => String(c.id) === String(activeChildId)) || parentChildren[0];
+      if (child?.class_id) setSelectedClassId(String(child.class_id));
+      return;
+    }
     if (!selectedClassId && classes.length > 0) {
       setSelectedClassId(String(classes[0].id));
     }
-  }, [classes, selectedClassId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classes, selectedClassId, isStudent, isParent, studentDash, parentChildren, activeChildId]);
 
   // Fetch weekly timetable for selected class
   const { data: weeklyData, isLoading } = useQuery({
@@ -240,8 +276,8 @@ export const TimetablesPage: React.FC = () => {
   return (
     <MainLayout>
       <PageShell
-        title="Timetables"
-        subtitle="Manage weekly class schedules"
+        title={isViewerOnly ? 'Class Timetable' : 'Timetables'}
+        subtitle={isViewerOnly ? 'Your weekly class schedule' : 'Manage weekly class schedules'}
         breadcrumbs={[{ label: 'Timetables' }]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
@@ -268,35 +304,57 @@ export const TimetablesPage: React.FC = () => {
           </div>
         }
       >
-        {/* Class Selector bar — sits below header, above content */}
-        <div className="flex items-center gap-3 mb-6">
-          <label className="text-sm font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
-            Class:
-          </label>
-          <div className="relative w-full max-w-xs">
-            <select
-              value={selectedClassId}
-              onChange={(e) => setSelectedClassId(e.target.value)}
-              className="w-full appearance-none pl-3 pr-8 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="">Select a class...</option>
-              {classes.map((cls) => (
-                <option key={cls.id} value={cls.id}>
-                  {cls.name}
-                </option>
-              ))}
-            </select>
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-              <ChevronDown size={14} />
+        {/* Class selector — STAFF pick any class; PARENTS switch between their
+            children; STUDENTS see their own class (no picker). */}
+        {!isViewerOnly ? (
+          <div className="flex items-center gap-3 mb-6">
+            <label className="text-sm font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">Class:</label>
+            <div className="relative w-full max-w-xs">
+              <select
+                value={selectedClassId}
+                onChange={(e) => setSelectedClassId(e.target.value)}
+                className="w-full appearance-none pl-3 pr-8 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="">Select a class...</option>
+                {classes.map((cls) => (
+                  <option key={cls.id} value={cls.id}>{cls.name}</option>
+                ))}
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                <ChevronDown size={14} />
+              </div>
             </div>
           </div>
-        </div>
-        {/* No class selected state */}
+        ) : isParent && parentChildren.length > 1 ? (
+          <div className="flex gap-2 overflow-x-auto pb-1 mb-6">
+            {parentChildren.map((c: any) => (
+              <button
+                key={c.id}
+                onClick={() => setSelectedChildId(c.id)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
+                  activeChildId === c.id
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300'
+                }`}
+              >
+                <span className="font-medium">{c.name}</span>
+                {c.class_name && <span className="text-xs text-gray-400">· {c.class_name}</span>}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {/* No class resolved state */}
         {!selectedClassId && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Calendar size={56} className="text-gray-300 dark:text-gray-600 mb-4" />
-            <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">Select a class to view its timetable</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Choose a class from the selector above to manage its weekly schedule.</p>
+            <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
+              {isViewerOnly ? 'No class timetable available yet' : 'Select a class to view its timetable'}
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              {isViewerOnly
+                ? 'Your timetable will appear here once you are enrolled in a class with a schedule.'
+                : 'Choose a class from the selector above to manage its weekly schedule.'}
+            </p>
           </div>
         )}
 

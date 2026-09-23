@@ -1415,12 +1415,17 @@ export class SLReportCardService {
       throw new Error('Not authorized to view report cards');
     }
 
-    // Publish gate — term-aware. If a specific term is requested, that term (or
-    // the whole year) must be released. If no term is requested (full booklet),
-    // the whole year must be released.
+    // Publish gate — term-aware.
+    //  - A specific term requested → that term (or the whole year) must be released.
+    //  - NO term requested (base JSON payload / report-cards page load) → ANY
+    //    release (a single term OR the whole year) is enough to load the data.
+    //    The payload's `published_terms` / `year_released` then tells the UI
+    //    which terms to surface and whether the full booklet is available. This
+    //    lets a single-term release (Term 1/2) render in the student/parent
+    //    portal without requiring the whole year to be published.
     const ok = term
       ? await this.isPublished(tenantId, classId, academicYear, term)
-      : await this.isPublished(tenantId, classId, academicYear);
+      : await this.isAnythingPublished(tenantId, classId, academicYear);
     if (!ok) {
       throw new Error(term
         ? 'This term\'s results have not been released yet'

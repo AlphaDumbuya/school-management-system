@@ -254,11 +254,11 @@ const router = createBrowserRouter(
         },
         {
           path: 'academic/subjects',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'admissions_officer']}><SubjectsPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'admissions_officer', 'student', 'parent']}><SubjectsPage /></P>,
         },
         {
           path: 'academic/timetables',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'admissions_officer']}><TimetablesPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'admissions_officer', 'student', 'parent']}><TimetablesPage /></P>,
         },
         {
           path: 'academic/assignments',
