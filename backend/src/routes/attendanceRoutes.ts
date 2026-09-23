@@ -23,6 +23,91 @@ async function teacherClassIds(userId: string, tenantId: string): Promise<string
   return Array.from(new Set<string>([...assigned.map((r: any) => r.class_id), ...led.map((r: any) => r.id)]));
 }
 
+/** Pretty "8:05 AM" from a HH:MM[:SS] time string. */
+function prettyTime(t?: string | null): string {
+  if (!t) return '';
+  const m = String(t).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return String(t);
+  let h = parseInt(m[1], 10); const min = m[2];
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${min} ${ap}`;
+}
+
+/**
+ * Notify a student's guardians (in-app + best-effort email) that their child
+ * was checked IN (arrived) or checked OUT (left for home). Also notifies the
+ * student's own account. Best-effort — never blocks attendance marking.
+ *
+ * `kind` = 'check_in' | 'check_out'. Tenant-scoped via the student lookup.
+ */
+async function notifyGuardiansOfAttendance(
+  tenantId: string,
+  studentId: string,
+  kind: 'check_in' | 'check_out',
+  time: string | null,
+  attendanceDate: string,
+): Promise<void> {
+  try {
+    const student = await db('students').where({ id: studentId, tenant_id: tenantId }).first();
+    if (!student) return;
+    const studentName = [student.first_name, student.last_name].filter(Boolean).join(' ') || 'Your child';
+    const when = prettyTime(time);
+
+    const isIn = kind === 'check_in';
+    const subject = isIn
+      ? `${studentName} arrived at school`
+      : `${studentName} has left school`;
+    const message = isIn
+      ? `${studentName} was marked present${when ? ` at ${when}` : ''} today.`
+      : `${studentName} checked out${when ? ` at ${when}` : ''} and has left school for home.`;
+
+    const data = {
+      kind: isIn ? 'attendance_check_in' : 'attendance_check_out',
+      student_id: studentId,
+      student_name: studentName,
+      time: time || null,
+      date: attendanceDate,
+      url: '/students/attendance',
+    };
+
+    const { default: notificationService } = await import('@services/notificationService');
+    let emailService: any = null;
+    try { emailService = (await import('@services/emailService')).default; } catch { /* optional */ }
+
+    // Notify the student's own account.
+    if (student.user_id) {
+      await notificationService.createNotification({
+        notificationType: 'attendance', recipientId: student.user_id,
+        subject, message, data, channels: ['in_app'], sourceType: 'attendance', sourceId: studentId,
+      }).catch(() => {});
+    }
+
+    // Notify linked guardians (in-app + email).
+    const guardians = await db('guardians')
+      .where({ student_id: studentId })
+      .select('user_id', 'email', 'first_name', 'last_name')
+      .catch(() => [] as any[]);
+
+    for (const g of guardians) {
+      if (g.user_id) {
+        await notificationService.createNotification({
+          notificationType: 'attendance', recipientId: g.user_id,
+          subject, message, data, channels: ['in_app'], sourceType: 'attendance', sourceId: studentId,
+        }).catch(() => {});
+      }
+      if (g.email && emailService?.sendAttendanceAlertEmail) {
+        await emailService.sendAttendanceAlertEmail(tenantId, g.email, {
+          recipientName: [g.first_name, g.last_name].filter(Boolean).join(' ') || 'Parent/Guardian',
+          studentName, kind, time: when, date: attendanceDate,
+        }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    logger.warn(`Attendance guardian notify failed for student ${studentId}: ${(err as any)?.message || err}`);
+  }
+}
+
 const EXPORT_COLUMNS: Record<string, string> = {
   Student: 'student_name',
   'Admission No': 'admission_no',
@@ -225,6 +310,14 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
     });
 
     logger.info(`Attendance recorded for student ${student.student_id}: ${status} (${sessionType} session)`);
+
+    // Notify parents (best-effort) — arrival on check-in, "left school" on check-out.
+    if (attendanceData.check_in_time) {
+      void notifyGuardiansOfAttendance(tenantId, student_id, 'check_in', attendanceData.check_in_time, date);
+    }
+    if (attendanceData.check_out_time) {
+      void notifyGuardiansOfAttendance(tenantId, student_id, 'check_out', attendanceData.check_out_time, date);
+    }
   } catch (error) {
     next(error);
   }
@@ -527,6 +620,15 @@ router.put('/:attendanceId', authenticate, attachUserContext, authorize(UserRole
     });
 
     logger.info(`Attendance record updated: ${attendanceId}`);
+
+    // Notify parents when a check-in / check-out time is NEWLY set via edit.
+    const dateStr = updated?.attendance_date ? String(updated.attendance_date).slice(0, 10) : '';
+    if (updated?.check_in_time && !attendance.check_in_time) {
+      void notifyGuardiansOfAttendance(tenantId, updated.student_id, 'check_in', updated.check_in_time, dateStr);
+    }
+    if (updated?.check_out_time && !attendance.check_out_time) {
+      void notifyGuardiansOfAttendance(tenantId, updated.student_id, 'check_out', updated.check_out_time, dateStr);
+    }
   } catch (error) {
     next(error);
   }
@@ -669,6 +771,10 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
       }
     }
 
+    // Collect NEW check-in / check-out transitions to notify parents after commit.
+    const checkInNotify: Array<{ student_id: string; time: string }> = [];
+    const checkOutNotify: Array<{ student_id: string; time: string }> = [];
+
     // Insert or update attendance records in a transaction
     await db.transaction(async (trx) => {
       for (const record of records) {
@@ -701,14 +807,20 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
           })
           .first();
 
+        const nulled = ['absent', 'excused'].includes(status);
         if (existing) {
-          // Update existing record
+          const newCheckIn = nulled ? null : (check_in_time ?? existing.check_in_time ?? null);
+          const newCheckOut = nulled ? null : (check_out_time ?? existing.check_out_time ?? null);
+          // Only notify when a check-in/out time is NEWLY set (transition), not
+          // on every re-save of an unchanged value.
+          if (newCheckIn && !existing.check_in_time) checkInNotify.push({ student_id, time: newCheckIn });
+          if (newCheckOut && !existing.check_out_time) checkOutNotify.push({ student_id, time: newCheckOut });
           await trx('attendance')
             .where('id', existing.id)
             .update({
               status,
-              check_in_time: ['absent', 'excused'].includes(status) ? null : (check_in_time ?? existing.check_in_time ?? null),
-              check_out_time: ['absent', 'excused'].includes(status) ? null : (check_out_time ?? existing.check_out_time ?? null),
+              check_in_time: newCheckIn,
+              check_out_time: newCheckOut,
               remarks: remarks || null,
               marked_by: recordedBy,
               marked_at: new Date(),
@@ -716,13 +828,17 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
             });
         } else {
           // Insert new record
+          const ci = nulled ? null : (check_in_time || null);
+          const co = nulled ? null : (check_out_time || null);
+          if (ci) checkInNotify.push({ student_id, time: ci });
+          if (co) checkOutNotify.push({ student_id, time: co });
           const attendanceData: any = {
             student_id,
             attendance_date: date,
             status,
             session_type: sessionTypeValue,
-            check_in_time: ['absent', 'excused'].includes(status) ? null : (check_in_time || null),
-            check_out_time: ['absent', 'excused'].includes(status) ? null : (check_out_time || null),
+            check_in_time: ci,
+            check_out_time: co,
             remarks: remarks || null,
             marked_by: recordedBy,
             marked_at: new Date(),
@@ -738,6 +854,10 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
         }
       }
     });
+
+    // Notify parents (best-effort, after commit) of arrivals + departures.
+    for (const c of checkInNotify) void notifyGuardiansOfAttendance(tenantId, c.student_id, 'check_in', c.time, date);
+    for (const c of checkOutNotify) void notifyGuardiansOfAttendance(tenantId, c.student_id, 'check_out', c.time, date);
 
     res.status(200).json({
       success: true,

@@ -28,6 +28,7 @@ import {
   TrendingDown,
   ClipboardList,
   X,
+  LogOut,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -1610,6 +1611,68 @@ const StudentAttendanceView: React.FC = () => {
   );
 };
 
+// ── Today's live arrival/departure banner (parent portal) ───────────────────
+const prettyClock = (t?: string | null): string => {
+  if (!t) return '';
+  const m = String(t).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return String(t);
+  let h = parseInt(m[1], 10); const min = m[2];
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${min} ${ap}`;
+};
+
+const TodayAttendanceBanner: React.FC<{
+  records: Array<{ date: string; status: string; check_in_time?: string | null; check_out_time?: string | null }>;
+  childName: string;
+}> = ({ records, childName }) => {
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todays = records.filter((r) => String(r.date).slice(0, 10) === todayKey);
+  if (todays.length === 0) {
+    return (
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-5 py-4 flex items-center gap-3">
+        <Clock className="w-5 h-5 text-gray-400 flex-shrink-0" />
+        <p className="text-sm text-gray-600 dark:text-gray-300">No attendance recorded for <strong>{childName}</strong> yet today.</p>
+      </div>
+    );
+  }
+  const checkIn = todays.map((r) => r.check_in_time).filter(Boolean)[0] as string | undefined;
+  const checkOut = todays.map((r) => r.check_out_time).filter(Boolean).slice(-1)[0] as string | undefined;
+  const anyAbsent = todays.some((r) => r.status === 'absent');
+  const anyPresent = todays.some((r) => r.status === 'present' || r.status === 'late');
+
+  return (
+    <div className={`rounded-2xl border px-5 py-4 ${
+      checkOut ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20'
+      : anyPresent ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/20'
+      : anyAbsent ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20'
+      : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40'
+    }`}>
+      <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500 mb-2">Today · {fmt(todayKey)}</p>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="flex items-center gap-2">
+          <CheckCircle className={`w-5 h-5 ${anyPresent ? 'text-emerald-600' : 'text-gray-300'}`} />
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+              {anyPresent ? `${childName} arrived at school` : anyAbsent ? `${childName} is marked absent` : 'Not yet arrived'}
+            </p>
+            {checkIn && <p className="text-xs text-gray-500">Checked in at <strong>{prettyClock(checkIn)}</strong></p>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <LogOut className={`w-5 h-5 ${checkOut ? 'text-blue-600' : 'text-gray-300'}`} />
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+              {checkOut ? `${childName} has left for home` : 'Still at school'}
+            </p>
+            {checkOut && <p className="text-xs text-gray-500">Checked out at <strong>{prettyClock(checkOut)}</strong></p>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Parent read-only "children's attendance" view ───────────────────────────
 
 const ParentAttendanceView: React.FC = () => {
@@ -1628,7 +1691,10 @@ const ParentAttendanceView: React.FC = () => {
     queryKey: ['parent-child-detail', currentId],
     queryFn: () => parentDashboardService.getChildDetail(currentId),
     enabled: !!currentId,
-    staleTime: 60_000,
+    // Keep the today banner reasonably live so a check-in/out reflects quickly.
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
   const detail = (childResp as any)?.data ?? (childResp as any);
   const summary = detail?.attendance ?? { total: 0, present: 0, late: 0, absent: 0, excused: 0, percentage: 0 };
@@ -1666,6 +1732,12 @@ const ParentAttendanceView: React.FC = () => {
               <div className="flex items-center justify-center py-16 text-gray-500"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>
             ) : (
               <>
+                {/* Today's live status — arrival / departure at a glance */}
+                <TodayAttendanceBanner
+                  records={records}
+                  childName={children.find((c: any) => String(c.id) === String(currentId))?.name || 'Your child'}
+                />
+
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   <KPICard title="Attendance Rate" value={`${summary.percentage}%`} icon={<UserCheck className="w-5 h-5" />} color={summary.percentage >= 85 ? 'green' : summary.percentage >= 75 ? 'amber' : 'red'} />
                   <KPICard title="Present" value={String(summary.present)} icon={<CheckCircle className="w-5 h-5" />} color="green" />

@@ -1412,6 +1412,51 @@ class EmailService {
   }
 
   /**
+   * Attendance alert → guardian. Sent when a child is checked IN (arrived) or
+   * checked OUT (left school for home).
+   */
+  async sendAttendanceAlertEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      recipientName: string;
+      studentName: string;
+      kind: 'check_in' | 'check_out';
+      time?: string;
+      date?: string;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/students/attendance`;
+    const isIn = data.kind === 'check_in';
+
+    const rows =
+      detailRow('Student', escapeHtml(data.studentName)) +
+      detailRow('Status', isIn ? 'Arrived at school' : 'Left school for home') +
+      (data.time ? detailRow('Time', escapeHtml(data.time)) : '') +
+      (data.date ? detailRow('Date', escapeHtml(this.fmtDate(data.date))) : '');
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(data.recipientName)},</p>
+      <p>${isIn
+        ? `This is to let you know that <strong>${escapeHtml(data.studentName)}</strong> arrived at <strong>${escapeHtml(branding.name)}</strong>${data.time ? ` at <strong>${escapeHtml(data.time)}</strong>` : ''} and has been marked present today.`
+        : `This is to let you know that <strong>${escapeHtml(data.studentName)}</strong> has checked out of <strong>${escapeHtml(branding.name)}</strong>${data.time ? ` at <strong>${escapeHtml(data.time)}</strong>` : ''} and is on the way home.`}</p>
+      ${detailsCard(rows)}
+      ${calloutBlock(isIn
+        ? 'You will receive another update when your child checks out at the end of the day.'
+        : 'If you were not expecting this, please contact the school immediately.', isIn ? 'info' : 'warn')}
+      ${emailButton('View Attendance', portalUrl)}`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: isIn ? `${data.studentName} arrived at school` : `${data.studentName} has left school`,
+      body: renderEmail({ branding, eyebrow: 'Attendance', heading: isIn ? 'Arrived at School' : 'Left for Home', bodyHtml, preheader: isIn ? `${data.studentName} was marked present.` : `${data.studentName} has checked out.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
    * Results released → staff (teachers / principal / admin). Informs staff that
    * a class's results have gone live so they know parents & students can see them.
    */
