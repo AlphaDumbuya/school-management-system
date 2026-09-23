@@ -85,7 +85,14 @@ export async function resolveTenantBranding(tenantId: string): Promise<EmailBran
     const address =
       school?.address || tenant?.address || undefined;
     const website = school?.website || undefined;
-    const logoUrl = school?.logo_url || tenant?.logo_url || undefined;
+    // Normalise the logo for email use: a relative upload path (e.g.
+    // "/uploads/logos/x.png") is turned into an absolute URL so email clients
+    // can load it. base64 data: URIs are left as-is (emailLayout falls back to
+    // a text logo for those, since most clients block data: images).
+    const rawLogo = school?.logo_url || tenant?.logo_url || undefined;
+    const logoUrl = rawLogo && rawLogo.startsWith('/')
+      ? `${appBaseUrl().replace(/\/$/, '')}${rawLogo}`
+      : rawLogo;
 
     const senderMode: 'platform' | 'own' = school?.email_sender_mode === 'own' ? 'own' : 'platform';
     const senderVerified = !!school?.email_sender_verified;

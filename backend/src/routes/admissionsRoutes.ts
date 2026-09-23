@@ -7,10 +7,26 @@ import { generateNextId } from '@utils/idGenerator';
 import { linkGuardianForStudent } from '@utils/guardianLinking';
 import { UserRole } from '../types/auth';
 import { sendExport } from '@utils/exportResponse';
+import emailService from '../services/emailService.js';
 
 const router = Router();
 router.use(authenticate);
 router.use(attachUserContext);
+
+/** The authenticated school's public application address. */
+router.get('/share-link', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    const school = await db('tenants').where({ id: tenantId, status: 'active' }).select('name', 'slug').first();
+    if (!school) throw new AppError('School is not available for online applications', 404, 'SCHOOL_NOT_FOUND');
+    const configuredUrl = process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL?.split(',')[0]?.trim();
+    const publicBaseUrl = configuredUrl && /^https?:\/\//i.test(configuredUrl) ? configuredUrl : null;
+    res.json({ success: true, data: { path: `/apply/${encodeURIComponent(school.slug)}`, school_name: school.name, public_base_url: publicBaseUrl } });
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * GET /api/v1/admissions/export?format=csv|excel|pdf
@@ -299,6 +315,7 @@ router.get('/:appId', authenticate, async (req: Request, res: Response, next: Ne
       })
       .first();
     if (!app) throw new AppError('Application not found', 404, 'NOT_FOUND');
+
     res.json(app);
   } catch (error) {
     next(error);
@@ -327,6 +344,11 @@ router.put('/:appId/status', authenticate, authorize(UserRole.PRINCIPAL, UserRol
       .first();
     if (!app) throw new AppError('Application not found', 404, 'NOT_FOUND');
 
+    if (status === 'approved' && app.status === 'enrolled') {
+      throw new AppError('Application is already enrolled', 409, 'ALREADY_ENROLLED');
+    }
+    const newlyAccepted = status === 'approved' && app.status !== 'approved' && app.status !== 'enrolled';
+
     const updateData: any = { status, updated_at: new Date() };
     if (interview_date) updateData.interview_date = interview_date;
     if (assessment_score !== undefined) updateData.assessment_score = assessment_score;
@@ -336,10 +358,15 @@ router.put('/:appId/status', authenticate, authorize(UserRole.PRINCIPAL, UserRol
       updateData.decided_at = new Date();
     }
 
-    await db('admission_applications').where('id', appId).update(updateData);
+    // Claim this transition once so simultaneous approvals cannot enroll twice
+    // or send duplicate acceptance messages.
+    const changed = await db('admission_applications')
+      .where({ id: appId, tenant_id: tenantId, status: app.status })
+      .update(updateData);
+    if (!changed) throw new AppError('Application was changed by another user; refresh and try again', 409, 'STATUS_CONFLICT');
 
     // If approved, automatically create a student record and enroll
-    if (status === 'approved') {
+    if (status === 'approved' && app.status !== 'enrolled') {
       try {
         const studentId = await generateNextId(db, tenantId, 'student');
 
@@ -416,7 +443,44 @@ router.put('/:appId/status', authenticate, authorize(UserRole.PRINCIPAL, UserRol
 
     const updated = await db('admission_applications').where('id', appId).first();
 
-    res.json({ message: `Application ${status}`, data: updated });
+    // Notify the guardian by email for every meaningful decision — accepted,
+    // rejected, or waitlisted — not just acceptances. Only fire when the status
+    // actually transitions to a decision state (guards against re-sends on
+    // repeated saves of the same status).
+    const DECISION_EMAILS: Record<string, string> = {
+      approved: 'approved',
+      rejected: 'rejected',
+      waitlisted: 'waitlist',
+      waitlist: 'waitlist',
+    };
+    const isNewDecision = status !== app.status && status in DECISION_EMAILS;
+
+    let emailSent: boolean | null = null;
+    if (isNewDecision) {
+      const guardianEmail = app.guardian_email || app.parent_email;
+      emailSent = false;
+      if (guardianEmail) {
+        try {
+          const className = app.class_applying_for
+            ? (await db('classes').where('id', app.class_applying_for).select('name').first())?.name
+            : undefined;
+          const result = await emailService.sendAdmissionDecisionEmail(tenantId, guardianEmail, {
+            guardianName: [app.guardian_first_name, app.guardian_last_name].filter(Boolean).join(' ') || app.parent_name || 'Parent/Guardian',
+            studentName: [app.child_first_name || app.first_name, app.child_last_name || app.last_name].filter(Boolean).join(' '),
+            decision: DECISION_EMAILS[status],
+            applicationNumber: app.application_number,
+            className,
+            notes: decision_notes,
+            publicApplicant: app.application_source === 'online' && !app.created_by,
+          });
+          emailSent = result.status === 'sent';
+        } catch (mailError) {
+          logger.error(`Could not send admission ${status} email for ${app.application_number}: ${mailError}`);
+        }
+      }
+    }
+
+    res.json({ success: true, message: `Application ${status}`, data: { ...updated, email_sent: emailSent } });
     logger.info(`Admission ${appId} status changed to ${status}`);
   } catch (error) {
     next(error);

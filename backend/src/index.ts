@@ -22,6 +22,7 @@ import examinationRoutes from '@routes/examinationRoutes';
 import resultsRoutes from '@routes/resultsRoutes';
 import uploadRoutes from '@routes/uploadRoutes';
 import admissionsNewRoutes from '@routes/admissionsRoutes';
+import publicAdmissionRoutes from '@routes/publicAdmissionRoutes';
 import enrollmentRoutes from '@routes/enrollmentRoutes';
 import enrollmentWorkflowRoutes from '@routes/enrollmentWorkflowRoutes';
 import gradeRoutes from '@routes/gradeRoutes';
@@ -181,6 +182,7 @@ app.use('/api/v1/auth', authRoutes);
 // applies `authenticate` at the top (e.g. phase10DashboardRoutes) — otherwise
 // that middleware runs for every /api/v1/* path and 401s this public route.
 app.use('/api/v1/public', publicVerifyRoutes);
+app.use('/api/v1/public/admissions', publicAdmissionRoutes);
 
 // App stats (APK download tracking + count). Contains the PUBLIC
 // GET /api/v1/app/download route, so — like publicVerifyRoutes above — it MUST

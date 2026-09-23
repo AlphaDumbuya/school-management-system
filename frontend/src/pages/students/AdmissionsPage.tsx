@@ -4,15 +4,16 @@
  * Supports grid / list view toggle (same pattern as ClassesPage).
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   FileText, Clock, CheckCircle, XCircle,
   X, ChevronDown, SlidersHorizontal,
-  LayoutGrid, List,
+  LayoutGrid, List, Copy, Share2, Link as LinkIcon,
   User, BookOpen, Phone, Calendar,
   CheckCircle2, XCircle as XCircleIcon, Trash2,
+  ExternalLink, Globe,
 } from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { cardTint } from '@lib/cardTint';
@@ -73,6 +74,41 @@ export const AdmissionsPage: React.FC = () => {
 
   const [formOpen, setFormOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AdmissionRecord | null>(null);
+  const linkInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: shareLinkResult } = useQuery({
+    queryKey: ['admissions-share-link'],
+    queryFn: admissionsService.getShareLink,
+    staleTime: 5 * 60_000,
+  });
+  const sharePath = shareLinkResult?.data?.path;
+  const configuredPublicOrigin = (import.meta as ImportMeta & { env?: { VITE_PUBLIC_APP_URL?: string } }).env?.VITE_PUBLIC_APP_URL;
+  const publicOrigin = configuredPublicOrigin || (window.location.protocol.startsWith('http') ? window.location.origin : shareLinkResult?.data?.public_base_url || '');
+  const shareUrl = sharePath && publicOrigin ? new URL(sharePath, publicOrigin).toString() : '';
+
+  const copyShareUrl = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      showToast.success('Application link copied');
+    } catch {
+      linkInputRef.current?.select();
+      showToast.error('Select and copy the link shown above');
+    }
+  };
+
+  const shareApplicationUrl = async () => {
+    if (!shareUrl) return;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `${shareLinkResult?.data?.school_name} admissions`, url: shareUrl });
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') showToast.error('Could not share the link');
+      }
+    } else {
+      await copyShareUrl();
+    }
+  };
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['admissions', { search, statusFilter, page, pageSize }],
@@ -110,7 +146,11 @@ export const AdmissionsPage: React.FC = () => {
   const handleStatusChange = async (app: AdmissionRecord, newStatus: string) => {
     const res = await admissionsService.updateStatus(app.id, { status: newStatus });
     if (res.success !== false) {
-      showToast.success(`Application ${newStatus}`);
+      if (newStatus === 'approved' && res.data?.email_sent === false) {
+        showToast.error('Application approved, but the acceptance email could not be sent');
+      } else {
+        showToast.success(`Application ${newStatus}${newStatus === 'approved' && res.data?.email_sent ? ' — acceptance email sent' : ''}`);
+      }
       queryClient.invalidateQueries({ queryKey: ['admissions'] });
     } else {
       showToast.apiError(res.error);
@@ -344,6 +384,61 @@ export const AdmissionsPage: React.FC = () => {
           </div>
         }
       >
+        <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
+          <div className="mb-6 overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50/50 dark:border-blue-900 dark:from-blue-950/20 dark:to-indigo-950/10">
+            <div className="p-4 sm:p-5">
+              <div className="mb-3 flex items-start gap-3">
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+                  <Globe size={20} />
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-sm font-bold text-gray-900 dark:text-white">Online admission link</h2>
+                  <p className="text-xs text-gray-600 dark:text-gray-300">
+                    Share this link so families can apply online. Applications land here for your review — no account needed for applicants.
+                  </p>
+                </div>
+              </div>
+              {shareUrl ? (
+                <>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 dark:border-blue-900 dark:bg-gray-900">
+                      <LinkIcon size={14} className="flex-shrink-0 text-blue-500" />
+                      <input
+                        ref={linkInputRef}
+                        readOnly
+                        aria-label="Online admission application link"
+                        value={shareUrl}
+                        onClick={(event) => event.currentTarget.select()}
+                        className="min-w-0 flex-1 bg-transparent text-sm text-gray-800 outline-none dark:text-gray-100"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={copyShareUrl} className="flex-1 sm:flex-initial"><Copy size={15} className="mr-1" /> Copy</Button>
+                      <Button size="sm" variant="outline" onClick={shareApplicationUrl} className="flex-1 sm:flex-initial"><Share2 size={15} className="mr-1" /> Share</Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-3 border-t border-blue-200/60 pt-3 dark:border-blue-900/60">
+                    <a
+                      href={shareUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:underline dark:text-blue-400"
+                    >
+                      <ExternalLink size={13} /> Preview applicant page
+                    </a>
+                    <span className="text-xs text-gray-400">See exactly what families see before you share.</span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  {shareLinkResult?.success === false
+                    ? 'This school does not have an available application link.'
+                    : sharePath ? 'Set a public web address to share admission links from this app.' : 'Loading application link…'}
+                </p>
+              )}
+            </div>
+          </div>
+        </RoleGuard>
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
           {isLoading && !data ? (

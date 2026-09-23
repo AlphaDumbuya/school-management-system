@@ -17,7 +17,7 @@ import slReportCardService, {
   CONDUCT_LEGEND,
   SL_TERMS,
 } from '../services/slReportCardService.js';
-import { renderReportCardHtml, imposeBooklet, type BorderStyleConfig } from '../services/slReportCardHtml.js';
+import { renderReportCardHtml, renderTermResultSheetHtml, imposeBooklet, type BorderStyleConfig } from '../services/slReportCardHtml.js';
 import { htmlToPdf } from '../utils/pdfBrowser.js';
 import { getTenantGradingScale } from '../utils/gradingScaleHelper.js';
 import db from '../utils/database.js';
@@ -297,17 +297,19 @@ router.get('/student/:studentId/summary', async (req: Request, res: Response, ne
  */
 router.get('/:studentId/pdf', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { class_id, academic_year } = req.query;
+    const { class_id, academic_year, term } = req.query;
     if (!class_id || !academic_year) {
       return res.status(400).json({ success: false, error: 'class_id and academic_year are required' });
     }
+    // A single-term sheet is requested for Term 1/2; Term 3 or no term = full booklet.
+    const termParam = (term && ['first_term', 'second_term', 'third_term'].includes(term as string)) ? (term as string) : null;
 
     const tenantId = tenant(req);
 
-    // Access control (staff / teacher-scope / student-own / parent-ward + published)
+    // Access control (staff / teacher-scope / student-own / parent-ward + published, term-aware)
     await slReportCardService.assertCanViewReport(
       tenantId, req.user!.id, req.user!.role,
-      req.params.studentId, class_id as string, academic_year as string,
+      req.params.studentId, class_id as string, academic_year as string, termParam,
     );
 
     // Trigger a NEW verification code on every report card generation
@@ -334,36 +336,46 @@ router.get('/:studentId/pdf', async (req: Request, res: Response, next: NextFunc
       isFail: g.grade === 'F' || g.grade_points === 0,
     }));
 
-    // Fetch saved border style from school config settings
-    let borderStyle: BorderStyleConfig | undefined;
-    try {
-      const borderSetting = await db('school_config_settings')
-        .where({ tenant_id: tenantId, setting_key: 'report_card_border_style' })
-        .select('setting_value', 'data_type')
-        .first();
-      if (borderSetting) {
-        let val = borderSetting.setting_value;
-        if (borderSetting.data_type === 'json' && typeof val === 'string') {
-          val = JSON.parse(val);
-        }
-        if (val && typeof val === 'object') {
-          borderStyle = val as BorderStyleConfig;
-        }
+    // Fetch saved report-card settings (border style + display options) from
+    // school config. Both keys are stored as JSON in school_config_settings.
+    const readSetting = async (key: string): Promise<any> => {
+      try {
+        const row = await db('school_config_settings')
+          .where({ tenant_id: tenantId, setting_key: key })
+          .select('setting_value', 'data_type')
+          .first();
+        if (!row) return undefined;
+        let val = row.setting_value;
+        if (row.data_type === 'json' && typeof val === 'string') val = JSON.parse(val);
+        return val && typeof val === 'object' ? val : undefined;
+      } catch {
+        return undefined;
       }
-    } catch {
-      // setting may not exist yet — use default border
-    }
+    };
 
-    const html = await renderReportCardHtml(card, schoolInfo, gradingMethod, borderStyle);
-    // Puppeteer generates 6 A4-landscape pages in logical reading order.
-    // imposeBooklet() then reorders them into 3 A3-landscape physical sheets
-    // for booklet printing (6|1, 2|5, 4|3).
-    const rawPdf = await htmlToPdf(html, { landscape: true });
-    const pdf = await imposeBooklet(rawPdf);
+    const borderStyle = (await readSetting('report_card_border_style')) as BorderStyleConfig | undefined;
+    const displayOpts = await readSetting('report_card_display_opts');
 
     const safeName = String(card.student?.name || 'student').replace(/[^a-z0-9]+/gi, '_');
+    const yr = String(academic_year).replace('/', '-');
+    let pdf: Buffer;
+    let fileName: string;
+
+    if (termParam) {
+      // Single-term terminal result sheet — one portrait A4, WAEC-styled.
+      const html = await renderTermResultSheetHtml(card, schoolInfo, gradingMethod, termParam, borderStyle, displayOpts);
+      pdf = await htmlToPdf(html, { landscape: false });
+      fileName = `Result_${safeName}_${termParam.replace('_term', 'T')}_${yr}.pdf`;
+    } else {
+      // Full-year booklet (Term 3 / promotional): 6 pages → 3 imposed A3 sheets.
+      const html = await renderReportCardHtml(card, schoolInfo, gradingMethod, borderStyle, displayOpts);
+      const rawPdf = await htmlToPdf(html, { landscape: true });
+      pdf = await imposeBooklet(rawPdf);
+      fileName = `Report_${safeName}_${yr}.pdf`;
+    }
+
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="Report_${safeName}_${String(academic_year).replace('/', '-')}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.send(pdf);
   } catch (error: any) {
     logger.error('Error generating report card PDF:', error);
@@ -380,23 +392,28 @@ router.get('/:studentId/pdf', async (req: Request, res: Response, next: NextFunc
  */
 router.get('/:studentId', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { class_id, academic_year } = req.query;
+    const { class_id, academic_year, term } = req.query;
     if (!class_id || !academic_year) {
       return res.status(400).json({ success: false, error: 'class_id and academic_year are required' });
     }
     const tenantId = tenant(req);
+    const termParam = (term && ['first_term', 'second_term', 'third_term'].includes(term as string)) ? (term as string) : null;
 
-    // Access control (staff / teacher-scope / student-own / parent-ward + published)
+    // Access control. For the JSON view we pass the requested term so a
+    // student/parent can load a page when at least that term (or the year) is
+    // released. The payload's `published_terms` then tells the UI exactly which
+    // terms to surface.
     await slReportCardService.assertCanViewReport(
       tenantId, req.user!.id, req.user!.role,
-      req.params.studentId, class_id as string, academic_year as string,
+      req.params.studentId, class_id as string, academic_year as string, termParam,
     );
 
-    // Trigger a NEW verification code on every report card generation
-    await slReportCardService.generateVerificationCode(
-      tenantId, req.params.studentId, class_id as string, academic_year as string, req.user!.id,
-    );
-
+    // NOTE: a fresh verification code is generated on PDF/print EXPORT only
+    // (the /pdf route), not on every JSON view. This on-screen preview reuses
+    // the latest existing code — otherwise React Query background refetches
+    // would insert a new verification-code row on every poll, growing the
+    // table unbounded. getReportCard() itself falls back to generating one the
+    // first time if none exists yet.
     const card = await slReportCardService.getReportCard(
       tenantId,
       req.params.studentId,

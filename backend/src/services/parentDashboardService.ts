@@ -108,7 +108,7 @@ class ParentDashboardService {
     if (classId && academicYear) {
       // Published gate — reuse the canonical publication check.
       try {
-        resultsPublished = await slReportCardService.isPublished(tenantId, classId, academicYear);
+        resultsPublished = await slReportCardService.isAnythingPublished(tenantId, classId, academicYear);
       } catch (_) { resultsPublished = false; }
 
       if (resultsPublished) {
@@ -203,15 +203,21 @@ class ParentDashboardService {
       academicYear = sess?.year || sess?.name || null;
     }
 
-    // Published gate
+    // Published gate — term-aware, mirrors the student view so parents only
+    // ever see grades for terms the school has actually released.
     let resultsPublished = false;
+    let releasedTerms: string[] = [];
+    let wholeYearReleased = false;
     if (classId && academicYear) {
       try {
-        resultsPublished = await slReportCardService.isPublished(tenantId, classId, academicYear);
+        const pub = await slReportCardService.getPublishedTerms(tenantId, classId, academicYear);
+        releasedTerms = pub.terms;
+        wholeYearReleased = pub.wholeYear;
+        resultsPublished = wholeYearReleased || releasedTerms.length > 0;
       } catch (_) { resultsPublished = false; }
     }
 
-    // Grades (only when published)
+    // Grades (only released terms; whole-year release shows all terms)
     let grades: any[] = [];
     if (classId && resultsPublished) {
       let gq = db('sl_subject_results as sr')
@@ -220,6 +226,7 @@ class ParentDashboardService {
         .where('sr.student_id', student.id)
         .where('sr.class_id', classId);
       if (academicYear) gq = gq.where('sr.academic_year', academicYear);
+      if (!wholeYearReleased) gq = gq.whereIn('sr.term', releasedTerms);
       grades = await gq
         .select('sr.id', 's.name as subject_name', 's.code as subject_code', 'sr.term', 'sr.test1', 'sr.test2', 'sr.mean', 'sr.subject_rank')
         .orderBy('s.name', 'asc')

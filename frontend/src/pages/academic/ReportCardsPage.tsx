@@ -2,16 +2,24 @@
  * ReportCardsPage — /academic/report-cards
  * Real, data-bound Sierra Leone terminal report BOOKLET.
  *
- * 8-page booklet on 2 physical A4 sheets, printed double-sided and folded.
- * Each sheet is rendered as one A4 landscape spread with a left/right half:
- *   Page 1: Front cover        Page 5: Results right half (affective / psychomotor / footer)
- *   Page 2: BLANK               Page 6: BLANK
- *   Page 3: Grading system       Page 7: BLANK
- *   Page 4: Results left half (subject / cognitive)       Page 8: Back cover
+ * The booklet is 6 logical pages in reading order:
+ *   Page 1: Front cover
+ *   Page 2: Grading system
+ *   Page 3–4: Results (subjects/cognitive + affective/psychomotor/footer)
+ *   Page 5: Blank (inside back)
+ *   Page 6: Back cover
  *
- * Booklet imposition (physical sheet layout):
- *   Sheet 1 outside: [8 | 1]   Sheet 1 inside: [2 | 7]
- *   Sheet 2 outside: [6 | 3]   Sheet 2 inside: [4 | 5]
+ * Physical output = 3 landscape sheets, printed double-sided and folded
+ * (saddle-stitch imposition). On screen we render exactly 3 `.booklet-sheet`
+ * nodes (matching the export):
+ *   Sheet 1: [ back cover | front cover ]
+ *   Sheet 2: [ grading    | blank        ]
+ *   Sheet 3: results as ONE continuous full-width spread (innermost fold, so
+ *            the grade table is never cut at the centre).
+ *
+ * Server PDF path imposes the same content as [6|1], [2|5], [4|3] onto A3
+ * sheets (see slReportCardHtml.imposeBooklet). Client PDF path captures the
+ * 3 rendered sheets directly. Both produce the identical folded booklet.
  *
  * Attendance (On Time / Late / Absent) is sourced live from the attendance system.
  */
@@ -33,7 +41,11 @@ import { studentDashboardService } from '@services/studentDashboardService';
 import { parentDashboardService } from '@services/parentDashboardService';
 import { useAuth } from '@hooks/useAuth';
 import { BookletContent } from './components/BookletContent';
+import { TermResultSheet } from './components/TermResultSheet';
+import type { SLTerm } from '@services/reportCardService';
 import { Printer, Download, Users } from 'lucide-react';
+
+type ViewTerm = SLTerm | 'full';
 
 export const ReportCardsPage: React.FC = () => {
   const currentYear = new Date().getFullYear();
@@ -44,6 +56,8 @@ export const ReportCardsPage: React.FC = () => {
   const [classId, setClassId] = useState('');
   const [studentId, setStudentId] = useState('');
   const [spread, setSpread] = useState<'all' | 'cover' | 'inner'>('all');
+  // Which result to view: a single term sheet (Term 1/2) or the full-year booklet.
+  const [viewTerm, setViewTerm] = useState<ViewTerm>('full');
 
   // Students: auto-resolve their OWN student id, class and academic year from
   // the dashboard endpoint so no selectors are needed (and they can only ever
@@ -118,6 +132,7 @@ export const ReportCardsPage: React.FC = () => {
   const watermarkOpacity = typeof displayOpts?.watermark_opacity === 'number' ? displayOpts.watermark_opacity : 0.06;
   const watermarkSize = typeof displayOpts?.watermark_size === 'number' ? displayOpts.watermark_size : 450;
   const showStudentPhoto = displayOpts?.show_student_photo !== false; // default true
+  const photoFrame = (typeof displayOpts?.photo_frame === 'string' ? displayOpts.photo_frame : 'gold') as any;
 
   const { data: classesData } = useQuery({
     queryKey: ['report-card-classes'],
@@ -148,6 +163,29 @@ export const ReportCardsPage: React.FC = () => {
     staleTime: 15_000,
   });
   const card: ReportCard | null = (cardResp as any)?.data ?? null;
+
+  // Released terms for the current card. Staff (no publish gate) may view any
+  // term; students/parents only see released ones.
+  const isStaff = !isStudent && !isParent;
+  const publishedTerms: SLTerm[] = ((card?.published_terms as SLTerm[]) || []);
+  const yearReleased = !!card?.year_released;
+  const allTerms: SLTerm[] = ['first_term', 'second_term', 'third_term'];
+  // Which terms this viewer may open.
+  const availableTerms: SLTerm[] = isStaff ? allTerms : (yearReleased ? allTerms : publishedTerms);
+  const canViewFull = isStaff || yearReleased;
+
+  // Auto-pick a sensible default view once the card loads:
+  //  - full booklet if the year is released (or staff);
+  //  - otherwise the latest released single term.
+  React.useEffect(() => {
+    if (!card) return;
+    if (canViewFull) { setViewTerm('full'); return; }
+    const latest = [...allTerms].reverse().find((t) => publishedTerms.includes(t));
+    if (latest) setViewTerm(latest);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card?.id, yearReleased, publishedTerms.join(',')]);
+
+  const isSingleTerm = viewTerm !== 'full';
 
   const schoolName = school?.name || 'SCHOOL NAME';
   const schoolAddress = [school?.address, school?.city, school?.state, school?.country].filter(Boolean).join(', ');
@@ -216,6 +254,33 @@ export const ReportCardsPage: React.FC = () => {
   const handlePrint = async () => {
     if (!card) return;
     setExporting(true);
+
+    // Single-term sheet: prefer the clean server PDF (term-aware), fall back to
+    // capturing the on-screen .term-sheet node.
+    if (isSingleTerm) {
+      try {
+        const blob = await reportCardService.downloadPdf(studentId, {
+          class_id: classId, academic_year: academicYear, term: viewTerm as string,
+        });
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          window.open(url, '_blank');
+          setTimeout(() => URL.revokeObjectURL(url), 120_000);
+          setExporting(false);
+          return;
+        }
+        const cblob = await buildTermSheetPdfBlob();
+        const url = URL.createObjectURL(cblob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 120_000);
+      } catch {
+        printBooklet();
+      } finally {
+        setExporting(false);
+      }
+      return;
+    }
+
     const prevSpread = spread;
     setSpread('all');
     await new Promise((r) => setTimeout(r, 200));
@@ -234,6 +299,22 @@ export const ReportCardsPage: React.FC = () => {
     }
   };
 
+  /** Capture the single .term-sheet node into a portrait A4 PDF (client fallback). */
+  const buildTermSheetPdfBlob = async (): Promise<Blob> => {
+    const root = bookletRef.current;
+    if (!root) throw new Error('Sheet not rendered');
+    const node = root.querySelector<HTMLElement>('.term-sheet');
+    if (!node) throw new Error('Term sheet not found');
+    const { toPng } = await import('html-to-image');
+    const { jsPDF } = await import('jspdf');
+    const imgs = Array.from(node.querySelectorAll('img'));
+    await Promise.all(imgs.map((img) => img.complete ? Promise.resolve() : new Promise<void>((r) => { img.onload = () => r(); img.onerror = () => r(); })));
+    const dataUrl = await toPng(node, { cacheBust: true, pixelRatio: 3, backgroundColor: '#ffffff', width: 794, height: node.scrollHeight });
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
+    return pdf.output('blob');
+  };
+
   /**
    * Download PDF. Order of preference:
    *  1. Server-side Chromium PDF (cleanest, true vector). May be unavailable on
@@ -246,9 +327,16 @@ export const ReportCardsPage: React.FC = () => {
   const handleExportPdf = async () => {
     if (!card) return;
     setExporting(true);
-    const fileName = `Report_${(card.student.name || 'student').replace(/\s+/g, '_')}_${card.academic_year.replace('/', '-')}.pdf`;
+    const nm = (card.student.name || 'student').replace(/\s+/g, '_');
+    const yr = card.academic_year.replace('/', '-');
+    const fileName = isSingleTerm
+      ? `Result_${nm}_${(viewTerm as string).replace('_term', 'T')}_${yr}.pdf`
+      : `Report_${nm}_${yr}.pdf`;
     try {
-      const blob = await reportCardService.downloadPdf(studentId, { class_id: classId, academic_year: academicYear });
+      const blob = await reportCardService.downloadPdf(studentId, {
+        class_id: classId, academic_year: academicYear,
+        ...(isSingleTerm ? { term: viewTerm as string } : {}),
+      });
       if (blob) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -265,13 +353,12 @@ export const ReportCardsPage: React.FC = () => {
       /* fall through to client-side generation */
     }
 
-    // Client-side clean PDF (no browser chrome). Force both sheets to render.
+    // Client-side clean PDF (no browser chrome).
     const prevSpread = spread;
-    setSpread('all');
-    // Wait for the DOM to reflect the full spread.
+    if (!isSingleTerm) setSpread('all');
     await new Promise((r) => setTimeout(r, 200));
     try {
-      const blob = await buildBookletPdfBlob();
+      const blob = isSingleTerm ? await buildTermSheetPdfBlob() : await buildBookletPdfBlob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -280,7 +367,7 @@ export const ReportCardsPage: React.FC = () => {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      showToast.success('Report PDF downloaded');
+      showToast.success(isSingleTerm ? 'Result sheet downloaded' : 'Report PDF downloaded');
     } catch (err) {
       // Absolute last resort — browser print (may add header/footer).
       showToast.info('Preparing printable version...');
@@ -538,25 +625,76 @@ export const ReportCardsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Spread toggle */}
-          <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider w-full sm:w-auto">Booklet view:</span>
-            {([
-              { key: 'all', short: 'Full', label: 'Full Booklet (8 pages)' },
-              { key: 'cover', short: 'Covers', label: 'Cover + Grading (pages 1-3, 8)' },
-              { key: 'inner', short: 'Results', label: 'Results (pages 4-5)' },
-            ] as const).map((o) => (
+          {/* Term selector — single-term sheet (Term 1/2) vs full-year booklet.
+              Only terms that are released show for students/parents. */}
+          {canLoad && card && (
+            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider w-full sm:w-auto">Result:</span>
+              {([
+                { key: 'first_term',  label: 'Term 1', avail: availableTerms.includes('first_term') },
+                { key: 'second_term', label: 'Term 2', avail: availableTerms.includes('second_term') },
+                { key: 'third_term',  label: 'Term 3', avail: availableTerms.includes('third_term') },
+              ] as const).map((o) => (
+                <button
+                  key={o.key}
+                  onClick={() => o.avail && setViewTerm(o.key)}
+                  disabled={!o.avail}
+                  title={o.avail ? `${o.label} result sheet` : `${o.label} not released yet`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                    viewTerm === o.key ? 'bg-blue-600 text-white shadow-sm'
+                    : o.avail ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200'
+                    : 'bg-gray-50 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
               <button
-                key={o.key}
-                onClick={() => setSpread(o.key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${spread === o.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200'}`}
+                onClick={() => canViewFull && setViewTerm('full')}
+                disabled={!canViewFull}
+                title={canViewFull ? 'Full-year report booklet' : 'Full booklet available at year-end'}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  viewTerm === 'full' ? 'bg-[#1d4ed8] text-white shadow-sm'
+                  : canViewFull ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200'
+                  : 'bg-gray-50 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                }`}
               >
-                <span className="sm:hidden">{o.short}</span>
-                <span className="hidden sm:inline">{o.label}</span>
+                Full Booklet
               </button>
-            ))}
-          </div>
+            </div>
+          )}
+
+          {/* Spread toggle — only in full booklet mode */}
+          {!isSingleTerm && (
+            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider w-full sm:w-auto">Booklet view:</span>
+              {([
+                { key: 'all', short: 'Full', label: 'Full Booklet (8 pages)' },
+                { key: 'cover', short: 'Covers', label: 'Cover + Grading (pages 1-3, 8)' },
+                { key: 'inner', short: 'Results', label: 'Results (pages 4-5)' },
+              ] as const).map((o) => (
+                <button
+                  key={o.key}
+                  onClick={() => setSpread(o.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${spread === o.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200'}`}
+                >
+                  <span className="sm:hidden">{o.short}</span>
+                  <span className="hidden sm:inline">{o.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* Draft banner — staff only, when the selected card isn't released yet. */}
+        {canLoad && card && !isStudent && !isParent && card.is_published === false && (
+          <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300 print:hidden">
+            <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-amber-500 text-white text-xs font-bold">!</span>
+            <span>
+              <strong>Draft — not yet released.</strong> Parents and students can't see this report until you publish it in Settings → Grading &amp; Results.
+            </span>
+          </div>
+        )}
 
         {!canLoad && (
           <EmptyState
@@ -579,7 +717,7 @@ export const ReportCardsPage: React.FC = () => {
           #booklet-print-portal { display: none; }
 
           @media print {
-            @page { size: 148mm 210mm; margin: 0; }
+            @page { size: ${isSingleTerm ? 'A4 portrait' : '148mm 210mm'}; margin: 0; }
 
             html, body {
               background: #fff !important;
@@ -591,6 +729,14 @@ export const ReportCardsPage: React.FC = () => {
 
             /* Hide the entire application */
             #root { display: none !important; }
+
+            /* Single-term sheet — one A4 portrait page */
+            #booklet-print-portal .term-sheet {
+              box-shadow: none !important;
+              width: 210mm !important;
+              min-height: 297mm !important;
+              margin: 0 !important;
+            }
 
             /* Show ONLY the portaled booklet */
             #booklet-print-portal {
@@ -648,6 +794,7 @@ export const ReportCardsPage: React.FC = () => {
                 watermarkOpacity={watermarkOpacity}
                 watermarkSize={watermarkSize}
                 showStudentPhoto={showStudentPhoto}
+                photoFrame={photoFrame}
               />
             </div>
           </div>,
@@ -657,22 +804,35 @@ export const ReportCardsPage: React.FC = () => {
         {/* Portaled print copy — rendered to <body>, only visible during print */}
         {canLoad && card && createPortal(
           <div id="booklet-print-portal">
-            <BookletContent
-              card={card}
-              school={school}
-              schoolName={schoolName}
-              schoolAddress={schoolAddress}
-              schoolLogo={schoolLogo}
-              shortName={shortName}
-              showCover
-              showInner
-              showGrading
-              borderStyle={borderStyle}
-              showWatermark={showWatermark}
-              watermarkOpacity={watermarkOpacity}
-              watermarkSize={watermarkSize}
-              showStudentPhoto={showStudentPhoto}
-            />
+            {isSingleTerm ? (
+              <TermResultSheet
+                card={card}
+                term={viewTerm as SLTerm}
+                school={school}
+                schoolName={schoolName}
+                schoolAddress={schoolAddress}
+                schoolLogo={schoolLogo}
+                shortName={shortName}
+              />
+            ) : (
+              <BookletContent
+                card={card}
+                school={school}
+                schoolName={schoolName}
+                schoolAddress={schoolAddress}
+                schoolLogo={schoolLogo}
+                shortName={shortName}
+                showCover
+                showInner
+                showGrading
+                borderStyle={borderStyle}
+                showWatermark={showWatermark}
+                watermarkOpacity={watermarkOpacity}
+                watermarkSize={watermarkSize}
+                showStudentPhoto={showStudentPhoto}
+                photoFrame={photoFrame}
+              />
+            )}
           </div>,
           document.body,
         )}
@@ -686,22 +846,35 @@ export const ReportCardsPage: React.FC = () => {
             </p>
             <div className="overflow-x-auto -mx-2 px-2 print:overflow-visible print:mx-0 print:px-0">
               <div id="booklet-print-root" ref={bookletRef} className="space-y-6 print:space-y-0 mx-auto print:w-auto">
-                <BookletContent
-                  card={card}
-                  school={school}
-                  schoolName={schoolName}
-                  schoolAddress={schoolAddress}
-                  schoolLogo={schoolLogo}
-                  shortName={shortName}
-                  showCover={showCover}
-                  showInner={showInner}
-                  showGrading={spread === 'all' || spread === 'cover'}
-                  borderStyle={borderStyle}
-                  showWatermark={showWatermark}
-                  watermarkOpacity={watermarkOpacity}
-                  watermarkSize={watermarkSize}
-                  showStudentPhoto={showStudentPhoto}
-                />
+                {isSingleTerm ? (
+                  <TermResultSheet
+                    card={card}
+                    term={viewTerm as SLTerm}
+                    school={school}
+                    schoolName={schoolName}
+                    schoolAddress={schoolAddress}
+                    schoolLogo={schoolLogo}
+                    shortName={shortName}
+                  />
+                ) : (
+                  <BookletContent
+                    card={card}
+                    school={school}
+                    schoolName={schoolName}
+                    schoolAddress={schoolAddress}
+                    schoolLogo={schoolLogo}
+                    shortName={shortName}
+                    showCover={showCover}
+                    showInner={showInner}
+                    showGrading={spread === 'all' || spread === 'cover'}
+                    borderStyle={borderStyle}
+                    showWatermark={showWatermark}
+                    watermarkOpacity={watermarkOpacity}
+                    watermarkSize={watermarkSize}
+                    showStudentPhoto={showStudentPhoto}
+                    photoFrame={photoFrame}
+                  />
+                )}
               </div>
             </div>
           </>

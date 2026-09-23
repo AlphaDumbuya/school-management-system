@@ -1,21 +1,22 @@
 /**
- * BookletContent — the 8-page Sierra Leone report booklet markup.
+ * BookletContent — the Sierra Leone report booklet markup.
  *
- * Physical output = 2 A4 sheets, printed double-sided and folded:
- *   Sheet 1 outside: LEFT page 8 | RIGHT page 1
- *   Sheet 1 inside:  LEFT page 2 | RIGHT page 7
- *   Sheet 2 outside: LEFT page 6 | RIGHT page 3
- *   Sheet 2 inside:  LEFT page 4 | RIGHT page 5
+ * 6 logical pages (reading order): 1 front cover · 2 grading · 3–4 results ·
+ * 5 blank · 6 back cover.
  *
- * On screen we render 4 A4-landscape sheets. Sheets 1–3 are divided into left
- * and right halves by a dashed centre line. Sheet 4 (the results spread, pages
- * 4 & 5) is rendered as ONE continuous full-width spread with no centre line —
- * since it is the innermost sheet of the booklet, nothing gets cut at the fold,
- * so the results table flows seamlessly from subject → cognitive → affective →
- * psychomotor → footer.
+ * Renders exactly 3 `.booklet-sheet` nodes (saddle-stitch imposition):
+ *   Sheet 1: LEFT back cover | RIGHT front cover   (divided by fold centre line)
+ *   Sheet 2: LEFT grading    | RIGHT blank          (divided by fold centre line)
+ *   Sheet 3: results as ONE continuous full-width spread — no centre line.
+ *            It is the innermost sheet of the booklet, so nothing is cut at the
+ *            fold and the results flow seamlessly: subject → cognitive →
+ *            affective → psychomotor → footer.
  *
- * Rendered both in the on-screen preview and in the hidden print portal so the
- * printed output is byte-for-byte identical to what the user sees.
+ * Printed double-sided and folded, the reader sees: front cover → grading →
+ * results → back cover.
+ *
+ * Rendered identically in the on-screen preview and the hidden print portal so
+ * the printed output matches what the user sees.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -25,6 +26,13 @@ import {
   ReportCard, SLTerm,
   AFFECTIVE_TRAITS, PSYCHOMOTOR_SKILLS, RATING_LEGEND, SL_GRADING_METHOD, getGradingMethod,
 } from '@services/reportCardService';
+import {
+  type ReportCardBorderStyle,
+  resolveBorder,
+  svgToDataUrl,
+} from '@lib/reportCardBorders';
+
+export type { ReportCardBorderStyle } from '@lib/reportCardBorders';
 
 const TERM_KEYS: SLTerm[] = ['first_term', 'second_term', 'third_term'];
 const TERM_SHORT: Record<SLTerm, string> = { first_term: 'TERM 1', second_term: 'TERM 2', third_term: 'TERM 3' };
@@ -49,6 +57,8 @@ const Num: React.FC<{ v: number | null | undefined; bold?: boolean }> = ({ v, bo
   return <span className={`${fail ? 'text-red-600 font-bold' : ''} ${bold ? 'font-bold' : ''}`}>{v}</span>;
 };
 
+export type PhotoFrameStyle = 'none' | 'classic' | 'gold' | 'navy' | 'rounded' | 'circle';
+
 export interface BookletContentProps {
   card: ReportCard;
   school: any;
@@ -64,145 +74,151 @@ export interface BookletContentProps {
   watermarkOpacity?: number;
   watermarkSize?: number;
   showStudentPhoto?: boolean;
+  /** Frame style for the front-cover student photo. */
+  photoFrame?: PhotoFrameStyle;
 }
 
-export interface ReportCardBorderStyle {
-  color?: string;
-  width?: number;
-  padding?: number;
-  style?: 'solid' | 'double' | 'dashed' | 'dotted' | 'groove' | 'ridge' | 'inset' | 'outset' | 'none';
-  radius?: number;
-  preset?: string;
-}
+/** Photo frame style definitions — shared by preview + PDF. */
+export const PHOTO_FRAME_OPTIONS: { value: PhotoFrameStyle; label: string }[] = [
+  { value: 'classic', label: 'Classic (black)' },
+  { value: 'gold',    label: 'Gold + Navy' },
+  { value: 'navy',    label: 'Navy solid' },
+  { value: 'rounded', label: 'Rounded corners' },
+  { value: 'circle',  label: 'Circular' },
+  { value: 'none',    label: 'No frame (plain)' },
+];
 
-const DEFAULT_BORDER: Required<ReportCardBorderStyle> = {
-  color: '#1f2937', width: 2, padding: 8, style: 'solid', radius: 0, preset: 'classic',
-};
 
-const BORDER_PRESETS: Record<NonNullable<ReportCardBorderStyle['preset']>, Required<ReportCardBorderStyle>> = {
-  classic:     { color: '#1f2937', width: 2, padding: 8, style: 'solid', radius: 0, preset: 'classic' },
-  modern:      { color: '#2563eb', width: 3, padding: 10, style: 'solid', radius: 8, preset: 'modern' },
-  minimal:     { color: '#9ca3af', width: 1, padding: 6, style: 'solid', radius: 4, preset: 'minimal' },
-  decorative:  { color: '#7c2d12', width: 4, padding: 8, style: 'double', radius: 0, preset: 'decorative' },
-  royal:       { color: '#4c1d95', width: 4, padding: 10, style: 'double', radius: 0, preset: 'royal' },
-  forest:      { color: '#14532d', width: 3, padding: 8, style: 'solid', radius: 0, preset: 'forest' },
-  navy:        { color: '#1e3a8a', width: 3, padding: 8, style: 'solid', radius: 6, preset: 'navy' },
-  maroon:      { color: '#7f1d1d', width: 3, padding: 8, style: 'solid', radius: 0, preset: 'maroon' },
-  teal:        { color: '#0f766e', width: 2, padding: 8, style: 'solid', radius: 8, preset: 'teal' },
-  sunrise:     { color: '#c2410c', width: 3, padding: 8, style: 'solid', radius: 6, preset: 'sunrise' },
-  elegant:     { color: '#374151', width: 2, padding: 10, style: 'groove', radius: 0, preset: 'elegant' },
-  playful:     { color: '#7c3aed', width: 3, padding: 8, style: 'dashed', radius: 12, preset: 'playful' },
-  dashed_blue: { color: '#1d4ed8', width: 2, padding: 8, style: 'dashed', radius: 0, preset: 'dashed_blue' },
-  dotted_green:{ color: '#15803d', width: 2, padding: 8, style: 'dotted', radius: 0, preset: 'dotted_green' },
-  double_gold:  { color: '#a16207', width: 4, padding: 8, style: 'double', radius: 0, preset: 'double_gold' },
-  none:        { color: 'transparent', width: 0, padding: 4, style: 'none', radius: 0, preset: 'none' },
-};
 
-function svgPatternUrl(svg: string): string {
-  const enc = svg.replace(/"/g, "'").replace(/#/g, '%23').replace(/\n/g, '').replace(/\s{2,}/g, ' ');
-  return `url("data:image/svg+xml;utf8,${enc}")`;
-}
 
-const ORNAMENTAL_PATTERNS = {
-  chain: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'><g fill='none' stroke='#1f2937' stroke-width='2'><ellipse cx='10' cy='10' rx='8' ry='6'/><ellipse cx='30' cy='10' rx='8' ry='6'/></g></svg>`),
-  floral: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='60' height='20' viewBox='0 0 60 20'><g fill='none' stroke='#7c2d12' stroke-width='1.5'><path d='M10 4 Q15 10 10 16 Q5 10 10 4 Z'/><circle cx='30' cy='10' r='3'/><path d='M50 4 Q55 10 50 16 Q45 10 50 4 Z'/><line x1='13' y1='10' x2='27' y2='10'/><line x1='33' y1='10' x2='47' y2='10'/></g></svg>`),
-  dots_ornate: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='30' height='14' viewBox='0 0 30 14'><g fill='#a16207'><circle cx='5' cy='7' r='3'/><circle cx='15' cy='7' r='1.5'/><circle cx='25' cy='7' r='3'/></g></svg>`),
-  gold_ornate: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='80' height='20' viewBox='0 0 80 20'><g fill='none' stroke='#a16207' stroke-width='1.5'><path d='M5 10 L15 4 L25 10 L35 4 L45 10 L55 4 L65 10 L75 4'/><circle cx='15' cy='4' r='1.5' fill='#a16207'/><circle cx='35' cy='4' r='1.5' fill='#a16207'/><circle cx='55' cy='4' r='1.5' fill='#a16207'/><circle cx='75' cy='4' r='1.5' fill='#a16207'/></g></svg>`),
-  zigzag: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='20' height='14' viewBox='0 0 20 14'><polyline fill='none' stroke='#1e3a8a' stroke-width='2' points='0,7 5,2 10,7 15,12 20,7'/></svg>`),
-};
 
-interface OrnamentalBorder { pattern: string; verticalPattern: string; thickness: number; bandColor: string; }
 
-const ORNAMENTAL_BORDERS: Record<string, OrnamentalBorder> = {
-  'chain_black': { pattern: ORNAMENTAL_PATTERNS.chain, verticalPattern: ORNAMENTAL_PATTERNS.chain, thickness: 20, bandColor: 'rgba(31,41,55,0.06)' },
-  'floral_brown': { pattern: ORNAMENTAL_PATTERNS.floral, verticalPattern: ORNAMENTAL_PATTERNS.floral, thickness: 20, bandColor: 'rgba(124,45,18,0.06)' },
-  'gold_ornate': { pattern: ORNAMENTAL_PATTERNS.gold_ornate, verticalPattern: ORNAMENTAL_PATTERNS.gold_ornate, thickness: 22, bandColor: 'rgba(161,98,7,0.06)' },
-  'dots_gold': { pattern: ORNAMENTAL_PATTERNS.dots_ornate, verticalPattern: ORNAMENTAL_PATTERNS.dots_ornate, thickness: 16, bandColor: 'rgba(161,98,7,0.05)' },
-  'zigzag_navy': { pattern: ORNAMENTAL_PATTERNS.zigzag, verticalPattern: ORNAMENTAL_PATTERNS.zigzag, thickness: 14, bandColor: 'rgba(30,58,138,0.05)' },
-};
 
-// ── Microsoft Word-style "Art" page borders (like MS Word > Page Borders > Art) ──
-interface ArtBorder { pattern: string; thickness: number; color: string; }
-const ART_BORDERS: Record<string, ArtBorder> = {
-  stars:         { color: '#a16207', thickness: 18, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'><path d='M12 2 L14 8 L20 8 L15 12 L17 18 L12 14 L7 18 L9 12 L4 8 L10 8 Z' fill='#a16207' opacity='0.8'/></svg>`) },
-  hearts:        { color: '#be123c', thickness: 18, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'><path d='M12 16 C12 16 4 11 4 7 C4 4 6 2 8 2 C10 2 12 4 12 6 C12 4 14 2 16 2 C18 2 20 4 20 7 C20 11 12 16 12 16 Z' fill='#be123c' opacity='0.7'/></svg>`) },
-  dots:          { color: '#4b5563', thickness: 10, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='16' height='10' viewBox='0 0 16 10'><circle cx='8' cy='5' r='3' fill='#4b5563'/></svg>`) },
-  dash_long:     { color: '#1e3a8a', thickness: 12, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='12' viewBox='0 0 32 12'><rect x='2' y='4' width='20' height='4' fill='#1e3a8a' rx='1'/></svg>`) },
-  triple_line:   { color: '#374151', thickness: 14, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='14' viewBox='0 0 32 14'><rect x='2' y='2' width='28' height='2' fill='#374151'/><rect x='2' y='6' width='28' height='2' fill='#374151'/><rect x='2' y='10' width='28' height='2' fill='#374151'/></svg>`) },
-  wavy:          { color: '#0f766e', thickness: 14, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='14' viewBox='0 0 32 14'><path d='M0 7 Q8 0 16 7 Q24 14 32 7' fill='none' stroke='#0f766e' stroke-width='2'/></svg>`) },
-  diamonds:      { color: '#7c2d12', thickness: 16, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='20' height='16' viewBox='0 0 20 16'><path d='M10 2 L16 8 L10 14 L4 8 Z' fill='#7c2d12' opacity='0.8'/></svg>`) },
-  leaves:        { color: '#14532d', thickness: 18, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'><path d='M12 2 C6 6 6 12 12 16 C18 12 18 6 12 2 Z' fill='#14532d' opacity='0.7'/><line x1='12' y1='2' x2='12' y2='16' stroke='#14532d' stroke-width='0.5'/></svg>`) },
-  apples:        { color: '#b91c1c', thickness: 18, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='18' viewBox='0 0 22 18'><circle cx='11' cy='10' r='6' fill='#b91c1c' opacity='0.7'/><rect x='10' y='2' width='2' height='4' fill='#14532d'/><path d='M13 4 Q16 2 16 4' fill='none' stroke='#14532d' stroke-width='1'/></svg>`) },
-  classical_wave:{ color: '#1e3a8a', thickness: 20, pattern: svgPatternUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'><path d='M0 10 Q5 2 10 10 Q15 18 20 10 Q25 2 30 10 Q35 18 40 10' fill='none' stroke='#1e3a8a' stroke-width='2'/><path d='M0 12 Q5 4 10 12 Q15 20 20 12 Q25 4 30 12 Q35 20 40 12' fill='none' stroke='#1e3a8a' stroke-width='1' opacity='0.5'/></svg>`) },
-};
-
-function isArtBorderPreset(preset?: string): boolean {
-  return !!preset && preset.startsWith('art_') && ART_BORDERS[preset.slice(4)] !== undefined;
-}
-
-export function resolveBorderStyle(cfg?: ReportCardBorderStyle): Required<ReportCardBorderStyle> {
-  if (!cfg) return DEFAULT_BORDER;
-  const presetBase = cfg.preset && BORDER_PRESETS[cfg.preset] ? BORDER_PRESETS[cfg.preset] : DEFAULT_BORDER;
-  return { ...presetBase, ...cfg };
-}
-
-export function isOrnamentalBorder(preset?: string): boolean {
-  if (!preset) return false;
-  const key = preset.startsWith('ornamental_') ? preset.slice('ornamental_'.length) : preset;
-  return ORNAMENTAL_BORDERS[key] !== undefined;
-}
-
-const OrnamentalSheet: React.FC<{
-  border: Required<ReportCardBorderStyle>;
-  ornamental: OrnamentalBorder;
-  className?: string;
-  style?: React.CSSProperties;
-  contentClassName?: string;
-  contentStyle?: React.CSSProperties;
+/**
+ * FrontCoverFrame — wraps ONLY the front-cover content with the chosen border.
+ *  - 'none'  → plain padding, no border
+ *  - 'line'  → CSS border (color/width/style/radius)
+ *  - 'frame' → a full-cover decorative SVG frame (absolutely positioned),
+ *              with the content inset by the frame's padding.
+ * The frame fills the front-cover half exactly and never bleeds onto the back
+ * cover, because it lives inside the right-hand grid cell.
+ */
+const FrontCoverFrame: React.FC<{
+  border: ReturnType<typeof resolveBorder>;
   children: React.ReactNode;
-}> = ({ border, ornamental, className, style, contentClassName, contentStyle, children }) => {
-  const t = ornamental.thickness;
-  const wrapperStyle: React.CSSProperties = { position: 'relative', padding: 0, borderRadius: `${border.radius}px`, overflow: 'hidden', background: '#ffffff', ...style };
-  const verticalBg: React.CSSProperties = { backgroundImage: ornamental.verticalPattern, backgroundRepeat: 'repeat', backgroundSize: '20px 40px', transform: 'rotate(90deg)', transformOrigin: 'center' };
-  const horizontalBg: React.CSSProperties = { backgroundImage: ornamental.pattern, backgroundRepeat: 'repeat-x', backgroundSize: '40px 20px' };
-  return (
-    <div className={className} style={wrapperStyle}>
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: t, backgroundColor: ornamental.bandColor, ...horizontalBg }} />
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: t, backgroundColor: ornamental.bandColor, ...horizontalBg }} />
-      <div style={{ position: 'absolute', top: t, bottom: t, left: 0, width: t, backgroundColor: ornamental.bandColor, ...verticalBg }} />
-      <div style={{ position: 'absolute', top: t, bottom: t, right: 0, width: t, backgroundColor: ornamental.bandColor, ...verticalBg }} />
-      <div className={contentClassName} style={{ padding: `${t + border.padding}px`, position: 'relative', zIndex: 1, ...contentStyle }}>{children}</div>
+}> = ({ border, children }) => {
+  if (border.kind === 'frame' && border.frameSvg) {
+    const pad = border.padding;
+    return (
+      <div className="relative w-full h-full">
+        {/* Decorative frame — stretched to fill the cover, behind the content. */}
+        <img
+          src={svgToDataUrl(border.frameSvg)}
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute inset-0 w-full h-full"
+          style={{ zIndex: 0 }}
+        />
+        <div className="relative w-full h-full" style={{ zIndex: 1, padding: pad }}>
+          {children}
+        </div>
+      </div>
+    );
+  }
+
+  if (border.kind === 'line') {
+    return (
+      <div
+        className="w-full h-full"
+        style={{
+          border: `${border.width}px ${border.style} ${border.color}`,
+          borderRadius: border.radius,
+          padding: border.padding,
+          boxSizing: 'border-box',
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
+
+  // none
+  return <div className="w-full h-full" style={{ padding: border.padding, boxSizing: 'border-box' }}>{children}</div>;
+};
+
+/**
+ * StudentPhoto — front-cover passport portrait with a selectable frame style.
+ * 'none' shows just the photo with a hairline; other styles add decorative
+ * framing. Falls back to a placeholder when no photo is on file.
+ */
+const StudentPhoto: React.FC<{ photoUrl?: string | null; name: string; frame: PhotoFrameStyle }> = ({ photoUrl, name, frame }) => {
+  const circle = frame === 'circle';
+  const dims = circle ? 'w-28 h-28 rounded-full' : 'w-24 h-32';
+  const radius = frame === 'rounded' ? 'rounded-xl' : circle ? 'rounded-full' : '';
+
+  const inner = photoUrl ? (
+    <img
+      src={photoUrl}
+      alt={`${name} photo`}
+      className={`${dims} ${radius} object-cover block bg-white`}
+      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+    />
+  ) : (
+    <div className={`${dims} ${radius} flex flex-col items-center justify-center bg-gray-50 text-gray-400`}>
+      <ImageIcon size={28} />
+      <span className="text-[10px] uppercase font-semibold mt-1 tracking-wide">No Photo</span>
     </div>
   );
-};
 
-const ArtSheet: React.FC<{
-  border: Required<ReportCardBorderStyle>;
-  art: ArtBorder;
-  className?: string;
-  style?: React.CSSProperties;
-  contentClassName?: string;
-  contentStyle?: React.CSSProperties;
-  children: React.ReactNode;
-}> = ({ border, art, className, style, contentClassName, contentStyle, children }) => {
-  const t = art.thickness;
-  const wrapperStyle: React.CSSProperties = { position: 'relative', padding: 0, borderRadius: 0, overflow: 'hidden', background: '#ffffff', ...style };
-  const bandBg: React.CSSProperties = { backgroundImage: art.pattern, backgroundRepeat: 'repeat', backgroundSize: '24px 18px' };
-  const vBandBg: React.CSSProperties = { backgroundImage: art.pattern, backgroundRepeat: 'repeat', backgroundSize: '24px 18px' };
-  return (
-    <div className={className} style={wrapperStyle}>
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: t, ...bandBg }} />
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: t, ...bandBg }} />
-      <div style={{ position: 'absolute', top: t, bottom: t, left: 0, width: t, ...vBandBg }} />
-      <div style={{ position: 'absolute', top: t, bottom: t, right: 0, width: t, ...vBandBg }} />
-      <div className={contentClassName} style={{ padding: `${t + border.padding}px`, position: 'relative', zIndex: 1, ...contentStyle }}>{children}</div>
+  const caption = (
+    <div className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 whitespace-nowrap shadow ${circle ? 'hidden' : ''}`}>
+      Student
     </div>
   );
+
+  switch (frame) {
+    case 'none':
+      return <div className="relative" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}>{inner}</div>;
+    case 'classic':
+      return (
+        <div className="relative p-1 bg-white shadow-lg" style={{ boxShadow: '0 4px 14px rgba(0,0,0,0.18)' }}>
+          <div className="border-4 border-gray-900">{inner}</div>{caption}
+        </div>
+      );
+    case 'navy':
+      return (
+        <div className="relative p-1 bg-white shadow-lg" style={{ boxShadow: '0 4px 14px rgba(0,0,0,0.18)' }}>
+          <div className="border-4 border-[#1e3a8a]">{inner}</div>{caption}
+        </div>
+      );
+    case 'rounded':
+      return (
+        <div className="relative p-1.5 bg-white rounded-2xl shadow-lg" style={{ boxShadow: '0 4px 14px rgba(0,0,0,0.18)' }}>
+          <div className="rounded-xl overflow-hidden ring-2 ring-gray-300">{inner}</div>{caption}
+        </div>
+      );
+    case 'circle':
+      return (
+        <div className="relative p-1 bg-white rounded-full shadow-lg" style={{ boxShadow: '0 4px 14px rgba(0,0,0,0.18)' }}>
+          <div className="rounded-full overflow-hidden ring-4 ring-[#c8a24a]">{inner}</div>
+        </div>
+      );
+    case 'gold':
+    default:
+      return (
+        <div className="relative p-1 bg-white shadow-lg" style={{ boxShadow: '0 4px 14px rgba(0,0,0,0.18)' }}>
+          <div className="p-[3px]" style={{ background: 'linear-gradient(135deg,#1e3a8a,#3b82f6)' }}>
+            <div className="p-[2px] bg-[#c8a24a]">{inner}</div>
+          </div>{caption}
+        </div>
+      );
+  }
 };
 
 export const BookletContent: React.FC<BookletContentProps> = ({
   card, school, schoolName, schoolAddress, schoolLogo, shortName, showCover, showInner,
   showGrading = true, borderStyle, showWatermark = true, watermarkOpacity = 0.06, watermarkSize = 450, showStudentPhoto = true,
+  photoFrame = 'gold',
 }) => {
   useEffect(() => { getGradingMethod(); }, []);
 
@@ -228,13 +244,9 @@ export const BookletContent: React.FC<BookletContentProps> = ({
     })();
   }, [card.student.id, card.class_id, card.academic_year, card.verify_url]);
 
-  const border = resolveBorderStyle(borderStyle);
-  const sheetStyle: React.CSSProperties = { border: `${border.width}px ${border.style} ${border.color}`, padding: `${border.padding}px`, borderRadius: `${border.radius}px` };
-  if (border.preset === 'none' || border.width === 0 || border.style === 'none') { sheetStyle.border = 'none'; }
-  const ornamentalKey = border.preset?.startsWith('ornamental_') ? border.preset.slice('ornamental_'.length) : border.preset;
-  const ornamental = ornamentalKey ? ORNAMENTAL_BORDERS[ornamentalKey] : undefined;
-  const artKey = border.preset?.startsWith('art_') ? border.preset.slice(4) : null;
-  const artBorder = artKey ? ART_BORDERS[artKey] : undefined;
+  // Resolve the front-cover border once. The border decorates the FRONT COVER
+  // only (right half of sheet 1) — not the whole sheet, not the back cover.
+  const border = resolveBorder(borderStyle);
 
   const PAGE_W = 1404;
   const PAGE_H = 993;
@@ -243,30 +255,19 @@ export const BookletContent: React.FC<BookletContentProps> = ({
   // No-border style for inner sheets
   const noBorderStyle: React.CSSProperties = { border: 'none', padding: 0, borderRadius: 0 };
 
-  // Sheet 1 (cover) — WITH border
+  // Sheet 1 (cover) — the SHEET itself is borderless. The decorative frame is
+  // applied to the FRONT COVER half only (the right side), via FrontCoverFrame.
   const renderCoverSheet = (key: string, left: React.ReactNode, right: React.ReactNode, extraClass = '') => {
     const inner = (
       <div className={`grid grid-cols-2 divide-x-2 divide-dashed divide-gray-500 w-full h-full`}>
         <div className="relative overflow-hidden">{left}</div>
-        <div className="relative overflow-hidden">{right}</div>
+        <div className="relative overflow-hidden">
+          <FrontCoverFrame border={border}>{right}</FrontCoverFrame>
+        </div>
       </div>
     );
-    if (artBorder) {
-      return (
-        <ArtSheet key={key} border={border} art={artBorder} className={`${commonPageClass} ${extraClass} relative`} style={commonPageStyle} contentClassName="w-full h-full flex" contentStyle={{ padding: 0 }}>
-          {inner}
-        </ArtSheet>
-      );
-    }
-    if (ornamental) {
-      return (
-        <OrnamentalSheet key={key} border={border} ornamental={ornamental} className={`${commonPageClass} ${extraClass} relative`} style={commonPageStyle} contentClassName="w-full h-full flex" contentStyle={{ padding: 0 }}>
-          {inner}
-        </OrnamentalSheet>
-      );
-    }
     return (
-      <div key={key} className={`${commonPageClass} ${extraClass} relative`} style={{ ...sheetStyle, ...commonPageStyle, display: 'flex' }}>
+      <div key={key} className={`${commonPageClass} ${extraClass} relative`} style={{ ...noBorderStyle, ...commonPageStyle, display: 'flex' }}>
         {inner}
       </div>
     );
@@ -347,7 +348,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
   );
 
   const frontCover = (
-    <div className="p-6 flex flex-col justify-between text-center h-full overflow-hidden">
+    <div className="flex flex-col justify-between text-center h-full overflow-hidden">
       <div className="space-y-2">
         <div className="flex items-center justify-center">
           {schoolLogo ? (<img src={schoolLogo} alt="School logo" className="w-28 h-28 object-contain" />) : (<div className="w-28 h-28 rounded-full bg-gray-900 text-white flex items-center justify-center text-3xl font-extrabold shadow">{shortName}</div>)}
@@ -365,7 +366,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
       </div>
       {showStudentPhoto && (
         <div className="flex justify-center">
-          {card.student.photo_url ? (<img src={card.student.photo_url} alt={`${card.student.name} photo`} className="w-24 h-32 object-cover border-4 border-gray-900 shadow-lg" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />) : (<div className="w-24 h-32 border-4 border-gray-900 shadow-lg flex flex-col items-center justify-center bg-gray-50 text-gray-400"><ImageIcon size={32} /><span className="text-[11px] uppercase font-semibold mt-1">No Photo</span></div>)}
+          <StudentPhoto photoUrl={card.student.photo_url} name={card.student.name} frame={photoFrame} />
         </div>
       )}
       <div className="w-full space-y-2 text-[15px] border-t-2 border-b-2 border-gray-900 py-3 my-1">
@@ -476,7 +477,16 @@ export const BookletContent: React.FC<BookletContentProps> = ({
     <div className="flex flex-col items-center gap-4">
       {showCover && renderCoverSheet('s1outer', backCover, frontCover)}
       {showCover && showGrading && renderSheet('s2outer', gradingPage, blankPage)}
-      {showInner && renderFullSheet('s2inner', <ResultsFullSpread card={card} />)}
+      {showInner && renderFullSheet('s2inner', (
+        <ResultsFullSpread
+          card={card}
+          schoolLogo={schoolLogo}
+          shortName={shortName}
+          showWatermark={showWatermark}
+          watermarkOpacity={watermarkOpacity}
+          watermarkSize={watermarkSize}
+        />
+      ))}
     </div>
   );
 };
@@ -484,12 +494,31 @@ export const BookletContent: React.FC<BookletContentProps> = ({
 // ── Results FULL spread (pages 4 & 5 combined, no centre divider) ─────────────
 // One continuous table: Subject → Cognitive → Affective → Psychomotor, then
 // the footer block (attendance, guidance, signatures, promotion).
-const ResultsFullSpread: React.FC<{ card: ReportCard }> = ({ card }) => {
+const ResultsFullSpread: React.FC<{
+  card: ReportCard;
+  schoolLogo?: string;
+  shortName?: string;
+  showWatermark?: boolean;
+  watermarkOpacity?: number;
+  watermarkSize?: number;
+}> = ({ card, schoolLogo, shortName = 'SCH', showWatermark = true, watermarkOpacity = 0.06, watermarkSize = 450 }) => {
   const rowCount = Math.max(card.subjects.length, AFFECTIVE_TRAITS.length, PSYCHOMOTOR_SKILLS.length);
   const aff = card.domain_ratings.affective || {};
   const psy = card.domain_ratings.psychomotor || {};
   return (
-    <div className="p-4 flex flex-col h-full text-gray-900 overflow-hidden">
+    <div className="p-4 flex flex-col h-full text-gray-900 overflow-hidden relative">
+      {/* Faint logo watermark behind the results grid (security overlay) */}
+      {showWatermark && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ opacity: watermarkOpacity, zIndex: 0 }}>
+          {schoolLogo ? (
+            <img src={schoolLogo} alt="" className="object-contain" style={{ width: watermarkSize, height: watermarkSize }} />
+          ) : (
+            <div className="rounded-full bg-gray-900 text-white flex items-center justify-center font-extrabold" style={{ width: watermarkSize * 0.6, height: watermarkSize * 0.6, fontSize: watermarkSize * 0.15 }}>{shortName}</div>
+          )}
+        </div>
+      )}
+      {/* Content sits above the watermark */}
+      <div className="relative flex flex-col h-full" style={{ zIndex: 1 }}>
       {/* Header row */}
       <div className="grid grid-cols-3 gap-2 text-[12px] border-b-2 border-gray-900 pb-2 mb-2 flex-shrink-0">
         <div className="space-y-1">
@@ -706,6 +735,7 @@ const ResultsFullSpread: React.FC<{ card: ReportCard }> = ({ card }) => {
         </div>
       </div>
       <p className="text-[9px] italic text-gray-400 mt-1 flex-shrink-0">*See key at the back.</p>
+      </div>{/* /watermark content wrapper */}
     </div>
   );
 };

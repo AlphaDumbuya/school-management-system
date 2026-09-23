@@ -97,13 +97,30 @@ export default function VerifyReportCardPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 text-red-600 mb-4">
-            <ShieldAlert size={34} />
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-rose-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="bg-white rounded-2xl shadow-lg border border-red-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-red-600 to-rose-600 px-6 py-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-white/15 ring-2 ring-white/30 flex items-center justify-center flex-shrink-0">
+                <ShieldAlert className="text-white" size={30} />
+              </div>
+              <div>
+                <h1 className="text-xl font-black text-white leading-tight">Could Not Verify</h1>
+                <p className="text-red-50 text-xs mt-0.5">This report card could not be authenticated.</p>
+              </div>
+            </div>
+            <div className="p-6 text-center">
+              <p className="text-sm text-gray-600 mb-4">{error}</p>
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-left">
+                <p className="text-xs font-semibold text-amber-800 mb-1">What to do next</p>
+                <ul className="text-xs text-amber-700 space-y-1 list-disc list-inside">
+                  <li>Re-scan the QR code directly from the printed report card.</li>
+                  <li>If it still fails, the document may not be genuine — contact the issuing school.</li>
+                </ul>
+              </div>
+            </div>
           </div>
-          <h1 className="text-2xl font-black text-gray-900 mb-2">Verification Failed</h1>
-          <p className="text-sm text-gray-500 mb-4">{error}</p>
+          <p className="text-center text-[11px] text-gray-400 mt-4">Powered by WiSkul · Secure QR verification</p>
         </div>
       </div>
     );
@@ -114,20 +131,36 @@ export default function VerifyReportCardPage() {
       <div className="max-w-3xl mx-auto">
         {/* Header / Verified Banner */}
         <div className="bg-white rounded-2xl shadow-lg border border-emerald-200 overflow-hidden mb-6">
-          <div className="bg-gradient-to-r from-emerald-600 to-green-600 px-6 py-5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <ShieldCheck className="text-white" size={28} />
-              <div>
-                <h1 className="text-xl font-black text-white">Report Card Verified</h1>
-                <p className="text-emerald-50 text-xs">Authentic — Digitally Verified</p>
+          <div className="relative bg-gradient-to-r from-emerald-600 to-green-600 px-6 py-6 overflow-hidden">
+            {/* subtle security-pattern texture */}
+            <div className="pointer-events-none absolute inset-0 opacity-[0.08]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '16px 16px' }} />
+            <div className="relative flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-white/15 ring-2 ring-white/30 flex items-center justify-center flex-shrink-0">
+                <ShieldCheck className="text-white" size={30} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl sm:text-2xl font-black text-white leading-tight">Report Card Verified</h1>
+                <p className="text-emerald-50 text-xs sm:text-sm mt-0.5">This is an authentic, digitally-signed report card issued by the school.</p>
+                <div className="flex items-center gap-1.5 mt-1.5 text-emerald-50/90 text-[11px]">
+                  <CheckCircle2 size={12} />
+                  <span>Verified {new Date(verifiedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                </div>
               </div>
             </div>
-            <div className="text-right text-emerald-50 text-xs">
-              <div className="flex items-center gap-1 justify-end">
-                <CheckCircle2 size={12} />
-                <span>Verified {new Date(verifiedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+          </div>
+
+          {/* Trust strip — what this verification means */}
+          <div className="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100 bg-emerald-50/40 text-center">
+            {[
+              { icon: <ShieldCheck size={15} className="text-emerald-600" />, label: 'Authentic', sub: 'Issued by the school' },
+              { icon: <CheckCircle2 size={15} className="text-emerald-600" />, label: 'Unaltered', sub: 'Matches school records' },
+              { icon: <Award size={15} className="text-emerald-600" />, label: 'Official', sub: 'Digitally signed' },
+            ].map((t) => (
+              <div key={t.label} className="py-2.5 px-2">
+                <div className="flex items-center justify-center gap-1.5">{t.icon}<span className="text-xs font-bold text-gray-800">{t.label}</span></div>
+                <p className="text-[10px] text-gray-500 mt-0.5">{t.sub}</p>
               </div>
-            </div>
+            ))}
           </div>
 
           {/* School branding */}
@@ -186,7 +219,7 @@ export default function VerifyReportCardPage() {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 text-center">
               <GraduationCap className={`mx-auto mb-2 ${ys.outcome === 'fail' ? 'text-red-600' : 'text-emerald-600'}`} size={24} />
               <div className={`text-sm font-black ${ys.outcome === 'fail' ? 'text-red-600' : 'text-emerald-600'}`}>
-                {OUTCOME_LABEL[ys.outcome] || ys.outcome || '—'}
+                {(ys.outcome && OUTCOME_LABEL[ys.outcome]) || ys.outcome || '—'}
               </div>
               <div className="text-xs text-gray-500 font-medium">Status</div>
             </div>

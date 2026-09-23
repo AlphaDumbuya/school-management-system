@@ -53,6 +53,7 @@ export interface AdmissionRecord {
   assessment_score?: number;
   decision_notes?: string;
   created_at: string;
+  email_sent?: boolean | null;
 }
 
 export interface ListAdmissionsParams {
@@ -61,6 +62,11 @@ export interface ListAdmissionsParams {
   status?: string;
   academic_year?: string;
   search?: string;
+}
+
+export interface PublicAdmissionInfo {
+  school: { name: string; logo_url: string | null };
+  classes: { id: string; name: string; level: string }[];
 }
 
 export const ADMISSION_STATUSES: { value: AdmissionStatus; label: string }[] = [
@@ -89,6 +95,17 @@ export interface AdmissionsOverview {
 }
 
 export const admissionsService = {
+  async getShareLink() {
+    return apiClient.get<{ path: string; school_name: string; public_base_url: string | null }>('/api/v1/admissions/share-link');
+  },
+
+  async getPublicAdmissionInfo(slug: string) {
+    return apiClient.get<PublicAdmissionInfo>(`/api/v1/public/admissions/${encodeURIComponent(slug)}`);
+  },
+
+  async submitPublicApplication(slug: string, data: Record<string, unknown>) {
+    return apiClient.post<{ application_number: string; email_sent: boolean }>(`/api/v1/public/admissions/${encodeURIComponent(slug)}`, data);
+  },
   async getOverview(academicYear?: string) {
     return apiClient.get<{ success: boolean; data: AdmissionsOverview }>(
       '/api/v1/dashboards/admissions/overview',

@@ -120,36 +120,138 @@ export interface BorderStyleConfig {
   radius?: number;
 }
 
-// ── Microsoft Word-style art borders (SVG pattern-based, like MS Word Page Border "Art" styles) ──
-function svgArtUrl(svg: string): string {
-  const enc = svg.replace(/"/g, "'").replace(/#/g, '%23').replace(/\n/g, '').replace(/\s{2,}/g, ' ');
-  return `url("data:image/svg+xml;utf8,${enc}")`;
+// ── Certificate-grade decorative FRAMES (mirror of frontend src/lib/reportCardBorders.ts) ──
+// Each is a single full-page SVG rectangular frame that decorates the FRONT
+// COVER only, rendered as an absolutely-positioned background image. Every
+// builder takes (color, thickness) so schools can recolour and resize.
+const VB_W = 1000, VB_H = 1400;
+
+function svgToDataUrl(svg: string): string {
+  const compact = svg.replace(/\s{2,}/g, ' ').replace(/>\s+</g, '><').trim();
+  const enc = encodeURIComponent(compact).replace(/'/g, '%27').replace(/"/g, '%22');
+  return `data:image/svg+xml,${enc}`;
 }
 
-const ART_BORDERS: Record<string, { pattern: string; thickness: number; color: string }> = {
-  stars: { color: '#a16207', thickness: 18, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'><path d='M12 2 L14 8 L20 8 L15 12 L17 18 L12 14 L7 18 L9 12 L4 8 L10 8 Z' fill='#a16207' opacity='0.8'/></svg>`) },
-  hearts: { color: '#be123c', thickness: 18, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'><path d='M12 16 C12 16 4 11 4 7 C4 4 6 2 8 2 C10 2 12 4 12 6 C12 4 14 2 16 2 C18 2 20 4 20 7 C20 11 12 16 12 16 Z' fill='#be123c' opacity='0.7'/></svg>`) },
-  dots: { color: '#4b5563', thickness: 10, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='16' height='10' viewBox='0 0 16 10'><circle cx='8' cy='5' r='3' fill='#4b5563'/></svg>`) },
-  dash_long: { color: '#1e3a8a', thickness: 12, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='12' viewBox='0 0 32 12'><rect x='2' y='4' width='20' height='4' fill='#1e3a8a' rx='1'/></svg>`) },
-  triple_line: { color: '#374151', thickness: 14, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='14' viewBox='0 0 32 14'><rect x='2' y='2' width='28' height='2' fill='#374151'/><rect x='2' y='6' width='28' height='2' fill='#374151'/><rect x='2' y='10' width='28' height='2' fill='#374151'/></svg>`) },
-  wavy: { color: '#0f766e', thickness: 14, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='14' viewBox='0 0 32 14'><path d='M0 7 Q8 0 16 7 Q24 14 32 7' fill='none' stroke='#0f766e' stroke-width='2'/></svg>`) },
-  diamonds: { color: '#7c2d12', thickness: 16, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='20' height='16' viewBox='0 0 20 16'><path d='M10 2 L16 8 L10 14 L4 8 Z' fill='#7c2d12' opacity='0.8'/></svg>`) },
-  leaves: { color: '#14532d', thickness: 18, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'><path d='M12 2 C6 6 6 12 12 16 C18 12 18 6 12 2 Z' fill='#14532d' opacity='0.7'/><line x1='12' y1='2' x2='12' y2='16' stroke='#14532d' stroke-width='0.5'/></svg>`) },
-  apples: { color: '#b91c1c', thickness: 18, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='18' viewBox='0 0 22 18'><circle cx='11' cy='10' r='6' fill='#b91c1c' opacity='0.7'/><rect x='10' y='2' width='2' height='4' fill='#14532d'/><path d='M13 4 Q16 2 16 4' fill='none' stroke='#14532d' stroke-width='1'/></svg>`) },
-  classical_wave: { color: '#1e3a8a', thickness: 20, pattern: svgArtUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'><path d='M0 10 Q5 2 10 10 Q15 18 20 10 Q25 2 30 10 Q35 18 40 10' fill='none' stroke='#1e3a8a' stroke-width='2'/><path d='M0 12 Q5 4 10 12 Q15 20 20 12 Q25 4 30 12 Q35 20 40 12' fill='none' stroke='#1e3a8a' stroke-width='1' opacity='0.5'/></svg>`) },
+function fTint(hex: string, amt: number): string {
+  const m = hex.replace('#', '');
+  const n = m.length === 3 ? m.split('').map((c) => c + c).join('') : m;
+  const r = parseInt(n.slice(0, 2), 16), g = parseInt(n.slice(2, 4), 16), b = parseInt(n.slice(4, 6), 16);
+  const mix = (c: number) => Math.round(c + (255 - c) * amt);
+  const hx = (c: number) => c.toString(16).padStart(2, '0');
+  return `#${hx(mix(r))}${hx(mix(g))}${hx(mix(b))}`;
+}
+
+const FRAME_BUILDERS: Record<string, (color: string, t: number) => string> = {
+  frame_band_zigzag: (color, t) => {
+    const band = t, inner = band * 0.5, teeth = 26, light = fTint(color, 0.55);
+    const ix = band + inner, iy = band + inner, iw = VB_W - 2 * ix, ih = VB_H - 2 * iy;
+    const step = (VB_W - 2 * band) / teeth;
+    const pts: string[] = [];
+    const x0 = band, y0 = band, x1 = VB_W - band, y1 = VB_H - band, amp = inner * 0.9;
+    for (let x = x0; x < x1; x += step) { pts.push(`${x},${y0}`); pts.push(`${x + step / 2},${y0 + amp}`); }
+    const vstep = (y1 - y0) / Math.round((y1 - y0) / step);
+    for (let y = y0; y < y1; y += vstep) { pts.push(`${x1},${y}`); pts.push(`${x1 - amp},${y + vstep / 2}`); }
+    for (let x = x1; x > x0; x -= step) { pts.push(`${x},${y1}`); pts.push(`${x - step / 2},${y1 - amp}`); }
+    for (let y = y1; y > y0; y -= vstep) { pts.push(`${x0},${y}`); pts.push(`${x0 + amp},${y - vstep / 2}`); }
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${VB_W} ${VB_H}' preserveAspectRatio='none'><rect x='0' y='0' width='${VB_W}' height='${VB_H}' fill='${color}'/><polygon points='${pts.join(' ')}' fill='${light}'/><rect x='${ix}' y='${iy}' width='${iw}' height='${ih}' fill='#ffffff'/></svg>`;
+  },
+  frame_guilloche: (color, t) => {
+    const x = 24, y = 24, w = VB_W - 48, h = VB_H - 48, light = fTint(color, 0.35), band = Math.max(30, t), waveUnit = 60;
+    const rosette = (cx: number, cy: number) =>
+      `<g transform='translate(${cx} ${cy})' fill='none' stroke='${color}' stroke-width='1'>${Array.from({ length: 6 }).map((_, i) => `<ellipse rx='${10 + i * 4}' ry='${16 + i * 5}' transform='rotate(${i * 30})'/>`).join('')}<circle r='4' fill='${color}' stroke='none'/></g>`;
+    const wave = `<g stroke='${color}' fill='none' stroke-width='1'><path d='M0 ${band / 2} q${waveUnit / 4} -${band / 3} ${waveUnit / 2} 0 q${waveUnit / 4} ${band / 3} ${waveUnit / 2} 0'/><path d='M0 ${band / 2} q${waveUnit / 4} ${band / 3} ${waveUnit / 2} 0 q${waveUnit / 4} -${band / 3} ${waveUnit / 2} 0'/><ellipse cx='${waveUnit / 2}' cy='${band / 2}' rx='${waveUnit / 3}' ry='${band / 4}'/></g>`;
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${VB_W} ${VB_H}' preserveAspectRatio='none'><defs><pattern id='gwave' width='${waveUnit}' height='${band}' patternUnits='userSpaceOnUse'>${wave}</pattern></defs><rect x='${x}' y='${y}' width='${w}' height='${h}' fill='none' stroke='${light}' stroke-width='${band}'/><rect x='${x}' y='${y}' width='${w}' height='${band}' fill='url(#gwave)'/><rect x='${x}' y='${y + h - band}' width='${w}' height='${band}' fill='url(#gwave)'/><rect x='${x + band + 6}' y='${y + band + 6}' width='${w - 2 * band - 12}' height='${h - 2 * band - 12}' fill='none' stroke='${color}' stroke-width='1.5'/>${rosette(x + band / 2, y + band / 2)}${rosette(x + w - band / 2, y + band / 2)}${rosette(x + band / 2, y + h - band / 2)}${rosette(x + w - band / 2, y + h - band / 2)}</svg>`;
+  },
+  frame_filigree: (color, t) => {
+    const x = 30, y = 30, w = VB_W - 60, h = VB_H - 60, gap = Math.max(10, t * 0.6), dash = `${t * 0.8} ${t * 0.9}`;
+    const corner = (ox: number, oy: number, sx: number, sy: number) =>
+      `<g transform='translate(${ox} ${oy}) scale(${sx} ${sy})' fill='none' stroke='${color}' stroke-width='2.4' stroke-linecap='round'><path d='M0 0 h70'/><path d='M0 0 v70'/><path d='M14 14 q46 2 60 -18 q4 24 -24 32 q28 -2 34 -24'/><circle cx='72' cy='16' r='3.5' fill='${color}' stroke='none'/><circle cx='16' cy='72' r='3.5' fill='${color}' stroke='none'/></g>`;
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${VB_W} ${VB_H}' preserveAspectRatio='none'><rect x='${x}' y='${y}' width='${w}' height='${h}' fill='none' stroke='${color}' stroke-width='2'/><rect x='${x + gap}' y='${y + gap}' width='${w - 2 * gap}' height='${h - 2 * gap}' fill='none' stroke='${color}' stroke-width='1.4' stroke-dasharray='${dash}'/>${corner(x, y, 1, 1)}${corner(x + w, y, -1, 1)}${corner(x, y + h, 1, -1)}${corner(x + w, y + h, -1, -1)}</svg>`;
+  },
+  frame_geometric: (color, t) => {
+    const x = 24, y = 24, w = VB_W - 48, h = VB_H - 48, band = Math.max(24, t), unit = Math.max(24, t);
+    const motif = `<g stroke='${color}' fill='none' stroke-width='2'><rect x='2' y='2' width='${unit - 4}' height='${band - 4}'/><path d='M${unit / 2} 4 L${unit - 4} ${band / 2} L${unit / 2} ${band - 4} L4 ${band / 2} Z' fill='${color}'/></g>`;
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${VB_W} ${VB_H}' preserveAspectRatio='none'><defs><pattern id='geo' width='${unit}' height='${band}' patternUnits='userSpaceOnUse'>${motif}</pattern></defs><rect x='${x}' y='${y}' width='${w}' height='${h}' fill='none' stroke='${color}' stroke-width='2.5'/><rect x='${x}' y='${y}' width='${w}' height='${band}' fill='url(#geo)'/><rect x='${x}' y='${y + h - band}' width='${w}' height='${band}' fill='url(#geo)'/><rect x='${x}' y='${y}' width='${band}' height='${h}' fill='url(#geo)'/><rect x='${x + w - band}' y='${y}' width='${band}' height='${h}' fill='url(#geo)'/><rect x='${x + band}' y='${y + band}' width='${w - 2 * band}' height='${h - 2 * band}' fill='none' stroke='${color}' stroke-width='1.2'/></svg>`;
+  },
+  frame_medallion: (color, t) => {
+    const band = Math.max(60, t * 1.6), gold = '#c8a24a', ix = band, iy = band, iw = VB_W - 2 * band, ih = VB_H - 2 * band, unit = band * 0.9;
+    const medallion = `<g transform='translate(${unit / 2} ${band / 2})'><circle r='${band * 0.32}' fill='none' stroke='${gold}' stroke-width='3'/><circle r='${band * 0.2}' fill='none' stroke='${gold}' stroke-width='2'/><path d='M0 -${band * 0.28} V${band * 0.28} M-${band * 0.28} 0 H${band * 0.28}' stroke='${gold}' stroke-width='2'/></g>`;
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${VB_W} ${VB_H}' preserveAspectRatio='none'><defs><pattern id='med' width='${unit}' height='${band}' patternUnits='userSpaceOnUse'>${medallion}</pattern></defs><rect x='0' y='0' width='${VB_W}' height='${VB_H}' fill='${color}'/><rect x='0' y='0' width='${VB_W}' height='${band}' fill='url(#med)'/><rect x='0' y='${VB_H - band}' width='${VB_W}' height='${band}' fill='url(#med)'/><rect x='0' y='0' width='${band}' height='${VB_H}' fill='url(#med)'/><rect x='${VB_W - band}' y='0' width='${band}' height='${VB_H}' fill='url(#med)'/><rect x='${ix}' y='${iy}' width='${iw}' height='${ih}' fill='#ffffff'/></svg>`;
+  },
+  frame_modern_corners: (color, t) => {
+    const x = 20, y = 20, w = VB_W - 40, h = VB_H - 40, tri = Math.max(40, t * 1.4), accent = color, dark = color;
+    const cornerTri = (cx: number, cy: number, sx: number, sy: number) =>
+      `<g transform='translate(${cx} ${cy}) scale(${sx} ${sy})'><path d='M0 0 L${tri} 0 L0 ${tri} Z' fill='${dark}'/><path d='M${tri * 0.35} ${tri * 0.35} L${tri * 1.05} ${tri * 0.35} L${tri * 0.35} ${tri * 1.05} Z' fill='${accent}' opacity='0.85'/></g>`;
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${VB_W} ${VB_H}' preserveAspectRatio='none'><rect x='${x}' y='${y}' width='${w}' height='${h}' fill='none' stroke='${dark}' stroke-width='2.5'/><rect x='${x + 8}' y='${y + 8}' width='${w - 16}' height='${h - 16}' fill='none' stroke='${dark}' stroke-width='1'/>${cornerTri(x, y, 1, 1)}${cornerTri(x + w, y, -1, 1)}${cornerTri(x, y + h, 1, -1)}${cornerTri(x + w, y + h, -1, -1)}</svg>`;
+  },
+  frame_dotted: (color, t) => {
+    const x = 28, y = 28, w = VB_W - 56, h = VB_H - 56, r = Math.max(2, t * 0.12), gap = Math.max(10, t * 0.7);
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${VB_W} ${VB_H}' preserveAspectRatio='none'><rect x='${x}' y='${y}' width='${w}' height='${h}' fill='none' stroke='${color}' stroke-width='${Math.max(2, t * 0.18)}' stroke-linecap='round' stroke-dasharray='0.1 ${gap}'/><circle cx='${x}' cy='${y}' r='${r * 1.6}' fill='${color}'/><circle cx='${x + w}' cy='${y}' r='${r * 1.6}' fill='${color}'/><circle cx='${x}' cy='${y + h}' r='${r * 1.6}' fill='${color}'/><circle cx='${x + w}' cy='${y + h}' r='${r * 1.6}' fill='${color}'/></svg>`;
+  },
+  frame_rope: (color, t) => {
+    const x = 26, y = 26, w = VB_W - 52, h = VB_H - 52, band = Math.max(16, t), unit = band * 1.4, light = fTint(color, 0.4);
+    const twist = `<g fill='none' stroke-width='${band * 0.22}' stroke-linecap='round'><path d='M0 ${band / 2} q${unit / 4} -${band / 2} ${unit / 2} 0 q${unit / 4} ${band / 2} ${unit / 2} 0' stroke='${color}'/><path d='M0 ${band / 2} q${unit / 4} ${band / 2} ${unit / 2} 0 q${unit / 4} -${band / 2} ${unit / 2} 0' stroke='${light}'/></g>`;
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${VB_W} ${VB_H}' preserveAspectRatio='none'><defs><pattern id='rope' width='${unit}' height='${band}' patternUnits='userSpaceOnUse'>${twist}</pattern></defs><rect x='${x}' y='${y}' width='${w}' height='${band}' fill='url(#rope)'/><rect x='${x}' y='${y + h - band}' width='${w}' height='${band}' fill='url(#rope)'/><rect x='${x}' y='${y}' width='${band}' height='${h}' fill='url(#rope)'/><rect x='${x + w - band}' y='${y}' width='${band}' height='${h}' fill='url(#rope)'/><rect x='${x + band + 4}' y='${y + band + 4}' width='${w - 2 * band - 8}' height='${h - 2 * band - 8}' fill='none' stroke='${color}' stroke-width='1.5'/></svg>`;
+  },
+  frame_laurel: (color, t) => {
+    const x = 26, y = 26, w = VB_W - 52, h = VB_H - 52, band = Math.max(18, t), unit = band * 1.2;
+    const leaf = `<g fill='${color}'><path d='M${unit * 0.1} ${band / 2} q${unit * 0.2} -${band * 0.4} ${unit * 0.4} 0 q-${unit * 0.2} ${band * 0.15} -${unit * 0.4} 0 Z'/><path d='M${unit * 0.5} ${band / 2} q${unit * 0.2} ${band * 0.4} ${unit * 0.4} 0 q-${unit * 0.2} -${band * 0.15} -${unit * 0.4} 0 Z'/></g><line x1='0' y1='${band / 2}' x2='${unit}' y2='${band / 2}' stroke='${color}' stroke-width='1'/>`;
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${VB_W} ${VB_H}' preserveAspectRatio='none'><defs><pattern id='laurel' width='${unit}' height='${band}' patternUnits='userSpaceOnUse'>${leaf}</pattern></defs><rect x='${x}' y='${y}' width='${w}' height='${band}' fill='url(#laurel)'/><rect x='${x}' y='${y + h - band}' width='${w}' height='${band}' fill='url(#laurel)'/><rect x='${x}' y='${y}' width='${band}' height='${h}' fill='url(#laurel)'/><rect x='${x + w - band}' y='${y}' width='${band}' height='${h}' fill='url(#laurel)'/><rect x='${x + band + 4}' y='${y + band + 4}' width='${w - 2 * band - 8}' height='${h - 2 * band - 8}' fill='none' stroke='${color}' stroke-width='1.2'/></svg>`;
+  },
+  frame_beveled: (color, t) => {
+    const x = 24, y = 24, w = VB_W - 48, h = VB_H - 48, band = Math.max(14, t), light = fTint(color, 0.5);
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${VB_W} ${VB_H}' preserveAspectRatio='none'><rect x='${x}' y='${y}' width='${w}' height='${h}' fill='none' stroke='${color}' stroke-width='${band}'/><rect x='${x}' y='${y}' width='${w}' height='${h}' fill='none' stroke='${light}' stroke-width='${band * 0.35}'/><rect x='${x + band}' y='${y + band}' width='${w - 2 * band}' height='${h - 2 * band}' fill='none' stroke='${color}' stroke-width='2'/></svg>`;
+  },
+  frame_deco: (color, t) => {
+    const x = 24, y = 24, w = VB_W - 48, h = VB_H - 48, band = Math.max(20, t), unit = band;
+    const chevron = `<path d='M0 ${band} L${unit / 2} 2 L${unit} ${band} L${unit / 2} ${band * 0.5} Z' fill='${color}'/>`;
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${VB_W} ${VB_H}' preserveAspectRatio='none'><defs><pattern id='deco' width='${unit}' height='${band}' patternUnits='userSpaceOnUse'>${chevron}</pattern></defs><rect x='${x}' y='${y}' width='${w}' height='${h}' fill='none' stroke='${color}' stroke-width='3'/><rect x='${x}' y='${y}' width='${w}' height='${band}' fill='url(#deco)'/><rect x='${x}' y='${y + h - band}' width='${w}' height='${band}' fill='url(#deco)'/><rect x='${x + band + 6}' y='${y + band + 6}' width='${w - 2 * band - 12}' height='${h - 2 * band - 12}' fill='none' stroke='${color}' stroke-width='1.2'/></svg>`;
+  },
+  frame_wave_ribbon: (color, t) => {
+    const x = 26, y = 26, w = VB_W - 52, h = VB_H - 52, band = Math.max(16, t), unit = band * 2, light = fTint(color, 0.45);
+    const wave = `<path d='M0 ${band / 2} q${unit / 4} -${band / 2.2} ${unit / 2} 0 t${unit / 2} 0' fill='none' stroke='${color}' stroke-width='${band * 0.28}'/><path d='M0 ${band * 0.72} q${unit / 4} -${band / 2.2} ${unit / 2} 0 t${unit / 2} 0' fill='none' stroke='${light}' stroke-width='${band * 0.2}'/>`;
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${VB_W} ${VB_H}' preserveAspectRatio='none'><defs><pattern id='wr' width='${unit}' height='${band}' patternUnits='userSpaceOnUse'>${wave}</pattern></defs><rect x='${x}' y='${y}' width='${w}' height='${band}' fill='url(#wr)'/><rect x='${x}' y='${y + h - band}' width='${w}' height='${band}' fill='url(#wr)'/><rect x='${x}' y='${y}' width='${band}' height='${h}' fill='url(#wr)'/><rect x='${x + w - band}' y='${y}' width='${band}' height='${h}' fill='url(#wr)'/><rect x='${x + band + 4}' y='${y + band + 4}' width='${w - 2 * band - 8}' height='${h - 2 * band - 8}' fill='none' stroke='${color}' stroke-width='1.4'/></svg>`;
+  },
 };
 
-function isArtBorder(preset?: string): boolean {
-  return !!preset && preset.startsWith('art_') && ART_BORDERS[preset.slice(4)] !== undefined;
+const FRAME_COLORS: Record<string, string> = {
+  frame_band_zigzag: '#1d4ed8', frame_guilloche: '#3b82f6', frame_filigree: '#6d28d9',
+  frame_geometric: '#111827', frame_medallion: '#1e40af', frame_modern_corners: '#1e293b',
+  frame_dotted: '#334155', frame_rope: '#a16207', frame_laurel: '#14532d',
+  frame_beveled: '#475569', frame_deco: '#7c2d12', frame_wave_ribbon: '#0369a1',
+};
+const FRAME_THICKNESS: Record<string, number> = {
+  frame_band_zigzag: 60, frame_guilloche: 46, frame_filigree: 20,
+  frame_geometric: 30, frame_medallion: 48, frame_modern_corners: 70,
+  frame_dotted: 24, frame_rope: 26, frame_laurel: 26,
+  frame_beveled: 22, frame_deco: 28, frame_wave_ribbon: 24,
+};
+const FRAME_PADDING: Record<string, number> = {
+  frame_band_zigzag: 54, frame_guilloche: 60, frame_filigree: 46,
+  frame_geometric: 48, frame_medallion: 60, frame_modern_corners: 46,
+  frame_dotted: 42, frame_rope: 46, frame_laurel: 46,
+  frame_beveled: 44, frame_deco: 46, frame_wave_ribbon: 46,
+};
+
+function frameDataUrl(preset?: string, color?: string, thickness?: number): string | undefined {
+  if (!preset || !FRAME_BUILDERS[preset]) return undefined;
+  const c = color || FRAME_COLORS[preset] || '#1f2937';
+  const t = Math.max(6, Math.min(160, thickness ?? FRAME_THICKNESS[preset] ?? 40));
+  return svgToDataUrl(FRAME_BUILDERS[preset](c, t));
 }
 
-function resolveBorderCss(cfg?: BorderStyleConfig): { borderCss: string; paddingCss: string; radiusCss: string; artBorder?: typeof ART_BORDERS[string] } {
-  if (!cfg || cfg.style === 'none' || cfg.width === 0) {
-    return { borderCss: 'none', paddingCss: '0', radiusCss: '0' };
+function resolveBorderCss(cfg?: BorderStyleConfig): {
+  borderCss: string; paddingCss: string; radiusCss: string;
+  frameUrl?: string; framePadding?: number;
+} {
+  // `width` doubles as the frame thickness for frame presets.
+  const frameUrl = frameDataUrl(cfg?.preset, cfg?.color, cfg?.width);
+  if (frameUrl) {
+    const pad = cfg?.padding ?? FRAME_PADDING[cfg!.preset!] ?? 40;
+    return { borderCss: 'none', paddingCss: `${pad}px`, radiusCss: '0', frameUrl, framePadding: pad };
   }
-  if (isArtBorder(cfg.preset)) {
-    const art = ART_BORDERS[cfg.preset!.slice(4)];
-    return { borderCss: 'none', paddingCss: `${art.thickness + (cfg.padding ?? 4)}px`, radiusCss: '0', artBorder: art };
+  if (!cfg || cfg.style === 'none' || cfg.width === 0 || cfg.preset === 'none') {
+    return { borderCss: 'none', paddingCss: '8mm', radiusCss: '0' };
   }
   const w = cfg.width ?? 2;
   const s = cfg.style ?? 'solid';
@@ -157,13 +259,28 @@ function resolveBorderCss(cfg?: BorderStyleConfig): { borderCss: string; padding
   return { borderCss: `${w}px ${s} ${c}`, paddingCss: `${cfg.padding ?? 8}px`, radiusCss: `${cfg.radius ?? 0}px` };
 }
 
+export interface ReportDisplayOptions {
+  show_watermark?: boolean;
+  watermark_opacity?: number;
+  watermark_size?: number;   // px (matches the on-screen preview scale)
+  show_student_photo?: boolean;
+  photo_frame?: 'none' | 'classic' | 'gold' | 'navy' | 'rounded' | 'circle';
+}
+
 export async function renderReportCardHtml(
   card: ReportCardData,
   school: SchoolInfo,
   gradingMethod?: GradingMethodEntry[],
   borderStyle?: BorderStyleConfig,
+  display?: ReportDisplayOptions,
 ): Promise<string> {
   const schoolName = school?.name || 'SCHOOL NAME';
+  // Display options (default to the same values as the on-screen preview).
+  const showWatermark = display?.show_watermark !== false;
+  const wmOpacity = typeof display?.watermark_opacity === 'number' ? display!.watermark_opacity : 0.06;
+  const wmSizeMm = Math.round(((typeof display?.watermark_size === 'number' ? display!.watermark_size : 450) / 450) * 140); // 450px ≈ 140mm
+  const showStudentPhoto = display?.show_student_photo !== false;
+  const photoFrame = display?.photo_frame || 'gold';
   const schoolAddress = [school?.address, school?.city, school?.state, school?.country].filter(Boolean).join(', ');
   const shortName = school?.short_name || schoolName.split(' ').map((w) => w[0]).join('').slice(0, 4).toUpperCase();
   const logo = school?.logo_url;
@@ -171,6 +288,14 @@ export async function renderReportCardHtml(
   const schoolEmail = school?.email;
   const schoolWebsite = school?.website;
   const gm = gradingMethod?.length ? gradingMethod : GRADING_METHOD;
+
+  // Watermark markup (shared: back cover + results pages). Declared up-front so
+  // every page section below can reference it.
+  const watermarkHtml = showWatermark
+    ? (logo
+      ? `<div class="watermark"><img src="${esc(logo)}" alt="" /></div>`
+      : `<div class="watermark"><div class="wm-fallback">${esc(shortName)}</div></div>`)
+    : '';
 
   // Digital verification QR code for the grading page.
   // The verify_url is pre-computed by slReportCardService.getReportCard() and
@@ -187,20 +312,18 @@ export async function renderReportCardHtml(
 
   // Resolve border style (from settings) for cover-front and cover-back pages
   const bCfg = resolveBorderCss(borderStyle);
-  const artKey = borderStyle?.preset?.startsWith('art_') ? borderStyle.preset.slice(4) : null;
-  const artBorder = artKey ? ART_BORDERS[artKey] : undefined;
-  const artBandBg = artBorder
-    ? (artBorder.thickness === 10 ? '20px 10px' : artBorder.thickness === 12 ? '32px 12px' : artBorder.thickness === 14 ? '32px 14px' : '24px 18px')
-    : '';
-  const artPadding = artBorder ? `${artBorder.thickness + (borderStyle?.padding ?? 4)}` : bCfg.paddingCss;
+  // Decorative frame (front cover ONLY) — a full-page SVG background image.
+  const frameUrl = bCfg.frameUrl;
+  const framePad = bCfg.framePadding ?? 40;
 
   // ── PAGE 1: FRONT COVER ──────────────────────────────────────────────────────
-  const artBandsHtml = artBorder ? `<div class="art-band top"></div><div class="art-band bottom"></div><div class="art-band left"></div><div class="art-band right"></div>` : '';
-  const artContentOpen = artBorder ? '<div class="art-content" style="text-align:center;justify-content:space-between;display:flex;flex-direction:column;height:100%;">' : '';
-  const artContentClose = artBorder ? '</div>' : '';
+  // The frame image fills the whole cover; content sits above it, inset by pad.
+  const frameImgHtml = frameUrl ? `<img class="cover-frame" src="${frameUrl}" alt="" aria-hidden="true" />` : '';
+  const artContentOpen = frameUrl ? `<div class="art-content" style="position:relative;z-index:1;text-align:center;justify-content:space-between;display:flex;flex-direction:column;height:100%;padding:${framePad}px;box-sizing:border-box;">` : '';
+  const artContentClose = frameUrl ? '</div>' : '';
   const page1 = `
   <section class="page cover-front">
-    ${artBandsHtml}
+    ${frameImgHtml}
     ${artContentOpen}
     <div class="brand">
       ${logo ? `<img class="logo" src="${esc(logo)}" alt="logo" />` : `<div class="logo-fallback">${esc(shortName)}</div>`}
@@ -211,6 +334,12 @@ export async function renderReportCardHtml(
     </div>
     <div class="rc-badge">Report Card</div>
     ${card.student.class_level ? `<div class="lvl">${esc(card.student.class_level)}</div>` : ''}
+    ${showStudentPhoto ? `<div class="photo-wrap pf-${photoFrame}">
+      <div class="photo-frame">
+        ${(card.student as any).photo_url ? `<img class="photo" src="${esc((card.student as any).photo_url)}" alt="" />` : `<div class="photo ph">No Photo</div>`}
+      </div>
+      ${photoFrame === 'circle' ? '' : '<div class="photo-cap">Student</div>'}
+    </div>` : ''}
     <div class="pupil">
       <div class="prow"><span>Name of pupil:</span><b>${esc(card.student.name)}</b></div>
       <div class="prow"><span>Admission No:</span><b>${esc(card.student.admission_no)}</b></div>
@@ -295,6 +424,7 @@ export async function renderReportCardHtml(
 
   const page4 = `
   <section class="page results results-left">
+    ${watermarkHtml}
     <div class="hdr">
       <div><div><b>Name:</b> ${esc(card.student.name)}</div><div><b>No. in Form:</b> ${esc(card.student.admission_no)}</div></div>
       <div class="c"><div><b>Average Age:</b> ${esc(card.student.class_average_age ?? '—')}</div><div><b>Pupil's Age:</b> ${esc(card.student.pupil_age ?? '—')}</div></div>
@@ -352,6 +482,7 @@ export async function renderReportCardHtml(
 
   const page5 = `
   <section class="page results results-right">
+    ${watermarkHtml}
     <table class="grid">
       <thead>
         <tr class="banner">
@@ -411,13 +542,8 @@ export async function renderReportCardHtml(
   // ── BLANK (inside back cover) ───────────────────────────────────────────────
   const pageBlank = `<section class="page blank"></section>`;
 
-  // ── PAGE 8: BACK COVER (with logo watermark) ────────────────────────────────
-  const watermarkHtml = logo
-    ? `<div class="watermark"><img src="${esc(logo)}" alt="" /></div>`
-    : `<div class="watermark"><div class="wm-fallback">${esc(shortName)}</div></div>`;
   const page8 = `
   <section class="page cover-back">
-    ${artBandsHtml}
     ${watermarkHtml}
     <div class="cover-content">
     <div class="ckey">Key: Mn = Average &nbsp;·&nbsp; Rnk = Position</div>
@@ -443,8 +569,9 @@ export async function renderReportCardHtml(
   .page:last-child { page-break-after: auto; }
   .blank { background: #fff; }
 
-  /* ── Front cover (sheet 1 — has border) ── */
-  .cover-front { text-align: center; justify-content: space-between; border: ${artBorder ? 'none' : bCfg.borderCss}; padding: ${artBorder ? artPadding + 'px' : '8mm'}; border-radius: ${artBorder ? '0' : bCfg.radiusCss}; position: relative; }
+  /* ── Front cover (sheet 1 — decorative frame OR line border) ── */
+  .cover-front { text-align: center; justify-content: space-between; border: ${frameUrl ? 'none' : bCfg.borderCss}; padding: ${frameUrl ? '0' : '8mm'}; border-radius: ${frameUrl ? '0' : bCfg.radiusCss}; position: relative; }
+  .cover-front .cover-frame { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
   .cover-front .brand { padding: 3mm 0; }
   .cover-front .logo { width: 32mm; height: 32mm; object-fit: contain; margin: 0 auto; display: block; }
   .cover-front .logo-fallback { width: 32mm; height: 32mm; border-radius: 50%; background: #111827; color: #fff; font-size: 22px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin: 0 auto; }
@@ -454,6 +581,31 @@ export async function renderReportCardHtml(
   .cover-front .contact { font-size: 11px; color: #6b7280; margin-top: 2px; }
   .cover-front .rc-badge { display: inline-block; background: #111827; color: #fff; font-weight: 700; padding: 4px 14px; font-size: 14px; text-transform: uppercase; margin: 4px 0; }
   .cover-front .lvl { font-size: 13px; font-weight: 700; color: #374151; text-transform: uppercase; }
+  /* Framed passport portrait — style varies by .pf-* modifier */
+  .cover-front .photo-wrap { position: relative; display: flex; justify-content: center; margin: 6px 0 12px; }
+  .cover-front .photo { width: 26mm; height: 34mm; object-fit: cover; display: block; background: #fff; }
+  .cover-front .photo.ph { display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f9fafb; color: #9ca3af; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+  .cover-front .photo-cap { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); background: #111827; color: #fff; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 2px 8px; }
+  .cover-front .photo-frame { box-shadow: 0 4px 14px rgba(0,0,0,0.18); background: #fff; }
+  /* gold: navy gradient + gold inner rule */
+  .cover-front .pf-gold .photo-frame { padding: 3px; background: linear-gradient(135deg,#1e3a8a,#3b82f6); }
+  .cover-front .pf-gold .photo-frame > * { border: 2px solid #c8a24a; }
+  /* classic: thick black */
+  .cover-front .pf-classic .photo-frame { padding: 3px; }
+  .cover-front .pf-classic .photo-frame > * { border: 3px solid #111827; }
+  /* navy: thick navy */
+  .cover-front .pf-navy .photo-frame { padding: 3px; }
+  .cover-front .pf-navy .photo-frame > * { border: 3px solid #1e3a8a; }
+  /* rounded: soft corners + grey ring */
+  .cover-front .pf-rounded .photo-frame { padding: 4px; border-radius: 10px; }
+  .cover-front .pf-rounded .photo-frame > * { border: 2px solid #cbd5e1; border-radius: 7px; overflow: hidden; }
+  .cover-front .pf-rounded .photo { border-radius: 6px; }
+  /* circle: round photo + gold ring */
+  .cover-front .pf-circle .photo-frame { padding: 3px; border-radius: 50%; }
+  .cover-front .pf-circle .photo-frame > * { border: 3px solid #c8a24a; border-radius: 50%; overflow: hidden; }
+  .cover-front .pf-circle .photo { width: 32mm; height: 32mm; border-radius: 50%; }
+  /* none: plain photo, subtle shadow only */
+  .cover-front .pf-none .photo-frame { padding: 0; }
   .cover-front .pupil { border-top: 2px solid #111827; border-bottom: 2px solid #111827; padding: 6px 0; margin: 4px 0; font-size: 13px; }
   .cover-front .prow { display: flex; justify-content: space-between; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; margin-bottom: 4px; }
   .cover-front .prow.last { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
@@ -550,11 +702,15 @@ export async function renderReportCardHtml(
   .ysum { font-size: 8px; color: #6b7280; }
   .seekey { font-size: 8px; font-style: italic; color: #9ca3af; margin-top: 3px; }
 
-  /* ── Back cover (sheet 1 — has border, has watermark) ── */
-  .cover-back { font-size: 14px; line-height: 1.5; border: ${artBorder ? 'none' : bCfg.borderCss}; padding: ${artBorder ? artPadding + 'px' : '10mm'}; border-radius: ${artBorder ? '0' : bCfg.radiusCss}; position: relative; }
-  .cover-back .watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0.06; z-index: 0; pointer-events: none; }
-  .cover-back .watermark img { width: 140mm; height: 140mm; object-fit: contain; }
-  .cover-back .watermark .wm-fallback { width: 70mm; height: 70mm; border-radius: 50%; background: #111827; color: #fff; font-size: 28px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  /* ── Back cover (sheet 1 — clean, NO decorative frame; has watermark) ── */
+  .cover-back { font-size: 14px; line-height: 1.5; border: none; padding: 10mm; border-radius: 0; position: relative; }
+  /* Shared watermark (back cover + results pages) — opacity/size from settings */
+  .watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: ${wmOpacity}; z-index: 0; pointer-events: none; }
+  .watermark img { width: ${wmSizeMm}mm; height: ${wmSizeMm}mm; object-fit: contain; }
+  .watermark .wm-fallback { width: ${Math.round(wmSizeMm * 0.5)}mm; height: ${Math.round(wmSizeMm * 0.5)}mm; border-radius: 50%; background: #111827; color: #fff; font-size: 28px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  /* Results pages: content sits above the watermark */
+  .results { position: relative; }
+  .results > *:not(.watermark) { position: relative; z-index: 1; }
   .cover-back .cover-content { position: relative; z-index: 1; display: flex; flex-direction: column; height: 100%; }
   .cover-back .ckey { text-align: center; font-weight: 700; font-size: 15px; border-bottom: 2px solid #6b7280; padding-bottom: 5px; margin-bottom: 6px; }
   .cover-back .cblock { padding: 4px 0; }
@@ -567,12 +723,7 @@ export async function renderReportCardHtml(
   .cover-back .cover-bottom { margin-top: auto; }
   .cover-back .parents { border: 1px solid #6b7280; border-radius: 4px; padding: 8px; }
 
-  /* ── Art border bands (Microsoft Word-style page border art) ── */
-  .art-band { position: absolute; z-index: 0; pointer-events: none; }
-  .art-band.top { top: 0; left: 0; right: 0; height: ${artBorder?.thickness ?? 0}px; background-image: ${artBorder?.pattern ?? 'none'}; background-repeat: repeat; background-size: ${artBandBg || 'contain'}; }
-  .art-band.bottom { bottom: 0; left: 0; right: 0; height: ${artBorder?.thickness ?? 0}px; background-image: ${artBorder?.pattern ?? 'none'}; background-repeat: repeat; background-size: ${artBandBg || 'contain'}; }
-  .art-band.left { top: ${artBorder?.thickness ?? 0}px; bottom: ${artBorder?.thickness ?? 0}px; left: 0; width: ${artBorder?.thickness ?? 0}px; background-image: ${artBorder?.pattern ?? 'none'}; background-repeat: repeat; background-size: ${artBandBg || 'contain'}; transform: rotate(180deg); }
-  .art-band.right { top: ${artBorder?.thickness ?? 0}px; bottom: ${artBorder?.thickness ?? 0}px; right: 0; width: ${artBorder?.thickness ?? 0}px; background-image: ${artBorder?.pattern ?? 'none'}; background-repeat: repeat; background-size: ${artBandBg || 'contain'}; }
+  /* ── Decorative front-cover frame content wrapper ── */
   .art-content { position: relative; z-index: 1; }
 </style>
 </head>
@@ -583,6 +734,197 @@ export async function renderReportCardHtml(
   ${page5}
   ${pageBlank}
   ${page8}
+</body></html>`;
+}
+
+/**
+ * renderTermResultSheetHtml — a single portrait A4 "terminal result sheet" for
+ * ONE term (Term 1 / Term 2). WAEC/WASSCE-styled, authentic and official:
+ * school header, student meta, a clean subjects table (Test1 · Test2 · Mean ·
+ * Grade · Remark · Position), a summary block (total, average, class position,
+ * attendance, conduct), class-teacher & principal comment lines, grading key,
+ * signatures, and the verification QR. Full year uses the folded booklet
+ * instead (Term 3 / promotional).
+ */
+export async function renderTermResultSheetHtml(
+  card: ReportCardData,
+  school: SchoolInfo,
+  gradingMethod: GradingMethodEntry[] | undefined,
+  term: string,
+  _borderStyle?: BorderStyleConfig,
+  _display?: ReportDisplayOptions,
+): Promise<string> {
+  const gm = gradingMethod?.length ? gradingMethod : GRADING_METHOD;
+  const schoolName = school?.name || 'SCHOOL NAME';
+  const schoolAddress = [school?.address, school?.city, school?.state, school?.country].filter(Boolean).join(', ');
+  const shortName = school?.short_name || schoolName.split(' ').map((w) => w[0]).join('').slice(0, 4).toUpperCase();
+  const logo = school?.logo_url;
+  const termLabel = TERM_SHORT[term] || term.replace('_', ' ').toUpperCase();
+  const s = card.student || {};
+  const sm = card.term_summaries?.[term] || {};
+
+  // Grade + remark for a mean score, from the tenant grading method.
+  const gradeFor = (mean: number | null | undefined): { grade: string; remark: string; fail: boolean } => {
+    if (mean == null) return { grade: '—', remark: '', fail: false };
+    const g = gm.find((x) => mean >= x.min && mean <= x.max) || gm[gm.length - 1];
+    // Derive a short letter from the remark's ordering (A1..F9-ish) — use position.
+    const idx = gm.indexOf(g);
+    const letter = String.fromCharCode(65 + Math.min(idx, 5)); // A..F
+    return { grade: letter, remark: g.remark, fail: g.isFail || mean < 50 };
+  };
+
+  // Rows: each subject's Test1/Test2/Mean/Grade/Remark/Position for THIS term.
+  const rows = (card.subjects || []).map((subj: any, i: number) => {
+    const t = subj.terms?.[term] || {};
+    const mean = t.mean ?? null;
+    const g = gradeFor(mean);
+    const fail = g.fail;
+    return `<tr>
+      <td class="idx">${i + 1}</td>
+      <td class="subj">${esc(subj.subject_name)}</td>
+      <td>${t.test1 ?? '—'}</td>
+      <td>${t.test2 ?? '—'}</td>
+      <td class="mean ${fail ? 'fail' : ''}">${mean ?? '—'}</td>
+      <td class="${fail ? 'fail' : ''}">${g.grade}</td>
+      <td class="rem">${esc(g.remark)}</td>
+      <td>${t.rank ? ordinal(t.rank) : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  // Verification QR — build a data URL server-side (same as the booklet).
+  const verificationBaseUrl = (process.env.REPORT_CARD_VERIFY_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '');
+  const verifyUrl = card.verify_url
+    ? (card.verify_url.startsWith('http') ? card.verify_url : verificationBaseUrl + card.verify_url)
+    : '';
+  const qrDataUrl = verifyUrl
+    ? await QRCode.toDataURL(verifyUrl, { width: 200, margin: 1, color: { dark: '#111827', light: '#ffffff' } }).catch(() => '')
+    : '';
+
+  const gradeKey = gm.map((g) =>
+    `<span class="gk ${g.isFail ? 'fail' : ''}">${esc(g.remark)}: ${g.min}–${g.max}</span>`).join('');
+
+  const attendance = `On Time <b>${sm.on_time ?? 0}</b> &nbsp;·&nbsp; Late <b>${sm.late ?? 0}</b> &nbsp;·&nbsp; Absent <b>${sm.absent ?? 0}</b>`;
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: 'Times New Roman', Georgia, serif; color: #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet { width: 210mm; min-height: 297mm; padding: 12mm 12mm 10mm; position: relative; }
+  .frame { border: 3px double #1e3a8a; padding: 8mm 8mm 7mm; min-height: 273mm; position: relative; }
+  /* Header */
+  .head { display: flex; align-items: center; gap: 10px; border-bottom: 2px solid #1e3a8a; padding-bottom: 8px; }
+  .head .logo { width: 22mm; height: 22mm; object-fit: contain; }
+  .head .logo-fb { width: 22mm; height: 22mm; border-radius: 50%; background: #1e3a8a; color: #fff; font-weight: 800; font-size: 20px; display: flex; align-items: center; justify-content: center; }
+  .head .ht { flex: 1; text-align: center; }
+  .head h1 { margin: 0; font-size: 22px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: #1e3a8a; }
+  .head .addr { font-size: 11px; color: #374151; margin-top: 2px; }
+  .head .motto { font-size: 11px; font-style: italic; color: #6b7280; }
+  .title { text-align: center; margin: 8px 0 4px; }
+  .title .band { display: inline-block; background: #1e3a8a; color: #fff; font-weight: 700; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; padding: 4px 18px; }
+  .title .yr { font-size: 12px; color: #374151; margin-top: 3px; }
+  /* Student meta */
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 24px; font-size: 12px; margin: 8px 0; padding: 6px 0; border-top: 1px solid #d1d5db; border-bottom: 1px solid #d1d5db; }
+  .meta div { padding: 1px 0; }
+  .meta b { display: inline-block; min-width: 92px; color: #374151; }
+  /* Subjects table */
+  table.res { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+  table.res th, table.res td { border: 1px solid #374151; padding: 4px 5px; text-align: center; }
+  table.res th { background: #1e3a8a; color: #fff; font-size: 11px; text-transform: uppercase; }
+  table.res td.subj { text-align: left; font-weight: 600; }
+  table.res td.idx { width: 22px; color: #6b7280; }
+  table.res td.mean { font-weight: 700; }
+  table.res td.rem { text-align: left; font-size: 11px; color: #374151; }
+  table.res td.fail, table.res td.mean.fail { color: #b91c1c; font-weight: 700; }
+  table.res tbody tr:nth-child(even) td { background: #f8fafc; }
+  /* Summary */
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
+  .summary .box { border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px; text-align: center; }
+  .summary .box .v { font-size: 18px; font-weight: 800; color: #1e3a8a; }
+  .summary .box .l { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; }
+  .att { font-size: 12px; text-align: center; margin: 4px 0 8px; color: #374151; }
+  /* Comments */
+  .comments { font-size: 12px; margin-top: 6px; }
+  .comments .row { display: flex; gap: 6px; align-items: baseline; margin-bottom: 6px; }
+  .comments .row span.lab { font-weight: 700; white-space: nowrap; color: #374151; }
+  .comments .row span.val { flex: 1; border-bottom: 1px dotted #6b7280; font-style: italic; padding: 0 4px; min-height: 15px; }
+  /* Grade key */
+  .key { margin-top: 8px; font-size: 10px; }
+  .key .kt { font-weight: 700; text-transform: uppercase; color: #374151; margin-bottom: 3px; }
+  .key .gk { display: inline-block; border: 1px solid #d1d5db; border-radius: 10px; padding: 1px 8px; margin: 0 4px 4px 0; }
+  .key .gk.fail { color: #b91c1c; border-color: #fca5a5; }
+  /* Footer: signatures + QR */
+  .foot { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 12px; }
+  .sig { text-align: center; font-size: 11px; }
+  .sig .line { border-top: 1px solid #374151; width: 42mm; margin: 0 auto 3px; padding-top: 3px; }
+  .qr { text-align: center; font-size: 9px; color: #6b7280; }
+  .qr img { width: 22mm; height: 22mm; display: block; margin: 0 auto 2px; }
+  .note { text-align: center; font-size: 10px; font-style: italic; color: #6b7280; margin-top: 8px; border-top: 1px solid #e5e7eb; padding-top: 5px; }
+</style></head>
+<body>
+  <div class="sheet"><div class="frame">
+    <div class="head">
+      ${logo ? `<img class="logo" src="${esc(logo)}" alt=""/>` : `<div class="logo-fb">${esc(shortName)}</div>`}
+      <div class="ht">
+        <h1>${esc(schoolName)}</h1>
+        ${schoolAddress ? `<div class="addr">${esc(schoolAddress)}</div>` : ''}
+        ${school?.motto ? `<div class="motto">Motto: ${esc(school.motto)}</div>` : ''}
+      </div>
+      ${logo ? `<div style="width:22mm"></div>` : ''}
+    </div>
+
+    <div class="title">
+      <span class="band">${esc(termLabel)} Terminal Result</span>
+      <div class="yr">Academic Year ${esc(card.academic_year)}</div>
+    </div>
+
+    <div class="meta">
+      <div><b>Name:</b> ${esc(s.name)}</div>
+      <div><b>Admission No:</b> ${esc(s.admission_no)}</div>
+      <div><b>Class / Form:</b> ${esc(s.class_name || '—')}</div>
+      <div><b>No. in Class:</b> ${esc(s.number_in_form ?? sm.class_size ?? '—')}</div>
+      <div><b>Class Teacher:</b> ${esc(s.form_teacher_name || '—')}</div>
+      <div><b>Term Position:</b> ${sm.position ? `${ordinal(sm.position)}${sm.class_size ? ` of ${sm.class_size}` : ''}` : '—'}</div>
+    </div>
+
+    <table class="res">
+      <thead>
+        <tr>
+          <th>#</th><th style="text-align:left">Subject</th><th>Test 1</th><th>Test 2</th><th>Mean</th><th>Grade</th><th style="text-align:left">Remark</th><th>Pos.</th>
+        </tr>
+      </thead>
+      <tbody>${rows || '<tr><td colspan="8" style="padding:12px;color:#9ca3af">No subject scores recorded for this term.</td></tr>'}</tbody>
+    </table>
+
+    <div class="summary">
+      <div class="box"><div class="v">${sm.combined_score ?? '—'}</div><div class="l">Total Score</div></div>
+      <div class="box"><div class="v">${sm.percentage != null ? `${sm.percentage}%` : '—'}</div><div class="l">Average</div></div>
+      <div class="box"><div class="v">${sm.position ? ordinal(sm.position) : '—'}</div><div class="l">Position</div></div>
+      <div class="box"><div class="v">${esc(sm.conduct || '—')}</div><div class="l">Conduct</div></div>
+    </div>
+    <div class="att">Attendance — ${attendance}</div>
+
+    <div class="comments">
+      <div class="row"><span class="lab">Class Teacher's Remark:</span><span class="val">${esc(sm.teacher_comment || '')}</span></div>
+      <div class="row"><span class="lab">Principal's Remark:</span><span class="val">${esc(card.meta?.principal_comment || '')}</span></div>
+    </div>
+
+    <div class="key">
+      <div class="kt">Grading Key</div>
+      ${gradeKey}
+    </div>
+
+    <div class="foot">
+      <div class="sig"><div class="line"></div>Class Teacher's Signature</div>
+      <div class="qr">
+        ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR"/>` : ''}
+        Scan to verify
+      </div>
+      <div class="sig"><div class="line">${esc(school?.principal_name || '')}</div>Principal's Signature</div>
+    </div>
+
+    <div class="note">This is an official single-term result. The complete report booklet is issued at the end of the academic year.</div>
+  </div></div>
 </body></html>`;
 }
 

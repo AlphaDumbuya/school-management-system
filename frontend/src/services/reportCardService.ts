@@ -167,6 +167,12 @@ export interface ReportCard {
   class_id?: string;
   student_id?: string;
   verify_url?: string;
+  /** Whether any results for this class+year have been released. */
+  is_published?: boolean;
+  /** Which terms are released (single-term sheets). */
+  published_terms?: string[];
+  /** Whether the full year (Term 3 booklet + promotion) is released. */
+  year_released?: boolean;
   student: {
     id: string;
     admission_no: string;
@@ -262,17 +268,19 @@ export const reportCardService = {
     return apiClient.post(`${BASE}/meta`, payload);
   },
 
-  /** Full report card booklet for a student */
-  async getReportCard(studentId: string, params: { class_id: string; academic_year: string }) {
+  /** Full report card booklet (or single-term data) for a student */
+  async getReportCard(studentId: string, params: { class_id: string; academic_year: string; term?: string }) {
     return apiClient.get<{ success: boolean; data: ReportCard }>(`${BASE}/${studentId}`, { params });
   },
 
   /**
    * Download the server-generated PDF (clean, no browser header/footer).
+   * Pass `term` (first_term/second_term) for a single-A4 terminal result sheet;
+   * omit it for the full-year folded booklet.
    * Returns a Blob on success, or null if the server can't generate it (caller
    * should then fall back to the client-side print approach).
    */
-  async downloadPdf(studentId: string, params: { class_id: string; academic_year: string }): Promise<Blob | null> {
+  async downloadPdf(studentId: string, params: { class_id: string; academic_year: string; term?: string }): Promise<Blob | null> {
     const qs = new URLSearchParams(params as any).toString();
     const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
     const base = API_CONFIG.baseURL;

@@ -47,6 +47,7 @@ import ReportCardsPage from '@pages/academic/ReportCardsPage';
 import PromotionsPage from '@pages/academic/PromotionsPage';
 import StudentDirectoryPage from '@pages/students/StudentDirectoryPage';
 import AdmissionsPage from '@pages/students/AdmissionsPage';
+import PublicAdmissionPage from '@pages/students/PublicAdmissionPage';
 import { StudentProfilesPage } from '@pages/students/StudentProfilesPage';
 import { AttendancePage } from '@pages/students/AttendancePage';
 import DisciplinePage from '@pages/discipline/DisciplinePage';
@@ -158,6 +159,7 @@ const router = createBrowserRouter(
         // One-time app onboarding guide (app mode only; web redirects to home).
         { path: 'welcome', element: APP_MODE ? <WelcomePage /> : <Navigate to="/" replace /> },
         { path: 'login', element: <LoginPage /> },
+        { path: 'apply/:schoolSlug', element: <PublicAdmissionPage /> },
         { path: 'forgot-password', element: <ForgotPasswordPage /> },
         { path: 'reset-password', element: <ResetPasswordPage /> },
         // School registration is a marketing/web action only — in app mode redirect to login.
@@ -260,7 +262,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'academic/assignments',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent', 'guardian']}><AssignmentsPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'student', 'parent']}><AssignmentsPage /></P>,
         },
         {
           path: 'academic/exam-timetable',

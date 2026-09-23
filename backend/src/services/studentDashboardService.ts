@@ -65,34 +65,38 @@ class StudentDashboardService {
         academicYear = sess?.year || sess?.name || null;
       }
 
-      // ── Grades: published SL subject results for the active class ────────────
+      // ── Grades: only RELEASED SL subject results for the active class.
+      //    A student must never see unpublished scores — gate strictly by the
+      //    terms the principal has released (or the whole year). ─────────────
       let grades: any[] = [];
       let averageGrade = 0;
-      if (classId) {
-        let gq = db('sl_subject_results as sr')
-          .join('subjects as s', 'sr.subject_id', 's.id')
-          .where('sr.tenant_id', tenantId)
-          .where('sr.student_id', student.id)
-          .where('sr.class_id', classId);
-        if (academicYear) gq = gq.where('sr.academic_year', academicYear);
+      let resultsPublished = false;
+      if (classId && academicYear) {
+        const { default: slReportCardService } = await import('./slReportCardService.js');
+        const { terms: releasedTerms, wholeYear } = await slReportCardService
+          .getPublishedTerms(tenantId, classId, academicYear)
+          .catch(() => ({ terms: [] as string[], wholeYear: false }));
+        resultsPublished = wholeYear || releasedTerms.length > 0;
 
-        const rows = await gq
-          .select(
-            'sr.id',
-            's.name as subject_name',
-            's.code as subject_code',
-            'sr.term',
-            'sr.test1',
-            'sr.test2',
-            'sr.mean',
-            'sr.subject_rank',
-          )
-          .orderBy('s.name', 'asc')
-          .catch(() => []);
-        grades = rows as any[];
+        if (resultsPublished) {
+          let gq = db('sl_subject_results as sr')
+            .join('subjects as s', 'sr.subject_id', 's.id')
+            .where('sr.tenant_id', tenantId)
+            .where('sr.student_id', student.id)
+            .where('sr.class_id', classId)
+            .where('sr.academic_year', academicYear);
+          // If only specific terms are released, restrict to those.
+          if (!wholeYear) gq = gq.whereIn('sr.term', releasedTerms);
 
-        const means = grades.map((g) => Number(g.mean)).filter((n) => !isNaN(n) && n > 0);
-        if (means.length) averageGrade = Math.round((means.reduce((a, b) => a + b, 0) / means.length) * 10) / 10;
+          const rows = await gq
+            .select('sr.id', 's.name as subject_name', 's.code as subject_code', 'sr.term', 'sr.test1', 'sr.test2', 'sr.mean', 'sr.subject_rank')
+            .orderBy('s.name', 'asc')
+            .catch(() => []);
+          grades = rows as any[];
+
+          const means = grades.map((g) => Number(g.mean)).filter((n) => !isNaN(n) && n > 0);
+          if (means.length) averageGrade = Math.round((means.reduce((a, b) => a + b, 0) / means.length) * 10) / 10;
+        }
       }
 
       // ── Attendance summary + recent records ──────────────────────────────────
@@ -198,6 +202,7 @@ class StudentDashboardService {
           outstanding_fees: Math.round(feeOutstanding * 100) / 100,
         },
         grades,
+        results_published: resultsPublished,
         attendance: {
           present,
           absent,

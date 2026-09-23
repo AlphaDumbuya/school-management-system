@@ -1121,6 +1121,34 @@ class EmailService {
     });
   }
 
+  /** Receipt for a public online admission application. */
+  async sendAdmissionSubmissionEmail(
+    tenantId: string,
+    toEmail: string,
+    data: { guardianName: string; studentName: string; applicationNumber: string; className?: string }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const rows =
+      detailRow('Applicant', escapeHtml(data.studentName)) +
+      detailRow('Application No.', escapeHtml(data.applicationNumber)) +
+      (data.className ? detailRow('Class Applied For', escapeHtml(data.className)) : '') +
+      detailRow('Status', 'Received — awaiting review');
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(data.guardianName)},</p>
+      <p><strong>${escapeHtml(branding.name)}</strong> has received your admission application for <strong>${escapeHtml(data.studentName)}</strong>.</p>
+      ${detailsCard(rows)}
+      ${calloutBlock('Please keep your application number. The school will review your application and contact you about its decision. This receipt is not an offer of admission.', 'info')}
+      <p style="color:#64748b;font-size:13px;">If you have questions, reply to this email or contact the school.</p>`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: `Admission application received — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: 'Admissions', heading: 'Application Received', bodyHtml, preheader: `We received application ${data.applicationNumber}.` }),
+      isHtml: true,
+    });
+  }
+
   /**
    * Admissions decision → applicant's guardian.
    * decision: 'accepted' | 'rejected' | 'waitlist'
@@ -1135,6 +1163,7 @@ class EmailService {
       applicationNumber?: string;
       className?: string;
       notes?: string;
+      publicApplicant?: boolean;
     }
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
@@ -1158,10 +1187,15 @@ class EmailService {
       heading = 'Congratulations — Application Accepted!';
       eyebrow = 'Admissions Decision';
       intro = `We are delighted to inform you that <strong>${escapeHtml(data.studentName)}</strong> has been <strong>accepted</strong> to <strong>${escapeHtml(branding.name)}</strong>.`;
-      callout = calloutBlock(
-        `${data.notes ? escapeHtml(data.notes) + '<br/><br/>' : ''}Please sign in to your parent portal to complete the next enrolment steps. We look forward to welcoming your child.`,
-        'success'
-      ) + emailButton('Complete Enrolment', loginUrl);
+      callout = data.publicApplicant
+        ? calloutBlock(
+            `${data.notes ? escapeHtml(data.notes) + '<br/><br/>' : ''}The school will contact you with the next enrolment steps. Please keep your application number for reference. We look forward to welcoming your child.`,
+            'success'
+          )
+        : calloutBlock(
+            `${data.notes ? escapeHtml(data.notes) + '<br/><br/>' : ''}Please sign in to your parent portal to complete the next enrolment steps. We look forward to welcoming your child.`,
+            'success'
+          ) + emailButton('Complete Enrolment', loginUrl);
     } else if (isWaitlist) {
       heading = 'Application Update — Waitlisted';
       eyebrow = 'Admissions Decision';

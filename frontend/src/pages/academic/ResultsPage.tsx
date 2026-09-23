@@ -7,8 +7,9 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardList, Star, BookOpen, Settings } from 'lucide-react';
+import { ClipboardList, Star, BookOpen } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
@@ -18,7 +19,6 @@ import { useAuth } from '@hooks/useAuth';
 import { classesService } from '@services/classesService';
 import { ScoreEntryGrid } from './components/ScoreEntryGrid';
 import { DomainRatingsModal } from './components/DomainRatingsModal';
-import { ReportSettingsPanel } from './components/ReportSettingsPanel';
 import { SL_TERMS, SLTerm, SL_GRADING_METHOD, CONDUCT_CODES, getGradingMethod } from '@services/reportCardService';
 
 import { StudentResultsView } from './components/StudentResultsView';
@@ -26,6 +26,7 @@ import { ParentResultsView } from './components/ParentResultsView';
 
 export const ResultsPage: React.FC = () => {
   const currentYear = new Date().getFullYear();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isPrincipal = user?.role === 'principal' || user?.role === 'super_admin';
   const isStudent = user?.role === 'student';
@@ -38,7 +39,7 @@ export const ResultsPage: React.FC = () => {
     getGradingMethod();
   }, []);
   const [academicYear, setAcademicYear] = useState(`${currentYear}/${currentYear + 1}`);
-  const [tab, setTab] = useState<'cognitive' | 'ratings' | 'settings'>('cognitive');
+  const [tab, setTab] = useState<'cognitive' | 'ratings'>('cognitive');
 
   // Ratings tab state
   const [ratingsClassId, setRatingsClassId] = useState('');
@@ -151,21 +152,24 @@ export const ResultsPage: React.FC = () => {
             <span className="sm:hidden">Ratings</span>
             <span className="hidden sm:inline">Affective &amp; Psychomotor</span>
           </button>
-          {isPrincipal && (
-            <button
-              onClick={() => setTab('settings')}
-              className={`flex-1 min-w-max text-center px-3 sm:px-4 py-2 text-sm rounded-xl transition-all whitespace-nowrap ${
-                tab === 'settings'
-                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white font-semibold shadow-md shadow-purple-500/30'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-purple-700 hover:bg-white/70 dark:hover:bg-gray-700/50'
-              }`}
-            >
-              <Settings size={15} className="inline mr-1.5" />
-              <span className="sm:hidden">Settings</span>
-              <span className="hidden sm:inline">Settings &amp; Release</span>
-            </button>
-          )}
         </div>
+
+        {/* Grade controls & result release moved to Settings → Grading & Results */}
+        {isPrincipal && (
+          <div className="mb-6 flex flex-col gap-2 rounded-xl border border-blue-100 bg-blue-50/60 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-blue-900/40 dark:bg-blue-950/20">
+            <p className="text-xs text-blue-800 dark:text-blue-300">
+              Grade locking, teacher permissions, and result release are now managed in Settings.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate('/settings?tab=grading')}
+              className="flex-shrink-0 whitespace-nowrap"
+            >
+              Open Grading &amp; Results settings →
+            </Button>
+          </div>
+        )}
 
         {/* Cognitive tab */}
         {tab === 'cognitive' && (
@@ -209,12 +213,6 @@ export const ResultsPage: React.FC = () => {
           </RoleGuard>
         )}
 
-        {/* Settings tab (principal only) */}
-        {tab === 'settings' && (
-          <RoleGuard roles={['principal', 'super_admin']} fallback={<p className="text-sm text-gray-500">You do not have permission to manage settings.</p>}>
-            <ReportSettingsPanel academicYear={academicYear} />
-          </RoleGuard>
-        )}
       </PageShell>
 
       {selectedStudent && (

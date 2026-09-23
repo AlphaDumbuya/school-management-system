@@ -20,10 +20,12 @@ const RELIGIONS = ['Christianity', 'Islam', 'Traditional', 'Other'];
 interface AdmissionFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (applicationNumber?: string, emailSent?: boolean | null) => void;
+  publicSchoolSlug?: string;
+  publicClasses?: { id: string; name: string; level: string }[];
 }
 
-export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, onClose, onSuccess, publicSchoolSlug, publicClasses }) => {
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -50,9 +52,9 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
   // Fetch classes
   const { data: classesData } = useQuery({
     queryKey: ['admission-classes'], queryFn: () => classesService.listClasses({ limit: 100 }),
-    staleTime: 60_000, enabled: isOpen,
+    staleTime: 60_000, enabled: isOpen && !publicSchoolSlug,
   });
-  const classes = (classesData as any)?.data ?? [];
+  const classes = publicSchoolSlug ? (publicClasses ?? []) : ((classesData as any)?.data ?? []);
   const classOptions = useMemo(() => classes.map((c: any) => ({ value: String(c.id), label: c.name, sublabel: c.level })), [classes]);
 
   const handleSubmit = async () => {
@@ -64,13 +66,23 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
       setServerError('Please fill in all required guardian information');
       setStep(2); return;
     }
+    if (publicSchoolSlug && !form.guardian_email.trim()) {
+      setServerError('Please provide a guardian email address for the application confirmation');
+      setStep(2); return;
+    }
+    if (publicSchoolSlug && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.guardian_email.trim())) {
+      setServerError('Please enter a valid guardian email address');
+      setStep(2); return;
+    }
     setServerError(null);
     setIsSubmitting(true);
     try {
-      const res = await admissionsService.submitApplication(form);
+      const res = publicSchoolSlug
+        ? await admissionsService.submitPublicApplication(publicSchoolSlug, form)
+        : await admissionsService.submitApplication(form);
       if (res.success === false) throw new Error(res.error ?? 'Submission failed');
       showToast.success('Application submitted');
-      onSuccess(); onClose();
+      onSuccess(res.data?.application_number, res.data?.email_sent); onClose();
       setStep(1);
       setForm({ child_first_name: '', child_middle_name: '', child_last_name: '', child_dob: '', child_gender: '', child_nationality: 'Sierra Leonean', child_religion: '', child_place_of_birth: '', class_applying_for: '', child_address: '', previous_school: '', last_grade_attained: '', child_photo_url: '', guardian_first_name: '', guardian_middle_name: '', guardian_last_name: '', guardian_relationship: '', guardian_phone: '', guardian_alt_phone: '', guardian_email: '', guardian_occupation: '', guardian_address: '', guardian_nationality: 'Sierra Leonean', guardian_national_id: '', takes_medication: false, medication_details: '', has_allergies: false, allergy_details: '', has_chronic_illness: false, chronic_illness_details: '', allow_first_aid: true, emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '' });
     } catch (err) {
@@ -108,9 +120,9 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest mb-3">1. Child's Personal Information</h3>
           <div className="flex flex-col sm:flex-row gap-4">
-            <div className="sm:w-[140px]">
+            {!publicSchoolSlug && <div className="sm:w-[140px]">
               <FileUploader label="Photo" value={form.child_photo_url} onChange={(v) => updateForm('child_photo_url', v)} accept="image/*" maxSizeMB={2} placeholder="Upload" enableCamera previewType="image" />
-            </div>
+            </div>}
             <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">First Name *</label><input value={form.child_first_name} placeholder="e.g. Fatmata" onChange={(e) => updateForm('child_first_name', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
               <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Middle Name</label><input value={form.child_middle_name} placeholder="e.g. Aminata" onChange={(e) => updateForm('child_middle_name', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
@@ -125,7 +137,7 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Place of Birth</label><input value={form.child_place_of_birth} onChange={(e) => updateForm('child_place_of_birth', e.target.value)} placeholder="e.g. Freetown" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-            <SearchableSelect label="Class Applying For *" options={classOptions} value={form.class_applying_for} onChange={(v) => updateForm('class_applying_for', v)} placeholder="Select class..." searchPlaceholder="Search..." />
+            <SearchableSelect label="Class Applying For" options={classOptions} value={form.class_applying_for} onChange={(v) => updateForm('class_applying_for', v)} placeholder="Select class..." searchPlaceholder="Search..." />
           </div>
           <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Home Address</label><input value={form.child_address} placeholder="e.g. 75 Main Road, Kossoh Town" onChange={(e) => updateForm('child_address', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -150,7 +162,7 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
             <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Alt Phone</label><input type="tel" value={form.guardian_alt_phone} onChange={(e) => updateForm('guardian_alt_phone', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Email</label><input type="email" value={form.guardian_email} onChange={(e) => updateForm('guardian_email', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Email{publicSchoolSlug ? ' *' : ''}</label><input type="email" required={!!publicSchoolSlug} value={form.guardian_email} onChange={(e) => updateForm('guardian_email', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
             <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Occupation</label><input value={form.guardian_occupation} placeholder="e.g. Teacher, Trader" onChange={(e) => updateForm('guardian_occupation', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
           </div>
           <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Home Address</label><input value={form.guardian_address} placeholder="e.g. 10 Main Road, Freetown" onChange={(e) => updateForm('guardian_address', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>

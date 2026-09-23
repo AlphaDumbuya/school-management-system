@@ -313,3 +313,102 @@ table {
   background-color: var(--color-primary);
   color: white;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Custom radio buttons + checkboxes — a single, professional treatment applied
+   globally to every native `input[type=radio]` / `input[type=checkbox]`.
+
+   We draw the control ourselves (appearance:none) so it's crisp, brand-blue,
+   consistent across browsers, and larger/easier to tap than the OS default.
+   Opt out on any control by adding the `native-control` class.
+   ────────────────────────────────────────────────────────────────────────── */
+input[type="radio"]:not(.native-control),
+input[type="checkbox"]:not(.native-control) {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex-shrink: 0;
+  border: 2px solid #cbd5e1;         /* slate-300 */
+  background-color: #ffffff;
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+  vertical-align: middle;
+}
+input[type="radio"]:not(.native-control) { border-radius: 50%; }
+input[type="checkbox"]:not(.native-control) { border-radius: 5px; }
+
+/* Hover */
+input[type="radio"]:not(.native-control):hover,
+input[type="checkbox"]:not(.native-control):hover {
+  border-color: #93c5fd;             /* blue-300 */
+}
+
+/* Focus ring (keyboard accessibility) */
+input[type="radio"]:not(.native-control):focus-visible,
+input[type="checkbox"]:not(.native-control):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+}
+
+/* Checked — brand blue fill */
+input[type="radio"]:not(.native-control):checked,
+input[type="checkbox"]:not(.native-control):checked {
+  border-color: #2563eb;             /* blue-600 */
+  background-color: #2563eb;
+}
+
+/* Radio inner dot */
+input[type="radio"]:not(.native-control)::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: scale(0);
+  transition: transform .12s ease-in-out;
+  background-color: #ffffff;
+}
+input[type="radio"]:not(.native-control):checked::before {
+  transform: scale(1);
+}
+
+/* Checkbox tick */
+input[type="checkbox"]:not(.native-control)::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  transform: scale(0);
+  transition: transform .12s ease-in-out;
+  background-color: #ffffff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23fff' d='M13.5 3.5 6 11 2.5 7.5 1 9l5 5 9-9z'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23fff' d='M13.5 3.5 6 11 2.5 7.5 1 9l5 5 9-9z'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+input[type="checkbox"]:not(.native-control):checked::before {
+  transform: scale(1);
+}
+
+/* Disabled */
+input[type="radio"]:not(.native-control):disabled,
+input[type="checkbox"]:not(.native-control):disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* Dark mode */
+.dark input[type="radio"]:not(.native-control),
+.dark input[type="checkbox"]:not(.native-control) {
+  border-color: #4b5563;             /* gray-600 */
+  background-color: #1f2937;         /* gray-800 */
+}
+.dark input[type="radio"]:not(.native-control):hover,
+.dark input[type="checkbox"]:not(.native-control):hover {
+  border-color: #60a5fa;             /* blue-400 */
+}
+.dark input[type="radio"]:not(.native-control):checked,
+.dark input[type="checkbox"]:not(.native-control):checked {
+  border-color: #3b82f6;
+  background-color: #3b82f6;
+}

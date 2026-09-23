@@ -120,12 +120,69 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
     return <div className="flex items-center justify-center py-16"><Loader2 size={30} className="animate-spin text-blue-500" /></div>;
   }
 
+  const StepBadge: React.FC<{ n: number }> = ({ n }) => (
+    <span className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-[#1d4ed8] text-white text-xs font-bold">{n}</span>
+  );
+
   return (
     <div className="space-y-6 max-w-3xl">
-      {/* Toggles */}
+      {/* Intro / workflow guide */}
+      <div className="rounded-xl border border-blue-100 bg-blue-50/60 dark:border-blue-900/40 dark:bg-blue-950/20 p-4">
+        <p className="text-sm font-bold text-gray-900 dark:text-white">Results & Grades workflow</p>
+        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+          <strong>1.</strong> Set grade controls & teacher permissions · <strong>2.</strong> Enter scores on the Results page ·
+          <strong> 3.</strong> Release a term (single A4 sheet) or the whole year (full booklet) here.
+        </p>
+      </div>
+
+      {/* ── STEP 1 — Release Results (primary action) ── */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
-        <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">Grade Controls</h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Control how scores are locked and what teachers can do.</p>
+        <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+          <StepBadge n={1} /> <Send size={16} className="text-emerald-500" /> Release Results & Report Cards
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Release a <strong>single term</strong> (Term 1 or Term 2) to give parents and students a
+          professional one-page A4 result sheet for that term only. Leave the term blank to release
+          the <strong>whole year</strong> — this unlocks the complete folded report booklet
+          (all terms + yearly summary + promotion) and is intended for the promotional term (Term 3).
+          Releasing notifies parents & students by email and in-app.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <SearchableSelect
+            label="Class"
+            options={classOptions}
+            value={pubClassId}
+            onChange={setPubClassId}
+            placeholder="Select class..."
+          />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Term</label>
+            <select
+              value={pubTerm}
+              onChange={(e) => setPubTerm(e.target.value as any)}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
+            >
+              <option value="">Whole year (full booklet + promotion)</option>
+              {SL_TERMS.map((t) => <option key={t.value} value={t.value}>{t.label} — single A4 sheet</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button onClick={() => handlePublish(true)} disabled={publishing || !pubClassId} className="gap-1.5">
+            {publishing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Release
+          </Button>
+          <Button variant="outline" onClick={() => handlePublish(false)} disabled={publishing || !pubClassId}>
+            Unrelease
+          </Button>
+        </div>
+      </div>
+
+      {/* ── STEP 2 — Grade controls & teacher permissions ── */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
+        <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+          <StepBadge n={2} /> Grade Controls & Teacher Permissions
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Control how scores lock, what teachers can do, and end-of-year promotion.</p>
         <div className="space-y-3">
           {TOGGLES.map((t) => (
             <div key={t.key} className="flex items-start justify-between gap-4 py-2 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
@@ -153,44 +210,6 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
         <div className="flex justify-end mt-4">
           <Button onClick={handleSave} disabled={saving}>
             {saving ? <><Loader2 size={15} className="animate-spin mr-1.5" /> Saving…</> : 'Save Settings'}
-          </Button>
-        </div>
-      </div>
-
-      {/* Publish controls */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
-        <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
-          <Send size={16} className="text-emerald-500" /> Release Results & Report Cards
-        </h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          Publishing makes results AND report card booklets visible to parents and students for the selected class. Leave the term blank to release the whole year (includes all terms + yearly summary + promotion recommendation).
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-          <SearchableSelect
-            label="Class"
-            options={classOptions}
-            value={pubClassId}
-            onChange={setPubClassId}
-            placeholder="Select class..."
-          />
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Term (optional)</label>
-            <select
-              value={pubTerm}
-              onChange={(e) => setPubTerm(e.target.value as any)}
-              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
-            >
-              <option value="">Whole year</option>
-              {SL_TERMS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button onClick={() => handlePublish(true)} disabled={publishing || !pubClassId} className="gap-1.5">
-            {publishing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Publish
-          </Button>
-          <Button variant="outline" onClick={() => handlePublish(false)} disabled={publishing || !pubClassId}>
-            Unpublish
           </Button>
         </div>
       </div>

@@ -374,6 +374,17 @@ export class SLReportCardService {
   ): Promise<void> {
     const cls = await db('classes').where({ id: classId }).first().catch(() => null);
     const className = cls?.name || cls?.class_name || undefined;
+    const isYear = !term; // whole-year release → promotional / booklet
+    const termLabel = term
+      ? ({ first_term: 'First Term', second_term: 'Second Term', third_term: 'Third Term' } as any)[term] || term
+      : 'Full Year';
+
+    // Next class name (for promotional "welcome to your new class" message).
+    let nextClassName: string | undefined;
+    if (isYear && cls?.next_class_id) {
+      const nc = await db('classes').where({ id: cls.next_class_id }).first().catch(() => null);
+      nextClassName = nc?.name || nc?.class_name || undefined;
+    }
 
     const students = await db('enrollments')
       .join('students', 'enrollments.student_id', 'students.id')
@@ -382,42 +393,95 @@ export class SLReportCardService {
       .where('students.tenant_id', tenantId)
       .select(
         'students.id as student_id',
+        'students.user_id as student_user_id',
         'students.first_name',
         'students.last_name',
         'students.email as student_email',
       );
 
     const { default: emailService } = await import('./emailService');
+    const { default: notificationService } = await import('./notificationService');
 
     for (const s of students) {
       try {
         const studentName = [s.first_name, s.last_name].filter(Boolean).join(' ') || 'your child';
 
-        // Prefer an active guardian's email; fall back to the student's.
-        let recipientEmail: string | null = s.student_email || null;
-        let recipientName = studentName;
-        const link = await db('student_guardians')
-          .where({ student_id: s.student_id, status: 'active' })
-          .first()
-          .catch(() => null);
-        if (link?.guardian_id) {
-          const guardian = await db('users').where({ id: link.guardian_id }).first().catch(() => null);
-          if (guardian?.email) {
-            recipientEmail = guardian.email;
-            recipientName = [guardian.first_name, guardian.last_name].filter(Boolean).join(' ') || recipientName;
+        // Promotion outcome for the year release (drives the "welcome to new
+        // class" popup vs a plain results-ready popup).
+        let promoted = false;
+        let promotionText: string | undefined;
+        if (isYear) {
+          try {
+            const ys = await this.computeYearlySummary(tenantId, classId, academicYear, s.student_id);
+            promoted = ys.outcome === 'promoted' || ys.outcome === 'promoted_effort';
+            promotionText = ys.promotion_recommendation || undefined;
+          } catch { /* ignore — fall back to generic */ }
+        }
+
+        // In-app notification payload — the frontend uses `data.kind` to show a
+        // one-time popup, and `data.term`/`promoted`/`nextClass` to word it.
+        const notifData = {
+          kind: 'result_released',
+          student_id: s.student_id,
+          class_id: classId,
+          class_name: className,
+          academic_year: academicYear,
+          term: term || null,
+          term_label: termLabel,
+          is_year: isYear,
+          promoted,
+          promotion_text: promotionText,
+          next_class: nextClassName,
+          url: '/academic/report-cards',
+        };
+        const subject = isYear
+          ? (promoted ? `Congratulations — ${studentName}'s results are out!` : `${studentName}'s end-of-year results are ready`)
+          : `${studentName}'s ${termLabel} result is ready`;
+        const message = isYear
+          ? (promoted
+            ? `${studentName}'s full-year report is published.${nextClassName ? ` Welcome to ${nextClassName}!` : ''}`
+            : `${studentName}'s full-year report card is now available to view.`)
+          : `${studentName}'s ${termLabel} result sheet has been released. Tap to view.`;
+
+        // Notify the STUDENT's own account (if they have one).
+        if (s.student_user_id) {
+          await notificationService.createNotification({
+            notificationType: 'result_released', recipientId: s.student_user_id,
+            subject, message, data: notifData, channels: ['in_app'], sourceType: 'report_card', sourceId: s.student_id,
+          }).catch(() => {});
+        }
+
+        // Resolve linked guardian accounts (user_id) for in-app + email.
+        const guardians = await db('guardians')
+          .where({ student_id: s.student_id })
+          .whereNotNull('user_id')
+          .select('user_id', 'email', 'first_name', 'last_name')
+          .catch(() => [] as any[]);
+
+        // Email + in-app to each guardian; fall back to the student's own email.
+        let anyGuardianEmail = false;
+        for (const g of guardians) {
+          if (g.user_id) {
+            await notificationService.createNotification({
+              notificationType: 'result_released', recipientId: g.user_id,
+              subject, message, data: notifData, channels: ['in_app'], sourceType: 'report_card', sourceId: s.student_id,
+            }).catch(() => {});
+          }
+          if (g.email) {
+            anyGuardianEmail = true;
+            await emailService.sendReportCardPublishedEmail(tenantId, g.email, {
+              recipientName: [g.first_name, g.last_name].filter(Boolean).join(' ') || 'Parent/Guardian',
+              studentName, className, term: termLabel, academicYear,
+            }).catch((e) => logger.warn(`RC email (guardian) failed for ${s.student_id}: ${e?.message || e}`));
           }
         }
-        if (!recipientEmail) continue;
-
-        await emailService.sendReportCardPublishedEmail(tenantId, recipientEmail, {
-          recipientName,
-          studentName,
-          className,
-          term: term || 'Full Year',
-          academicYear,
-        });
+        if (!anyGuardianEmail && s.student_email) {
+          await emailService.sendReportCardPublishedEmail(tenantId, s.student_email, {
+            recipientName: studentName, studentName, className, term: termLabel, academicYear,
+          }).catch((e) => logger.warn(`RC email (student) failed for ${s.student_id}: ${e?.message || e}`));
+        }
       } catch (err) {
-        logger.warn(`Report card email failed for student ${s.student_id}: ${(err as any)?.message || err}`);
+        logger.warn(`Report card notify failed for student ${s.student_id}: ${(err as any)?.message || err}`);
       }
     }
   }
@@ -442,6 +506,36 @@ export class SLReportCardService {
       return !!termPub?.is_published;
     }
     return false;
+  }
+
+  /**
+   * Whether ANY result (whole-year OR any single term) is published for this
+   * class+year. Used to gate a student/parent from the results area at all.
+   */
+  async isAnythingPublished(tenantId: string, classId: string, academicYear: string): Promise<boolean> {
+    const row = await db('sl_report_publications')
+      .where({ tenant_id: tenantId, class_id: classId, academic_year: academicYear, is_published: true })
+      .first();
+    return !!row;
+  }
+
+  /**
+   * Returns which terms are released for a class+year, plus whether the full
+   * year (all terms + promotion) is released. A whole-year publication implies
+   * all three terms are viewable.
+   */
+  async getPublishedTerms(
+    tenantId: string,
+    classId: string,
+    academicYear: string,
+  ): Promise<{ terms: string[]; wholeYear: boolean }> {
+    const rows = await db('sl_report_publications')
+      .where({ tenant_id: tenantId, class_id: classId, academic_year: academicYear, is_published: true })
+      .select('term');
+    const wholeYear = rows.some((r: any) => r.term == null);
+    if (wholeYear) return { terms: [...SL_TERMS], wholeYear: true };
+    const terms = rows.map((r: any) => r.term).filter((t: any): t is string => !!t);
+    return { terms, wholeYear: false };
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1001,6 +1095,7 @@ export class SLReportCardService {
     studentId: string,
     classId: string,
     academicYear: string,
+    term?: string | null,
   ): Promise<void> {
     await this.assertStudentInTenant(studentId, tenantId);
 
@@ -1018,31 +1113,37 @@ export class SLReportCardService {
       return;
     }
 
+    // Accountant / admissions_officer may view published results for their
+    // tenant (read-only) — same publish gate as students/parents.
+    const publishGated = ['student', 'parent', 'accountant', 'admissions_officer'];
+
     if (role === 'student') {
       const student = await db('students').where({ id: studentId, tenant_id: tenantId }).first();
       if (!student || student.user_id !== viewerUserId) {
         throw new Error('You can only view your own report card');
       }
-      if (!(await this.isPublished(tenantId, classId, academicYear))) {
-        throw new Error('Your results have not been published yet');
-      }
-      return;
-    }
-
-    if (role === 'parent') {
+    } else if (role === 'parent') {
       const guardian = await db('guardians')
         .where({ student_id: studentId, user_id: viewerUserId })
         .first();
       if (!guardian) {
         throw new Error('You can only view your ward\'s report card');
       }
-      if (!(await this.isPublished(tenantId, classId, academicYear))) {
-        throw new Error('Results have not been published yet');
-      }
-      return;
+    } else if (!publishGated.includes(role)) {
+      throw new Error('Not authorized to view report cards');
     }
 
-    throw new Error('Not authorized to view report cards');
+    // Publish gate — term-aware. If a specific term is requested, that term (or
+    // the whole year) must be released. If no term is requested (full booklet),
+    // the whole year must be released.
+    const ok = term
+      ? await this.isPublished(tenantId, classId, academicYear, term)
+      : await this.isPublished(tenantId, classId, academicYear);
+    if (!ok) {
+      throw new Error(term
+        ? 'This term\'s results have not been released yet'
+        : 'Results have not been released yet');
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1448,12 +1549,21 @@ export class SLReportCardService {
     }
     const verifyUrl = this.buildVerifyUrl(verifyCode, studentId, classId, academicYear);
 
+    // Publication status — lets staff see a "DRAFT / not released" badge and
+    // lets the viewer know which terms are released (Term 1/2 single sheets vs
+    // the full Term 3 booklet).
+    const { terms: publishedTerms, wholeYear: yearReleased } = await this.getPublishedTerms(tenantId, classId, academicYear);
+    const published = yearReleased || publishedTerms.length > 0;
+
     return {
       id: `${studentId}:${classId}:${academicYear}`,
       student_id: studentId,
       class_id: classId,
       tenant_id: tenantId,
       verify_url: verifyUrl,
+      is_published: published,
+      published_terms: publishedTerms,
+      year_released: yearReleased,
       student: {
         ...student,
         class_name: cls?.name,

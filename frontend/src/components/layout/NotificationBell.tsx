@@ -166,7 +166,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
     // System alerts first (highest priority)
     if (canSeeAlerts) {
       for (const a of visibleAlerts) {
-        const av = ALERT_ICON_TINT[a.severity || 'info'] ?? ALERT_ICON_TONE.info;
+        const av = ALERT_ICON_TINT[a.severity || 'info'] ?? ALERT_ICON_TINT.info;
         items.push({
           id: `alert-${a.id}`,
           kind: 'alert',

@@ -180,41 +180,6 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        {canSeeTeacherAttendance && (
-          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-200/80 sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-sm font-bold text-gray-900">Teacher Attendance Today</h2>
-                <p className="mt-1 text-xs text-gray-500">
-                  {teacherAttendance.isLoading ? 'Loading teacher attendance…' : `${onCampusCount} on campus · ${signedOutCount} signed out · ${absentCount} absent · ${unmarkedCount} not marked`}
-                </p>
-              </div>
-              <button type="button" onClick={() => navigate('/staff/attendance')}
-                className="text-xs font-bold text-blue-700 hover:underline">Open teacher register</button>
-            </div>
-            {teacherAttendance.isError ? (
-              <p role="alert" className="mt-3 text-xs text-red-600">Could not load teacher attendance. Refresh to try again.</p>
-            ) : teacherRows.length > 0 ? (
-              <div className="mt-3 max-h-56 overflow-x-auto overflow-y-auto">
-                <table className="w-full min-w-[620px] text-left text-xs">
-                  <thead className="sticky top-0 bg-gray-50 text-gray-500"><tr><th className="px-3 py-2">Teacher</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Sign in</th><th className="px-3 py-2">Sign out</th><th className="px-3 py-2">Comments</th></tr></thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {teacherRows.map((teacher) => <tr key={teacher.id}>
-                      <td className="px-3 py-2 font-semibold text-gray-900">{teacher.first_name} {teacher.last_name}</td>
-                      <td className="px-3 py-2 capitalize">{teacher.attendance?.status ?? 'Not marked'}</td>
-                      <td className="px-3 py-2">{teacherTime(teacher.attendance?.signed_in_at)}</td>
-                      <td className="px-3 py-2">{teacherTime(teacher.attendance?.signed_out_at)}</td>
-                      <td className="max-w-[240px] px-3 py-2 text-gray-600">{[teacher.attendance?.sign_in_comment, teacher.attendance?.sign_out_comment, teacher.attendance?.remarks].filter(Boolean).join(' · ') || '—'}</td>
-                    </tr>)}
-                  </tbody>
-                </table>
-              </div>
-            ) : !teacherAttendance.isLoading ? (
-              <p className="mt-3 text-xs text-gray-500">No active teachers found for this school.</p>
-            ) : null}
-          </section>
-        )}
-
         {/* ═══ ROW 2 — KPI Cards ═══
             Mobile: 2×2 grid | lg+: 4 in a row
             Revenue card spans 2 cols on mobile so it gets full width (matches visual weight)
@@ -511,6 +476,42 @@ export const AdminDashboard: React.FC = () => {
             </>
           )}
         </div>
+
+        {/* ═══ Teacher Attendance ═══ */}
+        {canSeeTeacherAttendance && (
+          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-200/80 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-gray-900">Teacher Attendance Today</h2>
+                <p className="mt-1 text-xs text-gray-500">
+                  {teacherAttendance.isLoading ? 'Loading teacher attendance…' : `${onCampusCount} on campus · ${signedOutCount} signed out · ${absentCount} absent · ${unmarkedCount} not marked`}
+                </p>
+              </div>
+              <button type="button" onClick={() => navigate('/staff/attendance')}
+                className="text-xs font-bold text-blue-700 hover:underline">Open teacher register</button>
+            </div>
+            {teacherAttendance.isError ? (
+              <p role="alert" className="mt-3 text-xs text-red-600">Could not load teacher attendance. Refresh to try again.</p>
+            ) : teacherRows.length > 0 ? (
+              <div className="mt-3 max-h-56 overflow-x-auto overflow-y-auto">
+                <table className="w-full min-w-[620px] text-left text-xs">
+                  <thead className="sticky top-0 bg-gray-50 text-gray-500"><tr><th className="px-3 py-2">Teacher</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Sign in</th><th className="px-3 py-2">Sign out</th><th className="px-3 py-2">Comments</th></tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {teacherRows.map((teacher) => <tr key={teacher.id}>
+                      <td className="px-3 py-2 font-semibold text-gray-900">{teacher.first_name} {teacher.last_name}</td>
+                      <td className="px-3 py-2 capitalize">{teacher.attendance?.status ?? 'Not marked'}</td>
+                      <td className="px-3 py-2">{teacherTime(teacher.attendance?.signed_in_at)}</td>
+                      <td className="px-3 py-2">{teacherTime(teacher.attendance?.signed_out_at)}</td>
+                      <td className="max-w-[240px] px-3 py-2 text-gray-600">{[teacher.attendance?.sign_in_comment, teacher.attendance?.sign_out_comment, teacher.attendance?.remarks].filter(Boolean).join(' · ') || '—'}</td>
+                    </tr>)}
+                  </tbody>
+                </table>
+              </div>
+            ) : !teacherAttendance.isLoading ? (
+              <p className="mt-3 text-xs text-gray-500">No active teachers found for this school.</p>
+            ) : null}
+          </section>
+        )}
 
         {/* ═══ At-Risk Students ═══ */}
         {!isInitialLoad && dashboard?.atRiskStudents && dashboard.atRiskStudents.length > 0 && (

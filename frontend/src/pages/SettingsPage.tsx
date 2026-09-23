@@ -36,8 +36,16 @@ import { StorageSettings } from '@components/settings/StorageSettings';
 import { OfflineStorageSettings } from '@components/offline/OfflineStorageSettings';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { BookletContent } from './academic/components/BookletContent';
+import { BookletContent, PHOTO_FRAME_OPTIONS, type PhotoFrameStyle } from './academic/components/BookletContent';
+import { ReportSettingsPanel } from './academic/components/ReportSettingsPanel';
 import type { ReportCard as ReportCardType } from '../services/reportCardService';
+import {
+  LINE_PRESETS,
+  FRAME_PRESETS,
+  svgToDataUrl,
+  getFramePreset,
+  borderKind,
+} from '@lib/reportCardBorders';
 import { showToast } from '@utils/toast';
 
 export const SettingsPage: React.FC = () => {
@@ -451,7 +459,7 @@ export const SettingsPage: React.FC = () => {
     { id: 'school', label: 'School Info', icon: <Building size={18} />, adminOnly: true },
     { id: 'academic', label: 'Academic Config', icon: <Calendar size={18} />, adminOnly: true },
     { id: 'id-format', label: 'ID Format', icon: <Building size={18} />, adminOnly: true },
-    { id: 'grading', label: 'Grading Scale', icon: <GraduationCap size={18} />, adminOnly: true },
+    { id: 'grading', label: 'Grading & Results', icon: <GraduationCap size={18} />, adminOnly: true },
     { id: 'attendance', label: 'Attendance Rules', icon: <AlertCircle size={18} />, adminOnly: true },
     { id: 'financial', label: 'Financial Info', icon: <DollarSign size={18} />, adminOnly: true },
     { id: 'comms', label: 'Communications', icon: <Mail size={18} />, adminOnly: true },
@@ -1372,6 +1380,11 @@ export const SettingsPage: React.FC = () => {
                 {/* ── GRADING TAB ── */}
                 {activeTab === 'grading' && (
                   <div className="space-y-6">
+                    {/* Grade controls + result release (moved here from the Results page,
+                        since all configuration belongs in Settings). Principal-only;
+                        the panel and its backend routes both enforce this. */}
+                    <ReportSettingsPanel academicYear={`${new Date().getFullYear()}/${new Date().getFullYear() + 1}`} />
+
                     {/* List active scales */}
                     <Card>
                       <CardHeader className="flex justify-between items-center flex-row">
@@ -1939,364 +1952,6 @@ export const SettingsPage: React.FC = () => {
 // Persisted to school_config_settings under key 'report_card_border_style'.
 // ──────────────────────────────────────────────────────────────────────────────
 
-interface BorderPreset {
-  id: string;
-  name: string;
-  description: string;
-  color: string;
-  width: number;
-  padding: number;
-  style: 'solid' | 'double' | 'dashed' | 'dotted' | 'groove' | 'ridge' | 'inset' | 'outset' | 'none';
-  radius: number;
-  previewClass: string;
-}
-
-const BORDER_PRESETS: BorderPreset[] = [
-  {
-    id: 'classic',
-    name: 'Classic Black',
-    description: 'Bold solid black border — traditional school look.',
-    color: '#1f2937',
-    width: 2,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-gray-900',
-  },
-  {
-    id: 'modern',
-    name: 'Modern Blue',
-    description: 'Clean blue solid border with rounded corners — contemporary branding.',
-    color: '#2563eb',
-    width: 3,
-    padding: 10,
-    style: 'solid',
-    radius: 8,
-    previewClass: 'border-blue-600',
-  },
-  {
-    id: 'minimal',
-    name: 'Minimal Gray',
-    description: 'Thin subtle gray border — clean and professional.',
-    color: '#9ca3af',
-    width: 1,
-    padding: 6,
-    style: 'solid',
-    radius: 4,
-    previewClass: 'border-gray-400',
-  },
-  {
-    id: 'decorative',
-    name: 'Decorative Brown',
-    description: 'Double brown border — formal and elegant.',
-    color: '#7c2d12',
-    width: 4,
-    padding: 8,
-    style: 'double',
-    radius: 0,
-    previewClass: 'border-amber-900',
-  },
-  {
-    id: 'royal',
-    name: 'Royal Purple',
-    description: 'Double purple border — prestigious and regal.',
-    color: '#4c1d95',
-    width: 4,
-    padding: 10,
-    style: 'double',
-    radius: 0,
-    previewClass: 'border-violet-900',
-  },
-  {
-    id: 'forest',
-    name: 'Forest Green',
-    description: 'Deep green solid border — natural and grounded.',
-    color: '#14532d',
-    width: 3,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-green-900',
-  },
-  {
-    id: 'navy',
-    name: 'Navy Blue',
-    description: 'Navy solid border with slight rounding — trustworthy.',
-    color: '#1e3a8a',
-    width: 3,
-    padding: 8,
-    style: 'solid',
-    radius: 6,
-    previewClass: 'border-blue-900',
-  },
-  {
-    id: 'maroon',
-    name: 'Maroon',
-    description: 'Rich maroon border — classic academic colour.',
-    color: '#7f1d1d',
-    width: 3,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-red-900',
-  },
-  {
-    id: 'teal',
-    name: 'Teal',
-    description: 'Teal border with rounded corners — fresh and modern.',
-    color: '#0f766e',
-    width: 2,
-    padding: 8,
-    style: 'solid',
-    radius: 8,
-    previewClass: 'border-teal-700',
-  },
-  {
-    id: 'sunrise',
-    name: 'Sunrise Orange',
-    description: 'Warm orange border — energetic and vibrant.',
-    color: '#c2410c',
-    width: 3,
-    padding: 8,
-    style: 'solid',
-    radius: 6,
-    previewClass: 'border-orange-700',
-  },
-  {
-    id: 'elegant',
-    name: 'Elegant Groove',
-    description: 'Groove-style gray border — sophisticated 3D effect.',
-    color: '#374151',
-    width: 2,
-    padding: 10,
-    style: 'groove',
-    radius: 0,
-    previewClass: 'border-gray-700',
-  },
-  {
-    id: 'playful',
-    name: 'Playful Dashed',
-    description: 'Dashed purple border with rounded corners — fun and approachable.',
-    color: '#7c3aed',
-    width: 3,
-    padding: 8,
-    style: 'dashed',
-    radius: 12,
-    previewClass: 'border-violet-600',
-  },
-  {
-    id: 'dashed_blue',
-    name: 'Dashed Blue',
-    description: 'Dashed blue border — clean and distinctive.',
-    color: '#1d4ed8',
-    width: 2,
-    padding: 8,
-    style: 'dashed',
-    radius: 0,
-    previewClass: 'border-blue-700',
-  },
-  {
-    id: 'dotted_green',
-    name: 'Dotted Green',
-    description: 'Dotted green border — subtle and organic.',
-    color: '#15803d',
-    width: 2,
-    padding: 8,
-    style: 'dotted',
-    radius: 0,
-    previewClass: 'border-green-700',
-  },
-  {
-    id: 'double_gold',
-    name: 'Double Gold',
-    description: 'Double gold border — premium and luxurious.',
-    color: '#a16207',
-    width: 4,
-    padding: 8,
-    style: 'double',
-    radius: 0,
-    previewClass: 'border-yellow-700',
-  },
-  {
-    id: 'none',
-    name: 'No Border',
-    description: 'No visible border — just inner padding.',
-    color: 'transparent',
-    width: 0,
-    padding: 4,
-    style: 'none',
-    radius: 0,
-    previewClass: '',
-  },
-  // ── Microsoft-style ornamental borders (rendered as SVG patterns) ──
-  {
-    id: 'ornamental_chain_black',
-    name: '⛓ Chain (Black) — Microsoft Style',
-    description: 'Linked chain pattern — formal and decorative.',
-    color: '#1f2937',
-    width: 20,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-gray-900',
-  },
-  {
-    id: 'ornamental_floral_brown',
-    name: '🌸 Floral (Brown) — Microsoft Style',
-    description: 'Decorative floral motifs — elegant and ornate.',
-    color: '#7c2d12',
-    width: 20,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-amber-900',
-  },
-  {
-    id: 'ornamental_gold_ornate',
-    name: '✨ Gold Ornate — Microsoft Style',
-    description: 'Gold decorative trim — premium and luxurious.',
-    color: '#a16207',
-    width: 22,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-yellow-700',
-  },
-  {
-    id: 'ornamental_dots_gold',
-    name: '• Dotted Gold — Microsoft Style',
-    description: 'Gold dotted pattern — subtle and refined.',
-    color: '#a16207',
-    width: 16,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-yellow-700',
-  },
-  {
-    id: 'ornamental_zigzag_navy',
-    name: '⚡ Zigzag (Navy) — Microsoft Style',
-    description: 'Navy zigzag pattern — modern and distinctive.',
-    color: '#1e3a8a',
-    width: 14,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-blue-900',
-  },
-  // ── Microsoft Word-style "Art" page borders (like MS Word > Page Borders > Art) ──
-  {
-    id: 'art_stars',
-    name: '★ Stars (Gold) — MS Word Art',
-    description: 'Gold star pattern border — like MS Word page border art.',
-    color: '#a16207',
-    width: 18,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-yellow-700',
-  },
-  {
-    id: 'art_hearts',
-    name: '♥ Hearts (Rose) — MS Word Art',
-    description: 'Heart pattern border — playful and warm.',
-    color: '#be123c',
-    width: 18,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-rose-800',
-  },
-  {
-    id: 'art_dots',
-    name: '• Dots (Gray) — MS Word Art',
-    description: 'Simple dotted pattern border — clean and minimal.',
-    color: '#4b5563',
-    width: 10,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-gray-600',
-  },
-  {
-    id: 'art_dash_long',
-    name: '— Long Dash (Blue) — MS Word Art',
-    description: 'Long blue dash pattern border — clean and formal.',
-    color: '#1e3a8a',
-    width: 12,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-blue-900',
-  },
-  {
-    id: 'art_triple_line',
-    name: '≡ Triple Line (Gray) — MS Word Art',
-    description: 'Triple parallel lines — classic formal border.',
-    color: '#374151',
-    width: 14,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-gray-700',
-  },
-  {
-    id: 'art_wavy',
-    name: '~ Wavy (Teal) — MS Word Art',
-    description: 'Wavy line pattern — organic and flowing.',
-    color: '#0f766e',
-    width: 14,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-teal-700',
-  },
-  {
-    id: 'art_diamonds',
-    name: '◆ Diamonds (Brown) — MS Word Art',
-    description: 'Diamond pattern border — geometric and elegant.',
-    color: '#7c2d12',
-    width: 16,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-amber-900',
-  },
-  {
-    id: 'art_leaves',
-    name: '🍃 Leaves (Green) — MS Word Art',
-    description: 'Leaf pattern border — natural and organic.',
-    color: '#14532d',
-    width: 18,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-green-900',
-  },
-  {
-    id: 'art_apples',
-    name: '🍎 Apples (Red) — MS Word Art',
-    description: 'Apple pattern border — school-themed and fun.',
-    color: '#b91c1c',
-    width: 18,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-red-700',
-  },
-  {
-    id: 'art_classical_wave',
-    name: '〰 Classical Wave (Navy) — MS Word Art',
-    description: 'Double classical wave — ornate and formal.',
-    color: '#1e3a8a',
-    width: 20,
-    padding: 8,
-    style: 'solid',
-    radius: 0,
-    previewClass: 'border-blue-900',
-  },
-];
-
 const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> = ({ schoolInfo }) => {
   // ── Border state ──
   const [selectedPreset, setSelectedPreset] = useState<string>('classic');
@@ -2313,6 +1968,7 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.06);
   const [watermarkSize, setWatermarkSize] = useState(450);
   const [showStudentPhoto, setShowStudentPhoto] = useState(true);
+  const [photoFrame, setPhotoFrame] = useState<PhotoFrameStyle>('gold');
   const [savingDisplay, setSavingDisplay] = useState(false);
 
   // ── Mock data for the live BookletContent preview ──
@@ -2373,7 +2029,8 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
       try {
         const value = await schoolConfigService.getSetting('report_card_border_style');
         if (mounted && value) {
-          if (value.preset && BORDER_PRESETS.some((p) => p.id === value.preset)) {
+          const known = [...LINE_PRESETS, ...FRAME_PRESETS].some((p) => p.id === value.preset);
+          if (value.preset && known) {
             setSelectedPreset(value.preset);
           }
           if (value.color) setCustomColor(value.color);
@@ -2403,6 +2060,7 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
           if (typeof value.watermark_opacity === 'number') setWatermarkOpacity(value.watermark_opacity);
           if (typeof value.watermark_size === 'number') setWatermarkSize(value.watermark_size);
           if (typeof value.show_student_photo === 'boolean') setShowStudentPhoto(value.show_student_photo);
+          if (typeof value.photo_frame === 'string') setPhotoFrame(value.photo_frame as PhotoFrameStyle);
         }
       } catch {
         // ignore — use defaults
@@ -2433,13 +2091,22 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
 
   const handlePresetChange = (presetId: string) => {
     setSelectedPreset(presetId);
-    const p = BORDER_PRESETS.find((bp) => bp.id === presetId);
-    if (p) {
-      setCustomColor(p.color);
-      setCustomWidth(p.width);
-      setCustomPadding(p.padding);
-      setCustomRadius(p.radius);
-      if (p.style !== 'none') setCustomStyle(p.style);
+    // Seed the advanced controls from the chosen preset so the colour picker
+    // etc. reflect a sensible starting point.
+    const frame = getFramePreset(presetId);
+    if (frame) {
+      setCustomColor(frame.color);
+      setCustomPadding(frame.padding);
+      setCustomWidth(frame.thickness);
+      return;
+    }
+    const line = LINE_PRESETS.find((l) => l.id === presetId);
+    if (line) {
+      setCustomColor(line.color);
+      setCustomWidth(line.width);
+      setCustomPadding(line.padding);
+      setCustomRadius(line.radius);
+      if (line.style !== 'none') setCustomStyle(line.style);
     }
   };
 
@@ -2467,6 +2134,7 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
         watermark_opacity: watermarkOpacity,
         watermark_size: watermarkSize,
         show_student_photo: showStudentPhoto,
+        photo_frame: photoFrame,
       });
       showToast.success('Display options saved.');
       queryClient.invalidateQueries({ queryKey: ['report-card-display-opts'] });
@@ -2486,121 +2154,126 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
         <CardHeader>
           <CardTitle>Report Card Border</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-6">
           <p className="text-sm text-gray-600">
-            Choose how the outer border of each Sierra Leone booklet report card looks.
-            Select a preset below — there are {BORDER_PRESETS.length} styles to choose from,
-            including classic solid borders and Microsoft-style ornamental borders.
+            The border decorates the <strong>front cover only</strong> of the report booklet.
+            Pick a decorative frame or a simple line, then fine-tune the accent colour. Changes
+            apply to every generated report card once saved.
           </p>
 
-          {/* Dropdown for border preset */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Border Style
-            </label>
-            <select
-              value={selectedPreset}
-              onChange={(e) => handlePresetChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {BORDER_PRESETS.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              {BORDER_PRESETS.find((p) => p.id === selectedPreset)?.description}
-            </p>
+          {/* ── Border style select + live swatch ── */}
+          <div className="flex flex-col sm:flex-row gap-4 items-start">
+            <div className="flex-1 w-full">
+              <label className="block text-sm font-semibold text-gray-800 mb-1.5">Border style</label>
+              <select
+                value={selectedPreset}
+                onChange={(e) => handlePresetChange(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <optgroup label="Decorative frames">
+                  {FRAME_PRESETS.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Simple borders">
+                  {LINE_PRESETS.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </optgroup>
+              </select>
+              <p className="text-xs text-gray-500 mt-1.5">
+                {getFramePreset(selectedPreset)?.description
+                  ?? LINE_PRESETS.find((l) => l.id === selectedPreset)?.description
+                  ?? 'Choose a border style for the front cover.'}
+              </p>
+            </div>
+
+            {/* Live swatch of the currently selected style */}
+            <div className="flex-shrink-0">
+              <span className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Preview</span>
+              <div className="w-[110px] h-[150px] rounded-lg bg-white ring-1 ring-gray-200 overflow-hidden relative shadow-sm">
+                {borderKind(selectedPreset) === 'frame'
+                  ? <img src={svgToDataUrl(getFramePreset(selectedPreset)!.build(customColor, customWidth))} alt="" className="absolute inset-0 w-full h-full" />
+                  : borderKind(selectedPreset) === 'none'
+                    ? <div className="absolute inset-2 border border-dashed border-gray-300 rounded" />
+                    : (() => {
+                        const l = LINE_PRESETS.find((x) => x.id === selectedPreset)!;
+                        return <div className="absolute inset-2" style={{ border: `${Math.max(2, customWidth)}px ${customStyle} ${customColor}`, borderRadius: customRadius }} />;
+                      })()}
+              </div>
+            </div>
           </div>
 
-          {/* Advanced customization (collapsible) */}
-          <details className="border-t pt-4">
-            <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900">
-              Advanced customization
-            </summary>
-            <div className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* Color */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Color</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={customColor}
-                      onChange={(e) => setCustomColor(e.target.value)}
-                      className="h-10 w-14 rounded border border-gray-300 cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={customColor}
-                      onChange={(e) => setCustomColor(e.target.value)}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
-                      placeholder="#1f2937"
-                    />
-                  </div>
-                </div>
-                {/* Width */}
+          {/* ── Accent colour + advanced (context-aware) ── */}
+          <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <label className="text-sm font-semibold text-gray-700 sm:w-40">Accent colour</label>
+              <div className="flex items-center gap-2 flex-1">
+                <input type="color" value={customColor} onChange={(e) => setCustomColor(e.target.value)} className="h-10 w-14 rounded border border-gray-300 cursor-pointer" />
+                <input type="text" value={customColor} onChange={(e) => setCustomColor(e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm" placeholder="#1f2937" />
+              </div>
+            </div>
+
+            {/* Line-only options — hidden for frames (which don't use width/style/radius) */}
+            {borderKind(selectedPreset) === 'line' && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Width (px)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={20}
-                    value={customWidth}
-                    onChange={(e) => setCustomWidth(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                  />
+                  <input type="number" min={1} max={12} value={customWidth} onChange={(e) => setCustomWidth(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded text-sm" />
                 </div>
-                {/* Style */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Style</label>
-                  <select
-                    value={customStyle}
-                    onChange={(e) => setCustomStyle(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                  >
+                  <select value={customStyle} onChange={(e) => setCustomStyle(e.target.value as any)} className="w-full px-3 py-2 border border-gray-300 rounded text-sm bg-white">
                     <option value="solid">Solid</option>
                     <option value="double">Double</option>
                     <option value="dashed">Dashed</option>
                     <option value="dotted">Dotted</option>
                     <option value="groove">Groove</option>
                     <option value="ridge">Ridge</option>
-                    <option value="inset">Inset</option>
-                    <option value="outset">Outset</option>
-                    <option value="none">None</option>
                   </select>
                 </div>
-                {/* Radius */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Corner Radius (px)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={50}
-                    value={customRadius}
-                    onChange={(e) => setCustomRadius(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                  />
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Radius (px)</label>
+                  <input type="number" min={0} max={40} value={customRadius} onChange={(e) => setCustomRadius(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded text-sm" />
                 </div>
-                {/* Padding */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Padding (px)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={40}
-                    value={customPadding}
-                    onChange={(e) => setCustomPadding(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                  />
+                  <input type="number" min={0} max={60} value={customPadding} onChange={(e) => setCustomPadding(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded text-sm" />
                 </div>
               </div>
-            </div>
-          </details>
+            )}
+            {borderKind(selectedPreset) === 'frame' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Border thickness: <span className="text-gray-900">{customWidth}</span>
+                  </label>
+                  <input
+                    type="range"
+                    min={6}
+                    max={160}
+                    step={2}
+                    value={customWidth}
+                    onChange={(e) => setCustomWidth(Number(e.target.value))}
+                    className="w-full accent-blue-600"
+                  />
+                  <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                    <span>Very thin</span><span>Very bold</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Content padding (px)</label>
+                  <input type="number" min={16} max={90} value={customPadding} onChange={(e) => setCustomPadding(Number(e.target.value))} className="w-full px-3 py-2 border border-gray-300 rounded text-sm" />
+                  <p className="text-[10px] text-gray-400 mt-1">Space between the frame and the cover content.</p>
+                </div>
+              </div>
+            )}
+          </div>
 
-          {/* Live preview — real BookletContent (front + back cover) */}
+          {/* Live preview — real BookletContent front cover with the chosen frame */}
           <div className="border-t pt-4">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">Complete Front &amp; Back Page Preview</h4>
-            <p className="text-xs text-gray-500 mb-3">This is the actual report card layout using your school's name, logo, and the border settings above.</p>
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">Front Cover Preview</h4>
+            <p className="text-xs text-gray-500 mb-3">The border shows on the front cover only. Back cover and inner sheets stay clean.</p>
             <div className="bg-gray-100 p-3 sm:p-6 rounded-lg overflow-x-auto">
               <div className="mx-auto w-full" style={{ maxWidth: 600, transformOrigin: 'top center' }}>
                 <BookletContent
@@ -2618,6 +2291,7 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
                   watermarkOpacity={watermarkOpacity}
                   watermarkSize={watermarkSize}
                   showStudentPhoto={showStudentPhoto}
+                  photoFrame={photoFrame}
                 />
               </div>
             </div>
@@ -2645,8 +2319,8 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
         </CardHeader>
         <CardContent className="space-y-5">
           <p className="text-sm text-gray-600">
-            Display the school logo as a faint watermark behind the inner results sheet (Sheet 2).
-            This adds a professional security overlay to the printed report card.
+            Display the school logo as a faint watermark behind the results grid and the back cover.
+            This adds a professional, tamper-evident security overlay to the printed report card.
           </p>
 
           {/* Toggle */}
@@ -2740,6 +2414,23 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showStudentPhoto ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
           </div>
+
+          {/* Photo frame style (only relevant when the photo is shown) */}
+          {showStudentPhoto && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-1">
+              <label className="text-sm font-semibold text-gray-700 sm:w-40">Photo frame</label>
+              <select
+                value={photoFrame}
+                onChange={(e) => setPhotoFrame(e.target.value as PhotoFrameStyle)}
+                className="w-full sm:max-w-xs px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {PHOTO_FRAME_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400">Choose the frame around the photo, or remove it.</p>
+            </div>
+          )}
 
           {/* Note — preview is in the Border section above */}
           <div className="border-t pt-4">

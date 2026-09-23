@@ -15,6 +15,7 @@ import OfflineBanner from '@components/offline/OfflineBanner';
 import { useSyncEngine } from '../../offline/useSyncEngine';
 import useInactivityLock from '@hooks/useInactivityLock';
 import VerifyIntroModal from '@components/verification/VerifyIntroModal';
+import { ResultReleasePopup } from '@components/results/ResultReleasePopup';
 import { showToast } from '@utils/toast';
 
 interface MainLayoutProps {
@@ -166,6 +167,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
       {/* One-time "verify your school" announcement for existing unverified owners */}
       <VerifyIntroModal />
+
+      {/* One-time result-released popup for students & parents (promotion / term result) */}
+      <ResultReleasePopup />
     </div>
   );
 };
