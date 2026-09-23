@@ -114,17 +114,25 @@ class StudentDashboardService {
         .select('id', 'attendance_date', 'status', 'class_id', 'session_type', 'check_in_time', 'check_out_time', 'marked_at', 'remarks')
         .catch(() => []);
 
-      let present = 0, absent = 0, late = 0, excused = 0;
+      // Count by DISTINCT DAY (not session) so multiple daily sessions count as
+      // ONE day, classified by the BEST status that day — consistent with the
+      // report card. present/excused > late > absent.
+      const dayRank = new Map<string, number>();  // date → best rank (3 best)
       for (const a of attendanceRows as any[]) {
+        const key = String(a.attendance_date).slice(0, 10);
         const s = (a.status || '').toLowerCase();
-        if (s === 'present') present++;
-        else if (s === 'absent') absent++;
-        else if (s === 'late') late++;
-        else if (s === 'excused') excused++;
+        const rank = s === 'present' || s === 'excused' ? 3 : s === 'late' ? 2 : s === 'absent' ? 1 : 0;
+        dayRank.set(key, Math.max(dayRank.get(key) ?? 0, rank));
       }
-      const totalAtt = attendanceRows.length;
-      // Present + late (and excused) count toward "attended"
-      const attendedish = present + late + excused;
+      let present = 0, absent = 0, late = 0, excused = 0;
+      for (const rank of dayRank.values()) {
+        if (rank === 3) present++;        // attended (present/excused)
+        else if (rank === 2) late++;
+        else if (rank === 1) absent++;
+      }
+      const totalAtt = dayRank.size;
+      // Present + late count toward "attended"
+      const attendedish = present + late;
       const attendanceRate = totalAtt > 0 ? Math.round((attendedish / totalAtt) * 100) : 0;
 
       const recentAttendance = (attendanceRows as any[]).slice(0, 10).map((a) => ({

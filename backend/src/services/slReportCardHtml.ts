@@ -811,7 +811,8 @@ export async function renderTermResultSheetHtml(
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; font-family: 'Times New Roman', Georgia, serif; color: #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .sheet { width: 210mm; min-height: 297mm; padding: 12mm 12mm 10mm; position: relative; }
-  .frame { border: 3px double #1e3a8a; padding: 8mm 8mm 7mm; min-height: 273mm; position: relative; }
+  .frame { border: 3px double #1e3a8a; padding: 8mm 8mm 7mm; min-height: 273mm; position: relative; display: flex; flex-direction: column; }
+  .spacer { flex: 1 1 auto; min-height: 6mm; }
   /* Header */
   .head { display: flex; align-items: center; gap: 10px; border-bottom: 2px solid #1e3a8a; padding-bottom: 8px; }
   .head .logo { width: 22mm; height: 22mm; object-fit: contain; }
@@ -820,16 +821,16 @@ export async function renderTermResultSheetHtml(
   .head h1 { margin: 0; font-size: 22px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: #1e3a8a; }
   .head .addr { font-size: 11px; color: #374151; margin-top: 2px; }
   .head .motto { font-size: 11px; font-style: italic; color: #6b7280; }
-  .title { text-align: center; margin: 8px 0 4px; }
-  .title .band { display: inline-block; background: #1e3a8a; color: #fff; font-weight: 700; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; padding: 4px 18px; }
-  .title .yr { font-size: 12px; color: #374151; margin-top: 3px; }
+  .title { text-align: center; margin: 16px 0 6px; }
+  .title .band { display: inline-block; background: #1e3a8a; color: #fff; font-weight: 700; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; padding: 6px 18px; }
+  .title .yr { font-size: 12px; color: #374151; margin-top: 5px; }
   /* Student meta */
-  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 24px; font-size: 12px; margin: 8px 0; padding: 6px 0; border-top: 1px solid #d1d5db; border-bottom: 1px solid #d1d5db; }
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 12px; margin: 14px 0; padding: 10px 0; border-top: 1px solid #d1d5db; border-bottom: 1px solid #d1d5db; }
   .meta div { padding: 1px 0; }
   .meta b { display: inline-block; min-width: 92px; color: #374151; }
   /* Subjects table */
-  table.res { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
-  table.res th, table.res td { border: 1px solid #374151; padding: 4px 5px; text-align: center; }
+  table.res { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  table.res th, table.res td { border: 1px solid #374151; padding: 7px 5px; text-align: center; }
   table.res th { background: #1e3a8a; color: #fff; font-size: 11px; text-transform: uppercase; }
   table.res td.subj { text-align: left; font-weight: 600; }
   table.res td.idx { width: 22px; color: #6b7280; }
@@ -913,6 +914,8 @@ export async function renderTermResultSheetHtml(
       <div class="kt">Grading Key</div>
       ${gradeKey}
     </div>
+
+    <div class="spacer"></div>
 
     <div class="foot">
       <div class="sig"><div class="line"></div>Class Teacher's Signature</div>

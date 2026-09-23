@@ -1231,21 +1231,36 @@ export class SLReportCardService {
       .orderBy('start_date', 'desc')
       .first();
 
-    if (!session?.start_date || !session?.end_date) return null;
+    if (session?.start_date && session?.end_date) {
+      const start = new Date(session.start_date);
+      const end = new Date(session.end_date);
+      const totalMs = end.getTime() - start.getTime();
+      if (totalMs > 0) {
+        const third = totalMs / 3;
+        const t1End = new Date(start.getTime() + third);
+        const t2End = new Date(start.getTime() + third * 2);
+        return {
+          first_term: { start, end: t1End },
+          second_term: { start: t1End, end: t2End },
+          third_term: { start: t2End, end },
+        };
+      }
+    }
 
-    const start = new Date(session.start_date);
-    const end = new Date(session.end_date);
-    const totalMs = end.getTime() - start.getTime();
-    if (totalMs <= 0) return null;
-
-    const third = totalMs / 3;
-    const t1End = new Date(start.getTime() + third);
-    const t2End = new Date(start.getTime() + third * 2);
-
+    // FALLBACK: no configured session (academic_sessions may be empty). Derive
+    // term windows from the academic-year string (e.g. "2026/2027") using the
+    // standard Sierra Leone 3-term calendar so per-term attendance is accurate
+    // and each term counts only its OWN dates (previously a null window counted
+    // the whole year for every term, which looked wrong).
+    const m = String(academicYear).match(/(\d{4})/);
+    if (!m) return null;
+    const y1 = parseInt(m[1], 10);       // start year (Sept of y1)
+    const y2 = y1 + 1;                    // end year (Jul of y2)
+    // Term 1: 01 Sep y1 – 31 Dec y1 · Term 2: 01 Jan y2 – 15 Apr y2 · Term 3: 16 Apr y2 – 31 Jul y2
     return {
-      first_term: { start, end: t1End },
-      second_term: { start: t1End, end: t2End },
-      third_term: { start: t2End, end },
+      first_term: { start: new Date(Date.UTC(y1, 8, 1)), end: new Date(Date.UTC(y1, 11, 31)) },
+      second_term: { start: new Date(Date.UTC(y2, 0, 1)), end: new Date(Date.UTC(y2, 3, 15)) },
+      third_term: { start: new Date(Date.UTC(y2, 3, 16)), end: new Date(Date.UTC(y2, 6, 31)) },
     };
   }
 
@@ -1263,8 +1278,13 @@ export class SLReportCardService {
     let q = db('attendance')
       .join('students', 'attendance.student_id', 'students.id')
       .where('attendance.student_id', studentId)
-      .where('attendance.class_id', classId)
-      .where('students.tenant_id', tenantId);
+      .where('students.tenant_id', tenantId)
+      // Attendance may be recorded with the class_id or with a null class_id
+      // (class_id is nullable). Match this class OR unscoped rows so counts
+      // aren't silently zero when the marker didn't attach a class.
+      .where(function (this: any) {
+        this.where('attendance.class_id', classId).orWhereNull('attendance.class_id');
+      });
 
     if (window) {
       q = q.whereBetween('attendance.attendance_date', [
@@ -1273,19 +1293,25 @@ export class SLReportCardService {
       ]);
     }
 
-    const row = await q
-      .select(
-        db.raw("COUNT(*) FILTER (WHERE attendance.status = 'present') as on_time"),
-        db.raw("COUNT(*) FILTER (WHERE attendance.status = 'late') as late"),
-        db.raw("COUNT(*) FILTER (WHERE attendance.status = 'absent') as absent"),
-      )
-      .first();
+    // Count DISTINCT DAYS (not sessions) so multiple daily sessions
+    // (morning/afternoon) count as ONE day. Each day is classified by its BEST
+    // status — if the pupil attended ANY session that day they are counted
+    // present; late only if they were late and never marked present; absent
+    // only when every session that day was an absence.
+    //   present/excused → 3 (best) · late → 2 · absent → 1 (worst)
+    const rows = await q
+      .select('attendance.attendance_date as d')
+      .select(db.raw("MAX(CASE attendance.status WHEN 'present' THEN 3 WHEN 'excused' THEN 3 WHEN 'late' THEN 2 WHEN 'absent' THEN 1 ELSE 0 END) as rank"))
+      .groupBy('attendance.attendance_date');
 
-    return {
-      on_time: parseInt(String((row as any)?.on_time ?? 0), 10) || 0,
-      late: parseInt(String((row as any)?.late ?? 0), 10) || 0,
-      absent: parseInt(String((row as any)?.absent ?? 0), 10) || 0,
-    };
+    let on_time = 0, late = 0, absent = 0;
+    for (const r of rows as any[]) {
+      const rank = Number(r.rank);
+      if (rank === 3) on_time++;       // present/excused in at least one session
+      else if (rank === 2) late++;     // late, never present
+      else if (rank === 1) absent++;   // absent all day
+    }
+    return { on_time, late, absent };
   }
 
   /**

@@ -100,10 +100,18 @@ class ParentDashboardService {
       ? await slReportCardService.resolveClassAcademicYear(tenantId, classId, sessionYear).catch(() => sessionYear)
       : sessionYear;
 
-    // Attendance rate
-    const att = await db('attendance').where('student_id', student.id).select('status').catch(() => []);
-    const total = att.length;
-    const good = (att as any[]).filter((a) => ['present', 'late', 'excused'].includes((a.status || '').toLowerCase())).length;
+    // Attendance rate — by DISTINCT DAY (multiple daily sessions = one day),
+    // best status per day. Consistent with the report card + student dashboard.
+    const att = await db('attendance').where('student_id', student.id).select('attendance_date', 'status').catch(() => []);
+    const dayBest = new Map<string, number>();
+    for (const a of att as any[]) {
+      const key = String(a.attendance_date).slice(0, 10);
+      const s = (a.status || '').toLowerCase();
+      const rank = s === 'present' || s === 'excused' ? 3 : s === 'late' ? 2 : s === 'absent' ? 1 : 0;
+      dayBest.set(key, Math.max(dayBest.get(key) ?? 0, rank));
+    }
+    const total = dayBest.size;
+    const good = Array.from(dayBest.values()).filter((r) => r >= 2).length; // present/excused or late
     const attendanceRate = total > 0 ? Math.round((good / total) * 100) : 0;
 
     // Average grade (published results only)
@@ -252,13 +260,21 @@ class ParentDashboardService {
       .orderBy('session_type', 'asc')
       .select('id', 'attendance_date', 'status', 'session_type', 'check_in_time', 'check_out_time', 'marked_at', 'remarks')
       .catch(() => []);
-    let present = 0, absent = 0, late = 0, excused = 0;
+    // Count by DISTINCT DAY (multiple daily sessions = one day), best status
+    // per day — consistent with the report card + student dashboard.
+    const dayBestDetail = new Map<string, number>();
     for (const a of attendanceRows as any[]) {
+      const key = String(a.attendance_date).slice(0, 10);
       const s = (a.status || '').toLowerCase();
-      if (s === 'present') present++; else if (s === 'absent') absent++; else if (s === 'late') late++; else if (s === 'excused') excused++;
+      const rank = s === 'present' || s === 'excused' ? 3 : s === 'late' ? 2 : s === 'absent' ? 1 : 0;
+      dayBestDetail.set(key, Math.max(dayBestDetail.get(key) ?? 0, rank));
     }
-    const totalAtt = attendanceRows.length;
-    const attendanceRate = totalAtt > 0 ? Math.round(((present + late + excused) / totalAtt) * 100) : 0;
+    let present = 0, absent = 0, late = 0; const excused = 0;
+    for (const rank of dayBestDetail.values()) {
+      if (rank === 3) present++; else if (rank === 2) late++; else if (rank === 1) absent++;
+    }
+    const totalAtt = dayBestDetail.size;
+    const attendanceRate = totalAtt > 0 ? Math.round(((present + late) / totalAtt) * 100) : 0;
 
     // Schedule
     let schedule: any[] = [];

@@ -59,7 +59,7 @@ export const TermResultSheet: React.FC<Props> = ({ card, term, school, schoolNam
       className="term-sheet bg-white text-gray-900 mx-auto shadow-lg"
       style={{ width: 794, minHeight: 1123, fontFamily: "'Times New Roman', Georgia, serif" }}
     >
-      <div className="m-[46px] border-[3px] border-double border-[#1e3a8a] p-8" style={{ minHeight: 1030 }}>
+      <div className="m-[46px] border-[3px] border-double border-[#1e3a8a] p-8 flex flex-col" style={{ minHeight: 1030 }}>
         {/* Header */}
         <div className="flex items-center gap-3 border-b-2 border-[#1e3a8a] pb-3">
           {schoolLogo
@@ -74,15 +74,15 @@ export const TermResultSheet: React.FC<Props> = ({ card, term, school, schoolNam
         </div>
 
         {/* Title */}
-        <div className="text-center my-3">
-          <span className="inline-block bg-[#1e3a8a] text-white font-bold uppercase text-[13px] tracking-widest px-5 py-1">
+        <div className="text-center my-5">
+          <span className="inline-block bg-[#1e3a8a] text-white font-bold uppercase text-[13px] tracking-widest px-5 py-1.5">
             {TERM_LABELS[term]} Terminal Result
           </span>
-          <div className="text-xs text-gray-700 mt-1.5">Academic Year {card.academic_year}</div>
+          <div className="text-xs text-gray-700 mt-2">Academic Year {card.academic_year}</div>
         </div>
 
         {/* Student meta */}
-        <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 text-xs my-3 py-2 border-y border-gray-300">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs my-4 py-3 border-y border-gray-300">
           <div><b className="inline-block min-w-[92px] text-gray-700">Name:</b> {s.name}</div>
           <div><b className="inline-block min-w-[92px] text-gray-700">Admission No:</b> {s.admission_no}</div>
           <div><b className="inline-block min-w-[92px] text-gray-700">Class / Form:</b> {s.class_name || '—'}</div>
@@ -92,7 +92,7 @@ export const TermResultSheet: React.FC<Props> = ({ card, term, school, schoolNam
         </div>
 
         {/* Subjects table */}
-        <table className="w-full border-collapse text-xs mt-1.5">
+        <table className="w-full border-collapse text-xs mt-2">
           <thead>
             <tr>
               {['#', 'Subject', 'Test 1', 'Test 2', 'Mean', 'Grade', 'Remark', 'Pos.'].map((h, i) => (
@@ -109,14 +109,14 @@ export const TermResultSheet: React.FC<Props> = ({ card, term, school, schoolNam
               const g = gradeFor(mean);
               return (
                 <tr key={subj.subject_id} className={i % 2 ? 'bg-slate-50' : ''}>
-                  <td className="border border-gray-700 text-center text-gray-500 px-1.5 py-1">{i + 1}</td>
-                  <td className="border border-gray-700 text-left font-semibold px-1.5 py-1">{subj.subject_name}</td>
-                  <td className="border border-gray-700 text-center px-1.5 py-1">{t.test1 ?? '—'}</td>
-                  <td className="border border-gray-700 text-center px-1.5 py-1">{t.test2 ?? '—'}</td>
-                  <td className={`border border-gray-700 text-center font-bold px-1.5 py-1 ${g.fail ? 'text-red-700' : ''}`}>{mean ?? '—'}</td>
-                  <td className={`border border-gray-700 text-center px-1.5 py-1 ${g.fail ? 'text-red-700 font-bold' : ''}`}>{g.grade}</td>
-                  <td className="border border-gray-700 text-left text-[11px] text-gray-700 px-1.5 py-1">{g.remark}</td>
-                  <td className="border border-gray-700 text-center px-1.5 py-1">{t.rank ? ordinal(t.rank) : '—'}</td>
+                  <td className="border border-gray-700 text-center text-gray-500 px-1.5 py-[7px]">{i + 1}</td>
+                  <td className="border border-gray-700 text-left font-semibold px-1.5 py-[7px]">{subj.subject_name}</td>
+                  <td className="border border-gray-700 text-center px-1.5 py-[7px]">{t.test1 ?? '—'}</td>
+                  <td className="border border-gray-700 text-center px-1.5 py-[7px]">{t.test2 ?? '—'}</td>
+                  <td className={`border border-gray-700 text-center font-bold px-1.5 py-[7px] ${g.fail ? 'text-red-700' : ''}`}>{mean ?? '—'}</td>
+                  <td className={`border border-gray-700 text-center px-1.5 py-[7px] ${g.fail ? 'text-red-700 font-bold' : ''}`}>{g.grade}</td>
+                  <td className="border border-gray-700 text-left text-[11px] text-gray-700 px-1.5 py-[7px]">{g.remark}</td>
+                  <td className="border border-gray-700 text-center px-1.5 py-[7px]">{t.rank ? ordinal(t.rank) : '—'}</td>
                 </tr>
               );
             })}
@@ -154,7 +154,7 @@ export const TermResultSheet: React.FC<Props> = ({ card, term, school, schoolNam
         </div>
 
         {/* Grade key */}
-        <div className="mt-3 text-[10px]">
+        <div className="mt-4 text-[10px]">
           <div className="font-bold uppercase text-gray-700 mb-1">Grading Key</div>
           {gm.map((g) => (
             <span key={g.remark} className={`inline-block border rounded-full px-2 py-0.5 mr-1 mb-1 ${g.isFail ? 'text-red-700 border-red-300' : 'border-gray-300'}`}>
@@ -162,6 +162,10 @@ export const TermResultSheet: React.FC<Props> = ({ card, term, school, schoolNam
             </span>
           ))}
         </div>
+
+        {/* Flexible spacer — pushes signatures/footer to the bottom so a short
+            result sheet fills the A4 page instead of leaving a big blank gap. */}
+        <div className="flex-1 min-h-[24px]" />
 
         {/* Footer: signatures + QR */}
         <div className="flex items-end justify-between mt-4">
