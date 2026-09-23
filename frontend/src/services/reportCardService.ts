@@ -184,6 +184,18 @@ export interface ClassRanking {
   students: ClassRankingStudent[];
 }
 
+export interface PublicationRecord {
+  id: string;
+  class_id: string;
+  class_name: string | null;
+  academic_year: string;
+  term: string | null;
+  term_label: string;
+  is_published: boolean;
+  published_at: string | null;
+  published_by_name: string | null;
+}
+
 export interface ReportCard {
   tenant_id?: string;
   class_id?: string;
@@ -341,6 +353,14 @@ export const reportCardService = {
   /** Publish / unpublish results for a class (gates parent/student visibility). */
   async setPublication(payload: { class_id: string; academic_year: string; term?: SLTerm | null; published: boolean }) {
     return apiClient.post(`${BASE}/publish`, payload);
+  },
+
+  /** Publish history — which classes/terms have been released, when, by whom. */
+  async getPublications(academicYear?: string) {
+    return apiClient.get<{ success: boolean; data: PublicationRecord[] }>(
+      `${BASE}/publications`,
+      { params: academicYear ? { academic_year: academicYear } : {} },
+    );
   },
 
   /** Classes the caller may act on (all for staff-admin, assigned for teachers). */

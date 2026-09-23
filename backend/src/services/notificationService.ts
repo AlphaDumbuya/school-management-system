@@ -71,16 +71,18 @@ class NotificationService {
 
       const [notification] = await db('notifications')
         .insert({
-          notificationType,
-          recipientId,
+          type: notificationType,
+          user_id: recipientId,
           subject,
           message: req.message,
           data: req.data ? JSON.stringify(req.data) : null,
-          channels,
-          sourceType,
-          sourceId,
-          createdBy: req.createdBy,
+          channels: JSON.stringify(channels),
+          source_type: sourceType,
+          source_id: sourceId,
+          created_by: req.createdBy,
           status: 'pending',
+          created_at: db.fn.now(),
+          updated_at: db.fn.now(),
         })
         .returning('*');
 
@@ -123,10 +125,10 @@ class NotificationService {
       const limit = filter.limit || 20;
       const offset = filter.offset || 0;
 
-      let query = db('notifications').where({ recipientId });
+      let query = db('notifications').where({ user_id: recipientId });
 
       if (filter.notificationType) {
-        query = query.where({ notificationType: filter.notificationType });
+        query = query.where({ type: filter.notificationType });
       }
 
       if (filter.status) {
@@ -135,15 +137,15 @@ class NotificationService {
 
       if (filter.isRead !== undefined) {
         if (filter.isRead) {
-          query = query.whereNotNull('readAt');
+          query = query.whereNotNull('read_at');
         } else {
-          query = query.whereNull('readAt');
+          query = query.whereNull('read_at');
         }
       }
 
       const total = await query.clone().count('* as count').first();
       const notifications = await query
-        .orderBy('createdAt', 'desc')
+        .orderBy('created_at', 'desc')
         .limit(limit)
         .offset(offset);
 
@@ -165,9 +167,9 @@ class NotificationService {
       const [updated] = await db('notifications')
         .where({ id: notificationId })
         .update({
-          readAt: db.fn.now(),
+          read_at: db.fn.now(),
           status: 'read',
-          updatedAt: db.fn.now(),
+          updated_at: db.fn.now(),
         })
         .returning('*');
 
@@ -189,12 +191,12 @@ class NotificationService {
   async markAllAsRead(recipientId: string): Promise<number> {
     try {
       const updated = await db('notifications')
-        .where({ recipientId })
-        .whereNull('readAt')
+        .where({ user_id: recipientId })
+        .whereNull('read_at')
         .update({
-          readAt: db.fn.now(),
+          read_at: db.fn.now(),
           status: 'read',
-          updatedAt: db.fn.now(),
+          updated_at: db.fn.now(),
         });
 
       logger.info(`Marked ${updated} notifications as read for user: ${recipientId}`);
@@ -231,8 +233,8 @@ class NotificationService {
   async getUnreadCount(recipientId: string): Promise<number> {
     try {
       const result = await db('notifications')
-        .where({ recipientId })
-        .whereNull('readAt')
+        .where({ user_id: recipientId })
+        .whereNull('read_at')
         .count('* as count')
         .first();
 
@@ -251,20 +253,20 @@ class NotificationService {
       let query = db('notifications');
       
       if (recipientId) {
-        query = query.where({ recipientId });
+        query = query.where({ user_id: recipientId });
       }
 
       const totalCount = await query.clone().count('* as count').first();
       const unreadCount = await query
         .clone()
-        .whereNull('readAt')
+        .whereNull('read_at')
         .count('* as count')
         .first();
 
       const byType = await query
         .clone()
-        .groupBy('notificationType')
-        .select('notificationType')
+        .groupBy('type')
+        .select('type')
         .count('* as count');
 
       const byStatus = await query
@@ -273,26 +275,15 @@ class NotificationService {
         .select('status')
         .count('* as count');
 
-      const byChannel = await db.raw(`
-        SELECT channel, COUNT(*) as count 
-        FROM notifications, unnest(channels) as channel
-        ${recipientId ? `WHERE "recipientId" = :recipientId` : ''}
-        GROUP BY channel
-      `, { recipientId });
-
       return {
         total: totalCount.count,
         unread: unreadCount.count,
         byType: byType.reduce((acc, row) => {
-          acc[row.notificationType] = row.count;
+          acc[row.type] = row.count;
           return acc;
         }, {}),
         byStatus: byStatus.reduce((acc, row) => {
           acc[row.status] = row.count;
-          return acc;
-        }, {}),
-        byChannel: byChannel.rows.reduce((acc, row) => {
-          acc[row.channel] = row.count;
           return acc;
         }, {}),
       };
@@ -310,16 +301,18 @@ class NotificationService {
       const created = await db('notifications')
         .insert(
           notifications.map(n => ({
-            notificationType: n.notificationType,
-            recipientId: n.recipientId,
-            subject: n.subject,
+            type: n.notificationType || n.type || 'info',
+            user_id: n.recipientId || n.user_id,
+            subject: n.subject || n.title,
             message: n.message,
             data: n.data ? JSON.stringify(n.data) : null,
-            channels: n.channels || ['in_app'],
-            sourceType: n.sourceType,
-            sourceId: n.sourceId,
-            createdBy: n.createdBy,
+            channels: JSON.stringify(n.channels || ['in_app']),
+            source_type: n.sourceType || n.related_entity,
+            source_id: n.sourceId || n.related_id,
+            created_by: n.createdBy,
             status: 'pending',
+            created_at: db.fn.now(),
+            updated_at: db.fn.now(),
           }))
         )
         .returning('*');
@@ -341,7 +334,7 @@ class NotificationService {
         .where({ id: notificationId })
         .update({
           status,
-          updatedAt: db.fn.now(),
+          updated_at: db.fn.now(),
         })
         .returning('*');
 
@@ -364,9 +357,9 @@ class NotificationService {
     try {
       const notifications = await db('notifications')
         .where({ status: 'pending' })
-        .whereRaw("? = ANY(channels)", [channel])
+        .whereRaw("channels @> ?::jsonb", [JSON.stringify([channel])])
         .limit(limit)
-        .orderBy('createdAt', 'asc');
+        .orderBy('created_at', 'asc');
 
       return notifications.map(n => this.formatNotification(n));
     } catch (error) {
@@ -396,29 +389,31 @@ class NotificationService {
    * Helper method to format notification response
    */
   private formatNotification(notification: any): Notification {
+    // The DB table is snake_case (user_id, type, read_at…); map to the
+    // camelCase shape the API/frontend consume.
+    const parseJson = (v: any) => {
+      if (v == null) return undefined;
+      if (typeof v === 'object') return v;
+      try { return JSON.parse(v); } catch { return undefined; }
+    };
     return {
       id: notification.id,
-      notificationType: notification.notificationType,
-      recipientId: notification.recipientId,
+      notificationType: notification.type ?? notification.notificationType,
+      recipientId: notification.user_id ?? notification.recipientId,
       subject: notification.subject,
       message: notification.message,
-      // The `data` column is a Postgres json type, so the pg driver already
-      // returns it parsed. Only JSON.parse when it's actually a string, and
-      // never let a malformed value crash the whole notifications list.
-      data: (() => {
-        const d = notification.data;
-        if (d == null) return undefined;
-        if (typeof d === 'object') return d;
-        try { return JSON.parse(d); } catch { return undefined; }
+      data: parseJson(notification.data),
+      channels: (() => {
+        const c = parseJson(notification.channels);
+        return Array.isArray(c) ? c : [];
       })(),
-      channels: Array.isArray(notification.channels) ? notification.channels : [],
-      readAt: notification.readAt,
+      readAt: notification.read_at ?? notification.readAt,
       status: notification.status,
-      sourceType: notification.sourceType,
-      sourceId: notification.sourceId,
-      createdBy: notification.createdBy,
-      createdAt: notification.createdAt,
-      updatedAt: notification.updatedAt,
+      sourceType: notification.source_type ?? notification.sourceType,
+      sourceId: notification.source_id ?? notification.sourceId,
+      createdBy: notification.created_by ?? notification.createdBy,
+      createdAt: notification.created_at ?? notification.createdAt,
+      updatedAt: notification.updated_at ?? notification.updatedAt,
     };
   }
 }

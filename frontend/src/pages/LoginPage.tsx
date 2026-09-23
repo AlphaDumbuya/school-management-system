@@ -20,7 +20,8 @@ import { isAppMode } from '@lib/appMode';
 import CyberBackground from '@components/auth/CyberBackground';
 
 const loginSchema = z.object({
-  email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
+  // Accepts an email (parents/staff) OR a student ID username (students).
+  email: z.string().min(1, 'Username or email is required'),
   password: z.string().min(1, 'Password is required'),
   rememberMe: z.boolean().default(false),
 });
@@ -387,10 +388,10 @@ export const LoginPage: React.FC = () => {
                 {/* Email + password stacked (portrait) */}
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-bold text-blue-100/80 mb-2 uppercase tracking-wider">Email Address</label>
+                    <label className="block text-xs font-bold text-blue-100/80 mb-2 uppercase tracking-wider">Username or Email</label>
                     <input
-                      type="email" {...register('email')} placeholder="you@school.com"
-                      autoComplete="email" disabled={isLoading}
+                      type="text" {...register('email')} placeholder="Student ID or you@school.com"
+                      autoComplete="username" disabled={isLoading}
                       className={`${inputBase} ${inputState(!!errors.email)}`}
                     />
                     {errors.email && <p className="mt-1.5 text-xs text-red-300">{errors.email.message}</p>}

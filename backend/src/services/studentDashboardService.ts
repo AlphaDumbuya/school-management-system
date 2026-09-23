@@ -58,11 +58,19 @@ class StudentDashboardService {
       const activeClass = await this.getActiveClass(student.id);
       const classId = activeClass?.id ?? null;
 
-      // ── Academic year (from the class's academic session, else current year) ──
-      let academicYear: string | null = null;
+      // ── Academic year ──────────────────────────────────────────────────
+      // Resolve from the ACTUAL report-card data (publications / results use
+      // the "YYYY/YYYY+1" format) so the publish-gate matches reliably —
+      // academic_sessions may store the year in a different format.
+      let sessionYear: string | null = null;
       if (activeClass?.academic_session_id) {
         const sess = await db('academic_sessions').where('id', activeClass.academic_session_id).select('name', 'year').first().catch(() => null);
-        academicYear = sess?.year || sess?.name || null;
+        sessionYear = sess?.year || sess?.name || null;
+      }
+      let academicYear: string | null = sessionYear;
+      if (classId) {
+        const { default: slReportCardService } = await import('./slReportCardService.js');
+        academicYear = await slReportCardService.resolveClassAcademicYear(tenantId, classId, sessionYear).catch(() => sessionYear);
       }
 
       // ── Grades: only RELEASED SL subject results for the active class.

@@ -183,6 +183,26 @@ router.get('/settings/config', async (req: Request, res: Response, next: NextFun
   }
 });
 
+/**
+ * GET /publications?academic_year=
+ * Publish history for the tenant (principal/super_admin) — which classes/terms
+ * have been released, when, and by whom.
+ */
+router.get(
+  '/publications',
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const academicYear = (req.query.academic_year as string) || undefined;
+      const data = await slReportCardService.getPublications(tenant(req), academicYear);
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('Error getting SL report publications:', error);
+      next(error);
+    }
+  },
+);
+
 router.post(
   '/settings/config',
   authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),

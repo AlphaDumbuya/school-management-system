@@ -226,6 +226,26 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
         );
       }
 
+      // Provision login accounts up-front: student signs in with their ID
+      // number (username) + demo password; parent uses their application email.
+      if (newStudent?.id) {
+        try {
+          const { provisionStudentAccounts } = await import('../utils/studentAccounts.js');
+          await provisionStudentAccounts(db, tenantId, {
+            student_id: newStudent.id,
+            reg_id: studentId,
+            email: newStudent.email,
+            first_name: newStudent.first_name,
+            last_name: newStudent.last_name,
+            guardian_name: [inserted.guardian_first_name, inserted.guardian_last_name].filter(Boolean).join(' ') || null,
+            guardian_email: inserted.guardian_email || null,
+            guardian_phone: inserted.guardian_phone || null,
+          });
+        } catch (accErr) {
+          logger.warn(`Account provisioning failed for admission student ${studentId}: ${(accErr as any)?.message || accErr}`);
+        }
+      }
+
       // Mark application as enrolled
       await db('admission_applications').where('id', inserted.id).update({ status: 'enrolled' });
       inserted.status = 'enrolled';
@@ -429,6 +449,26 @@ router.put('/:appId/status', authenticate, authorize(UserRole.PRINCIPAL, UserRol
             },
             decidedBy,
           );
+        }
+
+        // Provision login accounts up-front: student signs in with their ID
+        // number (username) + demo password; parent uses their application email.
+        if (newStudent?.id) {
+          try {
+            const { provisionStudentAccounts } = await import('../utils/studentAccounts.js');
+            await provisionStudentAccounts(db, tenantId, {
+              student_id: newStudent.id,
+              reg_id: studentId,
+              email: newStudent.email,
+              first_name: newStudent.first_name,
+              last_name: newStudent.last_name,
+              guardian_name: [app.guardian_first_name, app.guardian_last_name].filter(Boolean).join(' ') || app.parent_name || null,
+              guardian_email: app.guardian_email || null,
+              guardian_phone: app.guardian_phone || app.parent_phone || null,
+            });
+          } catch (accErr) {
+            logger.warn(`Account provisioning failed for admission student ${studentId}: ${(accErr as any)?.message || accErr}`);
+          }
         }
 
         // Update application status to 'enrolled'

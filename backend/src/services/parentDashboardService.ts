@@ -89,12 +89,16 @@ class ParentDashboardService {
       .catch(() => null);
     const classId = activeClass?.id ?? null;
 
-    // Academic year
-    let academicYear: string | null = null;
+    // Academic year — resolve from the actual report-card data (publications /
+    // results use "YYYY/YYYY+1") so the publish-gate matches reliably.
+    let sessionYear: string | null = null;
     if (activeClass?.academic_session_id) {
       const sess = await db('academic_sessions').where('id', activeClass.academic_session_id).select('name', 'year').first().catch(() => null);
-      academicYear = sess?.year || sess?.name || null;
+      sessionYear = sess?.year || sess?.name || null;
     }
+    const academicYear: string | null = classId
+      ? await slReportCardService.resolveClassAcademicYear(tenantId, classId, sessionYear).catch(() => sessionYear)
+      : sessionYear;
 
     // Attendance rate
     const att = await db('attendance').where('student_id', student.id).select('status').catch(() => []);
@@ -197,10 +201,18 @@ class ParentDashboardService {
       .catch(() => null);
     const classId = activeClass?.id ?? null;
 
-    let academicYear: string | null = null;
+    let sessionYear: string | null = null;
     if (activeClass?.academic_session_id) {
       const sess = await db('academic_sessions').where('id', activeClass.academic_session_id).select('name', 'year').first().catch(() => null);
-      academicYear = sess?.year || sess?.name || null;
+      sessionYear = sess?.year || sess?.name || null;
+    }
+    // Resolve the year the report-card data is actually keyed on (publications /
+    // results use "YYYY/YYYY+1"), so the publish-gate matches reliably.
+    let academicYear: string | null = null;
+    if (classId) {
+      academicYear = await slReportCardService.resolveClassAcademicYear(tenantId, classId, sessionYear).catch(() => sessionYear);
+    } else {
+      academicYear = sessionYear;
     }
 
     // Published gate — term-aware, mirrors the student view so parents only

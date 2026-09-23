@@ -7,7 +7,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@hooks/useAuth';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   User, Mail, Phone, MapPin, Calendar, BookOpen, Heart, Shield, Hash, Globe,
   Briefcase, ChevronLeft, Search, SlidersHorizontal, Award, Clock,
@@ -60,6 +60,7 @@ const ENABLE_V2_FEATURES = false;
 
 export const StudentProfilesPage: React.FC = () => {
   const location = useLocation();
+  const queryClient = useQueryClient();
   const { canAccess } = useAuth();
   // Parent-account provisioning is an admin/admissions function, not teachers'.
   const canManage = canAccess(['principal', 'super_admin', 'admissions_officer']);
@@ -289,6 +290,8 @@ export const StudentProfilesPage: React.FC = () => {
           tempPass: responseData.temporary_password || '(Existing Account Linked)',
         });
         showToast.success('Parent account created & linked successfully!');
+        // Refresh the student detail so the new guardian + credentials show.
+        queryClient.invalidateQueries({ queryKey: ['student-profile-details', student.id] });
       } else {
         showToast.error(responseData.message || 'Failed to create parent account.');
       }
@@ -712,7 +715,7 @@ export const StudentProfilesPage: React.FC = () => {
                                 <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-mono">Role: student</span>
                               </div>
                               <p className="text-slate-400 font-mono text-[11px] truncate">
-                                Email: <strong className="text-slate-100">{student.demo_login?.student_email || student.email || `${(student.student_id || 'student').toLowerCase()}@student.school.com`}</strong>
+                                Username: <strong className="text-slate-100">{student.demo_login?.student_username || student.student_id}</strong>
                               </p>
                               <p className="text-slate-400 font-mono text-[11px]">
                                 Password: <strong className="text-emerald-400">{student.demo_login?.student_password || 'Uses their own password'}</strong>

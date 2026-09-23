@@ -126,13 +126,39 @@ router.post('/:studentId/guardians', authenticate, authorize('admin', 'principal
       throw new AppError('Missing required fields', 400, 'VALIDATION_ERROR');
     }
 
-    // Create guardian
+    const guardianEmail = email.toLowerCase().trim();
+
+    // Link to an existing parent user (tenant-scoped) if one has this email, so
+    // the parent portal (resolveChildren) can see this child. If none exists,
+    // create a parent login account with a demo password so the guardian can
+    // actually sign in.
+    let parentUser = await db('users').where({ tenant_id: tenantId, email: guardianEmail }).first();
+    let generatedParentPassword: string | null = null;
+    if (!parentUser) {
+      const pwd = PasswordService.generateTemporaryPassword();
+      const [created] = await db('users').insert({
+        tenant_id: tenantId,
+        email: guardianEmail,
+        first_name: first_name.trim(),
+        last_name: last_name.trim(),
+        password_hash: await PasswordService.hashPassword(pwd),
+        temp_password: pwd,
+        role: 'parent',
+        status: 'active',
+        created_by: createdBy,
+        created_at: new Date(),
+        updated_at: new Date(),
+      }).returning('*').catch(() => [null]);
+      if (created) { parentUser = created; generatedParentPassword = pwd; }
+    }
+
+    // Create guardian (linked to the parent user account).
     const [id] = await db('guardians').insert({
       student_id: student.id,
       first_name: first_name.trim(),
       last_name: last_name.trim(),
       relationship,
-      email: email.toLowerCase(),
+      email: guardianEmail,
       phone_number,
       occupation: occupation || null,
       address_line_1: address_line_1 || null,
@@ -142,6 +168,7 @@ router.post('/:studentId/guardians', authenticate, authorize('admin', 'principal
       postal_code: postal_code || null,
       country: country || null,
       is_primary_guardian: is_primary_guardian || false,
+      user_id: parentUser?.id || null,
       created_at: new Date(),
       updated_at: new Date(),
       created_by: createdBy,
@@ -155,6 +182,9 @@ router.post('/:studentId/guardians', authenticate, authorize('admin', 'principal
     res.status(201).json({
       message: 'Guardian added successfully',
       guardian,
+      parent_account: parentUser
+        ? { email: parentUser.email, temporary_password: generatedParentPassword || '(existing account)' }
+        : null,
     });
 
     logger.info(`Guardian added for student ${student.student_id}`);
@@ -361,8 +391,8 @@ router.post('/:studentId/parent-account', authenticate, authorize('principal', '
       throw new AppError('Parent email is required to create an account', 400, 'VALIDATION_ERROR');
     }
 
-    // Check if user already exists
-    let user = await db('users').where('email', targetEmail).first();
+    // Check if user already exists (tenant-scoped).
+    let user = await db('users').where({ tenant_id: tenantId, email: targetEmail }).first();
     let tempPassword = '';
 
     if (!user) {
@@ -375,6 +405,7 @@ router.post('/:studentId/parent-account', authenticate, authorize('principal', '
         first_name: targetFirstName,
         last_name: targetLastName,
         password_hash: passwordHash,
+        temp_password: tempPassword,
         role: 'parent',
         status: 'active',
         created_by: createdBy,
@@ -383,13 +414,30 @@ router.post('/:studentId/parent-account', authenticate, authorize('principal', '
       }).returning('*');
 
       user = insertedUser;
+    } else if (password) {
+      // Principal explicitly set a password for an existing parent account.
+      const passwordHash = await PasswordService.hashPassword(password);
+      await db('users').where('id', user.id).update({
+        password_hash: passwordHash, temp_password: password, status: 'active', updated_at: new Date(),
+      });
+      tempPassword = password;
+    } else if (!user.last_login && user.temp_password) {
+      // Never-logged-in account — surface the existing demo password.
+      tempPassword = user.temp_password;
     }
 
-    // Insert/link guardian entry in guardians table for multi-guardian tracking
+    // Is this the student's FIRST guardian? If so, make it primary.
+    const guardianCount = await db('guardians').where('student_id', student.id).count('* as c').first();
+    const isFirstGuardian = Number(guardianCount?.c ?? 0) === 0;
+
+    // Insert/link guardian entry in guardians table for multi-guardian tracking.
+    // CRITICAL: link guardians.user_id to the parent user so the parent portal
+    // (resolveChildren) can see this child.
     const existingGuardian = await db('guardians')
       .where('student_id', student.id)
       .andWhere(function(this: any) {
-        this.where('email', targetEmail)
+        this.whereRaw('LOWER(email) = ?', [targetEmail])
+            .orWhere('user_id', user.id)
             .orWhere(db.raw('LOWER(first_name) = ? AND LOWER(last_name) = ?', [targetFirstName.toLowerCase(), targetLastName.toLowerCase()]));
       })
       .first();
@@ -400,13 +448,17 @@ router.post('/:studentId/parent-account', authenticate, authorize('principal', '
         first_name: targetFirstName,
         last_name: targetLastName,
         email: targetEmail,
-        phone_number: phone || student.guardian_phone || '—',
+        phone_number: phone || student.guardian_phone || null,
         relationship: relationship || 'Parent',
-        is_primary_guardian: false,
+        is_primary_guardian: isFirstGuardian,
+        user_id: user.id,
         created_at: new Date(),
         updated_at: new Date(),
         created_by: createdBy,
-      }).catch(() => {});
+      }).catch((e) => logger.warn(`Guardian insert failed for student ${student.id}: ${e?.message || e}`));
+    } else if (!existingGuardian.user_id) {
+      // Link the existing guardian row to the parent user account.
+      await db('guardians').where('id', existingGuardian.id).update({ user_id: user.id, updated_at: new Date() }).catch(() => {});
     }
 
     // Update primary guardian info if not set

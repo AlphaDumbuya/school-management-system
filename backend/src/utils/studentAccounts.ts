@@ -38,6 +38,7 @@ export async function provisionStudentAccounts(
 ): Promise<{
   studentUserId: string | null;
   parentUserId: string | null;
+  studentUsername: string | null;
   parentEmail: string;
   studentPassword: string | null;
   parentPassword: string | null;
@@ -50,15 +51,25 @@ export async function provisionStudentAccounts(
   const reg = (info.reg_id || 'student').toLowerCase();
 
   // ── Student user account ────────────────────────────────────────────────
+  // Students sign in with their STUDENT ID NUMBER (reg_id) as the username plus
+  // a generated demo password. A synthetic email is still stored because the
+  // users table requires a unique (tenant_id, email) — but it is not used to
+  // sign in.
+  const studentUsername = (info.reg_id || '').trim();
   try {
     const studentEmail = (info.email || `${reg}@student.school.com`).toLowerCase().trim();
-    let su = await db('users').where({ tenant_id: tenantId, email: studentEmail }).first();
+    // Prefer matching an existing account by username (ID number); fall back to email.
+    let su = studentUsername
+      ? await db('users').where({ tenant_id: tenantId }).whereRaw('lower(username) = ?', [studentUsername.toLowerCase()]).first()
+      : null;
+    if (!su) su = await db('users').where({ tenant_id: tenantId, email: studentEmail }).first();
     if (!su) {
       const pwd = PasswordService.generateTemporaryPassword();
       const hash = await PasswordService.hashPassword(pwd);
       const [inserted] = await db('users').insert({
         tenant_id: tenantId,
         email: studentEmail,
+        username: studentUsername || null,
         first_name: info.first_name || 'Student',
         last_name: info.last_name || info.reg_id,
         password_hash: hash,
@@ -71,17 +82,23 @@ export async function provisionStudentAccounts(
       su = inserted;
       studentPassword = pwd;
     } else if (!su.last_login) {
-      // Heal never-logged-in account with a fresh random temp password.
+      // Heal never-logged-in account with a fresh demo password + ensure the
+      // username (ID number) is set.
       const pwd = PasswordService.generateTemporaryPassword();
       await db('users').where('id', su.id).update({
         password_hash: await PasswordService.hashPassword(pwd),
         temp_password: pwd,
+        username: studentUsername || su.username || null,
         status: 'active',
         updated_at: new Date(),
       });
       studentPassword = pwd;
     } else {
-      // Real user (has logged in) — never touch their password; show stored temp if any.
+      // Real user (has logged in) — never touch their password; just make sure
+      // the username (ID number) is set so they can sign in with it.
+      if (studentUsername && !su.username) {
+        await db('users').where('id', su.id).update({ username: studentUsername, updated_at: new Date() }).catch(() => {});
+      }
       studentPassword = su.temp_password || null;
     }
     studentUserId = su?.id ?? null;
@@ -130,15 +147,39 @@ export async function provisionStudentAccounts(
     }
     parentUserId = pu?.id ?? null;
 
-    // Link guardian rows for this student to the parent user.
+    // Ensure an AUTHORITATIVE guardian row exists linking this student to the
+    // parent user. Parent-portal access + release notifications depend on the
+    // guardians table (not the synthetic email), so we create one if missing
+    // and always (re)link it to the parent user id.
     if (parentUserId) {
       try {
         if (await db.schema.hasTable('guardians')) {
-          await db('guardians')
+          const existingGuardian = await db('guardians')
             .where('student_id', info.student_id)
-            .whereNull('user_id')
-            .update({ user_id: parentUserId, updated_at: new Date() })
-            .catch(() => {});
+            .first()
+            .catch(() => null);
+
+          if (!existingGuardian) {
+            await db('guardians').insert({
+              student_id: info.student_id,
+              first_name: gFirst || 'Parent',
+              last_name: gRest.join(' ') || info.last_name || reg,
+              email: info.guardian_email || null,
+              phone_number: info.guardian_phone || null,
+              relationship: 'Guardian',
+              is_primary_guardian: true,
+              user_id: parentUserId,
+              created_at: new Date(),
+              updated_at: new Date(),
+            }).catch((e) => logger.warn('provisionStudentAccounts: guardian insert failed', { error: e?.message }));
+          } else {
+            // Link any unlinked guardian rows for this student to the parent user.
+            await db('guardians')
+              .where('student_id', info.student_id)
+              .whereNull('user_id')
+              .update({ user_id: parentUserId, updated_at: new Date() })
+              .catch(() => {});
+          }
         }
       } catch (_) { /* ignore */ }
     }
@@ -146,5 +187,5 @@ export async function provisionStudentAccounts(
     logger.warn('provisionStudentAccounts: parent account step failed', { error: e?.message });
   }
 
-  return { studentUserId, parentUserId, parentEmail, studentPassword, parentPassword };
+  return { studentUserId, parentUserId, studentUsername: studentUsername || null, parentEmail, studentPassword, parentPassword };
 }

@@ -8,7 +8,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Lock, Eye, GraduationCap, ShieldCheck, Loader2, Send, CheckCircle2 } from 'lucide-react';
+import { Lock, Eye, GraduationCap, ShieldCheck, Loader2, Send, CheckCircle2, History, XCircle } from 'lucide-react';
 import { Button } from '@components/ui/button';
 import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
 import { showToast } from '@utils/toast';
@@ -82,6 +82,15 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
   const classes: any[] = (classesData as any)?.data ?? [];
   const classOptions = classes.map((c) => ({ value: String(c.id), label: c.name, sublabel: c.level }));
 
+  // Publish history for the selected academic year.
+  const { data: pubResp, isLoading: pubLoading } = useQuery({
+    queryKey: ['sl-report-publications', academicYear],
+    queryFn: () => reportCardService.getPublications(academicYear),
+    staleTime: 15_000,
+  });
+  const publications = ((pubResp as any)?.data ?? []) as import('@services/reportCardService').PublicationRecord[];
+  const releasedPubs = publications.filter((p) => p.is_published);
+
   const toggle = (key: keyof ReportSettings) =>
     setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
 
@@ -102,13 +111,31 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
     if (!pubClassId) { showToast.error('Select a class'); return; }
     setPublishing(true);
     try {
-      await reportCardService.setPublication({
+      const res: any = await reportCardService.setPublication({
         class_id: pubClassId,
         academic_year: academicYear,
         term: pubTerm || null,
         published,
       });
-      showToast.success(published ? 'Results published' : 'Results unpublished');
+      const label = pubTerm ? SL_TERMS.find((t) => t.value === pubTerm)?.label || pubTerm : 'Whole year';
+      const cls = classOptions.find((c) => c.value === pubClassId)?.label || 'class';
+      const ap = res?.auto_promotion;
+      showToast.success(
+        published
+          ? `${label} released for ${cls}${ap?.ran ? ` · ${ap.promoted} promoted` : ''}`
+          : `${label} unreleased for ${cls}`,
+      );
+      // Refresh the publish history and any caches the portals read from so the
+      // release reflects everywhere without a manual reload.
+      queryClient.invalidateQueries({ queryKey: ['sl-report-publications'] });
+      queryClient.invalidateQueries({ queryKey: ['class-ranking'] });
+      queryClient.invalidateQueries({ queryKey: ['report-card'] });
+      queryClient.invalidateQueries({ queryKey: ['report-card-self'] });
+      queryClient.invalidateQueries({ queryKey: ['report-card-parent-children'] });
+      queryClient.invalidateQueries({ queryKey: ['student-results-self'] });
+      queryClient.invalidateQueries({ queryKey: ['parent-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['parent-child-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['student-dashboard'] });
     } catch {
       showToast.error('Failed to update publication');
     } finally {
@@ -174,6 +201,57 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
           <Button variant="outline" onClick={() => handlePublish(false)} disabled={publishing || !pubClassId}>
             Unrelease
           </Button>
+        </div>
+
+        {/* ── Release history — confirms what has been published ── */}
+        <div className="mt-5 pt-4 border-t border-gray-100 dark:border-gray-700">
+          <div className="flex items-center gap-2 mb-3">
+            <History size={15} className="text-gray-400" />
+            <h4 className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+              Release History · {academicYear}
+            </h4>
+          </div>
+          {pubLoading ? (
+            <div className="flex items-center gap-2 text-xs text-gray-400 py-3"><Loader2 size={14} className="animate-spin" /> Loading history…</div>
+          ) : publications.length === 0 ? (
+            <p className="text-xs text-gray-400 py-3">Nothing released yet for this year. Release a class above to see it here.</p>
+          ) : (
+            <ul className="divide-y divide-gray-100 dark:divide-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+              {publications.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 px-3 py-2.5 bg-white dark:bg-gray-800">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {p.is_published ? (
+                      <CheckCircle2 size={16} className="text-emerald-500 flex-shrink-0" />
+                    ) : (
+                      <XCircle size={16} className="text-gray-300 flex-shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                        {p.class_name || 'Class'} · <span className="font-normal text-gray-600 dark:text-gray-400">{p.term_label}</span>
+                      </p>
+                      <p className="text-[11px] text-gray-400">
+                        {p.is_published ? 'Released' : 'Unreleased'}
+                        {p.published_at ? ` · ${new Date(p.published_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+                        {p.published_by_name ? ` · by ${p.published_by_name}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                    p.is_published
+                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                      : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                  }`}>
+                    {p.is_published ? 'LIVE' : 'OFF'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {releasedPubs.length > 0 && (
+            <p className="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+              {releasedPubs.length} active release{releasedPubs.length === 1 ? '' : 's'} — visible in parent & student portals.
+            </p>
+          )}
         </div>
       </div>
 

@@ -278,10 +278,17 @@ export class AuthService {
     | { mfa_required: true; mfa_token: string }
   > {
     try {
-      // Find user by email
-      const user = await this.db('users').where({ email }).first();
+      // The identifier may be an email (parents/staff) OR a username
+      // (students sign in with their student ID number). Match either.
+      const identifier = (email || '').trim();
+      const user = identifier.includes('@')
+        ? await this.db('users').where({ email: identifier.toLowerCase() }).first()
+        : await this.db('users')
+            .whereRaw('lower(username) = ?', [identifier.toLowerCase()])
+            .orWhereRaw('lower(email) = ?', [identifier.toLowerCase()])
+            .first();
       if (!user) {
-        throw new AppError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
+        throw new AppError('Invalid username or password', 401, 'INVALID_CREDENTIALS');
       }
 
       // Check user status
@@ -522,9 +529,11 @@ export class AuthService {
       // Hash new password
       const hashedPassword = await PasswordService.hashPassword(newPassword);
 
-      // Update password
+      // Update password and clear the stored demo/temp password — once the user
+      // sets their own, the auto-generated one is no longer valid or shown.
       await this.db('users').where({ id: userId }).update({
         password_hash: hashedPassword,
+        temp_password: null,
         updated_at: new Date(),
       });
 

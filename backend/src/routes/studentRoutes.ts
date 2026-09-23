@@ -705,12 +705,15 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
       : null;
 
     student.login_credentials = {
+      // Students sign in with their student ID NUMBER as the username.
+      student_username: studentUser?.username || provisioned.studentUsername || student.student_id || safeStudentId,
       student_email: studentUser?.email || `${safeStudentId}@student.school.com`,
-      // Random temp password if we just provisioned/healed; null if the user
-      // already set their own (then show "use existing password" in the UI).
-      student_password: provisioned.studentPassword,
+      // Demo password: prefer the freshly-provisioned one, else the stored
+      // temp_password on the account (both student & parent). Only null when a
+      // real user has changed their own password (temp_password cleared).
+      student_password: provisioned.studentPassword || studentUser?.temp_password || null,
       parent_email: parentUser?.email || provisioned.parentEmail,
-      parent_password: provisioned.parentPassword,
+      parent_password: provisioned.parentPassword || parentUser?.temp_password || null,
       has_parent_account: !!parentUser,
     };
     // Back-compat alias for existing frontend that reads demo_login.

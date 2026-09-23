@@ -599,6 +599,93 @@ export class SLReportCardService {
   }
 
   /**
+   * Resolve the academic-year STRING that the report-card data for a class is
+   * actually keyed on. Score entry + publishing both use the "YYYY/YYYY+1"
+   * format (from the Results page), while academic_sessions may store the year
+   * differently (e.g. "2025"). To make the parent/student publish-gate reliable
+   * we derive the year from the real data: latest publication for the class,
+   * else the latest sl_subject_results row, else the caller's hint/current year.
+   */
+  async resolveClassAcademicYear(
+    tenantId: string,
+    classId: string,
+    hint?: string | null,
+  ): Promise<string | null> {
+    // 1. Most recent publication for this class.
+    const pub = await db('sl_report_publications')
+      .where({ tenant_id: tenantId, class_id: classId })
+      .orderBy('updated_at', 'desc')
+      .select('academic_year')
+      .first()
+      .catch(() => null);
+    if (pub?.academic_year) return pub.academic_year;
+
+    // 2. Most recent results row for this class.
+    const res = await db('sl_subject_results')
+      .where({ tenant_id: tenantId, class_id: classId })
+      .orderBy('updated_at', 'desc')
+      .select('academic_year')
+      .first()
+      .catch(() => null);
+    if (res?.academic_year) return res.academic_year;
+
+    // 3. Caller hint (e.g. session year) or the current YYYY/YYYY+1.
+    if (hint) return hint;
+    const y = new Date().getFullYear();
+    return `${y}/${y + 1}`;
+  }
+
+  /**
+   * Publication history for the tenant (optionally filtered by academic year).
+   * Returns each publish record with class name + publisher name so the
+   * principal can SEE exactly what has been released and when.
+   */
+  async getPublications(
+    tenantId: string,
+    academicYear?: string,
+  ): Promise<Array<{
+    id: string;
+    class_id: string;
+    class_name: string | null;
+    academic_year: string;
+    term: string | null;
+    term_label: string;
+    is_published: boolean;
+    published_at: string | null;
+    published_by_name: string | null;
+  }>> {
+    let q = db('sl_report_publications as p')
+      .leftJoin('classes as c', 'p.class_id', 'c.id')
+      .leftJoin('users as u', 'p.published_by', 'u.id')
+      .where('p.tenant_id', tenantId);
+    if (academicYear) q = q.where('p.academic_year', academicYear);
+
+    const rows = await q
+      .select(
+        'p.id', 'p.class_id', 'p.academic_year', 'p.term', 'p.is_published', 'p.published_at',
+        'c.name as class_name',
+        db.raw("NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))), '') as published_by_name"),
+      )
+      .orderBy('p.published_at', 'desc')
+      .orderBy('p.updated_at', 'desc');
+
+    const TERM_LABEL: Record<string, string> = {
+      first_term: 'First Term', second_term: 'Second Term', third_term: 'Third Term',
+    };
+    return rows.map((r: any) => ({
+      id: r.id,
+      class_id: r.class_id,
+      class_name: r.class_name || null,
+      academic_year: r.academic_year,
+      term: r.term || null,
+      term_label: r.term ? (TERM_LABEL[r.term] || r.term) : 'Full Year',
+      is_published: !!r.is_published,
+      published_at: r.published_at ? new Date(r.published_at).toISOString() : null,
+      published_by_name: r.published_by_name || null,
+    }));
+  }
+
+  /**
    * Class ranking (results directory): students ordered by position (1st, 2nd,
    * 3rd …) for a term, or by yearly position when `term` is null/'full'.
    *

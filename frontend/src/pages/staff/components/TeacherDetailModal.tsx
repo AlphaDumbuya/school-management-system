@@ -216,18 +216,18 @@ export const TeacherDetailModal: React.FC<TeacherDetailModalProps> = ({
                 <div>
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Credential Status</span>
                   <div className="mt-1">
-                    {currentTeacher.last_login ? (
-                      <span className="text-xs font-semibold text-green-600 dark:text-green-400">
-                        Active (User changed password)
-                      </span>
-                    ) : (
+                    {currentTeacher.temp_password ? (
                       <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
                         Temporary Password Set
+                      </span>
+                    ) : (
+                      <span className="text-xs font-semibold text-green-600 dark:text-green-400">
+                        Active (User set own password)
                       </span>
                     )}
                   </div>
                 </div>
-                {!currentTeacher.last_login && currentTeacher.temp_password && (
+                {currentTeacher.temp_password && (
                   <div>
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Demo / Temporary Password</span>
                     <span className="text-xs font-mono font-bold text-gray-850 dark:text-gray-100 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-0.5 rounded mt-1 inline-block select-all">
