@@ -92,6 +92,10 @@ export const financeService = {
   getOverdueInvoices: () => apiClient.get('/api/v1/invoices-overdue'),
   getInvoiceStatistics: () => apiClient.get('/api/v1/invoices-statistics'),
 
+  // ── Balance reminders (email parents about outstanding fees, with a Pay link) ─
+  sendBalanceReminders: (data: { scope: 'student' | 'class' | 'level' | 'all'; studentId?: string; classId?: string; level?: string; term?: string; message?: string }) =>
+    apiClient.post<{ success: boolean; data: { sent: number; notified: number; skippedNoBalance: number; skippedNoEmail: number; considered: number } }>('/api/v1/finance/balance-reminders', data),
+
   // ── Payments ──────────────────────────────────────────────────────────────
   recordPayment: (data: { feeId: string; amount: number; method: string; transactionReference?: string; notes?: string; paymentDate?: string }) =>
     apiClient.post('/api/v1/payments', data),

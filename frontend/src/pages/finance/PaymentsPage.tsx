@@ -13,7 +13,7 @@ import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Smartphone, CreditCard, Banknote, Landmark, Wallet, Plus, Download,
-  TrendingUp, Receipt, ChevronDown, X, Users, AlertTriangle,
+  TrendingUp, Receipt, ChevronDown, X, Users, AlertTriangle, Bell, Loader2,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -25,6 +25,7 @@ import { showToast } from '@utils/toast';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { financeService } from '@services/financeService';
 import { studentsService } from '@services/studentsService';
+import { classesService } from '@services/classesService';
 import { fmtMoney, statusPill, SwipeHint } from './FinanceOverviewCards';
 
 const methodMeta = (m?: string) => {
@@ -46,6 +47,7 @@ export const PaymentsPage: React.FC = () => {
   const [levelFilter, setLevelFilter] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
   const [recordOpen, setRecordOpen] = useState(false);
+  const [remindOpen, setRemindOpen] = useState(false);
   const [receipt, setReceipt] = useState<any | null>(null);
   const [breakdownTab, setBreakdownTab] = useState<BreakdownTab>('term');
 
@@ -83,6 +85,28 @@ export const PaymentsPage: React.FC = () => {
   const trendSeries = a?.trend?.length ? { series: [{ name: 'Collected (Le)', data: a.trend.map((t: any) => t.total) }], labels: a.trend.map((t: any) => t.label) } : { series: [], labels: [] };
   const methodSeries = a?.byMethod?.length ? { series: [{ name: 'Amount', data: a.byMethod.map((m: any) => m.total) }], labels: a.byMethod.map((m: any) => methodMeta(m.method).label) } : { series: [], labels: [] };
 
+  // Grouped bar: Billed vs Collected vs Outstanding by class level.
+  const byLevelChart = a?.byLevel?.length ? {
+    labels: a.byLevel.map((l: any) => l.level),
+    series: [
+      { name: 'Billed', data: a.byLevel.map((l: any) => l.billed) },
+      { name: 'Collected', data: a.byLevel.map((l: any) => l.collected) },
+      { name: 'Outstanding', data: a.byLevel.map((l: any) => l.outstanding) },
+    ],
+  } : { series: [], labels: [] };
+
+  // Bar: collection rate (%) per class — lowest first so laggards stand out.
+  const rateByClassChart = a?.byClass?.length ? (() => {
+    const sorted = [...a.byClass].filter((c: any) => c.billed > 0).sort((x: any, y: any) => x.rate - y.rate).slice(0, 12);
+    return { labels: sorted.map((c: any) => c.className), series: [{ name: 'Collection %', data: sorted.map((c: any) => c.rate) }] };
+  })() : { series: [], labels: [] };
+
+  // Donut: billed split into collected vs outstanding (overall health at a glance).
+  const collectedVsOutstanding = (totals.paid > 0 || totals.outstanding > 0) ? {
+    labels: ['Collected', 'Outstanding'],
+    series: [{ name: 'Le', data: [totals.paid, totals.outstanding] }],
+  } : { series: [], labels: [] };
+
   const breakdownRows: any[] = breakdownTab === 'term' ? (a?.byTerm ?? []) : breakdownTab === 'level' ? (a?.byLevel ?? []) : (a?.byClass ?? []);
   const breakdownKey = breakdownTab === 'term' ? 'term' : breakdownTab === 'level' ? 'level' : 'className';
 
@@ -96,6 +120,7 @@ export const PaymentsPage: React.FC = () => {
         actions={
           <div className="flex items-center gap-2">
             <ExportButton endpoint="/api/v1/finance/export" filename="payments" />
+            <Button variant="outline" size="sm" onClick={() => setRemindOpen(true)}><Bell size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Send Reminders</span></Button>
             <Button variant="default" size="sm" onClick={() => setRecordOpen(true)}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Record Payment</span></Button>
           </div>
         }
@@ -130,6 +155,28 @@ export const PaymentsPage: React.FC = () => {
             <ChartCard title="By Payment Method" type="donut" height={280}
               emptyState={{ message: 'No method data yet', description: 'Payment methods will break down here.' }} {...methodSeries} />
           </div>
+        </div>
+
+        {/* ── Billed vs Collected vs Outstanding by level + collection health donut ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          <div className="lg:col-span-2">
+            <ChartCard title="Billed vs Collected vs Outstanding" subtitle="By class level" type="bar" height={300}
+              colors={['#3b82f6', '#10b981', '#ef4444']}
+              emptyState={{ message: 'No billing data yet', description: 'Bill a term on the Fees page to populate this.' }} {...byLevelChart} />
+          </div>
+          <div>
+            <ChartCard title="Collection Health" subtitle="Collected vs outstanding" type="donut" height={300}
+              colors={['#10b981', '#ef4444']}
+              donutCenterLabel={`${totals.collectionRate}%`}
+              emptyState={{ message: 'No fees billed yet', description: 'Overall collection split will show here.' }} {...collectedVsOutstanding} />
+          </div>
+        </div>
+
+        {/* ── Collection rate by class ── */}
+        <div className="mb-6">
+          <ChartCard title="Collection Rate by Class" subtitle="Lowest-collecting classes first — spot where to follow up" type="bar" height={300}
+            colors={['#8b5cf6']}
+            emptyState={{ message: 'No class billing yet', description: 'Per-class collection rates will chart here.' }} {...rateByClassChart} />
         </div>
 
         {/* ── Breakdown by term / level / class ── */}
@@ -196,7 +243,10 @@ export const PaymentsPage: React.FC = () => {
                       <div className="font-medium text-sm text-gray-900 dark:text-white truncate">{d.studentName}</div>
                       <div className="text-xs text-gray-400">{d.className || '—'} · {d.admissionNo}</div>
                     </div>
-                    <span className="text-sm font-bold text-rose-600 whitespace-nowrap">{fmtMoney(d.outstanding)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-rose-600 whitespace-nowrap">{fmtMoney(d.outstanding)}</span>
+                      {d.studentId && <DefaulterReminderButton studentId={d.studentId} />}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -291,6 +341,7 @@ export const PaymentsPage: React.FC = () => {
         )}
 
         {recordOpen && <RecordPaymentModal onClose={() => setRecordOpen(false)} onSaved={() => { setRecordOpen(false); refetchAll(); }} />}
+        {remindOpen && <SendRemindersModal onClose={() => setRemindOpen(false)} />}
         {receipt && <ReceiptModal payment={receipt} onClose={() => setReceipt(null)} />}
       </PageShell>
     </MainLayout>
@@ -443,5 +494,133 @@ const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
     <span className="font-medium text-gray-900 dark:text-white text-right">{value}</span>
   </div>
 );
+
+// ── Quick per-defaulter reminder (one click, emails that student's guardian) ──
+const DefaulterReminderButton: React.FC<{ studentId: string }> = ({ studentId }) => {
+  const [sending, setSending] = useState(false);
+  const send = async () => {
+    setSending(true);
+    try {
+      const res: any = await financeService.sendBalanceReminders({ scope: 'student', studentId });
+      const d = res?.data?.data ?? res?.data;
+      if (d?.sent > 0) showToast.success('Reminder sent (email + portal notification)');
+      else if (d?.notified > 0) showToast.success('Portal notification sent (no email on file)');
+      else if (d?.skippedNoBalance > 0) showToast.info('No outstanding balance to remind about');
+      else showToast.info('Nothing to send');
+    } catch {
+      showToast.error('Failed to send reminder');
+    } finally { setSending(false); }
+  };
+  return (
+    <button onClick={send} disabled={sending} title="Email balance reminder" className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50">
+      {sending ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} />}
+    </button>
+  );
+};
+
+// ── Bulk balance-reminder modal ──────────────────────────────────────────────
+type RemindScope = 'all' | 'class' | 'level';
+const TERMS = ['First Term', 'Second Term', 'Third Term'];
+
+const SendRemindersModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [scope, setScope] = useState<RemindScope>('all');
+  const [classId, setClassId] = useState('');
+  const [level, setLevel] = useState('');
+  const [term, setTerm] = useState('');
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const { data: classesResp } = useQuery({ queryKey: ['remind-classes'], queryFn: () => classesService.listClasses({ limit: 200 } as any), staleTime: 60_000 });
+  const classes = ((classesResp as any)?.data?.data ?? (classesResp as any)?.data ?? []) as any[];
+  const levels = useMemo(() => Array.from(new Set(classes.map((c: any) => c.level).filter(Boolean))).sort(), [classes]);
+
+  const submit = async () => {
+    if (scope === 'class' && !classId) { showToast.error('Select a class'); return; }
+    if (scope === 'level' && !level) { showToast.error('Select a level'); return; }
+    setSending(true);
+    try {
+      const res: any = await financeService.sendBalanceReminders({
+        scope, classId: scope === 'class' ? classId : undefined, level: scope === 'level' ? level : undefined,
+        term: term || undefined, message: message || undefined,
+      });
+      const d = res?.data?.data ?? res?.data;
+      const sent = d?.sent ?? 0;
+      const notified = d?.notified ?? 0;
+      if (sent > 0 || notified > 0) {
+        const parts: string[] = [];
+        if (sent > 0) parts.push(`${sent} email${sent === 1 ? '' : 's'}`);
+        if (notified > 0) parts.push(`${notified} portal alert${notified === 1 ? '' : 's'}`);
+        const extra = d?.skippedNoEmail ? ` · ${d.skippedNoEmail} had no email` : '';
+        showToast.success(`Sent ${parts.join(' + ')}${extra}`);
+        onClose();
+      } else if (d?.skippedNoBalance > 0) {
+        showToast.info('No outstanding balances in this scope');
+      } else {
+        showToast.info('No students matched this scope');
+      }
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.error || 'Failed to send reminders');
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2"><Bell size={16} className="text-amber-500" /><h3 className="font-bold text-gray-900 dark:text-white">Send Balance Reminders</h3></div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-gray-500">Sends each guardian (and the student's own account) a descriptive reminder of their child's outstanding fee balance — both as a <strong>portal notification</strong> and, where an email is on file, a branded email with a secure "Log in &amp; Pay" button. Students with no balance are skipped.</p>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Who to remind</label>
+            <div className="grid grid-cols-3 gap-1 mt-1 bg-gray-100 dark:bg-gray-900/50 rounded-xl p-1">
+              {(['all', 'class', 'level'] as RemindScope[]).map((s) => (
+                <button key={s} onClick={() => setScope(s)} className={`px-2 py-1.5 text-xs font-semibold rounded-lg capitalize transition-colors ${scope === s ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>{s === 'all' ? 'All defaulters' : s}</button>
+              ))}
+            </div>
+          </div>
+
+          {scope === 'class' && (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Class</label>
+              <select value={classId} onChange={(e) => setClassId(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+                <option value="">Select a class…</option>
+                {classes.map((c: any) => <option key={c.id} value={c.id}>{c.name} {c.level ? `(${c.level})` : ''}</option>)}
+              </select>
+            </div>
+          )}
+          {scope === 'level' && (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Level</label>
+              <select value={level} onChange={(e) => setLevel(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+                <option value="">Select a level…</option>
+                {levels.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Term (optional)</label>
+            <select value={term} onChange={(e) => setTerm(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+              <option value="">All outstanding fees</option>
+              {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Custom note (optional)</label>
+            <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} placeholder="Add a personal note that appears in the email, e.g. deadlines or payment plans…" className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm resize-none" />
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button variant="default" size="sm" onClick={submit} disabled={sending}>{sending ? 'Sending…' : 'Send Reminders'}</Button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default PaymentsPage;

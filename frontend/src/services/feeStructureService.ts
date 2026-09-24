@@ -1,6 +1,6 @@
 import { apiClient } from '@lib/apiClient';
 
-export interface FeeStructureExpense { id?: string; label: string; amount: number; }
+export interface FeeStructureExpense { id?: string; label: string; amount: number; required?: boolean; }
 
 export interface FeeStructure {
   id: string;
@@ -15,6 +15,7 @@ export interface FeeStructure {
   minPercentContinuing?: number | null;
   minPercentTerm?: number | null;
   allowInstallments: boolean;
+  chargesCompulsoryFirstTerm?: boolean;
   lateFeePercent?: number | null;
   policyNotes?: string | null;
   expenses: FeeStructureExpense[];
@@ -47,6 +48,7 @@ export const feeStructureService = {
       minPercentContinuing: data.minPercentContinuing ?? null,
       minPercentTerm: data.minPercentTerm ?? null,
       allowInstallments: data.allowInstallments !== false,
+      chargesCompulsoryFirstTerm: data.chargesCompulsoryFirstTerm === true,
       lateFeePercent: data.lateFeePercent ?? null,
       policyNotes: data.policyNotes ?? null,
       expenses: data.expenses ?? [],

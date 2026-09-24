@@ -59,6 +59,30 @@ router.get('/student/:studentId', authenticate, async (req: Request, res: Respon
   } catch (error) { next(error); }
 });
 
+// ── Payment policy for a student (min %, installments) ────────────────────────
+router.get('/policy/student/:studentId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = resolveTenant(req);
+    const role = req.user?.role;
+    const userId = req.user?.id as string;
+    const studentId = req.params.studentId;
+
+    if (isStaff(role)) {
+      await assertStudentInTenant(studentId, tenantId);
+    } else if (role === 'student') {
+      const own = await ownStudentId(userId, tenantId);
+      if (own !== studentId) return res.status(403).json({ success: false, error: 'You can only view your own records.' });
+    } else if (role === 'parent' || role === 'guardian') {
+      await assertParentLinkedToStudent(userId, studentId, tenantId);
+    } else {
+      return res.status(403).json({ success: false, error: 'Access denied.' });
+    }
+
+    const policy = await financeLedgerService.getPaymentPolicy(tenantId, studentId);
+    res.json({ success: true, data: policy });
+  } catch (error) { next(error); }
+});
+
 // ── The calling student's own ledger ──────────────────────────────────────────
 router.get('/me', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {

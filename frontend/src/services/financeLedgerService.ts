@@ -16,6 +16,7 @@ export interface LedgerCharge {
   due_date: string | null;
   term: LedgerTerm | null;
   academic_year: string | null;
+  required?: boolean;
 }
 
 export interface TermBucket {
@@ -41,6 +42,15 @@ export interface StudentLedger {
   totals: { billed: number; paid: number; outstanding: number };
 }
 
+export interface PaymentPolicy {
+  allow_installments: boolean;
+  is_new_student: boolean;
+  min_percent: number;       // minimum % of the outstanding that must be paid
+  min_percent_term: number;
+  charges_compulsory_first_term: boolean;
+  policy_notes: string | null;
+}
+
 export const financeLedgerService = {
   /** A specific student's ledger (staff any student; parent verified child). */
   getStudentLedger: (studentId: string) =>
@@ -51,6 +61,12 @@ export const financeLedgerService = {
   /** The calling student's own ledger. */
   getMyLedger: () =>
     apiClient.get<{ success: boolean; data: StudentLedger }>('/api/v1/finance/ledger/me'),
+
+  /** Payment policy (min %, installments) for a student. */
+  getPaymentPolicy: (studentId: string) =>
+    apiClient.get<{ success: boolean; data: PaymentPolicy }>(
+      `/api/v1/finance/ledger/policy/student/${studentId}`,
+    ),
 
   /** Tenant summary for a year (staff). */
   getTenantSummary: (academicYear: string) =>

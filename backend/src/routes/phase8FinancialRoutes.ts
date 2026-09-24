@@ -1159,33 +1159,31 @@ router.get(
  */
 
 // GET /api/v1/finance/overview — KPIs for the finance dashboard.
+// Driven by the FEES ledger (the source of truth for what is billed/owed) so
+// the numbers are real whether or not invoices have been generated. Collected =
+// billed − outstanding (i.e. SUM(amount) − SUM(balance)).
 router.get('/finance/overview', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
-    const billed = await db('invoices')
-      .leftJoin('students', 'invoices.student_id', 'students.id')
-      .where('students.tenant_id', tenantId)
-      .sum('invoices.total_amount as total').first();
-    const paid = await db('invoices')
-      .leftJoin('students', 'invoices.student_id', 'students.id')
-      .where('students.tenant_id', tenantId)
-      .sum('invoices.total_paid as total').first();
-    const outstanding = await db('invoices')
-      .leftJoin('students', 'invoices.student_id', 'students.id')
-      .where('students.tenant_id', tenantId)
-      .sum('invoices.balance as total').first();
-    const overdue = await db('invoices')
-      .leftJoin('students', 'invoices.student_id', 'students.id')
-      .where('students.tenant_id', tenantId)
-      .where('invoices.status', 'overdue')
-      .count('invoices.id as count').first();
+    const agg = await db('fees')
+      .where('fees.tenant_id', tenantId)
+      .whereNot('fees.status', 'deleted')
+      .select(
+        db.raw('COALESCE(SUM(fees.amount),0) as billed'),
+        db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
+        db.raw("COUNT(CASE WHEN fees.status = 'overdue' THEN 1 END) as overdue_count"),
+      )
+      .first();
+    const billed = Number(agg?.billed) || 0;
+    const outstanding = Number(agg?.outstanding) || 0;
+    const paidTotal = Math.max(0, billed - outstanding);
     res.json({
       success: true,
       data: {
-        totalBilled: Number(billed?.total) || 0,
-        totalPaid: Number(paid?.total) || 0,
-        totalOutstanding: Number(outstanding?.total) || 0,
-        overdueInvoices: Number(overdue?.count) || 0,
+        totalBilled: billed,
+        totalPaid: paidTotal,
+        totalOutstanding: outstanding,
+        overdueInvoices: Number(agg?.overdue_count) || 0,
       },
     });
   } catch (error) {
@@ -1376,22 +1374,22 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
   try {
     const tenantId = (req as any).user.tenant_id;
 
-    // ── Totals from invoices (the authoritative billed/paid/outstanding) ──
-    const totals = await db('invoices')
-      .join('students', 'invoices.student_id', 'students.id')
-      .where('students.tenant_id', tenantId)
+    // ── Totals from the FEES ledger (authoritative billed/owed, invoice-free) ──
+    // collected = billed − outstanding = SUM(amount) − SUM(balance).
+    const totals = await db('fees')
+      .where('fees.tenant_id', tenantId)
+      .whereNot('fees.status', 'deleted')
       .select(
-        db.raw('COALESCE(SUM(invoices.total_amount),0) as billed'),
-        db.raw('COALESCE(SUM(invoices.total_paid),0) as paid'),
-        db.raw('COALESCE(SUM(invoices.balance),0) as outstanding'),
-        db.raw('COUNT(invoices.id) as invoice_count'),
-        db.raw("COUNT(CASE WHEN invoices.status = 'overdue' THEN 1 END) as overdue_count"),
-        db.raw("COUNT(CASE WHEN invoices.status = 'paid' THEN 1 END) as paid_count"),
+        db.raw('COALESCE(SUM(fees.amount),0) as billed'),
+        db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
+        db.raw('COUNT(fees.id) as invoice_count'),
+        db.raw("COUNT(CASE WHEN fees.status = 'overdue' THEN 1 END) as overdue_count"),
+        db.raw("COUNT(CASE WHEN fees.status = 'paid' THEN 1 END) as paid_count"),
       )
       .first();
     const billed = Number(totals?.billed) || 0;
-    const paid = Number(totals?.paid) || 0;
     const outstanding = Number(totals?.outstanding) || 0;
+    const paid = Math.max(0, billed - outstanding);
     const collectionRate = billed > 0 ? Math.round((paid / billed) * 1000) / 10 : 0;
 
     // ── Payment method breakdown ──
@@ -1415,67 +1413,78 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .groupByRaw("DATE_TRUNC('month', payments.payment_date)")
       .orderByRaw("DATE_TRUNC('month', payments.payment_date)");
 
-    // ── Collection + outstanding by class LEVEL ──
-    const byLevel = await db('invoices')
-      .join('students', 'invoices.student_id', 'students.id')
+    // ── Collection + outstanding by class LEVEL (from fees) ──
+    // collected = SUM(amount) − SUM(balance).
+    const byLevel = await db('fees')
+      .join('students', 'fees.student_id', 'students.id')
       .leftJoin('enrollments', function () {
         this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
       })
       .leftJoin('classes', 'classes.id', 'enrollments.class_id')
-      .where('students.tenant_id', tenantId)
+      .where('fees.tenant_id', tenantId)
+      .whereNot('fees.status', 'deleted')
       .select(db.raw("COALESCE(classes.level, 'Unassigned') as level"))
-      .sum('invoices.total_amount as billed')
-      .sum('invoices.total_paid as collected')
-      .sum('invoices.balance as outstanding')
+      .select(
+        db.raw('COALESCE(SUM(fees.amount),0) as billed'),
+        db.raw('COALESCE(SUM(fees.amount) - SUM(fees.balance),0) as collected'),
+        db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
+      )
       .groupByRaw("COALESCE(classes.level, 'Unassigned')")
       .orderByRaw("COALESCE(classes.level, 'Unassigned')");
 
-    // ── Collection by CLASS (name) ──
-    const byClass = await db('invoices')
-      .join('students', 'invoices.student_id', 'students.id')
+    // ── Collection by CLASS (name) from fees ──
+    const byClass = await db('fees')
+      .join('students', 'fees.student_id', 'students.id')
       .leftJoin('enrollments', function () {
         this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
       })
       .leftJoin('classes', 'classes.id', 'enrollments.class_id')
-      .where('students.tenant_id', tenantId)
+      .where('fees.tenant_id', tenantId)
+      .whereNot('fees.status', 'deleted')
       .whereNotNull('classes.name')
       .select('classes.name as class_name')
-      .sum('invoices.total_amount as billed')
-      .sum('invoices.total_paid as collected')
-      .sum('invoices.balance as outstanding')
+      .select(
+        db.raw('COALESCE(SUM(fees.amount),0) as billed'),
+        db.raw('COALESCE(SUM(fees.amount) - SUM(fees.balance),0) as collected'),
+        db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
+      )
       .groupBy('classes.name')
-      .orderByRaw('SUM(invoices.balance) DESC')
+      .orderByRaw('SUM(fees.balance) DESC')
       .limit(20);
 
-    // ── Collection by TERM ──
-    const byTerm = await db('invoices')
-      .join('students', 'invoices.student_id', 'students.id')
-      .where('students.tenant_id', tenantId)
-      .select(db.raw("COALESCE(invoices.term, 'Unspecified') as term"))
-      .sum('invoices.total_amount as billed')
-      .sum('invoices.total_paid as collected')
-      .sum('invoices.balance as outstanding')
-      .groupByRaw("COALESCE(invoices.term, 'Unspecified')")
-      .orderByRaw("COALESCE(invoices.term, 'Unspecified')");
+    // ── Collection by TERM (from fees) ──
+    const byTerm = await db('fees')
+      .where('fees.tenant_id', tenantId)
+      .whereNot('fees.status', 'deleted')
+      .select(db.raw("COALESCE(fees.term, 'Unspecified') as term"))
+      .select(
+        db.raw('COALESCE(SUM(fees.amount),0) as billed'),
+        db.raw('COALESCE(SUM(fees.amount) - SUM(fees.balance),0) as collected'),
+        db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
+      )
+      .groupByRaw("COALESCE(fees.term, 'Unspecified')")
+      .orderByRaw("COALESCE(fees.term, 'Unspecified')");
 
-    // ── Top defaulters (highest outstanding) ──
-    const topDefaulters = await db('invoices')
-      .join('students', 'invoices.student_id', 'students.id')
+    // ── Top defaulters (highest outstanding, from fees) ──
+    const topDefaulters = await db('fees')
+      .join('students', 'fees.student_id', 'students.id')
       .leftJoin('users', 'students.user_id', 'users.id')
       .leftJoin('enrollments', function () {
         this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
       })
       .leftJoin('classes', 'classes.id', 'enrollments.class_id')
-      .where('students.tenant_id', tenantId)
-      .where('invoices.balance', '>', 0)
+      .where('fees.tenant_id', tenantId)
+      .whereNot('fees.status', 'deleted')
+      .where('fees.balance', '>', 0)
       .groupBy('students.id', 'users.first_name', 'users.last_name', 'students.first_name', 'students.last_name', 'students.student_id', 'classes.name')
       .select(
+        'students.id as student_id',
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
         'students.student_id as admission_no',
         'classes.name as class_name',
-        db.raw('SUM(invoices.balance) as outstanding'),
+        db.raw('SUM(fees.balance) as outstanding'),
       )
-      .orderByRaw('SUM(invoices.balance) DESC')
+      .orderByRaw('SUM(fees.balance) DESC')
       .limit(10);
 
     // ── Recent payments ──
@@ -1515,7 +1524,7 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
         byLevel: byLevel.map((r: any) => ({ level: r.level, billed: Number(r.billed) || 0, collected: Number(r.collected) || 0, outstanding: Number(r.outstanding) || 0, rate: rate(r.billed, r.collected) })),
         byClass: byClass.map((r: any) => ({ className: r.class_name, billed: Number(r.billed) || 0, collected: Number(r.collected) || 0, outstanding: Number(r.outstanding) || 0, rate: rate(r.billed, r.collected) })),
         byTerm: byTerm.map((r: any) => ({ term: r.term, billed: Number(r.billed) || 0, collected: Number(r.collected) || 0, outstanding: Number(r.outstanding) || 0, rate: rate(r.billed, r.collected) })),
-        topDefaulters: topDefaulters.map((r: any) => ({ studentName: r.student_name, admissionNo: r.admission_no, className: r.class_name, outstanding: Number(r.outstanding) || 0 })),
+        topDefaulters: topDefaulters.map((r: any) => ({ studentId: r.student_id, studentName: r.student_name, admissionNo: r.admission_no, className: r.class_name, outstanding: Number(r.outstanding) || 0 })),
         recent: recent.map((r: any) => ({ id: r.id, studentName: r.student_name, amount: Number(r.amount) || 0, method: r.method, status: r.status, date: r.payment_date })),
         thisMonth: { total: Number(thisMonth?.total) || 0, count: Number(thisMonth?.count) || 0 },
       },
@@ -1720,6 +1729,133 @@ router.get('/finance/fees', authenticate, requireStaff, async (req: Request, res
     res.json({ success: true, data: rows });
   } catch (error) {
     logger.error(`finance/fees error: ${error}`);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// POST /api/v1/finance/balance-reminders — email guardians (or students) a
+// descriptive reminder of their child's OUTSTANDING FEE BALANCE with a "Pay
+// Fees" button that links to the portal. Works off the fees ledger, so it does
+// NOT require invoices. Scopes: single student, class, level, or all defaulters.
+router.post('/finance/balance-reminders', authenticate, requireStaff, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const userId = (req as any).user.id;
+    const { scope, studentId, classId, level, term, message } = req.body || {};
+
+    // Resolve the set of students in scope.
+    let sq = db('students')
+      .leftJoin('enrollments', function () {
+        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
+      })
+      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+      .where('students.tenant_id', tenantId)
+      .where('students.status', 'active');
+    if (scope === 'student' && studentId) sq = sq.where('students.id', studentId);
+    else if (scope === 'class' && classId) sq = sq.where('enrollments.class_id', classId);
+    else if (scope === 'level' && level) sq = sq.where('classes.level', level);
+    const students = await sq.distinct('students.id as id').select('students.id');
+
+    const { default: emailService } = await import('@services/emailService');
+    const { default: notificationService } = await import('@services/notificationService');
+    const now = new Date();
+    let sent = 0;
+    let notified = 0;
+    let skippedNoBalance = 0;
+    let skippedNoEmail = 0;
+
+    // Helper to fire a targeted in-app notification (fire-and-forget).
+    const notify = async (recipientUserId: string | null | undefined, studentName: string, balance: number, overdue: boolean, sid: string) => {
+      if (!recipientUserId) return;
+      await notificationService.createNotification({
+        notificationType: 'payment',
+        recipientId: recipientUserId,
+        subject: overdue ? 'Overdue school fees' : 'Outstanding school fees',
+        message: `${studentName} has an outstanding balance of Le ${balance.toLocaleString()}${overdue ? ' which is now overdue' : ''}. Tap to view and pay from your portal.`,
+        data: { studentId: sid, balance, overdue, kind: 'balance_reminder' },
+        channels: ['in_app'],
+        sourceType: 'fee',
+        sourceId: sid,
+        createdBy: userId,
+      }).then(() => { notified++; }).catch(() => {});
+    };
+
+    for (const s of students) {
+      // Outstanding balance from the fees ledger (optionally per-term).
+      let fq = db('fees')
+        .where('fees.student_id', s.id)
+        .whereNot('fees.status', 'deleted')
+        .whereIn('fees.status', ['pending', 'partial', 'overdue']);
+      if (term) fq = fq.where('fees.term', term);
+      const fees = await fq.select('fees.balance', 'fees.amount', 'fees.due_date');
+      const balance = fees.reduce((sum: number, f: any) => sum + (Number(f.balance ?? f.amount) || 0), 0);
+      if (balance <= 0) { skippedNoBalance++; continue; }
+
+      // Earliest due date drives the "overdue" flag.
+      const dueDates = fees.map((f: any) => (f.due_date ? new Date(f.due_date) : null)).filter(Boolean) as Date[];
+      const earliestDue = dueDates.length ? new Date(Math.min(...dueDates.map((d) => d.getTime()))) : undefined;
+      const overdue = earliestDue ? earliestDue < now : false;
+
+      // Resolve student name + best recipient (linked active guardian first).
+      const studentRow = await db('students').where('id', s.id).first().catch(() => null);
+      const studentUser = studentRow?.user_id
+        ? await db('users').where('id', studentRow.user_id).first().catch(() => null)
+        : null;
+      const studentName = studentRow
+        ? [studentRow.first_name, studentRow.last_name].filter(Boolean).join(' ')
+        : (studentUser ? [studentUser.first_name, studentUser.last_name].filter(Boolean).join(' ') : 'your child');
+
+      let recipientEmail: string | null = studentRow?.email || studentUser?.email || null;
+      let recipientName = 'Parent/Guardian';
+      let guardianUserId: string | null = null;
+
+      const guardianLink = await db('student_guardians')
+        .where({ student_id: s.id, status: 'active' })
+        .first()
+        .catch(() => null);
+      if (guardianLink?.guardian_id) {
+        guardianUserId = guardianLink.guardian_id;
+        const guardian = await db('users').where({ id: guardianLink.guardian_id }).first().catch(() => null);
+        if (guardian?.email) {
+          recipientEmail = guardian.email;
+          recipientName = [guardian.first_name, guardian.last_name].filter(Boolean).join(' ') || recipientName;
+        }
+      }
+
+      // In-app notifications — fire to the guardian's account and the student's
+      // own account (if any). These work even when no email is on file, so the
+      // balance still surfaces in the portal bell.
+      await notify(guardianUserId, studentName, balance, overdue, s.id);
+      await notify(studentRow?.user_id, studentName, balance, overdue, s.id);
+
+      if (!recipientEmail) { skippedNoEmail++; continue; }
+
+      try {
+        await emailService.sendFeeReminderEmail(tenantId, recipientEmail, {
+          guardianName: recipientName,
+          studentName,
+          amountDue: balance,
+          currency: 'Le',
+          dueDate: earliestDue,
+          overdue,
+          feeName: term ? `${term} fees` : 'Outstanding school fees',
+          customMessage: message || undefined,
+        } as any);
+        sent++;
+      } catch (mailErr) {
+        logger.warn(`balance reminder email failed for student ${s.id}: ${mailErr}`);
+        skippedNoEmail++;
+      }
+    }
+
+    await auditService.logAudit({
+      entityType: 'fee', entityId: `balance-reminders-${Date.now()}`, action: 'send_balance_reminders',
+      performedBy: userId, details: { scope, studentId, classId, level, term, sent, notified, skippedNoBalance, skippedNoEmail }, timestamp: now,
+    }).catch(() => {});
+
+    res.json({ success: true, data: { sent, notified, skippedNoBalance, skippedNoEmail, considered: students.length } });
+  } catch (error) {
+    logger.error(`finance/balance-reminders error: ${error}`);
     res.status(500).json({ success: false, error: (error as Error).message });
   }
 });

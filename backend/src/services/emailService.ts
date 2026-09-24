@@ -1243,6 +1243,7 @@ class EmailService {
       currency?: string;
       method?: string;
       reference?: string;
+      receiptNumber?: string;
       date?: Date | string;
       balanceRemaining?: number | string;
     }
@@ -1251,7 +1252,11 @@ class EmailService {
     const portalUrl = `${branding.appUrl}/dashboard`;
     const currency = data.currency || 'Le';
 
+    // Stable, unique receipt number — prefer the caller-supplied one.
+    const receiptNumber = data.receiptNumber || data.reference || `RCPT-${Date.now()}`;
+
     const rows =
+      detailRow('Receipt No.', `<strong>${escapeHtml(receiptNumber)}</strong>`) +
       (data.studentName ? detailRow('Student', escapeHtml(data.studentName)) : '') +
       detailRow('Amount Paid', `<strong style="color:#059669;">${escapeHtml(this.fmtMoney(data.amount, currency))}</strong>`) +
       (data.method ? detailRow('Payment Method', escapeHtml(this.titleCase(data.method))) : '') +
@@ -1272,7 +1277,6 @@ class EmailService {
     let attachments: { name: string; content: string }[] | undefined;
     try {
       const { generateReceiptPdfBase64 } = await import('./email/receiptPdf.js');
-      const receiptNumber = data.reference || `RCPT-${Date.now()}`;
       const { base64 } = await generateReceiptPdfBase64(tenantId, {
         receiptNumber,
         payerName: data.payerName,
@@ -1443,7 +1447,7 @@ class EmailService {
       ${detailsCard(rows)}
       ${calloutBlock(data.reason
         ? `Reason from the school: ${escapeHtml(data.reason)}`
-        : 'The school will republish the results once the review is complete. Please contact the school office if you have any questions.', 'warning')}`;
+        : 'The school will republish the results once the review is complete. Please contact the school office if you have any questions.', 'warn')}`;
 
     return this.sendEmail({
       ...this.senderFromBranding(branding),
@@ -1553,9 +1557,12 @@ class EmailService {
       dueDate?: Date | string;
       overdue?: boolean;
       feeName?: string;
+      customMessage?: string;
     }
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
+    // Link straight to the portal fees/dashboard. When the guardian is not yet
+    // signed in the app will prompt them to log in, then land here to pay.
     const payUrl = `${branding.appUrl}/dashboard`;
     const currency = data.currency || 'Le';
 
@@ -1565,18 +1572,24 @@ class EmailService {
       detailRow('Amount Due', `<strong>${escapeHtml(this.fmtMoney(data.amountDue, currency))}</strong>`) +
       (data.dueDate ? detailRow('Due Date', escapeHtml(this.fmtDate(data.dueDate))) : '');
 
+    // Optional custom note from the school (shown before the standard callout).
+    const customBlock = data.customMessage
+      ? `<p style="white-space:pre-line;">${escapeHtml(data.customMessage)}</p>`
+      : '';
+
     const bodyHtml = `
       <p>Dear ${escapeHtml(data.guardianName)},</p>
-      <p>This is a friendly reminder from <strong>${escapeHtml(branding.name)}</strong> regarding ${data.overdue ? 'an <strong>overdue</strong> balance' : 'an upcoming fee payment'} for your child.</p>
+      <p>This is a reminder from <strong>${escapeHtml(branding.name)}</strong> regarding ${data.overdue ? 'an <strong>overdue</strong> balance' : 'the outstanding school fees'} for <strong>${escapeHtml(data.studentName || 'your child')}</strong>.</p>
+      ${customBlock}
       ${detailsCard(rows)}
       ${calloutBlock(
         data.overdue
-          ? 'This balance is now past its due date. Please make payment at your earliest convenience to avoid any disruption. You can pay securely from your portal.'
-          : 'You can pay quickly and securely from your portal using mobile money, card, bank transfer or a digital wallet.',
+          ? 'This balance is now past its due date. Please make payment at your earliest convenience to avoid any disruption to your child\'s studies. You can pay securely from your portal.'
+          : 'You can pay quickly and securely from your portal using mobile money, card, bank transfer or a digital wallet. Tap the button below — if you are not signed in, you will be asked to log in first, then taken straight to the payment page.',
         data.overdue ? 'warn' : 'info'
       )}
-      ${emailButton('Pay Fees Now', payUrl)}
-      <p style="color:#64748b;font-size:13px;">If you've already paid, please disregard this reminder. Thank you.</p>`;
+      ${emailButton('Log in & Pay Fees', payUrl)}
+      <p style="color:#64748b;font-size:13px;">If you've already paid, please disregard this reminder. Thank you for your continued support.</p>`;
 
     return this.sendEmail({
       ...this.senderFromBranding(branding),
