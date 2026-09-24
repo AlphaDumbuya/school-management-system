@@ -100,6 +100,38 @@ export const financeService = {
     apiClient.get<{ success: boolean; data: Payment[] }>(`/api/v1/students/${studentId}/payments`),
   getPaymentStatistics: () => apiClient.get('/api/v1/payments/statistics'),
   getPaymentMethods: () => apiClient.get('/api/v1/payments-methods'),
+
+  // ── School operating expenses (staff) ─────────────────────────────────────
+  listExpenses: (params?: { academicYear?: string; term?: string; category?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.academicYear) q.set('academic_year', params.academicYear);
+    if (params?.term) q.set('term', params.term);
+    if (params?.category) q.set('category', params.category);
+    const qs = q.toString();
+    return apiClient.get<{ success: boolean; data: SchoolExpense[] }>(`/api/v1/finance/expenses${qs ? `?${qs}` : ''}`);
+  },
+  createExpense: (data: { category: string; description?: string; amount: number; expense_date: string; academic_year: string; term?: string | null }) =>
+    apiClient.post<{ success: boolean; data: SchoolExpense }>('/api/v1/finance/expenses', data),
+  updateExpense: (id: string, data: Partial<{ category: string; description: string; amount: number; expense_date: string; academic_year: string; term: string | null }>) =>
+    apiClient.put<{ success: boolean; data: SchoolExpense }>(`/api/v1/finance/expenses/${id}`, data),
+  deleteExpense: (id: string) => apiClient.delete<{ success: boolean }>(`/api/v1/finance/expenses/${id}`),
+  getFeesVsExpenses: (academicYear: string) =>
+    apiClient.get<{ success: boolean; data: { academic_year: string; billed: number; collected: number; outstanding: number; expenses: number; net: number } }>(
+      `/api/v1/finance/summary/fees-vs-expenses?academic_year=${encodeURIComponent(academicYear)}`,
+    ),
 };
+
+export interface SchoolExpense {
+  id: string;
+  tenant_id: string;
+  category: string;
+  description: string | null;
+  amount: number | string;
+  expense_date: string;
+  academic_year: string;
+  term: string | null;
+  recorded_by: string | null;
+  created_at: string;
+}
 
 export default financeService;

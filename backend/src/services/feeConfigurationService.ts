@@ -2,7 +2,12 @@ import { FeeConfiguration, FeeStructure, ConfigurationResponse } from '../types/
 
 /**
  * Fee Configuration Service
- * Manages fee types, structures, and configurations
+ *
+ * @deprecated NOT part of the active financial-management flow. This is an
+ * in-memory (non-persistent) prototype and is not imported by any live route.
+ * The authoritative fee definition is the `fee_structures` table via
+ * `feeStructureRoutes`; online payment is Monime via `monimeRoutes`. Retained
+ * only to avoid breaking historical imports/types — do not build on it.
  */
 export class FeeConfigurationService {
   private feeTypes: Map<string, FeeConfiguration> = new Map();

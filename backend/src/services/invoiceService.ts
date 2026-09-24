@@ -1,4 +1,5 @@
 import { Knex } from 'knex';
+import crypto from 'crypto';
 import { logger } from '@utils/logger';
 import { AppError } from '@middleware/errorHandler';
 import { AuditService } from './auditService';
@@ -55,11 +56,12 @@ export class InvoiceService {
       const totalBalance = fees.reduce((sum: number, fee: any) => sum + fee.balance, 0);
       const totalPaid = totalAmount - totalBalance;
 
-      // Generate invoice number
+      // invoices.id is a UUID column; invoice_number is the human-readable ref.
+      const invoiceId = crypto.randomUUID();
       const invoiceNumber = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
       const invoice = {
-        id: invoiceNumber,
+        id: invoiceId,
         student_id: data.studentId,
         invoice_number: invoiceNumber,
         total_amount: totalAmount,
@@ -75,11 +77,11 @@ export class InvoiceService {
 
       await this.db('invoices').insert(invoice);
 
-      // Link invoice to fees
+      // Link invoice to fees (invoice_items.id + invoice_id reference the UUID).
       for (const feeId of data.feeIds) {
         await this.db('invoice_items').insert({
-          id: `INV-ITEM-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          invoice_id: invoiceNumber,
+          id: crypto.randomUUID(),
+          invoice_id: invoiceId,
           fee_id: feeId,
           created_at: new Date(),
         });
@@ -88,7 +90,7 @@ export class InvoiceService {
       // Log to audit
       await this.auditService.logAudit({
         entityType: 'invoice',
-        entityId: invoiceNumber,
+        entityId: invoiceId,
         action: 'create',
         performedBy: userId,
         details: {

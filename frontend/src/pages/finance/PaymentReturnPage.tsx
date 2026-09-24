@@ -7,10 +7,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { CheckCircle2, XCircle, Loader2, Clock } from 'lucide-react';
-import MainLayout from '@components/layout/MainLayout';
-import { PageShell } from '@components/admin/layout/PageShell';
 import { Button } from '@components/ui/button';
 import { paymentService } from '@services/paymentService';
+import useAuthStore from '@store/authStore';
 
 type UiStatus = 'checking' | 'completed' | 'pending' | 'failed' | 'cancelled';
 
@@ -23,13 +22,16 @@ export const PaymentReturnPage: React.FC = () => {
   const [attempts, setAttempts] = useState(0);
 
   const poll = useCallback(async () => {
+    // A cancelled return needs no server call — show it immediately (also works
+    // when the payer isn't authenticated on the hard redirect back).
+    if (returnedStatus === 'cancelled') { setStatus('cancelled'); return; }
     if (!sessionId) { setStatus('failed'); return; }
     try {
       const res: any = await paymentService.getSessionStatus(sessionId);
       const s = (res?.data?.data?.status ?? res?.data?.status ?? res?.status) as string;
       if (s === 'completed') setStatus('completed');
       else if (s === 'failed') setStatus('failed');
-      else if (s === 'cancelled') setStatus(returnedStatus === 'cancelled' ? 'cancelled' : 'pending');
+      else if (s === 'cancelled') setStatus('cancelled');
       else setStatus('pending');
     } catch {
       setStatus('pending');
@@ -55,22 +57,27 @@ export const PaymentReturnPage: React.FC = () => {
     cancelled:{ icon: <XCircle size={44} className="text-gray-400" />, title: 'Payment cancelled', desc: 'You cancelled the payment. No charge was made.' },
   }[status];
 
+  // Where "Back" should go: to the fees page if signed in, else login. Renders
+  // standalone (no MainLayout) so it works even before auth rehydrates.
+  const isAuthed = !!useAuthStore((s) => s.user);
+  const backTo = isAuthed ? '/finance/my-fees' : '/login';
+
   return (
-    <MainLayout>
-      <PageShell title="Fee Payment" subtitle="Payment status">
-        <div className="max-w-md mx-auto mt-8 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-8 text-center">
-          <div className="flex justify-center mb-4">{view.icon}</div>
-          <h2 className="text-xl font-black text-gray-900 dark:text-white">{view.title}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{view.desc}</p>
-          <div className="flex items-center justify-center gap-2 mt-6">
-            <Button variant="outline" size="sm" onClick={() => navigate('/dashboard')}>Back to dashboard</Button>
-            {(status === 'pending') && (
-              <Button size="sm" onClick={() => { setAttempts(0); setStatus('checking'); poll(); }}>Refresh</Button>
-            )}
-          </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-8 text-center">
+        <div className="flex justify-center mb-4">{view.icon}</div>
+        <h2 className="text-xl font-black text-gray-900 dark:text-white">{view.title}</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{view.desc}</p>
+        <div className="flex items-center justify-center gap-2 mt-6">
+          <Button variant="outline" size="sm" onClick={() => navigate(backTo)}>
+            {isAuthed ? 'Back to my fees' : 'Go to login'}
+          </Button>
+          {status === 'pending' && (
+            <Button size="sm" onClick={() => { setAttempts(0); setStatus('checking'); poll(); }}>Refresh</Button>
+          )}
         </div>
-      </PageShell>
-    </MainLayout>
+      </div>
+    </div>
   );
 };
 

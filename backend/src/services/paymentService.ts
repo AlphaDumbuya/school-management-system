@@ -1,4 +1,5 @@
 import { Knex } from 'knex';
+import crypto from 'crypto';
 import { logger } from '@utils/logger';
 import { AuditService } from './auditService';
 
@@ -47,8 +48,8 @@ export class PaymentService {
         throw new Error(`Payment amount exceeds outstanding balance`);
       }
 
-      // Generate payment ID
-      const paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Generate payment ID — payments.id is a UUID column.
+      const paymentId = crypto.randomUUID();
 
       const payment = {
         id: paymentId,
@@ -290,8 +291,8 @@ export class PaymentService {
         .where('id', payment.fee_id)
         .first();
 
-      // Create refund transaction
-      const refundId = `REF-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Create refund transaction — refunds.id is a UUID column.
+      const refundId = crypto.randomUUID();
 
       const refund = {
         id: refundId,

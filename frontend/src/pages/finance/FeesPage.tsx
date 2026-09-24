@@ -13,11 +13,11 @@
  *  5. BillTermModal — materialise fees for one term from a structure.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Trash2, CheckCircle2, ChevronDown, ChevronRight,
-  Settings2, Layers, X, Info,
+  Settings2, Layers, X, Info, Undo2,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { cardTint } from '@lib/cardTint';
@@ -49,6 +49,7 @@ export const FeesPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [configClass, setConfigClass] = useState<any | null>(null); // class object to configure
   const [billTarget, setBillTarget] = useState<FeeStructure | null>(null);
+  const [unbillTarget, setUnbillTarget] = useState<FeeStructure | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   // All classes in the tenant
@@ -118,8 +119,40 @@ export const FeesPage: React.FC = () => {
         <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 mb-6">
           <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-1">Quick Class Preset Setup</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-            Academic Year <span className="font-semibold">{year}</span> — click any class to configure its term tuition & year expenses.
+            Academic Year <span className="font-semibold">{year}</span> — pick a class below to configure its term tuition & year expenses.
           </p>
+
+          {/* Class dropdown selector — every class in the school; marks which are
+              already configured for the selected year (Req 3.1, 3.4). */}
+          {classes.length > 0 && (
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-end gap-2">
+              <div className="flex flex-col gap-1 flex-1 sm:max-w-xs">
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Select a class to configure</label>
+                <div className="relative">
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const c = classes.find((x) => String(x.id) === e.target.value);
+                      if (c) setConfigClass(c);
+                    }}
+                    className="w-full appearance-none pl-3 pr-8 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="" disabled>Choose a class…</option>
+                    {classes.map((c) => {
+                      const done = configuredIds.has(c.id);
+                      return (
+                        <option key={c.id} value={String(c.id)}>
+                          {c.name}{c.level ? ` · ${c.level}` : ''} {done ? '✓ configured' : '— not configured'}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+                </div>
+              </div>
+            </div>
+          )}
+
           {visibleClasses.length === 0 ? (
             <p className="text-sm text-gray-400 py-4 text-center">No classes found for this school yet. Add classes first.</p>
           ) : (
@@ -164,6 +197,14 @@ export const FeesPage: React.FC = () => {
             <h3 className="text-sm font-bold text-gray-900 dark:text-white">
               Academic Year Fee Structures ({structures.length})
             </h3>
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+              <Info size={14} className="flex-shrink-0 mt-0.5" />
+              <span>
+                A structure only defines the amounts. To actually charge students —
+                so they and their parents see fees in their portals — click the
+                <strong> Bill a term</strong> (layers) button on a structure.
+              </span>
+            </div>
             {structures.map((s: any, idx: number) => {
               const isOpen = expanded.has(s.id);
               const t1 = Number(s.term1_tuition) || 0;
@@ -191,9 +232,17 @@ export const FeesPage: React.FC = () => {
                       <div className="text-sm font-black text-gray-900 dark:text-white">{fmtLe(fullYear)} / Yr</div>
                       <div className="text-[10px] text-gray-400">inc. {fmtLe(expTotal)} expenses</div>
                     </div>
-                    <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+                      {s.billed ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" title={`Billed: ${(s.billedTerms || []).join(', ') || 'yes'}`}>BILLED</span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400" title="Not billed yet">NOT BILLED</span>
+                      )}
                       <button onClick={(e) => { e.stopPropagation(); setConfigClass(classes.find((c) => c.id === (s.classId || s.class_id)) ?? { id: s.classId || s.class_id, name: s.class_name, level: s.class_level }); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-600" title="Edit"><Settings2 size={15} /></button>
-                      <button onClick={(e) => { e.stopPropagation(); setBillTarget(s); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-emerald-600" title="Bill a term"><Layers size={15} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setBillTarget(s); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-emerald-600" title="Bill a term or the full year"><Layers size={15} /></button>
+                      {s.billed && (
+                        <button onClick={(e) => { e.stopPropagation(); setUnbillTarget(s); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-600" title="Unbill (remove unpaid charges)"><Undo2 size={15} /></button>
+                      )}
                     </div>
                   </div>
                   {isOpen && (
@@ -249,14 +298,46 @@ export const FeesPage: React.FC = () => {
             cls={configClass}
             year={year}
             onClose={() => setConfigClass(null)}
-            onSaved={() => { setConfigClass(null); queryClient.invalidateQueries({ queryKey: ['fee-structures', year] }); queryClient.invalidateQueries({ queryKey: ['finance-overview'] }); }}
+            onSaved={async () => {
+              const savedClassId = configClass.id;
+              setConfigClass(null);
+              await queryClient.invalidateQueries({ queryKey: ['fee-structures', year] });
+              queryClient.invalidateQueries({ queryKey: ['finance-overview'] });
+              // Immediately offer to BILL the structure so charges actually get
+              // created — a saved structure alone does not bill any student.
+              const fresh: any = await feeStructureService.list(year);
+              const list = fresh?.data?.data ?? fresh?.data ?? [];
+              const justSaved = list.find((s: any) => (s.classId || s.class_id) === savedClassId);
+              if (justSaved) setBillTarget(justSaved);
+            }}
           />
         )}
         {billTarget && (
           <BillTermModal
             structure={billTarget}
             onClose={() => setBillTarget(null)}
-            onDone={() => { setBillTarget(null); queryClient.invalidateQueries({ queryKey: ['finance-fees'] }); }}
+            onDone={() => {
+              setBillTarget(null);
+              // Refresh staff finance views AND the portal ledgers so newly
+              // billed charges appear for students/parents immediately.
+              ['fee-structures', 'finance-fees', 'finance-overview', 'finance-analytics',
+               'student-ledger', 'my-ledger', 'child-ledger',
+               'student-dashboard', 'parent-dashboard', 'parent-child-detail']
+                .forEach((k) => queryClient.invalidateQueries({ queryKey: [k] }));
+            }}
+          />
+        )}
+        {unbillTarget && (
+          <UnbillModal
+            structure={unbillTarget}
+            onClose={() => setUnbillTarget(null)}
+            onDone={() => {
+              setUnbillTarget(null);
+              ['fee-structures', 'finance-fees', 'finance-overview', 'finance-analytics',
+               'student-ledger', 'my-ledger', 'child-ledger',
+               'student-dashboard', 'parent-dashboard', 'parent-child-detail']
+                .forEach((k) => queryClient.invalidateQueries({ queryKey: [k] }));
+            }}
           />
         )}
       </PageShell>
@@ -296,30 +377,31 @@ const FeeStructureModal: React.FC<{
   const [allowInst, setAllowInst] = useState(true);
   const [policyNotes, setPolicyNotes] = useState('');
   const [saving, setSaving] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [existingId, setExistingId] = useState<string | undefined>(undefined);
 
-  // Load existing
-  useQuery({
+  // Load existing structure (react-query v5 removed the onSettled callback on
+  // useQuery, so we read `data` and populate the form via useEffect).
+  const { data: existingResp } = useQuery({
     queryKey: ['fee-struct', cls.id, year],
     queryFn: () => feeStructureService.get(cls.id, year),
     staleTime: 0,
-    enabled: !loaded,
-    onSettled: (d: any) => {
-      setLoaded(true);
-      const s = (d as any)?.data?.data ?? (d as any)?.data;
-      if (!s) return;
-      setT1(String(s.term1Tuition ?? s.term1_tuition ?? ''));
-      setT2(String(s.term2Tuition ?? s.term2_tuition ?? ''));
-      setT3(String(s.term3Tuition ?? s.term3_tuition ?? ''));
-      setExpenses((s.expenses || []).map((e: any) => ({ label: e.label, amount: Number(e.amount) || 0 })));
-      setMinNew(s.minPercentNew ?? s.min_percent_new ?? '');
-      setMinCont(s.minPercentContinuing ?? s.min_percent_continuing ?? '');
-      setMinTerm(s.minPercentTerm ?? s.min_percent_term ?? '');
-      setLateFee(s.lateFeePercent ?? s.late_fee_percent ?? '');
-      setAllowInst(s.allowInstallments ?? s.allow_installments ?? true);
-      setPolicyNotes(s.policyNotes ?? s.policy_notes ?? '');
-    },
   });
+
+  useEffect(() => {
+    const s: any = (existingResp as any)?.data?.data ?? (existingResp as any)?.data;
+    if (!s) return;
+    setExistingId(s.id);
+    setT1(String(s.term1Tuition ?? s.term1_tuition ?? ''));
+    setT2(String(s.term2Tuition ?? s.term2_tuition ?? ''));
+    setT3(String(s.term3Tuition ?? s.term3_tuition ?? ''));
+    setExpenses((s.expenses || []).map((e: any) => ({ label: e.label, amount: Number(e.amount) || 0 })));
+    setMinNew(String(s.minPercentNew ?? s.min_percent_new ?? ''));
+    setMinCont(String(s.minPercentContinuing ?? s.min_percent_continuing ?? ''));
+    setMinTerm(String(s.minPercentTerm ?? s.min_percent_term ?? ''));
+    setLateFee(String(s.lateFeePercent ?? s.late_fee_percent ?? ''));
+    setAllowInst(s.allowInstallments ?? s.allow_installments ?? true);
+    setPolicyNotes(s.policyNotes ?? s.policy_notes ?? '');
+  }, [existingResp]);
 
   const n = (v: string) => Number(v) || 0;
   const t1v = n(t1), t2v = applyT1 ? t1v : n(t2), t3v = applyT1 ? t1v : n(t3);
@@ -334,7 +416,11 @@ const FeeStructureModal: React.FC<{
     if (!t1) { showToast.error('Term 1 tuition is required'); return; }
     setSaving(true);
     try {
-      await feeStructureService.save({
+      // apiClient resolves (never throws) with { success:false, error } on HTTP
+      // errors, so we MUST check the flag before declaring success — otherwise a
+      // failed save would falsely report "saved".
+      const res: any = await feeStructureService.save({
+        id: existingId, // present → server treats as an edit, not a duplicate create
         classId: cls.id, academicYear: year,
         term1Tuition: t1v, term2Tuition: t2v, term3Tuition: t3v,
         minPercentNew: minNew ? Number(minNew) : null,
@@ -345,6 +431,11 @@ const FeeStructureModal: React.FC<{
         policyNotes: policyNotes || null,
         expenses: expenses.filter((e) => e.label),
       });
+      const body = res?.data ?? res;
+      if (body?.success === false) {
+        showToast.error(body?.error || 'Failed to save fee structure');
+        return;
+      }
       showToast.success('Fee structure saved');
       onSaved();
     } catch (err: any) {
@@ -442,23 +533,32 @@ const FeeStructureModal: React.FC<{
 };
 
 /* ── Bill term modal ─────────────────────────────────────────────────────── */
+type BillScope = 1 | 2 | 3 | 'year';
 const BillTermModal: React.FC<{ structure: any; onClose: () => void; onDone: () => void }> = ({ structure, onClose, onDone }) => {
-  const [term, setTerm] = useState<1 | 2 | 3>(1);
+  const [term, setTerm] = useState<BillScope>('year');
   const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
   const t1 = Number(structure.term1_tuition) || 0;
   const t2 = Number(structure.term2_tuition) || 0;
   const t3 = Number(structure.term3_tuition) || 0;
   const expTotal = (structure.expenses ?? []).reduce((s: number, e: any) => s + (Number(e.amount) || 0), 0);
-  const termAmt = [0, t1 + expTotal, t2, t3][term];
+  // Per-student amount for the chosen scope. Full year = all tuition + expenses once.
+  const scopeAmt = term === 'year' ? t1 + t2 + t3 + expTotal : [0, t1 + expTotal, t2, t3][term];
+  const scopeLabel = term === 'year' ? 'the full academic year (all terms)' : `Term ${term}`;
 
   const submit = async () => {
     if (!dueDate) { showToast.error('Set a due date'); return; }
     setSaving(true);
     try {
       const res: any = await feeStructureService.billTerm(structure.id, term, dueDate);
-      const billed = res?.data?.data?.billed ?? res?.data?.billed ?? 0;
-      showToast.success(`Billed ${billed} student${billed === 1 ? '' : 's'} for ${['', 'First', 'Second', 'Third'][term]} Term`);
+      const body = res?.data ?? res;
+      if (body?.success === false) { showToast.error(body?.error || 'Billing failed'); return; }
+      const billed = body?.data?.billed ?? 0;
+      if (billed === 0) {
+        showToast.info('No new charges added — students may already be billed, or the class has no active students.');
+      } else {
+        showToast.success(`Billed ${billed} student${billed === 1 ? '' : 's'} for ${term === 'year' ? 'the full year' : `Term ${term}`}`);
+      }
       onDone();
     } catch (err: any) {
       showToast.error(err?.response?.data?.error || 'Billing failed');
@@ -469,32 +569,88 @@ const BillTermModal: React.FC<{ structure: any; onClose: () => void; onDone: () 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
       <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="font-bold text-gray-900 dark:text-white">Bill a Term — {structure.class_name}</h3>
+          <h3 className="font-bold text-gray-900 dark:text-white">Bill Fees — {structure.class_name}</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase">Term</label>
-            <div className="grid grid-cols-3 gap-1 mt-1 bg-gray-100 dark:bg-gray-900/50 rounded-xl p-1">
+            <label className="text-xs font-semibold text-gray-500 uppercase">What to bill</label>
+            <div className="grid grid-cols-2 gap-1 mt-1 bg-gray-100 dark:bg-gray-900/50 rounded-xl p-1">
+              <button onClick={() => setTerm('year')} className={`py-1.5 text-xs font-semibold rounded-lg transition-colors ${term === 'year' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>Full Year</button>
               {([1, 2, 3] as const).map((t) => (
                 <button key={t} onClick={() => setTerm(t)} className={`py-1.5 text-xs font-semibold rounded-lg transition-colors ${term === t ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>Term {t}</button>
               ))}
             </div>
+            <p className="text-[11px] text-gray-400 mt-1">
+              {term === 'year'
+                ? 'Bills all three terms at once. Year expenses are charged once (with Term 1).'
+                : term === 1 ? 'Term 1 also charges the itemised year expenses.' : `Term ${term} tuition only.`}
+            </p>
           </div>
           <div className="rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 px-4 py-3 text-sm">
-            <div className="text-xs text-indigo-500 mb-1">Amount to bill per student</div>
-            <div className="text-xl font-black text-indigo-700 dark:text-indigo-400">{fmtLe(termAmt)}</div>
-            {term === 1 && expTotal > 0 && <div className="text-xs text-indigo-400 mt-0.5">inc. {fmtLe(expTotal)} year expenses</div>}
+            <div className="text-xs text-indigo-500 mb-1">Total to bill per student</div>
+            <div className="text-xl font-black text-indigo-700 dark:text-indigo-400">{fmtLe(scopeAmt)}</div>
+            {expTotal > 0 && (term === 'year' || term === 1) && <div className="text-xs text-indigo-400 mt-0.5">inc. {fmtLe(expTotal)} year expenses</div>}
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase">Due Date</label>
             <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
           </div>
-          <p className="text-xs text-gray-400">This creates individual fee records for every active student in the class, ready to invoice and collect.</p>
+          <p className="text-xs text-gray-400">This creates individual fee records for every active student in the class for {scopeLabel}, ready to collect.</p>
         </div>
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="default" size="sm" onClick={submit} disabled={saving}>{saving ? 'Billing…' : 'Bill This Term'}</Button>
+          <Button variant="default" size="sm" onClick={submit} disabled={saving}>{saving ? 'Billing…' : term === 'year' ? 'Bill Full Year' : `Bill Term ${term}`}</Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ── Unbill modal ────────────────────────────────────────────────────────── */
+const UnbillModal: React.FC<{ structure: any; onClose: () => void; onDone: () => void }> = ({ structure, onClose, onDone }) => {
+  const [scope, setScope] = useState<'all' | 1 | 2 | 3>('all');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const res: any = await feeStructureService.unbill(structure.id, scope === 'all' ? undefined : scope);
+      const body = res?.data ?? res;
+      if (body?.success === false) { showToast.error(body?.error || 'Unbill failed'); return; }
+      const removed = body?.data?.removed ?? 0;
+      showToast.success(removed > 0 ? `Removed ${removed} unpaid charge${removed === 1 ? '' : 's'}` : 'No unpaid charges to remove');
+      onDone();
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.error || 'Unbill failed');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="font-bold text-gray-900 dark:text-white">Unbill — {structure.class_name}</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+            <Info size={14} className="flex-shrink-0 mt-0.5" />
+            <span>Only <strong>unpaid</strong> charges are removed. Charges with any payment applied are kept so payment history is never lost.</span>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Scope</label>
+            <div className="grid grid-cols-2 gap-1 mt-1 bg-gray-100 dark:bg-gray-900/50 rounded-xl p-1">
+              <button onClick={() => setScope('all')} className={`py-1.5 text-xs font-semibold rounded-lg ${scope === 'all' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>All Terms</button>
+              {([1, 2, 3] as const).map((t) => (
+                <button key={t} onClick={() => setScope(t)} className={`py-1.5 text-xs font-semibold rounded-lg ${scope === t ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>Term {t}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={submit} disabled={saving} className="bg-red-600 hover:bg-red-700">{saving ? 'Removing…' : 'Unbill'}</Button>
         </div>
       </div>
     </div>

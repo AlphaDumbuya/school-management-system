@@ -5,7 +5,10 @@
 
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { GraduationCap, Loader2 } from 'lucide-react';
+import { GraduationCap, Loader2, BarChart3 } from 'lucide-react';
+import {
+  ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
+} from 'recharts';
 import MainLayout from '@components/layout/MainLayout';
 import { cardTint } from '@lib/cardTint';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -50,6 +53,31 @@ export const ParentResultsView: React.FC = () => {
       map.set(g.term, arr);
     }
     return Array.from(map.entries());
+  }, [grades]);
+
+  // Chart: latest mean per subject for the selected child.
+  const chartData = useMemo(() => {
+    const bySubject = new Map<string, number>();
+    for (const g of grades) {
+      const mean = Number(g.mean);
+      if (!Number.isNaN(mean)) bySubject.set(g.subject_name, mean);
+    }
+    return Array.from(bySubject.entries()).map(([subject, mean]) => ({
+      subject: subject.length > 10 ? `${subject.slice(0, 10)}…` : subject,
+      fullSubject: subject,
+      mean,
+    }));
+  }, [grades]);
+
+  // Terms the selected child has released (distinct terms in published grades),
+  // so the ranking defaults to the latest released term rather than an
+  // unreleased "Full Year" tab.
+  const rankingTerms = useMemo(() => {
+    const order = ['first_term', 'second_term', 'third_term'] as const;
+    const present = new Set(grades.map((g: any) => g.term));
+    const terms = order.filter((t) => present.has(t)) as Array<'first_term' | 'second_term' | 'third_term' | 'full'>;
+    if (terms.length === 3) terms.push('full');
+    return terms;
   }, [grades]);
 
   return (
@@ -103,6 +131,35 @@ export const ParentResultsView: React.FC = () => {
               <EmptyState message="No results recorded" description="No subject results have been entered yet." />
             ) : (
               <div className="space-y-6">
+                {/* Performance chart */}
+                {chartData.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm overflow-hidden">
+                    <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
+                      <BarChart3 size={16} className="text-blue-500" />
+                      <h3 className="font-bold text-gray-900 dark:text-white">Mean Score by Subject</h3>
+                    </div>
+                    <div className="p-4">
+                      <ResponsiveContainer width="100%" height={280}>
+                        <BarChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                          <XAxis dataKey="subject" tick={{ fontSize: 11 }} interval={0} angle={-15} textAnchor="end" height={50} />
+                          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                          <Tooltip
+                            contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                            labelFormatter={(_, payload) => payload?.[0]?.payload?.fullSubject ?? ''}
+                            formatter={(value: number) => [`${value}%`, 'Mean Score']}
+                          />
+                          <Bar dataKey="mean" radius={[4, 4, 0, 0]} maxBarSize={56}>
+                            {chartData.map((d) => (
+                              <Cell key={d.fullSubject} fill={d.mean < 50 ? '#EF4444' : '#2563EB'} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+
                 {byTerm.map(([term, rows], idx) => (
                   <div key={term} className={`${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-200 sm:dark:border-gray-700 border rounded-2xl shadow-sm overflow-hidden`}>
                     <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
@@ -110,27 +167,45 @@ export const ParentResultsView: React.FC = () => {
                       <h3 className="font-bold text-gray-900 dark:text-white">{termName(term)}</h3>
                     </div>
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-xs text-gray-500 border-b border-gray-100 dark:border-gray-800">
-                            <th className="py-2 px-4">Subject</th>
-                            <th className="py-2 px-3 text-center">Test 1</th>
-                            <th className="py-2 px-3 text-center">Test 2</th>
-                            <th className="py-2 px-3 text-center">Mean</th>
-                            <th className="py-2 px-3 text-center">Rank</th>
+                      <table className="w-full text-sm text-left">
+                        <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
+                          <tr className="text-white">
+                            <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Subject</th>
+                            <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Test 1</th>
+                            <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Test 2</th>
+                            <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Mean</th>
+                            <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Rank</th>
                           </tr>
                         </thead>
-                        <tbody>
-                          {rows.map((g: any) => {
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {rows.map((g: any, i: number) => {
                             const mean = Number(g.mean);
-                            const isFail = !isNaN(mean) && mean > 0 && mean < 50;
+                            const hasMean = g.mean != null && !Number.isNaN(mean);
+                            const isFail = hasMean && mean > 0 && mean < 50;
                             return (
-                              <tr key={g.id} className="border-b border-gray-50 dark:border-gray-800/50">
-                                <td className="py-2 px-4 font-medium">{g.subject_name}</td>
-                                <td className="py-2 px-3 text-center">{g.test1 ?? '—'}</td>
-                                <td className="py-2 px-3 text-center">{g.test2 ?? '—'}</td>
-                                <td className={`py-2 px-3 text-center font-semibold ${isFail ? 'text-red-600' : ''}`}>{g.mean ?? '—'}</td>
-                                <td className="py-2 px-3 text-center">{g.subject_rank ? `#${g.subject_rank}` : '—'}</td>
+                              <tr
+                                key={g.id}
+                                className={`transition-colors hover:bg-sky-100 dark:hover:bg-blue-950/20 ${
+                                  i % 2 === 1 ? 'bg-sky-50 dark:bg-gray-800/20' : 'bg-white dark:bg-transparent'
+                                }`}
+                              >
+                                <td className="px-4 py-3.5 font-medium text-gray-900 dark:text-gray-100">{g.subject_name}</td>
+                                <td className="px-4 py-3.5 text-center text-gray-700 dark:text-gray-300">{g.test1 ?? '—'}</td>
+                                <td className="px-4 py-3.5 text-center text-gray-700 dark:text-gray-300">{g.test2 ?? '—'}</td>
+                                <td className="px-4 py-3.5 text-center">
+                                  {hasMean ? (
+                                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                      isFail
+                                        ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400'
+                                        : mean >= 70
+                                        ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400'
+                                        : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
+                                    }`}>
+                                      {g.mean}
+                                    </span>
+                                  ) : '—'}
+                                </td>
+                                <td className="px-4 py-3.5 text-center font-medium text-gray-600 dark:text-gray-300">{g.subject_rank ? `#${g.subject_rank}` : '—'}</td>
                               </tr>
                             );
                           })}
@@ -146,7 +221,11 @@ export const ParentResultsView: React.FC = () => {
             {published && detail?.profile?.class_id && grades.length > 0 && (
               <div className="mt-4">
                 <h2 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider mb-3">Class Ranking</h2>
-                <ClassRankingView classId={String(detail.profile.class_id)} academicYear={String(detail.profile.academic_year || '')} />
+                <ClassRankingView
+                  classId={String(detail.profile.class_id)}
+                  academicYear={String(detail.profile.academic_year || '')}
+                  availableTerms={rankingTerms}
+                />
               </div>
             )}
           </div>

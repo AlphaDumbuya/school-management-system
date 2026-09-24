@@ -1,9 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
-import { authenticate } from '../middleware/authMiddleware.js';
+import { authenticate, attachUserContext } from '../middleware/authMiddleware.js';
 import { db } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
 import { monimeService } from '../services/monimeService.js';
+import { applyAmount } from '../services/paymentApplication.js';
 
 /**
  * Monime online-payment routes.
@@ -32,8 +33,13 @@ function appOrigin(req: Request): string {
   return (envBase || '').replace(/\/+$/, '') || `${proto}://${host}`;
 }
 
+// ── Online-payment availability (so portals can hide the pay action) ──────────
+router.get('/monime/status', authenticate, async (_req: Request, res: Response) => {
+  return res.json({ success: true, data: { online_payments_enabled: monimeService.isConfigured() } });
+});
+
 // ── Initiate a checkout ───────────────────────────────────────────────────────
-router.post('/monime/checkout', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/monime/checkout', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!monimeService.isConfigured()) {
       return res.status(503).json({ success: false, error: 'Online payments are not configured yet.' });
@@ -64,6 +70,23 @@ router.post('/monime/checkout', authenticate, async (req: Request, res: Response
 
     if (!studentId) return res.status(400).json({ success: false, error: 'studentId or invoiceId is required' });
     if (!(amount > 0)) return res.status(400).json({ success: false, error: 'Nothing to pay — balance is zero' });
+
+    // Scope the payer to their own records (financial-management Req 6.6):
+    //  - parent/guardian → must be a verified link to the student
+    //  - student → may only pay their own fees
+    //  - staff → may pay for any student in the tenant
+    const role = (req as any).user?.role as string | undefined;
+    if (role === 'parent' || role === 'guardian') {
+      const link = await db('guardians').where({ student_id: studentId, user_id: userId }).first().catch(() => null);
+      if (!link) return res.status(403).json({ success: false, error: 'You are not linked to this student.' });
+    } else if (role === 'student') {
+      const own = await db('students').where({ user_id: userId, tenant_id: tenantId }).first().catch(() => null);
+      if (!own || own.id !== studentId) return res.status(403).json({ success: false, error: 'You can only pay your own fees.' });
+    } else {
+      // Staff/other: confirm the student is at least in the tenant.
+      const inTenant = await db('students').where({ id: studentId, tenant_id: tenantId }).first().catch(() => null);
+      if (!inTenant) return res.status(403).json({ success: false, error: 'Student not in your school.' });
+    }
 
     // Create our session row first so we can correlate the webhook.
     const [session] = await db('payment_sessions')
@@ -113,19 +136,114 @@ router.post('/monime/checkout', authenticate, async (req: Request, res: Response
   }
 });
 
+// ── Initiate a payment code (in-app USSD mobile-money collection) ─────────────
+// Creates a Monime Payment Code and returns the USSD code the payer dials on
+// their phone — the whole payment happens INSIDE our app (no popup/iframe).
+router.post('/monime/payment-code', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!monimeService.isConfigured()) {
+      return res.status(503).json({ success: false, error: 'Online payments are not configured yet.' });
+    }
+    const tenantId = (req as any).user?.tenant_id;
+    const userId = (req as any).user?.id;
+    const { invoiceId, studentId: bodyStudentId, amount: bodyAmount, label } = req.body || {};
+    if (!tenantId) return res.status(400).json({ success: false, error: 'Tenant context required' });
+
+    // Resolve invoice (preferred) or ad-hoc amount — identical rules to checkout.
+    let studentId = bodyStudentId as string | undefined;
+    let amount = Number(bodyAmount) || 0;
+    let name = label || 'School Fees';
+
+    if (invoiceId) {
+      const invoice = await db('invoices').where({ id: invoiceId }).first();
+      if (!invoice) return res.status(404).json({ success: false, error: 'Invoice not found' });
+      const student = await db('students').where({ id: invoice.student_id }).first();
+      if (!student || (student.tenant_id && student.tenant_id !== tenantId)) {
+        return res.status(403).json({ success: false, error: 'Invoice not in your school' });
+      }
+      studentId = invoice.student_id;
+      amount = Number(invoice.balance ?? invoice.total_amount) || 0;
+      name = `School Fees — ${invoice.invoice_number}`;
+    }
+
+    if (!studentId) return res.status(400).json({ success: false, error: 'studentId or invoiceId is required' });
+    if (!(amount > 0)) return res.status(400).json({ success: false, error: 'Nothing to pay — balance is zero' });
+
+    // Same payer-scoping as checkout (financial-management Req 6.6).
+    const role = (req as any).user?.role as string | undefined;
+    if (role === 'parent' || role === 'guardian') {
+      const link = await db('guardians').where({ student_id: studentId, user_id: userId }).first().catch(() => null);
+      if (!link) return res.status(403).json({ success: false, error: 'You are not linked to this student.' });
+    } else if (role === 'student') {
+      const own = await db('students').where({ user_id: userId, tenant_id: tenantId }).first().catch(() => null);
+      if (!own || own.id !== studentId) return res.status(403).json({ success: false, error: 'You can only pay your own fees.' });
+    } else {
+      const inTenant = await db('students').where({ id: studentId, tenant_id: tenantId }).first().catch(() => null);
+      if (!inTenant) return res.status(403).json({ success: false, error: 'Student not in your school.' });
+    }
+
+    // Create our session row first so we can correlate the webhook.
+    const [session] = await db('payment_sessions')
+      .insert({
+        tenant_id: tenantId,
+        student_id: studentId,
+        invoice_id: invoiceId || null,
+        amount,
+        currency: 'SLE',
+        provider: 'monime_ussd',
+        status: 'pending',
+        initiated_by: userId || null,
+        metadata: JSON.stringify({ invoiceId: invoiceId || null }),
+        created_at: new Date(),
+        updated_at: new Date(),
+      })
+      .returning('*');
+
+    const code = await monimeService.createPaymentCode({
+      name,
+      amount,
+      metadata: { sessionId: session.id, tenantId, studentId, invoiceId: invoiceId || '' },
+    });
+
+    await db('payment_sessions')
+      .where({ id: session.id })
+      .update({
+        provider_session_id: code.id,
+        metadata: JSON.stringify({ invoiceId: invoiceId || null, ussdCode: code.ussdCode, expireTime: code.expireTime }),
+        updated_at: new Date(),
+      });
+
+    return res.json({
+      success: true,
+      data: { sessionId: session.id, ussdCode: code.ussdCode, amount, expireTime: code.expireTime },
+    });
+  } catch (error) {
+    logger.error('Monime payment-code error', { error: (error as Error).message });
+    next(error);
+  }
+});
+
 // ── Poll a session status ─────────────────────────────────────────────────────
-router.get('/monime/session/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/monime/session/:id', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = (req as any).user?.tenant_id;
     const session = await db('payment_sessions').where({ id: req.params.id }).first();
     if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
     if (session.tenant_id !== tenantId) return res.status(403).json({ success: false, error: 'Forbidden' });
 
-    // If still pending and we have a provider session id, refresh from Monime.
+    // If still pending and we have a provider id, refresh from Monime. The
+    // provider resource differs for USSD payment codes vs hosted checkout.
     if (session.status === 'pending' && session.provider_session_id && monimeService.isConfigured()) {
       try {
-        const remote = await monimeService.getCheckoutSession(session.provider_session_id);
-        const status = monimeService.normaliseStatus(remote?.status);
+        const isUssd = session.provider === 'monime_ussd';
+        const remote = isUssd
+          ? await monimeService.getPaymentCode(session.provider_session_id)
+          : await monimeService.getCheckoutSession(session.provider_session_id);
+        // Payment codes report completion via progress.isCompleted / status.
+        const remoteStatus = isUssd
+          ? (remote?.progress?.isCompleted ? 'completed' : remote?.status)
+          : remote?.status;
+        const status = monimeService.normaliseStatus(remoteStatus);
         if (status !== 'pending') {
           await reconcileSession(session.id, status);
           const refreshed = await db('payment_sessions').where({ id: session.id }).first();
@@ -155,10 +273,25 @@ router.post('/monime/webhook', async (req: Request, res: Response) => {
 
     const event = JSON.parse(raw.toString('utf8'));
     // Correlate by our callbackState (session id) or provider session id.
-    const providerSessionId = event?.data?.id || event?.result?.id || event?.data?.checkoutSessionId;
-    const callbackState = event?.data?.callbackState || event?.result?.callbackState;
-    const statusRaw = event?.data?.status || event?.result?.status || event?.type;
-    const status = monimeService.normaliseStatus(statusRaw);
+    // Monime wraps resource events as { event:{name}, object:{id,type}, data:{...} }.
+    const eventName: string = event?.event?.name || event?.type || '';
+    const providerSessionId = event?.object?.id || event?.data?.id || event?.result?.id || event?.data?.checkoutSessionId;
+    // Payment codes carry our correlation id in data.metadata.sessionId; hosted
+    // checkout echoes it back as callbackState.
+    const callbackState =
+      event?.data?.callbackState ||
+      event?.result?.callbackState ||
+      event?.data?.metadata?.sessionId ||
+      event?.result?.metadata?.sessionId;
+    // Prefer the event name (payment_code.completed) to derive status; fall back
+    // to a status field or the payment code's progress flag.
+    const statusRaw =
+      (eventName.includes('.') ? eventName.split('.').pop() : undefined) ||
+      event?.data?.status ||
+      event?.result?.status ||
+      event?.type;
+    const isCompletedFlag = event?.data?.progress?.isCompleted === true;
+    const status = isCompletedFlag ? 'completed' : monimeService.normaliseStatus(statusRaw);
 
     // Public "restore access" payments use callbackState "restore:<id>". Handle
     // these separately: on completion, renew the subscription + reactivate.
@@ -173,7 +306,18 @@ router.post('/monime/webhook', async (req: Request, res: Response) => {
     if (!session && providerSessionId) session = await db('payment_sessions').where({ provider_session_id: providerSessionId }).first();
 
     if (!session) {
-      logger.warn('Monime webhook: no matching payment session', { providerSessionId, callbackState });
+      // Cannot match the event to a session (and therefore to a tenant). Do NOT
+      // apply any payment — quarantine the raw event for manual review, then ack
+      // so the provider stops retrying (financial-management spec Req 1.5).
+      logger.warn('Monime webhook: no matching payment session — quarantining', { providerSessionId, callbackState });
+      await db('payment_webhook_quarantine')
+        .insert({
+          provider: 'monime',
+          raw_payload: JSON.stringify(event),
+          reason: `Unmatched webhook (providerSessionId=${providerSessionId ?? 'none'}, callbackState=${callbackState ?? 'none'})`.slice(0, 200),
+          created_at: new Date(),
+        })
+        .catch((e) => logger.error('Failed to quarantine unmatched Monime webhook', { error: (e as Error).message }));
       return res.status(200).json({ received: true }); // ack so Monime stops retrying
     }
 
@@ -358,19 +502,16 @@ async function sendPaymentReceipt(session: any) {
  * student's fee ledger, not just the invoice.
  */
 async function applyAmountToFees(trx: any, fees: any[], amount: number) {
-  let remaining = amount;
-  for (const fee of fees) {
-    if (remaining <= 0) break;
-    const bal = Number(fee.balance ?? fee.amount) || 0;
-    if (bal <= 0) continue;
-    const applied = Math.min(bal, remaining);
-    const newBal = bal - applied;
-    await trx('fees').where({ id: fee.id }).update({
-      balance: newBal,
-      status: newBal <= 0 ? 'paid' : 'partial',
+  // Delegate the arithmetic to the pure helper (unit-tested for monotonicity),
+  // then persist the resulting per-fee balances.
+  const feeLikes = fees.map((f: any) => ({ id: f.id, balance: Number(f.balance ?? f.amount) || 0 }));
+  const { applications } = applyAmount(feeLikes, amount);
+  for (const app of applications) {
+    await trx('fees').where({ id: app.id }).update({
+      balance: app.newBalance,
+      status: app.status,
       updated_at: new Date(),
     });
-    remaining -= applied;
   }
 }
 

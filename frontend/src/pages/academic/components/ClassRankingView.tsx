@@ -5,7 +5,7 @@
  * The class leader(s) are celebrated with a podium + trophy treatment. Staff
  * see live rankings any time; students/parents are publish-gated by the server.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Trophy, Medal, Award, Crown, Loader2, Users, Sparkles } from 'lucide-react';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
@@ -69,7 +69,19 @@ const PodiumCard: React.FC<{ student: ClassRankingStudent; rank: 1 | 2 | 3 }> = 
 export const ClassRankingView: React.FC<Props> = ({ classId, academicYear, availableTerms }) => {
   const allTabs: ViewTerm[] = ['first_term', 'second_term', 'third_term', 'full'];
   const tabs = availableTerms && availableTerms.length ? availableTerms : allTabs;
-  const [term, setTerm] = useState<ViewTerm>(tabs[tabs.length - 1] || 'full');
+  // Default the active tab to the LATEST released term. Prefer the last real
+  // term over the "full" tab so a single-term release lands on that term.
+  const preferredTerm = useMemo<ViewTerm>(() => {
+    const realTerms = tabs.filter((t) => t !== 'full');
+    return (realTerms[realTerms.length - 1] ?? tabs[tabs.length - 1] ?? 'full') as ViewTerm;
+  }, [tabs]);
+  const [term, setTerm] = useState<ViewTerm>(preferredTerm);
+
+  // Keep the active tab valid & aligned with the released terms as they load or
+  // change (e.g. a parent switching between children with different releases).
+  useEffect(() => {
+    if (!tabs.includes(term)) setTerm(preferredTerm);
+  }, [tabs, term, preferredTerm]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['class-ranking', classId, academicYear, term],

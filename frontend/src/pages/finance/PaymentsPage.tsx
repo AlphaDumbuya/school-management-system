@@ -10,7 +10,7 @@
  * Online (Monime) payments auto-record here and settle fees/invoices.
  */
 import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Smartphone, CreditCard, Banknote, Landmark, Wallet, Plus, Download,
   TrendingUp, Receipt, ChevronDown, X, Users, AlertTriangle,
@@ -70,7 +70,14 @@ export const PaymentsPage: React.FC = () => {
     return matchSearch && matchLevel && matchMethod;
   });
 
-  const refetchAll = () => { refetch(); refetchAn(); };
+  const queryClient = useQueryClient();
+  const refetchAll = () => {
+    refetch(); refetchAn();
+    // Also refresh the portal ledgers so students/parents see updated balances.
+    ['student-ledger', 'my-ledger', 'child-ledger', 'student-dashboard',
+     'parent-dashboard', 'parent-child-detail', 'finance-overview']
+      .forEach((k) => queryClient.invalidateQueries({ queryKey: [k] }));
+  };
 
   const totals = a?.totals ?? { billed: 0, paid: 0, outstanding: 0, collectionRate: 0, invoiceCount: 0, overdueCount: 0 };
   const trendSeries = a?.trend?.length ? { series: [{ name: 'Collected (Le)', data: a.trend.map((t: any) => t.total) }], labels: a.trend.map((t: any) => t.label) } : { series: [], labels: [] };
@@ -324,9 +331,18 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
 
   const submit = async () => {
     if (!feeId || !amount) { showToast.error('Select a fee and enter an amount'); return; }
+    const amt = Number(amount);
+    if (!(amt > 0)) { showToast.error('Enter a valid amount'); return; }
+    const selectedFee = fees.find((x) => x.id === feeId);
+    const due = Number(selectedFee?.balance ?? selectedFee?.amount ?? 0);
+    if (due > 0 && amt > due) { showToast.error(`Amount exceeds the outstanding balance (${fmtMoney(due)})`); return; }
     setSaving(true);
     try {
-      await financeService.recordPayment({ feeId, amount: Number(amount), method, transactionReference: reference || undefined });
+      // apiClient resolves with { success:false } on HTTP errors — check it so a
+      // failed record doesn't falsely report success.
+      const res: any = await financeService.recordPayment({ feeId, amount: amt, method, transactionReference: reference || undefined });
+      const body = res?.data ?? res;
+      if (body?.success === false) { showToast.error(body?.error || body?.message || 'Failed to record payment'); return; }
       showToast.success('Payment recorded');
       onSaved();
     } catch (err: any) {

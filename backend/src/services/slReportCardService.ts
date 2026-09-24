@@ -305,10 +305,14 @@ export class SLReportCardService {
   async setPublication(
     tenantId: string,
     userId: string,
-    payload: { class_id: string; academic_year: string; term?: string | null; published: boolean },
+    payload: { class_id: string; academic_year: string; term?: string | null; published: boolean; reason?: string | null },
   ): Promise<{ auto_promotion?: { ran: boolean; reason?: string; promoted: number; repeated: number; graduated: number; skipped: number } }> {
     await this.assertClassInTenant(payload.class_id, tenantId);
     const term = payload.term ?? null;
+    // Only meaningful when unreleasing; trimmed and capped for safety.
+    const reason = !payload.published && payload.reason
+      ? String(payload.reason).trim().slice(0, 500) || null
+      : null;
     const existing = await db('sl_report_publications')
       .where({ tenant_id: tenantId, class_id: payload.class_id, academic_year: payload.academic_year, term })
       .first();
@@ -317,6 +321,8 @@ export class SLReportCardService {
       is_published: payload.published,
       published_at: payload.published ? db.fn.now() : null,
       published_by: payload.published ? userId : null,
+      // Store the reason on unrelease; clear it on a fresh release.
+      unpublish_reason: payload.published ? null : reason,
       updated_at: db.fn.now(),
     };
 
@@ -332,11 +338,16 @@ export class SLReportCardService {
       });
     }
 
-    // Notify guardians by email that report cards are now available (only on
-    // publish, best-effort, never blocks the publish action).
+    // Notify guardians/students, best-effort, never blocks the action:
+    //  - on publish → "results are available"
+    //  - on unpublish → "results withdrawn" + the reason (if provided)
     if (payload.published) {
       this.notifyReportCardPublished(tenantId, payload.class_id, payload.academic_year, term).catch((err) =>
         logger.warn(`Report card published emails failed for class ${payload.class_id}: ${err?.message || err}`),
+      );
+    } else {
+      this.notifyReportCardUnpublished(tenantId, payload.class_id, payload.academic_year, term, reason).catch((err) =>
+        logger.warn(`Report card unpublish notices failed for class ${payload.class_id}: ${err?.message || err}`),
       );
     }
 
@@ -546,6 +557,101 @@ export class SLReportCardService {
     }
   }
 
+  /**
+   * Notify students + guardians that previously released report cards for a
+   * class have been WITHDRAWN, including the principal's reason when supplied so
+   * families understand why the results are no longer visible. Best-effort per
+   * recipient; never blocks the unpublish action.
+   */
+  private async notifyReportCardUnpublished(
+    tenantId: string,
+    classId: string,
+    academicYear: string,
+    term: string | null,
+    reason: string | null,
+  ): Promise<void> {
+    const cls = await db('classes').where({ id: classId }).first().catch(() => null);
+    const className = cls?.name || cls?.class_name || undefined;
+    const termLabel = term
+      ? ({ first_term: 'First Term', second_term: 'Second Term', third_term: 'Third Term' } as any)[term] || term
+      : 'Full Year';
+
+    const students = await db('enrollments')
+      .join('students', 'enrollments.student_id', 'students.id')
+      .where('enrollments.class_id', classId)
+      .where('enrollments.status', 'active')
+      .where('students.tenant_id', tenantId)
+      .select(
+        'students.id as student_id',
+        'students.user_id as student_user_id',
+        'students.first_name',
+        'students.last_name',
+        'students.email as student_email',
+      );
+
+    const { default: emailService } = await import('./emailService');
+    const { default: notificationService } = await import('./notificationService');
+
+    const reasonSuffix = reason ? ` Reason: ${reason}` : '';
+
+    for (const s of students) {
+      try {
+        const studentName = [s.first_name, s.last_name].filter(Boolean).join(' ') || 'your child';
+        const subject = `${studentName}'s ${termLabel} result has been withdrawn`;
+        const message = `${studentName}'s ${termLabel} result is temporarily unavailable while the school reviews it.${reasonSuffix}`;
+        const notifData = {
+          kind: 'result_withdrawn',
+          student_id: s.student_id,
+          class_id: classId,
+          class_name: className,
+          academic_year: academicYear,
+          term: term || null,
+          term_label: termLabel,
+          reason: reason || null,
+        };
+
+        // Student's own account.
+        if (s.student_user_id) {
+          await notificationService.createNotification({
+            notificationType: 'result_released', recipientId: s.student_user_id,
+            subject, message, data: notifData, channels: ['in_app'], sourceType: 'report_card', sourceId: s.student_id,
+          }).catch(() => {});
+        }
+
+        // Linked guardians — in-app + email.
+        const guardians = await db('guardians')
+          .where({ student_id: s.student_id })
+          .whereNotNull('user_id')
+          .select('user_id', 'email', 'first_name', 'last_name')
+          .catch(() => [] as any[]);
+
+        let anyGuardianEmail = false;
+        for (const g of guardians) {
+          if (g.user_id) {
+            await notificationService.createNotification({
+              notificationType: 'result_released', recipientId: g.user_id,
+              subject, message, data: notifData, channels: ['in_app'], sourceType: 'report_card', sourceId: s.student_id,
+            }).catch(() => {});
+          }
+          if (g.email) {
+            anyGuardianEmail = true;
+            await emailService.sendReportCardUnpublishedEmail(tenantId, g.email, {
+              recipientName: [g.first_name, g.last_name].filter(Boolean).join(' ') || 'Parent/Guardian',
+              studentName, className, term: termLabel, academicYear, reason: reason || undefined,
+            }).catch((e) => logger.warn(`RC unpublish email (guardian) failed for ${s.student_id}: ${e?.message || e}`));
+          }
+        }
+        if (!anyGuardianEmail && s.student_email) {
+          await emailService.sendReportCardUnpublishedEmail(tenantId, s.student_email, {
+            recipientName: studentName, studentName, className, term: termLabel, academicYear, reason: reason || undefined,
+          }).catch((e) => logger.warn(`RC unpublish email (student) failed for ${s.student_id}: ${e?.message || e}`));
+        }
+      } catch (err) {
+        logger.warn(`Report card unpublish notify failed for student ${s.student_id}: ${(err as any)?.message || err}`);
+      }
+    }
+  }
+
   /** Whether results for a class+year (optionally term) are published. */
   async isPublished(
     tenantId: string,
@@ -653,6 +759,7 @@ export class SLReportCardService {
     is_published: boolean;
     published_at: string | null;
     published_by_name: string | null;
+    unpublish_reason: string | null;
   }>> {
     let q = db('sl_report_publications as p')
       .leftJoin('classes as c', 'p.class_id', 'c.id')
@@ -663,6 +770,7 @@ export class SLReportCardService {
     const rows = await q
       .select(
         'p.id', 'p.class_id', 'p.academic_year', 'p.term', 'p.is_published', 'p.published_at',
+        'p.unpublish_reason',
         'c.name as class_name',
         db.raw("NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))), '') as published_by_name"),
       )
@@ -682,6 +790,7 @@ export class SLReportCardService {
       is_published: !!r.is_published,
       published_at: r.published_at ? new Date(r.published_at).toISOString() : null,
       published_by_name: r.published_by_name || null,
+      unpublish_reason: r.unpublish_reason || null,
     }));
   }
 
@@ -1214,35 +1323,46 @@ export class SLReportCardService {
 
   /**
    * Resolve the [start, end] date window for each term from the academic
-   * session that matches `academicYear`. The session is split into three equal
-   * date ranges (Term 1/2/3). Falls back to null if no matching session — in
-   * which case the whole year is used as a single window.
+   * session(s) that match `academicYear`. The overall year span is split into
+   * three equal date ranges (Term 1/2/3). Falls back to a standard SL calendar
+   * derived from the year string when no session exists.
+   *
+   * IMPORTANT: the outer edges are open-ended — Term 1 has no lower bound and
+   * Term 3 no upper bound. This guarantees that attendance recorded slightly
+   * before the configured session start (e.g. an early orientation week) or
+   * after its end is still attributed to a term instead of being silently
+   * dropped, which previously made every term read 0 when the session dates
+   * didn't tightly wrap the real attendance dates.
    */
   private async getTermDateWindows(
     tenantId: string,
     academicYear: string,
-  ): Promise<Record<SLTerm, { start: Date; end: Date }> | null> {
-    // Match session by name containing the academic year (e.g. "2025/2026")
-    const session = await db('academic_sessions')
+  ): Promise<Record<SLTerm, { start: Date | null; end: Date | null }> | null> {
+    // A tenant may have more than one session row for the same academic year
+    // (e.g. duplicates, or a re-configured calendar). Use the WIDEST span
+    // across all matching rows so no attendance falls outside the window set.
+    const span = await db('academic_sessions')
       .where('tenant_id', tenantId)
-      .where(function () {
-        this.where('name', 'ilike', `%${academicYear}%`);
-      })
-      .orderBy('start_date', 'desc')
+      .where('name', 'ilike', `%${academicYear}%`)
+      .whereNotNull('start_date')
+      .whereNotNull('end_date')
+      .min('start_date as start')
+      .max('end_date as end')
       .first();
 
-    if (session?.start_date && session?.end_date) {
-      const start = new Date(session.start_date);
-      const end = new Date(session.end_date);
+    if (span?.start && span?.end) {
+      const start = new Date(span.start as any);
+      const end = new Date(span.end as any);
       const totalMs = end.getTime() - start.getTime();
       if (totalMs > 0) {
         const third = totalMs / 3;
         const t1End = new Date(start.getTime() + third);
         const t2End = new Date(start.getTime() + third * 2);
         return {
-          first_term: { start, end: t1End },
+          // Term 1 open at the start, Term 3 open at the end (see doc comment).
+          first_term: { start: null, end: t1End },
           second_term: { start: t1End, end: t2End },
-          third_term: { start: t2End, end },
+          third_term: { start: t2End, end: null },
         };
       }
     }
@@ -1256,11 +1376,12 @@ export class SLReportCardService {
     if (!m) return null;
     const y1 = parseInt(m[1], 10);       // start year (Sept of y1)
     const y2 = y1 + 1;                    // end year (Jul of y2)
-    // Term 1: 01 Sep y1 – 31 Dec y1 · Term 2: 01 Jan y2 – 15 Apr y2 · Term 3: 16 Apr y2 – 31 Jul y2
+    // Term 1: … – 31 Dec y1 · Term 2: 01 Jan y2 – 15 Apr y2 · Term 3: 16 Apr y2 – …
+    // Outer edges are open (see doc comment) so early/late attendance is kept.
     return {
-      first_term: { start: new Date(Date.UTC(y1, 8, 1)), end: new Date(Date.UTC(y1, 11, 31)) },
+      first_term: { start: null, end: new Date(Date.UTC(y1, 11, 31)) },
       second_term: { start: new Date(Date.UTC(y2, 0, 1)), end: new Date(Date.UTC(y2, 3, 15)) },
-      third_term: { start: new Date(Date.UTC(y2, 3, 16)), end: new Date(Date.UTC(y2, 6, 31)) },
+      third_term: { start: new Date(Date.UTC(y2, 3, 16)), end: null },
     };
   }
 
@@ -1273,7 +1394,7 @@ export class SLReportCardService {
     tenantId: string,
     studentId: string,
     classId: string,
-    window: { start: Date; end: Date } | null,
+    window: { start: Date | null; end: Date | null } | null,
   ): Promise<{ on_time: number; late: number; absent: number }> {
     let q = db('attendance')
       .join('students', 'attendance.student_id', 'students.id')
@@ -1286,11 +1407,13 @@ export class SLReportCardService {
         this.where('attendance.class_id', classId).orWhereNull('attendance.class_id');
       });
 
-    if (window) {
-      q = q.whereBetween('attendance.attendance_date', [
-        window.start.toISOString().slice(0, 10),
-        window.end.toISOString().slice(0, 10),
-      ]);
+    // Apply each bound independently so an open-ended edge (null) does not
+    // constrain the query — Term 1 has no lower bound, Term 3 no upper bound.
+    if (window?.start) {
+      q = q.where('attendance.attendance_date', '>=', window.start.toISOString().slice(0, 10));
+    }
+    if (window?.end) {
+      q = q.where('attendance.attendance_date', '<=', window.end.toISOString().slice(0, 10));
     }
 
     // Count DISTINCT DAYS (not sessions) so multiple daily sessions
@@ -1332,6 +1455,20 @@ export class SLReportCardService {
       result[term] = await this.countAttendance(tenantId, studentId, classId, win);
     }
     return result;
+  }
+
+  /**
+   * Public: whole-year attendance for a student in a class+year, computed live
+   * from the attendance table with no per-term windowing. Used as the annual
+   * total on the booklet so it always equals the sum of what actually happened,
+   * independent of how the term boundaries fall.
+   */
+  async getAttendanceForYear(
+    tenantId: string,
+    studentId: string,
+    classId: string,
+  ): Promise<{ on_time: number; late: number; absent: number }> {
+    return this.countAttendance(tenantId, studentId, classId, null);
   }
 
   // ──────────────────────────────────────────────────────────────────────────

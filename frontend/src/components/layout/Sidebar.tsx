@@ -261,6 +261,15 @@ const navItems: NavItem[] = [
     version: 'v2',
   },
   {
+    label: 'Fees & Payments',
+    icon: <FaMoneyBill className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/my-fees',
+    roles: ['student', 'parent', 'guardian'],
+    module: 'Financial Management',
+    group: 'Finance',
+    version: 'v1',
+  },
+  {
     label: 'Payroll',
     icon: <FaMoneyBill className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/finance/payroll',

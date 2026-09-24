@@ -8,7 +8,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Lock, Eye, GraduationCap, ShieldCheck, Loader2, Send, CheckCircle2, History, XCircle } from 'lucide-react';
+import { Lock, Eye, GraduationCap, ShieldCheck, Loader2, Send, CheckCircle2, History, XCircle, Undo2 } from 'lucide-react';
 import { Button } from '@components/ui/button';
 import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
 import { showToast } from '@utils/toast';
@@ -63,6 +63,13 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
   const [pubTerm, setPubTerm] = useState<'' | SLTerm>('');
   const [publishing, setPublishing] = useState(false);
 
+  // Unrelease-with-reason modal. `target` identifies which class/term to pull
+  // back; when null the modal is closed.
+  const [unreleaseTarget, setUnreleaseTarget] = useState<
+    { classId: string; term: '' | SLTerm; label: string } | null
+  >(null);
+  const [unreleaseReason, setUnreleaseReason] = useState('');
+
   const { data: settingsResp, isLoading } = useQuery({
     queryKey: ['sl-report-settings'],
     queryFn: () => reportCardService.getSettings(),
@@ -107,18 +114,24 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
     }
   };
 
-  const handlePublish = async (published: boolean) => {
-    if (!pubClassId) { showToast.error('Select a class'); return; }
+  const handlePublish = async (
+    published: boolean,
+    override?: { classId: string; term: '' | SLTerm; reason?: string },
+  ) => {
+    const classId = override?.classId ?? pubClassId;
+    const term = override?.term ?? pubTerm;
+    if (!classId) { showToast.error('Select a class'); return; }
     setPublishing(true);
     try {
       const res: any = await reportCardService.setPublication({
-        class_id: pubClassId,
+        class_id: classId,
         academic_year: academicYear,
-        term: pubTerm || null,
+        term: term || null,
         published,
+        reason: override?.reason ?? null,
       });
-      const label = pubTerm ? SL_TERMS.find((t) => t.value === pubTerm)?.label || pubTerm : 'Whole year';
-      const cls = classOptions.find((c) => c.value === pubClassId)?.label || 'class';
+      const label = term ? SL_TERMS.find((t) => t.value === term)?.label || term : 'Whole year';
+      const cls = classOptions.find((c) => c.value === classId)?.label || 'class';
       const ap = res?.auto_promotion;
       showToast.success(
         published
@@ -141,6 +154,18 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
     } finally {
       setPublishing(false);
     }
+  };
+
+  // Confirm the reason modal → unrelease the targeted class/term.
+  const handleConfirmUnrelease = async () => {
+    if (!unreleaseTarget) return;
+    await handlePublish(false, {
+      classId: unreleaseTarget.classId,
+      term: unreleaseTarget.term,
+      reason: unreleaseReason.trim() || undefined,
+    });
+    setUnreleaseTarget(null);
+    setUnreleaseReason('');
   };
 
   if (isLoading) {
@@ -198,7 +223,16 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
           <Button onClick={() => handlePublish(true)} disabled={publishing || !pubClassId} className="gap-1.5">
             {publishing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Release
           </Button>
-          <Button variant="outline" onClick={() => handlePublish(false)} disabled={publishing || !pubClassId}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              const cls = classOptions.find((c) => c.value === pubClassId)?.label || 'class';
+              const label = pubTerm ? SL_TERMS.find((t) => t.value === pubTerm)?.label || pubTerm : 'Whole year';
+              setUnreleaseReason('');
+              setUnreleaseTarget({ classId: pubClassId, term: pubTerm, label: `${label} · ${cls}` });
+            }}
+            disabled={publishing || !pubClassId}
+          >
             Unrelease
           </Button>
         </div>
@@ -234,15 +268,40 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
                         {p.published_at ? ` · ${new Date(p.published_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
                         {p.published_by_name ? ` · by ${p.published_by_name}` : ''}
                       </p>
+                      {!p.is_published && p.unpublish_reason && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 line-clamp-2">
+                          Reason: {p.unpublish_reason}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
-                    p.is_published
-                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                      : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
-                  }`}>
-                    {p.is_published ? 'LIVE' : 'OFF'}
-                  </span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {p.is_published && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1 h-7 px-2 text-xs"
+                        disabled={publishing}
+                        onClick={() => {
+                          setUnreleaseReason('');
+                          setUnreleaseTarget({
+                            classId: p.class_id,
+                            term: (p.term as SLTerm) || '',
+                            label: `${p.term_label} · ${p.class_name || 'Class'}`,
+                          });
+                        }}
+                      >
+                        <Undo2 size={13} /> Unrelease
+                      </Button>
+                    )}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      p.is_published
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                        : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                    }`}>
+                      {p.is_published ? 'LIVE' : 'OFF'}
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -291,6 +350,50 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
           </Button>
         </div>
       </div>
+
+      {/* ── Unrelease reason modal ── */}
+      {unreleaseTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+              <Undo2 size={16} className="text-amber-500" />
+              <h4 className="text-sm font-bold text-gray-900 dark:text-white">Unrelease results</h4>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                You are about to withdraw <strong>{unreleaseTarget.label}</strong>. Parents and students
+                will no longer see these results and will be notified.
+              </p>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Reason <span className="font-normal text-gray-400">(optional — shared with parents & students)</span>
+                </label>
+                <textarea
+                  value={unreleaseReason}
+                  onChange={(e) => setUnreleaseReason(e.target.value)}
+                  rows={3}
+                  maxLength={500}
+                  placeholder="e.g. Correcting an error in the Mathematics scores. Results will be re-released shortly."
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
+                />
+                <span className="text-[10px] text-gray-400 self-end">{unreleaseReason.length}/500</span>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-700 flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => { setUnreleaseTarget(null); setUnreleaseReason(''); }}
+                disabled={publishing}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleConfirmUnrelease} disabled={publishing} className="gap-1.5">
+                {publishing ? <Loader2 size={15} className="animate-spin" /> : <Undo2 size={15} />} Unrelease
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

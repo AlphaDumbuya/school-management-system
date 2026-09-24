@@ -35,6 +35,9 @@ import phase7ReportingRoutes from '@routes/phase7ReportingRoutes';
 import phase8FinancialRoutes from '@routes/phase8FinancialRoutes';
 import monimeRoutes from '@routes/monimeRoutes';
 import feeStructureRoutes from '@routes/feeStructureRoutes';
+import financeLedgerRoutes from '@routes/financeLedgerRoutes';
+import schoolExpenseRoutes from '@routes/schoolExpenseRoutes';
+
 import phase9NotificationRoutes from '@routes/phase9NotificationRoutes';
 import phase10DashboardRoutes from '@routes/phase10DashboardRoutes';
 import phase12ExportRoutes from '@routes/phase12ExportRoutes';
@@ -255,6 +258,9 @@ app.use('/api/v1/schedules', phase6ScheduleRoutes);
 app.use('/api/v1', phase7ReportingRoutes);
 
 // Financial Management Routes (Phase 8)
+// NOTE: req.user (id/tenant_id/role) is populated by attachUserContext, applied
+// INSIDE each finance router (after its own authenticate) so we don't broaden
+// auth across the whole /api/v1 namespace.
 app.use('/api/v1', phase8FinancialRoutes);
 
 // Monime online payment routes (checkout + public webhook)
@@ -262,6 +268,12 @@ app.use('/api/v1/payments', monimeRoutes);
 
 // Fee-structure configurator (per class/year term tuition + year expenses + policy)
 app.use('/api/v1/fee-structures', feeStructureRoutes);
+
+// Finance ledger reads (per-student ledger + tenant summary/breakdown)
+app.use('/api/v1/finance/ledger', financeLedgerRoutes);
+
+// School operating expenses + fees-vs-expenses summary (staff-only)
+app.use('/api/v1/finance', schoolExpenseRoutes);
 
 // Notification System Routes (Phase 9)
 app.use('/api/v1', phase9NotificationRoutes);

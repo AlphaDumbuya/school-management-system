@@ -1588,19 +1588,39 @@ const StudentAttendanceView: React.FC = () => {
               {records.length === 0 ? (
                 <div className="p-12 text-center text-gray-400">No attendance records yet.</div>
               ) : (
-                <div className="divide-y divide-gray-100 dark:divide-gray-700/50 max-h-[28rem] overflow-y-auto">
-                  {records.map((r) => (
-                    <div key={r.id} className="flex flex-wrap items-start justify-between gap-2 px-5 py-3">
-                      <div><span className="text-sm text-gray-700 dark:text-gray-200">{fmt(r.date)}</span><AttendanceTimeDetails record={r} className="mt-1" /></div>
-                      <div className="flex items-center gap-3">
-                        {r.remarks && <span className="text-xs text-gray-400 truncate max-w-[10rem]">{r.remarks}</span>}
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${getDotColor(r.status)}`} />
-                          {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="overflow-x-auto max-h-[28rem] overflow-y-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
+                      <tr className="text-white">
+                        <th className="px-5 py-3.5 font-bold text-xs uppercase tracking-wider">Date</th>
+                        <th className="px-5 py-3.5 font-bold text-xs uppercase tracking-wider">Details</th>
+                        <th className="px-5 py-3.5 font-bold text-xs uppercase tracking-wider">Remarks</th>
+                        <th className="px-5 py-3.5 font-bold text-xs uppercase tracking-wider text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {records.map((r, i) => (
+                        <tr
+                          key={r.id}
+                          className={`transition-colors hover:bg-sky-100 dark:hover:bg-blue-950/20 ${
+                            i % 2 === 1 ? 'bg-sky-50 dark:bg-gray-800/20' : 'bg-white dark:bg-transparent'
+                          }`}
+                        >
+                          <td className="px-5 py-3.5 font-medium text-gray-700 dark:text-gray-200 whitespace-nowrap">{fmt(r.date)}</td>
+                          <td className="px-5 py-3.5"><AttendanceTimeDetails record={r} /></td>
+                          <td className="px-5 py-3.5 text-gray-500">
+                            {r.remarks ? <span className="truncate inline-block max-w-[14rem] align-bottom">{r.remarks}</span> : '—'}
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${getDotColor(r.status)}`} />
+                              {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -1752,19 +1772,39 @@ const ParentAttendanceView: React.FC = () => {
                   {records.length === 0 ? (
                     <div className="p-12 text-center text-gray-400">No attendance records yet.</div>
                   ) : (
-                    <div className="divide-y divide-gray-100 dark:divide-gray-700/50 max-h-[28rem] overflow-y-auto">
-                      {records.map((r) => (
-                        <div key={r.id} className="flex flex-wrap items-start justify-between gap-2 px-5 py-3">
-                          <div><span className="text-sm text-gray-700 dark:text-gray-200">{fmt(r.date)}</span><AttendanceTimeDetails record={r} className="mt-1" /></div>
-                          <div className="flex items-center gap-3">
-                            {r.remarks && <span className="text-xs text-gray-400 truncate max-w-[10rem]">{r.remarks}</span>}
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${getDotColor(r.status)}`} />
-                              {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="overflow-x-auto max-h-[28rem] overflow-y-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
+                          <tr className="text-white">
+                            <th className="px-5 py-3.5 font-bold text-xs uppercase tracking-wider">Date</th>
+                            <th className="px-5 py-3.5 font-bold text-xs uppercase tracking-wider">Details</th>
+                            <th className="px-5 py-3.5 font-bold text-xs uppercase tracking-wider">Remarks</th>
+                            <th className="px-5 py-3.5 font-bold text-xs uppercase tracking-wider text-right">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {records.map((r, i) => (
+                            <tr
+                              key={r.id}
+                              className={`transition-colors hover:bg-sky-100 dark:hover:bg-blue-950/20 ${
+                                i % 2 === 1 ? 'bg-sky-50 dark:bg-gray-800/20' : 'bg-white dark:bg-transparent'
+                              }`}
+                            >
+                              <td className="px-5 py-3.5 font-medium text-gray-700 dark:text-gray-200 whitespace-nowrap">{fmt(r.date)}</td>
+                              <td className="px-5 py-3.5"><AttendanceTimeDetails record={r} /></td>
+                              <td className="px-5 py-3.5 text-gray-500">
+                                {r.remarks ? <span className="truncate inline-block max-w-[14rem] align-bottom">{r.remarks}</span> : '—'}
+                              </td>
+                              <td className="px-5 py-3.5 text-right">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${getDotColor(r.status)}`} />
+                                  {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>

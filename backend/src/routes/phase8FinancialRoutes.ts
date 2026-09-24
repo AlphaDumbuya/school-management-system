@@ -1,12 +1,24 @@
 import express, { Router, Request, Response, NextFunction } from 'express';
-import { authenticate } from '@middleware/authMiddleware';
+import crypto from 'crypto';
+import { authenticate, attachUserContext } from '@middleware/authMiddleware';
 import { FeeService } from '@services/feeService';
 import { PaymentService } from '@services/paymentService';
 
 const STAFF_ROLES = ['principal', 'super_admin', 'accountant'];
-/** Middleware: only staff (principal/super_admin/accountant) may access admin finance pages. */
-const requireStaff = (req: Request, res: Response, next: NextFunction) => {
-  const role = (req as any).user?.role;
+/**
+ * Middleware: only staff (principal/super_admin/accountant) may access admin
+ * finance pages. Runs AFTER the inline `authenticate` on each route. Since this
+ * router is mounted on the shared `/api/v1` prefix we cannot safely add a
+ * blanket `router.use(authenticate)`, so this guard also ensures the DB-backed
+ * user context (req.user.tenant_id) is populated for the handlers that need it.
+ */
+const requireStaff = async (req: Request, res: Response, next: NextFunction) => {
+  // Populate req.user from the DB if the inline `authenticate` set req.auth but
+  // attachUserContext hasn't run for this route.
+  if (!(req as any).user && (req as any).auth?.userId) {
+    await attachUserContext(req, res, () => {});
+  }
+  const role = (req as any).user?.role || (req as any).auth?.role;
   if (!role || !STAFF_ROLES.includes(role)) {
     return res.status(403).json({ success: false, error: 'Access denied. Finance management is restricted to staff roles.' });
   }
@@ -33,6 +45,7 @@ const auditService = new AuditService(db);
 router.post(
   '/fees',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { type, amount, dueDate, description, studentId, classId, academicSession } =
@@ -144,6 +157,7 @@ router.get(
 router.get(
   '/classes/:classId/fees',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { classId } = req.params;
@@ -173,6 +187,7 @@ router.get(
 router.patch(
   '/fees/:feeId/status',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { feeId } = req.params;
@@ -316,6 +331,7 @@ router.get(
 router.get(
   '/payments/statistics',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { startDate, endDate, studentId } = req.query;
@@ -377,6 +393,7 @@ router.get(
 router.post(
   '/payments/:paymentId/refund',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { paymentId } = req.params;
@@ -412,6 +429,7 @@ router.post(
 router.post(
   '/invoices',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { studentId, feeIds, dueDate, notes } = req.body;
@@ -518,6 +536,7 @@ router.get(
 router.patch(
   '/invoices/:invoiceId/status',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { invoiceId } = req.params;
@@ -553,6 +572,7 @@ router.patch(
 router.get(
   '/invoices-overdue',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const invoices = await invoiceService.getOverdueInvoices();
@@ -611,6 +631,7 @@ router.post(
 router.get(
   '/fees-statistics',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { classId } = req.query;
@@ -639,6 +660,7 @@ router.get(
 router.get(
   '/invoices-statistics',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { startDate, endDate } = req.query;
@@ -671,6 +693,7 @@ router.get(
 router.post(
   '/fees/bulk',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { classId, fees } = req.body;
@@ -709,6 +732,7 @@ router.post(
 router.post(
   '/payments/bulk',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { payments } = req.body;
@@ -747,6 +771,7 @@ router.post(
 router.post(
   '/invoices/bulk',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { classId, feeType } = req.body;
@@ -785,6 +810,7 @@ router.post(
 router.get(
   '/fees-overdue',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { daysOverdue } = req.query;
@@ -816,6 +842,7 @@ router.get(
 router.get(
   '/fees-by-type/:type',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { type } = req.params;
@@ -847,6 +874,7 @@ router.get(
 router.patch(
   '/fees/:feeId/adjust',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { feeId } = req.params;
@@ -884,6 +912,7 @@ router.patch(
 router.get(
   '/payments-summary',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { startDate, endDate } = req.query;
@@ -922,6 +951,7 @@ router.get(
 router.get(
   '/payments-methods',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const summary = await paymentService.getPaymentMethodsSummary();
@@ -1004,6 +1034,7 @@ router.get(
 router.get(
   '/payments-recent',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { limit } = req.query;
@@ -1036,6 +1067,7 @@ router.get(
 router.delete(
   '/fees/:feeId',
   authenticate,
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { feeId } = req.params;
@@ -1525,7 +1557,7 @@ router.post('/finance/bulk-bill', authenticate, requireStaff, async (req: Reques
     const now = new Date();
     let created = 0;
     for (const s of students) {
-      const feeId = `FEE-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+      const feeId = crypto.randomUUID(); // fees.id is a UUID column
       try {
         await db('fees').insert({
           id: feeId,
@@ -1596,7 +1628,7 @@ router.post('/finance/bulk-invoice', authenticate, requireStaff, async (req: Req
       const total = fees.reduce((sum: number, f: any) => sum + (Number(f.balance ?? f.amount) || 0), 0);
       if (total <= 0) continue;
 
-      const invoiceId = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+      const invoiceId = crypto.randomUUID(); // invoices.id is a UUID column
       const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 900000 + 100000)}`;
       await db('invoices').insert({
         id: invoiceId,
@@ -1616,7 +1648,7 @@ router.post('/finance/bulk-invoice', authenticate, requireStaff, async (req: Req
       }).catch(() => {});
       for (const f of fees) {
         await db('invoice_items').insert({
-          id: `II-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          id: crypto.randomUUID(),
           invoice_id: invoiceId, fee_id: f.id, created_at: now,
         }).catch(() => {});
       }

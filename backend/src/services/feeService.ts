@@ -1,4 +1,5 @@
 import { Knex } from 'knex';
+import crypto from 'crypto';
 import { logger } from '@utils/logger';
 import { AuditService } from './auditService';
 
@@ -35,21 +36,30 @@ export class FeeService {
     try {
       logger.info(`Creating fee for student ${data.studentId}`);
 
-      // Validate student exists
-      const student = await this.db('users')
-        .where('id', data.studentId)
-        .where('role', 'student')
-        .first();
+      // Canonical charge subject is students.id (financial-management spec §1).
+      const student = await this.db('students').where('id', data.studentId).first();
 
       if (!student) {
+        // Detect the legacy inconsistency where a users.id (role student) was
+        // passed instead of a students.id. Reject rather than auto-reconcile.
+        const asUser = await this.db('users')
+          .where({ id: data.studentId, role: 'student' })
+          .first()
+          .catch(() => null);
+        if (asUser) {
+          throw new Error(
+            `Student identifier mismatch: a user id was supplied where a student id is required (student ${data.studentId}).`,
+          );
+        }
         throw new Error(`Student ${data.studentId} not found`);
       }
 
-      // Generate fee ID
-      const feeId = `FEE-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Generate fee ID — fees.id is a UUID column.
+      const feeId = crypto.randomUUID();
 
       const fee = {
         id: feeId,
+        tenant_id: student.tenant_id || null,
         type: data.type,
         amount: data.amount,
         due_date: new Date(data.dueDate),
@@ -295,9 +305,10 @@ export class FeeService {
       cutoffDate.setDate(cutoffDate.getDate() - daysOverdue);
 
       const fees = await this.db('fees')
-        .where('due_date', '<', cutoffDate)
-        .whereIn('status', ['pending', 'partial', 'overdue'])
-        .leftJoin('users', 'fees.student_id', 'users.id')
+        .where('fees.due_date', '<', cutoffDate)
+        .whereIn('fees.status', ['pending', 'partial', 'overdue'])
+        // Canonical subject is students.id, so join students (not users).
+        .leftJoin('students', 'fees.student_id', 'students.id')
         .select(
           'fees.id',
           'fees.type',
@@ -305,8 +316,8 @@ export class FeeService {
           'fees.balance',
           'fees.due_date',
           'fees.status',
-          'users.name as student_name',
-          'users.email as student_email',
+          this.db.raw("TRIM(CONCAT(COALESCE(students.first_name,''),' ',COALESCE(students.last_name,''))) as student_name"),
+          'students.email as student_email',
           'fees.student_id'
         )
         .orderBy('fees.due_date', 'asc');
