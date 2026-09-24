@@ -63,6 +63,8 @@ import PaymentReturnPage from '@pages/finance/PaymentReturnPage';
 import FeesPage from '@pages/finance/FeesPage';
 import InvoicesPage from '@pages/finance/InvoicesPage';
 import PaymentsPage from '@pages/finance/PaymentsPage';
+import ExpensesPage from '@pages/finance/ExpensesPage';
+import MyFeesPage from '@pages/finance/MyFeesPage';
 import TeachersPage from '@pages/staff/TeachersPage';
 // SMS & WhatsApp module removed — in-app communication (Announcements + Support)
 // replaces this feature in V1.
@@ -159,6 +161,10 @@ const router = createBrowserRouter(
         // One-time app onboarding guide (app mode only; web redirects to home).
         { path: 'welcome', element: APP_MODE ? <WelcomePage /> : <Navigate to="/" replace /> },
         { path: 'login', element: <LoginPage /> },
+        // Payment return landing (after Monime hosted checkout). PUBLIC so it
+        // resolves on the hard browser redirect back from Monime even before
+        // auth state rehydrates — the page only needs the ?session query param.
+        { path: 'finance/pay/return', element: <PaymentReturnPage /> },
         { path: 'apply/:schoolSlug', element: <PublicAdmissionPage /> },
         { path: 'forgot-password', element: <ForgotPasswordPage /> },
         { path: 'reset-password', element: <ResetPasswordPage /> },
@@ -326,11 +332,7 @@ const router = createBrowserRouter(
         },
 
         // ── FINANCIAL MANAGEMENT ───────────────────────────────────
-        {
-          // Payment return landing (after Monime hosted checkout) — any signed-in payer.
-          path: 'finance/pay/return',
-          element: <P><PaymentReturnPage /></P>,
-        },
+        // (Payment return landing is registered as a PUBLIC route above.)
         {
           path: 'finance/fees',
           element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Fees"><FeesPage /></G></P>,
@@ -342,6 +344,14 @@ const router = createBrowserRouter(
         {
           path: 'finance/payments',
           element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Payments"><PaymentsPage /></G></P>,
+        },
+        {
+          path: 'finance/expenses',
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><ExpensesPage /></P>,
+        },
+        {
+          path: 'finance/my-fees',
+          element: <P requiredRoles={['student', 'parent', 'guardian']}><MyFeesPage /></P>,
         },
         {
           path: 'finance/expenses',

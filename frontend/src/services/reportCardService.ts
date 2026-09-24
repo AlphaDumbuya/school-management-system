@@ -194,6 +194,8 @@ export interface PublicationRecord {
   is_published: boolean;
   published_at: string | null;
   published_by_name: string | null;
+  /** Reason recorded when the results were unreleased (shown to families). */
+  unpublish_reason: string | null;
 }
 
 export interface ReportCard {
@@ -351,7 +353,7 @@ export const reportCardService = {
   },
 
   /** Publish / unpublish results for a class (gates parent/student visibility). */
-  async setPublication(payload: { class_id: string; academic_year: string; term?: SLTerm | null; published: boolean }) {
+  async setPublication(payload: { class_id: string; academic_year: string; term?: SLTerm | null; published: boolean; reason?: string | null }) {
     return apiClient.post(`${BASE}/publish`, payload);
   },
 

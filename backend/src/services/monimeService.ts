@@ -83,8 +83,8 @@ export class MonimeService {
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      logger.error('Monime createCheckoutSession failed', { status: res.status, text });
-      throw new Error(`Monime checkout failed (${res.status})`);
+      logger.error('Monime createCheckoutSession failed', { status: res.status, response: text });
+      throw new Error(`Monime checkout failed (${res.status}): ${text?.slice(0, 300)}`);
     }
 
     const data: any = await res.json().catch(() => ({}));
@@ -93,6 +93,89 @@ export class MonimeService {
       redirectUrl: data?.result?.redirectUrl ?? null,
       raw: data,
     };
+  }
+
+  /**
+   * Create a Payment Code (direct mobile-money collection). Returns a USSD code
+   * the payer dials on their phone — so the whole payment happens INSIDE our
+   * app (no hosted-checkout page, no popup, no iframe). Completion is delivered
+   * via `payment_code.completed` webhooks and confirmed by polling the code.
+   *
+   * Docs: POST https://api.monime.io/v1/payment-codes
+   *  Body: { name, mode:'oneTime', amount:{currency,value}, isActive,
+   *          financialTarget:{ expectedPaymentCount, expectedPaymentSum },
+   *          metadata }
+   */
+  async createPaymentCode(input: {
+    name: string;
+    amount: number;               // MAJOR SLE units
+    metadata?: Record<string, string>;
+    duration?: string;            // e.g. '15m' — how long the code stays valid
+  }): Promise<{ id: string | null; ussdCode: string | null; status: string | null; expireTime: string | null; raw?: any }> {
+    if (!this.isConfigured()) {
+      throw new Error('Monime is not configured (missing MONIME_ACCESS_TOKEN / MONIME_SPACE_ID)');
+    }
+    const value = this.toMinorUnits(input.amount);
+    // Minimal valid shape for a fixed one-time collection: a named code with a
+    // set amount. We intentionally omit financialTarget/customerTarget so the
+    // code simply collects `amount` once (docs: amount is the per-payment sum).
+    const body: any = {
+      name: input.name.slice(0, 100),
+      mode: 'one_time',                      // API validator requires snake_case
+      amount: { currency: 'SLE', value },
+      duration: input.duration || '15m',
+      metadata: input.metadata || {},
+    };
+
+    const idempotencyKey = crypto.randomUUID();
+    const doPost = (path: string) =>
+      fetch(`${MONIME_BASE_URL}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Monime-Space-Id': this.spaceId,
+          'Idempotency-Key': idempotencyKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+    // The docs render the path without a version prefix. Try the versioned
+    // path first (matches the checkout-sessions convention) and fall back to
+    // the un-versioned one on a 404.
+    let res = await doPost('/v1/payment-codes');
+    if (res.status === 404) res = await doPost('/payment-codes');
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      logger.error('Monime createPaymentCode failed', { status: res.status, body, response: text });
+      throw new Error(`Monime payment code failed (${res.status}): ${text?.slice(0, 300)}`);
+    }
+    const data: any = await res.json().catch(() => ({}));
+    const result = data?.result ?? data;
+    return {
+      id: result?.id ?? null,
+      ussdCode: result?.ussdCode ?? null,
+      status: result?.status ?? null,
+      expireTime: result?.expireTime ?? null,
+      raw: data,
+    };
+  }
+
+  /** Fetch a payment code to read its authoritative status. */
+  async getPaymentCode(paymentCodeId: string): Promise<any> {
+    if (!this.isConfigured()) throw new Error('Monime is not configured');
+    const headers = { Authorization: `Bearer ${this.token}`, 'Monime-Space-Id': this.spaceId };
+    const id = encodeURIComponent(paymentCodeId);
+    let res = await fetch(`${MONIME_BASE_URL}/v1/payment-codes/${id}`, { headers });
+    if (res.status === 404) res = await fetch(`${MONIME_BASE_URL}/payment-codes/${id}`, { headers });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      logger.error('Monime getPaymentCode failed', { status: res.status, text });
+      throw new Error(`Monime payment code fetch failed (${res.status})`);
+    }
+    const data: any = await res.json().catch(() => ({}));
+    return data?.result ?? data;
   }
 
   /**

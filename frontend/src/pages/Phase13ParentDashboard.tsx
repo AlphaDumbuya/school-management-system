@@ -6,10 +6,16 @@
 
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   Users, TrendingUp, Calendar, DollarSign, Clock, MapPin, GraduationCap,
   Loader2, AlertTriangle, CheckCircle2, XCircle, UserCircle2,
+  PieChart as PieChartIcon, BarChart3, CreditCard,
 } from 'lucide-react';
+import {
+  ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+} from 'recharts';
 import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
@@ -20,6 +26,7 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import { parentDashboardService } from '@services/parentDashboardService';
 import { PayFeesButton } from '@components/finance/PayFeesButton';
+import { StudentLedgerView } from '@components/finance/StudentLedgerView';
 import { AttendanceTimeDetails } from '@components/attendance/AttendanceTimeDetails';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -48,6 +55,7 @@ type TabType = 'overview' | 'grades' | 'attendance' | 'schedule' | 'fees';
 
 export const Phase13ParentDashboard: React.FC = () => {
   const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
@@ -89,6 +97,54 @@ export const Phase13ParentDashboard: React.FC = () => {
   [schedule]);
 
   const tabs: TabType[] = ['overview', 'grades', 'attendance', 'schedule', 'fees'];
+
+  // ── Chart data ─────────────────────────────────────────────────────────
+  // Per-child comparison across all the parent's children.
+  const childCompareData = useMemo(
+    () =>
+      (children as any[]).map((c) => ({
+        name: (c.name || '').split(' ')[0] || c.name,
+        fullName: c.name,
+        attendance: Number(c.attendance_rate) || 0,
+        grade: Number(c.average_grade) || 0,
+      })),
+    [children]
+  );
+
+  // Selected child's attendance donut.
+  const attendanceChartData = useMemo(
+    () => [
+      { name: 'Present', value: attendance.present, color: '#10B981' },
+      { name: 'Late', value: attendance.late, color: '#F59E0B' },
+      { name: 'Absent', value: attendance.absent, color: '#EF4444' },
+      { name: 'Excused', value: attendance.excused, color: '#3B82F6' },
+    ].filter((d) => d.value > 0),
+    [attendance.present, attendance.late, attendance.absent, attendance.excused]
+  );
+
+  // Selected child's fees breakdown.
+  const feesChartData = useMemo(
+    () => [
+      { name: 'Paid', value: Number(fees.paid) || 0, color: '#10B981' },
+      { name: 'Outstanding', value: Number(fees.outstanding) || 0, color: '#EF4444' },
+    ].filter((d) => d.value > 0),
+    [fees.paid, fees.outstanding]
+  );
+
+  // Selected child's grades bar chart (latest mean per subject).
+  const gradesChartData = useMemo(() => {
+    const bySubject = new Map<string, number>();
+    (grades as any[]).forEach((g) => {
+      if (g.mean != null && !Number.isNaN(Number(g.mean))) {
+        bySubject.set(g.subject_name, Number(g.mean));
+      }
+    });
+    return Array.from(bySubject.entries()).map(([subject, mean]) => ({
+      subject: subject.length > 10 ? `${subject.slice(0, 10)}…` : subject,
+      fullSubject: subject,
+      mean,
+    }));
+  }, [grades]);
 
   if (isLoading) {
     return (
@@ -133,6 +189,34 @@ export const Phase13ParentDashboard: React.FC = () => {
               <KPICard title="Avg Score" value={stats.average_grade ? `${stats.average_grade}%` : '—'} icon={<TrendingUp className="w-5 h-5" />} color="purple" />
               <KPICard title="Total Outstanding" value={fmtMoney(stats.total_outstanding)} icon={<DollarSign className="w-5 h-5" />} color={stats.total_outstanding > 0 ? 'amber' : 'green'} />
             </div>
+
+            {/* Multi-child comparison — only meaningful with 2+ children */}
+            {childCompareData.length > 1 && (
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <BarChart3 className="w-4 h-4" /> Children Comparison
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={childCompareData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                        labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName ?? ''}
+                        formatter={(value: number, key: string) => [`${value}%`, key === 'attendance' ? 'Attendance' : 'Avg Score']}
+                      />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                      <Bar name="Attendance" dataKey="attendance" fill="#2563EB" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                      <Bar name="Avg Score" dataKey="grade" fill="#8B5CF6" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
 
             {/* School & class announcements (scoped to this parent's children) */}
             <div className="mt-6">
@@ -216,8 +300,87 @@ export const Phase13ParentDashboard: React.FC = () => {
                         </div>
                       )}
 
+                      {/* Visual insights for the selected child */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Attendance donut */}
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                              <PieChartIcon className="w-4 h-4" /> Attendance Breakdown
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            {attendanceChartData.length === 0 ? (
+                              <p className="text-sm text-gray-500 py-12 text-center">No attendance recorded yet.</p>
+                            ) : (
+                              <ResponsiveContainer width="100%" height={240}>
+                                <PieChart>
+                                  <Pie
+                                    data={attendanceChartData}
+                                    dataKey="value"
+                                    nameKey="name"
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={55}
+                                    outerRadius={85}
+                                    paddingAngle={2}
+                                    label={({ name, value }) => `${name}: ${value}`}
+                                  >
+                                    {attendanceChartData.map((entry) => (
+                                      <Cell key={entry.name} fill={entry.color} />
+                                    ))}
+                                  </Pie>
+                                  <Tooltip
+                                    contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                                    formatter={(value: number) => [`${value} day${value === 1 ? '' : 's'}`, '']}
+                                  />
+                                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                                </PieChart>
+                              </ResponsiveContainer>
+                            )}
+                          </CardContent>
+                        </Card>
+
+                        {/* Fees breakdown */}
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                              <DollarSign className="w-4 h-4" /> Fees Breakdown
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            {feesChartData.length === 0 ? (
+                              <p className="text-sm text-gray-500 py-12 text-center">No fees on record.</p>
+                            ) : (
+                              <ResponsiveContainer width="100%" height={240}>
+                                <PieChart>
+                                  <Pie
+                                    data={feesChartData}
+                                    dataKey="value"
+                                    nameKey="name"
+                                    cx="50%"
+                                    cy="50%"
+                                    outerRadius={85}
+                                    label={({ name }) => name}
+                                  >
+                                    {feesChartData.map((entry) => (
+                                      <Cell key={entry.name} fill={entry.color} />
+                                    ))}
+                                  </Pie>
+                                  <Tooltip
+                                    contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                                    formatter={(value: number) => [fmtMoney(value), '']}
+                                  />
+                                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                                </PieChart>
+                              </ResponsiveContainer>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </div>
+
                       <Card>
-                        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Clock className="w-4 h-4" /> Today &amp; Weekly Timetable</CardTitle></CardHeader>
+                        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Clock className="w-4 h-4" /> Weekly Timetable</CardTitle></CardHeader>
                         <CardContent>
                           {scheduleByDay.length === 0 ? (
                             <p className="text-sm text-gray-500 py-4 text-center">No timetable published for this class yet.</p>
@@ -231,70 +394,199 @@ export const Phase13ParentDashboard: React.FC = () => {
 
                   {/* Grades */}
                   {activeTab === 'grades' && (
-                    <Card>
-                      <CardHeader><CardTitle className="text-base flex items-center gap-2"><GraduationCap className="w-4 h-4" /> Results</CardTitle></CardHeader>
-                      <CardContent>
-                        {!detail?.results_published ? (
-                          <p className="text-sm text-gray-500 py-6 text-center">Results have not been published yet.</p>
-                        ) : grades.length === 0 ? (
-                          <p className="text-sm text-gray-500 py-6 text-center">No results recorded.</p>
-                        ) : (
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="text-left text-xs text-gray-500 border-b border-gray-100 dark:border-gray-800">
-                                  <th className="py-2 pr-3">Subject</th>
-                                  <th className="py-2 px-3">Term</th>
-                                  <th className="py-2 px-3 text-center">Test 1</th>
-                                  <th className="py-2 px-3 text-center">Test 2</th>
-                                  <th className="py-2 px-3 text-center">Mean</th>
-                                  <th className="py-2 px-3 text-center">Rank</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {grades.map((g: any) => (
-                                  <tr key={g.id} className="border-b border-gray-50 dark:border-gray-800/50">
-                                    <td className="py-2 pr-3 font-medium">{g.subject_name}</td>
-                                    <td className="py-2 px-3 text-gray-500">{g.term}</td>
-                                    <td className="py-2 px-3 text-center">{g.test1 ?? '—'}</td>
-                                    <td className="py-2 px-3 text-center">{g.test2 ?? '—'}</td>
-                                    <td className="py-2 px-3 text-center font-semibold">{g.mean ?? '—'}</td>
-                                    <td className="py-2 px-3 text-center">{g.subject_rank ? `#${g.subject_rank}` : '—'}</td>
+                    <div className="space-y-6">
+                      {detail?.results_published && gradesChartData.length > 0 && (
+                        <Card>
+                          <CardHeader><CardTitle className="text-base flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Mean Score by Subject</CardTitle></CardHeader>
+                          <CardContent>
+                            <ResponsiveContainer width="100%" height={280}>
+                              <BarChart data={gradesChartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                                <XAxis dataKey="subject" tick={{ fontSize: 11 }} interval={0} angle={-15} textAnchor="end" height={50} />
+                                <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                                <Tooltip
+                                  contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                                  labelFormatter={(_, payload) => payload?.[0]?.payload?.fullSubject ?? ''}
+                                  formatter={(value: number) => [`${value}%`, 'Mean Score']}
+                                />
+                                <Bar dataKey="mean" radius={[4, 4, 0, 0]} maxBarSize={56}>
+                                  {gradesChartData.map((d) => (
+                                    <Cell key={d.fullSubject} fill={d.mean < 50 ? '#EF4444' : '#2563EB'} />
+                                  ))}
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      <Card>
+                        <CardHeader><CardTitle className="text-base flex items-center gap-2"><GraduationCap className="w-4 h-4" /> Results</CardTitle></CardHeader>
+                        <CardContent>
+                          {!detail?.results_published ? (
+                            <p className="text-sm text-gray-500 py-6 text-center">Results have not been published yet.</p>
+                          ) : grades.length === 0 ? (
+                            <p className="text-sm text-gray-500 py-6 text-center">No results recorded.</p>
+                          ) : (
+                            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+                              <table className="w-full text-sm text-left">
+                                <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
+                                  <tr className="text-white">
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Subject</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Term</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Test 1</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Test 2</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Mean</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Rank</th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                  {grades.map((g: any, i: number) => {
+                                    const mean = Number(g.mean);
+                                    const hasMean = g.mean != null && !Number.isNaN(mean);
+                                    const isFail = hasMean && mean > 0 && mean < 50;
+                                    return (
+                                      <tr
+                                        key={g.id}
+                                        className={`transition-colors hover:bg-sky-100 dark:hover:bg-blue-950/20 ${
+                                          i % 2 === 1 ? 'bg-sky-50 dark:bg-gray-800/20' : 'bg-white dark:bg-transparent'
+                                        }`}
+                                      >
+                                        <td className="px-4 py-3.5 font-medium text-gray-900 dark:text-gray-100">{g.subject_name}</td>
+                                        <td className="px-4 py-3.5 text-gray-500">{g.term}</td>
+                                        <td className="px-4 py-3.5 text-center text-gray-700 dark:text-gray-300">{g.test1 ?? '—'}</td>
+                                        <td className="px-4 py-3.5 text-center text-gray-700 dark:text-gray-300">{g.test2 ?? '—'}</td>
+                                        <td className="px-4 py-3.5 text-center">
+                                          {hasMean ? (
+                                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                              isFail
+                                                ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400'
+                                                : mean >= 70
+                                                ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400'
+                                                : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
+                                            }`}>
+                                              {g.mean}
+                                            </span>
+                                          ) : '—'}
+                                        </td>
+                                        <td className="px-4 py-3.5 text-center font-medium text-gray-600 dark:text-gray-300">{g.subject_rank ? `#${g.subject_rank}` : '—'}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
                   )}
 
                   {/* Attendance */}
                   {activeTab === 'attendance' && (
-                    <Card>
-                      <CardHeader><CardTitle className="text-base">Attendance ({attendance.percentage}%)</CardTitle></CardHeader>
-                      <CardContent>
-                        {attendance.records.length === 0 ? (
-                          <p className="text-sm text-gray-500 py-6 text-center">No attendance records yet.</p>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {attendance.records.map((r: any) => {
-                              const s = (r.status || '').toLowerCase();
-                              const icon = s === 'present' ? <CheckCircle2 className="w-4 h-4 text-green-600" />
-                                : s === 'absent' ? <XCircle className="w-4 h-4 text-red-600" />
-                                : <AlertTriangle className="w-4 h-4 text-amber-600" />;
-                              return (
-                                <div key={r.id} className="flex flex-wrap items-start justify-between gap-2 p-2.5 border border-gray-100 dark:border-gray-800 rounded-lg text-sm">
-                                  <div><span className="text-gray-600 dark:text-gray-300">{new Date(r.date).toLocaleDateString()}</span><AttendanceTimeDetails record={r} className="mt-1" /></div>
-                                  <span className="flex items-center gap-1.5 font-medium">{icon} {cap(s)}</span>
+                    <div className="space-y-6">
+                      {attendanceChartData.length > 0 && (
+                        <Card>
+                          <CardHeader><CardTitle className="text-base flex items-center gap-2"><PieChartIcon className="w-4 h-4" /> Attendance Breakdown ({attendance.percentage}%)</CardTitle></CardHeader>
+                          <CardContent>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 items-center gap-4">
+                              <ResponsiveContainer width="100%" height={240}>
+                                <PieChart>
+                                  <Pie
+                                    data={attendanceChartData}
+                                    dataKey="value"
+                                    nameKey="name"
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={55}
+                                    outerRadius={85}
+                                    paddingAngle={2}
+                                    label={({ name, value }) => `${name}: ${value}`}
+                                  >
+                                    {attendanceChartData.map((entry) => (
+                                      <Cell key={entry.name} fill={entry.color} />
+                                    ))}
+                                  </Pie>
+                                  <Tooltip
+                                    contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                                    formatter={(value: number) => [`${value} day${value === 1 ? '' : 's'}`, '']}
+                                  />
+                                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                                </PieChart>
+                              </ResponsiveContainer>
+                              <div className="grid grid-cols-2 gap-3 text-center">
+                                <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                                  <p className="text-xs text-gray-500">Present</p>
+                                  <p className="text-2xl font-bold text-green-600">{attendance.present}</p>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+                                <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg">
+                                  <p className="text-xs text-gray-500">Late</p>
+                                  <p className="text-2xl font-bold text-amber-600">{attendance.late}</p>
+                                </div>
+                                <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                                  <p className="text-xs text-gray-500">Absent</p>
+                                  <p className="text-2xl font-bold text-red-600">{attendance.absent}</p>
+                                </div>
+                                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                                  <p className="text-xs text-gray-500">Excused</p>
+                                  <p className="text-2xl font-bold text-blue-600">{attendance.excused}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      <Card>
+                        <CardHeader><CardTitle className="text-base">Recent Attendance</CardTitle></CardHeader>
+                        <CardContent>
+                          {attendance.records.length === 0 ? (
+                            <p className="text-sm text-gray-500 py-6 text-center">No attendance records yet.</p>
+                          ) : (
+                            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+                              <table className="w-full text-sm text-left">
+                                <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
+                                  <tr className="text-white">
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Date</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Details</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-right">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                  {attendance.records.map((r: any, i: number) => {
+                                    const s = (r.status || '').toLowerCase();
+                                    const icon = s === 'present' ? <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                      : s === 'absent' ? <XCircle className="w-4 h-4 text-red-600" />
+                                      : <AlertTriangle className="w-4 h-4 text-amber-600" />;
+                                    const badge = s === 'present'
+                                      ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400'
+                                      : s === 'absent'
+                                      ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400'
+                                      : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400';
+                                    return (
+                                      <tr
+                                        key={r.id}
+                                        className={`transition-colors hover:bg-sky-100 dark:hover:bg-blue-950/20 ${
+                                          i % 2 === 1 ? 'bg-sky-50 dark:bg-gray-800/20' : 'bg-white dark:bg-transparent'
+                                        }`}
+                                      >
+                                        <td className="px-4 py-3.5 font-medium text-gray-700 dark:text-gray-200 whitespace-nowrap">{new Date(r.date).toLocaleDateString()}</td>
+                                        <td className="px-4 py-3.5"><AttendanceTimeDetails record={r} /></td>
+                                        <td className="px-4 py-3.5 text-right">
+                                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge}`}>
+                                            {icon} {cap(s)}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
                   )}
 
                   {/* Schedule */}
@@ -305,28 +597,40 @@ export const Phase13ParentDashboard: React.FC = () => {
                         {scheduleByDay.length === 0 ? (
                           <p className="text-sm text-gray-500 py-6 text-center">No timetable published for this class yet.</p>
                         ) : (
-                          <div className="space-y-5">
-                            {scheduleByDay.map(({ day, slots }) => (
-                              <div key={day}>
-                                <h4 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-2">{cap(day)}</h4>
-                                <div className="space-y-2">
-                                  {slots.map((cls: any) => (
-                                    <div key={cls.id} className="flex items-center justify-between p-3 border border-gray-100 dark:border-gray-800 rounded-lg">
-                                      <div>
-                                        <p className="font-semibold text-sm">{cls.subject_name || 'Subject'}</p>
-                                        <p className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
-                                          {cls.teacher_name && <span>{cls.teacher_name}</span>}
-                                          {cls.room && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {cls.room}</span>}
-                                        </p>
-                                      </div>
-                                      <div className="text-xs font-medium text-blue-600 whitespace-nowrap">
+                          <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+                            <table className="w-full text-sm text-left">
+                              <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
+                                <tr className="text-white">
+                                  <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Day</th>
+                                  <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Subject</th>
+                                  <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Teacher</th>
+                                  <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Room</th>
+                                  <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-right">Time</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {scheduleByDay.map(({ day, slots }, dayIdx) =>
+                                  slots.map((cls: any, slotIdx: number) => (
+                                    <tr
+                                      key={cls.id}
+                                      className={`transition-colors hover:bg-sky-100 dark:hover:bg-blue-950/20 ${
+                                        dayIdx % 2 === 1 ? 'bg-sky-50 dark:bg-gray-800/20' : 'bg-white dark:bg-transparent'
+                                      }`}
+                                    >
+                                      <td className="px-4 py-3.5 font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">{slotIdx === 0 ? cap(day) : ''}</td>
+                                      <td className="px-4 py-3.5 font-medium text-gray-900 dark:text-gray-100">{cls.subject_name || 'Subject'}</td>
+                                      <td className="px-4 py-3.5 text-gray-600 dark:text-gray-300">{cls.teacher_name || '—'}</td>
+                                      <td className="px-4 py-3.5 text-gray-600 dark:text-gray-300">
+                                        {cls.room ? <span className="inline-flex items-center gap-1"><MapPin className="w-3 h-3" /> {cls.room}</span> : '—'}
+                                      </td>
+                                      <td className="px-4 py-3.5 text-right font-medium text-blue-600 whitespace-nowrap">
                                         {fmtTime(cls.start_time)}{cls.end_time ? ` – ${fmtTime(cls.end_time)}` : ''}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
                           </div>
                         )}
                       </CardContent>
@@ -336,55 +640,69 @@ export const Phase13ParentDashboard: React.FC = () => {
                   {/* Fees */}
                   {activeTab === 'fees' && (
                     <div className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <Card><CardContent className="pt-5"><p className="text-xs text-gray-500">Total Billed</p><p className="text-xl font-bold">{fmtMoney(fees.total)}</p></CardContent></Card>
-                        <Card><CardContent className="pt-5"><p className="text-xs text-gray-500">Paid</p><p className="text-xl font-bold text-green-600">{fmtMoney(fees.paid)}</p></CardContent></Card>
-                        <Card><CardContent className="pt-5"><p className="text-xs text-gray-500">Outstanding</p><p className={`text-xl font-bold ${fees.outstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>{fmtMoney(fees.outstanding)}</p></CardContent></Card>
-                      </div>
+                      {/* Per-year / per-term ledger for the selected child
+                          (includes its own billed/paid/outstanding summary) */}
+                      {currentChildId && (
+                        <Card>
+                          <CardHeader><CardTitle className="text-base">Fees by Term &amp; Year</CardTitle></CardHeader>
+                          <CardContent>
+                            <StudentLedgerView studentId={currentChildId} redirectToPay />
+                          </CardContent>
+                        </Card>
+                      )}
+
                       <Card>
-                        <CardHeader className="flex flex-row items-center justify-between gap-3">
+                        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                           <CardTitle className="text-base">Invoices</CardTitle>
                           {fees.outstanding > 0 && currentChildId && (
-                            <PayFeesButton studentId={currentChildId} amount={fees.outstanding} size="sm" label="School Fees">
-                              Pay {fmtMoney(fees.outstanding)}
-                            </PayFeesButton>
+                            <button
+                              onClick={() => navigate('/finance/my-fees', { state: { autoPay: { studentId: currentChildId, amount: fees.outstanding, label: 'School Fees' } } })}
+                              className="inline-flex items-center justify-center gap-2 font-semibold rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm hover:shadow-md transition-all px-3 py-1.5 text-xs"
+                            >
+                              <CreditCard size={13} /> Pay {fmtMoney(fees.outstanding)}
+                            </button>
                           )}
                         </CardHeader>
                         <CardContent>
                           {fees.invoices.length === 0 ? (
                             <p className="text-sm text-gray-500 py-6 text-center">No invoices on record.</p>
                           ) : (
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="text-left text-xs text-gray-500 border-b border-gray-100 dark:border-gray-800">
-                                    <th className="py-2 pr-3">Invoice #</th>
-                                    <th className="py-2 px-3 text-right">Amount</th>
-                                    <th className="py-2 px-3 text-right">Paid</th>
-                                    <th className="py-2 px-3 text-right">Balance</th>
-                                    <th className="py-2 px-3">Due</th>
-                                    <th className="py-2 px-3">Status</th>
-                                    <th className="py-2 px-3 text-right">Action</th>
+                            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+                              <table className="w-full text-sm text-left">
+                                <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
+                                  <tr className="text-white">
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Invoice #</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-right">Amount</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-right">Paid</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-right">Balance</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Due</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Status</th>
+                                    <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-right">Action</th>
                                   </tr>
                                 </thead>
-                                <tbody>
-                                  {fees.invoices.map((inv: any) => {
+                                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                  {fees.invoices.map((inv: any, i: number) => {
                                     const bal = Number(inv.balance) || 0;
                                     return (
-                                    <tr key={inv.id} className="border-b border-gray-50 dark:border-gray-800/50">
-                                      <td className="py-2 pr-3 font-mono text-xs">{inv.invoice_number}</td>
-                                      <td className="py-2 px-3 text-right">{fmtMoney(inv.total_amount)}</td>
-                                      <td className="py-2 px-3 text-right text-green-600">{fmtMoney(inv.total_paid)}</td>
-                                      <td className="py-2 px-3 text-right font-semibold">{fmtMoney(inv.balance)}</td>
-                                      <td className="py-2 px-3 text-gray-500">{inv.due_date ? new Date(inv.due_date).toLocaleDateString() : '—'}</td>
-                                      <td className="py-2 px-3">
+                                    <tr
+                                      key={inv.id}
+                                      className={`transition-colors hover:bg-sky-100 dark:hover:bg-blue-950/20 ${
+                                        i % 2 === 1 ? 'bg-sky-50 dark:bg-gray-800/20' : 'bg-white dark:bg-transparent'
+                                      }`}
+                                    >
+                                      <td className="px-4 py-3.5 font-mono text-xs text-gray-700 dark:text-gray-300">{inv.invoice_number}</td>
+                                      <td className="px-4 py-3.5 text-right text-gray-700 dark:text-gray-300">{fmtMoney(inv.total_amount)}</td>
+                                      <td className="px-4 py-3.5 text-right text-green-600">{fmtMoney(inv.total_paid)}</td>
+                                      <td className="px-4 py-3.5 text-right font-semibold text-gray-900 dark:text-gray-100">{fmtMoney(inv.balance)}</td>
+                                      <td className="px-4 py-3.5 text-gray-500">{inv.due_date ? new Date(inv.due_date).toLocaleDateString() : '—'}</td>
+                                      <td className="px-4 py-3.5">
                                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
                                           inv.status === 'paid' ? 'bg-green-100 text-green-700'
                                             : inv.status === 'overdue' ? 'bg-red-100 text-red-700'
                                             : 'bg-amber-100 text-amber-700'
                                         }`}>{cap(inv.status)}</span>
                                       </td>
-                                      <td className="py-2 px-3 text-right">
+                                      <td className="px-4 py-3.5 text-right">
                                         {bal > 0 && inv.status !== 'paid'
                                           ? <PayFeesButton invoiceId={inv.id} size="sm">Pay</PayFeesButton>
                                           : <span className="text-xs text-gray-400">—</span>}

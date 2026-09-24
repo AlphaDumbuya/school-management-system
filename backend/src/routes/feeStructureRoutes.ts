@@ -1,12 +1,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
-import { authenticate } from '../middleware/authMiddleware.js';
+import { authenticate, attachUserContext } from '../middleware/authMiddleware.js';
 import { db } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
 
 const STAFF_ROLES = ['principal', 'super_admin', 'accountant'];
 const requireStaff = (req: Request, res: Response, next: NextFunction) => {
-  const role = (req as any).user?.role;
+  // Read from req.user (populated by attachUserContext) OR fall back to the JWT
+  // role on req.auth, so the guard works regardless of middleware order.
+  const role = (req as any).user?.role || (req as any).auth?.role;
   if (!role || !STAFF_ROLES.includes(role)) {
     return res.status(403).json({ success: false, error: 'Access denied. Fee structure management is restricted to staff.' });
   }
@@ -24,6 +26,9 @@ const requireStaff = (req: Request, res: Response, next: NextFunction) => {
 const router = Router();
 
 const TERM_LABELS: Record<number, string> = { 1: 'First Term', 2: 'Second Term', 3: 'Third Term' };
+
+// Populate req.user (id/tenant_id/role) for every route before the staff guard.
+router.use(authenticate, attachUserContext);
 
 async function assertClassInTenant(classId: string, tenantId: string) {
   // A class belongs to the tenant if its session is the tenant's OR it was created by a tenant user.
@@ -63,15 +68,35 @@ router.get('/', authenticate, requireStaff, async (req: Request, res: Response, 
     const expByStruct: Record<string, any[]> = {};
     for (const e of expenses) (expByStruct[e.structure_id] ??= []).push(e);
 
+    // Billed status: which (class, year, term) combinations already have fees.
+    const classIds = structures.map((s: any) => s.class_id);
+    const billedRows = classIds.length
+      ? await db('fees')
+          .where('tenant_id', tenantId)
+          .whereIn('class_id', classIds)
+          .whereNot('status', 'deleted')
+          .groupBy('class_id', 'academic_year', 'term')
+          .select('class_id', 'academic_year', 'term', db.raw('COUNT(*) as n'))
+      : [];
+    // key = `${class_id}|${academic_year}` → Set of billed term labels
+    const billedByKey: Record<string, Set<string>> = {};
+    for (const r of billedRows as any[]) {
+      const key = `${r.class_id}|${r.academic_year}`;
+      (billedByKey[key] ??= new Set()).add(r.term || 'unassigned');
+    }
+
     const data = structures.map((s: any) => {
       const exp = expByStruct[s.id] ?? [];
       const expenseTotal = exp.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0);
       const tuition = Number(s.term1_tuition) + Number(s.term2_tuition) + Number(s.term3_tuition);
+      const billedTerms = Array.from(billedByKey[`${s.class_id}|${s.academic_year}`] ?? []);
       return {
         ...s,
         expenses: exp,
         expenseTotal,
         fullYearTotal: tuition + expenseTotal,
+        billed: billedTerms.length > 0,
+        billedTerms,
       };
     });
 
@@ -129,6 +154,19 @@ router.post('/', authenticate, requireStaff, async (req: Request, res: Response,
     const existing = await db('fee_structures').where({ tenant_id: tenantId, class_id: classId, academic_year: academicYear }).first();
     let structureId: string;
     if (existing) {
+      // A structure already exists for this (class, year). Only allow an
+      // explicit EDIT of that same structure; block an accidental duplicate
+      // create unless the caller signals intent to update.
+      // (financial-management spec Req 3.3)
+      const isEdit = req.body?.structureId === existing.id || req.body?.mode === 'edit' || req.body?.allowOverwrite === true;
+      if (!isEdit) {
+        return res.status(409).json({
+          success: false,
+          error: 'A fee structure already exists for this class and academic year. Open it to edit, or remove it first.',
+          code: 'FEE_STRUCTURE_EXISTS',
+          data: { id: existing.id },
+        });
+      }
       await db('fee_structures').where({ id: existing.id }).update(payload);
       structureId = existing.id;
     } else {
@@ -147,23 +185,88 @@ router.post('/', authenticate, requireStaff, async (req: Request, res: Response,
   } catch (error) { next(error); }
 });
 
-// ── Bill a term from a structure ──────────────────────────────────────────────
-// Creates fees for every active student in the class for the chosen term:
-//   tuition for that term + (Term 1 only) the itemised year expenses.
+// ── Delete a structure (+ its expenses via cascade) ───────────────────────────
+router.delete('/:id', authenticate, requireStaff, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const s = await db('fee_structures').where({ id: req.params.id, tenant_id: tenantId }).first();
+    if (!s) return res.status(404).json({ success: false, error: 'Fee structure not found' });
+    await db('fee_structures').where({ id: s.id, tenant_id: tenantId }).del();
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
+/** Bill one term for a structure inside a transaction. Returns students touched. */
+async function billOneTerm(
+  trx: any,
+  tenantId: string,
+  s: any,
+  term: 1 | 2 | 3,
+  dueDate: Date,
+  students: Array<{ id: string }>,
+): Promise<number> {
+  const tuition = Number(term === 1 ? s.term1_tuition : term === 2 ? s.term2_tuition : s.term3_tuition) || 0;
+  // Itemised academic-year expenses are billed ONCE, with Term 1.
+  const expenses = term === 1 ? await trx('fee_structure_expenses').where({ structure_id: s.id }) : [];
+  const termLabel = TERM_LABELS[term];
+  const now = new Date();
+  let billed = 0;
+
+  for (const stu of students) {
+    let added = false;
+    if (tuition > 0) {
+      const dup = await trx('fees')
+        .where({ student_id: stu.id, term: termLabel, academic_year: s.academic_year, type: 'Tuition' })
+        .first();
+      if (!dup) {
+        await trx('fees').insert({
+          id: crypto.randomUUID(),
+          tenant_id: tenantId, student_id: stu.id, class_id: s.class_id,
+          type: 'Tuition', amount: tuition, balance: tuition,
+          term: termLabel, academic_year: s.academic_year,
+          due_date: dueDate, status: 'pending', created_at: now, updated_at: now,
+        });
+        added = true;
+      }
+    }
+    for (const e of expenses) {
+      const amt = Number(e.amount) || 0;
+      if (amt <= 0) continue;
+      const dup = await trx('fees')
+        .where({ student_id: stu.id, academic_year: s.academic_year, type: e.label })
+        .first();
+      if (dup) continue;
+      await trx('fees').insert({
+        id: crypto.randomUUID(),
+        tenant_id: tenantId, student_id: stu.id, class_id: s.class_id,
+        type: e.label, description: 'Academic year expense', amount: amt, balance: amt,
+        term: termLabel, academic_year: s.academic_year,
+        due_date: dueDate, status: 'pending', created_at: now, updated_at: now,
+      });
+      added = true;
+    }
+    if (added) billed++;
+  }
+  return billed;
+}
+
+// ── Bill a term OR the full year from a structure ─────────────────────────────
+// body.term: 1 | 2 | 3  → that single term (Term 1 also bills the year expenses)
+// body.term: 'year'     → all three terms at once (expenses billed once, in T1)
 router.post('/:id/bill', authenticate, requireStaff, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = (req as any).user.tenant_id;
-    const term = Number(req.body?.term); // 1 | 2 | 3
+    const rawTerm = req.body?.term;
+    const isYear = rawTerm === 'year' || rawTerm === 'all' || rawTerm === 0;
+    const term = Number(rawTerm);
+    if (!isYear && ![1, 2, 3].includes(term)) {
+      return res.status(400).json({ success: false, error: "term must be 1, 2, 3 or 'year'" });
+    }
     const dueDate = req.body?.dueDate ? new Date(req.body.dueDate) : new Date();
-    if (![1, 2, 3].includes(term)) return res.status(400).json({ success: false, error: 'term must be 1, 2 or 3' });
 
     const s = await db('fee_structures').where({ id: req.params.id, tenant_id: tenantId }).first();
     if (!s) return res.status(404).json({ success: false, error: 'Fee structure not found' });
 
-    const tuition = Number(term === 1 ? s.term1_tuition : term === 2 ? s.term2_tuition : s.term3_tuition) || 0;
-    const expenses = term === 1 ? await db('fee_structure_expenses').where({ structure_id: s.id }) : [];
-
-    // Active students in the class.
     const students = await db('enrollments')
       .join('students', 'enrollments.student_id', 'students.id')
       .where('enrollments.class_id', s.class_id)
@@ -174,40 +277,69 @@ router.post('/:id/bill', authenticate, requireStaff, async (req: Request, res: R
 
     if (students.length === 0) return res.status(400).json({ success: false, error: 'No active students in this class' });
 
-    const termLabel = TERM_LABELS[term];
-    const now = new Date();
     let billed = 0;
-
-    for (const stu of students) {
-      // Avoid double-billing: skip if a tuition fee for this student/term/year already exists.
-      const dup = await db('fees').where({ student_id: stu.id, term: termLabel, academic_year: s.academic_year, type: 'Tuition' }).first();
-      if (dup) continue;
-
-      if (tuition > 0) {
-        await db('fees').insert({
-          id: `FEE-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
-          tenant_id: tenantId, student_id: stu.id, class_id: s.class_id,
-          type: 'Tuition', amount: tuition, balance: tuition,
-          term: termLabel, academic_year: s.academic_year,
-          due_date: dueDate, status: 'pending', created_at: now, updated_at: now,
-        }).catch(() => {});
+    await db.transaction(async (trx) => {
+      if (isYear) {
+        // Bill all three terms; billed counts DISTINCT students touched.
+        const touched = new Set<string>();
+        for (const t of [1, 2, 3] as const) {
+          const before = await trx('fees').where({ class_id: s.class_id, academic_year: s.academic_year, term: TERM_LABELS[t] }).count('* as n').first();
+          await billOneTerm(trx, tenantId, s, t, dueDate, students);
+          const after = await trx('fees').where({ class_id: s.class_id, academic_year: s.academic_year, term: TERM_LABELS[t] }).count('* as n').first();
+          if (Number(after?.n) > Number(before?.n)) students.forEach((st: any) => touched.add(st.id));
+        }
+        billed = touched.size;
+      } else {
+        billed = await billOneTerm(trx, tenantId, s, term as 1 | 2 | 3, dueDate, students);
       }
-      // Year expenses billed once, in Term 1.
-      for (const e of expenses) {
-        const amt = Number(e.amount) || 0;
-        if (amt <= 0) continue;
-        await db('fees').insert({
-          id: `FEE-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
-          tenant_id: tenantId, student_id: stu.id, class_id: s.class_id,
-          type: e.label, description: 'Academic year expense', amount: amt, balance: amt,
-          term: termLabel, academic_year: s.academic_year,
-          due_date: dueDate, status: 'pending', created_at: now, updated_at: now,
-        }).catch(() => {});
-      }
-      billed++;
-    }
+    });
 
-    res.json({ success: true, data: { billed, term: termLabel } });
+    res.json({ success: true, data: { billed, term: isYear ? 'Full Year' : TERM_LABELS[term] } });
+  } catch (error) { next(error); }
+});
+
+// ── Unbill: remove UNPAID charges created for a structure's class+year ────────
+// Only removes charges with no payment applied (balance == amount) so we never
+// erase a student's payment history. Optionally scoped to a single term.
+router.post('/:id/unbill', authenticate, requireStaff, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const s = await db('fee_structures').where({ id: req.params.id, tenant_id: tenantId }).first();
+    if (!s) return res.status(404).json({ success: false, error: 'Fee structure not found' });
+
+    const rawTerm = req.body?.term;
+    const term = Number(rawTerm);
+    const scopeTerm = [1, 2, 3].includes(term) ? TERM_LABELS[term] : null; // null = all terms
+
+    let q = db('fees')
+      .where({ tenant_id: tenantId, class_id: s.class_id, academic_year: s.academic_year })
+      // Only untouched charges (no payment applied) so history is preserved.
+      .whereRaw('COALESCE(balance, amount) = amount')
+      .whereIn('status', ['pending', 'overdue']);
+    if (scopeTerm) q = q.where({ term: scopeTerm });
+
+    const removed = await q.del();
+    res.json({ success: true, data: { removed, term: scopeTerm || 'Full Year' } });
+  } catch (error) { next(error); }
+});
+
+// ── Billing status: how many charges exist per term for this structure ────────
+router.get('/:id/billing-status', authenticate, requireStaff, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const s = await db('fee_structures').where({ id: req.params.id, tenant_id: tenantId }).first();
+    if (!s) return res.status(404).json({ success: false, error: 'Fee structure not found' });
+
+    const rows = await db('fees')
+      .where({ tenant_id: tenantId, class_id: s.class_id, academic_year: s.academic_year })
+      .whereNot('status', 'deleted')
+      .groupBy('term')
+      .select('term', db.raw('COUNT(*) as charge_count'));
+
+    const byTerm: Record<string, number> = {};
+    for (const r of rows) byTerm[r.term || 'unassigned'] = Number(r.charge_count);
+    const total = Object.values(byTerm).reduce((a, b) => a + b, 0);
+    res.json({ success: true, data: { billed: total > 0, total, byTerm } });
   } catch (error) { next(error); }
 });
 

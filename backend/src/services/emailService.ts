@@ -1412,6 +1412,49 @@ class EmailService {
   }
 
   /**
+   * Report card WITHDRAWN → guardian/student. Sent when a principal unreleases a
+   * class's results, optionally including the reason so families understand why
+   * the previously visible report card is no longer available.
+   */
+  async sendReportCardUnpublishedEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      recipientName: string;
+      studentName: string;
+      className?: string;
+      term?: string;
+      academicYear?: string;
+      reason?: string;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+
+    const rows =
+      detailRow('Student', escapeHtml(data.studentName)) +
+      (data.className ? detailRow('Class', escapeHtml(data.className)) : '') +
+      (data.term ? detailRow('Term', escapeHtml(data.term)) : '') +
+      (data.academicYear ? detailRow('Academic Year', escapeHtml(data.academicYear)) : '') +
+      (data.reason ? detailRow('Reason', escapeHtml(data.reason)) : '');
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(data.recipientName)},</p>
+      <p><strong>${escapeHtml(branding.name)}</strong> has temporarily withdrawn the report card for <strong>${escapeHtml(data.studentName)}</strong>. It is no longer available in your portal while the school reviews it.</p>
+      ${detailsCard(rows)}
+      ${calloutBlock(data.reason
+        ? `Reason from the school: ${escapeHtml(data.reason)}`
+        : 'The school will republish the results once the review is complete. Please contact the school office if you have any questions.', 'warning')}`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: `Report Card Withdrawn for ${data.studentName} — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: 'Report Card', heading: 'Report Card Withdrawn', bodyHtml, preheader: `${data.studentName}'s report card has been temporarily withdrawn.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
    * Attendance alert → guardian. Sent when a child is checked IN (arrived) or
    * checked OUT (left school for home).
    */
