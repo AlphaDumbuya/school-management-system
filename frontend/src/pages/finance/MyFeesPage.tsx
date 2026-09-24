@@ -34,27 +34,25 @@ const StudentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: (
   const outstanding = Number(ledger?.totals?.outstanding) || 0;
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <CardTitle className="flex items-center gap-2 text-base"><Wallet className="w-4 h-4" /> My Fees</CardTitle>
-        {outstanding > 0 && ledger?.student_id && (
+    <div className="space-y-3">
+      <div className="px-1">
+        <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 dark:text-white"><Wallet className="w-4 h-4" /> My Fees</h2>
+      </div>
+      {/* Auto-pay trigger (only when arriving from a dashboard "Pay" click). The
+          visible Pay button lives inside the ledger below. */}
+      {autoPay && outstanding > 0 && ledger?.student_id && (
+        <div className="hidden">
           <PayFeesButton
             studentId={ledger.student_id}
-            amount={autoPay?.amount || outstanding}
-            size="sm"
-            label={autoPay?.label || 'School Fees'}
-            showHint
-            autoStart={!!autoPay}
+            amount={autoPay.amount || outstanding}
+            label={autoPay.label || 'School Fees'}
+            autoStart
             onAutoStarted={onAutoConsumed}
-          >
-            Pay {fmtLe(autoPay?.amount || outstanding)}
-          </PayFeesButton>
-        )}
-      </CardHeader>
-      <CardContent>
-        <StudentLedgerView />
-      </CardContent>
-    </Card>
+          />
+        </div>
+      )}
+      <StudentLedgerView />
+    </div>
   );
 };
 
@@ -124,27 +122,22 @@ const ParentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: ()
         ))}
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <CardTitle className="flex items-center gap-2 text-base"><Wallet className="w-4 h-4" /> Fees</CardTitle>
-          {outstanding > 0 && currentId && (
-            <PayFeesButton
-              studentId={currentId}
-              amount={autoPay?.amount || outstanding}
-              size="sm"
-              label={autoPay?.label || 'School Fees'}
-              showHint
-              autoStart={!!autoPay && (autoPay.studentId ? autoPay.studentId === currentId : true)}
-              onAutoStarted={onAutoConsumed}
-            >
-              Pay {fmtLe(autoPay?.amount || outstanding)}
-            </PayFeesButton>
-          )}
-        </CardHeader>
-        <CardContent>
-          {currentId && <StudentLedgerView studentId={currentId} />}
-        </CardContent>
-      </Card>
+      <div className="px-1">
+        <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 dark:text-white"><Wallet className="w-4 h-4" /> Fees</h2>
+      </div>
+      {/* Auto-pay trigger for the selected child (from a dashboard "Pay" click). */}
+      {autoPay && outstanding > 0 && currentId && (autoPay.studentId ? autoPay.studentId === currentId : true) && (
+        <div className="hidden">
+          <PayFeesButton
+            studentId={currentId}
+            amount={autoPay.amount || outstanding}
+            label={autoPay.label || 'School Fees'}
+            autoStart
+            onAutoStarted={onAutoConsumed}
+          />
+        </div>
+      )}
+      {currentId && <StudentLedgerView studentId={currentId} />}
     </div>
   );
 };

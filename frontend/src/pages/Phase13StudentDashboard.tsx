@@ -681,26 +681,17 @@ export const Phase13StudentDashboard: React.FC = () => {
           {/* ── Fees ─────────────────────────────────────────────────── */}
           {activeTab === 'fees' && (
             <div className="space-y-4">
-              {/* Per-year / per-term ledger (includes its own billed/paid/outstanding summary).
-                  Pay buttons here route to the dedicated My Fees page. */}
-              <Card>
-                <CardHeader><CardTitle className="text-base">Fees by Term &amp; Year</CardTitle></CardHeader>
-                <CardContent>
-                  <StudentLedgerView redirectToPay />
-                </CardContent>
-              </Card>
+              {/* Per-year / per-term ledger (includes its own billed/paid/outstanding
+                  summary). Rendered without an extra Card wrapper so its cards sit
+                  at the same width as the Overview KPI cards. */}
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-3 px-1">Fees by Term &amp; Year</h3>
+                <StudentLedgerView redirectToPay />
+              </div>
 
               <Card>
-                <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <CardHeader>
                   <CardTitle className="text-base">Invoices</CardTitle>
-                  {fees.outstanding > 0 && (
-                    <button
-                      onClick={() => navigate('/finance/my-fees', { state: { autoPay: { studentId: profile?.id, amount: fees.outstanding, label: 'School Fees' } } })}
-                      className="inline-flex items-center justify-center gap-2 font-semibold rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm hover:shadow-md transition-all px-3 py-1.5 text-xs"
-                    >
-                      <CreditCard size={13} /> Pay {fmtMoney(fees.outstanding)}
-                    </button>
-                  )}
                 </CardHeader>
                 <CardContent>
                   {fees.invoices.length === 0 ? (

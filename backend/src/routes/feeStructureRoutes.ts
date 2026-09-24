@@ -130,6 +130,7 @@ router.post('/', authenticate, requireStaff, async (req: Request, res: Response,
       term1Tuition = 0, term2Tuition = 0, term3Tuition = 0,
       minPercentNew, minPercentContinuing, minPercentTerm,
       allowInstallments = true, lateFeePercent, policyNotes,
+      chargesCompulsoryFirstTerm = false,
       expenses = [],
     } = req.body || {};
 
@@ -146,6 +147,7 @@ router.post('/', authenticate, requireStaff, async (req: Request, res: Response,
       min_percent_continuing: minPercentContinuing ?? null,
       min_percent_term: minPercentTerm ?? null,
       allow_installments: allowInstallments !== false,
+      charges_compulsory_first_term: chargesCompulsoryFirstTerm === true,
       late_fee_percent: lateFeePercent ?? null,
       policy_notes: policyNotes ?? null,
       updated_at: now,
@@ -176,9 +178,15 @@ router.post('/', authenticate, requireStaff, async (req: Request, res: Response,
 
     // Replace expenses.
     await db('fee_structure_expenses').where({ structure_id: structureId }).del();
-    for (const e of expenses) {
+    for (const e of expenses as any[]) {
       if (!e?.label) continue;
-      await db('fee_structure_expenses').insert({ structure_id: structureId, label: String(e.label).slice(0, 150), amount: Number(e.amount) || 0, created_at: now });
+      await db('fee_structure_expenses').insert({
+        structure_id: structureId,
+        label: String(e.label).slice(0, 150),
+        amount: Number(e.amount) || 0,
+        required: e.required !== false, // default required unless explicitly optional
+        created_at: now,
+      });
     }
 
     res.json({ success: true, data: { id: structureId } });
@@ -241,6 +249,7 @@ async function billOneTerm(
         tenant_id: tenantId, student_id: stu.id, class_id: s.class_id,
         type: e.label, description: 'Academic year expense', amount: amt, balance: amt,
         term: termLabel, academic_year: s.academic_year,
+        required: e.required !== false,
         due_date: dueDate, status: 'pending', created_at: now, updated_at: now,
       });
       added = true;

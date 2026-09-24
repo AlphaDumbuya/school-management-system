@@ -31,6 +31,26 @@ function normaliseTerm(raw: string | null | undefined): LedgerTerm | null {
   return TERM_ALIASES[String(raw).trim().toLowerCase()] ?? null;
 }
 
+/** Clamp a percentage into the 0–100 range. */
+function clampPct(v: number): number {
+  if (!Number.isFinite(v) || v <= 0) return 0;
+  return Math.min(100, Math.round(v));
+}
+
+/**
+ * Derive an academic-year label like "2026/2027" from a date. The SL school
+ * year starts in September, so a date in Sep–Dec belongs to year/(year+1) and
+ * Jan–Aug belongs to (year-1)/year.
+ */
+function deriveAcademicYear(date: string | Date | null | undefined): string | null {
+  if (!date) return null;
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = d.getMonth(); // 0 = Jan
+  return m >= 8 ? `${y}/${y + 1}` : `${y - 1}/${y}`;
+}
+
 export interface LedgerCharge {
   id: string;
   type: string | null;
@@ -41,6 +61,7 @@ export interface LedgerCharge {
   due_date: string | null;
   term: LedgerTerm | null;
   academic_year: string | null;
+  required: boolean;
 }
 
 export interface TermBucket {
@@ -125,7 +146,7 @@ class FinanceLedgerService {
     const fees = await db('fees')
       .where({ tenant_id: tenantId, student_id: studentId })
       .whereNot('status', 'deleted')
-      .select('id', 'type', 'description', 'amount', 'balance', 'status', 'due_date', 'term', 'academic_year');
+      .select('id', 'type', 'description', 'amount', 'balance', 'status', 'due_date', 'term', 'academic_year', 'required');
 
     const charges: LedgerCharge[] = fees.map((f: any) => ({
       id: f.id,
@@ -137,9 +158,88 @@ class FinanceLedgerService {
       due_date: f.due_date ? new Date(f.due_date).toISOString().slice(0, 10) : null,
       term: normaliseTerm(f.term),
       academic_year: f.academic_year ?? null,
+      required: f.required == null ? true : f.required === true,
     }));
 
     return projectLedger(studentId, tenantId, charges);
+  }
+
+  /**
+   * Resolve the payment policy for a student: whether partial payments are
+   * allowed and the minimum percentage of a term/year that must be paid, based
+   * on the class fee structure and whether the student is new or continuing.
+   *
+   * "New" = enrolled during the (most recent) academic year on the structure.
+   */
+  async getPaymentPolicy(tenantId: string, studentId: string): Promise<{
+    allow_installments: boolean;
+    is_new_student: boolean;
+    min_percent: number;       // resolved minimum % of the chosen scope (0 = no minimum)
+    min_percent_term: number;  // per-term minimum % (0 = none)
+    charges_compulsory_first_term: boolean;
+    policy_notes: string | null;
+  }> {
+    await assertStudentInTenant(studentId, tenantId);
+
+    const student = await db('students').where({ id: studentId, tenant_id: tenantId }).first();
+
+    // Find the student's current class (latest active enrollment) and the
+    // matching fee structure.
+    const enrollment = await db('enrollments')
+      .where({ student_id: studentId })
+      .whereIn('status', ['active', 'enrolled'])
+      .orderBy('enrollment_date', 'desc')
+      .first()
+      .catch(() => null);
+    const classId = enrollment?.class_id ?? null;
+
+    let structure: any = null;
+    if (classId) {
+      structure = await db('fee_structures')
+        .where({ tenant_id: tenantId, class_id: classId })
+        .orderBy('academic_year', 'desc')
+        .first()
+        .catch(() => null);
+    }
+    // Fall back to any structure the student's fees reference, by academic year.
+    if (!structure) {
+      const feeRow = await db('fees')
+        .where({ tenant_id: tenantId, student_id: studentId })
+        .whereNot('status', 'deleted')
+        .orderBy('academic_year', 'desc')
+        .first()
+        .catch(() => null);
+      if (feeRow?.class_id) {
+        structure = await db('fee_structures')
+          .where({ tenant_id: tenantId, class_id: feeRow.class_id, academic_year: feeRow.academic_year })
+          .first()
+          .catch(() => null);
+      }
+    }
+
+    // Determine new vs continuing: new if the student enrolled within the
+    // structure's academic year (or has no prior year on record).
+    const structureYear: string | null = structure?.academic_year ?? null;
+    const enrolledYear = deriveAcademicYear(student?.enrollment_date);
+    const isNew = !structureYear || !enrolledYear ? true : enrolledYear === structureYear;
+
+    const allowInstallments = structure ? structure.allow_installments !== false : true;
+    const minNew = Number(structure?.min_percent_new) || 0;
+    const minContinuing = Number(structure?.min_percent_continuing) || 0;
+    const minTerm = Number(structure?.min_percent_term) || 0;
+
+    // If installments are disabled, the minimum is effectively 100%.
+    const rawMin = isNew ? minNew : minContinuing;
+    const minPercent = allowInstallments ? clampPct(rawMin) : 100;
+
+    return {
+      allow_installments: allowInstallments,
+      is_new_student: isNew,
+      min_percent: minPercent,
+      min_percent_term: allowInstallments ? clampPct(minTerm) : 100,
+      charges_compulsory_first_term: structure?.charges_compulsory_first_term === true,
+      policy_notes: structure?.policy_notes ?? null,
+    };
   }
 
   /**

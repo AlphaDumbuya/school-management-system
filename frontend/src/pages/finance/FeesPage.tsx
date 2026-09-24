@@ -360,27 +360,63 @@ const KPITile: React.FC<{ label: string; value: React.ReactNode; sub?: string; c
   </div>
 );
 
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+
+const feeStructureSchema = z.object({
+  term1Tuition: z.string().min(1, 'Term 1 tuition is required'),
+  term2Tuition: z.string(),
+  term3Tuition: z.string(),
+  applyT1: z.boolean().default(false),
+  minPercentNew: z.string().optional(),
+  minPercentContinuing: z.string().optional(),
+  minPercentTerm: z.string().optional(),
+  lateFeePercent: z.string().optional(),
+  allowInstallments: z.boolean().default(true),
+  chargesCompulsoryFirstTerm: z.boolean().default(false),
+  policyNotes: z.string().optional(),
+  expenses: z.array(z.object({
+    label: z.string(),
+    amount: z.union([z.string(), z.number()]),
+    required: z.boolean().default(true),
+  })).default([]),
+});
+
+type FeeStructureForm = z.infer<typeof feeStructureSchema>;
+
 /* ── Fee Structure Modal ──────────────────────────────────────────────────── */
 const FeeStructureModal: React.FC<{
   cls: any; year: string;
   onClose: () => void; onSaved: () => void;
 }> = ({ cls, year, onClose, onSaved }) => {
-  const [t1, setT1] = useState('');
-  const [t2, setT2] = useState('');
-  const [t3, setT3] = useState('');
-  const [applyT1, setApplyT1] = useState(false);
-  const [expenses, setExpenses] = useState<FeeStructureExpense[]>([]);
-  const [minNew, setMinNew] = useState('');
-  const [minCont, setMinCont] = useState('');
-  const [minTerm, setMinTerm] = useState('');
-  const [lateFee, setLateFee] = useState('');
-  const [allowInst, setAllowInst] = useState(true);
-  const [policyNotes, setPolicyNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [existingId, setExistingId] = useState<string | undefined>(undefined);
 
-  // Load existing structure (react-query v5 removed the onSettled callback on
-  // useQuery, so we read `data` and populate the form via useEffect).
+  const { control, handleSubmit, watch, reset, formState: { errors } } = useForm<FeeStructureForm>({
+    resolver: zodResolver(feeStructureSchema),
+    defaultValues: {
+      term1Tuition: '',
+      term2Tuition: '',
+      term3Tuition: '',
+      applyT1: false,
+      minPercentNew: '',
+      minPercentContinuing: '',
+      minPercentTerm: '',
+      lateFeePercent: '',
+      allowInstallments: true,
+      chargesCompulsoryFirstTerm: false,
+      policyNotes: '',
+      expenses: [],
+    },
+  });
+
+  const { fields: expenseFields, append: addExpense, remove: removeExpense } = useFieldArray({
+    control,
+    name: 'expenses',
+  });
+
+  // Load existing structure
   const { data: existingResp } = useQuery({
     queryKey: ['fee-struct', cls.id, year],
     queryFn: () => feeStructureService.get(cls.id, year),
@@ -391,45 +427,55 @@ const FeeStructureModal: React.FC<{
     const s: any = (existingResp as any)?.data?.data ?? (existingResp as any)?.data;
     if (!s) return;
     setExistingId(s.id);
-    setT1(String(s.term1Tuition ?? s.term1_tuition ?? ''));
-    setT2(String(s.term2Tuition ?? s.term2_tuition ?? ''));
-    setT3(String(s.term3Tuition ?? s.term3_tuition ?? ''));
-    setExpenses((s.expenses || []).map((e: any) => ({ label: e.label, amount: Number(e.amount) || 0 })));
-    setMinNew(String(s.minPercentNew ?? s.min_percent_new ?? ''));
-    setMinCont(String(s.minPercentContinuing ?? s.min_percent_continuing ?? ''));
-    setMinTerm(String(s.minPercentTerm ?? s.min_percent_term ?? ''));
-    setLateFee(String(s.lateFeePercent ?? s.late_fee_percent ?? ''));
-    setAllowInst(s.allowInstallments ?? s.allow_installments ?? true);
-    setPolicyNotes(s.policyNotes ?? s.policy_notes ?? '');
-  }, [existingResp]);
+    reset({
+      term1Tuition: String(s.term1Tuition ?? s.term1_tuition ?? ''),
+      term2Tuition: String(s.term2Tuition ?? s.term2_tuition ?? ''),
+      term3Tuition: String(s.term3Tuition ?? s.term3_tuition ?? ''),
+      applyT1: false,
+      expenses: (s.expenses || []).map((e: any) => ({ 
+        label: e.label, 
+        amount: Number(e.amount) || 0, 
+        required: e.required !== false 
+      })),
+      minPercentNew: String(s.minPercentNew ?? s.min_percent_new ?? ''),
+      minPercentContinuing: String(s.minPercentContinuing ?? s.min_percent_continuing ?? ''),
+      minPercentTerm: String(s.minPercentTerm ?? s.min_percent_term ?? ''),
+      lateFeePercent: String(s.lateFeePercent ?? s.late_fee_percent ?? ''),
+      allowInstallments: s.allowInstallments ?? s.allow_installments ?? true,
+      chargesCompulsoryFirstTerm: s.chargesCompulsoryFirstTerm ?? s.charges_compulsory_first_term ?? false,
+      policyNotes: s.policyNotes ?? s.policy_notes ?? '',
+    });
+  }, [existingResp, reset]);
 
-  const n = (v: string) => Number(v) || 0;
-  const t1v = n(t1), t2v = applyT1 ? t1v : n(t2), t3v = applyT1 ? t1v : n(t3);
+  const term1Tuition = watch('term1Tuition');
+  const term2Tuition = watch('term2Tuition');
+  const term3Tuition = watch('term3Tuition');
+  const applyT1 = watch('applyT1');
+  const expenses = watch('expenses');
+
+  const n = (v: any) => Number(v) || 0;
+  const t1v = n(term1Tuition), t2v = applyT1 ? t1v : n(term2Tuition), t3v = applyT1 ? t1v : n(term3Tuition);
   const expTotal = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const fullYear = t1v + t2v + t3v + expTotal;
 
-  const addExpense = () => setExpenses((e) => [...e, { label: '', amount: 0 }]);
-  const updExp = (i: number, k: 'label' | 'amount', v: any) => setExpenses((e) => e.map((x, j) => j === i ? { ...x, [k]: k === 'amount' ? Number(v) || 0 : v } : x));
-  const delExp = (i: number) => setExpenses((e) => e.filter((_, j) => j !== i));
-
-  const submit = async () => {
-    if (!t1) { showToast.error('Term 1 tuition is required'); return; }
+  const submit = async (data: FeeStructureForm) => {
     setSaving(true);
     try {
-      // apiClient resolves (never throws) with { success:false, error } on HTTP
-      // errors, so we MUST check the flag before declaring success — otherwise a
-      // failed save would falsely report "saved".
       const res: any = await feeStructureService.save({
-        id: existingId, // present → server treats as an edit, not a duplicate create
-        classId: cls.id, academicYear: year,
-        term1Tuition: t1v, term2Tuition: t2v, term3Tuition: t3v,
-        minPercentNew: minNew ? Number(minNew) : null,
-        minPercentContinuing: minCont ? Number(minCont) : null,
-        minPercentTerm: minTerm ? Number(minTerm) : null,
-        allowInstallments: allowInst,
-        lateFeePercent: lateFee ? Number(lateFee) : null,
-        policyNotes: policyNotes || null,
-        expenses: expenses.filter((e) => e.label),
+        id: existingId,
+        classId: cls.id, 
+        academicYear: year,
+        term1Tuition: t1v, 
+        term2Tuition: t2v, 
+        term3Tuition: t3v,
+        minPercentNew: data.minPercentNew ? Number(data.minPercentNew) : null,
+        minPercentContinuing: data.minPercentContinuing ? Number(data.minPercentContinuing) : null,
+        minPercentTerm: data.minPercentTerm ? Number(data.minPercentTerm) : null,
+        allowInstallments: data.allowInstallments,
+        chargesCompulsoryFirstTerm: data.chargesCompulsoryFirstTerm,
+        lateFeePercent: data.lateFeePercent ? Number(data.lateFeePercent) : null,
+        policyNotes: data.policyNotes || null,
+        expenses: data.expenses.filter((e) => e.label),
       });
       const body = res?.data ?? res;
       if (body?.success === false) {
@@ -445,7 +491,7 @@ const FeeStructureModal: React.FC<{
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 overflow-y-auto" onClick={onClose}>
-      <div className="relative w-full max-w-xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 my-4" onClick={(e) => e.stopPropagation()}>
+      <div className="relative w-full max-w-2xl lg:max-w-4xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 my-4" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-t-2xl">
           <div>
@@ -455,46 +501,132 @@ const FeeStructureModal: React.FC<{
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
         </div>
 
-        <div className="p-5 space-y-6 overflow-y-auto max-h-[75vh]">
+        <form onSubmit={handleSubmit(submit)} className="p-5 space-y-6 overflow-y-auto max-h-[75vh]">
           {/* Term tuition */}
           <Section title="Sub-Terms Tuition Fees">
-            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mb-3 cursor-pointer">
-              <input type="checkbox" checked={applyT1} onChange={(e) => setApplyT1(e.target.checked)} className="rounded" />
-              Apply Term 1 tuition to Terms 2 & 3
-            </label>
-            <div className="grid grid-cols-3 gap-3">
-              <AmtField label="Term 1 Tuition" value={t1} onChange={setT1} />
-              <AmtField label="Term 2 Tuition" value={applyT1 ? t1 : t2} onChange={setT2} disabled={applyT1} />
-              <AmtField label="Term 3 Tuition" value={applyT1 ? t1 : t3} onChange={setT3} disabled={applyT1} />
+            <Controller
+              control={control}
+              name="applyT1"
+              render={({ field }) => (
+                <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mb-3 cursor-pointer">
+                  <input type="checkbox" {...field} checked={field.value} className="rounded" />
+                  Apply Term 1 tuition to Terms 2 & 3
+                </label>
+              )}
+            />
+            <div className="grid grid-cols-3 gap-0">
+              <Controller
+                control={control}
+                name="term1Tuition"
+                render={({ field }) => <AmtField label="Term 1 Tuition" {...field} onChange={(v) => field.onChange(v)} error={errors.term1Tuition?.message} />}
+              />
+              <Controller
+                control={control}
+                name="term2Tuition"
+                render={({ field }) => <AmtField label="Term 2 Tuition" {...field} onChange={(v) => field.onChange(v)} disabled={applyT1} error={errors.term2Tuition?.message} />}
+              />
+              <Controller
+                control={control}
+                name="term3Tuition"
+                render={({ field }) => <AmtField label="Term 3 Tuition" {...field} onChange={(v) => field.onChange(v)} disabled={applyT1} error={errors.term3Tuition?.message} />}
+              />
             </div>
           </Section>
 
           {/* Year expenses */}
           <Section title="General Academic Year Expenses" hint="One-off full-year charges billed in Term 1 only (Uniform, Exams Levy, ID Card, Development Levy…)">
-            {expenses.map((e, i) => (
-              <div key={i} className="flex gap-2 items-center mb-2">
-                <input value={e.label} onChange={(ev) => updExp(i, 'label', ev.target.value)} placeholder="Expense label" className="flex-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
-                <input type="number" value={e.amount || ''} onChange={(ev) => updExp(i, 'amount', ev.target.value)} placeholder="Le" className="w-24 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
-                <button onClick={() => delExp(i)} className="p-1.5 text-gray-400 hover:text-rose-600"><Trash2 size={15} /></button>
+            {expenseFields.map((field, i) => (
+              <div key={field.id} className="flex flex-wrap gap-2 items-center mb-2">
+                <Controller
+                  control={control}
+                  name={`expenses.${i}.label`}
+                  render={({ field: f }) => (
+                    <input {...f} placeholder="Expense label" style={{ maxWidth: '500px' }} className="w-full sm:w-auto sm:flex-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+                  )}
+                />
+                <Controller
+                  control={control}
+                  name={`expenses.${i}.amount`}
+                  render={({ field: f }) => (
+                    <input type="number" {...f} value={f.value || ''} placeholder="Le" style={{ maxWidth: '160px' }} className="w-full sm:w-auto sm:flex-1 px-2 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+                  )}
+                />
+                <div className="flex gap-2 text-xs text-gray-600 dark:text-gray-300 flex-shrink-0">
+                  <Controller
+                    control={control}
+                    name={`expenses.${i}.required`}
+                    render={({ field: f }) => (
+                      <>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" checked={f.value !== false} onChange={() => f.onChange(true)} />
+                          Required
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" checked={f.value === false} onChange={() => f.onChange(false)} />
+                          Optional
+                        </label>
+                      </>
+                    )}
+                  />
+                </div>
+                <button type="button" onClick={() => removeExpense(i)} className="p-1.5 text-gray-400 hover:text-rose-600 flex-shrink-0"><Trash2 size={15} /></button>
               </div>
             ))}
-            <button onClick={addExpense} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline mt-1"><Plus size={14} /> Add Charge Item</button>
+            <button type="button" onClick={() => addExpense({ label: '', amount: '', required: true })} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline mt-1"><Plus size={14} /> Add Charge Item</button>
             {expTotal > 0 && <p className="text-xs text-gray-500 mt-2">Total Academic Year Expenses: <span className="font-bold">{fmtLe(expTotal)}</span></p>}
           </Section>
 
           {/* Payment policy */}
           <Section title="Payment Policy Rules" hint="Optional school-specific rules. Leave blank if no minimum applies.">
             <div className="grid grid-cols-2 gap-3">
-              <PolicyField label="Newly enrolled — min %" value={minNew} onChange={setMinNew} />
-              <PolicyField label="Continuing student — min %" value={minCont} onChange={setMinCont} />
-              <PolicyField label="Per-term clearance %" value={minTerm} onChange={setMinTerm} />
-              <PolicyField label="Late-fee surcharge %" value={lateFee} onChange={setLateFee} />
+              <Controller
+                control={control}
+                name="minPercentNew"
+                render={({ field }) => <PolicyField label="Newly enrolled — min %" {...field} />}
+              />
+              <Controller
+                control={control}
+                name="minPercentContinuing"
+                render={({ field }) => <PolicyField label="Continuing student — min %" {...field} />}
+              />
+              <Controller
+                control={control}
+                name="minPercentTerm"
+                render={({ field }) => <PolicyField label="Per-term clearance %" {...field} />}
+              />
+              <Controller
+                control={control}
+                name="lateFeePercent"
+                render={({ field }) => <PolicyField label="Late-fee surcharge %" {...field} />}
+              />
             </div>
-            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 mt-3 cursor-pointer">
-              <input type="checkbox" checked={allowInst} onChange={(e) => setAllowInst(e.target.checked)} className="rounded" />
-              Allow instalment payments
-            </label>
-            <textarea value={policyNotes} onChange={(e) => setPolicyNotes(e.target.value)} placeholder="Additional policy notes (optional)…" rows={2} className="w-full mt-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm resize-none" />
+            <Controller
+              control={control}
+              name="allowInstallments"
+              render={({ field }) => (
+                <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 mt-3 cursor-pointer">
+                  <input type="checkbox" {...field} checked={field.value} className="rounded" />
+                  Allow instalment payments
+                </label>
+              )}
+            />
+            <Controller
+              control={control}
+              name="chargesCompulsoryFirstTerm"
+              render={({ field }) => (
+                <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 mt-2 cursor-pointer">
+                  <input type="checkbox" {...field} checked={field.value} className="rounded" />
+                  Charges must be paid in the First Term (require charges before part-payments)
+                </label>
+              )}
+            />
+            <Controller
+              control={control}
+              name="policyNotes"
+              render={({ field }) => (
+                <textarea {...field} placeholder="Additional policy notes (optional)…" rows={2} className="w-full mt-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm resize-none" />
+              )}
+            />
           </Section>
 
           {/* Live summary */}
@@ -520,12 +652,12 @@ const FeeStructureModal: React.FC<{
               Parents searching in Term 1 will see their Term 1 tuition + itemised year expenses ({fmtLe(t1v + expTotal)}).
             </p>
           </div>
-        </div>
+        </form>
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700 sticky bottom-0 bg-white dark:bg-gray-800 rounded-b-2xl">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="default" size="sm" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Save Academic Year Fees'}</Button>
+          <Button variant="default" size="sm" onClick={handleSubmit(submit)} disabled={saving}>{saving ? 'Saving…' : 'Save Academic Year Fees'}</Button>
         </div>
       </div>
     </div>
@@ -668,13 +800,14 @@ const Section: React.FC<{ title: string; hint?: string; children: React.ReactNod
   </div>
 );
 
-const AmtField: React.FC<{ label: string; value: string; onChange: (v: string) => void; disabled?: boolean }> = ({ label, value, onChange, disabled }) => (
+const AmtField: React.FC<{ label: string; value: string; onChange: (v: string) => void; disabled?: boolean; error?: string }> = ({ label, value, onChange, disabled, error }) => (
   <div>
     <label className="text-[11px] text-gray-400 uppercase font-semibold">{label}</label>
     <div className="relative mt-1">
-      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">Le</span>
-      <input type="number" value={value} onChange={(e) => onChange(e.target.value)} placeholder="0" disabled={disabled} className="w-full pl-8 pr-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm disabled:opacity-50 disabled:cursor-not-allowed" />
+      {!value && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">Le</span>}
+      <input type="number" value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} className={`w-full py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm disabled:opacity-50 disabled:cursor-not-allowed ${!value ? 'pl-8 pr-3' : 'px-3'} ${error ? 'border-red-500' : ''}`} />
     </div>
+    {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
   </div>
 );
 
@@ -682,7 +815,7 @@ const PolicyField: React.FC<{ label: string; value: string; onChange: (v: string
   <div>
     <label className="text-[11px] text-gray-400 uppercase font-semibold">{label}</label>
     <div className="relative mt-1">
-      <input type="number" value={value} onChange={(e) => onChange(e.target.value)} placeholder="e.g. 50" min={0} max={100} className="w-full pl-3 pr-8 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+      <input type="number" value={value} onChange={(e) => onChange(e.target.value)} min={0} max={100} className="w-full pl-3 pr-8 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
     </div>
   </div>
