@@ -8,6 +8,7 @@ import { logger } from '@utils/logger';
 import { errorHandler } from '@middleware/errorHandler';
 import { requestLogger } from '@middleware/requestLogger';
 import { apiLimiter } from '@middleware/rateLimit';
+import { tenantContext } from '@middleware/tenantContext';
 import { db } from '@utils/database';
 import authRoutes from '@routes/authRoutes';
 import verificationRoutes from '@routes/verificationRoutes';
@@ -132,6 +133,11 @@ app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/v1/payments/monime/webhook')) return next();
   return apiLimiter(req, res, next);
 });
+
+// Attach the request-scoped RLS tenant helper (req.withTenant). Binds lazily so
+// it works regardless of where per-router auth middleware runs. This is opt-in
+// per handler and safe to mount globally (see middleware/tenantContext.ts).
+app.use(tenantContext);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
