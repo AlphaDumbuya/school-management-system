@@ -1086,14 +1086,22 @@ export class IdCardService {
         throw new Error(`Card ${cardId} not found`);
       }
 
-      // Delete QR codes referencing this card
-      await this.db('qr_codes').where({ card_id: cardId }).delete().catch(() => {});
+      // Everything runs in a transaction so a card is never left half-deleted
+      // (e.g. QR codes gone but the card row blocked by a lingering FK).
+      await this.db.transaction(async (trx) => {
+        // Release any bulk-generation result rows that point at this card.
+        // bulk_card_results.card_id is nullable and only records provenance, so
+        // we NULL it (keeping the historical job result) rather than blocking
+        // the delete. Without this the FK constraint rejects the delete.
+        await trx('bulk_card_results').where({ card_id: cardId }).update({ card_id: null }).catch(() => {});
 
-      // Delete card audit logs
-      await this.db('card_audit_log').where({ card_id: cardId }).delete().catch(() => {});
+        // qr_codes and card_audit_log cascade on delete, but remove explicitly
+        // so behaviour is identical whether or not the cascade is present.
+        await trx('qr_codes').where({ card_id: cardId }).delete().catch(() => {});
+        await trx('card_audit_log').where({ card_id: cardId }).delete().catch(() => {});
 
-      // Delete the actual card
-      await this.db('id_cards').where({ id: cardId }).delete();
+        await trx('id_cards').where({ id: cardId }).delete();
+      });
 
       logger.info(`Deleted ID card ${cardId}`);
     } catch (error) {
