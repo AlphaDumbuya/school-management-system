@@ -112,10 +112,12 @@ export class InvoiceService {
   /**
    * Get invoice by ID
    */
-  async getInvoiceById(invoiceId: string): Promise<any> {
+  async getInvoiceById(invoiceId: string, tenantId?: string): Promise<any> {
     try {
       const invoice = await this.db('invoices')
         .where('id', invoiceId)
+        // Tenant scoping (when provided) prevents cross-tenant invoice access.
+        .modify((q: any) => { if (tenantId) q.where('tenant_id', tenantId); })
         .first();
 
       if (!invoice) {
@@ -141,11 +143,12 @@ export class InvoiceService {
   /**
    * Get student invoices
    */
-  async getStudentInvoices(studentId: string, filters?: InvoiceFilter): Promise<any[]> {
+  async getStudentInvoices(studentId: string, filters?: InvoiceFilter, tenantId?: string): Promise<any[]> {
     try {
       logger.info(`Fetching invoices for student ${studentId}`);
 
       let query = this.db('invoices').where('student_id', studentId);
+      if (tenantId) query = query.where('tenant_id', tenantId);
 
       if (filters?.status) {
         query = query.where('status', filters.status);
@@ -171,14 +174,16 @@ export class InvoiceService {
   /**
    * Update invoice status
    */
-  async updateInvoiceStatus(invoiceId: string, status: string, userId: string): Promise<any> {
+  async updateInvoiceStatus(invoiceId: string, status: string, userId: string, tenantId?: string): Promise<any> {
     try {
       logger.info(`Updating invoice ${invoiceId} status to ${status}`);
 
-      const invoice = await this.getInvoiceById(invoiceId);
+      // getInvoiceById enforces the tenant — a cross-tenant id throws "not found".
+      const invoice = await this.getInvoiceById(invoiceId, tenantId);
 
       await this.db('invoices')
         .where('id', invoiceId)
+        .modify((q: any) => { if (tenantId) q.where('tenant_id', tenantId); })
         .update({
           status,
           updated_at: new Date(),
@@ -244,18 +249,21 @@ export class InvoiceService {
   /**
    * Get overdue invoices
    */
-  async getOverdueInvoices(): Promise<any[]> {
+  async getOverdueInvoices(tenantId?: string): Promise<any[]> {
     try {
       const today = new Date();
 
       const invoices = await this.db('invoices')
-        .where('due_date', '<', today)
-        .where('status', '!= ', 'paid')
-        .leftJoin('users', 'invoices.student_id', 'users.id')
+        .where('invoices.due_date', '<', today)
+        .whereNot('invoices.status', 'paid')
+        .modify((q: any) => { if (tenantId) q.where('invoices.tenant_id', tenantId); })
+        // student_id references the students table (not users). Pull the name
+        // from there so student_name/email are actually populated.
+        .leftJoin('students', 'invoices.student_id', 'students.id')
         .select(
           'invoices.*',
-          'users.name as student_name',
-          'users.email as student_email'
+          this.db.raw("CONCAT_WS(' ', students.first_name, students.last_name) as student_name"),
+          'students.email as student_email'
         )
         .orderBy('invoices.due_date', 'asc');
 
@@ -449,13 +457,13 @@ export class InvoiceService {
   /**
    * Get invoice summary
    */
-  async getInvoiceSummary(invoiceId: string): Promise<any> {
+  async getInvoiceSummary(invoiceId: string, tenantId?: string): Promise<any> {
     try {
-      const invoice = await this.getInvoiceById(invoiceId);
+      const invoice = await this.getInvoiceById(invoiceId, tenantId);
 
       const summary = {
         invoiceNumber: invoice.invoice_number,
-        student: await this.db('users').where('id', invoice.student_id).first(),
+        student: await this.db('students').where('id', invoice.student_id).first(),
         items: invoice.items,
         totalAmount: invoice.total_amount,
         totalPaid: invoice.total_paid,
