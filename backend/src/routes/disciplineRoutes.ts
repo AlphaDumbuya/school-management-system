@@ -558,6 +558,7 @@ router.get(
  */
 router.post(
   '/appeals',
+  authorize(['principal', 'super_admin', 'teacher']),
   validate(submitAppealSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {

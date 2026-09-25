@@ -268,7 +268,7 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
  * GET /api/v1/admissions
  * List all admission applications
  */
-router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
@@ -316,7 +316,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 /**
  * GET /api/v1/admissions/:id
  */
-router.get('/:appId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:appId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { appId } = req.params;
     const tenantId = req.user?.tenant_id;

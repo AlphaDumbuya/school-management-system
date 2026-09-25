@@ -114,7 +114,11 @@ router.post('/', authenticate, attachUserContext, authorize('principal', 'super_
         status: 'active',
         created_at: new Date(),
         updated_at: new Date(),
-      }).catch(() => { /* ignore if enrollment fails */ });
+      }).catch((e) => {
+        // Don't fail student creation on an enrollment hiccup, but surface it so
+        // a "created but not enrolled" student can be diagnosed.
+        logger.warn(`Student ${inserted.student_id} created but enrollment into class ${class_id} failed: ${e?.message || e}`);
+      });
     }
 
     // ── Smart parent/guardian linking ─────────────────────────────────────────
@@ -230,7 +234,7 @@ async function syncEnrolledApplicationsToStudents(dbInstance: any, tenantId: str
             status: 'active',
             created_at: new Date(),
             updated_at: new Date(),
-          }).catch(() => {});
+          }).catch((e) => { logger.warn(`Bulk import: student ${newStudent.student_id} enrollment into class ${classId} failed: ${e?.message || e}`); });
         }
 
         // Smart parent/guardian linking — reuse an existing parent (sibling) if one matches.
@@ -704,23 +708,29 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
       ? await db('users').where('id', provisioned.parentUserId).first()
       : null;
 
-    student.login_credentials = {
-      // Students sign in with their student ID NUMBER as the username.
-      student_username: studentUser?.username || provisioned.studentUsername || student.student_id || safeStudentId,
-      student_email: studentUser?.email || `${safeStudentId}@student.school.com`,
-      // Demo password: prefer the freshly-provisioned one, else the stored
-      // temp_password on the account (both student & parent). Only null when a
-      // real user has changed their own password (temp_password cleared).
-      student_password: provisioned.studentPassword || studentUser?.temp_password || null,
-      // User ids so the principal can trigger a password reset for either account.
-      student_user_id: studentUser?.id || provisioned.studentUserId || null,
-      parent_user_id: parentUser?.id || provisioned.parentUserId || null,
-      parent_email: parentUser?.email || provisioned.parentEmail,
-      parent_password: provisioned.parentPassword || parentUser?.temp_password || null,
-      has_parent_account: !!parentUser,
-    };
-    // Back-compat alias for existing frontend that reads demo_login.
-    student.demo_login = student.login_credentials;
+    // Credential material (temp passwords) is SENSITIVE — only expose it to the
+    // staff roles who legitimately hand out / reset credentials. Students,
+    // parents and teachers viewing a profile never receive passwords.
+    const canSeeCredentials = ['principal', 'super_admin', 'admissions_officer'].includes(currentUser.role as string);
+    if (canSeeCredentials) {
+      student.login_credentials = {
+        // Students sign in with their student ID NUMBER as the username.
+        student_username: studentUser?.username || provisioned.studentUsername || student.student_id || safeStudentId,
+        student_email: studentUser?.email || `${safeStudentId}@student.school.com`,
+        // Demo password: prefer the freshly-provisioned one, else the stored
+        // temp_password on the account (both student & parent). Only null when a
+        // real user has changed their own password (temp_password cleared).
+        student_password: provisioned.studentPassword || studentUser?.temp_password || null,
+        // User ids so the principal can trigger a password reset for either account.
+        student_user_id: studentUser?.id || provisioned.studentUserId || null,
+        parent_user_id: parentUser?.id || provisioned.parentUserId || null,
+        parent_email: parentUser?.email || provisioned.parentEmail,
+        parent_password: provisioned.parentPassword || parentUser?.temp_password || null,
+        has_parent_account: !!parentUser,
+      };
+      // Back-compat alias for existing frontend that reads demo_login.
+      student.demo_login = student.login_credentials;
+    }
 
     // Fetch all linked guardians for multi-guardian tracking
     // Gracefully handle cases where the guardians table doesn't exist yet
