@@ -34,6 +34,10 @@ const AUDIENCES: { value: AnnouncementAudience; label: string }[] = [
 
 const audienceLabel = (a: string) => AUDIENCES.find((x) => x.value === a)?.label ?? a;
 
+// Keep in sync with the backend caps in announcementService.ts.
+const MAX_TITLE = 200;
+const MAX_BODY = 10000;
+
 // Colour theme per audience — drives the card accent bar, icon chip and badge.
 const AUDIENCE_THEME: Record<string, { bar: string; chip: string; badge: string }> = {
   all:                { bar: 'bg-blue-500',    chip: 'bg-blue-100 text-blue-600',       badge: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -329,7 +333,7 @@ export const AnnouncementsPage: React.FC = () => {
                 <input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  maxLength={200}
+                  maxLength={MAX_TITLE}
                   autoFocus
                   placeholder="e.g. Mid-term break dates"
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/30 focus:border-[#1d4ed8]"
@@ -340,12 +344,18 @@ export const AnnouncementsPage: React.FC = () => {
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Message</label>
                 <textarea
                   value={body}
-                  onChange={(e) => setBody(e.target.value)}
+                  onChange={(e) => setBody(e.target.value.slice(0, MAX_BODY))}
+                  maxLength={MAX_BODY}
                   rows={8}
                   placeholder="Write your announcement…"
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm resize-y min-h-[160px] focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/30 focus:border-[#1d4ed8]"
                 />
-                <p className="mt-1 text-[11px] text-gray-400">Line breaks are preserved. Keep it clear and concise.</p>
+                <div className="mt-1 flex items-center justify-between">
+                  <p className="text-[11px] text-gray-400">Line breaks are preserved. Keep it clear and concise.</p>
+                  <p className={`text-[11px] tabular-nums ${body.length >= MAX_BODY ? 'text-rose-600 font-semibold' : body.length > MAX_BODY * 0.9 ? 'text-amber-600' : 'text-gray-400'}`}>
+                    {body.length.toLocaleString()}/{MAX_BODY.toLocaleString()}
+                  </p>
+                </div>
               </div>
 
               {/* Teacher: class selector */}

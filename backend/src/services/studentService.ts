@@ -82,8 +82,8 @@ export class StudentService {
   /**
    * Get student by ID
    */
-  async getStudentById(studentId: string): Promise<any> {
-    const student = await this.db('students')
+  async getStudentById(studentId: string, tenantId?: string): Promise<any> {
+    const query = this.db('students')
       .select(
         'student_id',
         'tenant_id',
@@ -100,8 +100,13 @@ export class StudentService {
         'created_at',
         'updated_at'
       )
-      .where('student_id', studentId)
-      .first();
+      .where('student_id', studentId);
+
+    // When a tenant is supplied, scope the lookup to it so this method is safe
+    // on its own (no cross-tenant read even if a caller forgets to check).
+    if (tenantId) query.where('tenant_id', tenantId);
+
+    const student = await query.first();
 
     if (!student) {
       throw new AppError('Student not found', 404, 'NOT_FOUND');
@@ -176,8 +181,8 @@ export class StudentService {
   /**
    * Update student
    */
-  async updateStudent(studentId: string, data: UpdateStudentRequest): Promise<any> {
-    const student = await this.getStudentById(studentId);
+  async updateStudent(studentId: string, data: UpdateStudentRequest, tenantId?: string): Promise<any> {
+    const student = await this.getStudentById(studentId, tenantId);
 
     const updateData: any = {};
     const allowedFields = ['first_name', 'last_name', 'email', 'gender', 'contact_info', 'guardians', 'status'];
@@ -205,7 +210,7 @@ export class StudentService {
 
     await this.db('students').where('student_id', studentId).update(updateData);
 
-    const updatedStudent = await this.getStudentById(studentId);
+    const updatedStudent = await this.getStudentById(studentId, tenantId);
     logger.info(`Student updated: ${studentId}`);
 
     return updatedStudent;
@@ -214,8 +219,8 @@ export class StudentService {
   /**
    * Delete student (soft delete)
    */
-  async deleteStudent(studentId: string): Promise<void> {
-    const student = await this.getStudentById(studentId);
+  async deleteStudent(studentId: string, tenantId?: string): Promise<void> {
+    await this.getStudentById(studentId, tenantId);
 
     await this.db('students').where('student_id', studentId).update({
       status: 'inactive',
@@ -228,8 +233,8 @@ export class StudentService {
   /**
    * Get student enrollments
    */
-  async getStudentEnrollments(studentId: string): Promise<any> {
-    const student = await this.getStudentById(studentId);
+  async getStudentEnrollments(studentId: string, tenantId?: string): Promise<any> {
+    await this.getStudentById(studentId, tenantId);
 
     const enrollments = await this.db('enrollments')
       .select(
@@ -251,8 +256,8 @@ export class StudentService {
   /**
    * Get student GPA
    */
-  async calculateStudentGPA(studentId: string): Promise<number> {
-    const student = await this.getStudentById(studentId);
+  async calculateStudentGPA(studentId: string, tenantId?: string): Promise<number> {
+    await this.getStudentById(studentId, tenantId);
 
     const result = await this.db('grades')
       .where('student_id', studentId)

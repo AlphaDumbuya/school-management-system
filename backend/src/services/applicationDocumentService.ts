@@ -83,25 +83,38 @@ export async function getApplicationDocuments(applicationId: string): Promise<Ap
 }
 
 /**
- * Get document by ID
+ * Get document by ID. When `tenantId` is supplied the document is scoped to
+ * that tenant via its parent application (admission_applications.tenant_id), so
+ * the service is safe on its own and never returns another school's document.
  */
-export async function getDocumentById(id: string): Promise<ApplicationDocument | null> {
-  const document = await db('application_documents')
-    .where({ id })
-    .first();
-  
+export async function getDocumentById(id: string, tenantId?: string): Promise<ApplicationDocument | null> {
+  const query = db('application_documents').where({ 'application_documents.id': id });
+  if (tenantId) {
+    query
+      .join('admission_applications', 'application_documents.application_id', 'admission_applications.id')
+      .where('admission_applications.tenant_id', tenantId)
+      .select('application_documents.*');
+  }
+  const document = await query.first();
   return document || null;
 }
 
 /**
- * Verify a document
+ * Verify a document. Tenant-scoped when `tenantId` is provided (won't touch a
+ * document belonging to another school).
  */
 export async function verifyDocument(
   id: string,
   status: VerificationStatus,
   notes?: string,
-  userId?: string
+  userId?: string,
+  tenantId?: string,
 ): Promise<ApplicationDocument | null> {
+  // Guard: if a tenant is given, ensure the document belongs to it first.
+  if (tenantId) {
+    const owned = await getDocumentById(id, tenantId);
+    if (!owned) return null;
+  }
   const [document] = await db('application_documents')
     .where({ id })
     .update({
@@ -117,10 +130,10 @@ export async function verifyDocument(
 }
 
 /**
- * Delete a document
+ * Delete a document. Tenant-scoped when `tenantId` is provided.
  */
-export async function deleteDocument(id: string): Promise<boolean> {
-  const document = await getDocumentById(id);
+export async function deleteDocument(id: string, tenantId?: string): Promise<boolean> {
+  const document = await getDocumentById(id, tenantId);
   if (!document) {
     return false;
   }
