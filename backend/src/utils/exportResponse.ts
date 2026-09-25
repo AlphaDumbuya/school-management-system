@@ -65,6 +65,12 @@ export async function sendExport(
     tenantId?: string;
     /** Override the academic year shown on the export (else auto-resolved). */
     academicYear?: string;
+    /** Optional per-column font colouring for Excel/PDF, keyed by rowKey.
+     *  e.g. { balance: 'red', total_paid: 'green' }. CSV ignores this. */
+    colorColumns?: Record<string, 'red' | 'green'>;
+    /** Highlight the LAST row (e.g. a grand-total row) with a light background
+     *  and bold text so it stands out. Excel/PDF only. */
+    highlightLastRow?: boolean;
   }
 ): Promise<void> {
   const fmt = (opts.format || 'csv').toLowerCase();
@@ -73,7 +79,7 @@ export async function sendExport(
   const brand = await brandFor(opts.tenantId, title, opts.academicYear);
 
   if (fmt === 'pdf') {
-    const buf = await exportService.rowsToPdf(opts.rows, opts.columns, title, brand);
+    const buf = await exportService.rowsToPdf(opts.rows, opts.columns, title, brand, opts.colorColumns, opts.highlightLastRow);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}.pdf"`);
     res.send(buf);
@@ -81,7 +87,7 @@ export async function sendExport(
   }
 
   if (fmt === 'excel' || fmt === 'xlsx') {
-    const buf = await exportService.rowsToExcel(opts.rows, opts.columns, opts.sheetName || title || 'Export', brand);
+    const buf = await exportService.rowsToExcel(opts.rows, opts.columns, opts.sheetName || title || 'Export', brand, opts.colorColumns, opts.highlightLastRow);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}.xlsx"`);
     res.send(buf);

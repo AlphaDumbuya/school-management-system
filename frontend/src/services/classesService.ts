@@ -92,6 +92,18 @@ export const classesService = {
     return res ?? ({ success: false, data: [] } as any);
   },
 
+  /**
+   * GET /api/v1/classes for ADMIN selectors (finance, reports). Always hits the
+   * API and NEVER falls back to the teacher offline roster cache (which can
+   * hold a partial set), so staff always see the full tenant class list.
+   */
+  async listAllClasses(params: ListClassesParams = {}) {
+    const res = await apiClient
+      .get<{ data: ClassRecord[]; pagination: any }>('/api/v1/classes', { params: { limit: 100, ...params } })
+      .catch(() => null as any);
+    return res ?? ({ success: false, data: [] } as any);
+  },
+
   /** Read classes from the teacher offline cache (best-effort). */
   async _cachedClasses(): Promise<ClassRecord[]> {
     const uid = (useAuthStore.getState().user as any)?.id;

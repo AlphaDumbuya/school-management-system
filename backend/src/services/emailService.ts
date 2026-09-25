@@ -1249,7 +1249,7 @@ class EmailService {
     }
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
-    const portalUrl = `${branding.appUrl}/dashboard`;
+    const portalUrl = `${branding.appUrl}/finance/my-fees`;
     const currency = data.currency || 'Le';
 
     // Stable, unique receipt number — prefer the caller-supplied one.
@@ -1561,9 +1561,9 @@ class EmailService {
     }
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
-    // Link straight to the portal fees/dashboard. When the guardian is not yet
-    // signed in the app will prompt them to log in, then land here to pay.
-    const payUrl = `${branding.appUrl}/dashboard`;
+    // Link straight to the portal fees page (where the Pay action lives). When
+    // the guardian isn't signed in the app prompts login, then lands here to pay.
+    const payUrl = `${branding.appUrl}/finance/my-fees`;
     const currency = data.currency || 'Le';
 
     const rows =

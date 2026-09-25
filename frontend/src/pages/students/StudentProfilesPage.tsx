@@ -423,7 +423,7 @@ export const StudentProfilesPage: React.FC = () => {
                       <div
                         key={s.id}
                         onClick={() => handleSelectStudent(s.id)}
-                        className={`group flex flex-col items-center p-5 ${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-150 sm:dark:border-gray-700/50 border rounded-2xl shadow-sm hover:shadow-lg hover:border-blue-200 dark:hover:border-blue-900/50 cursor-pointer transition-all duration-300 transform hover:-translate-y-1`}
+                        className={`group flex flex-col items-center p-4 sm:p-5 ${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-150 sm:dark:border-gray-700/50 border rounded-2xl shadow-sm hover:shadow-lg hover:border-blue-200 dark:hover:border-blue-900/50 cursor-pointer transition-all duration-300 transform hover:-translate-y-1`}
                       >
                         {/* Avatar */}
                         <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 overflow-hidden flex items-center justify-center flex-shrink-0 shadow-inner group-hover:scale-105 transition-transform duration-350">
@@ -646,7 +646,7 @@ export const StudentProfilesPage: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="md:col-span-2 space-y-6">
                         {/* Personal info */}
-                        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm">
+                        <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm">
                           <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-100 dark:border-gray-700 pb-3 mb-4">Personal Details</h3>
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             <InfoTile icon={<User />} label="Gender" value={student.gender ? student.gender.charAt(0).toUpperCase() + student.gender.slice(1) : '—'} />
@@ -659,7 +659,7 @@ export const StudentProfilesPage: React.FC = () => {
                         </div>
 
                         {/* Contact info */}
-                        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm">
+                        <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm">
                           <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-100 dark:border-gray-700 pb-3 mb-4">Contact & Address</h3>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <InfoTile icon={<Mail />} label="Email" value={student.email || '—'} />
@@ -674,7 +674,7 @@ export const StudentProfilesPage: React.FC = () => {
                       {/* Guardian & Additional info */}
                       <div className="space-y-6">
                         {/* Parent / Guardian & Multi-Guardian Tracking */}
-                        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm space-y-4">
+                        <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm space-y-4">
                           <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3">
                             <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest">Parents & Guardians</h3>
                             <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800/40">
@@ -793,7 +793,7 @@ export const StudentProfilesPage: React.FC = () => {
                         </div>
 
                         {/* Medical Conditions */}
-                        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm">
+                        <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-150 dark:border-gray-700/50 shadow-sm">
                           <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-100 dark:border-gray-700 pb-3 mb-4">Additional Info</h3>
                           <div className="space-y-4">
                             <InfoTile icon={<BookOpen />} label="Previous School" value={student.previous_school || '—'} />

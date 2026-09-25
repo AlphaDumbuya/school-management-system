@@ -569,7 +569,7 @@ export const DisciplinePage: React.FC = () => {
             {/* Severity breakdown + high-risk students side by side */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Severity breakdown */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 sm:p-6">
                 <h3 className="text-base font-bold text-gray-900 dark:text-white mb-4">Infractions by Severity</h3>
                 {dashLoading ? (
                   <div className="space-y-3">
@@ -606,7 +606,7 @@ export const DisciplinePage: React.FC = () => {
               </div>
 
               {/* High-risk students */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 sm:p-6">
                 <h3 className="text-base font-bold text-gray-900 dark:text-white mb-4">
                   High-Risk Students
                   {highRiskStudents.length > 0 && (
@@ -641,7 +641,7 @@ export const DisciplinePage: React.FC = () => {
 
             {/* Pending appeals summary */}
             {pendingAppeals.length > 0 && (
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-5">
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-base font-bold text-amber-900 dark:text-amber-200 flex items-center gap-2">
                     <ShieldAlert size={18} />

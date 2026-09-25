@@ -6,7 +6,7 @@ export const Card: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   ...props
 }) => (
   <div
-    className={`bg-white rounded-xl border border-gray-200 shadow-sm ${className}`}
+    className={`bg-white rounded-2xl border border-gray-200 shadow-sm ${className}`}
     {...props}
   >
     {children}
@@ -18,7 +18,7 @@ export const CardHeader: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   children,
   ...props
 }) => (
-  <div className={`px-6 py-4 border-b border-gray-100 ${className}`} {...props}>
+  <div className={`px-4 sm:px-6 py-4 border-b border-gray-100 ${className}`} {...props}>
     {children}
   </div>
 );
@@ -38,7 +38,7 @@ export const CardContent: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   children,
   ...props
 }) => (
-  <div className={`px-6 py-4 ${className}`} {...props}>
+  <div className={`px-4 sm:px-6 py-4 ${className}`} {...props}>
     {children}
   </div>
 );
@@ -49,7 +49,7 @@ export const CardFooter: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   ...props
 }) => (
   <div
-    className={`px-6 py-4 border-t border-gray-100 ${className}`}
+    className={`px-4 sm:px-6 py-4 border-t border-gray-100 ${className}`}
     {...props}
   >
     {children}

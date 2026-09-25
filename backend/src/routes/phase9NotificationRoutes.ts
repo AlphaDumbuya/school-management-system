@@ -5,9 +5,15 @@ import notificationPreferenceService from '@services/notificationPreferenceServi
 import emailService from '@services/emailService';
 import smsService from '@services/smsService';
 import { logger } from '@utils/logger';
-import { authenticate } from '@middleware/authMiddleware';
+import { authenticate, attachUserContext } from '@middleware/authMiddleware';
 
 const router: Router = express.Router();
+
+// Every route in this module relies on `req.user` (id, role, tenant). The
+// inline `authenticate` only sets `req.auth`, so we attach the full DB-backed
+// user context here — without it, `req.user` is undefined and the handlers
+// 500 with "Cannot read properties of undefined (reading 'id')".
+router.use(authenticate, attachUserContext);
 
 // ============================================================================
 // NOTIFICATION ENDPOINTS

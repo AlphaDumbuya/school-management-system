@@ -863,7 +863,7 @@ export const AttendancePage: React.FC = () => {
             <div className="space-y-5">
 
               {/* Controls */}
-              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 sm:p-6">
                 <h2 className="text-base font-bold text-gray-900 dark:text-white mb-4">Select Class, Date &amp; Session</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
@@ -1323,7 +1323,7 @@ export const AttendancePage: React.FC = () => {
                   </div>
 
                   {/* Status breakdown */}
-                  <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+                  <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 sm:p-6">
                     <h3 className="font-bold text-gray-900 dark:text-white mb-4">Attendance Breakdown</h3>
                     <div className="space-y-3">
                       {[

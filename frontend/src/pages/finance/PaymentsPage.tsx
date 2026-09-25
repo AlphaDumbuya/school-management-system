@@ -9,7 +9,8 @@
  *  - Record manual payments, view receipts, filter & export the full ledger
  * Online (Monime) payments auto-record here and settle fees/invoices.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Smartphone, CreditCard, Banknote, Landmark, Wallet, Plus, Download,
@@ -26,7 +27,20 @@ import { ExportButton } from '@components/admin/common/ExportButton';
 import { financeService } from '@services/financeService';
 import { studentsService } from '@services/studentsService';
 import { classesService } from '@services/classesService';
+import { schoolConfigService } from '@services/schoolConfigService';
 import { fmtMoney, statusPill, SwipeHint } from './FinanceOverviewCards';
+
+// Academic sections — the true 3-tier hierarchy used by the school:
+//   Nursery (Nursery 1–3), Primary (Class 1–6), Secondary → JSS 1–3 / SSS 1–3.
+// The Level filter works by SECTION group; each group matches any of its level
+// codes so filtering by "Junior Secondary" catches JSS1/JSS2/JSS3, etc.
+const SECTION_GROUPS: { key: string; label: string; levels: string[] }[] = [
+  { key: 'nursery', label: 'Nursery', levels: ['NURSERY1', 'NURSERY2', 'NURSERY3'] },
+  { key: 'primary', label: 'Primary', levels: ['CLASS1', 'CLASS2', 'CLASS3', 'CLASS4', 'CLASS5', 'CLASS6'] },
+  { key: 'jss', label: 'Junior Secondary (JSS)', levels: ['JSS1', 'JSS2', 'JSS3'] },
+  { key: 'sss', label: 'Senior Secondary (SSS)', levels: ['SSS1', 'SSS2', 'SSS3'] },
+];
+const sectionForLevel = (lvl?: string) => SECTION_GROUPS.find((g) => g.levels.includes((lvl || '').toUpperCase()))?.key;
 
 const methodMeta = (m?: string) => {
   const s = (m || '').toLowerCase();
@@ -44,8 +58,14 @@ type BreakdownTab = 'term' | 'level' | 'class';
 
 export const PaymentsPage: React.FC = () => {
   const [search, setSearch] = useState('');
-  const [levelFilter, setLevelFilter] = useState('');
+  const [sectionFilter, setSectionFilter] = useState('');
+  const [classFilter, setClassFilter] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [balanceFilter, setBalanceFilter] = useState(''); // '', 'settled', 'due'
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [exportStatus, setExportStatus] = useState(''); // '', 'unpaid', 'partial', 'paid' — scopes the exported report
   const [recordOpen, setRecordOpen] = useState(false);
   const [remindOpen, setRemindOpen] = useState(false);
   const [receipt, setReceipt] = useState<any | null>(null);
@@ -57,19 +77,85 @@ export const PaymentsPage: React.FC = () => {
   const { data: payResp, isLoading, refetch } = useQuery({
     queryKey: ['finance-payments'], queryFn: () => financeService.listPayments(), staleTime: 15_000,
   });
+  const { data: schoolResp } = useQuery({
+    queryKey: ['school-info'], queryFn: () => schoolConfigService.getSchoolInfo(), staleTime: 60_000,
+  });
+  const school = ((schoolResp as any)?.data ?? (schoolResp as any)) ?? {};
+  // Full class list (not just classes that appear in payments) so filters show
+  // every option, each with a live count of matching payments.
+  const { data: classesResp } = useQuery({
+    queryKey: ['finance-filter-classes'], queryFn: () => classesService.listAllClasses({ limit: 100 }), staleTime: 60_000,
+  });
+  const allClasses = ((classesResp as any)?.data?.data ?? (classesResp as any)?.data ?? []) as any[];
 
   const a = ((analyticsResp as any)?.data?.data ?? (analyticsResp as any)?.data) as any;
   const payments = ((payResp as any)?.data?.data ?? (payResp as any)?.data ?? []) as any[];
 
-  const levels = useMemo(() => Array.from(new Set(payments.map((p) => p.class_level).filter(Boolean))).sort(), [payments]);
-  const methods = useMemo(() => Array.from(new Set(payments.map((p) => (p.method || p.payment_method || '').toLowerCase()).filter(Boolean))).sort(), [payments]);
+  // Count how many payments (within a given subset) match each value.
+  const countBy = (rows: any[], fn: (p: any) => string | undefined) => {
+    const m = new Map<string, number>();
+    rows.forEach((p) => { const k = fn(p); if (k) m.set(k, (m.get(k) || 0) + 1); });
+    return m;
+  };
+
+  // Section is the PRIMARY filter. Everything downstream (classes, methods,
+  // statuses, counts) is scoped to the chosen section so the options cascade.
+  const sectionScoped = useMemo(
+    () => (sectionFilter ? payments.filter((p) => sectionForLevel(p.class_level) === sectionFilter) : payments),
+    [payments, sectionFilter]
+  );
+
+  // When the section changes, drop a class selection that no longer belongs to
+  // the new section (keeps the cascade consistent).
+  useEffect(() => {
+    if (!classFilter) return;
+    const stillValid = payments.some((p) => p.class_name === classFilter && (!sectionFilter || sectionForLevel(p.class_level) === sectionFilter));
+    if (!stillValid) setClassFilter('');
+  }, [sectionFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sectionCounts = useMemo(() => countBy(payments, (p) => sectionForLevel(p.class_level)), [payments]);
+  const classCounts = useMemo(() => countBy(sectionScoped, (p) => p.class_name), [sectionScoped]);
+  const methodCounts = useMemo(() => countBy(sectionScoped, (p) => (p.method || p.payment_method || '').toLowerCase() || undefined), [sectionScoped]);
+  const statusCounts = useMemo(() => countBy(sectionScoped, (p) => (p.status || '').toLowerCase() || undefined), [sectionScoped]);
+
+  // Sections present in this school's classes/payments (Nursery / Primary /
+  // JSS / SSS), shown in natural order.
+  const sections = useMemo(() => {
+    const present = new Set<string>();
+    allClasses.forEach((c) => { const k = sectionForLevel(c.level); if (k) present.add(k); });
+    payments.forEach((p) => { const k = sectionForLevel(p.class_level); if (k) present.add(k); });
+    return SECTION_GROUPS.filter((g) => present.has(g.key));
+  }, [allClasses, payments]);
+  // Classes are scoped to the selected section (both from the full class list
+  // and from payments) so picking a section narrows the Class dropdown.
+  const classesList = useMemo(() => {
+    const scopedClasses = sectionFilter ? allClasses.filter((c) => sectionForLevel(c.level) === sectionFilter) : allClasses;
+    const s = new Set<string>([...scopedClasses.map((c) => c.name).filter(Boolean), ...sectionScoped.map((p) => p.class_name).filter(Boolean)]);
+    return Array.from(s).sort();
+  }, [allClasses, sectionScoped, sectionFilter]);
+  const methods = useMemo(() => Array.from(new Set(sectionScoped.map((p) => (p.method || p.payment_method || '').toLowerCase()).filter(Boolean))).sort(), [sectionScoped]);
+  const statuses = useMemo(() => Array.from(new Set(sectionScoped.map((p) => (p.status || '').toLowerCase()).filter(Boolean))).sort(), [sectionScoped]);
 
   const filtered = payments.filter((p) => {
     const t = search.trim().toLowerCase();
-    const matchSearch = !t || p.student_name?.toLowerCase().includes(t) || (p.reference_number || '').toLowerCase().includes(t) || (p.admission_no || '').toLowerCase().includes(t);
-    const matchLevel = !levelFilter || p.class_level === levelFilter;
+    const matchSearch = !t
+      || p.student_name?.toLowerCase().includes(t)
+      || (p.admission_no || '').toLowerCase().includes(t)
+      || (p.reference_number || '').toLowerCase().includes(t)
+      || (p.provider_reference || '').toLowerCase().includes(t)
+      || (p.transaction_reference || '').toLowerCase().includes(t)
+      || (p.class_name || '').toLowerCase().includes(t);
+    const matchSection = !sectionFilter || sectionForLevel(p.class_level) === sectionFilter;
+    const matchClass = !classFilter || p.class_name === classFilter;
     const matchMethod = !methodFilter || (p.method || p.payment_method || '').toLowerCase() === methodFilter;
-    return matchSearch && matchLevel && matchMethod;
+    const matchStatus = !statusFilter || (p.status || '').toLowerCase() === statusFilter;
+    const matchBalance = !balanceFilter
+      || (balanceFilter === 'settled' && Number(p.student_balance) <= 0)
+      || (balanceFilter === 'due' && Number(p.student_balance) > 0);
+    const pd = p.payment_date ? new Date(p.payment_date) : null;
+    const matchFrom = !fromDate || (pd && pd >= new Date(fromDate + 'T00:00:00'));
+    const matchTo = !toDate || (pd && pd <= new Date(toDate + 'T23:59:59'));
+    return matchSearch && matchSection && matchClass && matchMethod && matchStatus && matchBalance && matchFrom && matchTo;
   });
 
   const queryClient = useQueryClient();
@@ -119,7 +205,26 @@ export const PaymentsPage: React.FC = () => {
         isRefreshing={isLoading || anLoading}
         actions={
           <div className="flex items-center gap-2">
-            <ExportButton endpoint="/api/v1/finance/export" filename="payments" />
+            <div className="relative hidden sm:block">
+              <select
+                value={exportStatus}
+                onChange={(e) => setExportStatus(e.target.value)}
+                title="Scope the exported fees report"
+                className="appearance-none pl-3 pr-8 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="">Report: All students</option>
+                <option value="unpaid">Report: Unpaid only</option>
+                <option value="partial">Report: Partial only</option>
+                <option value="paid">Report: Fully paid</option>
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+            </div>
+            <ExportButton
+              endpoint="/api/v1/finance/export"
+              filename={exportStatus === 'unpaid' ? 'unpaid-students-report' : 'student-fees-report'}
+              label="Export Report"
+              params={{ section: sectionFilter || undefined, className: classFilter || undefined, status: exportStatus || undefined }}
+            />
             <Button variant="outline" size="sm" onClick={() => setRemindOpen(true)}><Bell size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Send Reminders</span></Button>
             <Button variant="default" size="sm" onClick={() => setRecordOpen(true)}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Record Payment</span></Button>
           </div>
@@ -276,22 +381,27 @@ export const PaymentsPage: React.FC = () => {
         </div>
 
         {/* ── Ledger with filters ── */}
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center mb-4">
-          <SearchBar placeholder="Search by student, admission # or reference…" onSearch={setSearch} isLoading={isLoading} resultCount={search ? filtered.length : undefined} defaultValue={search} className="w-full sm:max-w-md" />
-          <div className="flex gap-3 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-40">
-              <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
-                <option value="">All levels</option>
-                {levels.map((l) => <option key={l} value={l}>{l}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
-            </div>
-            <div className="relative flex-1 sm:w-40">
-              <select value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
-                <option value="">All methods</option>
-                {methods.map((m) => <option key={m} value={m}>{methodMeta(m).label}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+        <div className="space-y-3 mb-4">
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+            <SearchBar placeholder="Search by student, admission #, reference or class…" onSearch={setSearch} isLoading={isLoading} resultCount={search ? filtered.length : undefined} defaultValue={search} className="w-full sm:max-w-md" />
+            {(search || sectionFilter || classFilter || methodFilter || statusFilter || balanceFilter || fromDate || toDate) && (
+              <button
+                onClick={() => { setSearch(''); setSectionFilter(''); setClassFilter(''); setMethodFilter(''); setStatusFilter(''); setBalanceFilter(''); setFromDate(''); setToDate(''); }}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-rose-600 whitespace-nowrap"
+              >
+                <X size={13} /> Clear filters
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            <FilterSelect value={sectionFilter} onChange={setSectionFilter} allLabel={`All sections (${payments.length})`} options={sections.map((g) => ({ value: g.key, label: `${g.label}${sectionCounts.get(g.key) ? ` (${sectionCounts.get(g.key)})` : ''}` }))} />
+            <FilterSelect value={classFilter} onChange={setClassFilter} allLabel="All classes" options={classesList.map((c) => ({ value: c, label: `${c}${classCounts.get(c) ? ` (${classCounts.get(c)})` : ''}` }))} />
+            <FilterSelect value={methodFilter} onChange={setMethodFilter} allLabel="All methods" options={methods.map((m) => ({ value: m, label: `${methodMeta(m).label}${methodCounts.get(m) ? ` (${methodCounts.get(m)})` : ''}` }))} />
+            <FilterSelect value={statusFilter} onChange={setStatusFilter} allLabel="All statuses" options={statuses.map((s) => ({ value: s, label: `${cap(s)}${statusCounts.get(s) ? ` (${statusCounts.get(s)})` : ''}` }))} />
+            <FilterSelect value={balanceFilter} onChange={setBalanceFilter} allLabel="Any balance" options={[{ value: 'settled', label: 'Settled — no balance' }, { value: 'due', label: 'Has outstanding balance' }]} />
+            <div className="grid grid-cols-2 gap-2 col-span-2 sm:col-span-1 lg:col-span-1">
+              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} title="From date" className="w-full px-2 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} title="To date" className="w-full px-2 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
         </div>
@@ -309,6 +419,8 @@ export const PaymentsPage: React.FC = () => {
                   <th className="px-4 py-3.5 whitespace-nowrap">Student</th>
                   <th className="px-4 py-3.5 whitespace-nowrap">Class</th>
                   <th className="px-4 py-3.5 text-right whitespace-nowrap">Amount</th>
+                  <th className="px-4 py-3.5 text-right whitespace-nowrap">Total Billed</th>
+                  <th className="px-4 py-3.5 text-right whitespace-nowrap">Balance</th>
                   <th className="px-4 py-3.5 whitespace-nowrap">Method</th>
                   <th className="px-4 py-3.5 whitespace-nowrap">Status</th>
                   <th className="px-4 py-3.5 text-right whitespace-nowrap">Receipt</th>
@@ -326,6 +438,8 @@ export const PaymentsPage: React.FC = () => {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-400">{p.class_name || '—'}</td>
                       <td className="px-4 py-3 text-right font-semibold whitespace-nowrap">{fmtMoney(p.amount)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap text-gray-600 dark:text-gray-400">{fmtMoney(p.student_total_billed)}</td>
+                      <td className={`px-4 py-3 text-right whitespace-nowrap font-semibold ${Number(p.student_balance) > 0 ? 'text-rose-600' : 'text-gray-400'}`}>{fmtMoney(p.student_balance)}</td>
                       <td className="px-4 py-3 whitespace-nowrap"><span className="inline-flex items-center gap-1.5 text-xs font-medium">{meta.icon}{meta.label}</span></td>
                       <td className="px-4 py-3 whitespace-nowrap">{statusPill(p.status)}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -341,8 +455,8 @@ export const PaymentsPage: React.FC = () => {
         )}
 
         {recordOpen && <RecordPaymentModal onClose={() => setRecordOpen(false)} onSaved={() => { setRecordOpen(false); refetchAll(); }} />}
-        {remindOpen && <SendRemindersModal onClose={() => setRemindOpen(false)} />}
-        {receipt && <ReceiptModal payment={receipt} onClose={() => setReceipt(null)} />}
+        {remindOpen && <SendRemindersModal onClose={() => setRemindOpen(false)} defaulterCount={a?.topDefaulters?.length ?? 0} />}
+        {receipt && <ReceiptModal payment={receipt} school={school} onClose={() => setReceipt(null)} />}
       </PageShell>
     </MainLayout>
   );
@@ -401,9 +515,9 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
     } finally { setSaving(false); }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 overflow-y-auto" onClick={onClose}>
+      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 my-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
           <h3 className="font-bold text-gray-900 dark:text-white">Record Payment</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
@@ -454,39 +568,298 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
           <Button variant="default" size="sm" onClick={submit} disabled={saving}>{saving ? 'Recording…' : 'Record Payment'}</Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
-const ReceiptModal: React.FC<{ payment: any; onClose: () => void }> = ({ payment, onClose }) => {
+// Print stylesheet for the A4 receipt. Hidden on screen; on print we hide the
+// entire app (#root) and render only the receipt sheet at full A4 size.
+const RECEIPT_PRINT_CSS = `
+.receipt-print-sheet { display: none; }
+@media print {
+  @page { size: A4; margin: 0; }
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  body * { visibility: hidden !important; }
+  .receipt-print-sheet, .receipt-print-sheet * { visibility: visible !important; }
+  .receipt-print-sheet {
+    display: block !important;
+    position: absolute; left: 0; top: 0; width: 210mm; min-height: 297mm;
+    background: #fff; color: #111827;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    /* Force browsers to print exact colors (not wash them out) */
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .receipt-print-sheet * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  .rcpt-page { padding: 18mm 16mm; position: relative; overflow: hidden; min-height: 297mm; box-sizing: border-box; }
+
+  /* Repeating diagonal watermark */
+  .rcpt-watermark {
+    position: absolute; inset: 0; z-index: 0; overflow: hidden;
+    transform: rotate(-30deg); transform-origin: center;
+    display: flex; flex-wrap: wrap; align-content: center; gap: 4px;
+    opacity: 0.05; pointer-events: none;
+    font-size: 20px; font-weight: 800; letter-spacing: 2px; color: #1a1a2e;
+    line-height: 2.6;
+  }
+  .rcpt-watermark span { white-space: nowrap; }
+
+  /* Large faint centre seal */
+  .rcpt-seal {
+    position: absolute; top: 46%; left: 50%; transform: translate(-50%, -50%) rotate(-14deg);
+    z-index: 0; font-size: 120px; font-weight: 900; letter-spacing: 6px;
+    color: #059669; opacity: 0.07; pointer-events: none;
+  }
+
+  /* Keep content above the watermark/seal */
+  .rcpt-header, .rcpt-title, .rcpt-topgrid, .rcpt-table, .rcpt-summary-title,
+  .rcpt-signrow, .rcpt-verify, .rcpt-footer { position: relative; z-index: 1; }
+  .rcpt-header { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; border-bottom: 3px solid #1a1a2e; }
+  .rcpt-logo { width: 62px; height: 62px; object-fit: contain; border-radius: 8px; }
+  .rcpt-logo-fallback { display:flex; align-items:center; justify-content:center; background:#1a1a2e; color:#fff; font-size:28px; font-weight:800; }
+  .rcpt-school { flex: 1; }
+  .rcpt-school-name { font-size: 22px; font-weight: 800; letter-spacing: -0.3px; }
+  .rcpt-school-line { font-size: 11px; color: #475569; margin-top: 2px; }
+  .rcpt-badge { text-align: right; }
+  .rcpt-badge-title { font-size: 13px; font-weight: 800; color: #047857; letter-spacing: 2px; }
+  .rcpt-badge-no { font-size: 11px; color: #1f2937; margin-top: 3px; font-weight: 600; }
+  .rcpt-badge-date { font-size: 11px; color: #475569; }
+  .rcpt-title { text-align: center; font-size: 12px; letter-spacing: 3px; color: #475569; font-weight: 700; margin: 20px 0 16px; }
+  .rcpt-topgrid { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 22px; }
+  .rcpt-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #475569; font-weight: 700; }
+  .rcpt-payer { font-size: 17px; font-weight: 800; margin-top: 4px; color: #111827; }
+  .rcpt-sub { font-size: 12px; color: #475569; margin-top: 2px; }
+  .rcpt-amountbox { background: #d1fae5; border: 1px solid #6ee7b7; border-radius: 10px; padding: 12px 18px; text-align: right; min-width: 190px; }
+  .rcpt-amount { font-size: 24px; font-weight: 800; color: #047857; margin-top: 4px; }
+  .rcpt-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+  .rcpt-table td { padding: 9px 4px; font-size: 12.5px; border-bottom: 1px solid #cbd5e1; }
+  .rcpt-table td:first-child { color: #334155; font-weight: 500; }
+  .rcpt-table td:last-child { text-align: right; font-weight: 700; color: #111827; }
+  .rcpt-summary-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #475569; font-weight: 700; margin: 6px 0 6px; }
+  .rcpt-balrow td { border-top: 2px solid #111827; border-bottom: none; padding-top: 12px; font-size: 15px; font-weight: 800; }
+  .rcpt-due td:last-child { color: #dc2626 !important; }
+  .rcpt-settled td:last-child { color: #047857 !important; }
+  .rcpt-signrow { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 22px; gap: 24px; }
+  .rcpt-stamp { display: inline-block; padding: 8px 18px; border: 2px solid #047857; color: #047857; font-weight: 800; border-radius: 8px; font-size: 13px; letter-spacing: 1px; transform: rotate(-4deg); }
+  .rcpt-stamp-recv { border-color: #b45309; color: #b45309; }
+  .rcpt-sign { text-align: center; min-width: 200px; }
+  .rcpt-sign-line { border-bottom: 1px solid #64748b; height: 28px; }
+  .rcpt-sign-label { font-size: 10px; color: #475569; margin-top: 4px; }
+  .rcpt-verify { margin-top: 26px; padding: 8px 12px; background: #f1f5f9; border: 1px dashed #94a3b8; border-radius: 8px; font-size: 10.5px; color: #334155; }
+  .rcpt-verify-label { font-weight: 700; }
+  .rcpt-verify-code { font-family: 'Courier New', monospace; font-weight: 800; letter-spacing: 2px; color: #111827; margin: 0 6px; }
+  .rcpt-verify-hint { color: #64748b; }
+  .rcpt-footer { position: absolute; bottom: 16mm; left: 16mm; right: 16mm; padding-top: 12px; border-top: 1px solid #cbd5e1; }
+  .rcpt-foot-name { font-size: 12px; font-weight: 800; color: #111827; }
+  .rcpt-foot-line { font-size: 10.5px; color: #475569; margin-top: 2px; }
+  .rcpt-foot-note { font-size: 9.5px; color: #64748b; margin-top: 8px; }
+}
+`;
+
+const ReceiptModal: React.FC<{ payment: any; school?: any; onClose: () => void }> = ({ payment, school = {}, onClose }) => {
   const meta = methodMeta(payment.method || payment.payment_method);
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-5 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2"><Receipt size={18} /><span className="font-bold">Payment Receipt</span></div>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/20"><X size={16} /></button>
+  const receiptNo = payment.reference_number || payment.provider_reference || payment.transaction_reference || `RCPT-${String(payment.id || '').slice(0, 8).toUpperCase()}`;
+  const billed = Number(payment.student_total_billed) || 0;
+  const paid = Number(payment.student_total_paid) || 0;
+  const balance = Number(payment.student_balance) || 0;
+  const settled = balance <= 0;
+
+  const schoolName = school?.name || 'School';
+  const schoolAddress = [school?.address, school?.city, school?.state, school?.country].filter(Boolean).join(', ');
+  const schoolContacts = [school?.phone, school?.email, school?.website].filter(Boolean).join('  •  ');
+  const schoolLogo = school?.logo_url;
+  const paidDate = payment.payment_date ? new Date(payment.payment_date) : new Date();
+
+  // Deterministic verification code derived from the receipt's key fields — the
+  // same receipt always yields the same code, so it can be quoted to confirm
+  // authenticity (and any tampering changes it).
+  const verifyCode = (() => {
+    const raw = `${receiptNo}|${payment.student_id || payment.admission_no || ''}|${payment.amount}|${paidDate.toISOString().slice(0, 10)}`;
+    let h = 0;
+    for (let i = 0; i < raw.length; i++) { h = (h * 31 + raw.charCodeAt(i)) >>> 0; }
+    const hex = h.toString(16).toUpperCase().padStart(8, '0');
+    return `${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
+  })();
+
+  // Lock background scroll while open so the centered modal is the focal point
+  // (prevents the page staying scrolled behind the overlay).
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 overflow-y-auto" onClick={onClose}>
+      <div className="w-full max-w-md lg:max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden my-6" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-5 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2"><Receipt size={18} /><span className="font-bold">Payment Receipt</span></div>
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/20"><X size={16} /></button>
+          </div>
+          <div className="mt-1 text-xs text-white/80 font-mono">No. {receiptNo}</div>
         </div>
-        <div className="p-5 space-y-3 text-sm">
+
+        {/* Amount hero — this specific transaction */}
+        <div className="px-5 py-5 text-center border-b border-gray-100 dark:border-gray-700">
+          <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">This Payment</div>
+          <div className="text-3xl font-black text-emerald-600 mt-1">{fmtMoney(payment.amount)}</div>
+          <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {cap(payment.status || 'completed')}
+          </div>
+        </div>
+
+        {/* Payer + payment details */}
+        <div className="px-5 py-4 space-y-3 text-sm border-b border-gray-100 dark:border-gray-700">
           <Row label="Student" value={payment.student_name} />
           <Row label="Admission #" value={payment.admission_no || '—'} />
           <Row label="Class" value={payment.class_name || '—'} />
           <Row label="Date" value={payment.payment_date ? new Date(payment.payment_date).toLocaleString() : '—'} />
           <Row label="Method" value={meta.label} />
-          <Row label="Reference" value={payment.reference_number || payment.provider_reference || '—'} />
-          <Row label="Status" value={payment.status} />
-          <div className="border-t border-gray-100 dark:border-gray-700 pt-3 flex items-center justify-between">
-            <span className="text-gray-500">Amount paid</span>
-            <span className="text-xl font-black text-emerald-600">{fmtMoney(payment.amount)}</span>
+          <Row label="Reference" value={payment.provider_reference || payment.transaction_reference || '—'} />
+        </div>
+
+        {/* Fee account summary */}
+        <div className="px-5 py-4 space-y-2.5 text-sm bg-gray-50 dark:bg-gray-900/40">
+          <div className="text-[11px] uppercase tracking-wider text-gray-400 font-bold mb-1">Fee Account Summary</div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500">Total Billed</span>
+            <span className="font-semibold text-gray-900 dark:text-white">{fmtMoney(billed)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500">Total Paid (to date)</span>
+            <span className="font-semibold text-emerald-600">{fmtMoney(paid)}</span>
+          </div>
+          <div className="flex items-center justify-between border-t border-gray-200 dark:border-gray-700 pt-2.5">
+            <span className="font-bold text-gray-700 dark:text-gray-300">Balance {settled ? '' : 'Due'}</span>
+            <span className={`text-lg font-black ${settled ? 'text-emerald-600' : 'text-rose-600'}`}>{settled ? 'Le 0.00 · Settled' : fmtMoney(balance)}</span>
           </div>
         </div>
+
         <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
           <Button variant="outline" size="sm" onClick={() => window.print()}>Print</Button>
         </div>
       </div>
-    </div>
+
+      {/* ── Print-only A4 receipt (hidden on screen, shown only when printing) ── */}
+      <style>{RECEIPT_PRINT_CSS}</style>
+      <div className="receipt-print-sheet" aria-hidden>
+        <div className="rcpt-page">
+          {/* Diagonal repeating watermark for authenticity */}
+          <div className="rcpt-watermark">
+            {Array.from({ length: 40 }).map((_, i) => (
+              <span key={i}>{(schoolName || 'RECEIPT').toUpperCase()} · PAID&nbsp;&nbsp;</span>
+            ))}
+          </div>
+          {/* Large faint centre seal */}
+          <div className="rcpt-seal">{settled ? 'PAID' : 'RECEIVED'}</div>
+          {/* Header band */}
+          <div className="rcpt-header">
+            {schoolLogo ? <img src={schoolLogo} alt="" className="rcpt-logo" /> : <div className="rcpt-logo rcpt-logo-fallback">{schoolName.charAt(0)}</div>}
+            <div className="rcpt-school">
+              <div className="rcpt-school-name">{schoolName}</div>
+              {schoolAddress && <div className="rcpt-school-line">{schoolAddress}</div>}
+              {schoolContacts && <div className="rcpt-school-line">{schoolContacts}</div>}
+            </div>
+            <div className="rcpt-badge">
+              <div className="rcpt-badge-title">RECEIPT</div>
+              <div className="rcpt-badge-no">No. {receiptNo}</div>
+              <div className="rcpt-badge-date">{paidDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+            </div>
+          </div>
+
+          <div className="rcpt-title">OFFICIAL PAYMENT RECEIPT</div>
+
+          {/* Received from + amount */}
+          <div className="rcpt-topgrid">
+            <div>
+              <div className="rcpt-label">Received From</div>
+              <div className="rcpt-payer">{payment.student_name}</div>
+              <div className="rcpt-sub">{payment.admission_no || ''}{payment.class_name ? ` · ${payment.class_name}` : ''}</div>
+            </div>
+            <div className="rcpt-amountbox">
+              <div className="rcpt-label">Amount Paid</div>
+              <div className="rcpt-amount">{fmtMoney(payment.amount)}</div>
+            </div>
+          </div>
+
+          {/* Payment details */}
+          <table className="rcpt-table">
+            <tbody>
+              <tr><td>Payment Method</td><td>{meta.label}</td></tr>
+              <tr><td>Reference</td><td>{payment.provider_reference || payment.transaction_reference || '—'}</td></tr>
+              <tr><td>Date &amp; Time</td><td>{paidDate.toLocaleString()}</td></tr>
+              <tr><td>Status</td><td>{cap(payment.status || 'completed')}</td></tr>
+            </tbody>
+          </table>
+
+          {/* Fee account summary */}
+          <div className="rcpt-summary-title">Fee Account Summary</div>
+          <table className="rcpt-table">
+            <tbody>
+              <tr><td>Total Billed</td><td>{fmtMoney(billed)}</td></tr>
+              <tr><td>Total Paid (to date)</td><td>{fmtMoney(paid)}</td></tr>
+              <tr className={`rcpt-balrow ${settled ? 'rcpt-settled' : 'rcpt-due'}`}><td>Balance {settled ? '' : 'Due'}</td><td>{settled ? 'Le 0.00 — Settled' : fmtMoney(balance)}</td></tr>
+            </tbody>
+          </table>
+
+          {/* Stamp + signature row */}
+          <div className="rcpt-signrow">
+            <div className={`rcpt-stamp ${settled ? 'rcpt-stamp-paid' : 'rcpt-stamp-recv'}`}>{settled ? '✓ FULLY PAID' : '✓ PAYMENT RECEIVED'}</div>
+            <div className="rcpt-sign">
+              <div className="rcpt-sign-line" />
+              <div className="rcpt-sign-label">Authorised Signature / Bursar</div>
+            </div>
+          </div>
+
+          {/* Verification strip */}
+          <div className="rcpt-verify">
+            <span className="rcpt-verify-label">Verification Code:</span>
+            <span className="rcpt-verify-code">{verifyCode}</span>
+            <span className="rcpt-verify-hint">Quote this code to confirm authenticity with {schoolName}.</span>
+          </div>
+
+          {/* Footer */}
+          <div className="rcpt-footer">
+            <div className="rcpt-foot-name">{schoolName}</div>
+            {schoolContacts && <div className="rcpt-foot-line">{schoolContacts}</div>}
+            <div className="rcpt-foot-note">This is an official computer-generated receipt. Any alteration renders it void. Issued electronically — valid without a physical signature.</div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 };
+
+function cap(s?: string): string {
+  if (!s) return '';
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// ── Reusable filter dropdown for the payments ledger ──────────────────────────
+const FilterSelect: React.FC<{
+  value: string;
+  onChange: (v: string) => void;
+  allLabel: string;
+  options: { value: string; label: string }[];
+}> = ({ value, onChange, allLabel, options }) => (
+  <div className="relative w-full">
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`w-full appearance-none pl-3 pr-8 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer bg-white dark:bg-gray-800 ${value ? 'border-blue-400 text-gray-900 dark:text-white font-medium' : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300'}`}
+    >
+      <option value="">{allLabel}</option>
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+  </div>
+);
 
 const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="flex items-center justify-between gap-3">
@@ -519,28 +892,38 @@ const DefaulterReminderButton: React.FC<{ studentId: string }> = ({ studentId })
 };
 
 // ── Bulk balance-reminder modal ──────────────────────────────────────────────
-type RemindScope = 'all' | 'class' | 'level';
+type RemindScope = 'all' | 'section' | 'class';
 const TERMS = ['First Term', 'Second Term', 'Third Term'];
 
-const SendRemindersModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+const SendRemindersModal: React.FC<{ onClose: () => void; defaulterCount?: number }> = ({ onClose, defaulterCount }) => {
   const [scope, setScope] = useState<RemindScope>('all');
   const [classId, setClassId] = useState('');
-  const [level, setLevel] = useState('');
+  const [section, setSection] = useState('');
   const [term, setTerm] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
 
-  const { data: classesResp } = useQuery({ queryKey: ['remind-classes'], queryFn: () => classesService.listClasses({ limit: 200 } as any), staleTime: 60_000 });
+  const { data: classesResp } = useQuery({ queryKey: ['remind-classes'], queryFn: () => classesService.listAllClasses({ limit: 100 }), staleTime: 60_000 });
   const classes = ((classesResp as any)?.data?.data ?? (classesResp as any)?.data ?? []) as any[];
-  const levels = useMemo(() => Array.from(new Set(classes.map((c: any) => c.level).filter(Boolean))).sort(), [classes]);
+  // Sections present among the school's classes (Nursery / Primary / JSS / SSS).
+  const availableSections = useMemo(() => {
+    const present = new Set<string>();
+    classes.forEach((c: any) => { const k = SECTION_GROUPS.find((g) => g.levels.includes((c.level || '').toUpperCase()))?.key; if (k) present.add(k); });
+    return SECTION_GROUPS.filter((g) => present.has(g.key));
+  }, [classes]);
+  // Classes scoped to the chosen section (so the class dropdown cascades).
+  const scopedClasses = useMemo(() => {
+    if (scope !== 'class') return classes;
+    return section ? classes.filter((c: any) => SECTION_GROUPS.find((g) => g.levels.includes((c.level || '').toUpperCase()))?.key === section) : classes;
+  }, [classes, scope, section]);
 
   const submit = async () => {
+    if (scope === 'section' && !section) { showToast.error('Select a section'); return; }
     if (scope === 'class' && !classId) { showToast.error('Select a class'); return; }
-    if (scope === 'level' && !level) { showToast.error('Select a level'); return; }
     setSending(true);
     try {
       const res: any = await financeService.sendBalanceReminders({
-        scope, classId: scope === 'class' ? classId : undefined, level: scope === 'level' ? level : undefined,
+        scope, classId: scope === 'class' ? classId : undefined, section: scope === 'section' ? section : undefined,
         term: term || undefined, message: message || undefined,
       });
       const d = res?.data?.data ?? res?.data;
@@ -563,9 +946,9 @@ const SendRemindersModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     } finally { setSending(false); }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 overflow-y-auto" onClick={onClose}>
+      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto my-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2"><Bell size={16} className="text-amber-500" /><h3 className="font-bold text-gray-900 dark:text-white">Send Balance Reminders</h3></div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
@@ -573,31 +956,47 @@ const SendRemindersModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         <div className="p-5 space-y-4">
           <p className="text-xs text-gray-500">Sends each guardian (and the student's own account) a descriptive reminder of their child's outstanding fee balance — both as a <strong>portal notification</strong> and, where an email is on file, a branded email with a secure "Log in &amp; Pay" button. Students with no balance are skipped.</p>
 
+          {typeof defaulterCount === 'number' && defaulterCount > 0 && (
+            <div className="flex items-center gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+              <AlertTriangle size={14} className="flex-shrink-0" />
+              <span><strong>{defaulterCount}</strong> student{defaulterCount === 1 ? '' : 's'} currently have an outstanding balance. Only those in your chosen scope will be reminded.</span>
+            </div>
+          )}
+
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase">Who to remind</label>
             <div className="grid grid-cols-3 gap-1 mt-1 bg-gray-100 dark:bg-gray-900/50 rounded-xl p-1">
-              {(['all', 'class', 'level'] as RemindScope[]).map((s) => (
-                <button key={s} onClick={() => setScope(s)} className={`px-2 py-1.5 text-xs font-semibold rounded-lg capitalize transition-colors ${scope === s ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>{s === 'all' ? 'All defaulters' : s}</button>
+              {(['all', 'section', 'class'] as RemindScope[]).map((s) => (
+                <button key={s} onClick={() => { setScope(s); setClassId(''); }} className={`px-2 py-1.5 text-xs font-semibold rounded-lg capitalize transition-colors ${scope === s ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>{s === 'all' ? 'All defaulters' : s}</button>
               ))}
             </div>
           </div>
 
-          {scope === 'class' && (
+          {scope === 'section' && (
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Class</label>
-              <select value={classId} onChange={(e) => setClassId(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
-                <option value="">Select a class…</option>
-                {classes.map((c: any) => <option key={c.id} value={c.id}>{c.name} {c.level ? `(${c.level})` : ''}</option>)}
+              <label className="text-xs font-semibold text-gray-500 uppercase">Section</label>
+              <select value={section} onChange={(e) => setSection(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+                <option value="">Select a section…</option>
+                {availableSections.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
               </select>
             </div>
           )}
-          {scope === 'level' && (
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Level</label>
-              <select value={level} onChange={(e) => setLevel(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
-                <option value="">Select a level…</option>
-                {levels.map((l) => <option key={l} value={l}>{l}</option>)}
-              </select>
+          {scope === 'class' && (
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase">Section (optional filter)</label>
+                <select value={section} onChange={(e) => { setSection(e.target.value); setClassId(''); }} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+                  <option value="">All sections</option>
+                  {availableSections.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase">Class</label>
+                <select value={classId} onChange={(e) => setClassId(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+                  <option value="">Select a class…</option>
+                  {scopedClasses.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
             </div>
           )}
 
@@ -619,7 +1018,8 @@ const SendRemindersModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <Button variant="default" size="sm" onClick={submit} disabled={sending}>{sending ? 'Sending…' : 'Send Reminders'}</Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

@@ -274,7 +274,7 @@ export const Phase13ParentDashboard: React.FC = () => {
                 <div className="mt-5">
                   {/* Overview */}
                   {activeTab === 'overview' && (
-                    <div className="space-y-6">
+                    <div className="space-y-4">
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                         <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
                           <p className="text-xs text-gray-500">Present</p>
@@ -394,7 +394,7 @@ export const Phase13ParentDashboard: React.FC = () => {
 
                   {/* Grades */}
                   {activeTab === 'grades' && (
-                    <div className="space-y-6">
+                    <div className="space-y-4">
                       {detail?.results_published && gradesChartData.length > 0 && (
                         <Card>
                           <CardHeader><CardTitle className="text-base flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Mean Score by Subject</CardTitle></CardHeader>
@@ -484,7 +484,7 @@ export const Phase13ParentDashboard: React.FC = () => {
 
                   {/* Attendance */}
                   {activeTab === 'attendance' && (
-                    <div className="space-y-6">
+                    <div className="space-y-4">
                       {attendanceChartData.length > 0 && (
                         <Card>
                           <CardHeader><CardTitle className="text-base flex items-center gap-2"><PieChartIcon className="w-4 h-4" /> Attendance Breakdown ({attendance.percentage}%)</CardTitle></CardHeader>
