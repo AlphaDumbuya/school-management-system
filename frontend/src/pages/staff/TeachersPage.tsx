@@ -194,13 +194,22 @@ export const TeachersPage: React.FC = () => {
   const teachers = (data as any)?.data ?? [];
   const pagination = (data as any)?.pagination ?? { total: 0, total_pages: 1 };
 
-  // KPIs derived from current query list or overall total count
+  // KPIs prefer the tenant-wide counts returned by the API (so the numbers are
+  // correct across ALL pages); fall back to page-derived counts if absent.
   const stats = useMemo(() => {
+    const apiStats = (data as any)?.stats;
+    if (apiStats) {
+      return {
+        total: Number(apiStats.all ?? pagination.total ?? 0),
+        active: Number(apiStats.active ?? 0),
+        inactive: Number(apiStats.inactive ?? 0),
+      };
+    }
     const total = Number(pagination.total ?? teachers.length);
     const active = teachers.filter((t: TeacherRecord) => t.status === 'active').length;
     const inactive = teachers.filter((t: TeacherRecord) => t.status === 'inactive').length;
     return { total, active, inactive };
-  }, [teachers, pagination]);
+  }, [data, teachers, pagination]);
 
   // Deactivate / Soft Delete handler
   const handleDeactivate = async () => {

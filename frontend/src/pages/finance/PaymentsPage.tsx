@@ -28,6 +28,7 @@ import { financeService } from '@services/financeService';
 import { studentsService } from '@services/studentsService';
 import { classesService } from '@services/classesService';
 import { schoolConfigService } from '@services/schoolConfigService';
+import { financeLedgerService, LedgerTerm } from '@services/financeLedgerService';
 import { fmtMoney, statusPill, SwipeHint } from './FinanceOverviewCards';
 
 // Academic sections — the true 3-tier hierarchy used by the school:
@@ -168,7 +169,14 @@ export const PaymentsPage: React.FC = () => {
   };
 
   const totals = a?.totals ?? { billed: 0, paid: 0, outstanding: 0, collectionRate: 0, invoiceCount: 0, overdueCount: 0 };
-  const trendSeries = a?.trend?.length ? { series: [{ name: 'Collected (Le)', data: a.trend.map((t: any) => t.total) }], labels: a.trend.map((t: any) => t.label) } : { series: [], labels: [] };
+  // Compact currency for chart axes/tooltips (e.g. Le 12.5k, Le 3.2M).
+  const fmtLeShort = (v: number) => {
+    const n = Number(v) || 0;
+    if (Math.abs(n) >= 1_000_000) return `Le ${(n / 1_000_000).toFixed(1)}M`;
+    if (Math.abs(n) >= 1_000) return `Le ${(n / 1_000).toFixed(1)}k`;
+    return `Le ${n.toLocaleString()}`;
+  };
+  const trendSeries = a?.trend?.length ? { series: [{ name: 'Collected', data: a.trend.map((t: any) => t.total) }], labels: a.trend.map((t: any) => t.label) } : { series: [], labels: [] };
   const methodSeries = a?.byMethod?.length ? { series: [{ name: 'Amount', data: a.byMethod.map((m: any) => m.total) }], labels: a.byMethod.map((m: any) => methodMeta(m.method).label) } : { series: [], labels: [] };
 
   // Grouped bar: Billed vs Collected vs Outstanding by class level.
@@ -253,11 +261,13 @@ export const PaymentsPage: React.FC = () => {
         {/* ── Trend + method mix ── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="lg:col-span-2">
-            <ChartCard title="Collection Trend" subtitle="Last 6 months" type="line" height={280}
+            <ChartCard title="Collection Trend" subtitle="Fees collected over the last 6 months" type="line" height={280}
+              colors={['#10b981']} valueFormatter={fmtLeShort}
               emptyState={{ message: 'No collections yet', description: 'Recorded payments will chart here.' }} {...trendSeries} />
           </div>
           <div>
             <ChartCard title="By Payment Method" type="donut" height={280}
+              valueFormatter={fmtLeShort}
               emptyState={{ message: 'No method data yet', description: 'Payment methods will break down here.' }} {...methodSeries} />
           </div>
         </div>
@@ -266,12 +276,12 @@ export const PaymentsPage: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="lg:col-span-2">
             <ChartCard title="Billed vs Collected vs Outstanding" subtitle="By class level" type="bar" height={300}
-              colors={['#3b82f6', '#10b981', '#ef4444']}
+              colors={['#3b82f6', '#10b981', '#ef4444']} valueFormatter={fmtLeShort}
               emptyState={{ message: 'No billing data yet', description: 'Bill a term on the Fees page to populate this.' }} {...byLevelChart} />
           </div>
           <div>
             <ChartCard title="Collection Health" subtitle="Collected vs outstanding" type="donut" height={300}
-              colors={['#10b981', '#ef4444']}
+              colors={['#10b981', '#ef4444']} valueFormatter={fmtLeShort}
               donutCenterLabel={`${totals.collectionRate}%`}
               emptyState={{ message: 'No fees billed yet', description: 'Overall collection split will show here.' }} {...collectedVsOutstanding} />
           </div>
@@ -280,7 +290,7 @@ export const PaymentsPage: React.FC = () => {
         {/* ── Collection rate by class ── */}
         <div className="mb-6">
           <ChartCard title="Collection Rate by Class" subtitle="Lowest-collecting classes first — spot where to follow up" type="bar" height={300}
-            colors={['#8b5cf6']}
+            colors={['#8b5cf6']} valueFormatter={(v) => `${Math.round(Number(v) || 0)}%`}
             emptyState={{ message: 'No class billing yet', description: 'Per-class collection rates will chart here.' }} {...rateByClassChart} />
         </div>
 
@@ -475,7 +485,7 @@ const HubStat: React.FC<{ label: string; value: string; sub?: string; color: str
 const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }> = ({ onClose, onSaved }) => {
   const [studentQuery, setStudentQuery] = useState('');
   const [studentId, setStudentId] = useState('');
-  const [feeId, setFeeId] = useState('');
+  const [scopeId, setScopeId] = useState('');
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('cash');
   const [reference, setReference] = useState('');
@@ -488,27 +498,129 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
   });
   const students = ((studentsResp as any)?.data?.data ?? (studentsResp as any)?.data ?? []) as any[];
 
-  const { data: feesResp } = useQuery({
-    queryKey: ['pay-student-fees', studentId], queryFn: () => financeService.getStudentFees(studentId),
+  // Load the student's ledger and build the SAME "what to pay for" scopes the
+  // parent/student portal offers (full outstanding / full year / term / charges).
+  const { data: ledgerResp } = useQuery({
+    queryKey: ['pay-student-ledger', studentId], queryFn: () => financeLedgerService.getStudentLedger(studentId),
     enabled: !!studentId, staleTime: 15_000,
   });
-  const fees = (((feesResp as any)?.data?.data ?? (feesResp as any)?.data ?? []) as any[]).filter((f) => (Number(f.balance ?? f.amount) || 0) > 0);
+  const ledger = (((ledgerResp as any)?.data?.data ?? (ledgerResp as any)?.data) ?? null) as any;
+
+  const TERM_LABEL: Record<LedgerTerm, string> = { first_term: 'First Term', second_term: 'Second Term', third_term: 'Third Term' };
+  const isTuition = (type?: string | null) => (type || '').toLowerCase().includes('tuition');
+
+  // Each scope carries the ordered list of underlying fee ids so a manual
+  // payment can be applied across them oldest-first (mirrors the online flow).
+  // Staff can record against ANY term / year / charges — even ones with nothing
+  // outstanding (e.g. paying a future term in advance). We therefore list every
+  // bucket that has been billed, defaulting the payable amount to whatever is
+  // still outstanding (falling back to the billed amount when fully paid).
+  type PayScopeOpt = { id: string; label: string; sublabel?: string; amount: number; outstanding: number; feeIds: string[] };
+  const scopes: PayScopeOpt[] = React.useMemo(() => {
+    if (!ledger) return [];
+    const out: PayScopeOpt[] = [];
+    // Fee ids across everything, ordered so we settle oldest charges first.
+    const allFeeIds: string[] = [];
+    ledger.years?.forEach((y: any) => y.terms?.forEach((t: any) => t.charges?.forEach((c: any) => { allFeeIds.push(c.id); })));
+    if (Number(ledger.totals?.billed || 0) > 0) {
+      out.push({
+        id: 'all',
+        label: 'Full outstanding balance',
+        amount: Number(ledger.totals?.outstanding || 0) > 0 ? ledger.totals.outstanding : ledger.totals.billed,
+        outstanding: Number(ledger.totals?.outstanding || 0),
+        feeIds: allFeeIds,
+      });
+    }
+    ledger.years?.forEach((y: any) => {
+      const yearFeeIds: string[] = [];
+      y.terms?.forEach((t: any) => t.charges?.forEach((c: any) => { yearFeeIds.push(c.id); }));
+      if (Number(y.billed || 0) > 0) {
+        out.push({
+          id: `year:${y.academic_year}`,
+          label: 'Full Year',
+          sublabel: y.academic_year,
+          amount: Number(y.outstanding || 0) > 0 ? y.outstanding : y.billed,
+          outstanding: Number(y.outstanding || 0),
+          feeIds: yearFeeIds,
+        });
+      }
+      y.terms?.forEach((t: any) => {
+        const termCharges = (t.charges || []);
+        if (Number(t.billed || 0) > 0) {
+          out.push({
+            id: `term:${y.academic_year}:${t.term}`,
+            label: `${TERM_LABEL[t.term as LedgerTerm]} — Full`,
+            sublabel: y.academic_year,
+            amount: Number(t.outstanding || 0) > 0 ? t.outstanding : t.billed,
+            outstanding: Number(t.outstanding || 0),
+            feeIds: termCharges.map((c: any) => c.id),
+          });
+        }
+        const chargeOnly = termCharges.filter((c: any) => !isTuition(c.type));
+        const chargeBilled = chargeOnly.reduce((s: number, c: any) => s + Number(c.amount || 0), 0);
+        const chargeOut = chargeOnly.reduce((s: number, c: any) => s + Number(c.outstanding || 0), 0);
+        if (chargeBilled > 0) {
+          out.push({
+            id: `charges:${y.academic_year}:${t.term}`,
+            label: `${TERM_LABEL[t.term as LedgerTerm]} — Charges only`,
+            sublabel: y.academic_year,
+            amount: Math.round((chargeOut > 0 ? chargeOut : chargeBilled) * 100) / 100,
+            outstanding: Math.round(chargeOut * 100) / 100,
+            feeIds: chargeOnly.map((c: any) => c.id),
+          });
+        }
+      });
+    });
+    const seen = new Set<string>();
+    return out.filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)));
+  }, [ledger]);
+
+  const selectedScope = scopes.find((s) => s.id === scopeId) || null;
+
+  // Lock background scroll so the centered modal is the focal point.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   const submit = async () => {
-    if (!feeId || !amount) { showToast.error('Select a fee and enter an amount'); return; }
+    if (!selectedScope) { showToast.error('Select what to pay for'); return; }
     const amt = Number(amount);
     if (!(amt > 0)) { showToast.error('Enter a valid amount'); return; }
-    const selectedFee = fees.find((x) => x.id === feeId);
-    const due = Number(selectedFee?.balance ?? selectedFee?.amount ?? 0);
-    if (due > 0 && amt > due) { showToast.error(`Amount exceeds the outstanding balance (${fmtMoney(due)})`); return; }
+    if (amt > selectedScope.amount) { showToast.error(`Amount exceeds the total for this selection (${fmtMoney(selectedScope.amount)})`); return; }
     setSaving(true);
     try {
-      // apiClient resolves with { success:false } on HTTP errors — check it so a
-      // failed record doesn't falsely report success.
-      const res: any = await financeService.recordPayment({ feeId, amount: amt, method, transactionReference: reference || undefined });
-      const body = res?.data ?? res;
-      if (body?.success === false) { showToast.error(body?.error || body?.message || 'Failed to record payment'); return; }
-      showToast.success('Payment recorded');
+      // Apply the amount across the scope's fees oldest-first (the ledger orders
+      // charges chronologically) — one recordPayment call per fee until the
+      // amount is exhausted. Mirrors the online settle-across-fees logic.
+      //
+      // We settle each fee's OUTSTANDING first. When the whole scope is already
+      // fully paid (advance payment for a future term), there's no outstanding
+      // to soak up, so we fall back to distributing against the fees' BILLED
+      // amounts — this records the payment against the charge as an overpayment.
+      const feeOutstanding = new Map<string, number>();
+      const feeBilled = new Map<string, number>();
+      ledger.years?.forEach((y: any) => y.terms?.forEach((t: any) => t.charges?.forEach((c: any) => {
+        feeOutstanding.set(c.id, Number(c.outstanding || 0));
+        feeBilled.set(c.id, Number(c.amount || 0));
+      })));
+      const scopeHasOutstanding = selectedScope.outstanding > 0.001;
+      const feeBalances = scopeHasOutstanding ? feeOutstanding : feeBilled;
+      let remaining = amt;
+      let recorded = 0;
+      for (const fid of selectedScope.feeIds) {
+        if (remaining <= 0) break;
+        const bal = feeBalances.get(fid) || 0;
+        if (bal <= 0) continue;
+        const pay = Math.min(bal, remaining);
+        const res: any = await financeService.recordPayment({ feeId: fid, amount: Math.round(pay * 100) / 100, method, transactionReference: reference || undefined });
+        const body = res?.data ?? res;
+        if (body?.success === false) { showToast.error(body?.error || body?.message || 'Failed to record payment'); setSaving(false); return; }
+        remaining = Math.round((remaining - pay) * 100) / 100;
+        recorded += pay;
+      }
+      showToast.success(`Recorded ${fmtMoney(recorded)} for ${selectedScope.label}`);
       onSaved();
     } catch (err: any) {
       showToast.error(err?.response?.data?.message || 'Failed to record payment');
@@ -517,33 +629,74 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 overflow-y-auto" onClick={onClose}>
-      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 my-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="font-bold text-gray-900 dark:text-white">Record Payment</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
+      <div className="w-full max-w-md lg:max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 my-6 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-indigo-600 to-blue-600 text-white">
+          <div className="flex items-center gap-2">
+            <Plus size={18} />
+            <div>
+              <h3 className="font-bold">Record Payment</h3>
+              <p className="text-[11px] text-white/70">Log a manual (cash / bank / cheque / card) fee payment</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-white/80 hover:bg-white/20"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4">
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase">Student</label>
-            <input value={studentQuery} onChange={(e) => { setStudentQuery(e.target.value); setStudentId(''); setFeeId(''); }} placeholder="Search student…" className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+            <input value={studentQuery} onChange={(e) => { setStudentQuery(e.target.value); setStudentId(''); setScopeId(''); setAmount(''); }} placeholder="Search by name or admission #…" className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+            {/* Names can repeat — always pick by admission #, which is unique. */}
             {studentQuery && !studentId && students.length > 0 && (
-              <div className="mt-1 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
-                {students.map((s: any) => (
-                  <button key={s.id} onClick={() => { setStudentId(s.id); setStudentQuery(`${s.first_name} ${s.last_name}`); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
-                    {s.first_name} {s.last_name} <span className="text-xs text-gray-400">{s.student_id}</span>
-                  </button>
-                ))}
+              <div className="mt-1 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+                {students.map((s: any) => {
+                  const cls = s.class_name || s.className || (s.enrollment && s.enrollment.class_name) || '';
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => { setStudentId(s.id); setStudentQuery(`${s.first_name} ${s.last_name} · ${s.student_id}`); }}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between gap-3 border-b border-gray-50 dark:border-gray-700/40 last:border-0"
+                    >
+                      <span className="text-sm text-gray-900 dark:text-white truncate">{s.first_name} {s.last_name}</span>
+                      <span className="flex items-center gap-2 flex-shrink-0">
+                        {cls && <span className="text-[10px] text-gray-400">{cls}</span>}
+                        <span className="text-[11px] font-mono font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">{s.student_id}</span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
+            )}
+            {studentId && (
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">Selected: {studentQuery}</p>
             )}
           </div>
           {studentId && (
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Fee (with balance)</label>
-              <select value={feeId} onChange={(e) => { setFeeId(e.target.value); const f = fees.find((x) => x.id === e.target.value); if (f) setAmount(String(f.balance ?? f.amount)); }} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
-                <option value="">Select a fee…</option>
-                {fees.map((f) => <option key={f.id} value={f.id}>{f.type || 'Fee'} — {fmtMoney(f.balance ?? f.amount)} due</option>)}
+              <label className="text-xs font-semibold text-gray-500 uppercase">What to pay for</label>
+              <select value={scopeId} onChange={(e) => { setScopeId(e.target.value); const s = scopes.find((x) => x.id === e.target.value); setAmount(s ? String(s.amount) : ''); }} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+                <option value="">Select what to pay for…</option>
+                {scopes.map((s) => <option key={s.id} value={s.id}>{s.label} — {fmtMoney(s.amount)}</option>)}
               </select>
-              {fees.length === 0 && <p className="text-xs text-gray-400 mt-1">No outstanding fees for this student.</p>}
+              {/* Selected-scope summary — year + amount due (full breakdown stays concise for mobile). */}
+              {selectedScope && (
+                <div className="mt-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-gray-900 dark:text-white">{selectedScope.label}</div>
+                      {selectedScope.sublabel && <div className="text-gray-500">{selectedScope.sublabel}</div>}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] text-gray-500 uppercase">{selectedScope.outstanding > 0.001 ? 'Outstanding' : 'Amount'}</div>
+                      <div className={`font-bold ${selectedScope.outstanding > 0.001 ? 'text-rose-600' : 'text-emerald-600'}`}>{fmtMoney(selectedScope.amount)}</div>
+                    </div>
+                  </div>
+                  {selectedScope.outstanding <= 0.001 && (
+                    <div className="mt-2 text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg px-2 py-1">
+                      This selection is already fully paid — recording here logs an advance / additional payment.
+                    </div>
+                  )}
+                </div>
+              )}
+              {scopes.length === 0 && <p className="text-xs text-gray-400 mt-1">No billed fees for this student yet.</p>}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">

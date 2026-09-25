@@ -510,7 +510,7 @@ const ScopeStep: React.FC<{ scopes: PayScope[]; onPick: (s: PayScope) => void }>
         >
           {scopes.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.label}
+              {s.label} — {fmtLe(s.amount)}
             </option>
           ))}
         </select>

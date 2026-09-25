@@ -58,12 +58,24 @@ export const LoginPage: React.FC = () => {
   // from the URL so it doesn't stick around and alarm users (or fresh visitors)
   // on subsequent visits / refreshes to the login screen.
   const [suspendedNotice, setSuspendedNotice] = useState(false);
+  // Distinct notice for when THIS user's own account (not the whole school) was
+  // deactivated / suspended / dismissed mid-session (`?disabled=1`).
+  const [disabledNotice, setDisabledNotice] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
+    let changed = false;
     if (params.get('suspended') === '1') {
       setSuspendedNotice(true);
       params.delete('suspended');
+      changed = true;
+    }
+    if (params.get('disabled') === '1') {
+      setDisabledNotice(true);
+      params.delete('disabled');
+      changed = true;
+    }
+    if (changed) {
       const qs = params.toString();
       window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
     }
@@ -369,6 +381,21 @@ export const LoginPage: React.FC = () => {
                         </p>
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+              {disabledNotice && (
+                <div className="max-w-3xl mx-auto mb-5 bg-red-500/15 border border-red-400/40 rounded-xl px-4 py-4 text-red-50">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 text-base">🚫</span>
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-bold">Your account has been disabled</p>
+                      <p className="text-xs text-red-100/90 leading-relaxed">
+                        Your access was deactivated, suspended, or dismissed by your school
+                        administrator, so your session was ended. If you believe this is a
+                        mistake, please contact your school administrator to review your account.
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}

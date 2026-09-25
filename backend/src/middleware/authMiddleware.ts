@@ -65,8 +65,20 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
     if (!req.auth) {
       return next();
     }
-    const user = await db('users').select('id', 'tenant_id', 'email', 'role').where('id', req.auth.userId).first();
+    const user = await db('users').select('id', 'tenant_id', 'email', 'role', 'status').where('id', req.auth.userId).first();
     if (user) {
+      // Enforce the user's OWN account status on every request. Deactivating,
+      // suspending or dismissing a user must cut them off immediately — not
+      // only at their next login — so any already-issued token stops working
+      // the moment their status leaves 'active'.
+      if (user.status && user.status !== 'active') {
+        throw new AppError(
+          `Your account is ${user.status}. Please contact your school administrator.`,
+          403,
+          'ACCOUNT_INACTIVE'
+        );
+      }
+
       // Cascade tenant restriction to ALL its users on every request: if the
       // platform owner suspended/expired the tenant, cut off access immediately
       // (already-issued tokens stop working). Super admins are platform-level

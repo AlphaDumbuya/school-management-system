@@ -467,6 +467,14 @@ export class AuthService {
       // Get user
       const user = await this.getUserById(decoded.userId);
 
+      // Re-check the user's OWN status — a deactivated / suspended / dismissed
+      // account must not be able to silently renew its access token.
+      if (user.status !== UserStatus.ACTIVE) {
+        // Revoke this refresh token so the dead session can't keep trying.
+        await this.db('refresh_tokens').where({ token: refreshToken }).del().catch(() => { /* best effort */ });
+        throw new AppError(`Your account is ${user.status}. Please contact your school administrator.`, 403, 'ACCOUNT_INACTIVE');
+      }
+
       // Re-check tenant status — a suspended tenant can't silently renew tokens.
       await this.assertTenantActive(user);
 

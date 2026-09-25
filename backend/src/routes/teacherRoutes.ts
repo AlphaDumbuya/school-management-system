@@ -14,6 +14,49 @@ router.use(authenticate);
 router.use(attachUserContext);
 
 /**
+ * Ensure every class id belongs to the given tenant. Classes are tenant-scoped
+ * either directly (via their academic session) or through their creator, so we
+ * check both paths. Throws a 400 if any id is foreign/unknown.
+ */
+async function assertClassesInTenant(dbx: any, tenantId: string, classIds: string[]): Promise<void> {
+  const ids = Array.from(new Set((classIds || []).filter(Boolean)));
+  if (ids.length === 0) return;
+  const rows = await dbx('classes')
+    .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+    .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+    .whereIn('classes.id', ids)
+    .where(function (this: any) {
+      this.where('academic_sessions.tenant_id', tenantId)
+        .orWhere(function (this: any) {
+          this.whereNull('classes.academic_session_id').where('class_creator.tenant_id', tenantId);
+        });
+    })
+    .select('classes.id');
+  if (rows.length !== ids.length) {
+    throw new AppError('One or more selected classes do not belong to this school', 400, 'INVALID_CLASS');
+  }
+}
+
+/**
+ * Ensure every subject id belongs to the given tenant. Subjects are scoped to a
+ * tenant through their creator (there is no direct subjects.tenant_id column),
+ * so we join users on subjects.created_by.
+ */
+async function assertSubjectsInTenant(dbx: any, tenantId: string, subjectIds: string[]): Promise<void> {
+  const ids = Array.from(new Set((subjectIds || []).filter(Boolean)));
+  if (ids.length === 0) return;
+  const count = await dbx('subjects')
+    .join('users', 'subjects.created_by', 'users.id')
+    .whereIn('subjects.id', ids)
+    .where('users.tenant_id', tenantId)
+    .countDistinct('subjects.id as c')
+    .first();
+  if (Number(count?.c ?? 0) !== ids.length) {
+    throw new AppError('One or more selected subjects do not belong to this school', 400, 'INVALID_SUBJECT');
+  }
+}
+
+/**
  * GET /api/v1/teachers/export?format=csv|excel|pdf
  * Download the tenant's teachers. Principal/super_admin only; tenant-scoped.
  * Declared before /:id so the literal path isn't captured.
@@ -166,7 +209,41 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, U
 
     const totalResult = await query.clone().clearSelect().clearOrder().count('teachers.id as count').first();
     const total = Number(totalResult?.count ?? 0);
-    
+
+    // Tenant-wide status counts so the KPI cards reflect ALL teachers, not just
+    // the current page. These honour the same search/specialization filters but
+    // ignore the status filter (so each card always shows its own total).
+    let statsQuery = db('teachers')
+      .join('users', 'teachers.user_id', 'users.id')
+      .where('users.tenant_id', tenantId);
+    if (specialization) statsQuery = statsQuery.where('teachers.specialization', specialization as string);
+    if (search) {
+      const term = `%${(search as string).trim()}%`;
+      statsQuery = statsQuery.where(function () {
+        this.where('users.first_name', 'ilike', term)
+          .orWhere('users.last_name', 'ilike', term)
+          .orWhere('users.email', 'ilike', term)
+          .orWhere('teachers.teacher_id', 'ilike', term)
+          .orWhere('teachers.specialization', 'ilike', term)
+          .orWhereRaw("CONCAT_WS(' ', users.first_name, users.last_name) ILIKE ?", [term])
+          .orWhereRaw("CONCAT_WS(' ', users.last_name, users.first_name) ILIKE ?", [term]);
+      });
+    }
+    const statusRows = await statsQuery
+      .select('users.status')
+      .count('teachers.id as count')
+      .groupBy('users.status');
+    const stats = statusRows.reduce(
+      (acc: any, r: any) => {
+        const c = Number(r.count) || 0;
+        acc.all += c;
+        if (r.status === 'active') acc.active += c;
+        else acc.inactive += c;
+        return acc;
+      },
+      { all: 0, active: 0, inactive: 0 },
+    );
+
     const teachersList = await query
       .limit(limit)
       .offset(offset)
@@ -179,6 +256,7 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, U
         ...t,
         status: t.user_status, // Use user account status as main status
       })),
+      stats,
       pagination: {
         page,
         limit,
@@ -349,6 +427,14 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       updated_at: new Date(),
     }).returning('*');
 
+    // Validate that any class/subject IDs the client sent actually belong to
+    // THIS tenant, so a teacher can never be linked to another school's data.
+    await assertClassesInTenant(trx, tenantId, [
+      ...(form_class_id ? [form_class_id] : []),
+      ...assigned_classes,
+    ]);
+    await assertSubjectsInTenant(trx, tenantId, assigned_subjects);
+
     // Generate unique teacher ID according to tenant settings
     const teacherIdStr = await generateNextId(db, tenantId, 'teacher');
 
@@ -469,6 +555,13 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
     if (!teacher) {
       throw new AppError('Teacher not found', 404, 'NOT_FOUND');
     }
+
+    // Guard against cross-tenant class/subject assignment — same as create.
+    await assertClassesInTenant(trx, tenantId, [
+      ...(form_class_id ? [form_class_id] : []),
+      ...assigned_classes,
+    ]);
+    await assertSubjectsInTenant(trx, tenantId, assigned_subjects);
 
     // Update user record
     const userUpdate: any = {};
@@ -610,6 +703,10 @@ router.delete('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCI
       status: 'inactive',
       updated_at: new Date(),
     });
+
+    // Release any form-class this teacher was leading so the class no longer
+    // points at an inactive teacher (otherwise it lingers as "Form Teacher").
+    await trx('classes').where('class_teacher_id', teacherId).update({ class_teacher_id: null });
 
     // End assignments
     await trx('teacher_assignments')
