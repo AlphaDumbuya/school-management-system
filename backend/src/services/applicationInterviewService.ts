@@ -41,13 +41,18 @@ export async function scheduleInterview(
 }
 
 /**
- * Get interview by ID
+ * Get interview by ID. When `tenantId` is supplied the interview is scoped to
+ * that tenant via its parent application (admission_applications.tenant_id).
  */
-export async function getInterviewById(id: string): Promise<ApplicationInterview | null> {
-  const interview = await db('application_interviews')
-    .where({ id })
-    .first();
-  
+export async function getInterviewById(id: string, tenantId?: string): Promise<ApplicationInterview | null> {
+  const query = db('application_interviews').where({ 'application_interviews.id': id });
+  if (tenantId) {
+    query
+      .join('admission_applications', 'application_interviews.application_id', 'admission_applications.id')
+      .where('admission_applications.tenant_id', tenantId)
+      .select('application_interviews.*');
+  }
+  const interview = await query.first();
   return interview || null;
 }
 
@@ -65,8 +70,14 @@ export async function getApplicationInterviews(applicationId: string): Promise<A
  */
 export async function updateInterview(
   id: string,
-  data: UpdateInterviewDTO
+  data: UpdateInterviewDTO,
+  tenantId?: string,
 ): Promise<ApplicationInterview | null> {
+  // Tenant guard: ensure the interview belongs to this tenant before updating.
+  if (tenantId) {
+    const owned = await getInterviewById(id, tenantId);
+    if (!owned) return null;
+  }
   const updateData: any = {
     ...data,
     updated_at: new Date()

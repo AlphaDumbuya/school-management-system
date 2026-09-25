@@ -445,31 +445,22 @@ router.patch(
       }
 
       const { id } = req.params;
-
-      const doc = await db('application_documents')
-        .join('admission_applications', 'application_documents.application_id', 'admission_applications.id')
-        .join('users as creator', 'admission_applications.created_by', 'creator.id')
-        .where('creator.tenant_id', tenantId)
-        .where('application_documents.id', id)
-        .first();
-      if (!doc) {
-        res.status(404).json({ success: false, message: 'Document not found or access denied' });
-        return;
-      }
-
       const { status, notes } = req.body;
-      
+
+      // The service scopes by tenant (via the parent application's tenant_id),
+      // so a document from another school returns null → 404.
       const document = await applicationDocumentService.verifyDocument(
         id,
         status as VerificationStatus,
         notes,
-        req.user?.id
+        req.user?.id,
+        tenantId,
       );
       
       if (!document) {
         res.status(404).json({
           success: false,
-          message: 'Document not found'
+          message: 'Document not found or access denied'
         });
         return;
       }
@@ -508,23 +499,13 @@ router.delete(
 
       const { id } = req.params;
 
-      const doc = await db('application_documents')
-        .join('admission_applications', 'application_documents.application_id', 'admission_applications.id')
-        .join('users as creator', 'admission_applications.created_by', 'creator.id')
-        .where('creator.tenant_id', tenantId)
-        .where('application_documents.id', id)
-        .first();
-      if (!doc) {
-        res.status(404).json({ success: false, message: 'Document not found or access denied' });
-        return;
-      }
-
-      const deleted = await applicationDocumentService.deleteDocument(id);
+      // Tenant-scoped in the service (via parent application's tenant_id).
+      const deleted = await applicationDocumentService.deleteDocument(id, tenantId);
       
       if (!deleted) {
         res.status(404).json({
           success: false,
-          message: 'Document not found'
+          message: 'Document not found or access denied'
         });
         return;
       }
@@ -609,26 +590,16 @@ router.patch(
       }
 
       const { id } = req.params;
-
-      const interviewCheck = await db('application_interviews')
-        .join('admission_applications', 'application_interviews.application_id', 'admission_applications.id')
-        .join('users as creator', 'admission_applications.created_by', 'creator.id')
-        .where('creator.tenant_id', tenantId)
-        .where('application_interviews.id', id)
-        .first();
-      if (!interviewCheck) {
-        res.status(404).json({ success: false, message: 'Interview not found or access denied' });
-        return;
-      }
-
       const data: UpdateInterviewDTO = req.body;
-      
-      const interview = await applicationInterviewService.updateInterview(id, data);
+
+      // The service scopes by tenant (via the parent application's tenant_id),
+      // so an interview from another school returns null → 404.
+      const interview = await applicationInterviewService.updateInterview(id, data, tenantId);
       
       if (!interview) {
         res.status(404).json({
           success: false,
-          message: 'Interview not found'
+          message: 'Interview not found or access denied'
         });
         return;
       }
