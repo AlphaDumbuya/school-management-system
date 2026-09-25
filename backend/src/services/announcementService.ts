@@ -26,6 +26,10 @@ export interface CreateAnnouncementInput {
 
 const VALID_AUDIENCE: Audience[] = ['all', 'teacher', 'student', 'parent', 'accountant', 'admissions_officer'];
 
+/** Upper bounds so a single post can't store unbounded text (DoS / UI break). */
+const MAX_TITLE_LEN = 200;
+const MAX_BODY_LEN = 10000;
+
 export class AnnouncementService {
   /**
    * The class ids a teacher may target: subjects they're assigned to + classes
@@ -89,6 +93,9 @@ export class AnnouncementService {
     if (!title?.trim() || !body?.trim()) {
       throw new AppError('Title and message are required', 400, 'VALIDATION_ERROR');
     }
+    if (body.trim().length > MAX_BODY_LEN) {
+      throw new AppError(`Message is too long (max ${MAX_BODY_LEN.toLocaleString()} characters)`, 400, 'VALIDATION_ERROR');
+    }
     let audience: Audience = VALID_AUDIENCE.includes(input.audience) ? input.audience : 'all';
     const priority: Priority = input.priority === 'high' ? 'high' : 'normal';
     let classId: string | null = input.classId ?? null;
@@ -130,7 +137,7 @@ export class AnnouncementService {
       .insert({
         tenant_id: tenantId,
         author_id: authorId,
-        title: title.trim().slice(0, 200),
+        title: title.trim().slice(0, MAX_TITLE_LEN),
         body: body.trim(),
         audience,
         priority,
@@ -323,10 +330,13 @@ export class AnnouncementService {
     const update: any = { updated_at: new Date() };
     if (patch.title !== undefined) {
       if (!patch.title.trim()) throw new AppError('Title cannot be empty', 400, 'VALIDATION_ERROR');
-      update.title = patch.title.trim().slice(0, 200);
+      update.title = patch.title.trim().slice(0, MAX_TITLE_LEN);
     }
     if (patch.body !== undefined) {
       if (!patch.body.trim()) throw new AppError('Message cannot be empty', 400, 'VALIDATION_ERROR');
+      if (patch.body.trim().length > MAX_BODY_LEN) {
+        throw new AppError(`Message is too long (max ${MAX_BODY_LEN.toLocaleString()} characters)`, 400, 'VALIDATION_ERROR');
+      }
       update.body = patch.body.trim();
     }
     if (patch.audience !== undefined) {
