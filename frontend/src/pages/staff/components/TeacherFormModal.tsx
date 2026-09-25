@@ -14,6 +14,8 @@ import { showToast } from '@utils/toast';
 import { teachersService, TeacherRecord } from '@services/teachersService';
 import { classesService } from '@services/classesService';
 import { subjectsService } from '@services/subjectsService';
+import { schoolConfigService } from '@services/schoolConfigService';
+import { designationOptions, classAssignmentLabel } from '@lib/staffDesignations';
 import { Clipboard, ClipboardCheck, KeyRound, Loader2, BookOpen, GraduationCap } from 'lucide-react';
 import { FileUploader } from '@components/admin/forms/FileUploader';
 import { RichTextarea } from '@components/admin/forms/RichTextarea';
@@ -116,6 +118,17 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
     staleTime: 60_000,
     enabled: isOpen,
   });
+
+  // The school's level tailors which designations we offer (primary uses Class
+  // Master, secondary uses Form Master; both shows both with a level suffix).
+  const { data: schoolInfoResp } = useQuery({
+    queryKey: ['school-info'],
+    queryFn: () => schoolConfigService.getSchoolInfo(),
+    staleTime: 5 * 60_000,
+    enabled: isOpen,
+  });
+  const schoolType = ((schoolInfoResp as any)?.data?.school_type ?? (schoolInfoResp as any)?.data?.data?.school_type) as string | undefined;
+  const designationOpts = useMemo(() => designationOptions(schoolType), [schoolType]);
 
   const classesList = (classesData as any)?.data ?? [];
   const subjectsList = (subjectsData as any)?.data ?? [];
@@ -221,7 +234,7 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
     setServerError(null);
     setIsSubmitting(true);
     try {
-      const payload = {
+      const payload: any = {
         first_name: values.first_name,
         last_name: values.last_name,
         email: values.email,
@@ -232,7 +245,6 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
         office_location: values.office_location || undefined,
         qualifications: values.qualifications || undefined,
         hire_date: values.hire_date || undefined,
-        status: values.status,
         designation: values.designation,
         department: values.department,
         employment_type: values.employment_type,
@@ -240,8 +252,10 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
         assigned_classes: values.assigned_classes,
         assigned_subjects: values.assigned_subjects,
       };
-
-      console.log('TeacherFormModal payload:', payload);
+      // Status is only set at CREATE (defaults to active). On edit it is never
+      // sent from this form — status changes go through the dedicated
+      // suspend/dismiss/deactivate/reactivate actions (with reason + comms).
+      if (!isEditing) payload.status = values.status;
 
       if (isEditing && editingTeacher) {
         const res = await teachersService.updateTeacher(editingTeacher.id, payload as any);
@@ -428,18 +442,27 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
                 />
 
                 {isEditing && (
-                  <FormField
-                    label="Status"
-                    type="select"
-                    options={[
-                      { label: 'Active', value: 'active' },
-                      { label: 'Inactive', value: 'inactive' },
-                      { label: 'Suspended', value: 'suspended' },
-                      { label: 'Dismissed', value: 'dismissed' },
-                    ]}
-                    error={errors.status?.message}
-                    {...register('status')}
-                  />
+                  // Status is intentionally READ-ONLY here. Changing it (suspend /
+                  // dismiss / deactivate / reactivate) is a controlled action that
+                  // requires a reason and triggers notifications + access
+                  // enforcement — done via the dedicated buttons on the profile
+                  // view, not by editing the form.
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Account Status</label>
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40">
+                      <span className={`inline-block w-2 h-2 rounded-full ${
+                        editingTeacher?.status === 'active' ? 'bg-emerald-500'
+                        : editingTeacher?.status === 'suspended' ? 'bg-amber-500'
+                        : 'bg-red-500'
+                      }`} />
+                      <span className="text-sm font-medium text-gray-800 dark:text-gray-200 capitalize">
+                        {editingTeacher?.status || 'active'}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[10px] text-gray-400">
+                      Use the Suspend / Dismiss / Deactivate actions on the profile to change this.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
@@ -495,14 +518,8 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
               <FormField
                 label="Designation / Title"
                 type="select"
-                options={[
-                  { label: 'Subject Teacher', value: 'subject_teacher' },
-                  { label: 'Form Teacher', value: 'form_teacher' },
-                  { label: 'Head of Department (HOD)', value: 'hod' },
-                  { label: 'Senior Teacher', value: 'senior_teacher' },
-                  { label: 'Vice Principal', value: 'vice_principal' },
-                  { label: 'Principal', value: 'principal' },
-                ]}
+                options={designationOpts}
+                helperText="Leadership, Bursar and Administrator titles give the staff member the matching portal access."
                 error={errors.designation?.message}
                 {...register('designation')}
               />
@@ -535,7 +552,7 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
               />
 
               <FormField
-                label="Form Class Assignment (Form Teacher)"
+                label={classAssignmentLabel(schoolType)}
                 type="select"
                 options={classOptions}
                 error={errors.form_class_id?.message}

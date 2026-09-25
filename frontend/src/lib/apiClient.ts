@@ -312,6 +312,10 @@ interface ErrorResponse {
   error: string;
   message?: string;
   statusCode?: number;
+  /** Backend error code, e.g. TENANT_SUSPENDED / ACCOUNT_INACTIVE. */
+  code?: string;
+  /** School's own support contact, attached on access-denied login errors. */
+  schoolContact?: { schoolName: string | null; email: string | null; phone: string | null } | null;
 }
 
 const handleError = (error: unknown): ErrorResponse => {
@@ -373,10 +377,15 @@ const handleError = (error: unknown): ErrorResponse => {
 
     console.error(`API Error [${status}]:`, friendlyMessage);
 
+    const code = (typeof errorField === 'object' && errorField !== null) ? errorField.code : undefined;
+    const schoolContact = (typeof errorField === 'object' && errorField !== null) ? errorField.schoolContact : undefined;
+
     return {
       success: false,
       error: friendlyMessage,
       statusCode: status,
+      code,
+      schoolContact,
     };
   }
 

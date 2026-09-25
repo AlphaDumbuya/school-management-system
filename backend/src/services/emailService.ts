@@ -10,6 +10,7 @@ import {
   calloutBlock,
   escapeHtml,
 } from './email/emailLayout.js';
+import { polishReason } from './email/reasonPolish.js';
 import { mintRestoreToken } from './restoreAccessService.js';
 
 /**
@@ -1372,6 +1373,129 @@ class EmailService {
       to: toEmail,
       subject: `Two-factor authentication ${enabled ? 'enabled' : 'disabled'}`,
       body: renderEmail({ branding, eyebrow: 'Account Security', heading: `2FA ${enabled ? 'Enabled' : 'Disabled'}`, bodyHtml, preheader: `Two-factor authentication was ${data.action} on your account.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Account status change → the affected staff member.
+   *
+   * Sent when an admin suspends, dismisses, deactivates or reactivates a staff
+   * account. Tone + guidance adapt to the new status. Reactivation is positive
+   * (they can sign in again); the others explain access has been paused/ended
+   * and point them to the school administration.
+   */
+  async sendAccountStatusEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      userName: string;
+      status: 'active' | 'inactive' | 'suspended' | 'dismissed';
+      reason?: string;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const loginUrl = `${branding.appUrl}/login`;
+    const reactivated = data.status === 'active';
+
+    const META: Record<string, { heading: string; eyebrow: string; line: string; tone: 'success' | 'warn' | 'info' }> = {
+      active:    { heading: 'Account Reactivated', eyebrow: 'Account Access', line: 'Your account has been reactivated. You can sign in again and resume your work.', tone: 'success' },
+      suspended: { heading: 'Account Suspended',   eyebrow: 'Account Access', line: 'Your account has been temporarily suspended, so you will not be able to sign in for now.', tone: 'warn' },
+      dismissed: { heading: 'Account Closed',       eyebrow: 'Account Access', line: 'Your account has been closed and sign-in access has been removed.', tone: 'warn' },
+      inactive:  { heading: 'Account Deactivated',  eyebrow: 'Account Access', line: 'Your account has been deactivated, so sign-in access is currently disabled.', tone: 'warn' },
+    };
+    const meta = META[data.status] || META.inactive;
+
+    // Support contact so a suspended/dismissed/deactivated user knows exactly
+    // who to reach. Uses the SCHOOL's own contact details from branding. Each
+    // channel on its own row so it wraps cleanly on mobile.
+    const supportRows = [
+      branding.contactEmail ? detailRow('Support email', `<a href="mailto:${escapeHtml(branding.contactEmail)}" style="color:#1d4ed8;">${escapeHtml(branding.contactEmail)}</a>`) : '',
+      branding.contactPhone ? detailRow('Support phone', escapeHtml(branding.contactPhone)) : '',
+    ].filter(Boolean).join('');
+    const supportCard = supportRows ? detailsCard(supportRows) : '';
+
+    // Turn the admin's raw reason into a clear, courteous explanation.
+    const polished = polishReason(data.reason, data.status);
+
+    const bodyHtml = `
+      <p>Hello ${escapeHtml(data.userName)},</p>
+      <p>This is to let you know about a change to your account at <strong>${escapeHtml(branding.name)}</strong>.</p>
+      ${calloutBlock(meta.line, meta.tone)}
+      ${polished ? calloutBlock(escapeHtml(polished.explanation), 'info') : ''}
+      ${reactivated
+        ? calloutBlock('Welcome back — sign in to continue.', 'success')
+        : calloutBlock('If you believe this is a mistake or would like more information, please contact your school administration using the details below.', 'info')}
+      ${reactivated ? '' : supportCard}
+      ${reactivated ? emailButton('Sign In', loginUrl) : ''}`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: `${meta.heading} — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: meta.eyebrow, heading: meta.heading, bodyHtml, preheader: meta.line }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Staff role / assignment change → the staff member.
+   *
+   * Sent whenever a teacher's designation changes (e.g. promoted to Principal /
+   * Bursar / Administrator) and/or their Form Class assignment changes (e.g.
+   * appointed Form Master / Class Teacher). One branded email summarises what
+   * changed so they know their portal and responsibilities have been updated.
+   */
+  async sendStaffRoleChangeEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      userName: string;
+      newDesignation?: string;      // human label, e.g. "Principal"
+      previousDesignation?: string; // human label, e.g. "Subject Teacher"
+      classRoleTerm?: string;          // "Class Teacher" (primary) | "Form Teacher" (secondary)
+      formClassName?: string | null;   // e.g. "JSS 3" / "Class 4" when newly assigned
+      formClassRemoved?: boolean;      // true when their class assignment was cleared
+      portalChanged?: boolean;         // true when their system portal changed
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const loginUrl = `${branding.appUrl}/login`;
+    // Primary schools say "Class Master"; secondary say "Form Master".
+    const classTerm = data.classRoleTerm || 'Form Master';
+
+    const rows =
+      (data.newDesignation ? detailRow('New Role / Title', escapeHtml(data.newDesignation)) : '') +
+      (data.previousDesignation ? detailRow('Previous Role', escapeHtml(data.previousDesignation)) : '') +
+      (data.formClassName ? detailRow(`${classTerm} of`, escapeHtml(data.formClassName)) : '') +
+      (data.formClassRemoved ? detailRow('Class Assignment', 'Removed') : '');
+
+    const highlights: string[] = [];
+    if (data.newDesignation) highlights.push(`You are now <strong>${escapeHtml(data.newDesignation)}</strong>.`);
+    if (data.formClassName) highlights.push(`You've been assigned as ${escapeHtml(classTerm)} of <strong>${escapeHtml(data.formClassName)}</strong>.`);
+    if (data.formClassRemoved) highlights.push(`Your class-teacher assignment has been removed.`);
+
+    const bodyHtml = `
+      <p>Hello ${escapeHtml(data.userName)},</p>
+      <p>Your role at <strong>${escapeHtml(branding.name)}</strong> has been updated by the school administration.</p>
+      ${highlights.length ? calloutBlock(highlights.join(' '), 'success') : ''}
+      ${rows ? detailsCard(rows) : ''}
+      ${data.portalChanged
+        ? calloutBlock('Your access has changed — the next time you sign in, your portal will show the tools and menus for your new role.', 'info')
+        : calloutBlock('Sign in to your portal to see your updated responsibilities.', 'info')}
+      ${emailButton('Open Your Portal', loginUrl)}`;
+
+    const subject = data.newDesignation
+      ? `You've been appointed ${data.newDesignation} — ${branding.name}`
+      : data.formClassName
+        ? `You're now ${classTerm} of ${data.formClassName} — ${branding.name}`
+        : `Your role has been updated — ${branding.name}`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject,
+      body: renderEmail({ branding, eyebrow: 'Role Update', heading: 'Your Role Has Been Updated', bodyHtml, preheader: highlights[0] ? highlights[0].replace(/<[^>]+>/g, '') : 'Your role has been updated.' }),
       isHtml: true,
     });
   }

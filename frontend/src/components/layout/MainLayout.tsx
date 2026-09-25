@@ -11,6 +11,7 @@ import useAuthStore from '@store/authStore';
 import { isOnboardingComplete } from '@lib/onboarding';
 import OnboardingGuide from '@components/onboarding/OnboardingGuide';
 import ImpersonationBanner from './ImpersonationBanner';
+import PromotionWelcomeBanner from './PromotionWelcomeBanner';
 import OfflineBanner from '@components/offline/OfflineBanner';
 import { useSyncEngine } from '../../offline/useSyncEngine';
 import useInactivityLock from '@hooks/useInactivityLock';
@@ -158,7 +159,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             backgroundSize: '28px 28px',
           }}
         >
-          <div className="px-2 py-3 sm:p-6 animate-page-enter">{children}</div>
+          <div className="px-2 py-3 sm:p-6 animate-page-enter">
+            <PromotionWelcomeBanner />
+            {children}
+          </div>
         </main>
       </div>
 

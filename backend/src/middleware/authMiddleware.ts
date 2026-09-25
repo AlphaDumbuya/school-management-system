@@ -71,7 +71,7 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
       // suspending or dismissing a user must cut them off immediately — not
       // only at their next login — so any already-issued token stops working
       // the moment their status leaves 'active'.
-      if (user.status && user.status !== 'active') {
+      if (user.status && String(user.status).trim().toLowerCase() !== 'active') {
         throw new AppError(
           `Your account is ${user.status}. Please contact your school administrator.`,
           403,
@@ -102,6 +102,13 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
         role: user.role,
       };
       req.auth.tenantId = user.tenant_id;
+      // Trust the LIVE role from the DB over whatever the (possibly stale) JWT
+      // carried. This makes role changes — e.g. promoting a teacher to
+      // principal — take effect on the very next request, without waiting for
+      // the access token to be reissued. authorize() reads req.auth.role.
+      if (user.role) {
+        req.auth.role = user.role;
+      }
     }
     next();
   } catch (error) {
@@ -116,16 +123,24 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
 };
 
 /**
- * Authorization middleware - checks if user has required role
+ * Authorization middleware - checks if user has required role.
+ *
+ * Accepts BOTH calling conventions so a mistake at the call site can't silently
+ * deny everyone:
+ *   authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN)   // spread
+ *   authorize(['principal', 'super_admin'])               // single array
+ * (Several route files use the array form; without flattening, the role check
+ * would compare a string against a nested array and reject every request.)
  */
-export const authorize = (...allowedRoles: UserRole[]) => {
+export const authorize = (...allowedRoles: Array<UserRole | UserRole[]>) => {
+  const flatRoles = allowedRoles.flat() as UserRole[];
   return (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.auth) {
         throw new AppError('Authentication required', 401, 'NOT_AUTHENTICATED');
       }
 
-      if (!allowedRoles.includes(req.auth.role)) {
+      if (!flatRoles.includes(req.auth.role)) {
         logger.warn(`Unauthorized access attempt by user ${req.auth.userId} with role ${req.auth.role}`);
         throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
       }

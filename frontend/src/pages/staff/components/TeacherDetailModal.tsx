@@ -37,11 +37,16 @@ function formatDesignation(val: string | undefined): string {
   if (!val) return 'Subject Teacher';
   const mappings: Record<string, string> = {
     subject_teacher: 'Subject Teacher',
-    form_teacher: 'Form Teacher',
+    class_teacher: 'Class Master',
+    form_teacher: 'Form Master',
     hod: 'Head of Department (HOD)',
     senior_teacher: 'Senior Teacher',
+    head_teacher: 'Head Teacher',
+    vice_head_teacher: 'Deputy Head Teacher',
     vice_principal: 'Vice Principal',
     principal: 'Principal',
+    bursar: 'Bursar',
+    administrator: 'Administrator',
   };
   return mappings[val] || val;
 }

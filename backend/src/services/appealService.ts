@@ -24,13 +24,20 @@ class AppealService {
     appealData: AppealCreateInput
   ): Promise<DisciplineAppeal> {
     try {
-      // Verify action exists
+      // Verify action exists in this tenant.
       const action = await db('discipline_actions')
         .where({ action_id: appealData.action_id, tenant_id: tenantId })
         .first();
 
       if (!action) {
         throw new AppError('Discipline action not found', 404);
+      }
+
+      // The appeal MUST be about the action's own student. Trust the action's
+      // (tenant-verified) student_id rather than the client-supplied one.
+      const studentId = action.student_id;
+      if (appealData.student_id && appealData.student_id !== studentId) {
+        throw new AppError('Student does not match the discipline action', 400, 'VALIDATION_ERROR');
       }
 
       // Check if already appealed
@@ -49,7 +56,7 @@ class AppealService {
         appeal_id: '',
         tenant_id: tenantId,
         action_id: appealData.action_id,
-        student_id: appealData.student_id,
+        student_id: studentId,
         submitted_by: appealData.submitted_by,
         submitted_by_type: appealData.submitted_by_type as any,
         appeal_reason: appealData.appeal_reason,

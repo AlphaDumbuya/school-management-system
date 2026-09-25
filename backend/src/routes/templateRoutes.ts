@@ -20,6 +20,20 @@ const router = Router();
 // Initialize service
 const templateService = new TemplateService(db);
 
+/**
+ * Assert a template belongs to the caller's tenant before any per-template
+ * operation. The service methods look templates up by id ALONE, so without this
+ * a principal could read/edit/approve/delete another school's template by id
+ * (IDOR + cross-tenant write). Throws 404 if it isn't in the caller's tenant.
+ */
+async function assertTemplateInTenant(req: Request, templateId: string): Promise<void> {
+  const tenantId = (req as any).user?.tenant_id;
+  if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+  if (!templateId || templateId === 'undefined') throw new AppError('Invalid template ID', 400);
+  const row = await db('card_templates').where({ id: templateId, tenant_id: tenantId }).first();
+  if (!row) throw new AppError('Template not found', 404, 'NOT_FOUND');
+}
+
 // Apply auth + user context to all template routes
 router.use(authenticate);
 router.use(attachUserContext);
@@ -67,6 +81,8 @@ router.post(
         logoUrl: req.body.logoUrl || req.body.config?.logoUrl,
         config: req.body.config,
         createdBy,
+        // Only a duplicate explicitly requests 'draft'; anything else activates.
+        status: req.body.status === 'draft' ? 'draft' : undefined,
       };
 
       // Validate required fields
@@ -107,6 +123,7 @@ router.put(
       if (!templateId || templateId === 'undefined' || !/^[0-9a-fA-F-]{36}$/.test(templateId)) {
         throw new AppError('Invalid or missing template ID', 400);
       }
+      await assertTemplateInTenant(req, templateId); // tenant guard
 
       const updates: TemplateUpdateRequest = {
         name: req.body.name,
@@ -145,6 +162,7 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { templateId } = req.params;
+      await assertTemplateInTenant(req, templateId); // tenant guard
 
       const template = await templateService.getTemplateById(templateId);
 
@@ -238,6 +256,7 @@ router.post(
         }
       }
 
+      await assertTemplateInTenant(req, templateId); // tenant guard
       await templateService.setDefaultTemplate(templateId, roles);
 
       res.json({
@@ -264,6 +283,7 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { templateId } = req.params;
+      await assertTemplateInTenant(req, templateId); // tenant guard
 
       await templateService.submitForApproval(templateId);
 
@@ -286,11 +306,12 @@ router.post(
  */
 router.post(
   '/:templateId/approve',
-  authorize('principal'),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { templateId } = req.params;
       const approverId = (req as any).user.id;
+      await assertTemplateInTenant(req, templateId); // tenant guard
 
       await templateService.approveTemplate(templateId, approverId);
 
@@ -321,6 +342,7 @@ router.delete(
       if (!templateId || templateId === 'undefined' || !/^[0-9a-fA-F-]{36}$/.test(templateId)) {
         throw new AppError('Invalid or missing template ID', 400);
       }
+      await assertTemplateInTenant(req, templateId); // tenant guard
 
       await templateService.deleteTemplate(templateId);
 

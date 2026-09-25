@@ -64,6 +64,30 @@ router.use(authenticate);
 router.use(attachUserContext);
 
 /**
+ * Assert a card belongs to the caller's tenant before any per-card operation.
+ * The card/lifecycle service methods look cards up by id ALONE, so without this
+ * a user could read/regenerate/revoke/suspend/delete another school's card by
+ * id (IDOR + cross-tenant write). Throws 404 if it isn't in the caller's tenant.
+ */
+async function assertCardInTenant(req: Request, cardId: string): Promise<any> {
+  const tenantId = (req as any).user?.tenant_id;
+  if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+  if (!cardId) throw new AppError('Invalid card ID', 400);
+  const row = await db('id_cards').where({ id: cardId, tenant_id: tenantId }).first();
+  if (!row) throw new AppError('Card not found', 404, 'NOT_FOUND');
+  return row;
+}
+
+/** Assert a bulk job belongs to the caller's tenant. */
+async function assertBulkJobInTenant(req: Request, jobId: string): Promise<void> {
+  const tenantId = (req as any).user?.tenant_id;
+  if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+  if (!jobId) throw new AppError('Invalid job ID', 400);
+  const row = await db('bulk_card_jobs').where({ id: jobId, tenant_id: tenantId }).first().catch(() => null);
+  if (!row) throw new AppError('Bulk job not found', 404, 'NOT_FOUND');
+}
+
+/**
  * GET /api/v1/id-cards
  * List all cards with pagination and filters
  */
@@ -435,6 +459,7 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
+      await assertCardInTenant(req, cardId); // tenant guard
 
       const result = await idCardService.regenerateCard(cardId, resolveRequestOrigin(req));
 
@@ -459,6 +484,7 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
+      await assertCardInTenant(req, cardId); // tenant guard
 
       const card = await idCardService.getCardById(cardId);
 
@@ -480,6 +506,7 @@ router.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
+      await assertCardInTenant(req, cardId); // tenant guard
 
       await idCardService.deleteCard(cardId);
 
@@ -502,10 +529,14 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { userId } = req.params;
-
+      const tenantId = (req as any).user?.tenant_id;
+      if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      // Only return cards whose card row is in the caller's tenant — never let a
+      // userId from another school surface cards.
       const cards = await idCardService.getCardsByUserId(userId);
+      const scoped = (cards || []).filter((c: any) => (c.tenantId ?? c.tenant_id) === tenantId);
 
-      res.json({ cards });
+      res.json({ cards: scoped });
     } catch (error) {
       next(error);
     }
@@ -555,6 +586,7 @@ router.post(
       if (!reason) {
         throw new AppError('Reason for revocation is required', 400);
       }
+      await assertCardInTenant(req, cardId); // tenant guard
 
       await lifecycleService.revokeCard(cardId, revokedBy, reason);
 
@@ -578,6 +610,7 @@ router.post(
       const { cardId } = req.params;
       const { reason } = req.body;
       const reportedBy = (req as any).user.id;
+      await assertCardInTenant(req, cardId); // tenant guard
 
       await lifecycleService.reportLost(cardId, reportedBy, reason);
 
@@ -606,6 +639,7 @@ router.post(
       if (!reason) {
         throw new AppError('Reason for suspension is required', 400);
       }
+      await assertCardInTenant(req, cardId); // tenant guard
 
       await lifecycleService.suspendCard(cardId, suspendedBy, reason);
 
@@ -627,6 +661,7 @@ router.post(
     try {
       const { cardId } = req.params;
       const reactivatedBy = (req as any).user.id;
+      await assertCardInTenant(req, cardId); // tenant guard
 
       await lifecycleService.reactivateCard(cardId, reactivatedBy);
 
@@ -646,6 +681,7 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
+      await assertCardInTenant(req, cardId); // tenant guard
 
       const history = await lifecycleService.getCardHistory(cardId);
 
@@ -708,6 +744,7 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { jobId } = req.params;
+      await assertBulkJobInTenant(req, jobId); // tenant guard
 
       const status = await bulkService.getBulkJobStatus(jobId);
 
@@ -728,6 +765,7 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { jobId } = req.params;
+      await assertBulkJobInTenant(req, jobId); // tenant guard
 
       await bulkService.cancelBulkJob(jobId);
 
@@ -747,6 +785,7 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { jobId } = req.params;
+      await assertBulkJobInTenant(req, jobId); // tenant guard
 
       const report = await bulkService.getBulkJobReport(jobId);
 

@@ -47,8 +47,8 @@ export function emailButton(label: string, href: string): string {
 export function detailRow(label: string, value: string): string {
   return `
   <tr>
-    <td style="padding:10px 0;border-bottom:1px solid #edf2f7;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;color:#64748b;vertical-align:top;width:42%;">${escapeHtml(label)}</td>
-    <td style="padding:10px 0;border-bottom:1px solid #edf2f7;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;color:${INK};font-weight:600;vertical-align:top;">${value}</td>
+    <td style="padding:10px 0;border-bottom:1px solid #edf2f7;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;color:#64748b;vertical-align:top;width:38%;word-break:break-word;">${escapeHtml(label)}</td>
+    <td style="padding:10px 0;border-bottom:1px solid #edf2f7;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;color:${INK};font-weight:600;vertical-align:top;word-break:break-word;overflow-wrap:anywhere;">${value}</td>
   </tr>`;
 }
 

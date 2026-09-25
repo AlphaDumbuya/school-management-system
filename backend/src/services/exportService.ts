@@ -496,27 +496,31 @@ class ExportService {
     const html = `<!doctype html><html><head><meta charset="utf-8"/>
       <style>
         @page { size: A4 landscape; margin: 12mm; }
-        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        body { font-family: Helvetica, Arial, sans-serif; color: #111; font-size: 12px; margin: 0; -webkit-font-smoothing: antialiased; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+        /* Darker base ink + antialiasing so text stays crisp and fully visible
+           when physically printed (not washed out). */
+        body { font-family: Helvetica, Arial, sans-serif; color: #0b0b0b; font-size: 13px; margin: 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 
-        /* Centered, professional header block with clear spacing */
+        /* Centered, professional header block with clear spacing. This whole
+           block appears ONCE (page 1 only) — it's outside the table, so it does
+           NOT repeat on subsequent pages. Only the column headers repeat. */
         .hdr { text-align: center; border-bottom: 3px solid #1d4ed8; padding-bottom: 14px; margin-bottom: 18px; }
         .logo { height: 68px; width: 68px; object-fit: contain; border-radius: 10px; background: #fff; display: block; margin: 0 auto 10px; }
-        .school { font-size: 24px; font-weight: 800; color: #1a2b6b; letter-spacing: 0.3px; line-height: 1.2; }
-        .contact { font-size: 11px; color: #555; margin-top: 6px; }
-        .title { font-size: 16px; font-weight: 700; color: #1d4ed8; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .meta { font-size: 10px; color: #777; margin-top: 4px; }
+        .school { font-size: 24px; font-weight: 800; color: #14204f; letter-spacing: 0.3px; line-height: 1.2; }
+        .contact { font-size: 12px; color: #333; margin-top: 6px; font-weight: 500; }
+        .title { font-size: 16px; font-weight: 800; color: #1543c4; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .meta { font-size: 11px; color: #444; margin-top: 4px; font-weight: 500; }
 
         table { width: 100%; border-collapse: collapse; table-layout: fixed; }
         /* Column headers repeat on every printed page for readability, but the
            big branded block above only appears once (it's outside the table). */
         thead { display: table-header-group; }
-        thead th { background: #1d4ed8; color: #fff; text-align: left; padding: 10px 10px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
-        tbody td { padding: 9px 10px; border-bottom: 1px solid #eef1f5; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        thead th { background: #1543c4; color: #fff; text-align: left; padding: 10px 10px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+        tbody td { padding: 9px 10px; border-bottom: 1px solid #dfe4ec; font-size: 12.5px; font-weight: 500; color: #0b0b0b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         tbody tr { page-break-inside: avoid; }
-        tbody tr:nth-child(even) td { background: #f5f7fa; }
-        tbody tr.grand-total td { background: #fef3c7 !important; font-weight: 800; color: #1a2b6b; border-top: 2px solid #1a2b6b; font-size: 12.5px; }
-        .foot { margin-top: 16px; text-align: center; font-size: 10px; color: #888; border-top: 1px solid #e5e7eb; padding-top: 8px; }
+        tbody tr:nth-child(even) td { background: #eef2f8; }
+        tbody tr.grand-total td { background: #fde68a !important; font-weight: 800; color: #14204f; border-top: 2px solid #14204f; font-size: 13px; }
+        .foot { margin-top: 16px; text-align: center; font-size: 11px; color: #555; border-top: 1px solid #d7dbe2; padding-top: 8px; font-weight: 500; }
       </style></head>
       <body>
         <div class="hdr">
@@ -573,11 +577,13 @@ class ExportService {
     const keys = Object.values(columns);
     const colW = usableW / Math.max(headers.length, 1);
 
-    const navy = rgb(0.1, 0.168, 0.42);
-    const blue = rgb(0.114, 0.306, 0.847);
-    const gray = rgb(0.53, 0.53, 0.53);
-    const zebra = rgb(0.96, 0.968, 0.98);
-    const black = rgb(0.07, 0.07, 0.07);
+    const navy = rgb(0.078, 0.126, 0.31);
+    const blue = rgb(0.083, 0.262, 0.769);
+    // Darker gray than before so contact/meta lines stay legible on physical
+    // prints (light grays wash out on many printers).
+    const gray = rgb(0.27, 0.27, 0.27);
+    const zebra = rgb(0.93, 0.945, 0.972);
+    const black = rgb(0.043, 0.043, 0.043);
     const white = rgb(1, 1, 1);
     const green = rgb(0.02, 0.588, 0.412);
     const red = rgb(0.862, 0.149, 0.149);
@@ -617,20 +623,20 @@ class ExportService {
         page.drawImage(logoImg, { x: (PAGE_W - logoDims.w) / 2, y: y - logoDims.h, width: logoDims.w, height: logoDims.h });
         y -= logoDims.h + 6;
       }
-      centerText(page, brand?.name || 'WiSkul', 18, fontBold, y - 14, navy);
-      y -= 22;
+      centerText(page, brand?.name || 'WiSkul', 19, fontBold, y - 14, navy);
+      y -= 23;
       const contact = [brand?.address, brand?.contactPhone, brand?.contactEmail].filter(Boolean).join('  •  ');
       if (contact) {
-        centerText(page, fit(contact, 9, font, usableW), 9, font, y - 10, gray);
-        y -= 14;
+        centerText(page, fit(contact, 11, font, usableW), 11, font, y - 10, gray);
+        y -= 15;
       }
-      centerText(page, (title || 'Export').toUpperCase(), 13, fontBold, y - 12, blue);
-      y -= 18;
+      centerText(page, (title || 'Export').toUpperCase(), 14, fontBold, y - 12, blue);
+      y -= 19;
       const meta = [brand?.academicYear ? `Academic Year: ${brand.academicYear}` : '', `Generated: ${new Date().toLocaleString()}`]
         .filter(Boolean)
         .join('   |   ');
-      centerText(page, meta, 8, font, y - 10, gray);
-      y -= 16;
+      centerText(page, meta, 10, font, y - 10, gray);
+      y -= 17;
       page.drawRectangle({ x: margin, y: y - 2, width: usableW, height: 2, color: blue });
       y -= 14;
     };

@@ -38,6 +38,8 @@ export interface SchoolInfo {
   accreditation_status?: string;
   timezone?: string;
   language_preference?: string;
+  /** School level: "Primary", "Secondary (JSS & SSS)", "Primary & Secondary", … */
+  school_type?: string;
 }
 
 export interface SchoolUpdateRequest extends Partial<SchoolInfo> {
@@ -122,11 +124,23 @@ export class Phase15SchoolConfigService {
         school = inserted;
       }
 
+      // School level/type (Primary, Secondary, Primary & Secondary, …) is kept
+      // in school_config_settings at registration — surface it so the UI can
+      // tailor level-specific options (e.g. class-teacher vs form-teacher).
+      let schoolType: string | undefined;
+      try {
+        const typeSetting = await this.db('school_config_settings')
+          .where({ tenant_id: tenantId, setting_key: 'school_type' })
+          .first();
+        schoolType = typeSetting?.setting_value || (school as any).school_type || undefined;
+      } catch { schoolType = (school as any).school_type || undefined; }
+
       // motto is now a column on the schools table
       return {
         school_id: school.school_id,
         tenant_id: school.tenant_id,
         name: school.name,
+        school_type: schoolType,
         short_name: school.short_name,
         email: school.email,
         phone: school.phone,

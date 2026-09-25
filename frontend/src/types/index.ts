@@ -26,6 +26,9 @@ export interface AuthUser {
   schoolLogoUrl?: string;
   schoolName?: string;
   lastLogin?: string;
+  /** One-time promotion welcome payload — set right after a role change, then
+   *  cleared server-side once delivered. Drives a dismissible welcome banner. */
+  promotionWelcome?: { role?: string; label?: string; at?: string } | null;
 }
 
 export interface AuthResponse {

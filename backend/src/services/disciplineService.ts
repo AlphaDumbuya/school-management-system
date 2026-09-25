@@ -24,7 +24,7 @@ class DisciplineService {
     actionData: DisciplineActionCreateInput
   ): Promise<DisciplineAction> {
     try {
-      // Verify infraction exists
+      // Verify infraction exists in this tenant.
       const infraction = await db('student_infractions')
         .where({ infraction_id: actionData.infraction_id, tenant_id: tenantId })
         .first();
@@ -33,11 +33,20 @@ class DisciplineService {
         throw new AppError('Infraction not found', 404);
       }
 
+      // The action MUST target the same student the infraction belongs to.
+      // Trust the infraction's student_id (tenant-verified) rather than the
+      // client-supplied one, so an action can't be mis-attributed to another
+      // (possibly foreign) student.
+      const studentId = infraction.student_id;
+      if (actionData.student_id && actionData.student_id !== studentId) {
+        throw new AppError('Student does not match the infraction', 400, 'VALIDATION_ERROR');
+      }
+
       // Create discipline action
       const action: DisciplineAction = {
         action_id: '',
         tenant_id: tenantId,
-        student_id: actionData.student_id,
+        student_id: studentId,
         infraction_id: actionData.infraction_id,
         action_type: actionData.action_type as any,
         action_subtype: actionData.action_subtype,

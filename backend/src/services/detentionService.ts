@@ -42,9 +42,10 @@ class DetentionService {
         throw new AppError('Student not found', 404);
       }
 
-      // Check detention limit for the day
+      // Check detention limit for the day (tenant-scoped — never count another
+      // school's records for this student id).
       const existingDetentions = await db('detention_records')
-        .where({ student_id: detentionData.student_id })
+        .where({ student_id: detentionData.student_id, tenant_id: tenantId })
         .where('scheduled_date', '=', detentionData.scheduled_date)
         .count('* as count')
         .first();
@@ -258,11 +259,12 @@ class DetentionService {
         throw new AppError('Cannot reschedule completed or already rescheduled detention', 400);
       }
 
-      // Check if already scheduled on new date
+      // Check if already scheduled on new date (tenant-scoped).
       const conflicting = await db('detention_records')
         .where({
           student_id: detention.student_id,
           scheduled_date: newDate,
+          tenant_id: tenantId,
         })
         .count('* as count')
         .first();

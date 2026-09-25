@@ -12,12 +12,12 @@ import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
 import { DataTable } from '@components/admin/table/DataTable';
-import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { Button } from '@components/ui/button';
+import { Modal } from '@components/admin/feedback/Modal';
 import { showToast } from '@utils/toast';
 import { cardTint } from '@lib/cardTint';
 import { teachersService, TeacherRecord } from '@services/teachersService';
@@ -47,11 +47,16 @@ const TeacherCard: React.FC<TeacherCardProps> = ({
 }) => {
   const designationMappings: Record<string, string> = {
     subject_teacher: 'Subject Teacher',
-    form_teacher: 'Form Teacher',
+    class_teacher: 'Class Master',
+    form_teacher: 'Form Master',
     hod: 'Head of Department (HOD)',
     senior_teacher: 'Senior Teacher',
+    head_teacher: 'Head Teacher',
+    vice_head_teacher: 'Deputy Head Teacher',
     vice_principal: 'Vice Principal',
     principal: 'Principal',
+    bursar: 'Bursar',
+    administrator: 'Administrator',
   };
 
   const designation = designationMappings[teacher.designation || ''] || teacher.designation || 'Subject Teacher';
@@ -171,7 +176,8 @@ export const TeachersPage: React.FC = () => {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<TeacherRecord | null>(null);
-  const [deactivateTarget, setDeactivateTarget] = useState<TeacherRecord | null>(null);
+  // A pending suspend/dismiss/deactivate awaiting a reason from the admin.
+  const [statusAction, setStatusAction] = useState<{ teacher: TeacherRecord; status: 'suspended' | 'dismissed' | 'inactive' } | null>(null);
   const [viewingTeacher, setViewingTeacher] = useState<TeacherRecord | null>(null);
   const [promotionOpen, setPromotionOpen] = useState(false);
   const [promotionTeacher, setPromotionTeacher] = useState<TeacherRecord | null>(null);
@@ -211,11 +217,13 @@ export const TeachersPage: React.FC = () => {
     return { total, active, inactive };
   }, [data, teachers, pagination]);
 
-  // Deactivate / Soft Delete handler
-  const handleDeactivate = async () => {
-    if (!deactivateTarget) return;
+  // Deactivate / Soft Delete handler — carries the admin's reason so the staff
+  // member's notification/email can explain why. Takes the teacher explicitly
+  // so it works both from the reason modal and any direct call.
+  const handleDeactivate = async (teacher: TeacherRecord | null, reason?: string) => {
+    if (!teacher) return;
     try {
-      const res = await teachersService.deactivateTeacher(deactivateTarget.id);
+      const res = await teachersService.deactivateTeacher(teacher.id, reason);
       if (res.success !== false) {
         showToast.success('Teacher deactivated');
         queryClient.invalidateQueries({ queryKey: ['teachers'] });
@@ -225,17 +233,18 @@ export const TeachersPage: React.FC = () => {
     } catch {
       showToast.error('Failed to deactivate teacher');
     }
-    setDeactivateTarget(null);
   };
 
-  // Status Update handler
-  const handleUpdateStatus = async (teacher: TeacherRecord, newStatus: 'active' | 'suspended' | 'dismissed' | 'inactive') => {
+  // Status Update handler. Reactivation is immediate; suspend/dismiss require a
+  // reason (collected via a modal) so the staff member is told why.
+  const handleUpdateStatus = async (teacher: TeacherRecord, newStatus: 'active' | 'suspended' | 'dismissed' | 'inactive', reason?: string) => {
     try {
       const res = await teachersService.updateTeacher(teacher.id, {
         first_name: teacher.first_name,
         last_name: teacher.last_name,
         status: newStatus,
-      });
+        status_reason: reason || undefined,
+      } as any);
       if (res.success !== false) {
         showToast.success(`Teacher status updated to ${newStatus}`);
         queryClient.invalidateQueries({ queryKey: ['teachers'] });
@@ -366,11 +375,16 @@ export const TeachersPage: React.FC = () => {
         const val = row.original.designation;
         const mappings: Record<string, string> = {
           subject_teacher: 'Subject Teacher',
-          form_teacher: 'Form Teacher',
+          class_teacher: 'Class Master',
+          form_teacher: 'Form Master',
           hod: 'Head of Department (HOD)',
           senior_teacher: 'Senior Teacher',
+          head_teacher: 'Head Teacher',
+          vice_head_teacher: 'Deputy Head Teacher',
           vice_principal: 'Vice Principal',
           principal: 'Principal',
+          bursar: 'Bursar',
+          administrator: 'Administrator',
         };
         const text = mappings[val || ''] || val || 'Subject Teacher';
         return <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{text}</span>;
@@ -642,7 +656,7 @@ export const TeachersPage: React.FC = () => {
                       onView={setViewingTeacher}
                       onEdit={(t) => { setEditingTeacher(t); setFormOpen(true); }}
                       onPromote={(t) => { setPromotionTeacher(t); setPromotionOpen(true); }}
-                      onDeactivate={setDeactivateTarget}
+                      onDeactivate={(t) => setStatusAction({ teacher: t, status: 'inactive' })}
                       hasWriteAccess={hasWriteAccess}
                     />
                   ))}
@@ -686,17 +700,17 @@ export const TeachersPage: React.FC = () => {
                           ? [
                               {
                                 label: 'Suspend Account',
-                                onClick: (r: TeacherRecord) => handleUpdateStatus(r, 'suspended'),
+                                onClick: (r: TeacherRecord) => setStatusAction({ teacher: r, status: 'suspended' }),
                               },
                               {
                                 label: 'Dismiss Teacher',
                                 variant: 'destructive' as const,
-                                onClick: (r: TeacherRecord) => handleUpdateStatus(r, 'dismissed'),
+                                onClick: (r: TeacherRecord) => setStatusAction({ teacher: r, status: 'dismissed' }),
                               },
                               {
                                 label: 'Deactivate Account',
                                 variant: 'destructive' as const,
-                                onClick: (r: TeacherRecord) => setDeactivateTarget(r),
+                                onClick: (r: TeacherRecord) => setStatusAction({ teacher: r, status: 'inactive' }),
                               },
                             ]
                           : [
@@ -744,11 +758,16 @@ export const TeachersPage: React.FC = () => {
                   {teachers.map((teacher: TeacherRecord, idx: number) => {
                     const designationMap: Record<string, string> = {
                       subject_teacher: 'Subject Teacher',
-                      form_teacher: 'Form Teacher',
+                      class_teacher: 'Class Master',
+                      form_teacher: 'Form Master',
                       hod: 'Head of Department (HOD)',
                       senior_teacher: 'Senior Teacher',
+                      head_teacher: 'Head Teacher',
+                      vice_head_teacher: 'Deputy Head Teacher',
                       vice_principal: 'Vice Principal',
                       principal: 'Principal',
+                      bursar: 'Bursar',
+                      administrator: 'Administrator',
                     };
                     const deptMap: Record<string, string> = {
                       none: 'No Department',
@@ -900,7 +919,11 @@ export const TeachersPage: React.FC = () => {
           setEditingTeacher(t);
           setFormOpen(true);
         } : undefined}
-        onStatusChange={hasWriteAccess ? handleUpdateStatus : undefined}
+        onStatusChange={hasWriteAccess ? ((t, newStatus) => {
+          // Reactivation is immediate; suspend/dismiss ask for a reason first.
+          if (newStatus === 'active') { handleUpdateStatus(t, 'active'); }
+          else { setStatusAction({ teacher: t, status: newStatus as 'suspended' | 'dismissed' | 'inactive' }); }
+        }) : undefined}
       />
 
       {/* Teacher Promotion Modal */}
@@ -914,16 +937,95 @@ export const TeachersPage: React.FC = () => {
         teacher={promotionTeacher}
       />
 
-      {/* Deactivation Confirmation Dialog */}
-      <ConfirmationDialog
-        isOpen={!!deactivateTarget}
-        onClose={() => setDeactivateTarget(null)}
-        onConfirm={handleDeactivate}
-        title="Deactivate Teacher"
-        message={`Are you sure you want to deactivate ${deactivateTarget?.first_name} ${deactivateTarget?.last_name}? They will no longer be able to log in.`}
-        confirmLabel="Deactivate Account"
+      {/* Suspend / Dismiss / Deactivate — collect a reason so the staff member
+          is told exactly why. Reactivation never reaches this modal. */}
+      <StatusReasonModal
+        action={statusAction}
+        onClose={() => setStatusAction(null)}
+        onConfirm={async (reason) => {
+          const act = statusAction;
+          if (!act) return;
+          if (act.status === 'inactive') {
+            // Deactivate uses the DELETE (soft-delete) endpoint.
+            await handleDeactivate(act.teacher, reason);
+          } else {
+            await handleUpdateStatus(act.teacher, act.status, reason);
+          }
+          setStatusAction(null);
+        }}
       />
     </MainLayout>
+  );
+};
+
+// ── Status reason modal (suspend / dismiss / deactivate) ─────────────────────
+// Collects a short reason the staff member will see in their email + in-app
+// notification, so they understand exactly why their access changed.
+const StatusReasonModal: React.FC<{
+  action: { teacher: TeacherRecord; status: 'suspended' | 'dismissed' | 'inactive' } | null;
+  onClose: () => void;
+  onConfirm: (reason: string) => Promise<void> | void;
+}> = ({ action, onClose, onConfirm }) => {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  React.useEffect(() => { if (action) { setReason(''); setBusy(false); } }, [action]);
+
+  if (!action) return null;
+
+  const META: Record<string, { title: string; verb: string; confirm: string; hint: string; danger: boolean }> = {
+    suspended: { title: 'Suspend Account', verb: 'suspend', confirm: 'Suspend Account', hint: 'They will not be able to sign in until reactivated.', danger: false },
+    dismissed: { title: 'Dismiss Teacher', verb: 'dismiss', confirm: 'Dismiss Teacher', hint: 'Their sign-in access will be removed.', danger: true },
+    inactive:  { title: 'Deactivate Account', verb: 'deactivate', confirm: 'Deactivate Account', hint: 'They will no longer be able to log in.', danger: true },
+  };
+  const meta = META[action.status];
+  const name = `${action.teacher.first_name} ${action.teacher.last_name}`;
+
+  const submit = async () => {
+    if (!reason.trim()) { showToast.error('Please provide a reason.'); return; }
+    setBusy(true);
+    try { await onConfirm(reason.trim()); } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal
+      isOpen={!!action}
+      onClose={onClose}
+      title={meta.title}
+      size="md"
+      footer={
+        <div className="flex justify-end gap-2 w-full">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button
+            variant={meta.danger ? 'destructive' : 'default'}
+            onClick={submit}
+            disabled={busy || !reason.trim()}
+          >
+            {busy ? 'Working…' : meta.confirm}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          You're about to <strong>{meta.verb}</strong> <strong>{name}</strong>. {meta.hint}
+        </p>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            Reason <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            autoFocus
+            placeholder={`Explain why this account is being ${meta.verb}d — the staff member will see this.`}
+            className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <p className="mt-1 text-[11px] text-gray-400">This reason is included in the notification and email sent to the staff member.</p>
+        </div>
+      </div>
+    </Modal>
   );
 };
 

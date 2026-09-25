@@ -25,6 +25,9 @@ export interface TemplateCreateRequest {
   createdBy: string;
   logoUrl?: string;
   config?: any;
+  /** Optional initial status. Defaults to 'approved' (instant activation) for a
+   *  fresh design; a duplicate passes 'draft' so it re-enters the approval flow. */
+  status?: 'draft' | 'approved';
 }
 
 export interface TemplateUpdateRequest {
@@ -118,13 +121,17 @@ export class TemplateService {
         layoutConfig: request.layoutConfig,
       };
 
-      // Insert template - status approved by default for instant activation
+      // Status: honour an explicit 'draft' (e.g. a duplicated template that must
+      // go through approval again); otherwise default to 'approved' for instant
+      // activation of a freshly designed template.
+      const initialStatus = request.status === 'draft' ? 'draft' : 'approved';
+
       const [template] = await this.db('card_templates')
         .insert({
           tenant_id: request.tenantId,
           name: request.name,
           version: 1,
-          status: 'approved',
+          status: initialStatus,
           format: request.format,
           config: JSON.stringify(config),
           logo_url: request.logoUrl || config.logoUrl || null,

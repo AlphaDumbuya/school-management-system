@@ -17,6 +17,7 @@ import useAuth, { getDashboardPath } from '@hooks/useAuth';
 import useAuthStore from '@store/authStore';
 import authService from '@services/authService';
 import { isAppMode } from '@lib/appMode';
+import { PLATFORM_SUPPORT, platformSupportTel } from '@config/platform.config';
 import CyberBackground from '@components/auth/CyberBackground';
 
 const loginSchema = z.object({
@@ -41,6 +42,8 @@ export const LoginPage: React.FC = () => {
   const isInitialized = useAuthStore((s) => s.isInitialized);
   const user = useAuthStore((s) => s.user);
   const mfaToken = useAuthStore((s) => s.mfaToken);
+  const loginErrorCode = useAuthStore((s) => s.loginErrorCode);
+  const loginErrorContact = useAuthStore((s) => s.loginErrorContact);
   // Passkey support detection.
   //
   // Passkeys are a WEB/PWA-only feature here. They are intentionally NOT offered
@@ -235,14 +238,19 @@ export const LoginPage: React.FC = () => {
   const displayError =
     typeof error === 'string' ? error : error ? 'Login failed. Please try again.' : null;
 
-  // Detect a suspension / inactive-account failure so we can show an actionable
-  // notice instead of a dead-end error. Only the school account OWNER can resolve
-  // it (message mentions "WiSkul support"); other users are told to contact their
-  // school administrator and are NOT shown the support-contact actions.
-  const isSuspensionError =
-    !!displayError && /suspend|inactive|not active|restore access|school administrator/i.test(displayError);
+  // Distinguish the two access-denied cases using the backend error code:
+  //  - ACCOUNT_INACTIVE  → THIS user's own account (suspend/dismiss/deactivate).
+  //    They must contact their SCHOOL (tenant) — we show the school's contact.
+  //  - TENANT_SUSPENDED* → the whole school is suspended (a platform action).
+  //    The owner is pointed to WiSkul; other users to their school admin.
+  const isAccountDisabledError = loginErrorCode === 'ACCOUNT_INACTIVE';
+  const isTenantSuspensionError =
+    loginErrorCode === 'TENANT_SUSPENDED' || loginErrorCode === 'TENANT_SUSPENDED_USER' || loginErrorCode === 'TENANT_UNAVAILABLE' ||
+    (!loginErrorCode && !!displayError && /suspend|inactive|not active|restore access|school administrator/i.test(displayError));
+  const isSuspensionError = isTenantSuspensionError; // school-level banner trigger
   const isOwnerSuspension =
-    !!displayError && /wiskul support|restore access/i.test(displayError);
+    loginErrorCode === 'TENANT_SUSPENDED' ||
+    (!loginErrorCode && !!displayError && /wiskul support|restore access/i.test(displayError));
 
   const inputBase =
     'w-full bg-white border rounded-xl px-4 py-3.5 text-sm text-slate-800 placeholder-slate-400 outline-none transition-all disabled:opacity-50';
@@ -357,44 +365,86 @@ export const LoginPage: React.FC = () => {
                         </ul>
                         <div className="flex flex-wrap gap-2 pt-1">
                           <a
-                            href="mailto:support@wiskulsl.com?subject=Account%20suspended%20-%20restore%20access"
-                            className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
+                            href={`mailto:${PLATFORM_SUPPORT.email}?subject=Account%20suspended%20-%20restore%20access`}
+                            className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-lg px-3 py-2 text-xs font-semibold transition-colors break-all"
                           >
-                            ✉ Email support@wiskulsl.com
+                            ✉ {PLATFORM_SUPPORT.email}
                           </a>
                           <a
-                            href="tel:+23234330610"
+                            href={platformSupportTel()}
                             className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
                           >
-                            📞 +232 34 330 610
+                            📞 {PLATFORM_SUPPORT.phone}
                           </a>
                         </div>
                       </div>
                     ) : (
                       // Regular user: can't resolve it — point them to their school admin.
-                      <div className="space-y-1.5">
+                      <div className="space-y-2">
                         <p className="text-sm font-bold">Your school account is currently suspended</p>
                         <p className="text-xs text-red-100/90 leading-relaxed">
                           Access to your school portal has been paused. You can't restore this
                           yourself — please contact your school administrator, who received an email
                           with a link to resolve it. Your data is safe and nothing has been lost.
                         </p>
+                        <p className="text-xs text-red-100/90 leading-relaxed">
+                          Still need help? Reach WiSkul support:
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <a
+                            href={`mailto:${PLATFORM_SUPPORT.email}?subject=School%20account%20suspended%20-%20help`}
+                            className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-lg px-3 py-2 text-xs font-semibold transition-colors break-all"
+                          >
+                            ✉ {PLATFORM_SUPPORT.email}
+                          </a>
+                          <a
+                            href={platformSupportTel()}
+                            className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
+                          >
+                            📞 {PLATFORM_SUPPORT.phone}
+                          </a>
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
               )}
-              {disabledNotice && (
+              {(disabledNotice || isAccountDisabledError) && (
                 <div className="max-w-3xl mx-auto mb-5 bg-red-500/15 border border-red-400/40 rounded-xl px-4 py-4 text-red-50">
                   <div className="flex items-start gap-2">
                     <span className="mt-0.5 text-base">🚫</span>
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <p className="text-sm font-bold">Your account has been disabled</p>
                       <p className="text-xs text-red-100/90 leading-relaxed">
                         Your access was deactivated, suspended, or dismissed by your school
-                        administrator, so your session was ended. If you believe this is a
-                        mistake, please contact your school administrator to review your account.
+                        administrator, so your session was ended. If you believe this is a mistake,
+                        please contact your school{loginErrorContact?.schoolName ? ` — ${loginErrorContact.schoolName}` : ''} to review your account.
                       </p>
+                      {(loginErrorContact?.email || loginErrorContact?.phone) && (
+                        <div className="flex flex-wrap gap-2">
+                          {loginErrorContact?.email && (
+                            <a
+                              href={`mailto:${loginErrorContact.email}?subject=Account%20access%20-%20review%20request`}
+                              className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-lg px-3 py-2 text-xs font-semibold transition-colors break-all"
+                            >
+                              ✉ {loginErrorContact.email}
+                            </a>
+                          )}
+                          {loginErrorContact?.phone && (
+                            <a
+                              href={`tel:${loginErrorContact.phone.replace(/\s+/g, '')}`}
+                              className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
+                            >
+                              📞 {loginErrorContact.phone}
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      {!(loginErrorContact?.email || loginErrorContact?.phone) && (
+                        <p className="text-xs text-red-100/90 leading-relaxed">
+                          We've also emailed you the reason and your school's support contact.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -405,7 +455,7 @@ export const LoginPage: React.FC = () => {
                   <span>You may be offline. If sign in fails, check your connection and try again.</span>
                 </div>
               )}
-              {displayError && !isSuspensionError && (
+              {displayError && !isSuspensionError && !isAccountDisabledError && (
                 <div className="max-w-3xl mx-auto mb-5 bg-red-500/20 border border-red-400/40 rounded-xl px-4 py-3 text-xs text-red-100 animate-shake flex items-center gap-2">
                   <span>⚠</span> {displayError}
                 </div>

@@ -16,6 +16,8 @@ import { showToast } from '@utils/toast';
 import { teachersService, TeacherRecord } from '@services/teachersService';
 import { classesService } from '@services/classesService';
 import { subjectsService } from '@services/subjectsService';
+import { schoolConfigService } from '@services/schoolConfigService';
+import { designationOptions, classAssignmentLabel } from '@lib/staffDesignations';
 
 const schema = z.object({
   designation: z.string().default('subject_teacher'),
@@ -84,6 +86,17 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
     staleTime: 60_000,
     enabled: isOpen,
   });
+
+  // School level tailors the designation titles offered (Class Master vs Form
+  // Master, Head Teacher vs Principal, and whether to suffix with the level).
+  const { data: schoolInfoResp } = useQuery({
+    queryKey: ['school-info'],
+    queryFn: () => schoolConfigService.getSchoolInfo(),
+    staleTime: 5 * 60_000,
+    enabled: isOpen,
+  });
+  const schoolType = ((schoolInfoResp as any)?.data?.school_type ?? (schoolInfoResp as any)?.data?.data?.school_type) as string | undefined;
+  const designationOpts = useMemo(() => designationOptions(schoolType), [schoolType]);
 
   const classesList = (classesData as any)?.data ?? [];
   const subjectsList = (subjectsData as any)?.data ?? [];
@@ -242,14 +255,8 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
               <FormField
                 label="Designation / Title"
                 type="select"
-                options={[
-                  { label: 'Subject Teacher', value: 'subject_teacher' },
-                  { label: 'Form Teacher', value: 'form_teacher' },
-                  { label: 'Head of Department (HOD)', value: 'hod' },
-                  { label: 'Senior Teacher', value: 'senior_teacher' },
-                  { label: 'Vice Principal', value: 'vice_principal' },
-                  { label: 'Principal', value: 'principal' },
-                ]}
+                options={designationOpts}
+                helperText="Leadership, Bursar and Administrator roles move the staff member to their matching portal."
                 error={errors.designation?.message}
                 {...register('designation')}
               />
@@ -282,7 +289,7 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
               />
 
               <FormField
-                label="Form Class Assignment (Form Teacher)"
+                label={classAssignmentLabel(schoolType)}
                 type="select"
                 options={classOptions}
                 error={errors.form_class_id?.message}

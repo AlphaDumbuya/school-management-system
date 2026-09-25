@@ -173,9 +173,55 @@ router.post('/login', rateLimitLogin, async (req: Request, res: Response, next: 
 
     logger.info(`User logged in: ${email}`);
   } catch (error) {
+    // For access-denied states (school suspended, or this account disabled),
+    // attach the SCHOOL's own support contact so the login screen can show the
+    // right people to reach — dynamic per tenant, not a hardcoded address.
+    const code = (error as any)?.code;
+    if (code === 'TENANT_SUSPENDED' || code === 'TENANT_SUSPENDED_USER' || code === 'TENANT_UNAVAILABLE' || code === 'ACCOUNT_INACTIVE') {
+      try {
+        const contact = await resolveSchoolSupportContact(String(req.body?.email || ''));
+        const status = (error as any)?.status || 403;
+        return res.status(status).json({
+          error: {
+            status,
+            code,
+            message: (error as any)?.message || 'Access denied',
+            timestamp: new Date().toISOString(),
+            path: req.path,
+            method: req.method,
+            schoolContact: contact, // { schoolName, email, phone } | null
+          },
+        });
+      } catch { /* fall through to default handler */ }
+    }
     next(error);
   }
 });
+
+/**
+ * Resolve a school's public support contact from a login identifier (email or
+ * username). Returns the school name + contact email/phone so a blocked user
+ * knows who to reach. Best-effort, never throws — returns null if unresolved.
+ */
+async function resolveSchoolSupportContact(
+  identifier: string,
+): Promise<{ schoolName: string | null; email: string | null; phone: string | null } | null> {
+  const id = (identifier || '').trim().toLowerCase();
+  if (!id) return null;
+  const { db } = await import('@utils/database');
+  const user = id.includes('@')
+    ? await db('users').select('tenant_id').where({ email: id }).first()
+    : await db('users').select('tenant_id').whereRaw('lower(username) = ?', [id]).orWhereRaw('lower(email) = ?', [id]).first();
+  const tenantId = user?.tenant_id;
+  if (!tenantId) return null;
+  const school = await db('schools').select('name', 'email', 'phone').where({ tenant_id: tenantId }).first().catch(() => null);
+  const tenant = await db('tenants').select('name', 'contact_email', 'contact_phone').where({ id: tenantId }).first().catch(() => null);
+  const email = school?.email || tenant?.contact_email || null;
+  const phone = school?.phone || tenant?.contact_phone || null;
+  const schoolName = school?.name || tenant?.name || null;
+  if (!email && !phone) return null;
+  return { schoolName, email, phone };
+}
 
 /**
  * POST /api/v1/auth/2fa/verify-login
@@ -621,12 +667,25 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
     const userId = (req as any).auth.userId;
 
     const user = await db('users')
-      .select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'tenant_id', 'last_login', 'created_at', 'profile_photo_url', 'photo_url', 'verification_status', 'onboarded_at')
+      .select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'tenant_id', 'last_login', 'created_at', 'profile_photo_url', 'photo_url', 'verification_status', 'onboarded_at', 'promotion_welcome')
       .where('id', userId)
       .first();
 
     if (!user) {
       throw new AppError('User not found', 404, 'NOT_FOUND');
+    }
+
+    // One-time promotion welcome: hand it to the portal, then clear it so the
+    // welcome-and-guide banner only appears once. Best-effort parse + clear.
+    let promotionWelcome: { role?: string; label?: string; at?: string } | null = null;
+    if (user.promotion_welcome) {
+      try {
+        promotionWelcome = typeof user.promotion_welcome === 'string'
+          ? JSON.parse(user.promotion_welcome)
+          : user.promotion_welcome;
+      } catch { promotionWelcome = null; }
+      // Clear it now that we're delivering it (fire-and-forget).
+      db('users').where('id', user.id).update({ promotion_welcome: null }).catch(() => { /* non-fatal */ });
     }
 
     // Resolve the best available avatar: verification photo → general photo →
@@ -700,6 +759,7 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
       hasOnboarded: !!user.onboarded_at,
       lastLogin: user.last_login,
       createdAt: user.created_at,
+      promotionWelcome,
     });
   } catch (error) {
     next(error);

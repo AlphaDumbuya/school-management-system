@@ -38,6 +38,38 @@ async function assertClassesInTenant(dbx: any, tenantId: string, classIds: strin
 }
 
 /**
+ * Map a staff DESIGNATION (organisational title) → the SYSTEM ROLE that decides
+ * which portal and permissions the user gets. Promoting someone migrates them
+ * to the matching portal automatically.
+ *
+ * The system covers both primary (Head Teacher / Vice) and secondary
+ * (Principal / Vice Principal) leadership — all of which are admin-level and
+ * therefore map to 'principal'. Bursar → accountant portal; Administrator
+ * (admissions) → admissions portal; teaching titles stay on the teacher portal.
+ */
+const DESIGNATION_TO_ROLE: Record<string, string> = {
+  // Admin-level leadership (primary + secondary)
+  head_teacher: 'principal',
+  vice_head_teacher: 'principal',
+  principal: 'principal',
+  vice_principal: 'principal',
+  // Finance
+  bursar: 'accountant',
+  // Admissions / general administration
+  administrator: 'admissions_officer',
+  // Teaching titles — remain on the teacher portal
+  hod: 'teacher',
+  senior_teacher: 'teacher',
+  class_teacher: 'teacher',  // primary: class teacher / class master
+  form_teacher: 'teacher',   // secondary: form teacher / form master
+  subject_teacher: 'teacher',
+};
+
+/** The system roles this promotion flow is allowed to assign/rescind. It must
+ *  never touch a platform super_admin. */
+const PROMOTABLE_ROLES = new Set(['teacher', 'principal', 'accountant', 'admissions_officer']);
+
+/**
  * Ensure every subject id belongs to the given tenant. Subjects are scoped to a
  * tenant through their creator (there is no direct subjects.tenant_id column),
  * so we join users on subjects.created_by.
@@ -413,6 +445,10 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
     const tempPassword = PasswordService.generateTemporaryPassword();
     const passwordHash = await PasswordService.hashPassword(tempPassword);
 
+    // The system role follows the designation so a staff member created as a
+    // bursar/administrator/head lands in the correct portal from day one.
+    const initialRole = DESIGNATION_TO_ROLE[String(designation)] || 'teacher';
+
     const [insertedUser] = await trx('users').insert({
       tenant_id: tenantId,
       email: email.toLowerCase(),
@@ -420,7 +456,7 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       last_name: last_name.trim(),
       password_hash: passwordHash,
       temp_password: tempPassword,
-      role: 'teacher',
+      role: initialRole,
       status: status || 'active',
       photo_url: photo_url || null,
       created_at: new Date(),
@@ -537,6 +573,7 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
       form_class_id,
       assigned_classes = [],
       assigned_subjects = [],
+      status_reason,
     } = req.body;
 
     // Validate the status transition against a server-side whitelist so a bad
@@ -550,11 +587,24 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
       .join('users', 'teachers.user_id', 'users.id')
       .where('teachers.id', teacherId)
       .where('users.tenant_id', tenantId)
-      .select('teachers.*')
+      .select(
+        'teachers.*',
+        'users.role as user_role',
+        'users.email as user_email',
+        db.raw("TRIM(CONCAT_WS(' ', users.first_name, users.last_name)) as user_name"),
+      )
       .first();
     if (!teacher) {
       throw new AppError('Teacher not found', 404, 'NOT_FOUND');
     }
+
+    // Remember the teacher's current form class BEFORE we change it, so the
+    // notification email can tell whether they were newly assigned or removed.
+    const prevFormClass = await trx('classes')
+      .where('class_teacher_id', teacherId)
+      .select('id', 'name')
+      .first()
+      .catch(() => null);
 
     // Guard against cross-tenant class/subject assignment — same as create.
     await assertClassesInTenant(trx, tenantId, [
@@ -569,6 +619,25 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
     if (last_name) userUpdate.last_name = last_name.trim();
     if (status) userUpdate.status = status;
     if (photo_url !== undefined) userUpdate.photo_url = photo_url || null;
+
+    // Promotion must take REAL effect in the portal, not just relabel a title.
+    // We map the chosen designation → its system role and, when it differs from
+    // the user's current role, migrate them to the matching portal (admin /
+    // finance / admissions / teacher). Because we also enforce role on every
+    // request, the migration is reflected the moment they next load — no manual
+    // re-provision. We only ever move BETWEEN promotable roles, so a genuine
+    // super_admin is never touched.
+    if (designation !== undefined) {
+      const targetRole = DESIGNATION_TO_ROLE[String(designation)] || 'teacher';
+      if (
+        targetRole !== teacher.user_role &&
+        PROMOTABLE_ROLES.has(teacher.user_role) &&
+        PROMOTABLE_ROLES.has(targetRole)
+      ) {
+        userUpdate.role = targetRole;
+      }
+    }
+
     userUpdate.updated_at = new Date();
 
     await trx('users').where('id', teacher.user_id).update(userUpdate);
@@ -627,6 +696,22 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
       }
     }
 
+    // Full-force enforcement when the account becomes NON-ACTIVE (suspended /
+    // dismissed / deactivated), on par with the deactivate (DELETE) path:
+    //  - release any form-class they lead so it doesn't point at them,
+    //  - end their active subject/class assignments,
+    //  - revoke all refresh tokens so any live session is cut off immediately.
+    const becomingInactive =
+      status !== undefined && String(status).toLowerCase() !== 'active' &&
+      String(teacher.status).toLowerCase() === 'active';
+    if (becomingInactive) {
+      await trx('classes').where('class_teacher_id', teacherId).update({ class_teacher_id: null });
+      await trx('teacher_assignments')
+        .where('teacher_id', teacherId)
+        .update({ end_date: new Date().toISOString().split('T')[0], updated_at: new Date() });
+      await trx('refresh_tokens').where('user_id', teacher.user_id).del().catch(() => { /* best effort */ });
+    }
+
     await trx.commit();
 
     // Fetch updated teacher
@@ -639,6 +724,7 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
         'users.email',
         'users.photo_url',
         'users.status as user_status',
+        'users.role as user_role',
         'teachers.teacher_id',
         'teachers.phone',
         'teachers.specialization',
@@ -661,8 +747,154 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
       user: {
         ...updated,
         status: updated.user_status,
+        role: updated.user_role,
       },
     });
+
+    // Notify the staff member whenever their ROLE/TITLE or FORM-CLASS changes.
+    // Three channels, all best-effort (never fail the update over comms):
+    //   1. In-app notification (bell)   — designation change
+    //   2. One-time portal welcome flag — designation change (dismissible guide)
+    //   3. Branded email                — designation and/or form-class change
+    const DESIGNATION_LABEL: Record<string, string> = {
+      subject_teacher: 'Subject Teacher',
+      class_teacher: 'Class Master',
+      form_teacher: 'Form Master',
+      hod: 'Head of Department',
+      senior_teacher: 'Senior Teacher',
+      head_teacher: 'Head Teacher',
+      vice_head_teacher: 'Deputy Head Teacher',
+      vice_principal: 'Vice Principal',
+      principal: 'Principal',
+      bursar: 'Bursar',
+      administrator: 'Administrator',
+    };
+    const designationChanged = designation !== undefined && designation !== teacher.designation;
+    const roleLabel = DESIGNATION_LABEL[String(designation)] || 'a new role';
+    const prevRoleLabel = DESIGNATION_LABEL[String(teacher.designation)] || undefined;
+    const portalChanged = !!(userUpdate.role && userUpdate.role !== teacher.user_role);
+
+    // Did the form-class assignment change?
+    const prevFormId = prevFormClass?.id || null;
+    const newFormId = form_class_id !== undefined ? (form_class_id || null) : prevFormId;
+    const formClassChanged = form_class_id !== undefined && newFormId !== prevFormId;
+    const newFormName = updated?.form_class_name || null; // reflects the just-applied class
+    const formClassAssigned = formClassChanged && !!newFormId;
+    const formClassRemoved = formClassChanged && !newFormId;
+
+    if (designationChanged) {
+      try {
+        const { default: notificationService } = await import('@services/notificationService');
+        await notificationService.createNotification({
+          notificationType: 'promotion',
+          recipientId: teacher.user_id,
+          subject: `You've been appointed ${roleLabel}`,
+          message: `Congratulations! You are now ${roleLabel} at your school. Your portal has been updated with the access and tools for this role. Look out for the welcome guide when you next open your dashboard.`,
+          channels: ['in_app'],
+          sourceType: 'teacher_promotion',
+          sourceId: teacherId,
+          createdBy: (req as any).user?.id,
+        }).catch(() => { /* non-fatal */ });
+
+        // One-time welcome flag the portal reads then clears (see /auth/me).
+        await db('users').where('id', teacher.user_id).update({
+          promotion_welcome: JSON.stringify({ role: designation, label: roleLabel, at: new Date().toISOString() }),
+        }).catch(() => { /* column may not exist yet — safe to ignore */ });
+      } catch (e) {
+        logger.warn(`Promotion welcome notification failed for teacher ${teacher.teacher_id}: ${String((e as any)?.message || e)}`);
+      }
+    }
+
+    // The class-leadership term differs by school level: primary schools call it
+    // "Class Teacher" (Class Master), secondary schools "Form Teacher" (Form
+    // Master). Pick the term from the staff member's effective designation.
+    const effectiveDesignation = String(designation ?? teacher.designation ?? '');
+    const classRoleTerm = ['class_teacher', 'head_teacher', 'vice_head_teacher'].includes(effectiveDesignation)
+      ? 'Class Master'
+      : 'Form Master';
+
+    // Also drop an in-app notification for a pure form-class assignment change
+    // (no designation change) so it's visible in their bell.
+    if (formClassChanged && !designationChanged) {
+      try {
+        const { default: notificationService } = await import('@services/notificationService');
+        await notificationService.createNotification({
+          notificationType: 'assignment',
+          recipientId: teacher.user_id,
+          subject: formClassAssigned ? `You're now ${classRoleTerm} of ${newFormName}` : 'Your class assignment changed',
+          message: formClassAssigned
+            ? `You have been assigned as the ${classRoleTerm} of ${newFormName}. Open your portal to manage your class.`
+            : 'Your class-teacher assignment has been removed.',
+          channels: ['in_app'],
+          sourceType: 'teacher_form_class',
+          sourceId: teacherId,
+          createdBy: (req as any).user?.id,
+        }).catch(() => { /* non-fatal */ });
+      } catch { /* non-fatal */ }
+    }
+
+    // Account STATUS change (suspend / dismiss / deactivate / reactivate) →
+    // notify the staff member by email + in-app so they know their access
+    // changed. Only fires when the status actually changed.
+    const statusChanged = status !== undefined && status !== null && String(status) !== String(teacher.status);
+    if (statusChanged && teacher.user_email) {
+      try {
+        const { default: emailService } = await import('@services/emailService');
+        await emailService.sendAccountStatusEmail(tenantId, teacher.user_email, {
+          userName: teacher.user_name || 'there',
+          status: String(status) as 'active' | 'inactive' | 'suspended' | 'dismissed',
+          reason: status_reason ? String(status_reason) : undefined,
+        }).catch(() => { /* non-fatal */ });
+      } catch (e) {
+        logger.warn(`Account-status email failed for teacher ${teacher.teacher_id}: ${String((e as any)?.message || e)}`);
+      }
+      try {
+        const STATUS_MSG: Record<string, { subject: string; message: string }> = {
+          active: { subject: 'Your account has been reactivated', message: 'Your account has been reactivated. You can sign in again and resume your work.' },
+          suspended: { subject: 'Your account has been suspended', message: 'Your account has been temporarily suspended. Please contact your school administrator.' },
+          dismissed: { subject: 'Your account has been closed', message: 'Your account has been closed and access removed. Please contact your school administrator.' },
+          inactive: { subject: 'Your account has been deactivated', message: 'Your account has been deactivated. Please contact your school administrator.' },
+        };
+        const m = STATUS_MSG[String(status)] || STATUS_MSG.inactive;
+        const { polishReason } = await import('@services/email/reasonPolish');
+        const polished = status_reason ? polishReason(status_reason, String(status) as any) : null;
+        const reasonSuffix = polished ? ` Reason: ${polished.summary}` : '';
+        const { default: notificationService } = await import('@services/notificationService');
+        await notificationService.createNotification({
+          notificationType: 'account_status',
+          recipientId: teacher.user_id,
+          subject: m.subject,
+          message: m.message + reasonSuffix,
+          channels: ['in_app'],
+          sourceType: 'teacher_status',
+          sourceId: teacherId,
+          createdBy: (req as any).user?.id,
+        }).catch(() => { /* non-fatal */ });
+      } catch { /* non-fatal */ }
+    }
+
+    // Branded email covering whatever changed (role and/or class assignment).
+    if ((designationChanged || formClassChanged) && teacher.user_email) {
+      try {
+        const { default: emailService } = await import('@services/emailService');
+        await emailService.sendStaffRoleChangeEmail(tenantId, teacher.user_email, {
+          userName: teacher.user_name || 'there',
+          newDesignation: designationChanged ? roleLabel : undefined,
+          previousDesignation: designationChanged ? prevRoleLabel : undefined,
+          classRoleTerm,
+          formClassName: formClassAssigned ? newFormName : null,
+          formClassRemoved,
+          portalChanged,
+        }).catch(() => { /* non-fatal */ });
+      } catch (e) {
+        logger.warn(`Role-change email failed for teacher ${teacher.teacher_id}: ${String((e as any)?.message || e)}`);
+      }
+    }
+
+    // Audit the effective system-role change so a promotion is traceable.
+    if (portalChanged) {
+      logger.info(`Teacher ${teacher.teacher_id} system role changed: ${teacher.user_role} → ${userUpdate.role} (designation: ${designation})`);
+    }
 
     logger.info(`Teacher profile updated: (Staff ID: ${teacher.teacher_id})`);
   } catch (error) {
@@ -680,6 +912,7 @@ router.delete('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCI
   try {
     const teacherId = req.params.id;
     const tenantId = (req as any).user.tenant_id;
+    const deactivateReason = req.query.reason ? String(req.query.reason) : undefined;
     if (!tenantId) {
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
@@ -688,7 +921,11 @@ router.delete('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCI
       .join('users', 'teachers.user_id', 'users.id')
       .where('teachers.id', teacherId)
       .where('users.tenant_id', tenantId)
-      .select('teachers.*')
+      .select(
+        'teachers.*',
+        'users.email as user_email',
+        db.raw("TRIM(CONCAT_WS(' ', users.first_name, users.last_name)) as user_name"),
+      )
       .first();
     if (!teacher) {
       throw new AppError('Teacher not found', 404, 'NOT_FOUND');
@@ -716,11 +953,43 @@ router.delete('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCI
         updated_at: new Date(),
       });
 
+    // Revoke all refresh tokens so any live session is cut off immediately.
+    await trx('refresh_tokens').where('user_id', teacher.user_id).del().catch(() => { /* best effort */ });
+
     await trx.commit();
 
     res.json({
       message: 'Teacher deactivated successfully',
     });
+
+    // Notify the staff member their account was deactivated (email + in-app).
+    if (teacher.user_email) {
+      try {
+        const { default: emailService } = await import('@services/emailService');
+        await emailService.sendAccountStatusEmail(tenantId, teacher.user_email, {
+          userName: teacher.user_name || 'there',
+          status: 'inactive',
+          reason: deactivateReason,
+        }).catch(() => { /* non-fatal */ });
+      } catch (e) {
+        logger.warn(`Deactivation email failed for teacher ${teacher.teacher_id}: ${String((e as any)?.message || e)}`);
+      }
+      try {
+        const { polishReason } = await import('@services/email/reasonPolish');
+        const polished = deactivateReason ? polishReason(deactivateReason, 'inactive') : null;
+        const { default: notificationService } = await import('@services/notificationService');
+        await notificationService.createNotification({
+          notificationType: 'account_status',
+          recipientId: teacher.user_id,
+          subject: 'Your account has been deactivated',
+          message: 'Your account has been deactivated. Please contact your school administrator.' + (polished ? ` Reason: ${polished.summary}` : ''),
+          channels: ['in_app'],
+          sourceType: 'teacher_status',
+          sourceId: teacherId,
+          createdBy: (req as any).user?.id,
+        }).catch(() => { /* non-fatal */ });
+      } catch { /* non-fatal */ }
+    }
 
     logger.info(`Teacher account deactivated: (Staff ID: ${teacher.teacher_id})`);
   } catch (error) {
