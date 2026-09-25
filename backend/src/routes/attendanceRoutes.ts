@@ -83,10 +83,14 @@ async function notifyGuardiansOfAttendance(
       }).catch(() => {});
     }
 
-    // Notify linked guardians (in-app + email).
+    // Notify linked guardians (in-app + email). Defense-in-depth: join through
+    // students and re-assert the tenant, so a guardian row can only ever be
+    // reached for a student in THIS tenant (guardians has no tenant_id column).
     const guardians = await db('guardians')
-      .where({ student_id: studentId })
-      .select('user_id', 'email', 'first_name', 'last_name')
+      .join('students', 'guardians.student_id', 'students.id')
+      .where('guardians.student_id', studentId)
+      .where('students.tenant_id', tenantId)
+      .select('guardians.user_id', 'guardians.email', 'guardians.first_name', 'guardians.last_name')
       .catch(() => [] as any[]);
 
     for (const g of guardians) {
@@ -199,6 +203,10 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
   try {
     const { student_id, class_id, date, status, session_type, check_in_time, check_out_time, remarks, client_id } = req.body;
     const recordedBy = (req as any).user?.id || (req as any).auth?.userId;
+
+    if (!recordedBy) {
+      throw new AppError('Authenticated user context is required', 401, 'UNAUTHENTICATED');
+    }
 
     if (!student_id || !date || !status) {
       throw new AppError('Missing required fields', 400, 'VALIDATION_ERROR');
@@ -420,6 +428,87 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN,
     });
   } catch (error) {
     logger.error('Error in GET /api/v1/attendance:', error);
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/attendance/analytics?classId=
+ * Server-side attendance analytics so we never pull thousands of rows into the
+ * browser. Returns totals, per-status counts, overall rate, per-class rates and
+ * the at-risk students (< 75% presence). Tenant-scoped + teacher-class scoped.
+ */
+router.get('/analytics', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    const classId = req.query.classId as string | undefined;
+
+    // Base scope shared by every aggregate.
+    const scoped = () => {
+      let q = db('attendance')
+        .join('students', 'attendance.student_id', 'students.id')
+        .leftJoin('classes', 'attendance.class_id', 'classes.id')
+        .where('students.tenant_id', tenantId);
+      if (classId) q = q.where('attendance.class_id', classId);
+      return q;
+    };
+
+    // Teacher scoping: restrict to their own classes.
+    let teacherClasses: string[] | null = null;
+    if (req.user?.role === 'teacher') {
+      teacherClasses = await teacherClassIds(req.user.id, tenantId);
+      if (teacherClasses.length === 0) {
+        return res.json({ success: true, data: { total: 0, present: 0, late: 0, absent: 0, excused: 0, rate: 0, atRisk: [], classRates: [] } });
+      }
+    }
+    const applyTeacher = (q: any) => (teacherClasses ? q.whereIn('attendance.class_id', teacherClasses) : q);
+
+    // Status totals in one grouped query.
+    const statusRows = await applyTeacher(scoped()).groupBy('attendance.status').select('attendance.status').count('attendance.id as count');
+    const counts: Record<string, number> = { present: 0, late: 0, absent: 0, excused: 0 };
+    statusRows.forEach((r: any) => { counts[r.status] = Number(r.count) || 0; });
+    const total = counts.present + counts.late + counts.absent + counts.excused;
+    // Present + late count as "in attendance" for the rate.
+    const rate = total > 0 ? Math.round(((counts.present + counts.late) / total) * 1000) / 10 : 0;
+
+    // Per-student presence rate → at-risk (< 75%).
+    const perStudent = await applyTeacher(scoped())
+      .groupBy('students.id', 'students.first_name', 'students.last_name', 'students.student_id')
+      .select(
+        'students.id',
+        db.raw("students.first_name || ' ' || students.last_name as name"),
+        'students.student_id as admission_no',
+        db.raw('COUNT(attendance.id) as total'),
+        db.raw("COUNT(CASE WHEN attendance.status IN ('present','late') THEN 1 END) as present"),
+      );
+    const atRisk = perStudent
+      .map((s: any) => {
+        const t = Number(s.total) || 0; const p = Number(s.present) || 0;
+        return { name: s.name, admissionNo: s.admission_no, rate: t > 0 ? Math.round((p / t) * 100) : 0, total: t, p };
+      })
+      .filter((s: any) => s.total > 0 && s.rate < 75)
+      .sort((a: any, b: any) => a.rate - b.rate)
+      .slice(0, 50);
+
+    // Per-class presence rate.
+    const perClass = await applyTeacher(scoped())
+      .whereNotNull('classes.name')
+      .groupBy('classes.name')
+      .select(
+        'classes.name',
+        db.raw('COUNT(attendance.id) as total'),
+        db.raw("COUNT(CASE WHEN attendance.status IN ('present','late') THEN 1 END) as present"),
+      );
+    const classRates = perClass
+      .map((c: any) => {
+        const t = Number(c.total) || 0; const p = Number(c.present) || 0;
+        return { name: c.name, rate: t > 0 ? Math.round((p / t) * 100) : 0, total: t };
+      })
+      .sort((a: any, b: any) => b.rate - a.rate);
+
+    res.json({ success: true, data: { total, present: counts.present, late: counts.late, absent: counts.absent, excused: counts.excused, rate, atRisk, classRates } });
+  } catch (error) {
     next(error);
   }
 });

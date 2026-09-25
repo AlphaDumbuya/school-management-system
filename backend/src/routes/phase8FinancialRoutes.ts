@@ -1301,65 +1301,148 @@ router.get('/finance/payments', authenticate, requireStaff, async (req: Request,
         'students.student_id as admission_no',
         'classes.name as class_name',
         'classes.level as class_level',
+        // Per-student fee totals so the ledger can show Total Billed / Paid / Balance
+        // alongside each transaction (fees are the source of truth for what's owed).
+        db.raw("(SELECT COALESCE(SUM(f.amount),0) FROM fees f WHERE f.student_id = payments.student_id AND f.status <> 'deleted') as student_total_billed"),
+        db.raw("(SELECT COALESCE(SUM(f.balance),0) FROM fees f WHERE f.student_id = payments.student_id AND f.status <> 'deleted') as student_balance"),
       )
       .orderBy('payments.payment_date', 'desc')
       .limit(1000);
-    res.json({ success: true, data: rows });
+    // Derive total-paid = billed − balance for each row.
+    const enriched = rows.map((r: any) => {
+      const billed = Number(r.student_total_billed) || 0;
+      const balance = Number(r.student_balance) || 0;
+      return { ...r, student_total_billed: billed, student_balance: balance, student_total_paid: Math.max(0, billed - balance) };
+    });
+    res.json({ success: true, data: enriched });
   } catch (error) {
     logger.error(`finance/payments error: ${error}`);
     res.status(500).json({ success: false, error: (error as Error).message });
   }
 });
 
-// GET /api/v1/finance/export?format=csv|excel|pdf — download tenant payments.
-// Staff-only + tenant-scoped (via the students join). Currency shown as "Le".
+// GET /api/v1/finance/export?format=csv|excel|pdf — STUDENT FEE-RECORD REPORT.
+// One row per student (NOT per transaction) covering their whole fee account:
+// billed / paid / balance / status + last payment. Includes students who have
+// NOT paid so the report is a complete picture for finance reporting.
+// Staff-only + tenant-scoped.
 router.get('/finance/export', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
-    const rows = await db('payments')
-      .join('students', 'payments.student_id', 'students.id')
+    // Optional filters (mirror the on-screen Payments filters).
+    const statusF = String(req.query.status || '').toLowerCase();     // 'paid' | 'partial' | 'unpaid'
+    const sectionF = String(req.query.section || '').toLowerCase();   // 'nursery' | 'primary' | 'jss' | 'sss'
+    const classF = String(req.query.className || req.query.class || '');
+
+    const SECTION_LEVELS: Record<string, string[]> = {
+      nursery: ['NURSERY1', 'NURSERY2', 'NURSERY3'],
+      primary: ['CLASS1', 'CLASS2', 'CLASS3', 'CLASS4', 'CLASS5', 'CLASS6'],
+      jss: ['JSS1', 'JSS2', 'JSS3'],
+      sss: ['SSS1', 'SSS2', 'SSS3'],
+    };
+
+    let q = db('students')
+      .join('fees', 'fees.student_id', 'students.id')
       .leftJoin('users', 'students.user_id', 'users.id')
       .leftJoin('enrollments', function () {
         this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
       })
       .leftJoin('classes', 'classes.id', 'enrollments.class_id')
       .where('students.tenant_id', tenantId)
+      .whereNot('fees.status', 'deleted');
+
+    if (sectionF && SECTION_LEVELS[sectionF]) q = q.whereIn('classes.level', SECTION_LEVELS[sectionF]);
+    if (classF) q = q.where('classes.name', classF);
+
+    const rows = await q
+      .groupBy('students.id', 'users.first_name', 'users.last_name', 'students.first_name', 'students.last_name', 'students.student_id', 'classes.name')
       .select(
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
         'students.student_id as admission_no',
         'classes.name as class_name',
-        'payments.amount',
-        'payments.payment_method',
-        'payments.status',
-        'payments.reference',
-        'payments.payment_date',
+        db.raw('COALESCE(SUM(fees.amount),0) as billed'),
+        db.raw('COALESCE(SUM(fees.balance),0) as balance'),
+        db.raw("(SELECT MAX(p.payment_date) FROM payments p WHERE p.student_id = students.id AND p.status = 'completed') as last_payment"),
       )
-      .orderBy('payments.payment_date', 'desc')
+      // Order by class then by balance so the report reads class-by-class.
+      .orderByRaw("COALESCE(classes.name, 'ZZZ') ASC, SUM(fees.balance) DESC")
       .limit(10000);
 
-    const formatted = rows.map((r: any) => ({
-      ...r,
-      amount: `Le ${Number(r.amount || 0).toLocaleString()}`,
-      payment_date: r.payment_date ? new Date(r.payment_date).toLocaleDateString() : '',
-    }));
+    // Compute status per row and apply the status filter in memory.
+    const enriched = rows
+      .map((r: any) => {
+        const billed = Number(r.billed) || 0;
+        const balance = Number(r.balance) || 0;
+        const paid = Math.max(0, billed - balance);
+        const status = balance <= 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+        return { ...r, billed, balance, paid, status, className: r.class_name || '—' };
+      })
+      .filter((r: any) => !statusF || r.status === statusF);
+
+    // One row per student (already ordered class-by-class), then a SINGLE grand
+    // total at the very bottom — no per-class subtotals (avoids duplication).
+    const money = (n: number) => `Le ${n.toLocaleString()}`;
+    const cap1 = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+    const formatted: Record<string, any>[] = [];
+    let gBilled = 0, gPaid = 0, gBalance = 0;
+
+    enriched.forEach((r: any) => {
+      gBilled += r.billed; gPaid += r.paid; gBalance += r.balance;
+      formatted.push({
+        class_name: r.className,
+        student_name: r.student_name,
+        admission_no: r.admission_no,
+        total_billed: money(r.billed),
+        total_paid: money(r.paid),
+        balance: money(r.balance),
+        status: cap1(r.status),
+        last_payment: r.last_payment ? new Date(r.last_payment).toLocaleDateString() : 'No payment',
+      });
+    });
+
+    // Grand total across all exported students.
+    if (formatted.length > 0) {
+      const gRate = gBilled > 0 ? Math.round((gPaid / gBilled) * 1000) / 10 : 0;
+      const gOut = gBilled > 0 ? Math.round((gBalance / gBilled) * 1000) / 10 : 0;
+      formatted.push({
+        class_name: 'GRAND TOTAL',
+        student_name: `${enriched.length} student${enriched.length === 1 ? '' : 's'}`,
+        admission_no: '',
+        total_billed: money(gBilled),
+        total_paid: `${money(gPaid)} (${gRate}%)`,
+        balance: `${money(gBalance)} (${gOut}%)`,
+        status: '',
+        last_payment: '',
+      });
+    }
+
+    const scopeBits = [
+      sectionF ? `Section: ${cap1(sectionF)}` : '',
+      classF ? `Class: ${classF}` : '',
+      statusF ? `Status: ${cap1(statusF)}` : '',
+    ].filter(Boolean).join(' · ');
+    const title = statusF === 'unpaid' ? 'Unpaid Students Report' : 'Student Fees Report';
 
     await sendExport(res, {
       format: req.query.format as string,
       tenantId,
       rows: formatted,
       columns: {
+        Class: 'class_name',
         Student: 'student_name',
         'Admission No': 'admission_no',
-        Class: 'class_name',
-        Amount: 'amount',
-        Method: 'payment_method',
+        'Total Billed': 'total_billed',
+        'Total Paid': 'total_paid',
+        Balance: 'balance',
         Status: 'status',
-        Reference: 'reference',
-        Date: 'payment_date',
+        'Last Payment': 'last_payment',
       },
-      filename: 'payments_export',
-      title: 'Payments Export',
-      sheetName: 'Payments',
+      filename: statusF === 'unpaid' ? 'unpaid_students_report' : 'student_fees_report',
+      title: scopeBits ? `${title} — ${scopeBits}` : title,
+      sheetName: 'Fees Report',
+      // paid → green, balance → red (Excel/PDF only).
+      colorColumns: { total_paid: 'green', balance: 'red' },
+      highlightLastRow: true, // shade the GRAND TOTAL row
     });
   } catch (error) {
     logger.error(`finance/export error: ${error}`);
@@ -1741,7 +1824,14 @@ router.post('/finance/balance-reminders', authenticate, requireStaff, async (req
   try {
     const tenantId = (req as any).user.tenant_id;
     const userId = (req as any).user.id;
-    const { scope, studentId, classId, level, term, message } = req.body || {};
+    const { scope, studentId, classId, level, section, term, message } = req.body || {};
+
+    const REMINDER_SECTION_LEVELS: Record<string, string[]> = {
+      nursery: ['NURSERY1', 'NURSERY2', 'NURSERY3'],
+      primary: ['CLASS1', 'CLASS2', 'CLASS3', 'CLASS4', 'CLASS5', 'CLASS6'],
+      jss: ['JSS1', 'JSS2', 'JSS3'],
+      sss: ['SSS1', 'SSS2', 'SSS3'],
+    };
 
     // Resolve the set of students in scope.
     let sq = db('students')
@@ -1753,7 +1843,9 @@ router.post('/finance/balance-reminders', authenticate, requireStaff, async (req
       .where('students.status', 'active');
     if (scope === 'student' && studentId) sq = sq.where('students.id', studentId);
     else if (scope === 'class' && classId) sq = sq.where('enrollments.class_id', classId);
-    else if (scope === 'level' && level) sq = sq.where('classes.level', level);
+    else if (scope === 'section' && section && REMINDER_SECTION_LEVELS[String(section).toLowerCase()]) {
+      sq = sq.whereIn('classes.level', REMINDER_SECTION_LEVELS[String(section).toLowerCase()]);
+    } else if (scope === 'level' && level) sq = sq.where('classes.level', level);
     const students = await sq.distinct('students.id as id').select('students.id');
 
     const { default: emailService } = await import('@services/emailService');

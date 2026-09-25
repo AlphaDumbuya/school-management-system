@@ -252,18 +252,13 @@ export const AttendancePage: React.FC = () => {
     ? (existingAttData as any)?.data ?? []
     : (existingAttData as any)?.data?.attendance_records ?? (existingAttData as any)?.attendance_records ?? [];
 
-  // 5. Analytics: all logs (no pagination for stats)
+  // 5. Analytics: server-computed (scales past the browser's row limits).
   const { data: analyticsData, isLoading: analyticsLoading, isFetching: analyticsFetching } = useQuery({
     queryKey: ['att-analytics', classFilter],
-    queryFn: () =>
-      attendanceService.listAttendance({
-        limit: 1000,
-        classId: classFilter || undefined,
-      }),
+    queryFn: () => attendanceService.getAnalytics(classFilter || undefined),
     enabled: activeTab === 'analytics',
     staleTime: 60_000,
   });
-  const analyticsLogs = (analyticsData as any)?.data ?? [];
 
   // ── Merge: initialize markRecords when class/date/session/students change ──
   React.useEffect(() => {
@@ -310,53 +305,16 @@ export const AttendancePage: React.FC = () => {
     };
   }, [logs]);
 
-  // ── Analytics computations ────────────────────────────────────────────────
+  // ── Analytics (server-computed) ───────────────────────────────────────────
   const analyticsStats = useMemo(() => {
-    if (!analyticsLogs.length) return null;
-    const total = analyticsLogs.length;
-    const present = analyticsLogs.filter((l: any) => l.status === 'present').length;
-    const late = analyticsLogs.filter((l: any) => l.status === 'late').length;
-    const absent = analyticsLogs.filter((l: any) => l.status === 'absent').length;
-    const excused = analyticsLogs.filter((l: any) => l.status === 'excused').length;
-
-    // Per-student rate
-    const byStudent: Record<string, { name: string; p: number; total: number }> = {};
-    analyticsLogs.forEach((l: any) => {
-      const sid = l.student_id_code || l.student_id;
-      if (!byStudent[sid]) byStudent[sid] = { name: l.student_name || sid, p: 0, total: 0 };
-      byStudent[sid].total++;
-      if (l.status === 'present' || l.status === 'late') byStudent[sid].p++;
-    });
-
-    const atRisk = Object.values(byStudent)
-      .map((s) => ({ ...s, rate: Math.round((s.p / s.total) * 100) }))
-      .filter((s) => s.rate < 75)
-      .sort((a, b) => a.rate - b.rate);
-
-    // Per-class rate
-    const byClass: Record<string, { name: string; p: number; total: number }> = {};
-    analyticsLogs.forEach((l: any) => {
-      const cn = l.class_name || 'Unknown';
-      if (!byClass[cn]) byClass[cn] = { name: cn, p: 0, total: 0 };
-      byClass[cn].total++;
-      if (l.status === 'present' || l.status === 'late') byClass[cn].p++;
-    });
-
-    const classRates = Object.values(byClass)
-      .map((c) => ({ ...c, rate: Math.round((c.p / c.total) * 100) }))
-      .sort((a, b) => b.rate - a.rate);
-
-    return {
-      total,
-      present,
-      late,
-      absent,
-      excused,
-      rate: Math.round(((present + late) / total) * 100),
-      atRisk,
-      classRates,
+    const d = (analyticsData as any)?.data?.data ?? (analyticsData as any)?.data;
+    if (!d || !d.total) return null;
+    return d as {
+      total: number; present: number; late: number; absent: number; excused: number; rate: number;
+      atRisk: { name: string; admissionNo: string; rate: number; total: number; p: number }[];
+      classRates: { name: string; rate: number; total: number }[];
     };
-  }, [analyticsLogs]);
+  }, [analyticsData]);
 
   // ── Register tab: mark single student immediately ─────────────────────────
   const saveSingleMutation = useMutation({
@@ -863,7 +821,7 @@ export const AttendancePage: React.FC = () => {
             <div className="space-y-5">
 
               {/* Controls */}
-              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 sm:p-6">
                 <h2 className="text-base font-bold text-gray-900 dark:text-white mb-4">Select Class, Date &amp; Session</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
@@ -1323,7 +1281,7 @@ export const AttendancePage: React.FC = () => {
                   </div>
 
                   {/* Status breakdown */}
-                  <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+                  <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 sm:p-6">
                     <h3 className="font-bold text-gray-900 dark:text-white mb-4">Attendance Breakdown</h3>
                     <div className="space-y-3">
                       {[

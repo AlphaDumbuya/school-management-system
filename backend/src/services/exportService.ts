@@ -297,7 +297,9 @@ class ExportService {
     rows: Record<string, any>[],
     columns: Record<string, string>,
     sheetName = 'Export',
-    brand?: ExportBranding
+    brand?: ExportBranding,
+    colorColumns?: Record<string, 'red' | 'green'>,
+    highlightLastRow?: boolean
   ): Promise<Buffer> {
     const wb = new ExcelJS.Workbook();
     wb.creator = brand?.name || 'WiSkul';
@@ -378,10 +380,12 @@ class ExportService {
 
     // ── Data rows ──
     const thinBorder = { style: 'thin' as const, color: { argb: 'FFE5E9F0' } };
+    const lastRowIdx = (rows || []).length - 1;
     (rows || []).forEach((r, idx) => {
+      const isTotal = highlightLastRow && idx === lastRowIdx;
       const rowIndex = headerRowIndex + 1 + idx;
       const row = ws.getRow(rowIndex);
-      row.height = 18;
+      row.height = isTotal ? 22 : 18;
       keys.forEach((k, i) => {
         const raw = r[k];
         const cell = row.getCell(i + 1);
@@ -394,8 +398,19 @@ class ExportService {
         }
         cell.border = { bottom: thinBorder, right: thinBorder };
         // Zebra striping for readability
-        if (idx % 2 === 1) {
+        if (!isTotal && idx % 2 === 1) {
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F7FA' } };
+        }
+        // Grand-total row: light highlight background + top border + bold.
+        if (isTotal) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; // light amber
+          cell.border = { top: { style: 'medium', color: { argb: 'FF1A2B6B' } }, bottom: thinBorder, right: thinBorder };
+          cell.font = { bold: true, color: { argb: 'FF1A2B6B' } };
+        }
+        // Optional conditional font colour (e.g. green paid / red balance).
+        const colour = colorColumns?.[k];
+        if (colour) {
+          cell.font = { color: { argb: colour === 'green' ? 'FF059669' : 'FFDC2626' }, bold: true };
         }
         const len = String(cell.value ?? '').length;
         if (len > widths[i]) widths[i] = len;
@@ -444,10 +459,17 @@ class ExportService {
     rows: Record<string, any>[],
     columns: Record<string, string>,
     title = 'Export',
-    brand?: ExportBranding
+    brand?: ExportBranding,
+    colorColumns?: Record<string, 'red' | 'green'>,
+    highlightLastRow?: boolean
   ): Promise<Buffer> {
     const headers = Object.keys(columns);
     const keys = Object.values(columns);
+    const colStyle = (k: string) => {
+      const c = colorColumns?.[k];
+      return c ? ` style="color:${c === 'green' ? '#059669' : '#dc2626'};font-weight:700;"` : '';
+    };
+    const lastIdx = (rows || []).length - 1;
 
     const contact = [brand?.address, brand?.contactPhone, brand?.contactEmail, brand?.website]
       .filter(Boolean)
@@ -461,8 +483,8 @@ class ExportService {
     const headHtml = headers.map((h) => `<th>${this.escHtml(h)}</th>`).join('');
     const bodyHtml = (rows || [])
       .map(
-        (r) =>
-          `<tr>${keys.map((k) => `<td>${this.escHtml(r[k])}</td>`).join('')}</tr>`
+        (r, ri) =>
+          `<tr${highlightLastRow && ri === lastIdx ? ' class="grand-total"' : ''}>${keys.map((k) => `<td${colStyle(k)}>${this.escHtml(r[k])}</td>`).join('')}</tr>`
       )
       .join('');
 
@@ -475,7 +497,7 @@ class ExportService {
       <style>
         @page { size: A4 landscape; margin: 12mm; }
         * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        body { font-family: Helvetica, Arial, sans-serif; color: #111; font-size: 12px; margin: 0; }
+        body { font-family: Helvetica, Arial, sans-serif; color: #111; font-size: 12px; margin: 0; -webkit-font-smoothing: antialiased; }
 
         /* Centered, professional header block with clear spacing */
         .hdr { text-align: center; border-bottom: 3px solid #1d4ed8; padding-bottom: 14px; margin-bottom: 18px; }
@@ -486,9 +508,14 @@ class ExportService {
         .meta { font-size: 10px; color: #777; margin-top: 4px; }
 
         table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        thead th { background: #1d4ed8; color: #fff; text-align: left; padding: 9px 10px; font-size: 11px; font-weight: 700; white-space: nowrap; }
-        tbody td { padding: 8px 10px; border-bottom: 1px solid #eef1f5; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        /* Column headers repeat on every printed page for readability, but the
+           big branded block above only appears once (it's outside the table). */
+        thead { display: table-header-group; }
+        thead th { background: #1d4ed8; color: #fff; text-align: left; padding: 10px 10px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+        tbody td { padding: 9px 10px; border-bottom: 1px solid #eef1f5; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        tbody tr { page-break-inside: avoid; }
         tbody tr:nth-child(even) td { background: #f5f7fa; }
+        tbody tr.grand-total td { background: #fef3c7 !important; font-weight: 800; color: #1a2b6b; border-top: 2px solid #1a2b6b; font-size: 12.5px; }
         .foot { margin-top: 16px; text-align: center; font-size: 10px; color: #888; border-top: 1px solid #e5e7eb; padding-top: 8px; }
       </style></head>
       <body>
@@ -514,7 +541,7 @@ class ExportService {
       return await htmlToPdf(html, { landscape: true });
     } catch (err) {
       logger.warn(`PDF via Chromium failed, using pdf-lib fallback: ${String((err as any)?.message || err)}`);
-      return this.rowsToPdfLib(rows, columns, title, brand);
+      return this.rowsToPdfLib(rows, columns, title, brand, colorColumns, highlightLastRow);
     }
   }
 
@@ -527,7 +554,9 @@ class ExportService {
     rows: Record<string, any>[],
     columns: Record<string, string>,
     title = 'Export',
-    brand?: ExportBranding
+    brand?: ExportBranding,
+    colorColumns?: Record<string, 'red' | 'green'>,
+    highlightLastRow?: boolean
   ): Promise<Buffer> {
     const { PDFDocument: PDFLibDoc, StandardFonts, rgb } = await import('pdf-lib');
     const pdf = await PDFLibDoc.create();
@@ -550,6 +579,9 @@ class ExportService {
     const zebra = rgb(0.96, 0.968, 0.98);
     const black = rgb(0.07, 0.07, 0.07);
     const white = rgb(1, 1, 1);
+    const green = rgb(0.02, 0.588, 0.412);
+    const red = rgb(0.862, 0.149, 0.149);
+    const cellColor = (k: string) => (colorColumns?.[k] === 'green' ? green : colorColumns?.[k] === 'red' ? red : black);
 
     // Try to embed the logo (PNG/JPEG only).
     let logoImg: any = null;
@@ -604,30 +636,38 @@ class ExportService {
     };
 
     const drawTableHeader = () => {
-      page.drawRectangle({ x: margin, y: y - 16, width: usableW, height: 18, color: blue });
+      page.drawRectangle({ x: margin, y: y - 18, width: usableW, height: 20, color: blue });
       headers.forEach((h, i) => {
-        page.drawText(fit(h, 9, fontBold, colW - 8), { x: margin + i * colW + 4, y: y - 12, size: 9, font: fontBold, color: white });
+        page.drawText(fit(h, 12, fontBold, colW - 8), { x: margin + i * colW + 4, y: y - 13, size: 12, font: fontBold, color: white });
       });
-      y -= 20;
+      y -= 22;
     };
 
     drawHeaderBlock();
     drawTableHeader();
 
+    const amber = rgb(0.996, 0.953, 0.78); // light amber highlight
+    const lastRow = (rows || []).length - 1;
     (rows || []).forEach((r, idx) => {
-      if (y < margin + 24) {
+      if (y < margin + 28) {
         page = pdf.addPage([PAGE_W, PAGE_H]);
         y = PAGE_H - margin;
         drawTableHeader();
       }
-      if (idx % 2 === 1) {
-        page.drawRectangle({ x: margin, y: y - 14, width: usableW, height: 16, color: zebra });
+      const isTotal = highlightLastRow && idx === lastRow;
+      if (isTotal) {
+        page.drawRectangle({ x: margin, y: y - 16, width: usableW, height: 19, color: amber });
+        page.drawRectangle({ x: margin, y: y + 3, width: usableW, height: 1.5, color: navy });
+      } else if (idx % 2 === 1) {
+        page.drawRectangle({ x: margin, y: y - 16, width: usableW, height: 19, color: zebra });
       }
       keys.forEach((k, i) => {
         const val = r[k] === null || r[k] === undefined ? '' : String(r[k]);
-        page.drawText(fit(val, 9, font, colW - 8), { x: margin + i * colW + 4, y: y - 11, size: 9, font, color: black });
+        const c = isTotal ? navy : cellColor(k);
+        const useBold = isTotal || colorColumns?.[k] ? fontBold : font;
+        page.drawText(fit(val, 12, useBold, colW - 8), { x: margin + i * colW + 4, y: y - 13, size: 12, font: useBold, color: c });
       });
-      y -= 16;
+      y -= 19;
     });
 
     const bytes = await pdf.save();

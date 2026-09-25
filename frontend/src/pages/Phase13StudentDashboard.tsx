@@ -221,7 +221,7 @@ export const Phase13StudentDashboard: React.FC = () => {
         <div className="mt-5">
           {/* ── Overview ─────────────────────────────────────────────── */}
           {activeTab === 'overview' && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Announcements scoped to this student's classes + school-wide */}
               <AnnouncementsWidget limit={4} />
 
@@ -406,7 +406,7 @@ export const Phase13StudentDashboard: React.FC = () => {
 
           {/* ── Grades ───────────────────────────────────────────────── */}
           {activeTab === 'grades' && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Performance chart */}
               {gradesChartData.length > 0 && (
                 <Card>
@@ -500,7 +500,7 @@ export const Phase13StudentDashboard: React.FC = () => {
 
           {/* ── Attendance ───────────────────────────────────────────── */}
           {activeTab === 'attendance' && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Attendance breakdown chart */}
               {attendanceChartData.length > 0 && (
                 <Card>

@@ -1766,7 +1766,7 @@ export const SettingsPage: React.FC = () => {
                       </CardHeader>
                       <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {/* Plan Card: Freetong */}
-                        <div className={`p-5 rounded-xl border flex flex-col justify-between ${
+                        <div className={`p-4 sm:p-5 rounded-xl border flex flex-col justify-between ${
                           subscription?.subscription?.plan_type === 'freetong' 
                             ? 'border-blue-500 bg-blue-50/10' 
                             : 'border-gray-200 bg-white'
@@ -1807,7 +1807,7 @@ export const SettingsPage: React.FC = () => {
                         </div>
 
                         {/* Plan Card: Combra */}
-                        <div className={`p-5 rounded-xl border flex flex-col justify-between relative ${
+                        <div className={`p-4 sm:p-5 rounded-xl border flex flex-col justify-between relative ${
                           subscription?.subscription?.plan_type === 'combra' 
                             ? 'border-purple-500 bg-purple-50/10 shadow-sm' 
                             : 'border-gray-200 bg-white'
@@ -1852,7 +1852,7 @@ export const SettingsPage: React.FC = () => {
                         </div>
 
                         {/* Plan Card: Bintumani */}
-                        <div className={`p-5 rounded-xl border flex flex-col justify-between ${
+                        <div className={`p-4 sm:p-5 rounded-xl border flex flex-col justify-between ${
                           subscription?.subscription?.plan_type === 'bintumani' 
                             ? 'border-amber-500 bg-amber-50/10' 
                             : 'border-gray-200 bg-white'
