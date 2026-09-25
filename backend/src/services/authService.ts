@@ -1,10 +1,21 @@
 import { Knex } from 'knex';
+import { createHash } from 'crypto';
 import { JWTService } from './jwtService';
 import { PasswordService } from './passwordService';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import { AuthResponse, UserResponse, UserRole, UserStatus } from '../types/auth';
 import { sendSchoolWelcomeEmail } from './emailService';
+
+/**
+ * Hash a refresh token for at-rest storage. Refresh tokens are high-entropy
+ * signed JWTs (not guessable), so a fast SHA-256 is the correct choice — we
+ * store only the hash and look up by hash, so a DB dump never yields a usable
+ * token. (bcrypt/argon are for low-entropy human passwords, not needed here.)
+ */
+function hashRefreshToken(raw: string): string {
+  return createHash('sha256').update(raw).digest('hex');
+}
 
 export class AuthService {
   constructor(private db: Knex) {}
@@ -78,10 +89,10 @@ export class AuthService {
 
       const refresh_token = JWTService.generateRefreshToken(user.id);
 
-      // Store refresh token
+      // Store the HASH of the refresh token (never the raw value).
       await this.db('refresh_tokens').insert({
         user_id: user.id,
-        token: refresh_token,
+        token_hash: hashRefreshToken(refresh_token),
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
         created_at: new Date(),
       });
@@ -242,7 +253,7 @@ export class AuthService {
 
       await this.db('refresh_tokens').insert({
         user_id: user.id,
-        token: refresh_token,
+        token_hash: hashRefreshToken(refresh_token),
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         created_at: new Date(),
       });
@@ -381,7 +392,7 @@ export class AuthService {
 
     await this.db('refresh_tokens').insert({
       user_id: user.id,
-      token: refreshToken,
+      token_hash: hashRefreshToken(refreshToken),
       expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       created_at: new Date(),
     });
@@ -455,11 +466,12 @@ export class AuthService {
       // Verify refresh token
       const decoded = JWTService.verifyRefreshToken(refreshToken);
 
-      // Check if refresh token exists in database
+      // Look up by the token HASH (we never store the raw token).
+      const tokenHash = hashRefreshToken(refreshToken);
       const storedToken = await this.db('refresh_tokens')
         .where({
           user_id: decoded.userId,
-          token: refreshToken,
+          token_hash: tokenHash,
         })
         .first();
 
@@ -479,7 +491,7 @@ export class AuthService {
       // account must not be able to silently renew its access token.
       if (String(user.status || '').trim().toLowerCase() !== UserStatus.ACTIVE) {
         // Revoke this refresh token so the dead session can't keep trying.
-        await this.db('refresh_tokens').where({ token: refreshToken }).del().catch(() => { /* best effort */ });
+        await this.db('refresh_tokens').where({ token_hash: tokenHash }).del().catch(() => { /* best effort */ });
         throw new AppError(`Your account is ${user.status}. Please contact your school administrator.`, 403, 'ACCOUNT_INACTIVE');
       }
 
