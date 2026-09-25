@@ -169,10 +169,12 @@ export async function getApplicationTrends(months: number = 12, tenantId?: strin
       .where('creator.tenant_id', tenantId);
   }
 
+  // Bind the interval count as a parameter — never interpolate into SQL.
+  const monthsBack = Math.max(0, Math.trunc(Number(months)) || 0);
   const results = await query
     .select(db.raw("TO_CHAR(admission_applications.application_date, 'YYYY-MM') as month"))
     .count('admission_applications.id as count')
-    .where('admission_applications.application_date', '>=', db.raw(`NOW() - INTERVAL '${months} months'`))
+    .where('admission_applications.application_date', '>=', db.raw(`NOW() - (? * INTERVAL '1 month')`, [monthsBack]))
     .groupBy(db.raw("TO_CHAR(admission_applications.application_date, 'YYYY-MM')"))
     .orderBy('month', 'asc');
   

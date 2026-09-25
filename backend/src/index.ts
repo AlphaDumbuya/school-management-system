@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import { logger } from '@utils/logger';
 import { errorHandler } from '@middleware/errorHandler';
 import { requestLogger } from '@middleware/requestLogger';
+import { apiLimiter } from '@middleware/rateLimit';
 import { db } from '@utils/database';
 import authRoutes from '@routes/authRoutes';
 import verificationRoutes from '@routes/verificationRoutes';
@@ -123,6 +124,14 @@ app.use('/api/v1/payments/monime/webhook', express.raw({ type: '*/*', limit: '2m
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(requestLogger);
+
+// Broad per-IP rate ceiling across the whole API. Auth routes layer stricter,
+// purpose-built limiters on top (see routes/authRoutes.ts). The webhook path is
+// excluded so payment providers aren't throttled.
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/v1/payments/monime/webhook')) return next();
+  return apiLimiter(req, res, next);
+});
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

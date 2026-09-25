@@ -24,7 +24,17 @@ import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { PLAN_LIMITS, SubscriptionService } from './subscriptionService';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+// Never fall back to a repo-visible placeholder in production — that would make
+// restore tokens forgeable. Boot-time env validation (utils/env.ts) blocks a
+// missing secret; this is defence-in-depth for the same invariant.
+const JWT_SECRET = (() => {
+  const v = process.env.JWT_SECRET;
+  if (v && v.length >= 32) return v;
+  if ((process.env.NODE_ENV || 'development') === 'production') {
+    throw new Error('JWT_SECRET is missing or too short — refusing to sign restore tokens in production');
+  }
+  return 'dev-only-insecure-jwt_secret-do-not-use-in-production';
+})();
 const RESTORE_TOKEN_TTL = '30d'; // owner may act days after the email
 
 interface RestorePayload { tenantId: string; purpose: 'restore'; }

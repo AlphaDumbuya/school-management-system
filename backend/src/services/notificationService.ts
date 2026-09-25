@@ -373,8 +373,11 @@ class NotificationService {
    */
   async archiveOldNotifications(daysOld: number = 90): Promise<number> {
     try {
+      // Bind the interval count as a parameter (never interpolate into the SQL
+      // string) so a non-numeric value can't inject. Coerce + floor for safety.
+      const days = Math.max(0, Math.trunc(Number(daysOld)) || 0);
       const archived = await db('notifications')
-        .where('createdAt', '<', db.raw(`NOW() - INTERVAL '${daysOld} days'`))
+        .where('createdAt', '<', db.raw(`NOW() - (? * INTERVAL '1 day')`, [days]))
         .del();
 
       logger.info(`Archived ${archived} old notifications`);

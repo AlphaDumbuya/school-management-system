@@ -474,11 +474,37 @@ router.post(
 router.get(
   '/invoices/:invoiceId',
   authenticate,
+  attachUserContext,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { invoiceId } = req.params;
+      const tenantId = (req as any).user?.tenant_id;
+      const role = (req as any).user?.role as string | undefined;
+      const userId = (req as any).user?.id;
 
-      const invoice = await invoiceService.getInvoiceById(invoiceId);
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant context required' });
+      }
+
+      // Tenant-scoped fetch — a cross-tenant id resolves to "not found".
+      const invoice = await invoiceService.getInvoiceById(invoiceId, tenantId);
+
+      // Non-staff (student/parent/guardian) may only view an invoice for a
+      // student they own / are linked to.
+      const STAFF = ['principal', 'super_admin', 'accountant', 'admissions_officer', 'teacher'];
+      if (!STAFF.includes(role || '')) {
+        let allowed = false;
+        if (role === 'student') {
+          const own = await db('students').where({ user_id: userId, tenant_id: tenantId }).first().catch(() => null);
+          allowed = !!own && own.id === invoice.student_id;
+        } else if (role === 'parent' || role === 'guardian') {
+          const link = await db('guardians').where({ student_id: invoice.student_id, user_id: userId }).first().catch(() => null);
+          allowed = !!link;
+        }
+        if (!allowed) {
+          return res.status(403).json({ error: 'You are not allowed to view this invoice' });
+        }
+      }
 
       res.status(200).json({
         success: true,
@@ -502,16 +528,40 @@ router.get(
 router.get(
   '/students/:studentId/invoices',
   authenticate,
+  attachUserContext,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { studentId } = req.params;
       const { status, startDate, endDate } = req.query;
+      const tenantId = (req as any).user?.tenant_id;
+      const role = (req as any).user?.role as string | undefined;
+      const userId = (req as any).user?.id;
+
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant context required' });
+      }
+
+      // Non-staff may only read invoices for a student they own / are linked to.
+      const STAFF = ['principal', 'super_admin', 'accountant', 'admissions_officer', 'teacher'];
+      if (!STAFF.includes(role || '')) {
+        let allowed = false;
+        if (role === 'student') {
+          const own = await db('students').where({ user_id: userId, tenant_id: tenantId }).first().catch(() => null);
+          allowed = !!own && own.id === studentId;
+        } else if (role === 'parent' || role === 'guardian') {
+          const link = await db('guardians').where({ student_id: studentId, user_id: userId }).first().catch(() => null);
+          allowed = !!link;
+        }
+        if (!allowed) {
+          return res.status(403).json({ error: 'You are not allowed to view these invoices' });
+        }
+      }
 
       const invoices = await invoiceService.getStudentInvoices(studentId, {
         status: status as string,
         startDate: startDate as string,
         endDate: endDate as string,
-      });
+      }, tenantId);
 
       res.status(200).json({
         success: true,
@@ -542,12 +592,16 @@ router.patch(
       const { invoiceId } = req.params;
       const { status } = req.body;
       const userId = (req as any).user.id;
+      const tenantId = (req as any).user.tenant_id;
 
       if (!status) {
         return res.status(400).json({ error: 'Status is required' });
       }
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant context required' });
+      }
 
-      const result = await invoiceService.updateInvoiceStatus(invoiceId, status, userId);
+      const result = await invoiceService.updateInvoiceStatus(invoiceId, status, userId, tenantId);
 
       res.status(200).json({
         success: true,
@@ -575,7 +629,8 @@ router.get(
   requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
-      const invoices = await invoiceService.getOverdueInvoices();
+      const tenantId = (req as any).user?.tenant_id;
+      const invoices = await invoiceService.getOverdueInvoices(tenantId);
 
       res.status(200).json({
         success: true,
@@ -978,11 +1033,36 @@ router.get(
 router.get(
   '/invoices/:invoiceId/summary',
   authenticate,
+  attachUserContext,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { invoiceId } = req.params;
+      const tenantId = (req as any).user?.tenant_id;
+      const role = (req as any).user?.role as string | undefined;
+      const userId = (req as any).user?.id;
 
-      const summary = await invoiceService.getInvoiceSummary(invoiceId);
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant context required' });
+      }
+
+      const summary = await invoiceService.getInvoiceSummary(invoiceId, tenantId);
+
+      // Non-staff may only view a summary for their own / linked student.
+      const STAFF = ['principal', 'super_admin', 'accountant', 'admissions_officer', 'teacher'];
+      if (!STAFF.includes(role || '')) {
+        const sid = summary?.student?.id;
+        let allowed = false;
+        if (role === 'student') {
+          const own = await db('students').where({ user_id: userId, tenant_id: tenantId }).first().catch(() => null);
+          allowed = !!own && own.id === sid;
+        } else if (role === 'parent' || role === 'guardian') {
+          const link = await db('guardians').where({ student_id: sid, user_id: userId }).first().catch(() => null);
+          allowed = !!link;
+        }
+        if (!allowed) {
+          return res.status(403).json({ error: 'You are not allowed to view this invoice' });
+        }
+      }
 
       res.status(200).json({
         success: true,

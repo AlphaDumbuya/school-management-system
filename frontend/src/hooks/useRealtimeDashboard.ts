@@ -39,15 +39,16 @@ export const useRealtimeDashboard = (options: RealtimeOptions) => {
     if (socketRef.current?.connected) return;
 
     try {
-      const token = localStorage.getItem('token');
+      // Use the same key apiClient stores under. The server derives identity
+      // (userId/role/tenant) from this token on the handshake — we no longer
+      // send userId/role (the server won't trust client-sent identity anyway).
+      const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
       // On Vercel (same domain), connect to current origin. Locally use VITE_API_URL.
       const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
 
       socketRef.current = io(apiUrl, {
         auth: {
           token,
-          userId: user?.id,
-          role: user?.role,
         },
         reconnection: true,
         reconnectionDelay: 1000,
