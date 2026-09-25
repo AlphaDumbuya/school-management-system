@@ -4,6 +4,7 @@ import { AuthService } from '@services/authService';
 import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
 import { authenticate, authorize, rateLimitLogin, clearLoginAttempts } from '@middleware/authMiddleware';
+import { loginLimiter, otpLimiter, passkeyLimiter } from '@middleware/rateLimit';
 import { logger } from '@utils/logger';
 import { UserRole, UserStatus } from '@types/auth';
 import emailService from '@services/emailService';
@@ -125,7 +126,7 @@ router.post('/register-school', async (req: Request, res: Response, next: NextFu
  * POST /api/v1/auth/login
  * Authenticate user with email and password
  */
-router.post('/login', rateLimitLogin, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/login', loginLimiter, rateLimitLogin, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, password } = req.body;
 
@@ -360,7 +361,7 @@ router.post('/passkeys/register/verify', authenticate, async (req: Request, res:
 });
 
 /** POST /api/v1/auth/passkeys/authenticate/options  (public; needs mfa_token) */
-router.post('/passkeys/authenticate/options', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/passkeys/authenticate/options', passkeyLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { mfa_token } = req.body;
     if (!mfa_token) throw new AppError('Session token is required', 400, 'VALIDATION_ERROR');
@@ -373,7 +374,7 @@ router.post('/passkeys/authenticate/options', async (req: Request, res: Response
 });
 
 /** POST /api/v1/auth/passkeys/authenticate/verify  (public; needs mfa_token) */
-router.post('/passkeys/authenticate/verify', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/passkeys/authenticate/verify', passkeyLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { mfa_token, response } = req.body;
     if (!mfa_token || !response) throw new AppError('Passkey response is required', 400, 'VALIDATION_ERROR');
@@ -402,7 +403,7 @@ router.post('/passkeys/authenticate/verify', async (req: Request, res: Response,
 });
 
 /** POST /api/v1/auth/passkeys/login/options  (public; passwordless — no credentials) */
-router.post('/passkeys/login/options', async (_req: Request, res: Response, next: NextFunction) => {
+router.post('/passkeys/login/options', passkeyLimiter, async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const { default: passkeyService } = await import('@services/passkeyService');
     const options = await passkeyService.getUsernamelessOptions();
@@ -413,7 +414,7 @@ router.post('/passkeys/login/options', async (_req: Request, res: Response, next
 });
 
 /** POST /api/v1/auth/passkeys/login/verify  (public; passwordless) — issues session */
-router.post('/passkeys/login/verify', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/passkeys/login/verify', passkeyLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { response } = req.body;
     if (!response) throw new AppError('Passkey response is required', 400, 'VALIDATION_ERROR');
@@ -579,7 +580,7 @@ router.post(
  * POST /api/v1/auth/reset-password
  * Request password reset (sends email with reset token)
  */
-router.post('/reset-password', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/reset-password', otpLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email } = req.body;
 
@@ -627,7 +628,7 @@ router.post('/reset-password', async (req: Request, res: Response, next: NextFun
  * POST /api/v1/auth/reset-password/confirm
  * Confirm password reset with token
  */
-router.post('/reset-password/confirm', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/reset-password/confirm', otpLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { reset_token, new_password } = req.body;
 
