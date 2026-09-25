@@ -43,6 +43,23 @@ router.post('/', authenticate, attachUserContext, authorize('principal', 'super_
       throw new AppError('Missing required fields: first_name, last_name, enrollment_date', 400, 'VALIDATION_ERROR');
     }
 
+    // If enrolling into a class, it MUST belong to this tenant — otherwise the
+    // new student could be enrolled into another school's class.
+    if (class_id) {
+      const cls = await db('classes')
+        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+        .where('classes.id', class_id)
+        .where(function (this: any) {
+          this.where('academic_sessions.tenant_id', tenantId)
+            .orWhere(function (this: any) {
+              this.whereNull('classes.academic_session_id').where('class_creator.tenant_id', tenantId);
+            });
+        })
+        .first();
+      if (!cls) throw new AppError('Selected class does not belong to this school', 400, 'INVALID_CLASS');
+    }
+
     // Validate date_of_birth format if provided
     if (date_of_birth) {
       const dob = new Date(date_of_birth);
@@ -291,9 +308,12 @@ router.get('/parent/children', authenticate, async (req: Request, res: Response,
       })
       .leftJoin('classes', 'enrollments.class_id', 'classes.id');
 
-    if (tenantId) {
-      childrenQuery = childrenQuery.where('students.tenant_id', tenantId);
+    // Tenant scoping is MANDATORY — without it the guardian_name/email LIKE
+    // match below would span every school. A parent must have a tenant.
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
+    childrenQuery = childrenQuery.where('students.tenant_id', tenantId);
 
     const children = await childrenQuery
       .andWhere(function (this: any) {
@@ -666,9 +686,33 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
 
-    // Check authorization: students can view their own record, others need principal/teacher
-    if (currentUser.role === 'student' && student.user_id !== currentUser?.userId && currentUser.role !== 'principal') {
-      throw new AppError('Insufficient permissions to view this student record', 403, 'AUTHORIZATION_ERROR');
+    // Authorization for viewing a student profile:
+    //  - Staff (principal / super_admin / teacher / admissions_officer): any
+    //    student in their tenant.
+    //  - Student: only their OWN record.
+    //  - Parent/guardian: only a linked child.
+    // (All already tenant-scoped above; this adds per-row ownership for the
+    // non-staff roles so one family can't read another's records.)
+    const STAFF_VIEW_ROLES = ['principal', 'super_admin', 'teacher', 'admissions_officer'];
+    if (!STAFF_VIEW_ROLES.includes(currentUser.role as string)) {
+      if (currentUser.role === 'student') {
+        if (student.user_id !== currentUser.userId) {
+          throw new AppError('Insufficient permissions to view this student record', 403, 'AUTHORIZATION_ERROR');
+        }
+      } else if (currentUser.role === 'parent' || currentUser.role === 'guardian') {
+        const link = await db('guardians')
+          .join('students', 'guardians.student_id', 'students.id')
+          .where('guardians.user_id', currentUser.userId)
+          .where('guardians.student_id', student.id)
+          .where('students.tenant_id', tenantId)
+          .first()
+          .catch(() => null);
+        if (!link) {
+          throw new AppError('Insufficient permissions to view this student record', 403, 'AUTHORIZATION_ERROR');
+        }
+      } else {
+        throw new AppError('Insufficient permissions to view this student record', 403, 'AUTHORIZATION_ERROR');
+      }
     }
 
     // Ensure student + parent login accounts exist with RANDOM per-account temp
@@ -1030,7 +1074,7 @@ router.post('/:studentId/reactivate', authenticate, authorize('principal', 'supe
  * GET /api/v1/students/:studentId/enrollments
  * Get all enrollments for a student
  */
-router.get('/:studentId/enrollments', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:studentId/enrollments', authorize('principal', 'super_admin', 'teacher', 'admissions_officer'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const tenantId = req.user?.tenant_id;
@@ -1072,7 +1116,7 @@ router.get('/:studentId/enrollments', authenticate, async (req: Request, res: Re
  * GET /api/v1/students/:studentId/grades
  * Get all grades for a student
  */
-router.get('/:studentId/grades', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:studentId/grades', authorize('principal', 'super_admin', 'teacher', 'admissions_officer'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const tenantId = req.user?.tenant_id;
@@ -1114,7 +1158,7 @@ router.get('/:studentId/grades', authenticate, async (req: Request, res: Respons
  * GET /api/v1/students/:studentId/attendance
  * Get attendance record for a student
  */
-router.get('/:studentId/attendance', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:studentId/attendance', authorize('principal', 'super_admin', 'teacher', 'admissions_officer'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const classId = req.query.classId as string;
