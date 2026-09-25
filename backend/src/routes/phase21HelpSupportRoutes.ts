@@ -23,6 +23,25 @@ const getUserId = (req: Request): string => {
   return userId;
 };
 
+/**
+ * Assert the current user may access a given ticket: it must belong to their
+ * tenant AND (unless they're a principal/super_admin) be their own ticket.
+ * Prevents IDOR (reading/acting on someone else's ticket) and cross-tenant
+ * access (the ticket must be in the caller's tenant). Returns the ticket row.
+ */
+async function assertTicketAccess(db: Knex, req: Request, ticketId: string): Promise<any> {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const role = (req.user as any)?.role;
+  const isAdmin = role === 'principal' || role === 'super_admin';
+  const ticket = await db('support_tickets').where({ id: ticketId, tenant_id: tenantId }).first();
+  if (!ticket) throw new AppError('Support ticket not found', 404);
+  if (!isAdmin && ticket.user_id !== userId) {
+    throw new AppError('You can only access your own tickets', 403, 'FORBIDDEN');
+  }
+  return ticket;
+}
+
 /** Fire-and-forget support notification — never blocks or fails the request.
  *  Has a hard 8s timeout so a cold-start DB/email call never hangs the function. */
 async function notifyRequester(
@@ -376,6 +395,7 @@ export default function registerPhase21Routes(
   app.get('/api/v1/support/tickets/:ticketId', authenticate, attachUserContext, async (req: Request, res: Response) => {
     try {
       const { ticketId } = req.params;
+      await assertTicketAccess(db, req, ticketId); // tenant + ownership guard
       const tenantId = getTenantId(req);
       const ticket = await ticketService.getTicket(ticketId, tenantId);
       res.status(200).json({ success: true, data: ticket });
@@ -392,8 +412,15 @@ export default function registerPhase21Routes(
     try {
       const { status, priority, category, limit = 50, offset = 0 } = req.query;
       const tenantId = getTenantId(req);
+      const userId = getUserId(req);
+      const role = (req.user as any)?.role;
+      // Admins (principal/super_admin) see all tickets in their school; everyone
+      // else sees ONLY their own. Without this, a parent/student would see every
+      // other user's tickets in the tenant.
+      const isAdmin = role === 'principal' || role === 'super_admin';
 
       const tickets = await ticketService.getTickets(tenantId, {
+        userId: isAdmin ? undefined : userId,
         status: status as string | undefined,
         priority: priority as string | undefined,
         category: category as string | undefined,
@@ -416,6 +443,7 @@ export default function registerPhase21Routes(
       const { ticketId } = req.params;
       const { status, resolution } = req.body;
       if (!status) throw new AppError('status required', 400);
+      await assertTicketAccess(db, req, ticketId); // tenant + ownership guard
       const updated = await ticketService.updateTicketStatus(ticketId, status, resolution);
       void notifyRequester(ticketService, ticketId, 'status', { status });
       res.status(200).json({ success: true, data: updated });
@@ -434,6 +462,7 @@ export default function registerPhase21Routes(
       const { message, attachments, isPublic = true } = req.body;
       const responderId = getUserId(req);
       if (!message) throw new AppError('message required', 400);
+      await assertTicketAccess(db, req, ticketId); // tenant + ownership guard
 
       const response = await ticketService.addResponse(ticketId, responderId, message, attachments || [], isPublic);
       if (isPublic) void notifyRequester(ticketService, ticketId, 'replied', { message });
@@ -450,7 +479,12 @@ export default function registerPhase21Routes(
   app.get('/api/v1/support/tickets/:ticketId/responses', authenticate, attachUserContext, async (req: Request, res: Response) => {
     try {
       const { ticketId } = req.params;
-      const responses = await ticketService.getResponses(ticketId);
+      await assertTicketAccess(db, req, ticketId); // tenant + ownership guard
+      // Non-admins only see public responses (internal notes stay hidden).
+      const role = (req.user as any)?.role;
+      const isAdmin = role === 'principal' || role === 'super_admin';
+      const all = await ticketService.getResponses(ticketId);
+      const responses = isAdmin ? all : all.filter((r: any) => r.isPublic);
       res.status(200).json({ success: true, data: responses });
     } catch (error) {
       logger.error('Failed to get responses', error);

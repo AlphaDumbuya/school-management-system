@@ -291,9 +291,10 @@ export class AuthService {
         throw new AppError('Invalid username or password', 401, 'INVALID_CREDENTIALS');
       }
 
-      // Check user status
-      if (user.status !== UserStatus.ACTIVE) {
-        throw new AppError(`User account is ${user.status}`, 403, 'ACCOUNT_INACTIVE');
+      // Check user status (normalise casing/whitespace so a stray value like
+      // "Suspended" or " suspended " still blocks sign-in).
+      if (String(user.status || '').trim().toLowerCase() !== UserStatus.ACTIVE) {
+        throw new AppError(`Your account is ${user.status}. Please contact your school administrator.`, 403, 'ACCOUNT_INACTIVE');
       }
 
       // Verify password
@@ -361,6 +362,13 @@ export class AuthService {
   private async issueSessionForUser(
     user: any
   ): Promise<{ access_token: string; refresh_token: string; user: UserResponse }> {
+    // Enforce the user's OWN account status on EVERY session-issuing path
+    // (password login, MFA completion, passkey, passwordless). Previously only
+    // password login checked this, so a suspended/dismissed/inactive user could
+    // still complete a passkey/MFA sign-in. Centralising it here closes that gap.
+    if (user.status && String(user.status).trim().toLowerCase() !== UserStatus.ACTIVE) {
+      throw new AppError(`Your account is ${user.status}. Please contact your school administrator.`, 403, 'ACCOUNT_INACTIVE');
+    }
     // Enforce tenant-level restriction before issuing any session.
     await this.assertTenantActive(user);
 
@@ -466,6 +474,14 @@ export class AuthService {
 
       // Get user
       const user = await this.getUserById(decoded.userId);
+
+      // Re-check the user's OWN status — a deactivated / suspended / dismissed
+      // account must not be able to silently renew its access token.
+      if (String(user.status || '').trim().toLowerCase() !== UserStatus.ACTIVE) {
+        // Revoke this refresh token so the dead session can't keep trying.
+        await this.db('refresh_tokens').where({ token: refreshToken }).del().catch(() => { /* best effort */ });
+        throw new AppError(`Your account is ${user.status}. Please contact your school administrator.`, 403, 'ACCOUNT_INACTIVE');
+      }
 
       // Re-check tenant status — a suspended tenant can't silently renew tokens.
       await this.assertTenantActive(user);

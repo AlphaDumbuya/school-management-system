@@ -167,9 +167,15 @@ export class AnnouncementService {
     if (viewerRole && !['principal', 'super_admin'].includes(viewerRole)) {
       const classIds = ctx?.viewerClassIds ?? [];
       const viewerId = ctx?.viewerId;
-      // Audience match
+      // The audiences this viewer's role should receive. 'guardian' and 'parent'
+      // are the same audience (both are parent/guardian logins), so a viewer of
+      // either role sees announcements addressed to 'parent'.
+      const roleAudiences = (viewerRole === 'guardian' || viewerRole === 'parent')
+        ? ['parent', 'guardian']
+        : [viewerRole];
+      // Audience match: 'all' OR any audience mapped to this role.
       query.andWhere((q: any) => {
-        q.where('announcements.audience', 'all').orWhere('announcements.audience', viewerRole);
+        q.where('announcements.audience', 'all').orWhereIn('announcements.audience', roleAudiences);
       });
       // Class scope: null class (school-wide) OR one of the viewer's classes OR authored by them.
       query.andWhere((q: any) => {

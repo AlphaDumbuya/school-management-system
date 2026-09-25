@@ -1485,16 +1485,34 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .count('payments.id as count')
       .groupByRaw('COALESCE(payments.method, payments.payment_method)');
 
-    // ── 6-month collection trend ──
-    const trend = await db('payments')
-      .join('students', 'payments.student_id', 'students.id')
-      .where('students.tenant_id', tenantId)
-      .where('payments.status', 'completed')
-      .where('payments.payment_date', '>=', db.raw("CURRENT_DATE - INTERVAL '6 months'"))
-      .select(db.raw("TO_CHAR(DATE_TRUNC('month', payments.payment_date), 'Mon YYYY') as label"))
-      .sum('payments.amount as total')
-      .groupByRaw("DATE_TRUNC('month', payments.payment_date)")
-      .orderByRaw("DATE_TRUNC('month', payments.payment_date)");
+    // ── 6-month collection trend (zero-filled) ──
+    // Build a continuous run of the last 6 months with generate_series so the
+    // chart line is unbroken even for months with no collections, then LEFT
+    // JOIN the monthly payment sums onto it. Also return a payment count so the
+    // tooltip can show how many transactions made up each month.
+    const trend = await db
+      .with('months', (qb) => {
+        qb.select(db.raw(
+          "generate_series(DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '5 months', DATE_TRUNC('month', CURRENT_DATE), INTERVAL '1 month') AS month",
+        ));
+      })
+      .with('paid', (qb) => {
+        qb.select(db.raw("DATE_TRUNC('month', payments.payment_date) AS month"))
+          .sum('payments.amount as total')
+          .count('payments.id as cnt')
+          .from('payments')
+          .join('students', 'payments.student_id', 'students.id')
+          .where('students.tenant_id', tenantId)
+          .where('payments.status', 'completed')
+          .where('payments.payment_date', '>=', db.raw("DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '5 months'"))
+          .groupByRaw("DATE_TRUNC('month', payments.payment_date)");
+      })
+      .select(db.raw("TO_CHAR(months.month, 'Mon YYYY') as label"))
+      .select(db.raw('COALESCE(paid.total, 0) as total'))
+      .select(db.raw('COALESCE(paid.cnt, 0) as count'))
+      .from('months')
+      .leftJoin('paid', 'paid.month', 'months.month')
+      .orderBy('months.month');
 
     // ── Collection + outstanding by class LEVEL (from fees) ──
     // collected = SUM(amount) − SUM(balance).
@@ -1603,7 +1621,7 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
           paidCount: Number(totals?.paid_count) || 0,
         },
         byMethod: byMethod.map((r: any) => ({ method: r.method || 'unknown', total: Number(r.total) || 0, count: Number(r.count) || 0 })),
-        trend: trend.map((r: any) => ({ label: r.label, total: Number(r.total) || 0 })),
+        trend: trend.map((r: any) => ({ label: r.label, total: Number(r.total) || 0, count: Number(r.count) || 0 })),
         byLevel: byLevel.map((r: any) => ({ level: r.level, billed: Number(r.billed) || 0, collected: Number(r.collected) || 0, outstanding: Number(r.outstanding) || 0, rate: rate(r.billed, r.collected) })),
         byClass: byClass.map((r: any) => ({ className: r.class_name, billed: Number(r.billed) || 0, collected: Number(r.collected) || 0, outstanding: Number(r.outstanding) || 0, rate: rate(r.billed, r.collected) })),
         byTerm: byTerm.map((r: any) => ({ term: r.term, billed: Number(r.billed) || 0, collected: Number(r.collected) || 0, outstanding: Number(r.outstanding) || 0, rate: rate(r.billed, r.collected) })),

@@ -4,9 +4,9 @@
  * Phase 11: Frontend Dashboard Implementation
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Navigate } from 'react-router-dom';
-import useAuth from '@hooks/useAuth';
+import useAuth, { getDashboardPath } from '@hooks/useAuth';
 import { UserRole } from '@appTypes/index';
 
 interface ProtectedRouteProps {
@@ -18,7 +18,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   requiredRoles,
 }) => {
-  const { isAuthenticated, canAccess, isLoading } = useAuth();
+  const { isAuthenticated, canAccess, isLoading, user } = useAuth();
 
   // Show loading state
   if (isLoading) {
@@ -39,9 +39,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return <Navigate to="/login" replace />;
   }
 
-  // Check role-based access
+  // Check role-based access. When the user's role doesn't grant this route —
+  // e.g. they were just promoted/migrated to a different portal — send them to
+  // THEIR correct dashboard rather than a dead-end "unauthorized" page. This is
+  // what makes a promotion "move" a staff member into their new portal cleanly.
   if (requiredRoles && !canAccess(requiredRoles)) {
-    return <Navigate to="/unauthorized" replace />;
+    const home = user ? getDashboardPath(user.role) : '/login';
+    return <Navigate to={home} replace />;
   }
 
   return <>{children}</>;

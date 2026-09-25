@@ -32,7 +32,7 @@ router.get('/share-link', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, Us
  * GET /api/v1/admissions/export?format=csv|excel|pdf
  * Download admission applications for the tenant. Declared before /:appId.
  */
-router.get('/export', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/export', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = req.user?.tenant_id;
     if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
@@ -99,6 +99,23 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
 
     if (!tenantId) {
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
+
+    // If a class was chosen, it MUST belong to this tenant — otherwise the
+    // resulting student could be enrolled into another school's class.
+    if (req.body.class_applying_for) {
+      const cls = await db('classes')
+        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+        .where('classes.id', req.body.class_applying_for)
+        .where(function () {
+          this.where('academic_sessions.tenant_id', tenantId)
+            .orWhere(function () {
+              this.whereNull('classes.academic_session_id').where('class_creator.tenant_id', tenantId);
+            });
+        })
+        .first();
+      if (!cls) throw new AppError('Selected class does not belong to this school', 400, 'INVALID_CLASS');
     }
 
     // Generate application ID according to tenant settings

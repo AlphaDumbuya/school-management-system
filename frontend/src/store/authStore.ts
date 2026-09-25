@@ -17,6 +17,10 @@ interface AuthStore {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  /** Backend error code from the last failed login (e.g. TENANT_SUSPENDED). */
+  loginErrorCode: string | null;
+  /** School support contact attached to an access-denied login error. */
+  loginErrorContact: { schoolName: string | null; email: string | null; phone: string | null } | null;
   accessToken: string | null;
   isInitialized: boolean;
   /** Short-lived token issued when a login needs a 2FA code. */
@@ -48,6 +52,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   isAuthenticated: authService.isAuthenticated(),
   isLoading: false,
   error: null,
+  loginErrorCode: null,
+  loginErrorContact: null,
   accessToken: authService.getAccessToken(),
   isInitialized: false,
   mfaToken: null,
@@ -111,6 +117,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
     setIsLoading(true);
     setError(null);
+    set({ loginErrorCode: null, loginErrorContact: null });
 
     try {
       const response = await authService.login({ email, password });
@@ -141,6 +148,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         return true;
       } else {
         setError(response.error || 'Login failed');
+        // Capture the backend code + school contact so the login screen can
+        // show dynamic, tenant-specific guidance for access-denied states.
+        set({
+          loginErrorCode: (response as any)?.code ?? null,
+          loginErrorContact: (response as any)?.schoolContact ?? null,
+        });
         return false;
       }
     } catch (error) {

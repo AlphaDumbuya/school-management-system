@@ -59,6 +59,8 @@ export interface TeacherFormData {
   form_class_id?: string;
   assigned_classes?: string[];
   assigned_subjects?: string[];
+  /** Reason for a status change (suspend/dismiss) — shown to the staff member. */
+  status_reason?: string;
 }
 
 export interface ListTeachersParams {
@@ -94,8 +96,10 @@ export const teachersService = {
     );
   },
 
-  async deactivateTeacher(id: string) {
-    return apiClient.delete(`/api/v1/teachers/${id}`);
+  async deactivateTeacher(id: string, reason?: string) {
+    // Pass the reason as a query param so it reaches the DELETE handler.
+    const qs = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+    return apiClient.delete(`/api/v1/teachers/${id}${qs}`);
   },
 };
 

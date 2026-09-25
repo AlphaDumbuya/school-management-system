@@ -45,6 +45,31 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
+  // Refresh the access token once (mirrors the apiClient interceptor). Exports
+  // use a raw fetch for the binary stream, so they don't go through axios and
+  // must handle an expired access token themselves — otherwise a stale token
+  // just fails the download with a 401.
+  const refreshAccessToken = async (): Promise<string | null> => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) return null;
+    try {
+      const resp = await fetch(`${API_CONFIG.baseURL}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!resp.ok) return null;
+      const body = await resp.json().catch(() => ({}));
+      const accessToken = body.access_token || body.accessToken || body?.data?.accessToken;
+      const newRefresh = body.refresh_token || body.refreshToken || body?.data?.refreshToken;
+      if (accessToken) localStorage.setItem('accessToken', accessToken);
+      if (newRefresh) localStorage.setItem('refreshToken', newRefresh);
+      return accessToken || null;
+    } catch {
+      return null;
+    }
+  };
+
   const doExport = async (format: 'csv' | 'excel' | 'pdf') => {
     setBusy(format);
     setOpen(false);
@@ -60,22 +85,49 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         }
       });
       qs.set('format', format);
-      const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
-      const res = await fetch(`${API_CONFIG.baseURL}${endpoint}?${qs.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const url = `${API_CONFIG.baseURL}${endpoint}?${qs.toString()}`;
+
+      const call = (tok: string | null) =>
+        fetch(url, {
+          headers: tok ? { Authorization: `Bearer ${tok}` } : undefined,
+          credentials: 'include',
+        });
+
+      let token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+      let res = await call(token);
+
+      // Access token expired → refresh once and retry (same as axios does).
+      if (res.status === 401) {
+        const fresh = await refreshAccessToken();
+        if (fresh) {
+          res = await call(fresh);
+        }
+      }
+
+      if (!res.ok) {
+        // Surface the server's message when it sent JSON (e.g. a real error).
+        let msg = `Export failed (${res.status})`;
+        try {
+          const ct = res.headers.get('content-type') || '';
+          if (ct.includes('application/json')) {
+            const j = await res.json();
+            msg = j?.error || j?.message || msg;
+          }
+        } catch { /* keep default */ }
+        if (res.status === 401) msg = 'Your session expired. Please sign in again and retry.';
+        throw new Error(msg);
+      }
+
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const objUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       const date = new Date().toISOString().slice(0, 10);
-      link.href = url;
+      link.href = objUrl;
       link.download = `${filename}-${date}.${EXT[format]}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(objUrl);
     } catch (err: any) {
       showToast.error(err?.message || 'Could not export. Please try again.');
     } finally {

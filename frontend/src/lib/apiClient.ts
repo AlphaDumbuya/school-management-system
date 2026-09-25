@@ -179,14 +179,17 @@ axiosInstance.interceptors.response.use(
       // scattered 403s. Any authenticated request can carry this.
       const code = (error.response?.data as any)?.error?.code
         || (error.response?.data as any)?.code;
-      if (code === 'TENANT_SUSPENDED' || code === 'TENANT_UNAVAILABLE') {
+      if (code === 'TENANT_SUSPENDED' || code === 'TENANT_UNAVAILABLE' || code === 'ACCOUNT_INACTIVE') {
+        // Either the whole school was suspended, or THIS user's own account was
+        // deactivated / suspended / dismissed mid-session. Cut the session off
+        // immediately rather than leaving a half-working stale session.
         try {
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
           localStorage.removeItem('user');
         } catch { /* ignore */ }
         if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-          window.location.assign('/login?suspended=1');
+          window.location.assign(code === 'ACCOUNT_INACTIVE' ? '/login?disabled=1' : '/login?suspended=1');
         }
       } else if (code === 'SUBSCRIPTION_EXPIRED' || code === 'PLAN_LIMIT_REACHED') {
         // Broadcast so a single global listener can toast + prompt an upgrade,
@@ -309,6 +312,10 @@ interface ErrorResponse {
   error: string;
   message?: string;
   statusCode?: number;
+  /** Backend error code, e.g. TENANT_SUSPENDED / ACCOUNT_INACTIVE. */
+  code?: string;
+  /** School's own support contact, attached on access-denied login errors. */
+  schoolContact?: { schoolName: string | null; email: string | null; phone: string | null } | null;
 }
 
 const handleError = (error: unknown): ErrorResponse => {
@@ -370,10 +377,15 @@ const handleError = (error: unknown): ErrorResponse => {
 
     console.error(`API Error [${status}]:`, friendlyMessage);
 
+    const code = (typeof errorField === 'object' && errorField !== null) ? errorField.code : undefined;
+    const schoolContact = (typeof errorField === 'object' && errorField !== null) ? errorField.schoolContact : undefined;
+
     return {
       success: false,
       error: friendlyMessage,
       statusCode: status,
+      code,
+      schoolContact,
     };
   }
 

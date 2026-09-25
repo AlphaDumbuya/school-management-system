@@ -23,6 +23,8 @@ export interface SchoolInfo {
   accreditation_status?: string;
   timezone?: string;
   language_preference?: string;
+  /** School level: "Primary", "Secondary (JSS & SSS)", "Primary & Secondary", … */
+  school_type?: string;
 }
 
 export interface GradeEntry {

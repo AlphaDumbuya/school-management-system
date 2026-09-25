@@ -32,6 +32,8 @@ export interface ChartCardProps {
   dateRangeFilter?: React.ReactNode;
   donutCenterLabel?: string;
   colors?: string[];
+  /** Formats numeric values in the Y-axis + tooltip (e.g. compact currency). */
+  valueFormatter?: (v: number) => string;
   emptyState?: {
     message: string;
     description?: string;
@@ -60,8 +62,9 @@ const GRAD_STOPS: Record<string, [string, string]> = {
 };
 
 // ── Premium tooltip ──────────────────────────────────────────────────────────
-const CustomTooltip: React.FC<TooltipProps<any, any>> = ({ active, payload, label }) => {
+const CustomTooltip: React.FC<TooltipProps<any, any> & { fmt?: (v: number) => string }> = ({ active, payload, label, fmt }) => {
   if (!active || !payload?.length) return null;
+  const f = fmt ?? ((v: number) => v?.toLocaleString());
   return (
     <div className="bg-gray-950/95 backdrop-blur-md text-white rounded-xl px-3 py-2.5 text-xs shadow-2xl border border-white/10 min-w-[110px] sm:min-w-[130px] sm:px-4 sm:py-3">
       {label && (
@@ -78,7 +81,7 @@ const CustomTooltip: React.FC<TooltipProps<any, any>> = ({ active, payload, labe
             />
             <span className="text-white/60 truncate">{entry.name}</span>
           </div>
-          <span className="font-black text-white flex-shrink-0">{entry.value?.toLocaleString()}</span>
+          <span className="font-black text-white flex-shrink-0">{f(Number(entry.value) || 0)}</span>
         </div>
       ))}
     </div>
@@ -86,15 +89,16 @@ const CustomTooltip: React.FC<TooltipProps<any, any>> = ({ active, payload, labe
 };
 
 // ── Pie tooltip ──────────────────────────────────────────────────────────────
-const PieTooltip: React.FC<TooltipProps<any, any>> = ({ active, payload }) => {
+const PieTooltip: React.FC<TooltipProps<any, any> & { fmt?: (v: number) => string }> = ({ active, payload, fmt }) => {
   if (!active || !payload?.length) return null;
   const entry = payload[0];
+  const f = fmt ?? ((v: number) => v?.toLocaleString());
   return (
     <div className="bg-gray-950/95 backdrop-blur-md text-white rounded-xl px-4 py-3 text-xs shadow-2xl border border-white/10">
       <div className="flex items-center gap-2">
         <span className="w-2.5 h-2.5 rounded-full ring-1 ring-white/20" style={{ backgroundColor: entry.payload?.fill }} />
         <span className="font-semibold">{entry.name}</span>
-        <span className="font-black ml-auto">{entry.value?.toLocaleString()}</span>
+        <span className="font-black ml-auto">{f(Number(entry.value) || 0)}</span>
       </div>
     </div>
   );
@@ -149,6 +153,7 @@ export const ChartCard: React.FC<ChartCardProps> = ({
   dateRangeFilter,
   donutCenterLabel,
   colors = PALETTE,
+  valueFormatter,
   emptyState,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -210,9 +215,10 @@ export const ChartCard: React.FC<ChartCardProps> = ({
             tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 500 }}
             tickLine={false}
             axisLine={false}
-            width={38}
+            width={valueFormatter ? 52 : 38}
+            tickFormatter={valueFormatter}
           />
-          <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#CBD5E1', strokeDasharray: '4 4', strokeWidth: 1 }} />
+          <Tooltip content={<CustomTooltip fmt={valueFormatter} />} cursor={{ stroke: '#CBD5E1', strokeDasharray: '4 4', strokeWidth: 1 }} />
           <Legend content={lineLegend} />
           {series.map((s, i) => {
             const c = colors[i % colors.length];
@@ -264,9 +270,10 @@ export const ChartCard: React.FC<ChartCardProps> = ({
             tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 500 }}
             tickLine={false}
             axisLine={false}
-            width={38}
+            width={valueFormatter ? 52 : 38}
+            tickFormatter={valueFormatter}
           />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
+          <Tooltip content={<CustomTooltip fmt={valueFormatter} />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
           <Legend content={barLegend} />
           {series.map((s, i) => (
             <Bar
@@ -349,7 +356,7 @@ export const ChartCard: React.FC<ChartCardProps> = ({
             </text>
           </>
         )}
-        <Tooltip content={<PieTooltip />} />
+        <Tooltip content={<PieTooltip fmt={valueFormatter} />} />
         <Legend content={<CustomLegend />} />
       </PieChart>
     );
