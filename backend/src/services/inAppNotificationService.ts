@@ -183,9 +183,11 @@ class InAppNotificationService {
    */
   async archiveInAppNotifications(recipientId: string, daysOld: number = 30): Promise<number> {
     try {
+      // Bind the interval count as a parameter — never interpolate into SQL.
+      const days = Math.max(0, Math.trunc(Number(daysOld)) || 0);
       const archived = await db('in_app_notifications')
         .where({ recipientId })
-        .where('createdAt', '<', db.raw(`NOW() - INTERVAL '${daysOld} days'`))
+        .where('createdAt', '<', db.raw(`NOW() - (? * INTERVAL '1 day')`, [days]))
         .update({
           expiresAt: db.fn.now(),
         });
