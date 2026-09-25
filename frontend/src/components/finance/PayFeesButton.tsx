@@ -51,7 +51,6 @@ interface PayFeesButtonProps {
   showHint?: boolean;
   autoStart?: boolean;
   onAutoStarted?: () => void;
-  allowPartial?: boolean;
   /** Optional list of payable scopes (term/year/charges). When 2+ are provided,
    *  the wizard opens a "what to pay for" step first. */
   scopes?: PayScope[];
@@ -69,7 +68,7 @@ const fmtLe = (n: number) => `Le ${(Number(n) || 0).toLocaleString(undefined, { 
 
 export const PayFeesButton: React.FC<PayFeesButtonProps> = ({
   invoiceId, studentId, amount, label, disabled, size = 'md', className = '', children, showHint = false,
-  autoStart = false, onAutoStarted, allowPartial = true, scopes,
+  autoStart = false, onAutoStarted, scopes,
 }) => {
   const queryClient = useQueryClient();
   const [flow, setFlow] = useState<FlowStatus>('idle');
