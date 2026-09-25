@@ -122,6 +122,18 @@ export const attendanceService = {
     );
   },
 
+  /** Server-computed attendance analytics (totals, rate, at-risk, per-class). */
+  async getAnalytics(classId?: string) {
+    return apiClient.get<{
+      success: boolean;
+      data: {
+        total: number; present: number; late: number; absent: number; excused: number; rate: number;
+        atRisk: { name: string; admissionNo: string; rate: number; total: number; p: number }[];
+        classRates: { name: string; rate: number; total: number }[];
+      };
+    }>('/api/v1/attendance/analytics', { params: { classId } });
+  },
+
   async getClassAttendanceSummary(classId: string, date?: string, session_type?: SessionType) {
     return apiClient.get<{
       class_id: string;

@@ -122,7 +122,10 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, U
         'users.email',
         'users.photo_url',
         'users.status as user_status',
-        'users.temp_password',
+        // NOTE: temp_password is intentionally NOT selected in the bulk list —
+        // returning every teacher's plaintext credential is a security risk.
+        // It's exposed only on the single GET /:id detail view (principal
+        // handing out one teacher's credentials).
         'users.last_login',
         'teachers.phone',
         'teachers.specialization',
@@ -310,13 +313,23 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       throw new AppError('Missing required profile fields: email, first_name, last_name', 400, 'VALIDATION_ERROR');
     }
 
-    // Check if email already registered in users
-    const existingUser = await trx('users').where('email', email).first();
-    if (existingUser) {
-      throw new AppError('Email is already registered', 409, 'CONFLICT');
+    // Validate status against a server-side whitelist.
+    const VALID_STAFF_STATUSES = ['active', 'inactive', 'suspended', 'dismissed'];
+    if (status !== undefined && status !== null && !VALID_STAFF_STATUSES.includes(String(status))) {
+      throw new AppError(`Status must be one of: ${VALID_STAFF_STATUSES.join(', ')}`, 400, 'VALIDATION_ERROR');
     }
 
     const tenantId = (req as any).user.tenant_id;
+
+    // Email uniqueness is scoped to THIS tenant (the users table is unique on
+    // (tenant_id, email)), so the same email can exist across different schools.
+    const existingUser = await trx('users')
+      .where('tenant_id', tenantId)
+      .whereRaw('LOWER(email) = ?', [String(email).toLowerCase()])
+      .first();
+    if (existingUser) {
+      throw new AppError('Email is already registered in this school', 409, 'CONFLICT');
+    }
 
     // Create user credentials
     const tempPassword = PasswordService.generateTemporaryPassword();
@@ -439,6 +452,13 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
       assigned_classes = [],
       assigned_subjects = [],
     } = req.body;
+
+    // Validate the status transition against a server-side whitelist so a bad
+    // client value can never be persisted.
+    const VALID_STAFF_STATUSES = ['active', 'inactive', 'suspended', 'dismissed'];
+    if (status !== undefined && status !== null && !VALID_STAFF_STATUSES.includes(String(status))) {
+      throw new AppError(`Status must be one of: ${VALID_STAFF_STATUSES.join(', ')}`, 400, 'VALIDATION_ERROR');
+    }
 
     const teacher = await trx('teachers')
       .join('users', 'teachers.user_id', 'users.id')
