@@ -10,7 +10,6 @@ import {
   Calendar,
   AlertCircle,
   DollarSign,
-  Mail,
   User,
   CreditCard,
   CheckCircle2,
@@ -154,11 +153,6 @@ export const SettingsPage: React.FC = () => {
     fin_min_percent_term: 0,
     fin_charges_compulsory_first_term: false,
     fin_late_fee_percent: 0,
-    system_email: '',
-    sms_sender_name: 'WiSkul',
-    whatsapp_enabled: false,
-    email_notifications_enabled: true,
-    sms_notifications_enabled: true,
     language: 'en',
     date_format: 'YYYY-MM-DD',
     time_format: '12h',
@@ -470,7 +464,6 @@ export const SettingsPage: React.FC = () => {
     { id: 'grading', label: 'Grading & Results', icon: <GraduationCap size={18} />, adminOnly: true },
     { id: 'attendance', label: 'Attendance Rules', icon: <AlertCircle size={18} />, adminOnly: true },
     { id: 'financial', label: 'Financial Info', icon: <DollarSign size={18} />, adminOnly: true },
-    { id: 'comms', label: 'Communications', icon: <Mail size={18} />, adminOnly: true },
     { id: 'storage', label: 'File Storage', icon: <HardDrive size={18} />, adminOnly: true },
     { id: 'billing', label: 'Plan & Billing', icon: <CreditCard size={18} />, adminOnly: true },
     { id: 'report-card', label: 'Report Card', icon: <GraduationCap size={18} />, adminOnly: true },
@@ -1648,74 +1641,10 @@ export const SettingsPage: React.FC = () => {
                   </Card>
                 )}
 
-                {/* ── COMMUNICATIONS TAB ── */}
-                {activeTab === 'comms' && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2.5">
-                        <span className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><Mail size={18} /></span>
-                        Communication Sender Defaults
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="sm:col-span-2">
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Sender Email</label>
-                          <input
-                            type="email"
-                            placeholder="notifications@school.com"
-                            value={settings.system_email}
-                            onChange={(e) => setSettings({ ...settings, system_email: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">SMS Sender Name</label>
-                          <input
-                            type="text"
-                            maxLength={11}
-                            placeholder="WiSkul"
-                            value={settings.sms_sender_name}
-                            onChange={(e) => setSettings({ ...settings, sms_sender_name: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          />
-                        </div>
-                      </div>
-
-                      <hr className="my-6 border-gray-100" />
-                      <h4 className="text-sm font-bold text-gray-800 mb-3">Notification Channels</h4>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            id="email_notifications_enabled"
-                            checked={settings.email_notifications_enabled}
-                            onChange={(e) => setSettings({ ...settings, email_notifications_enabled: e.target.checked })}
-                            className="rounded text-blue-600 focus:ring-blue-500 h-4.5 w-4.5 border-gray-300"
-                          />
-                          <label htmlFor="email_notifications_enabled" className="text-sm font-semibold text-gray-700">Enable outbound Email notifications (Brevo SMTP)</label>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            id="sms_notifications_enabled"
-                            checked={settings.sms_notifications_enabled}
-                            onChange={(e) => setSettings({ ...settings, sms_notifications_enabled: e.target.checked })}
-                            className="rounded text-blue-600 focus:ring-blue-500 h-4.5 w-4.5 border-gray-300"
-                          />
-                          <label htmlFor="sms_notifications_enabled" className="text-sm font-semibold text-gray-700">Enable outbound SMS alerts (Twilio)</label>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-end mt-4">
-                        <Button onClick={handleSaveSettings} disabled={saving}>
-                          {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                          Save Communication Config
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+                {/* Communications tab removed: the tenant email sender is the
+                    school's verified sender (managed via school profile / setup),
+                    per-recipient email prefs live on each user, and SMS is not
+                    active in this version — so the tab had no functional fields. */}
 
                 {/* ── FILE STORAGE TAB ── */}
                 {activeTab === 'storage' && (
