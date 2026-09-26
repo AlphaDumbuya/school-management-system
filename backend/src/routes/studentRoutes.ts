@@ -1083,23 +1083,29 @@ router.get('/:studentId/enrollments', authorize('principal', 'super_admin', 'tea
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
-    const student = await db('students')
-      .select('*')
-      .where('tenant_id', tenantId)
-      .andWhere(function() {
-        this.where('student_id', studentId)
-          .orWhere('id', studentId);
-      })
-      .first();
+    // RLS-scoped: run in a tenant transaction so the DB itself enforces
+    // isolation (defence-in-depth alongside the explicit tenant_id filter).
+    const run = req.withTenant ?? ((fn: any) => fn(db));
+    const { student, enrollments } = await run(async (trx: any) => {
+      const student = await trx('students')
+        .select('*')
+        .where('tenant_id', tenantId)
+        .andWhere(function (this: any) {
+          this.where('student_id', studentId).orWhere('id', studentId);
+        })
+        .first();
+      if (!student) return { student: null, enrollments: [] };
+
+      const enrollments = await trx('enrollments')
+        .select('id', 'enrollment_id', 'class_id', 'academic_session_id', 'enrollment_date', 'status', 'roll_number', 'created_at')
+        .where('student_id', student.id)
+        .orderBy('enrollment_date', 'desc');
+      return { student, enrollments };
+    });
 
     if (!student) {
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
-
-    const enrollments = await db('enrollments')
-      .select('id', 'enrollment_id', 'class_id', 'academic_session_id', 'enrollment_date', 'status', 'roll_number', 'created_at')
-      .where('student_id', student.id)
-      .orderBy('enrollment_date', 'desc');
 
     res.json({
       student_id: student.student_id,
@@ -1125,23 +1131,27 @@ router.get('/:studentId/grades', authorize('principal', 'super_admin', 'teacher'
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
-    const student = await db('students')
-      .select('*')
-      .where('tenant_id', tenantId)
-      .andWhere(function() {
-        this.where('student_id', studentId)
-          .orWhere('id', studentId);
-      })
-      .first();
+    const run = req.withTenant ?? ((fn: any) => fn(db));
+    const { student, grades } = await run(async (trx: any) => {
+      const student = await trx('students')
+        .select('*')
+        .where('tenant_id', tenantId)
+        .andWhere(function (this: any) {
+          this.where('student_id', studentId).orWhere('id', studentId);
+        })
+        .first();
+      if (!student) return { student: null, grades: [] };
+
+      const grades = await trx('grades')
+        .select('id', 'subject_id', 'class_id', 'marks_obtained', 'total_marks', 'grade', 'status', 'created_at')
+        .where('student_id', student.id)
+        .orderBy('created_at', 'desc');
+      return { student, grades };
+    });
 
     if (!student) {
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
-
-    const grades = await db('grades')
-      .select('id', 'subject_id', 'class_id', 'marks_obtained', 'total_marks', 'grade', 'status', 'created_at')
-      .where('student_id', student.id)
-      .orderBy('created_at', 'desc');
 
     res.json({
       student_id: student.student_id,
@@ -1168,28 +1178,28 @@ router.get('/:studentId/attendance', authorize('principal', 'super_admin', 'teac
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
-    const student = await db('students')
-      .select('*')
-      .where('tenant_id', tenantId)
-      .andWhere(function() {
-        this.where('student_id', studentId)
-          .orWhere('id', studentId);
-      })
-      .first();
+    const run = req.withTenant ?? ((fn: any) => fn(db));
+    const { student, attendance } = await run(async (trx: any) => {
+      const student = await trx('students')
+        .select('*')
+        .where('tenant_id', tenantId)
+        .andWhere(function (this: any) {
+          this.where('student_id', studentId).orWhere('id', studentId);
+        })
+        .first();
+      if (!student) return { student: null, attendance: [] };
+
+      let query = trx('attendance')
+        .select('id', 'class_id', 'date', 'status', 'remarks', 'created_at')
+        .where('student_id', student.id);
+      if (classId) query = query.where('class_id', classId);
+      const attendance = await query.orderBy('date', 'desc');
+      return { student, attendance };
+    });
 
     if (!student) {
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
-
-    let query = db('attendance')
-      .select('id', 'class_id', 'date', 'status', 'remarks', 'created_at')
-      .where('student_id', student.id);
-
-    if (classId) {
-      query = query.where('class_id', classId);
-    }
-
-    const attendance = await query.orderBy('date', 'desc');
 
     // Calculate attendance percentage
     const total = attendance.length;
