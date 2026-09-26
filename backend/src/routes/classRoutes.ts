@@ -9,6 +9,47 @@ const router = Router();
 router.use(authenticate);
 router.use(attachUserContext);
 
+// ── Tenant-ownership guards ───────────────────────────────────────────────────
+// classes has no tenant_id column; a class belongs to a tenant via its session
+// (or, for session-less classes, its creator). These helpers stop a class from
+// referencing a teacher / promotion-target class from ANOTHER school.
+
+/** True if the given class id belongs to this tenant (session or creator based). */
+async function classInTenant(classId: string, tenantId: string): Promise<boolean> {
+  const row = await db('classes')
+    .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+    .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+    .where('classes.id', classId)
+    .where(function (this: any) {
+      this.where('academic_sessions.tenant_id', tenantId).orWhere(function (this: any) {
+        this.whereNull('classes.academic_session_id').where('class_creator.tenant_id', tenantId);
+      });
+    })
+    .first()
+    .catch(() => null);
+  return !!row;
+}
+
+/** Validate that a class_teacher_id (if provided) is a teacher in this tenant. */
+async function assertTeacherInTenant(teacherId: string | null | undefined, tenantId: string): Promise<void> {
+  if (!teacherId) return;
+  const t = await db('teachers')
+    .join('users', 'teachers.user_id', 'users.id')
+    .where('teachers.id', teacherId)
+    .where('users.tenant_id', tenantId)
+    .first()
+    .catch(() => null);
+  if (!t) throw new AppError('Selected class teacher does not belong to this school', 400, 'INVALID_TEACHER');
+}
+
+/** Validate that a next_class_id (if provided) is a class in this tenant. */
+async function assertNextClassInTenant(nextClassId: string | null | undefined, tenantId: string): Promise<void> {
+  if (!nextClassId) return;
+  if (!(await classInTenant(nextClassId, tenantId))) {
+    throw new AppError('Selected promotion target class does not belong to this school', 400, 'INVALID_NEXT_CLASS');
+  }
+}
+
 /**
  * POST /api/v1/classes
  * Create a new class
@@ -47,6 +88,35 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       if (!validSession) {
         throw new AppError('Academic session not found or access denied', 400, 'VALIDATION_ERROR');
       }
+    }
+
+    // Cross-tenant reference guards: a class can't point at another school's
+    // teacher or promotion-target class.
+    await assertTeacherInTenant(class_teacher_id, tenantId);
+    await assertNextClassInTenant(next_class_id, tenantId);
+
+    // Duplicate guard: same level + name + section within the same session for
+    // this tenant. Prevents accidentally creating "JSS 1A" twice.
+    const dup = await db('classes')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+      .whereRaw('LOWER(classes.name) = ?', [String(name).trim().toLowerCase()])
+      .where('classes.level', level)
+      .where(function (this: any) {
+        const sec = section || null;
+        if (sec) this.whereRaw('LOWER(classes.section) = ?', [String(sec).toLowerCase()]);
+        else this.whereNull('classes.section');
+      })
+      .where('classes.status', 'active')
+      .where(function (this: any) {
+        this.where('academic_sessions.tenant_id', tenantId).orWhere(function (this: any) {
+          this.whereNull('classes.academic_session_id').where('class_creator.tenant_id', tenantId);
+        });
+      })
+      .first()
+      .catch(() => null);
+    if (dup) {
+      throw new AppError('A class with this name and level already exists', 409, 'DUPLICATE_CLASS');
     }
 
     const [inserted] = await db('classes').insert({
@@ -365,6 +435,14 @@ router.put('/:classId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUP
 
     if (!classData) {
       throw new AppError('Class not found', 404, 'NOT_FOUND');
+    }
+
+    // Cross-tenant reference guards on update too.
+    await assertTeacherInTenant(class_teacher_id, tenantId);
+    await assertNextClassInTenant(next_class_id, tenantId);
+    // A class can't promote into itself (would loop forever at year-end).
+    if (next_class_id && String(next_class_id) === String(classId)) {
+      throw new AppError('A class cannot be its own promotion target', 400, 'INVALID_NEXT_CLASS');
     }
 
     const updateData: any = {};
