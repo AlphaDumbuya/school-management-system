@@ -222,11 +222,14 @@ export class FeeService {
   /**
    * Get fee statistics
    */
-  async getFeeStatistics(classId?: string): Promise<any> {
+  async getFeeStatistics(classId?: string, tenantId?: string): Promise<any> {
     try {
       logger.info(`Calculating fee statistics for class ${classId}`);
 
       let query = this.db('fees');
+
+      // Tenant scoping so aggregates never sum across schools.
+      if (tenantId) query = query.where('tenant_id', tenantId);
 
       if (classId) {
         query = query.where('class_id', classId);
@@ -299,14 +302,17 @@ export class FeeService {
   /**
    * Get overdue fees
    */
-  async getOverdueFees(daysOverdue: number = 0): Promise<any[]> {
+  async getOverdueFees(daysOverdue: number = 0, tenantId?: string): Promise<any[]> {
     try {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysOverdue);
 
-      const fees = await this.db('fees')
+      let base = this.db('fees')
         .where('fees.due_date', '<', cutoffDate)
-        .whereIn('fees.status', ['pending', 'partial', 'overdue'])
+        .whereIn('fees.status', ['pending', 'partial', 'overdue']);
+      if (tenantId) base = base.where('fees.tenant_id', tenantId);
+
+      const fees = await base
         // Canonical subject is students.id, so join students (not users).
         .leftJoin('students', 'fees.student_id', 'students.id')
         .select(
@@ -332,9 +338,11 @@ export class FeeService {
   /**
    * Get fees by type
    */
-  async getFeesByType(type: string, classId?: string): Promise<any[]> {
+  async getFeesByType(type: string, classId?: string, tenantId?: string): Promise<any[]> {
     try {
       let query = this.db('fees').where('type', type);
+
+      if (tenantId) query = query.where('tenant_id', tenantId);
 
       if (classId) {
         query = query.where('class_id', classId);

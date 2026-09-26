@@ -212,11 +212,14 @@ export class InvoiceService {
   /**
    * Get invoice statistics
    */
-  async getInvoiceStatistics(filters?: InvoiceFilter): Promise<any> {
+  async getInvoiceStatistics(filters?: InvoiceFilter, tenantId?: string): Promise<any> {
     try {
       logger.info('Calculating invoice statistics');
 
       let query = this.db('invoices');
+
+      // Tenant scoping so invoice aggregates never span schools.
+      if (tenantId) query = query.where('tenant_id', tenantId);
 
       if (filters?.startDate) {
         query = query.where('generated_at', '>=', new Date(filters.startDate));
