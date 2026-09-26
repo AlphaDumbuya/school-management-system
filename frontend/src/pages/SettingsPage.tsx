@@ -1536,35 +1536,34 @@ export const SettingsPage: React.FC = () => {
                     <CardContent className="space-y-6">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">System Currency</label>
-                          <select
-                            value={settings.currency}
-                            onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          >
-                            <option value="SLE">SLE - Leones (Sierra Leone)</option>
-                            <option value="NLe">NLe - New Leones (Sierra Leone)</option>
-                            <option value="USD">USD - US Dollar ($)</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Late Payment Charge (%)</label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={settings.late_fee_rate}
-                            onChange={(e) => setSettings({ ...settings, late_fee_rate: Number(e.target.value) })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          />
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">Currency</label>
+                          {/* Currency is fixed to Sierra Leonean Leones (Le) system-wide —
+                              all fees, receipts, invoices and emails render in Leones. */}
+                          <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 flex items-center justify-between">
+                            <span className="font-medium">Le — Sierra Leonean Leones</span>
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Fixed</span>
+                          </div>
+                          <p className="text-[11px] text-gray-400 mt-1">All amounts across the system are in Leones.</p>
                         </div>
                       </div>
 
-                      <div className="flex justify-end mt-4">
-                        <Button onClick={handleSaveSettings} disabled={saving}>
-                          {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                          Save Financial Configuration
-                        </Button>
+                      {/* Payment rules live per-class in Fee Structures (min % for new /
+                          continuing students, per-term clearance, instalments, late-fee
+                          surcharge). Those are the settings actually enforced at payment
+                          time, so we point the admin there instead of a dead global field. */}
+                      <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                        <div className="w-5 h-5 text-blue-500 shrink-0 mt-0.5"><DollarSign size={18} /></div>
+                        <div>
+                          <p className="text-sm font-semibold text-blue-800">Payment rules are set per class</p>
+                          <p className="text-xs text-blue-700 mt-0.5">
+                            Minimum payment for new and continuing students, per-term clearance,
+                            instalment permission and the late-fee surcharge are configured on each
+                            class&apos;s fee structure and are enforced automatically when fees are paid.
+                          </p>
+                          <a href="/finance/fees" className="inline-block mt-2 text-xs font-semibold text-blue-700 underline hover:text-blue-900">
+                            Go to Fee Structures →
+                          </a>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>

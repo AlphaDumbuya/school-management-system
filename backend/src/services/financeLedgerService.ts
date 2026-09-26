@@ -243,6 +243,74 @@ class FinanceLedgerService {
   }
 
   /**
+   * Enforce the school's minimum-payment policy for a payment of `amount`
+   * against a student's outstanding fees. Returns an error message when the
+   * amount is below what the policy permits, else null (payment allowed).
+   *
+   * This is the SINGLE source of truth for payment-policy enforcement so every
+   * payment path — Monime checkout, Monime USSD payment code, and manual
+   * staff-recorded payments — applies identical rules. Full settlement
+   * (amount >= outstanding) is always allowed.
+   *
+   * Rules enforced (from the class fee structure):
+   *  - allow_installments = false → must pay the full outstanding balance.
+   *  - charges_compulsory_first_term → a partial must clear all non-tuition charges.
+   *  - min_percent (new vs continuing) → partial must be at least this % of outstanding.
+   *  - min_percent_term → partial must also meet the per-term clearance minimum.
+   */
+  async enforceMinimumPayment(
+    tenantId: string,
+    studentId: string,
+    amount: number,
+  ): Promise<string | null> {
+    const rows = await db('fees')
+      .where({ tenant_id: tenantId, student_id: studentId })
+      .whereNot('status', 'deleted')
+      .select('amount', 'balance', 'type');
+    const outstanding = rows.reduce((s: number, f: any) => s + (Number(f.balance ?? f.amount) || 0), 0);
+    if (outstanding <= 0) return null;
+
+    // Paying the full (or more) is always allowed.
+    if (amount >= outstanding - 0.001) return null;
+
+    const policy = await this.getPaymentPolicy(tenantId, studentId).catch(() => null);
+    if (!policy) return null;
+
+    if (!policy.allow_installments) {
+      return 'Part payments are not allowed for this student. Please pay the full outstanding balance.';
+    }
+
+    // Charges compulsory first: a partial must at least cover all non-tuition charges.
+    if (policy.charges_compulsory_first_term) {
+      const chargesDue = rows
+        .filter((f: any) => !/tuition/i.test(String(f.type || '')))
+        .reduce((s: number, f: any) => s + (Number(f.balance ?? f.amount) || 0), 0);
+      if (chargesDue > 0 && amount < chargesDue - 0.001) {
+        return `Your school requires all charges (Le ${chargesDue.toLocaleString(undefined, { minimumFractionDigits: 2 })}) to be paid first. Please pay at least this amount.`;
+      }
+    }
+
+    // Overall minimum % (new vs continuing).
+    if (policy.min_percent > 0) {
+      const minAmount = Math.round((policy.min_percent / 100) * outstanding * 100) / 100;
+      if (amount < minAmount - 0.001) {
+        const who = policy.is_new_student ? 'new students' : 'continuing students';
+        return `A minimum of ${policy.min_percent}% (Le ${minAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}) is required for ${who}. Please pay at least this amount.`;
+      }
+    }
+
+    // Per-term clearance minimum (applied against the same outstanding base).
+    if (policy.min_percent_term > 0) {
+      const minTermAmount = Math.round((policy.min_percent_term / 100) * outstanding * 100) / 100;
+      if (amount < minTermAmount - 0.001) {
+        return `A minimum of ${policy.min_percent_term}% per term (Le ${minTermAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}) is required. Please pay at least this amount.`;
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Tenant-wide finance summary for a year: total billed, collected, and
    * outstanding. Derived from the same fee rows as the student ledger (Req 9.3).
    */

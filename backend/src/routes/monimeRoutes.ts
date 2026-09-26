@@ -24,50 +24,11 @@ import { applyAmount } from '../services/paymentApplication.js';
 const router = Router();
 
 /**
- * Enforce the school's minimum-payment policy for a partial payment.
- * Returns an error message if the amount is below the allowed minimum, else null.
- * Full settlement (amount >= outstanding) is always allowed.
+ * Minimum-payment policy enforcement now lives in
+ * financeLedgerService.enforceMinimumPayment so every payment path (Monime
+ * checkout, Monime USSD payment code, and manual staff-recorded payments)
+ * applies identical rules from a single source of truth.
  */
-async function checkMinimumPayment(tenantId: string, studentId: string, amount: number): Promise<string | null> {
-  // Total outstanding across the student's non-void fees.
-  const rows = await db('fees')
-    .where({ tenant_id: tenantId, student_id: studentId })
-    .whereNot('status', 'deleted')
-    .select('amount', 'balance', 'type');
-  const outstanding = rows.reduce((s: number, f: any) => s + (Number(f.balance ?? f.amount) || 0), 0);
-  if (outstanding <= 0) return null;
-
-  // Paying the full (or more) is always fine.
-  if (amount >= outstanding - 0.001) return null;
-
-  const { financeLedgerService } = await import('../services/financeLedgerService.js');
-  const policy = await financeLedgerService.getPaymentPolicy(tenantId, studentId).catch(() => null);
-  if (!policy) return null;
-
-  if (!policy.allow_installments) {
-    return 'Part payments are not allowed for this student. Please pay the full outstanding balance.';
-  }
-
-  // Charges compulsory in first term (only when the admin enabled it): a partial
-  // payment must at least cover all outstanding non-tuition charges.
-  if (policy.charges_compulsory_first_term) {
-    const chargeRows = rows.filter((f: any) => !/tuition/i.test(String(f.type || '')));
-    const chargesDue = chargeRows.reduce((s: number, f: any) => s + (Number(f.balance ?? f.amount) || 0), 0);
-    if (chargesDue > 0 && amount < chargesDue - 0.001) {
-      return `Your school requires all charges (Le ${chargesDue.toLocaleString(undefined, { minimumFractionDigits: 2 })}) to be paid first. Please pay at least this amount.`;
-    }
-  }
-
-  const minPct = policy.min_percent || 0;
-  if (minPct > 0) {
-    const minAmount = Math.round((minPct / 100) * outstanding * 100) / 100;
-    if (amount < minAmount - 0.001) {
-      const who = policy.is_new_student ? 'new students' : 'continuing students';
-      return `A minimum of ${minPct}% (Le ${minAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}) is required for ${who}. Please pay at least this amount.`;
-    }
-  }
-  return null;
-}
 
 // Resolve the public app origin for building success/cancel URLs.
 function appOrigin(req: Request): string {
@@ -134,9 +95,11 @@ router.post('/monime/checkout', authenticate, attachUserContext, async (req: Req
       if (!inTenant) return res.status(403).json({ success: false, error: 'Student not in your school.' });
     }
 
-    // Enforce the school's minimum-payment policy for partial payments.
-    if (!invoiceId) {
-      const minErr = await checkMinimumPayment(tenantId, studentId, amount);
+    // Enforce the school's minimum-payment policy for partial payments —
+    // on ALL payments (invoice or ad-hoc), via the shared ledger enforcer.
+    {
+      const { financeLedgerService } = await import('../services/financeLedgerService.js');
+      const minErr = await financeLedgerService.enforceMinimumPayment(tenantId, studentId, amount);
       if (minErr) return res.status(422).json({ success: false, error: minErr });
     }
 
@@ -234,9 +197,11 @@ router.post('/monime/payment-code', authenticate, attachUserContext, async (req:
       if (!inTenant) return res.status(403).json({ success: false, error: 'Student not in your school.' });
     }
 
-    // Enforce the school's minimum-payment policy for partial payments.
-    if (!invoiceId) {
-      const minErr = await checkMinimumPayment(tenantId, studentId, amount);
+    // Enforce the school's minimum-payment policy for partial payments —
+    // on ALL payments (invoice or ad-hoc), via the shared ledger enforcer.
+    {
+      const { financeLedgerService } = await import('../services/financeLedgerService.js');
+      const minErr = await financeLedgerService.enforceMinimumPayment(tenantId, studentId, amount);
       if (minErr) return res.status(422).json({ success: false, error: minErr });
     }
 

@@ -480,6 +480,17 @@ router.post(
         return res.status(403).json({ success: false, error: 'Access denied.' });
       }
 
+      // Enforce the school's minimum-payment policy on manual payments too, so a
+      // below-minimum partial can't be recorded through the admin path either.
+      // (Staff may still take full settlement any time.)
+      try {
+        const { financeLedgerService } = await import('@services/financeLedgerService');
+        const minErr = await financeLedgerService.enforceMinimumPayment(tenantId, feeRow.student_id, Number(amount));
+        if (minErr) {
+          return res.status(422).json({ success: false, error: minErr });
+        }
+      } catch { /* policy check best-effort — never block on lookup failure */ }
+
       const payment = await paymentService.recordPayment(
         {
           feeId,
