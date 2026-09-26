@@ -17,7 +17,7 @@
 import rateLimit, { Options, Store } from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import IORedis from 'ioredis';
-import { Request } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { logger } from '../utils/logger';
 
 let sharedStoreFactory: (() => Store) | null = null;
@@ -76,7 +76,33 @@ function makeLimiter(opts: Partial<Options>) {
       );
     }
   }
-  return rateLimit(base);
+
+  const limiter = rateLimit(base);
+
+  // FAIL-OPEN wrapper. A rate limiter is a hardening layer, not an auth gate —
+  // it must NEVER be the reason a legitimate user can't log in. If the store
+  // errors at request time (e.g. Redis goes down mid-flight in production),
+  // express-rate-limit forwards that error to next(err), which would surface as
+  // a 500 and block the request. Here we intercept any such store error and let
+  // the request proceed instead (logging it so the outage stays observable).
+  // Genuine 429 rate-limit responses are unaffected — those are sent by the
+  // limiter directly and never reach next().
+  const failOpen: RequestHandler = (req: Request, res: Response, next: NextFunction) => {
+    try {
+      limiter(req, res, (err?: unknown) => {
+        if (err) {
+          logger.warn(`Rate limiting: store error at request time — allowing request. ${(err as Error)?.message ?? err}`);
+          return next();
+        }
+        return next();
+      });
+    } catch (err) {
+      logger.warn(`Rate limiting: limiter threw — allowing request. ${(err as Error)?.message ?? err}`);
+      next();
+    }
+  };
+
+  return failOpen;
 }
 
 const clientIp = (req: Request) =>
