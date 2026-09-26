@@ -272,13 +272,20 @@ export const ClassesPage: React.FC = () => {
 
   // Fetch classes
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['classes', { search, levelFilter, statusFilter, page, pageSize }],
-    queryFn: () => classesService.listClasses({
-      page,
-      limit: pageSize,
-      level: levelFilter.length === 1 ? levelFilter[0] : undefined,
-      search: search || undefined,
-    }),
+    queryKey: ['classes', { search, levelFilter, statusFilter, page, pageSize, canManage }],
+    queryFn: () => {
+      const params = {
+        page,
+        limit: pageSize,
+        level: levelFilter.length === 1 ? levelFilter[0] : undefined,
+        status: statusFilter.length === 1 ? statusFilter[0] : undefined,
+        search: search || undefined,
+      };
+      // Managers always hit the authoritative API list (no offline roster
+      // fallback, which can be a partial teacher-scoped set); teachers keep the
+      // offline-capable list so their class selectors work without a network.
+      return canManage ? classesService.listAllClasses(params) : classesService.listClasses(params);
+    },
     staleTime: 30_000,
   });
 
@@ -335,6 +342,17 @@ export const ClassesPage: React.FC = () => {
       showToast.apiError(res.error);
     }
     setDeleteTarget(null);
+  };
+
+  // Reactivate a soft-deleted (inactive) class — restores it to active.
+  const handleReactivate = async (cls: ClassRecord) => {
+    const res = await classesService.updateClass(cls.id, { status: 'active' } as any);
+    if (res.success !== false) {
+      showToast.saved('Class');
+      queryClient.invalidateQueries({ queryKey: ['classes'] });
+    } else {
+      showToast.apiError(res.error);
+    }
   };
 
   // Column definitions
@@ -718,16 +736,27 @@ export const ClassesPage: React.FC = () => {
                         >
                           <Edit size={16} className="text-gray-500 dark:text-gray-400 group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={cls.status === 'inactive'}
-                          onClick={() => setDeactivateTarget(cls)}
-                          className="h-8 p-1.5 rounded-lg text-red-500 hover:text-red-700 dark:text-red-405 hover:bg-red-50 dark:hover:bg-red-950/20 disabled:opacity-30"
-                          title="Deactivate Class"
-                        >
-                          <Trash2 size={16} className="text-red-500 group-hover:text-red-600 dark:group-hover:text-red-450 transition-colors" />
-                        </Button>
+                        {cls.status === 'inactive' ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleReactivate(cls)}
+                            className="h-8 p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                            title="Reactivate Class"
+                          >
+                            <Check size={16} className="transition-colors" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeactivateTarget(cls)}
+                            className="h-8 p-1.5 rounded-lg text-red-500 hover:text-red-700 dark:text-red-405 hover:bg-red-50 dark:hover:bg-red-950/20"
+                            title="Deactivate Class"
+                          >
+                            <Trash2 size={16} className="text-red-500 group-hover:text-red-600 dark:group-hover:text-red-450 transition-colors" />
+                          </Button>
+                        )}
                       </RoleGuard>
                     </div>
                   </div>
@@ -763,11 +792,17 @@ export const ClassesPage: React.FC = () => {
                   label: 'Edit',
                   onClick: (row: ClassRecord) => { setEditingClass(row); setFormOpen(true); },
                 },
-                {
-                  label: 'Deactivate',
-                  variant: 'destructive' as const,
-                  onClick: (row: ClassRecord) => setDeactivateTarget(row),
-                },
+                // Inactive classes can be reactivated; active ones deactivated.
+                ...(cls.status === 'inactive'
+                  ? [{
+                      label: 'Reactivate',
+                      onClick: (row: ClassRecord) => handleReactivate(row),
+                    }]
+                  : [{
+                      label: 'Deactivate',
+                      variant: 'destructive' as const,
+                      onClick: (row: ClassRecord) => setDeactivateTarget(row),
+                    }]),
                 {
                   label: 'Delete',
                   variant: 'destructive' as const,

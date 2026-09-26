@@ -73,6 +73,11 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       throw new AppError('Missing required fields: title, class_id, subject_id, teacher_id, assigned_date, due_date', 400, 'VALIDATION_ERROR');
     }
 
+    // due_date must not be before assigned_date.
+    if (String(due_date) < String(assigned_date)) {
+      throw new AppError('Due date cannot be before the assigned date', 400, 'VALIDATION_ERROR');
+    }
+
     // Verify class belongs to this tenant
     const classCheck = await db('classes')
       .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
@@ -88,6 +93,20 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       .first();
     if (!classCheck) {
       throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+    }
+
+    // Verify subject belongs to this tenant (real tenant_id, legacy created_by fallback).
+    const subjectCheck = await db('subjects')
+      .leftJoin('users as subj_creator', 'subjects.created_by', 'subj_creator.id')
+      .where('subjects.id', subject_id)
+      .where(function () {
+        this.where('subjects.tenant_id', tenantId).orWhere(function () {
+          this.whereNull('subjects.tenant_id').where('subj_creator.tenant_id', tenantId);
+        });
+      })
+      .first();
+    if (!subjectCheck) {
+      throw new AppError('Subject not found or access denied', 404, 'NOT_FOUND');
     }
 
     const [inserted] = await db('assignments').insert({
@@ -347,6 +366,11 @@ router.put('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, UserRol
     if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
     if (!(await teacherOwnsAssignment(req, assignment.teacher_id))) {
       throw new AppError('You can only edit your own assignments', 403, 'FORBIDDEN');
+    }
+
+    // A new due_date must not precede the (unchanged) assigned_date.
+    if (due_date && assignment.assigned_date && String(due_date) < String(assignment.assigned_date)) {
+      throw new AppError('Due date cannot be before the assigned date', 400, 'VALIDATION_ERROR');
     }
 
     const updateData: any = {};

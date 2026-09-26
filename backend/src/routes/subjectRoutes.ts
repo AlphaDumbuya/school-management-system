@@ -17,6 +17,23 @@ const mapSubject = (subject: any) => {
 };
 
 /**
+ * Constrain a subjects query to one tenant. Prefers the real `subjects.tenant_id`
+ * column (migration 151) and keeps a legacy fallback (created_by -> users) for
+ * rows created before tenant_id was backfilled — so no subject silently
+ * disappears during rollout. Uses a LEFT join so a NULL created_by never drops
+ * a row that already has tenant_id set.
+ */
+function scopeSubjectsToTenant(query: any, tenantId: string) {
+  return query
+    .leftJoin('users', 'subjects.created_by', 'users.id')
+    .where(function (this: any) {
+      this.where('subjects.tenant_id', tenantId).orWhere(function (this: any) {
+        this.whereNull('subjects.tenant_id').where('users.tenant_id', tenantId);
+      });
+    });
+}
+
+/**
  * POST /api/v1/subjects
  * Create a new subject
  */
@@ -38,17 +55,23 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       throw new AppError('Max marks must be greater than pass marks', 400, 'VALIDATION_ERROR');
     }
 
-    // Check code uniqueness within this tenant
+    // Check code uniqueness within this tenant (scope by the real tenant_id,
+    // with a legacy fallback for rows created before tenant_id existed).
     const existing = await db('subjects')
-      .join('users', 'subjects.created_by', 'users.id')
+      .leftJoin('users', 'subjects.created_by', 'users.id')
       .where('subjects.code', code.toUpperCase())
-      .where('users.tenant_id', tenantId)
+      .where(function (this: any) {
+        this.where('subjects.tenant_id', tenantId).orWhere(function (this: any) {
+          this.whereNull('subjects.tenant_id').where('users.tenant_id', tenantId);
+        });
+      })
       .first();
     if (existing) {
       throw new AppError('Subject code already exists', 409, 'CONFLICT');
     }
 
     const [inserted] = await db('subjects').insert({
+      tenant_id: tenantId,
       code: code.toUpperCase(),
       name: name.trim(),
       description: description || null,
@@ -92,10 +115,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
-    let query = db('subjects')
-      .join('users', 'subjects.created_by', 'users.id')
-      .where('users.tenant_id', tenantId)
-      .select('subjects.*');
+    let query = scopeSubjectsToTenant(db('subjects'), tenantId).select('subjects.*');
 
     if (status) {
       query = query.where('subjects.status', status as string);
@@ -202,9 +222,7 @@ router.get('/my', authenticate, async (req: Request, res: Response, next: NextFu
       return res.json({ data: [], pagination: { page: 1, limit: 0, total: 0, total_pages: 0 } });
     }
 
-    const subjects = await db('subjects')
-      .join('users', 'subjects.created_by', 'users.id')
-      .where('users.tenant_id', tenantId)
+    const subjects = await scopeSubjectsToTenant(db('subjects'), tenantId)
       .whereIn('subjects.id', Array.from(subjectIds))
       .where('subjects.status', 'active')
       .select('subjects.*')
@@ -233,10 +251,8 @@ router.get('/:subjectId', authenticate, async (req: Request, res: Response, next
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
-    const subject = await db('subjects')
-      .join('users', 'subjects.created_by', 'users.id')
+    const subject = await scopeSubjectsToTenant(db('subjects'), tenantId)
       .where('subjects.id', subjectId)
-      .where('users.tenant_id', tenantId)
       .select('subjects.*')
       .first();
 
@@ -265,10 +281,8 @@ router.put('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
-    const subject = await db('subjects')
-      .join('users', 'subjects.created_by', 'users.id')
+    const subject = await scopeSubjectsToTenant(db('subjects'), tenantId)
       .where('subjects.id', subjectId)
-      .where('users.tenant_id', tenantId)
       .select('subjects.*')
       .first();
 
@@ -278,10 +292,8 @@ router.put('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
 
     const updateData: any = {};
     if (code) {
-      const existing = await db('subjects')
-        .join('users', 'subjects.created_by', 'users.id')
+      const existing = await scopeSubjectsToTenant(db('subjects'), tenantId)
         .where('subjects.code', code.toUpperCase())
-        .where('users.tenant_id', tenantId)
         .whereNot('subjects.id', subjectId)
         .first();
       if (existing) {
@@ -289,6 +301,8 @@ router.put('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
       }
       updateData.code = code.toUpperCase();
     }
+    // Backfill tenant_id on legacy rows as they're edited.
+    if (!subject.tenant_id) updateData.tenant_id = tenantId;
     if (name) updateData.name = name.trim();
     if (description !== undefined) updateData.description = description || null;
     if (credit_points !== undefined) updateData.credits = credit_points;
@@ -336,10 +350,9 @@ router.delete('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRol
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
-    const subject = await db('subjects')
-      .join('users', 'subjects.created_by', 'users.id')
+    const subject = await scopeSubjectsToTenant(db('subjects'), tenantId)
       .where('subjects.id', subjectId)
-      .where('users.tenant_id', tenantId)
+      .select('subjects.*')
       .first();
 
     if (!subject) {
@@ -374,10 +387,9 @@ router.delete('/:subjectId/permanent', authenticate, authorize(UserRole.PRINCIPA
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
-    const subject = await db('subjects')
-      .join('users', 'subjects.created_by', 'users.id')
+    const subject = await scopeSubjectsToTenant(db('subjects'), tenantId)
       .where('subjects.id', subjectId)
-      .where('users.tenant_id', tenantId)
+      .select('subjects.*')
       .first();
 
     if (!subject) {

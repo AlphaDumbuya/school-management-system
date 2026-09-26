@@ -45,6 +45,27 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       }
     }
 
+    // Verify subject belongs to this tenant if provided.
+    if (subject_id) {
+      const subjectCheck = await db('subjects')
+        .leftJoin('users as subj_creator', 'subjects.created_by', 'subj_creator.id')
+        .where('subjects.id', subject_id)
+        .where(function () {
+          this.where('subjects.tenant_id', tenantId).orWhere(function () {
+            this.whereNull('subjects.tenant_id').where('subj_creator.tenant_id', tenantId);
+          });
+        })
+        .first();
+      if (!subjectCheck) {
+        throw new AppError('Subject not found or access denied', 404, 'NOT_FOUND');
+      }
+    }
+
+    // If an end_date is given it must not precede the start_date.
+    if (end_date && String(end_date) < String(start_date)) {
+      throw new AppError('End date/time cannot be before the start', 400, 'VALIDATION_ERROR');
+    }
+
     const [inserted] = await db('examinations').insert({
       title: title.trim(),
       description: description || null,
@@ -147,13 +168,17 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       query = query.whereIn('examinations.class_id', studentClassIds);
     }
 
-    // Parent/guardian scoping: only see exams for their children's classes
+    // Parent/guardian scoping: only see exams for their children's classes.
+    // Uses the guardians link table (student_id + user_id), consistent with the
+    // rest of the app — the old students.guardian_id join was wrong and matched
+    // nothing.
     let parentClassIds: string[] | null = null;
     if (req.user?.role === 'parent' || req.user?.role === 'guardian') {
-      const children = await db('students')
-        .join('guardians', 'students.guardian_id', 'guardians.id')
-        .where('guardians.user_id', req.user.id)
-        .select('students.id');
+      const children = await db('guardians as g')
+        .join('students as s', 'g.student_id', 's.id')
+        .where('g.user_id', req.user.id)
+        .where('s.tenant_id', tenantId)
+        .distinct('s.id as id');
       if (children.length === 0) {
         return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
       }
@@ -256,6 +281,39 @@ router.put('/:examId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPE
       .select('examinations.*')
       .first();
     if (!exam) throw new AppError('Examination not found', 404, 'NOT_FOUND');
+
+    // Validate any changed class/subject belong to this tenant.
+    if (class_id) {
+      const classCheck = await db('classes')
+        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+        .where('classes.id', class_id)
+        .where(function () {
+          this.where('academic_sessions.tenant_id', tenantId).orWhere(function () {
+            this.whereNull('classes.academic_session_id').where('class_creator.tenant_id', tenantId);
+          });
+        })
+        .first();
+      if (!classCheck) throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+    }
+    if (subject_id) {
+      const subjectCheck = await db('subjects')
+        .leftJoin('users as subj_creator', 'subjects.created_by', 'subj_creator.id')
+        .where('subjects.id', subject_id)
+        .where(function () {
+          this.where('subjects.tenant_id', tenantId).orWhere(function () {
+            this.whereNull('subjects.tenant_id').where('subj_creator.tenant_id', tenantId);
+          });
+        })
+        .first();
+      if (!subjectCheck) throw new AppError('Subject not found or access denied', 404, 'NOT_FOUND');
+    }
+    // Date ordering against the effective values after this update.
+    const effStart = start_date || exam.start_date;
+    const effEnd = end_date !== undefined ? end_date : exam.end_date;
+    if (effEnd && effStart && String(effEnd) < String(effStart)) {
+      throw new AppError('End date/time cannot be before the start', 400, 'VALIDATION_ERROR');
+    }
 
     const updateData: any = {};
     if (title) updateData.title = title.trim();
