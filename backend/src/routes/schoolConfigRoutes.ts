@@ -98,6 +98,34 @@ router.post('/settings', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
     const userId = req.auth!.userId;
     const updates = req.body; // Expects dictionary: { [key]: value }
 
+    // ── Server-side validation for critical settings (client can be bypassed) ──
+    const pctKeys = [
+      'min_attendance_warning', 'min_attendance_critical',
+      'fin_min_percent_new', 'fin_min_percent_continuing', 'fin_min_percent_term', 'fin_late_fee_percent',
+    ];
+    for (const k of pctKeys) {
+      if (k in updates && updates[k] != null && updates[k] !== '') {
+        const n = Number(updates[k]);
+        if (!Number.isFinite(n) || n < 0 || n > 100) {
+          throw new AppError(`${k} must be a number between 0 and 100`, 400, 'VALIDATION_ERROR');
+        }
+      }
+    }
+    if ('min_attendance_warning' in updates && 'min_attendance_critical' in updates) {
+      if (Number(updates.min_attendance_critical) > Number(updates.min_attendance_warning)) {
+        throw new AppError('Critical attendance threshold cannot exceed the warning threshold', 400, 'VALIDATION_ERROR');
+      }
+    }
+    if ('academic_year' in updates && updates.academic_year && !/^\d{4}\/\d{4}$/.test(String(updates.academic_year).trim())) {
+      throw new AppError('academic_year must be in the format YYYY/YYYY', 400, 'VALIDATION_ERROR');
+    }
+    if ('id_padding' in updates && updates.id_padding != null && updates.id_padding !== '') {
+      const p = Number(updates.id_padding);
+      if (!Number.isInteger(p) || p < 1 || p > 10) {
+        throw new AppError('id_padding must be an integer between 1 and 10', 400, 'VALIDATION_ERROR');
+      }
+    }
+
     for (const [key, value] of Object.entries(updates)) {
       let dataType: 'string' | 'number' | 'boolean' | 'json' = 'string';
       if (typeof value === 'boolean') dataType = 'boolean';

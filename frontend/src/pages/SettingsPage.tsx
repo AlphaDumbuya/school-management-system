@@ -241,8 +241,88 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // ── Validation helpers ──────────────────────────────────────────────────
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const URL_RE = /^https?:\/\/.+/i;
+  const isPct = (v: any) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 && n <= 100;
+  };
+
+  /** Validate the School Info form. Returns an error message or null. */
+  const validateSchoolInfo = (): string | null => {
+    if (!schoolInfo.name || !schoolInfo.name.trim()) return 'School name is required.';
+    if (schoolInfo.email && !EMAIL_RE.test(schoolInfo.email.trim())) return 'Please enter a valid school email address.';
+    if (schoolInfo.principal_email && !EMAIL_RE.test(schoolInfo.principal_email.trim())) return 'Please enter a valid principal email address.';
+    if (schoolInfo.website && !URL_RE.test(schoolInfo.website.trim())) return 'Website must start with http:// or https://';
+    if (schoolInfo.founded_year !== undefined && schoolInfo.founded_year !== null && String(schoolInfo.founded_year).trim() !== '') {
+      const y = Number(schoolInfo.founded_year);
+      const now = new Date().getFullYear();
+      if (!Number.isInteger(y) || y < 1800 || y > now) return `Founded year must be a year between 1800 and ${now}.`;
+    }
+    return null;
+  };
+
+  /** Validate the shared settings form, scoped to the active tab. */
+  const validateSettingsForTab = (): string | null => {
+    if (activeTab === 'academic') {
+      if (!settings.academic_year || !/^\d{4}\/\d{4}$/.test(String(settings.academic_year).trim())) {
+        return 'Academic year is required in the format YYYY/YYYY (e.g. 2026/2027).';
+      }
+      const count = Number(settings.term_count) || 3;
+      // Validate each active term's date ordering when both dates are provided.
+      for (let i = 1; i <= count; i++) {
+        const start = settings[`term_${i}_start`];
+        const end = settings[`term_${i}_end`];
+        if ((start && !end) || (!start && end)) {
+          return `Term ${i}: please provide both a start and an end date, or leave both blank.`;
+        }
+        if (start && end && new Date(start) >= new Date(end)) {
+          return `Term ${i}: the end date must be after the start date.`;
+        }
+      }
+      return null;
+    }
+    if (activeTab === 'id-format') {
+      const req: Array<[string, string]> = [
+        ['id_student_prefix', 'Student prefix'],
+        ['id_staff_prefix', 'Staff/Teacher prefix'],
+        ['id_admission_prefix', 'Admission prefix'],
+      ];
+      for (const [key, label] of req) {
+        if (!settings[key] || !String(settings[key]).trim()) return `${label} is required.`;
+      }
+      const pad = Number(settings.id_padding);
+      if (!Number.isInteger(pad) || pad < 1 || pad > 10) return 'ID number padding must be between 1 and 10.';
+      return null;
+    }
+    if (activeTab === 'attendance') {
+      if (!isPct(settings.min_attendance_warning)) return 'Warning threshold must be between 0 and 100.';
+      if (!isPct(settings.min_attendance_critical)) return 'Critical threshold must be between 0 and 100.';
+      if (Number(settings.min_attendance_critical) > Number(settings.min_attendance_warning)) {
+        return 'Critical threshold cannot be higher than the warning threshold.';
+      }
+      return null;
+    }
+    if (activeTab === 'financial') {
+      const checks: Array<[any, string]> = [
+        [settings.fin_min_percent_new, 'Minimum payment for new students'],
+        [settings.fin_min_percent_continuing, 'Minimum payment for continuing students'],
+        [settings.fin_min_percent_term, 'Per-term clearance minimum'],
+        [settings.fin_late_fee_percent, 'Late-fee surcharge'],
+      ];
+      for (const [val, label] of checks) {
+        if (!isPct(val)) return `${label} must be between 0 and 100.`;
+      }
+      return null;
+    }
+    return null;
+  };
+
   const handleSaveSchoolInfo = async (e: React.FormEvent) => {
     e.preventDefault();
+    const err = validateSchoolInfo();
+    if (err) { showToast.error(err); return; }
     setSaving(true);
     try {
       const res = await schoolConfigService.updateSchoolInfo(schoolInfo);
@@ -270,6 +350,8 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleSaveSettings = async () => {
+    const err = validateSettingsForTab();
+    if (err) { showToast.error(err); return; }
     setSaving(true);
     try {
       const res = await schoolConfigService.updateSettings(settings);
@@ -291,6 +373,10 @@ export const SettingsPage: React.FC = () => {
     
     if (!profileForm.firstName.trim() || !profileForm.lastName.trim() || !profileForm.email.trim()) {
       showToast.error('Please fill in all personal details fields.');
+      return;
+    }
+    if (!EMAIL_RE.test(profileForm.email.trim())) {
+      showToast.error('Please enter a valid email address.');
       return;
     }
 
@@ -363,6 +449,27 @@ export const SettingsPage: React.FC = () => {
 
   const handleSaveGradingScale = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Validate the new grading scale before saving.
+    if (!newGradeScale.name || !newGradeScale.name.trim()) {
+      showToast.error('Grading scale name is required.');
+      return;
+    }
+    if (!newGradeScale.grades || newGradeScale.grades.length === 0) {
+      showToast.error('Add at least one grade band.');
+      return;
+    }
+    for (const g of newGradeScale.grades) {
+      if (!g.grade || !String(g.grade).trim()) {
+        showToast.error('Every grade band needs a letter/label.');
+        return;
+      }
+      const min = Number(g.min_score);
+      const max = Number(g.max_score);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 100 || min > max) {
+        showToast.error(`Grade "${g.grade}": scores must be 0–100 with min ≤ max.`);
+        return;
+      }
+    }
     setSaving(true);
     try {
       const res = await schoolConfigService.saveGradingScale(newGradeScale);
@@ -783,7 +890,7 @@ export const SettingsPage: React.FC = () => {
                           </h3>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="md:col-span-2">
-                              <label className="text-xs font-semibold text-gray-500 block mb-1">School Name</label>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">School Name <span className="text-rose-500">*</span></label>
                               <input
                                 type="text"
                                 value={schoolInfo.name ?? ''}
@@ -1075,7 +1182,7 @@ export const SettingsPage: React.FC = () => {
                     <CardContent className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Current Academic Year</label>
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">Current Academic Year <span className="text-rose-500">*</span></label>
                           <input
                             type="text"
                             placeholder="2026/2027"
