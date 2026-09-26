@@ -236,7 +236,12 @@ export class AuthService {
             name: '2026/2027 Academic Year',
             start_date: '2026-09-01',
             end_date: '2027-07-31',
-            is_current: true,
+            // The academic_sessions column is `is_active` (migration 001), NOT
+            // `is_current`. Using the wrong name silently failed the insert
+            // (it's in a try/catch), so new self-serve schools got NO active
+            // session — breaking class-creation's auto-resolve which looks up
+            // `{ tenant_id, is_active: true }`.
+            is_active: true,
             created_at: new Date(),
             updated_at: new Date(),
           });
