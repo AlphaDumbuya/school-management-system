@@ -2,15 +2,14 @@
  * subscriptionCheckoutService — starts a PAID plan change.
  *
  * MONEY ROUTING (critical): subscription revenue is the PLATFORM's income. This
- * service creates a Monime checkout against the PLATFORM's own account (env
- * credentials, the monimeService default) — NEVER a school's account. The plan
- * only activates from the webhook after payment is confirmed
- * (see monimeRoutes.ts → reconcileSubscriptionSession).
+ * service creates an in-app Monime USSD payment code against the PLATFORM's own
+ * account (env credentials, the monimeService default) — NEVER a school's
+ * account. The plan only activates from the webhook after payment is confirmed
+ * (see monimeRoutes.ts → subscription branch → SubscriptionCheckout.reconcile).
  *
  * Up-front validation (downgrade-over-limit) runs here so the payer gets
- * immediate feedback before being redirected to pay.
+ * immediate feedback before dialing the code.
  */
-import type { Request } from 'express';
 import { db } from '../utils/database';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
@@ -20,30 +19,19 @@ import { monimeService } from './monimeService';
 type PlanType = 'freetong' | 'combra' | 'bintumani';
 type BillingCycle = 'monthly' | 'yearly';
 
-/** Resolve the public app origin for building success/cancel URLs. */
-function appOrigin(req: Request): string {
-  const envBase = process.env.PUBLIC_APP_URL || process.env.APP_URL || process.env.FRONTEND_URL;
-  if (envBase && !/localhost|127\.0\.0\.1/.test(envBase)) return envBase.replace(/\/+$/, '');
-  const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim() || req.protocol || 'https';
-  const host = (req.headers['x-forwarded-host'] as string)?.split(',')[0]?.trim() || req.get('host');
-  if (host && !/localhost|127\.0\.0\.1/.test(host)) return `${proto}://${host}`;
-  return (envBase || '').replace(/\/+$/, '') || `${proto}://${host}`;
-}
-
 export class SubscriptionCheckout {
   /**
    * Validate the requested plan change, guard downgrades against current usage,
    * create a subscription_payment_sessions row, and open a PLATFORM-account
-   * Monime checkout. Returns the redirect URL for the browser.
+   * Monime USSD payment code. Returns the USSD code for the in-app modal.
    */
   static async startPlanChange(opts: {
     tenantId: string;
     userId: string;
     planType: PlanType;
     billingCycle: BillingCycle;
-    req: Request;
-  }): Promise<{ sessionId: string; redirectUrl: string | null; amount: number }> {
-    const { tenantId, userId, planType, billingCycle, req } = opts;
+  }): Promise<{ sessionId: string; ussdCode: string | null; amount: number; expireTime: string | null }> {
+    const { tenantId, userId, planType, billingCycle } = opts;
 
     const limits = PLAN_LIMITS[planType];
     if (!limits) throw new AppError('Invalid subscription plan type', 400, 'VALIDATION_ERROR');
@@ -90,10 +78,11 @@ export class SubscriptionCheckout {
     if (!(amount > 0)) {
       // No plan is free today, but guard anyway: nothing to collect → apply now.
       await SubscriptionService.changePlan(tenantId, planType, billingCycle, userId);
-      return { sessionId: 'immediate', redirectUrl: null, amount: 0 };
+      return { sessionId: 'immediate', ussdCode: null, amount: 0, expireTime: null };
     }
 
     // Create our session row first so the webhook can correlate the payment.
+    // provider 'monime_ussd' so status polling uses the payment-code endpoint.
     const [session] = await db('subscription_payment_sessions')
       .insert({
         tenant_id: tenantId,
@@ -101,7 +90,7 @@ export class SubscriptionCheckout {
         billing_cycle: billingCycle,
         amount,
         currency: 'SLE',
-        provider: 'monime',
+        provider: 'monime_ussd',
         status: 'pending',
         initiated_by: userId || null,
         created_at: new Date(),
@@ -109,31 +98,25 @@ export class SubscriptionCheckout {
       })
       .returning('*');
 
-    const origin = appOrigin(req);
-    const successUrl = `${origin}/settings?tab=billing&subscription=${session.id}&status=success`;
-    const cancelUrl = `${origin}/settings?tab=billing&subscription=${session.id}&status=cancelled`;
-
-    // PLATFORM account (no explicit creds → monimeService uses env defaults).
-    let checkout;
+    // In-app USSD payment code against the PLATFORM account (no explicit creds
+    // → monimeService uses env defaults). The webhook correlates via
+    // metadata.sessionId, which we prefix "subscription:" so the existing
+    // subscription branch in monimeRoutes routes it to us.
+    let code;
     try {
-      checkout = await monimeService.createCheckoutSession({
+      code = await monimeService.createPaymentCode({
         name: `WiSkul ${planType.toUpperCase()} plan (${billingCycle})`,
         amount,
-        successUrl,
-        cancelUrl,
-        metadata: { subscriptionSessionId: session.id, tenantId, planType, billingCycle },
-        callbackState: `subscription:${session.id}`,
+        duration: '30m', // subscription codes stay valid for 30 minutes
+        metadata: { sessionId: `subscription:${session.id}`, tenantId, planType, billingCycle },
       });
     } catch (err) {
-      // Mark the dangling session failed and surface a clear, actionable error
-      // instead of an opaque 500. A 403 here means the PLATFORM Monime token is
-      // missing the checkout.checkout_sessions:create permission.
       await db('subscription_payment_sessions')
         .where({ id: session.id })
         .update({ status: 'failed', updated_at: new Date() })
         .catch(() => { /* best effort */ });
       const msg = (err as Error).message || '';
-      logger.error(`Subscription checkout failed to open (tenant ${tenantId}, session ${session.id}): ${msg}`);
+      logger.error(`Subscription payment code failed to open (tenant ${tenantId}, session ${session.id}): ${msg}`);
       throw new AppError(
         'We could not start the plan payment right now. Our payment provider rejected the request — please contact support.',
         502,
@@ -141,7 +124,7 @@ export class SubscriptionCheckout {
       );
     }
 
-    if (!checkout.redirectUrl) {
+    if (!code.id) {
       await db('subscription_payment_sessions')
         .where({ id: session.id })
         .update({ status: 'failed', updated_at: new Date() })
@@ -156,14 +139,13 @@ export class SubscriptionCheckout {
     await db('subscription_payment_sessions')
       .where({ id: session.id })
       .update({
-        provider_session_id: checkout.sessionId,
-        redirect_url: checkout.redirectUrl,
+        provider_session_id: code.id,
         updated_at: new Date(),
       });
 
-    logger.info(`Subscription checkout opened for tenant ${tenantId} → ${planType}/${billingCycle} (session ${session.id})`);
+    logger.info(`Subscription USSD payment opened for tenant ${tenantId} → ${planType}/${billingCycle} (session ${session.id})`);
 
-    return { sessionId: session.id, redirectUrl: checkout.redirectUrl, amount };
+    return { sessionId: session.id, ussdCode: code.ussdCode, amount, expireTime: code.expireTime };
   }
 
   /**
@@ -207,11 +189,12 @@ export class SubscriptionCheckout {
     if (!session) return null;
     if (session.tenant_id !== tenantId) return null;
 
-    // Refresh from Monime (PLATFORM account) if still pending.
+    // Refresh from Monime (PLATFORM account) if still pending. Subscriptions use
+    // a payment code (USSD), so read the code's authoritative status.
     if (session.status === 'pending' && session.provider_session_id && monimeService.isConfigured()) {
       try {
-        const remote = await monimeService.getCheckoutSession(session.provider_session_id);
-        const remoteStatus = monimeService.normaliseStatus(remote?.status);
+        const remote = await monimeService.getPaymentCode(session.provider_session_id);
+        const remoteStatus = remote?.progress?.isCompleted ? 'completed' : monimeService.normaliseStatus(remote?.status);
         if (remoteStatus !== 'pending') {
           await this.reconcile(session.id, remoteStatus);
           const refreshed = await db('subscription_payment_sessions').where({ id: session.id }).first();

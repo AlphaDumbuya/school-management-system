@@ -314,13 +314,12 @@ router.post('/subscription/change-plan', authenticate, authorize(UserRole.PRINCI
       userId,
       planType: plan_type,
       billingCycle: billing_cycle,
-      req,
     });
 
     res.json({
       success: true,
-      message: 'Redirecting to secure payment to activate your plan.',
-      data: result, // { sessionId, redirectUrl, amount }
+      message: 'Dial the USSD code to activate your plan.',
+      data: result, // { sessionId, ussdCode, amount, expireTime }
     });
   } catch (error) {
     next(error);

@@ -24,7 +24,14 @@ import {
   HardDrive,
   Image as ImageIcon,
   Droplet,
+  Smartphone,
+  Copy,
+  Check,
+  Timer,
+  Phone,
+  XCircle,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import useAuthStore from '@store/authStore';
 import schoolConfigService, { SchoolInfo, GradeScale, BillingInvoice, SubscriptionDetails } from '../services/schoolConfigService';
 import { formatCurrency } from '@utils/formatting';
@@ -113,38 +120,42 @@ export const SettingsPage: React.FC = () => {
     }
   }, [isSuperAdmin, activeTab]);
 
-  // Returning from Monime after a subscription payment: confirm activation.
-  // The webhook is authoritative, but poll here so the UI updates promptly and
-  // even if the webhook is delayed (the poll reconciles the session server-side).
+  // In-app subscription USSD payment modal state (declared before the polling
+  // effect below so it's initialized when the effect first runs).
+  const [subPay, setSubPay] = useState<{
+    sessionId: string;
+    ussdCode: string | null;
+    amount: number;
+    expireTime: string | null;
+    planType: 'freetong' | 'combra' | 'bintumani';
+    status: 'ussd' | 'completed' | 'failed' | 'cancelled';
+  } | null>(null);
+
+  // While the in-app subscription USSD modal is open, poll the session status.
+  // The webhook is authoritative, but polling reconciles server-side and updates
+  // the UI promptly once the payer completes the mobile-money prompt.
   useEffect(() => {
-    const subSession = searchParams.get('subscription');
-    const status = searchParams.get('status');
-    if (!subSession || subSession === 'immediate') return;
-    if (status === 'cancelled') {
-      showToast.info('Payment cancelled — your plan was not changed.');
-      return;
-    }
+    if (!subPay || subPay.status !== 'ussd') return;
     let cancelled = false;
-    (async () => {
-      // Poll a few times to allow the webhook / status refresh to land.
-      for (let i = 0; i < 6 && !cancelled; i++) {
-        try {
-          const res = await schoolConfigService.getSubscriptionCheckoutStatus(subSession);
-          if (res.success && res.data?.status === 'completed') {
-            showToast.success(`Your plan is now ${String(res.data.planType || '').toUpperCase()}.`);
-            fetchInitialData();
-            return;
-          }
-        } catch { /* keep polling */ }
-        await new Promise((r) => setTimeout(r, 2500));
-      }
-      if (!cancelled) {
-        showToast.info('Payment received — your plan will update shortly.');
-      }
-    })();
-    return () => { cancelled = true; };
+    const timer = setInterval(async () => {
+      try {
+        const res = await schoolConfigService.getSubscriptionCheckoutStatus(subPay.sessionId);
+        const s = res.success ? res.data?.status : undefined;
+        if (cancelled) return;
+        if (s === 'completed') {
+          setSubPay((p) => (p ? { ...p, status: 'completed' } : p));
+          showToast.success(`Your plan is now ${subPay.planType.toUpperCase()}.`);
+          fetchInitialData();
+        } else if (s === 'failed' || s === 'expired') {
+          setSubPay((p) => (p ? { ...p, status: 'failed' } : p));
+        } else if (s === 'cancelled') {
+          setSubPay((p) => (p ? { ...p, status: 'cancelled' } : p));
+        }
+      } catch { /* keep polling */ }
+    }, 2500);
+    return () => { cancelled = true; clearInterval(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [subPay?.sessionId, subPay?.status]);
 
   // Loading States
   const [loading, setLoading] = useState(false);
@@ -604,18 +615,24 @@ export const SettingsPage: React.FC = () => {
     setSaving(true);
     try {
       // Plan changes are PAID (subscription revenue → the platform's own Monime
-      // account). The backend now returns a hosted-checkout redirect URL instead
-      // of activating the plan for free; the plan only activates via webhook once
-      // payment is confirmed. Send the payer to Monime to complete payment.
+      // account) and happen fully IN-APP via a USSD payment code — no redirect.
+      // The plan only activates via webhook once payment is confirmed.
       const res = await schoolConfigService.changePlan(planType, billingCycle);
       if (res.success) {
-        const redirectUrl = (res as any).data?.redirectUrl;
-        if (redirectUrl) {
-          showToast.info('Redirecting to secure payment…');
-          window.location.assign(redirectUrl);
+        const d = (res as any).data || {};
+        if (d.sessionId && d.sessionId !== 'immediate') {
+          // Open the in-app USSD modal and poll for completion.
+          setSubPay({
+            sessionId: d.sessionId,
+            ussdCode: d.ussdCode || null,
+            amount: d.amount || 0,
+            expireTime: d.expireTime || null,
+            planType,
+            status: 'ussd',
+          });
           return;
         }
-        // No redirect (e.g. a zero-cost change) — plan applied immediately.
+        // No payment needed (zero-cost change) — plan applied immediately.
         showToast.success(`Your plan is now ${planType.toUpperCase()}.`);
         fetchInitialData();
       } else {
@@ -1883,6 +1900,14 @@ export const SettingsPage: React.FC = () => {
                   <ReportCardBorderSettings schoolInfo={schoolInfo} />
                 )}
 
+                {/* In-app subscription USSD payment modal (mobile money). */}
+                {subPay && (
+                  <SubscriptionUssdModal
+                    state={subPay}
+                    onClose={() => setSubPay(null)}
+                  />
+                )}
+
                 {/* ── PLAN & BILLING TAB ── */}
                 {activeTab === 'billing' && (
                   <div className="space-y-6">
@@ -2204,6 +2229,134 @@ export const SettingsPage: React.FC = () => {
 // Lets principals pick a border style for the Sierra Leone booklet report card.
 // Persisted to school_config_settings under key 'report_card_border_style'.
 // ──────────────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SubscriptionUssdModal — in-app mobile-money (USSD) payment for a plan upgrade.
+// The whole payment stays INSIDE the app: we show the USSD code the payer dials
+// on their phone (Orange Money / Afrimoney) and poll for completion. Money goes
+// to the PLATFORM's Monime account (subscription revenue).
+// ──────────────────────────────────────────────────────────────────────────────
+const SubscriptionUssdModal: React.FC<{
+  state: {
+    sessionId: string;
+    ussdCode: string | null;
+    amount: number;
+    expireTime: string | null;
+    planType: 'freetong' | 'combra' | 'bintumani';
+    status: 'ussd' | 'completed' | 'failed' | 'cancelled';
+  };
+  onClose: () => void;
+}> = ({ state, onClose }) => {
+  const { ussdCode, amount, expireTime, planType, status } = state;
+  const [copied, setCopied] = useState(false);
+  const fmtLe = (n: number) => `Le ${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  // Countdown to the code's expiry (30 min set on the backend).
+  const [remaining, setRemaining] = useState<number | null>(null);
+  useEffect(() => {
+    if (!expireTime || status !== 'ussd') { setRemaining(null); return; }
+    const target = new Date(expireTime).getTime();
+    if (Number.isNaN(target)) { setRemaining(null); return; }
+    const tick = () => setRemaining(Math.max(0, Math.round((target - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [expireTime, status]);
+  const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const expired = remaining === 0;
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  const copy = async () => {
+    if (!ussdCode) return;
+    try { await navigator.clipboard.writeText(ussdCode); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ }
+  };
+
+  const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  const telHref = ussdCode ? `tel:${encodeURIComponent(ussdCode)}` : undefined;
+
+  const terminal = status === 'completed' || status === 'failed' || status === 'cancelled';
+  const result = {
+    completed: { icon: <CheckCircle2 size={48} className="text-emerald-500" />, title: 'Payment successful', desc: `Your school is now on the ${planType.toUpperCase()} plan.` },
+    failed:    { icon: <XCircle size={48} className="text-rose-500" />, title: 'Payment failed', desc: 'We could not confirm your payment. If money was deducted, it will be reversed automatically.' },
+    cancelled: { icon: <XCircle size={48} className="text-gray-400" />, title: 'Payment cancelled', desc: 'The payment was cancelled. No charge was made and your plan is unchanged.' },
+  }[status as 'completed' | 'failed' | 'cancelled'] ?? null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="relative w-full max-w-md my-auto bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600">
+          <div className="flex items-center gap-2 text-white font-bold"><CreditCard size={18} /> Upgrade to {planType.toUpperCase()}</div>
+          <button onClick={onClose} aria-label="Close" className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white hover:bg-gray-100 ring-1 ring-white/60 shadow-sm transition shrink-0 leading-none">
+            <span className="text-indigo-700 text-xl font-black leading-none -mt-0.5">&times;</span>
+          </button>
+        </div>
+
+        <div className="p-6">
+          {status === 'ussd' && (
+            <div className="text-center">
+              <div className="flex justify-center mb-3"><div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center"><Smartphone size={24} /></div></div>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">Dial to pay <span className="text-indigo-600">{fmtLe(amount)}</span></h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">On the phone with your mobile money (Orange Money or Afrimoney), dial this code and follow the prompts:</p>
+              {ussdCode ? (
+                <>
+                  <div className="mt-4 flex items-center justify-center gap-2">
+                    <code className="text-xl font-black tracking-wide text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 select-all">{ussdCode}</code>
+                    <button onClick={copy} title="Copy code" className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition">
+                      {copied ? <Check size={18} /> : <Copy size={18} />}
+                    </button>
+                  </div>
+                  {telHref && (
+                    <a href={telHref} className="mt-3 w-full inline-flex items-center justify-center gap-2 font-semibold rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-5 py-2.5 text-sm shadow-sm hover:shadow-md transition">
+                      <Phone size={16} /> Dial now to pay
+                    </a>
+                  )}
+                  {!isMobile && (
+                    <p className="mt-2 text-[11px] text-gray-400">Tip: "Dial now" opens the phone dialer on a mobile device. On a computer, copy the code and dial it on your phone.</p>
+                  )}
+                </>
+              ) : (
+                <p className="mt-4 text-sm text-amber-600">Check your phone for a mobile-money prompt to approve this payment.</p>
+              )}
+              {remaining != null && (
+                expired ? (
+                  <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950/30 rounded-full px-3 py-1">
+                    <Timer size={13} /> Code expired — close and try again
+                  </div>
+                ) : (
+                  <div className={`mt-3 inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1 ${remaining <= 60 ? 'text-amber-700 bg-amber-50 dark:bg-amber-950/30' : 'text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800'}`}>
+                    <Timer size={13} /> Expires in {mmss(remaining)}
+                  </div>
+                )
+              )}
+              {!expired && (
+                <div className="mt-5 flex items-center justify-center gap-2 text-xs text-gray-400">
+                  <Loader2 size={12} className="animate-spin" /> Waiting for your payment…
+                </div>
+              )}
+              <p className="mt-2 text-[11px] text-gray-400">Keep this window open. Your plan activates automatically once payment is confirmed.</p>
+              <button onClick={onClose} className="mt-4 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+            </div>
+          )}
+
+          {terminal && result && (
+            <div className="text-center">
+              <div className="flex justify-center mb-4">{result.icon}</div>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">{result.title}</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{result.desc}</p>
+              <button onClick={onClose} className="mt-6 inline-flex items-center justify-center gap-2 font-semibold rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-2.5 text-sm hover:opacity-90 transition">Done</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
 
 const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> = ({ schoolInfo }) => {
   // ── Border state ──

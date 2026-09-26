@@ -133,9 +133,9 @@ export const schoolConfigService = {
   },
 
   async changePlan(planType: 'freetong' | 'combra' | 'bintumani', billingCycle: 'monthly' | 'yearly') {
-    // Returns a hosted-checkout redirect URL — the plan activates only after the
-    // platform-account payment is confirmed (never a free upgrade).
-    return apiClient.post<{ message: string; data: { sessionId: string; redirectUrl: string | null; amount: number } }>(
+    // Returns an in-app USSD payment code — the plan activates only after the
+    // platform-account payment is confirmed via webhook (never a free upgrade).
+    return apiClient.post<{ message: string; data: { sessionId: string; ussdCode: string | null; amount: number; expireTime: string | null } }>(
       '/api/v1/school-config/subscription/change-plan',
       { plan_type: planType, billing_cycle: billingCycle }
     );
