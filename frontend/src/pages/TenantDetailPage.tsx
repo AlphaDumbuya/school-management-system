@@ -266,6 +266,40 @@ export const TenantDetailPage: React.FC = () => {
     finally { setBillingBusy(false); }
   };
 
+  // Grant a free (complimentary) plan — for enterprise offers or relief.
+  const grantComp = async () => {
+    if (!tenantId) return;
+    const plan = (window.prompt('Grant which plan for free? (freetong / combra / bintumani)', 'bintumani') || '').trim().toLowerCase();
+    if (!['freetong', 'combra', 'bintumani'].includes(plan)) {
+      if (plan) showToast.error('Enter freetong, combra, or bintumani.');
+      return;
+    }
+    const daysRaw = window.prompt('For how many days? Leave blank for NO expiry (open-ended).', '');
+    const durationDays = daysRaw && daysRaw.trim() ? Number(daysRaw) : null;
+    if (durationDays !== null && (!Number.isFinite(durationDays) || durationDays <= 0)) {
+      showToast.error('Enter a positive number of days, or leave blank for no expiry.');
+      return;
+    }
+    const reason = window.prompt('Reason for this complimentary grant (optional):', '') || undefined;
+    setBillingBusy(true);
+    try {
+      const res = await platformService.grantCompPlan(tenantId, plan as any, { durationDays, reason });
+      if (res.success) { showToast.success(res.message || 'Complimentary plan granted'); loadBilling(); load(); }
+    } catch (e: any) { showToast.error(e?.response?.data?.error || 'Grant failed'); }
+    finally { setBillingBusy(false); }
+  };
+
+  const revokeComp = async () => {
+    if (!tenantId) return;
+    if (!window.confirm('Revoke the complimentary plan? The school will move to Freetong and can then pay to upgrade.')) return;
+    setBillingBusy(true);
+    try {
+      const res = await platformService.revokeCompPlan(tenantId);
+      if (res.success) { showToast.success(res.message || 'Complimentary plan revoked'); loadBilling(); load(); }
+    } catch (e: any) { showToast.error(e?.response?.data?.error || 'Revoke failed'); }
+    finally { setBillingBusy(false); }
+  };
+
   const resetPwd = async (userId: string) => {
     if (!tenantId) return;
     try {
@@ -539,6 +573,11 @@ export const TenantDetailPage: React.FC = () => {
                       <Button size="sm" onClick={() => renew('yearly')} disabled={billingBusy} variant="outline">Renew Yearly</Button>
                       <Button size="sm" onClick={extend} disabled={billingBusy} variant="outline">Extend…</Button>
                       <Button size="sm" onClick={expireSub} disabled={billingBusy} variant="outline" className="text-amber-700 border-amber-300 hover:bg-amber-50">Force Expire</Button>
+                      {billing?.subscription?.is_comp ? (
+                        <Button size="sm" onClick={revokeComp} disabled={billingBusy} variant="outline" className="text-red-700 border-red-300 hover:bg-red-50">Revoke Free Plan</Button>
+                      ) : (
+                        <Button size="sm" onClick={grantComp} disabled={billingBusy} variant="outline" className="text-emerald-700 border-emerald-300 hover:bg-emerald-50">Grant Free Plan…</Button>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -35,15 +35,32 @@ try {
     // With it enabled the command buffers until the connection is ready, and
     // if Redis never comes up the per-command errors are handled gracefully
     // (logged via the 'error' handler) rather than taking the server down.
+    // maxRetriesPerRequest MUST be null (not a finite number): with a finite
+    // limit, a command buffered while Redis is unreachable rejects with a
+    // MaxRetriesPerRequestError once the limit is hit. That rejection is NOT
+    // delivered to the 'error' listener — it surfaces as an unhandled error and
+    // CRASHES the whole server (exactly what happened when REDIS_URL pointed at
+    // a Redis that wasn't running). With null, commands keep buffering quietly
+    // and the connection retries in the background, so a down/absent Redis can
+    // never take the API down — rate limiting simply degrades (fail-open).
     const client = new IORedis(redisUrl, {
-      maxRetriesPerRequest: 1,
+      maxRetriesPerRequest: null,
       enableOfflineQueue: true,
       lazyConnect: false,
+      // Cap reconnect backoff so we don't hammer, and never give up entirely.
+      retryStrategy: (times: number) => Math.min(times * 200, 5000),
     });
     client.on('error', (err: Error) => logger.warn(`Rate-limit Redis error: ${err.message}`));
     sharedStoreFactory = () =>
       new RedisStore({
-        sendCommand: (...args: string[]) => (client as any).call(...args),
+        // Swallow per-command failures so a Redis hiccup degrades to no-op
+        // rather than throwing into the limiter (defense-in-depth alongside the
+        // FAIL-OPEN wrapper in makeLimiter).
+        sendCommand: (...args: string[]) =>
+          (client as any).call(...args).catch((e: Error) => {
+            logger.warn(`Rate-limit Redis command failed: ${e.message}`);
+            return null;
+          }),
       });
     logger.info('Rate limiting: using Redis-backed store.');
   } else {

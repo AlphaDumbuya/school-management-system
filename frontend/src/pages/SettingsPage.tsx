@@ -32,6 +32,7 @@ import authService from '../services/authService';
 import { FileUploader } from '@components/admin/forms/FileUploader';
 import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
 import { StorageSettings } from '@components/settings/StorageSettings';
+import { PaymentSettings } from '@components/settings/PaymentSettings';
 import { OfflineStorageSettings } from '@components/offline/OfflineStorageSettings';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -111,6 +112,39 @@ export const SettingsPage: React.FC = () => {
       setActiveTab('profile');
     }
   }, [isSuperAdmin, activeTab]);
+
+  // Returning from Monime after a subscription payment: confirm activation.
+  // The webhook is authoritative, but poll here so the UI updates promptly and
+  // even if the webhook is delayed (the poll reconciles the session server-side).
+  useEffect(() => {
+    const subSession = searchParams.get('subscription');
+    const status = searchParams.get('status');
+    if (!subSession || subSession === 'immediate') return;
+    if (status === 'cancelled') {
+      showToast.info('Payment cancelled — your plan was not changed.');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      // Poll a few times to allow the webhook / status refresh to land.
+      for (let i = 0; i < 6 && !cancelled; i++) {
+        try {
+          const res = await schoolConfigService.getSubscriptionCheckoutStatus(subSession);
+          if (res.success && res.data?.status === 'completed') {
+            showToast.success(`Your plan is now ${String(res.data.planType || '').toUpperCase()}.`);
+            fetchInitialData();
+            return;
+          }
+        } catch { /* keep polling */ }
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+      if (!cancelled) {
+        showToast.info('Payment received — your plan will update shortly.');
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Loading States
   const [loading, setLoading] = useState(false);
@@ -518,12 +552,71 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // Plan ordering so the action button reads correctly (Upgrade / Downgrade /
+  // Current) relative to the tenant's active plan. The trial defaults to
+  // 'freetong', so an unset/blank plan is treated as the lowest tier.
+  const PLAN_RANK: Record<string, number> = { freetong: 0, combra: 1, bintumani: 2 };
+
+  // Feature lists shown on each plan card. `soon: true` marks a roadmap (V2)
+  // capability that is NOT yet available to any plan — shown so the value story
+  // is complete, but clearly badged "Soon" so it never misleads. Un-badged items
+  // are shipping V1 features that ARE enforced (see backend PLAN_LIMITS.features
+  // + subscriptionGuard). Note: SMS/WhatsApp are intentionally omitted (removed
+  // in V1).
+  type PlanFeature = { label: string; soon?: boolean };
+  const PLAN_CARD_FEATURES: Record<'freetong' | 'combra' | 'bintumani', PlanFeature[]> = {
+    freetong: [
+      { label: 'Up to 200 students' },
+      { label: 'Up to 15 staff' },
+      { label: 'Student & guardian directory' },
+      { label: 'Classes, subjects & timetable' },
+      { label: 'Attendance tracking' },
+      { label: 'Grading & report cards' },
+      { label: 'Fee invoices, receipts & online payments' },
+    ],
+    combra: [
+      { label: 'Everything in Freetong' },
+      { label: 'Up to 500 students' },
+      { label: 'Up to 40 staff' },
+      { label: 'ID card & PVC badge maker' },
+      { label: 'Events & calendar' },
+      { label: 'Discipline & conduct records' },
+      { label: 'Advanced analytics dashboards', soon: true },
+      { label: 'Data exports (Excel / PDF)', soon: true },
+    ],
+    bintumani: [
+      { label: 'Everything in Combra' },
+      { label: 'Unlimited students & staff' },
+      { label: 'Payroll & payslips', soon: true },
+      { label: 'Scholarships manager', soon: true },
+      { label: 'Custom branding', soon: true },
+      { label: 'Multi-branch support', soon: true },
+    ],
+  };
+
+  const currentPlan = (subscription?.subscription?.plan_type || 'freetong') as 'freetong' | 'combra' | 'bintumani';
+  const planButtonLabel = (target: 'freetong' | 'combra' | 'bintumani'): string => {
+    if (target === currentPlan) return 'Current Plan';
+    return (PLAN_RANK[target] ?? 0) > (PLAN_RANK[currentPlan] ?? 0) ? 'Upgrade' : 'Downgrade';
+  };
+
   const handleUpgradePlan = async (planType: 'freetong' | 'combra' | 'bintumani') => {
     setSaving(true);
     try {
+      // Plan changes are PAID (subscription revenue → the platform's own Monime
+      // account). The backend now returns a hosted-checkout redirect URL instead
+      // of activating the plan for free; the plan only activates via webhook once
+      // payment is confirmed. Send the payer to Monime to complete payment.
       const res = await schoolConfigService.changePlan(planType, billingCycle);
       if (res.success) {
-        showToast.success(`Successfully subscribed to ${planType.toUpperCase()}!`);
+        const redirectUrl = (res as any).data?.redirectUrl;
+        if (redirectUrl) {
+          showToast.info('Redirecting to secure payment…');
+          window.location.assign(redirectUrl);
+          return;
+        }
+        // No redirect (e.g. a zero-cost change) — plan applied immediately.
+        showToast.success(`Your plan is now ${planType.toUpperCase()}.`);
         fetchInitialData();
       } else {
         // Verification gate: guide the owner to verify instead of a raw error.
@@ -572,6 +665,7 @@ export const SettingsPage: React.FC = () => {
     { id: 'attendance', label: 'Attendance Rules', icon: <AlertCircle size={18} />, adminOnly: true },
     { id: 'financial', label: 'Financial Info', icon: <DollarSign size={18} />, adminOnly: true },
     { id: 'storage', label: 'File Storage', icon: <HardDrive size={18} />, adminOnly: true },
+    { id: 'payments', label: 'Payments', icon: <CreditCard size={18} />, adminOnly: true },
     { id: 'billing', label: 'Plan & Billing', icon: <CreditCard size={18} />, adminOnly: true },
     { id: 'report-card', label: 'Report Card', icon: <GraduationCap size={18} />, adminOnly: true },
   ];
@@ -1754,6 +1848,21 @@ export const SettingsPage: React.FC = () => {
                     active in this version — so the tab had no functional fields. */}
 
                 {/* ── FILE STORAGE TAB ── */}
+                {/* ── PAYMENTS TAB (school's own Monime account for fee collection) ── */}
+                {activeTab === 'payments' && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Payments</CardTitle>
+                      <CardDescription>
+                        Connect your school's own Monime account so online fee payments settle directly into your account.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <PaymentSettings />
+                    </CardContent>
+                  </Card>
+                )}
+
                 {activeTab === 'storage' && (
                   <Card>
                     <CardHeader>
@@ -1777,6 +1886,44 @@ export const SettingsPage: React.FC = () => {
                 {/* ── PLAN & BILLING TAB ── */}
                 {activeTab === 'billing' && (
                   <div className="space-y-6">
+                    {/* Trial banner — new schools explore the top plan free for a
+                        limited time, then drop to Freetong (never locked out). */}
+                    {subscription?.subscription?.is_trial && subscription?.subscription?.end_date && (() => {
+                      const end = new Date(subscription.subscription.end_date as string);
+                      const daysLeft = Math.max(0, Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                      return (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+                          <Sparkles size={18} className="text-amber-500 shrink-0 mt-0.5" />
+                          <div className="text-sm text-amber-900">
+                            <p className="font-bold">
+                              You're on a free {String(subscription.subscription.plan_type).toUpperCase()} trial — {daysLeft} day{daysLeft === 1 ? '' : 's'} left.
+                            </p>
+                            <p className="text-xs text-amber-800/80 mt-0.5">
+                              Explore every feature. When the trial ends you'll move to the free Freetong plan automatically — you won't be locked out. Upgrade any time to keep the extras.
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Comp banner — platform owner granted this plan for free. */}
+                    {subscription?.subscription?.is_comp && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
+                        <Sparkles size={18} className="text-emerald-500 shrink-0 mt-0.5" />
+                        <div className="text-sm text-emerald-900">
+                          <p className="font-bold">
+                            Complimentary {String(subscription.subscription.plan_type).toUpperCase()} plan — a gift from WiSkul.
+                          </p>
+                          <p className="text-xs text-emerald-800/80 mt-0.5">
+                            {subscription.subscription.end_date
+                              ? `Active until ${new Date(subscription.subscription.end_date).toLocaleDateString()}. `
+                              : 'No expiry. '}
+                            You're enjoying full access at no cost. If this offer is later removed you'll move to the free Freetong plan without losing any data.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Current active plan */}
                     <Card className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white relative overflow-hidden border-none shadow-md">
                       <div className="absolute right-[-5%] top-[-10%] w-[200px] h-[200px] rounded-full bg-blue-500/10 blur-xl" />
@@ -1894,29 +2041,27 @@ export const SettingsPage: React.FC = () => {
                             </div>
                             <p className="text-gray-400 text-xs mt-1 italic">"Start free, grow strong"</p>
                             <p className="text-2xl font-black text-gray-900 mt-4">
-                              {(() => {
-                                const symbol = settings.currency === 'SLE' ? 'Le ' : settings.currency === 'NLe' ? 'NLe ' : '$';
-                                return `${symbol}${billingCycle === 'monthly' ? '400' : '4000'}`;
-                              })()}
+                              {`Le ${billingCycle === 'monthly' ? '400' : '4000'}`}
                               <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
                             </p>
                             
                             <ul className="space-y-2 mt-6 text-xs text-gray-600">
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500" /> Up to 200 Students</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500" /> Up to 15 Staff</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500" /> Student directory</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500" /> Attendance tracking</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500" /> Fee invoices & receipts</li>
+                              {PLAN_CARD_FEATURES.freetong.map((f) => (
+                                <li key={f.label} className={`flex items-center gap-2 ${f.soon ? 'text-gray-400' : ''}`}>
+                                  <CheckCircle2 size={12} className={f.soon ? 'text-gray-300' : 'text-emerald-500'} /> {f.label}
+                                  {f.soon && <span className="ml-1 text-[10px] italic text-gray-400">(coming soon)</span>}
+                                </li>
+                              ))}
                             </ul>
                           </div>
 
                           <Button
-                            variant={subscription?.subscription?.plan_type === 'freetong' ? 'outline' : 'default'}
+                            variant={currentPlan === 'freetong' ? 'outline' : 'default'}
                             onClick={() => handleUpgradePlan('freetong')}
-                            disabled={subscription?.subscription?.plan_type === 'freetong' || saving}
+                            disabled={currentPlan === 'freetong' || saving}
                             className="w-full mt-8"
                           >
-                            {subscription?.subscription?.plan_type === 'freetong' ? 'Active Plan' : 'Downgrade'}
+                            {planButtonLabel('freetong')}
                           </Button>
                         </div>
 
@@ -1938,30 +2083,27 @@ export const SettingsPage: React.FC = () => {
                             </div>
                             <p className="text-gray-400 text-xs mt-1 italic">"A mother managing her children"</p>
                             <p className="text-2xl font-black text-gray-900 mt-4">
-                              {(() => {
-                                const symbol = settings.currency === 'SLE' ? 'Le ' : settings.currency === 'NLe' ? 'NLe ' : '$';
-                                return `${symbol}${billingCycle === 'monthly' ? '900' : '9000'}`;
-                              })()}
+                              {`Le ${billingCycle === 'monthly' ? '900' : '9000'}`}
                               <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
                             </p>
                             
                             <ul className="space-y-2 mt-6 text-xs text-gray-600">
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-purple-500" /> Up to 500 Students</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-purple-500" /> Up to 40 Staff</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-purple-500" /> Everything in Freetong</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-purple-500" /> **Exams, results & cards**</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-purple-500" /> **ID card PVC badge maker**</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-purple-500" /> **WhatsApp integration**</li>
+                              {PLAN_CARD_FEATURES.combra.map((f) => (
+                                <li key={f.label} className={`flex items-center gap-2 ${f.soon ? 'text-gray-400' : ''}`}>
+                                  <CheckCircle2 size={12} className={f.soon ? 'text-gray-300' : 'text-purple-500'} /> {f.label}
+                                  {f.soon && <span className="ml-1 text-[10px] italic text-gray-400">(coming soon)</span>}
+                                </li>
+                              ))}
                             </ul>
                           </div>
 
                           <Button
-                            variant={subscription?.subscription?.plan_type === 'combra' ? 'outline' : 'default'}
+                            variant={currentPlan === 'combra' ? 'outline' : 'default'}
                             onClick={() => handleUpgradePlan('combra')}
-                            disabled={subscription?.subscription?.plan_type === 'combra' || saving}
+                            disabled={currentPlan === 'combra' || saving}
                             className="w-full mt-8 bg-purple-600 hover:bg-purple-700 text-white"
                           >
-                            {subscription?.subscription?.plan_type === 'combra' ? 'Active Plan' : 'Select Combra'}
+                            {planButtonLabel('combra')}
                           </Button>
                         </div>
 
@@ -1980,30 +2122,27 @@ export const SettingsPage: React.FC = () => {
                             </div>
                             <p className="text-gray-400 text-xs mt-1 italic">"The highest peak"</p>
                             <p className="text-2xl font-black text-gray-900 mt-4">
-                              {(() => {
-                                const symbol = settings.currency === 'SLE' ? 'Le ' : settings.currency === 'NLe' ? 'NLe ' : '$';
-                                return `${symbol}${billingCycle === 'monthly' ? '1750' : '17500'}`;
-                              })()}
+                              {`Le ${billingCycle === 'monthly' ? '1750' : '17500'}`}
                               <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
                             </p>
                             
                             <ul className="space-y-2 mt-6 text-xs text-gray-600">
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-amber-500" /> **Unlimited Students & Staff**</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-amber-500" /> Everything in Combra</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-amber-500" /> **AI analysis & insights**</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-amber-500" /> **Payroll & Salaries**</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-amber-500" /> **Scholarships manager**</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-amber-500" /> Custom branding option</li>
+                              {PLAN_CARD_FEATURES.bintumani.map((f) => (
+                                <li key={f.label} className={`flex items-center gap-2 ${f.soon ? 'text-gray-400' : ''}`}>
+                                  <CheckCircle2 size={12} className={f.soon ? 'text-gray-300' : 'text-amber-500'} /> {f.label}
+                                  {f.soon && <span className="ml-1 text-[10px] italic text-gray-400">(coming soon)</span>}
+                                </li>
+                              ))}
                             </ul>
                           </div>
 
                           <Button
-                            variant={subscription?.subscription?.plan_type === 'bintumani' ? 'outline' : 'default'}
+                            variant={currentPlan === 'bintumani' ? 'outline' : 'default'}
                             onClick={() => handleUpgradePlan('bintumani')}
-                            disabled={subscription?.subscription?.plan_type === 'bintumani' || saving}
+                            disabled={currentPlan === 'bintumani' || saving}
                             className="w-full mt-8 bg-amber-500 hover:bg-amber-600 text-white"
                           >
-                            {subscription?.subscription?.plan_type === 'bintumani' ? 'Active Plan' : 'Upgrade to Bintumani'}
+                            {planButtonLabel('bintumani')}
                           </Button>
                         </div>
                       </CardContent>

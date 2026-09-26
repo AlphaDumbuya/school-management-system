@@ -74,6 +74,9 @@ export interface SubscriptionInfo {
   max_students: number;
   max_storage_gb: number;
   features: Record<string, boolean>;
+  is_trial?: boolean;
+  is_comp?: boolean;
+  comp_reason?: string | null;
 }
 
 export interface SubscriptionDetails {
@@ -130,10 +133,33 @@ export const schoolConfigService = {
   },
 
   async changePlan(planType: 'freetong' | 'combra' | 'bintumani', billingCycle: 'monthly' | 'yearly') {
-    return apiClient.post<{ message: string; data: SubscriptionInfo }>('/api/v1/school-config/subscription/change-plan', {
-      plan_type: planType,
-      billing_cycle: billingCycle,
-    });
+    // Returns a hosted-checkout redirect URL — the plan activates only after the
+    // platform-account payment is confirmed (never a free upgrade).
+    return apiClient.post<{ message: string; data: { sessionId: string; redirectUrl: string | null; amount: number } }>(
+      '/api/v1/school-config/subscription/change-plan',
+      { plan_type: planType, billing_cycle: billingCycle }
+    );
+  },
+
+  /** Poll a subscription payment session after returning from Monime. */
+  async getSubscriptionCheckoutStatus(sessionId: string) {
+    return apiClient.get<{ status: string; planType: string }>(
+      `/api/v1/school-config/subscription/checkout/${sessionId}`
+    );
+  },
+
+  // ── Monime payment credentials (school's OWN account for fee collection) ──
+  async getMonimeConfig() {
+    return apiClient.get<{ configured: boolean; spaceId: string | null; tokenMasked: string | null }>(
+      '/api/v1/school-config/monime'
+    );
+  },
+
+  async saveMonimeConfig(payload: { accessToken?: string; spaceId?: string; enabled?: boolean }) {
+    return apiClient.post<{ message: string; data: { configured: boolean; spaceId: string | null; tokenMasked: string | null } }>(
+      '/api/v1/school-config/monime',
+      payload
+    );
   },
 
   async getBillingHistory() {

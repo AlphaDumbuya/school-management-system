@@ -46,6 +46,40 @@ export const PlatformSubscriptionsPage: React.FC = () => {
     billing_cycle: 'monthly',
   });
 
+  // New-school trial config (platform-owner controlled).
+  const [trial, setTrial] = useState<{ enabled: boolean; planType: 'freetong' | 'combra' | 'bintumani'; durationDays: number } | null>(null);
+  const [trialSaving, setTrialSaving] = useState(false);
+
+  const loadTrial = async () => {
+    try {
+      const res = await platformService.getTrialConfig();
+      if (res.success && res.data) setTrial(res.data);
+    } catch { /* non-blocking */ }
+  };
+  useEffect(() => { loadTrial(); }, []);
+
+  const saveTrial = async () => {
+    if (!trial) return;
+    setTrialSaving(true);
+    try {
+      const res = await platformService.updateTrialConfig({
+        enabled: trial.enabled,
+        plan_type: trial.planType,
+        duration_days: trial.durationDays,
+      });
+      if (res.success) {
+        showToast.success(res.message || 'Trial settings saved');
+        if (res.data) setTrial({ enabled: res.data.enabled, planType: res.data.planType as any, durationDays: res.data.durationDays });
+      } else {
+        showToast.error((res as any).error || 'Failed to save');
+      }
+    } catch (e: any) {
+      showToast.error(e?.response?.data?.error || 'Failed to save trial settings');
+    } finally {
+      setTrialSaving(false);
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -140,6 +174,67 @@ export const PlatformSubscriptionsPage: React.FC = () => {
         onRefresh={fetchData}
         isRefreshing={loading}
       >
+        {/* New-school trial config — platform owner controls what every new
+            school starts on. Applies to schools created AFTER a change. */}
+        {trial && (
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-8 shadow-sm">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h3 className="text-sm font-extrabold text-gray-900 flex items-center gap-2">
+                  <Sparkles size={16} className="text-amber-500" /> New-school free trial
+                </h3>
+                <p className="text-xs text-gray-500 mt-1 max-w-xl">
+                  Every newly registered school starts here. When the trial ends they drop to the free Freetong plan automatically (never locked out). Changes apply to schools created after you save.
+                </p>
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={trial.enabled}
+                  onChange={(e) => setTrial({ ...trial, enabled: e.target.checked })}
+                />
+                Trial enabled
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Trial plan</label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                  value={trial.planType}
+                  disabled={!trial.enabled}
+                  onChange={(e) => setTrial({ ...trial, planType: e.target.value as any })}
+                >
+                  <option value="freetong">Freetong</option>
+                  <option value="combra">Combra</option>
+                  <option value="bintumani">Bintumani</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Duration (days)</label>
+                <input
+                  type="number"
+                  min={1}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                  value={trial.durationDays}
+                  disabled={!trial.enabled}
+                  onChange={(e) => setTrial({ ...trial, durationDays: Number(e.target.value) })}
+                />
+              </div>
+              <div className="flex items-end">
+                <Button onClick={saveTrial} disabled={trialSaving} className="w-full">
+                  {trialSaving && <Loader2 className="animate-spin mr-1.5" size={14} />}
+                  Save trial settings
+                </Button>
+              </div>
+            </div>
+            {!trial.enabled && (
+              <p className="text-xs text-gray-500 mt-3">Trial is off — new schools start directly on the free Freetong plan.</p>
+            )}
+          </div>
+        )}
+
         {/* Plan Cards Information */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">

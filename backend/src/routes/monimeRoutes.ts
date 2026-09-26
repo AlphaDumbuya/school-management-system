@@ -41,21 +41,29 @@ function appOrigin(req: Request): string {
 }
 
 // ── Online-payment availability (so portals can hide the pay action) ──────────
-router.get('/monime/status', authenticate, async (_req: Request, res: Response) => {
-  return res.json({ success: true, data: { online_payments_enabled: monimeService.isConfigured() } });
+// Fee payments settle into the SCHOOL's OWN Monime account, so availability is
+// per-tenant: online fee payment is only enabled once the school has configured
+// its own Monime credentials (Settings → Payments).
+router.get('/monime/status', authenticate, attachUserContext, async (req: Request, res: Response) => {
+  const tenantId = (req as any).user?.tenant_id;
+  const tenantCreds = tenantId ? await monimeService.resolveTenantCredentials(tenantId) : null;
+  return res.json({ success: true, data: { online_payments_enabled: !!tenantCreds } });
 });
 
 // ── Initiate a checkout ───────────────────────────────────────────────────────
 router.post('/monime/checkout', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    if (!monimeService.isConfigured()) {
-      return res.status(503).json({ success: false, error: 'Online payments are not configured yet.' });
-    }
     const tenantId = (req as any).user?.tenant_id;
     const userId = (req as any).user?.id;
     const { invoiceId, studentId: bodyStudentId, amount: bodyAmount, label } = req.body || {};
 
     if (!tenantId) return res.status(400).json({ success: false, error: 'Tenant context required' });
+
+    // Fee money MUST go to the SCHOOL's own Monime account — never the platform's.
+    const feeCreds = await monimeService.resolveTenantCredentials(tenantId);
+    if (!feeCreds) {
+      return res.status(503).json({ success: false, error: 'Online payments are not set up for your school yet. Please contact your administrator.' });
+    }
 
     // Resolve the invoice (preferred) or an ad-hoc amount.
     let studentId = bodyStudentId as string | undefined;
@@ -131,7 +139,7 @@ router.post('/monime/checkout', authenticate, attachUserContext, async (req: Req
       cancelUrl,
       metadata: { sessionId: session.id, tenantId, studentId, invoiceId: invoiceId || '' },
       callbackState: session.id,
-    });
+    }, feeCreds); // settle into the SCHOOL's own Monime account
 
     await db('payment_sessions')
       .where({ id: session.id })
@@ -156,13 +164,16 @@ router.post('/monime/checkout', authenticate, attachUserContext, async (req: Req
 // their phone — the whole payment happens INSIDE our app (no popup/iframe).
 router.post('/monime/payment-code', authenticate, attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    if (!monimeService.isConfigured()) {
-      return res.status(503).json({ success: false, error: 'Online payments are not configured yet.' });
-    }
     const tenantId = (req as any).user?.tenant_id;
     const userId = (req as any).user?.id;
     const { invoiceId, studentId: bodyStudentId, amount: bodyAmount, label } = req.body || {};
     if (!tenantId) return res.status(400).json({ success: false, error: 'Tenant context required' });
+
+    // Fee money MUST go to the SCHOOL's own Monime account — never the platform's.
+    const feeCreds = await monimeService.resolveTenantCredentials(tenantId);
+    if (!feeCreds) {
+      return res.status(503).json({ success: false, error: 'Online payments are not set up for your school yet. Please contact your administrator.' });
+    }
 
     // Resolve invoice (preferred) or ad-hoc amount — identical rules to checkout.
     let studentId = bodyStudentId as string | undefined;
@@ -226,7 +237,7 @@ router.post('/monime/payment-code', authenticate, attachUserContext, async (req:
       name,
       amount,
       metadata: { sessionId: session.id, tenantId, studentId, invoiceId: invoiceId || '' },
-    });
+    }, feeCreds); // settle into the SCHOOL's own Monime account
 
     await db('payment_sessions')
       .where({ id: session.id })
@@ -254,14 +265,16 @@ router.get('/monime/session/:id', authenticate, attachUserContext, async (req: R
     if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
     if (session.tenant_id !== tenantId) return res.status(403).json({ success: false, error: 'Forbidden' });
 
-    // If still pending and we have a provider id, refresh from Monime. The
-    // provider resource differs for USSD payment codes vs hosted checkout.
-    if (session.status === 'pending' && session.provider_session_id && monimeService.isConfigured()) {
+    // If still pending and we have a provider id, refresh from Monime. Fee
+    // sessions were created under the SCHOOL's own account, so status polling
+    // MUST use the same tenant credentials (not the platform account).
+    const feeCreds = session.tenant_id ? await monimeService.resolveTenantCredentials(session.tenant_id) : null;
+    if (session.status === 'pending' && session.provider_session_id && feeCreds) {
       try {
         const isUssd = session.provider === 'monime_ussd';
         const remote = isUssd
-          ? await monimeService.getPaymentCode(session.provider_session_id)
-          : await monimeService.getCheckoutSession(session.provider_session_id);
+          ? await monimeService.getPaymentCode(session.provider_session_id, feeCreds)
+          : await monimeService.getCheckoutSession(session.provider_session_id, feeCreds);
         // Payment codes report completion via progress.isCompleted / status.
         const remoteStatus = isUssd
           ? (remote?.progress?.isCompleted ? 'completed' : remote?.status)
@@ -321,6 +334,15 @@ router.post('/monime/webhook', async (req: Request, res: Response) => {
     if (typeof callbackState === 'string' && callbackState.startsWith('restore:')) {
       const restoreId = callbackState.slice('restore:'.length);
       await reconcileRestoreSession(restoreId, status);
+      return res.status(200).json({ received: true });
+    }
+
+    // Subscription/plan payments use callbackState "subscription:<id>". These
+    // settle into the PLATFORM's account; on completion we activate the plan.
+    if (typeof callbackState === 'string' && callbackState.startsWith('subscription:')) {
+      const subSessionId = callbackState.slice('subscription:'.length);
+      const { SubscriptionCheckout } = await import('../services/subscriptionCheckoutService.js');
+      await SubscriptionCheckout.reconcile(subSessionId, status);
       return res.status(200).json({ received: true });
     }
 

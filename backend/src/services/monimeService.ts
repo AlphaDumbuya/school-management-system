@@ -32,13 +32,59 @@ export interface CreateCheckoutResult {
   raw?: any;
 }
 
+/**
+ * Which Monime account a call settles into:
+ *  - the PLATFORM account (env creds) for subscription/restore revenue, or
+ *  - a specific tenant's own account for that school's fee collection.
+ */
+export interface MonimeCredentials {
+  token: string;
+  spaceId: string;
+}
+
 export class MonimeService {
   private token = process.env.MONIME_ACCESS_TOKEN || '';
   private spaceId = process.env.MONIME_SPACE_ID || '';
   private webhookSecret = process.env.MONIME_WEBHOOK_SECRET || '';
 
-  isConfigured(): boolean {
-    return !!(this.token && this.spaceId);
+  /** The platform's own Monime credentials (subscription/restore revenue). */
+  private platformCreds(): MonimeCredentials {
+    return { token: this.token, spaceId: this.spaceId };
+  }
+
+  /** Resolve creds to use: an explicit set, or the platform default. */
+  private creds(explicit?: MonimeCredentials): MonimeCredentials {
+    if (explicit && explicit.token && explicit.spaceId) return explicit;
+    return this.platformCreds();
+  }
+
+  /** True if the given creds (or the platform default) are usable. */
+  isConfigured(creds?: MonimeCredentials): boolean {
+    const c = this.creds(creds);
+    return !!(c.token && c.spaceId);
+  }
+
+  /**
+   * Load a tenant's OWN Monime credentials from the schools table. Returns null
+   * when the school has not configured its own account (caller decides whether
+   * to fall back to the platform account or refuse). The token is encrypted at
+   * rest and decrypted here.
+   */
+  async resolveTenantCredentials(tenantId: string): Promise<MonimeCredentials | null> {
+    try {
+      const { db } = await import('../utils/database.js');
+      const { decryptSecret } = await import('../utils/encryption.js');
+      const school = await db('schools')
+        .where({ tenant_id: tenantId })
+        .select('monime_access_token', 'monime_space_id', 'monime_configured')
+        .first();
+      if (school?.monime_configured && school?.monime_access_token && school?.monime_space_id) {
+        return { token: decryptSecret(school.monime_access_token), spaceId: school.monime_space_id };
+      }
+    } catch (err) {
+      logger.warn(`Could not resolve tenant Monime creds for ${tenantId}: ${err instanceof Error ? err.message : err}`);
+    }
+    return null;
   }
 
   private toMinorUnits(amountMajor: number): number {
@@ -49,9 +95,10 @@ export class MonimeService {
    * Create a hosted checkout session. Returns the redirect URL to send the
    * payer to Monime's checkout page.
    */
-  async createCheckoutSession(input: CreateCheckoutInput): Promise<CreateCheckoutResult> {
-    if (!this.isConfigured()) {
-      throw new Error('Monime is not configured (missing MONIME_ACCESS_TOKEN / MONIME_SPACE_ID)');
+  async createCheckoutSession(input: CreateCheckoutInput, creds?: MonimeCredentials): Promise<CreateCheckoutResult> {
+    const c = this.creds(creds);
+    if (!this.isConfigured(c)) {
+      throw new Error('Monime is not configured (missing access token / space id)');
     }
 
     const body = {
@@ -73,8 +120,8 @@ export class MonimeService {
     const res = await fetch(`${MONIME_BASE_URL}/v1/checkout-sessions`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.token}`,
-        'Monime-Space-Id': this.spaceId,
+        Authorization: `Bearer ${c.token}`,
+        'Monime-Space-Id': c.spaceId,
         'Idempotency-Key': crypto.randomUUID(),
         'Content-Type': 'application/json',
       },
@@ -111,9 +158,10 @@ export class MonimeService {
     amount: number;               // MAJOR SLE units
     metadata?: Record<string, string>;
     duration?: string;            // e.g. '15m' — how long the code stays valid
-  }): Promise<{ id: string | null; ussdCode: string | null; status: string | null; expireTime: string | null; raw?: any }> {
-    if (!this.isConfigured()) {
-      throw new Error('Monime is not configured (missing MONIME_ACCESS_TOKEN / MONIME_SPACE_ID)');
+  }, creds?: MonimeCredentials): Promise<{ id: string | null; ussdCode: string | null; status: string | null; expireTime: string | null; raw?: any }> {
+    const c = this.creds(creds);
+    if (!this.isConfigured(c)) {
+      throw new Error('Monime is not configured (missing access token / space id)');
     }
     const value = this.toMinorUnits(input.amount);
     // Minimal valid shape for a fixed one-time collection: a named code with a
@@ -132,8 +180,8 @@ export class MonimeService {
       fetch(`${MONIME_BASE_URL}${path}`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${this.token}`,
-          'Monime-Space-Id': this.spaceId,
+          Authorization: `Bearer ${c.token}`,
+          'Monime-Space-Id': c.spaceId,
           'Idempotency-Key': idempotencyKey,
           'Content-Type': 'application/json',
         },
@@ -163,9 +211,10 @@ export class MonimeService {
   }
 
   /** Fetch a payment code to read its authoritative status. */
-  async getPaymentCode(paymentCodeId: string): Promise<any> {
-    if (!this.isConfigured()) throw new Error('Monime is not configured');
-    const headers = { Authorization: `Bearer ${this.token}`, 'Monime-Space-Id': this.spaceId };
+  async getPaymentCode(paymentCodeId: string, creds?: MonimeCredentials): Promise<any> {
+    const c = this.creds(creds);
+    if (!this.isConfigured(c)) throw new Error('Monime is not configured');
+    const headers = { Authorization: `Bearer ${c.token}`, 'Monime-Space-Id': c.spaceId };
     const id = encodeURIComponent(paymentCodeId);
     let res = await fetch(`${MONIME_BASE_URL}/v1/payment-codes/${id}`, { headers });
     if (res.status === 404) res = await fetch(`${MONIME_BASE_URL}/payment-codes/${id}`, { headers });
@@ -182,12 +231,13 @@ export class MonimeService {
    * Fetch a checkout session to read its authoritative status.
    * Returns e.g. { status: 'completed' | 'pending' | ... }.
    */
-  async getCheckoutSession(sessionId: string): Promise<any> {
-    if (!this.isConfigured()) throw new Error('Monime is not configured');
+  async getCheckoutSession(sessionId: string, creds?: MonimeCredentials): Promise<any> {
+    const c = this.creds(creds);
+    if (!this.isConfigured(c)) throw new Error('Monime is not configured');
     const res = await fetch(`${MONIME_BASE_URL}/v1/checkout-sessions/${encodeURIComponent(sessionId)}`, {
       headers: {
-        Authorization: `Bearer ${this.token}`,
-        'Monime-Space-Id': this.spaceId,
+        Authorization: `Bearer ${c.token}`,
+        'Monime-Space-Id': c.spaceId,
       },
     });
     if (!res.ok) {

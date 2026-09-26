@@ -9,6 +9,7 @@ import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/authMiddleware';
 import { TenantService } from '../services/tenantService';
 import { SubscriptionService } from '../services/subscriptionService';
+import { PlatformSettingsService } from '../services/platformSettingsService';
 import { TenantUserService } from '../services/tenantUserService';
 import { ImpersonationService } from '../services/impersonationService';
 import { PlatformAuditService } from '../services/platformAuditService';
@@ -545,6 +546,118 @@ router.post('/tenants/:id/subscription/expire', authenticate, authorize(UserRole
     const to = await tenantContactEmail(id);
     if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[(updated as any).plan_type] || (updated as any).plan_type, action: 'expired', tenantId: id }), 'subscription expire');
     res.json({ success: true, data: updated, message: 'Subscription expired' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/platform/tenants/:id/subscription/comp
+ * @desc    Grant a COMPLIMENTARY (free) plan to a tenant. No payment, no
+ *          tenant-side renewal. Optionally time-boxed via duration_days; omit
+ *          for an open-ended (never-expiring) grant. Used for enterprise offers
+ *          or relief for struggling schools.
+ * @access  Super Admin only
+ */
+router.post('/tenants/:id/subscription/comp', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { plan_type, duration_days, reason } = req.body as {
+      plan_type?: 'freetong' | 'combra' | 'bintumani';
+      duration_days?: number | null;
+      reason?: string;
+    };
+    if (!plan_type || !['freetong', 'combra', 'bintumani'].includes(plan_type)) {
+      throw new AppError('A valid plan_type is required', 400, 'VALIDATION_ERROR');
+    }
+    if (duration_days !== undefined && duration_days !== null && (!Number.isFinite(Number(duration_days)) || Number(duration_days) <= 0)) {
+      throw new AppError('duration_days must be a positive number of days, or omitted for no expiry', 400, 'VALIDATION_ERROR');
+    }
+
+    const updated = await SubscriptionService.grantCompPlan(id, plan_type, req.auth!.userId, {
+      durationDays: duration_days ?? null,
+      reason,
+    });
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.comp_grant', changes: { plan_type, duration_days: duration_days ?? null, reason: reason || null } });
+
+    const tenant = await db('tenants').where({ id }).first();
+    const to = await tenantContactEmail(id);
+    if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[plan_type] || plan_type, action: 'changed', endDate: (updated as any).end_date, tenantId: id }), 'comp grant');
+    res.json({
+      success: true,
+      message: `Complimentary ${plan_type.toUpperCase()} granted${duration_days ? ` for ${duration_days} days` : ' with no expiry'}.`,
+      data: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/platform/tenants/:id/subscription/comp/revoke
+ * @desc    Revoke a complimentary plan — the school moves to Freetong and can
+ *          then upgrade by paying. Non-destructive (existing data is kept).
+ * @access  Super Admin only
+ */
+router.post('/tenants/:id/subscription/comp/revoke', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const updated = await SubscriptionService.revokeCompPlan(id, req.auth!.userId);
+    await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.comp_revoke' });
+
+    const tenant = await db('tenants').where({ id }).first();
+    const to = await tenantContactEmail(id);
+    if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS.freetong, action: 'changed', endDate: (updated as any).end_date, tenantId: id }), 'comp revoke');
+    res.json({ success: true, message: 'Complimentary plan revoked. School moved to Freetong.', data: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── Platform trial config (new-school promo) ──────────────────────────────────
+
+/**
+ * @route   GET /api/platform/settings/trial
+ * @desc    Read the new-school promotional trial config.
+ * @access  Super Admin only
+ */
+router.get('/settings/trial', authenticate, authorize(UserRole.SUPER_ADMIN), async (_req, res, next) => {
+  try {
+    const config = await PlatformSettingsService.getTrialConfig();
+    res.json({ success: true, data: config });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   PUT /api/platform/settings/trial
+ * @desc    Update the new-school trial config: which plan new schools start on,
+ *          for how many days, and whether the promo is active. Applies to
+ *          schools created AFTER the change.
+ * @access  Super Admin only
+ */
+router.put('/settings/trial', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { enabled, plan_type, duration_days } = req.body as {
+      enabled?: boolean; plan_type?: string; duration_days?: number;
+    };
+    if (plan_type !== undefined && !['freetong', 'combra', 'bintumani'].includes(plan_type)) {
+      throw new AppError('plan_type must be freetong, combra, or bintumani', 400, 'VALIDATION_ERROR');
+    }
+    if (duration_days !== undefined && (!Number.isFinite(Number(duration_days)) || Number(duration_days) <= 0)) {
+      throw new AppError('duration_days must be a positive number of days', 400, 'VALIDATION_ERROR');
+    }
+    const updated = await PlatformSettingsService.setTrialConfig(
+      {
+        enabled,
+        planType: plan_type as any,
+        durationDays: duration_days !== undefined ? Number(duration_days) : undefined,
+      },
+      req.auth!.userId
+    );
+    await PlatformAuditService.record({ ...auditMeta(req), action: 'settings.trial_update', changes: updated });
+    res.json({ success: true, message: 'Trial settings updated.', data: updated });
   } catch (error) {
     next(error);
   }

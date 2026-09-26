@@ -277,20 +277,69 @@ router.get('/subscription/active', authenticate, attachUserContext, async (req: 
 
 /**
  * POST /api/v1/school-config/subscription/change-plan
- * Upgrade or change active subscription plan
+ * Start a plan change/upgrade.
+ *
+ * MONEY ROUTING (critical): subscription revenue belongs to the PLATFORM, so
+ * this creates a checkout against the PLATFORM's own Monime account and returns
+ * a redirect URL. The plan is NOT activated here — it only activates from the
+ * Monime webhook (callbackState "subscription:<id>") once payment is confirmed.
+ * This closes the previous "free upgrade" hole where clicking a plan activated
+ * it and wrote a paid billing row without collecting any money.
+ *
+ * Up-front (pre-payment) validation still runs so the payer gets immediate
+ * feedback on downgrade-over-limit before being sent to pay.
  */
 router.post('/subscription/change-plan', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, requireVerifiedSchool, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = getTenantId(req);
     const userId = req.auth!.userId;
-    const { plan_type, billing_cycle } = req.body;
+    const { plan_type, billing_cycle } = req.body as {
+      plan_type?: 'freetong' | 'combra' | 'bintumani';
+      billing_cycle?: 'monthly' | 'yearly';
+    };
 
     if (!plan_type || !billing_cycle) {
       throw new AppError('Plan type and billing cycle are required', 400, 'VALIDATION_ERROR');
     }
+    if (!['freetong', 'combra', 'bintumani'].includes(plan_type)) {
+      throw new AppError('Invalid subscription plan type', 400, 'VALIDATION_ERROR');
+    }
+    if (!['monthly', 'yearly'].includes(billing_cycle)) {
+      throw new AppError("Billing cycle must be 'monthly' or 'yearly'", 400, 'VALIDATION_ERROR');
+    }
 
-    const updated = await SubscriptionService.changePlan(tenantId, plan_type, billing_cycle, userId);
-    res.json({ success: true, message: `Successfully subscribed to ${plan_type.toUpperCase()}`, data: updated });
+    const { SubscriptionCheckout } = await import('../services/subscriptionCheckoutService');
+    const result = await SubscriptionCheckout.startPlanChange({
+      tenantId,
+      userId,
+      planType: plan_type,
+      billingCycle: billing_cycle,
+      req,
+    });
+
+    res.json({
+      success: true,
+      message: 'Redirecting to secure payment to activate your plan.',
+      data: result, // { sessionId, redirectUrl, amount }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/school-config/subscription/checkout/:sessionId
+ * Poll a subscription payment session's status (used by the billing return
+ * page after the payer comes back from Monime). Confirms activation once the
+ * webhook (or this poll) has reconciled the payment.
+ */
+router.get('/subscription/checkout/:sessionId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { SubscriptionCheckout } = await import('../services/subscriptionCheckoutService');
+    const result = await SubscriptionCheckout.getStatus(req.params.sessionId, tenantId);
+    if (!result) throw new AppError('Subscription session not found', 404, 'NOT_FOUND');
+    res.json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
@@ -451,6 +500,107 @@ router.post('/storage', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUP
         configured: !!updated.storage_configured,
         appId: updated.storage_uploadthing_app_id || null,
         tokenMasked: maskToken(updated.storage_uploadthing_token),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================================
+// MONIME PAYMENT CREDENTIALS — tenant self-service
+// ----------------------------------------------------------------------------
+// MONEY ROUTING (critical): student/parent FEE payments settle into the
+// SCHOOL's OWN Monime account. Each school configures its own Monime access
+// token + space id here. The access token is encrypted at rest and never
+// returned in plaintext. Platform revenue (subscriptions / restore) uses the
+// platform's own env credentials, not these.
+// ============================================================================
+
+/**
+ * GET /api/v1/school-config/monime
+ * Read the tenant's Monime configuration. The stored token is never returned
+ * in plaintext — only a masked hint, the (non-secret) space id, and a flag.
+ */
+router.get('/monime', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = getTenantId(req);
+    const school = await db('schools').where({ tenant_id: tenantId }).first();
+    res.json({
+      success: true,
+      data: {
+        configured: !!school?.monime_configured,
+        spaceId: school?.monime_space_id || null,
+        tokenMasked: maskToken(school?.monime_access_token),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/school-config/monime
+ * Configure the tenant's Monime account for collecting fee payments.
+ *   { accessToken?, spaceId, enabled?: boolean }
+ * The token is encrypted at rest. Sending enabled:false disables online fee
+ * collection for the school without discarding the saved credentials.
+ */
+router.post('/monime', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { accessToken, spaceId, enabled } = req.body as {
+      accessToken?: string; spaceId?: string; enabled?: boolean;
+    };
+
+    const school = await db('schools').where({ tenant_id: tenantId }).first();
+    if (!school) throw new AppError('School profile not found for this tenant', 404, 'NOT_FOUND');
+
+    const patch: any = { updated_at: new Date() };
+
+    // Explicit disable — keep saved creds but stop routing money to them.
+    if (enabled === false) {
+      patch.monime_configured = false;
+      await db('schools').where({ tenant_id: tenantId }).update(patch);
+      const disabled = await db('schools').where({ tenant_id: tenantId }).first();
+      return res.json({
+        success: true,
+        message: 'Online fee payments are now turned off for your school.',
+        data: {
+          configured: !!disabled.monime_configured,
+          spaceId: disabled.monime_space_id || null,
+          tokenMasked: maskToken(disabled.monime_access_token),
+        },
+      });
+    }
+
+    // Space id is required to enable (it identifies the school's Monime account).
+    const trimmedSpaceId = (spaceId || '').trim();
+    if (!trimmedSpaceId) {
+      throw new AppError('Your Monime Space ID is required.', 400, 'VALIDATION_ERROR');
+    }
+    patch.monime_space_id = trimmedSpaceId;
+
+    // Keep the existing token if the caller didn't supply a new one (so a
+    // principal can update the space id without re-entering the secret).
+    const hasNewToken = accessToken && accessToken.trim().length > 0;
+    if (hasNewToken) {
+      patch.monime_access_token = encryptSecret(accessToken!.trim());
+    } else if (!school.monime_access_token) {
+      throw new AppError('Your Monime access token is required.', 400, 'VALIDATION_ERROR');
+    }
+
+    patch.monime_configured = true;
+
+    await db('schools').where({ tenant_id: tenantId }).update(patch);
+    const updated = await db('schools').where({ tenant_id: tenantId }).first();
+    res.json({
+      success: true,
+      message: 'Fee payments will now settle into your school\'s own Monime account.',
+      data: {
+        configured: !!updated.monime_configured,
+        spaceId: updated.monime_space_id || null,
+        tokenMasked: maskToken(updated.monime_access_token),
       },
     });
   } catch (error) {

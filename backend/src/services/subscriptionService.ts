@@ -15,6 +15,7 @@ export interface ActiveSubscription {
   max_students: number;
   max_storage_gb: number;
   features: Record<string, boolean>;
+  is_trial?: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -100,10 +101,20 @@ export class SubscriptionService {
         .orderBy('created_at', 'desc')
         .first();
 
-      // Check if subscription has expired
+      // Lazily process an end-of-term subscription (in case the daily sweep
+      // hasn't run yet). TRIALS gracefully downgrade to Freetong (no lockout);
+      // PAID subscriptions expire and lock the tenant.
       if (subscription && subscription.status === 'active' && subscription.end_date && new Date(subscription.end_date) < new Date()) {
+        if (subscription.is_trial || subscription.is_comp) {
+          logger.info(`${subscription.is_comp ? 'Comp' : 'Trial'} ${subscription.id} for tenant ${tenantId} ended — downgrading to Freetong.`);
+          return {
+            ...(await this.downgradeExpiredTrial(tenantId)),
+            features: PLAN_LIMITS.freetong.features,
+          } as any;
+        }
+
         logger.info(`Subscription ${subscription.id} for tenant ${tenantId} has expired. Updating database status.`);
-        
+
         await db('subscriptions')
           .where({ id: subscription.id })
           .update({ status: 'expired', updated_at: db.fn.now() });
@@ -134,19 +145,35 @@ export class SubscriptionService {
   }
 
   /**
-   * Initialize a default Freetong plan for a new tenant
+   * Initialize a new tenant's subscription as a promotional TRIAL of the top
+   * plan (Bintumani) so the school can explore every V1 feature. When the trial
+   * ends, the expiry sweep gracefully DOWNGRADES the tenant to Freetong instead
+   * of locking it out (see subscriptionJobs.runSubscriptionExpirySweep).
    */
   private static async initializeDefaultSubscription(tenantId: string): Promise<any> {
-    const limits = PLAN_LIMITS.freetong;
+    // Trial config is controlled by the PLATFORM OWNER from the superadmin
+    // portal (platform_settings). When the promo is disabled, new schools start
+    // on Freetong directly with no trial.
+    const { PlatformSettingsService } = await import('./platformSettingsService.js');
+    const trial = await PlatformSettingsService.getTrialConfig();
+    const useTrial = trial.enabled;
+
+    const planType = useTrial ? trial.planType : 'freetong';
+    const limits = PLAN_LIMITS[planType];
     const startDate = new Date();
     const endDate = new Date();
-    endDate.setFullYear(startDate.getFullYear() + 1); // 1 year duration default
+    if (useTrial) {
+      endDate.setDate(startDate.getDate() + trial.durationDays);
+    } else {
+      endDate.setFullYear(startDate.getFullYear() + 1);
+    }
 
     const [subscription] = await db('subscriptions')
       .insert({
         tenant_id: tenantId,
-        plan_type: 'freetong',
+        plan_type: planType,
         status: 'active',
+        is_trial: useTrial,
         start_date: startDate,
         end_date: endDate,
         monthly_price: limits.monthly_price,
@@ -163,6 +190,133 @@ export class SubscriptionService {
       .update({ subscription_id: subscription.id });
 
     return subscription;
+  }
+
+  /**
+   * When a TRIAL ends, drop the tenant to the free-tier baseline (Freetong)
+   * WITHOUT locking them out. They keep using the system within Freetong
+   * limits/features and can upgrade any time.
+   */
+  static async downgradeExpiredTrial(tenantId: string): Promise<any> {
+    const limits = PLAN_LIMITS.freetong;
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setFullYear(startDate.getFullYear() + 1);
+
+    // Cancel any active subscriptions, then create a fresh Freetong one.
+    await db('subscriptions')
+      .where({ tenant_id: tenantId, status: 'active' })
+      .update({ status: 'cancelled', updated_at: db.fn.now() });
+
+    const [sub] = await db('subscriptions')
+      .insert({
+        tenant_id: tenantId,
+        plan_type: 'freetong',
+        status: 'active',
+        is_trial: false,
+        start_date: startDate,
+        end_date: endDate,
+        monthly_price: limits.monthly_price,
+        max_users: limits.max_users,
+        max_students: limits.max_students,
+        max_storage_gb: limits.max_storage_gb,
+        features: JSON.stringify(limits.features),
+      })
+      .returning('*');
+
+    await db('tenants').where({ id: tenantId }).update({
+      subscription_id: sub.id,
+      max_users: limits.max_users,
+      max_storage_gb: limits.max_storage_gb,
+      status: 'active', // stay active — trial expiry is NOT a lockout
+      updated_at: db.fn.now(),
+    });
+
+    logger.info(`Trial ended for tenant ${tenantId} — gracefully downgraded to Freetong`);
+    return sub;
+  }
+
+  /**
+   * Platform-owner COMP grant: give a school a plan for FREE (no payment, no
+   * tenant-side renewal). Used for enterprise offers or relief for struggling
+   * schools.
+   *
+   *  - durationDays omitted / null → open-ended (never expires, never swept).
+   *  - durationDays set            → time-boxed; when it ends the expiry sweep
+   *    gracefully downgrades to Freetong (never a lockout).
+   *
+   * Reactivates the tenant (a suspended/expired school becomes active) and does
+   * NOT write a paid billing_history row (nothing was charged).
+   */
+  static async grantCompPlan(
+    tenantId: string,
+    planType: 'freetong' | 'combra' | 'bintumani',
+    grantedBy: string,
+    opts?: { durationDays?: number | null; reason?: string }
+  ): Promise<ActiveSubscription> {
+    if (!PLAN_LIMITS[planType]) {
+      throw new AppError('Invalid subscription plan type', 400, 'VALIDATION_ERROR');
+    }
+    const limits = PLAN_LIMITS[planType];
+    const startDate = new Date();
+    let endDate: Date | null = null;
+    if (opts?.durationDays && opts.durationDays > 0) {
+      endDate = new Date();
+      endDate.setDate(startDate.getDate() + opts.durationDays);
+    }
+
+    // Cancel current active subscriptions, then create the comp.
+    await db('subscriptions')
+      .where({ tenant_id: tenantId, status: 'active' })
+      .update({ status: 'cancelled', updated_at: db.fn.now() });
+
+    const [sub] = await db('subscriptions')
+      .insert({
+        tenant_id: tenantId,
+        plan_type: planType,
+        status: 'active',
+        is_trial: false,
+        is_comp: true,
+        comp_reason: opts?.reason || null,
+        start_date: startDate,
+        end_date: endDate,               // null = open-ended / no expiry
+        monthly_price: 0,                // comped — nothing charged
+        max_users: limits.max_users,
+        max_students: limits.max_students,
+        max_storage_gb: limits.max_storage_gb,
+        features: JSON.stringify(limits.features),
+        created_by: grantedBy,
+      })
+      .returning('*');
+
+    await db('tenants').where({ id: tenantId }).update({
+      subscription_id: sub.id,
+      max_users: limits.max_users,
+      max_storage_gb: limits.max_storage_gb,
+      status: 'active', // a comp reactivates a suspended/expired school
+      updated_at: db.fn.now(),
+    });
+
+    logger.info(`Comp ${planType} granted to tenant ${tenantId} by ${grantedBy}${endDate ? ` until ${endDate.toISOString()}` : ' (no expiry)'}`);
+    return { ...sub, features: limits.features } as any;
+  }
+
+  /**
+   * Revoke a comp grant: the platform owner wants the school to start paying.
+   * Drops them to Freetong immediately (non-destructive — same soft-cap
+   * behaviour as trial downgrade). The school can then upgrade via payment.
+   */
+  static async revokeCompPlan(tenantId: string, revokedBy: string): Promise<ActiveSubscription> {
+    const current = await db('subscriptions')
+      .where({ tenant_id: tenantId, status: 'active' })
+      .orderBy('created_at', 'desc')
+      .first();
+    if (!current?.is_comp) {
+      throw new AppError('This school is not on a complimentary plan.', 400, 'NOT_A_COMP');
+    }
+    const sub = await this.downgradeExpiredTrial(tenantId); // reuse graceful downgrade
+    logger.info(`Comp revoked for tenant ${tenantId} by ${revokedBy} — moved to Freetong`);
+    return { ...sub, features: PLAN_LIMITS.freetong.features } as any;
   }
 
   /**

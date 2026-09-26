@@ -17,7 +17,14 @@ type ScheduledTask = ReturnType<typeof cron.schedule>;
 
 let job: ScheduledTask | null = null;
 
-/** Expire subscriptions past their end_date and lock their tenants. */
+/**
+ * Process subscriptions past their end_date.
+ *
+ *  - TRIAL subscriptions → gracefully DOWNGRADE the tenant to Freetong and keep
+ *    it active (a new school must never be locked out just because the promo
+ *    trial ended — they simply continue on the free tier).
+ *  - PAID subscriptions → expire and lock the tenant (renew/pay to restore).
+ */
 export async function runSubscriptionExpirySweep(): Promise<number> {
   const now = new Date();
 
@@ -26,20 +33,38 @@ export async function runSubscriptionExpirySweep(): Promise<number> {
     .where({ status: 'active' })
     .whereNotNull('end_date')
     .where('end_date', '<', now)
-    .select('id', 'tenant_id');
+    .select('id', 'tenant_id', 'is_trial', 'is_comp');
 
   if (expiredSubs.length === 0) return 0;
 
-  const subIds = expiredSubs.map((s: any) => s.id);
-  const tenantIds = [...new Set(expiredSubs.map((s: any) => s.tenant_id))];
+  // Trials AND time-boxed comps both downgrade gracefully (never a lockout).
+  // Only genuinely PAID subscriptions expire + lock the tenant.
+  const gracefulSubs = expiredSubs.filter((s: any) => s.is_trial || s.is_comp);
+  const paidSubs = expiredSubs.filter((s: any) => !s.is_trial && !s.is_comp);
 
-  await db('subscriptions').whereIn('id', subIds).update({ status: 'expired', updated_at: db.fn.now() });
-  // Mark tenants expired (auth/middleware then blocks their users). Only touch
-  // tenants that are currently active so we don't override suspended/archived.
-  await db('tenants').whereIn('id', tenantIds).where({ status: 'active' }).update({ status: 'expired', updated_at: db.fn.now() });
+  if (gracefulSubs.length) {
+    const { SubscriptionService } = await import('../services/subscriptionService.js');
+    for (const s of gracefulSubs) {
+      try {
+        await SubscriptionService.downgradeExpiredTrial(s.tenant_id);
+      } catch (err) {
+        logger.warn(`[subscriptionJobs] graceful downgrade failed for tenant ${s.tenant_id}`, { error: String(err) });
+      }
+    }
+    logger.info(`[subscriptionJobs] downgraded ${gracefulSubs.length} expired trial/comp subscription(s) to Freetong`);
+  }
 
-  logger.info(`[subscriptionJobs] auto-expired ${subIds.length} subscription(s) across ${tenantIds.length} tenant(s)`);
-  return subIds.length;
+  // Paid → expire + lock tenant.
+  if (paidSubs.length) {
+    const subIds = paidSubs.map((s: any) => s.id);
+    const tenantIds = [...new Set(paidSubs.map((s: any) => s.tenant_id))];
+    await db('subscriptions').whereIn('id', subIds).update({ status: 'expired', updated_at: db.fn.now() });
+    // Only touch currently-active tenants so we don't override suspended/archived.
+    await db('tenants').whereIn('id', tenantIds).where({ status: 'active' }).update({ status: 'expired', updated_at: db.fn.now() });
+    logger.info(`[subscriptionJobs] auto-expired ${subIds.length} paid subscription(s) across ${tenantIds.length} tenant(s)`);
+  }
+
+  return expiredSubs.length;
 }
 
 /** Start the daily subscription-expiry sweep. */
