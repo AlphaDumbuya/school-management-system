@@ -534,14 +534,21 @@ router.get('/dashboards/parent/child/:studentId', authenticate, async (req: Requ
  */
 router.get('/dashboards/accountant/overview', authenticate, async (req: Request, res: Response) => {
   try {
-    if (req.user?.role !== 'accountant') {
+    // Accountants own this dashboard; principals/super_admins may also view it.
+    if (!['accountant', 'principal', 'super_admin'].includes(req.user?.role || '')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
+    const tenantId = req.user?.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context is required' });
+    }
 
+    // Tenant scoping is REQUIRED — these service methods now take tenantId; a
+    // missing one previously produced an all-zeros (broken) dashboard.
     const [financialSummary, alerts, chartData] = await Promise.all([
-      dashboardService.getFinancialSummary(),
-      dashboardService.getDashboardAlerts(),
-      dashboardService.getFeeCollectionChart(),
+      dashboardService.getFinancialSummary(tenantId),
+      dashboardService.getDashboardAlerts(tenantId),
+      dashboardService.getFeeCollectionChart(tenantId),
     ]);
 
     res.json({

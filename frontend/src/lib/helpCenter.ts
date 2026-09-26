@@ -115,13 +115,11 @@ const SETTINGS: HelpModule = {
           action: { label: 'Grading Scale', to: '/settings?tab=grading' },
         },
         {
-          title: 'Set finance & communication defaults',
+          title: 'Set your finance defaults',
           body: [[
-            'Pick your currency, accepted payment methods and late-fee rules in ',
+            'Set your school payment policy — minimum payment for new and continuing students, per-term clearance and instalment rules — in ',
             link('Financial Info', '/settings?tab=financial'),
-            ', then set your sender identity in ',
-            link('Communications', '/settings?tab=comms'),
-            '.',
+            '. You can override any of these per class in Fee Structures.',
           ]],
         },
       ],

@@ -1,6 +1,35 @@
 import { logger } from '@utils/logger';
 import db from '@utils/database';
 
+/**
+ * Resolve the tenant's configured minimum-attendance WARNING threshold (percent)
+ * from school_config_settings (Settings → Attendance Rules). Falls back to 75
+ * when unset. Previously the dashboard hardcoded 75, so the principal-configured
+ * value in the Attendance Rules tab had no effect.
+ */
+async function getAttendanceWarningThreshold(tenantId: string): Promise<number> {
+  try {
+    const row = await db('school_config_settings')
+      .where({ tenant_id: tenantId, setting_key: 'min_attendance_warning' })
+      .first();
+    const val = Number(row?.setting_value);
+    if (!isNaN(val) && val > 0 && val <= 100) return val;
+  } catch { /* fall through to default */ }
+  return 75;
+}
+
+/** Configured CRITICAL attendance threshold (percent); defaults to 60. */
+async function getAttendanceCriticalThreshold(tenantId: string): Promise<number> {
+  try {
+    const row = await db('school_config_settings')
+      .where({ tenant_id: tenantId, setting_key: 'min_attendance_critical' })
+      .first();
+    const val = Number(row?.setting_value);
+    if (!isNaN(val) && val > 0 && val <= 100) return val;
+  } catch { /* fall through to default */ }
+  return 60;
+}
+
 // ============================================================================
 // Admin Dashboard Interfaces
 // ============================================================================
@@ -453,8 +482,11 @@ class DashboardService {
         // Fees table query failed - skip this alert
       }
 
-      // Check for low attendance students — use snake_case columns
+      // Check for low attendance students — threshold is tenant-configurable
+      // (Settings → Attendance Rules), defaulting to 75%.
       try {
+        const warnPct = await getAttendanceWarningThreshold(tenantId);
+        const warnFraction = warnPct / 100;
         const lowAttendanceCount = await db.raw(`
           SELECT COUNT(*) as cnt FROM (
             SELECT u.id
@@ -464,9 +496,9 @@ class DashboardService {
             LEFT JOIN attendance a ON s.id = a.student_id AND a.created_at > NOW() - INTERVAL '30 days'
             WHERE u.role = 'student' AND u.status = 'active' AND u.tenant_id = ?
             GROUP BY u.id
-            HAVING COUNT(CASE WHEN a.status = 'present' THEN 1 END)::numeric / NULLIF(COUNT(a.id), 0) < 0.75
+            HAVING COUNT(CASE WHEN a.status = 'present' THEN 1 END)::numeric / NULLIF(COUNT(a.id), 0) < ?
           ) sub
-        `, [tenantId]);
+        `, [tenantId, warnFraction]);
 
         const lowCount = Number(lowAttendanceCount?.rows?.[0]?.cnt) || 0;
         if (lowCount > 0) {
@@ -474,7 +506,7 @@ class DashboardService {
             id: 'low-attendance',
             type: 'academic',
             title: 'Low Attendance Alert',
-            message: `${lowCount} students have attendance below 75% threshold`,
+            message: `${lowCount} students have attendance below ${warnPct}% threshold`,
             severity: 'warning',
             timestamp: new Date().toISOString(),
             actionUrl: '/students/attendance',
@@ -798,6 +830,9 @@ class DashboardService {
    */
   async getStudentsAtRisk(tenantId: string, limit: number = 10): Promise<StudentAtRiskData[]> {
     try {
+      // Tenant-configurable thresholds (Settings → Attendance Rules).
+      const warnPct = await getAttendanceWarningThreshold(tenantId);
+      const critPct = await getAttendanceCriticalThreshold(tenantId);
       const atRiskStudents = await db.raw(`
         WITH current_enrollments AS (
           SELECT DISTINCT ON (student_id) student_id, class_id
@@ -844,10 +879,10 @@ class DashboardService {
         ) attendance_stats ON attendance_stats.student_id = s.id
         WHERE COALESCE(s.tenant_id, u.tenant_id) = ?
           AND s.status = 'active'
-          AND (grade_stats.average_grade < 40 OR attendance_stats.attendance_rate < 75)
+          AND (grade_stats.average_grade < 40 OR attendance_stats.attendance_rate < ?)
         ORDER BY grade_stats.average_grade ASC NULLS LAST, attendance_stats.attendance_rate ASC NULLS LAST
         LIMIT ?
-      `, [tenantId, limit]);
+      `, [tenantId, warnPct, limit]);
 
       return (atRiskStudents.rows || []).map((student: any) => {
         const riskFactors: string[] = [];
@@ -855,12 +890,12 @@ class DashboardService {
         const attRate = Number(student.attendance_rate ?? 100);
 
         if (avgGrade < 40) riskFactors.push('Low Grades');
-        if (attRate < 75) riskFactors.push('Low Attendance');
+        if (attRate < warnPct) riskFactors.push('Low Attendance');
 
         let severity: 'high' | 'medium' | 'low' = 'low';
-        if (riskFactors.length === 2 || avgGrade < 30 || attRate < 60) {
+        if (riskFactors.length === 2 || avgGrade < 30 || attRate < critPct) {
           severity = 'high';
-        } else if (avgGrade < 40 || attRate < 70) {
+        } else if (avgGrade < 40 || attRate < warnPct) {
           severity = 'medium';
         }
 

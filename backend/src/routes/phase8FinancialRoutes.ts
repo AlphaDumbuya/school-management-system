@@ -24,6 +24,168 @@ const requireStaff = async (req: Request, res: Response, next: NextFunction) => 
   }
   next();
 };
+
+// ── Tenant-ownership guards for the legacy per-resource routes ────────────────
+// The older /fees/:id, /payments/:id and /students/:id/* routes call shared
+// service methods that look a resource up by id ALONE (no tenant filter). Left
+// unguarded that is a cross-tenant IDOR: any authenticated user could read or
+// mutate another school's fee, payment, or a student's whole ledger. These
+// helpers assert the resource belongs to the caller's tenant BEFORE the service
+// runs. Finance tables carry tenant_id directly (migration 112); students carry
+// it too, so we scope student-keyed routes via the students table.
+
+/** Populate req.user from the DB when only req.auth is set (mirrors requireStaff). */
+async function ensureUserContext(req: Request, res: Response): Promise<void> {
+  if (!(req as any).user && (req as any).auth?.userId) {
+    await attachUserContext(req, res, () => {});
+  }
+}
+
+function getTenantId(req: Request): string | null {
+  return (req as any).user?.tenant_id ?? null;
+}
+
+/** True if the fee belongs to this tenant (direct tenant_id, student fallback). */
+async function feeInTenant(feeId: string, tenantId: string): Promise<boolean> {
+  const row = await db('fees')
+    .leftJoin('students', 'fees.student_id', 'students.id')
+    .where('fees.id', feeId)
+    .where(function (this: any) {
+      this.where('fees.tenant_id', tenantId).orWhere('students.tenant_id', tenantId);
+    })
+    .first()
+    .catch(() => null);
+  return !!row;
+}
+
+/** True if the payment belongs to this tenant (via its fee → tenant/student). */
+async function paymentInTenant(paymentId: string, tenantId: string): Promise<boolean> {
+  const row = await db('payments')
+    .leftJoin('fees', 'payments.fee_id', 'fees.id')
+    .leftJoin('students', 'fees.student_id', 'students.id')
+    .where('payments.id', paymentId)
+    .where(function (this: any) {
+      this.where('payments.tenant_id', tenantId)
+        .orWhere('fees.tenant_id', tenantId)
+        .orWhere('students.tenant_id', tenantId);
+    })
+    .first()
+    .catch(() => null);
+  return !!row;
+}
+
+/** True if the invoice belongs to this tenant (direct tenant_id, student fallback). */
+async function invoiceInTenant(invoiceId: string, tenantId: string): Promise<boolean> {
+  const row = await db('invoices')
+    .leftJoin('students', 'invoices.student_id', 'students.id')
+    .where('invoices.id', invoiceId)
+    .where(function (this: any) {
+      this.where('invoices.tenant_id', tenantId).orWhere('students.tenant_id', tenantId);
+    })
+    .first()
+    .catch(() => null);
+  return !!row;
+}
+
+/** True if the student belongs to this tenant. */
+async function studentInTenant(studentId: string, tenantId: string): Promise<boolean> {
+  const row = await db('students')
+    .where('id', studentId)
+    .where('tenant_id', tenantId)
+    .first()
+    .catch(() => null);
+  return !!row;
+}
+
+/** True if the class belongs to this tenant (session- or creator-scoped). */
+async function classInTenant(classId: string, tenantId: string): Promise<boolean> {
+  const row = await db('classes')
+    .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+    .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+    .where('classes.id', classId)
+    .where(function (this: any) {
+      this.where('academic_sessions.tenant_id', tenantId).orWhere(function (this: any) {
+        this.whereNull('classes.academic_session_id').where('class_creator.tenant_id', tenantId);
+      });
+    })
+    .first()
+    .catch(() => null);
+  return !!row;
+}
+
+/**
+ * Guard for the student-keyed routes (/students/:studentId/fees|payments|
+ * outstanding). Staff see any student in their tenant; a student may only see
+ * their own ledger; a parent/guardian only a linked child's. Prevents both
+ * cross-tenant IDOR and a student reading a classmate's fees.
+ */
+async function assertStudentAccess(req: Request, res: Response, next: NextFunction) {
+  try {
+    await ensureUserContext(req, res);
+    const tenantId = getTenantId(req);
+    if (!tenantId) {
+      return res.status(400).json({ success: false, error: 'Tenant context is required' });
+    }
+    const studentId = (req.params as any).studentId as string;
+    if (!studentId || !(await studentInTenant(studentId, tenantId))) {
+      return res.status(404).json({ success: false, error: 'Student not found' });
+    }
+
+    const role = (req as any).user?.role;
+    const userId = (req as any).user?.id;
+
+    if (STAFF_ROLES.includes(role)) return next();
+
+    if (role === 'student') {
+      const own = await db('students')
+        .where({ id: studentId, tenant_id: tenantId, user_id: userId })
+        .first()
+        .catch(() => null);
+      if (own) return next();
+      return res.status(403).json({ success: false, error: 'You can only view your own fees.' });
+    }
+
+    if (role === 'parent' || role === 'guardian') {
+      const linked = await db('guardians')
+        .where({ user_id: userId, student_id: studentId })
+        .first()
+        .catch(() => null);
+      if (linked) return next();
+      return res.status(403).json({ success: false, error: 'You can only view your own child\'s fees.' });
+    }
+
+    return res.status(403).json({ success: false, error: 'Access denied.' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Guard middleware: resolve tenant context, then verify the resource named by
+ * `param` belongs to it using `check`. 404 (not 403) on failure so we don't
+ * confirm the existence of another tenant's resource.
+ */
+function assertInTenant(
+  param: string,
+  check: (id: string, tenantId: string) => Promise<boolean>,
+) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await ensureUserContext(req, res);
+      const tenantId = getTenantId(req);
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context is required' });
+      }
+      const id = (req.params as any)[param];
+      if (!id || !(await check(id, tenantId))) {
+        return res.status(404).json({ success: false, error: 'Resource not found' });
+      }
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
 import { InvoiceService } from '@services/invoiceService';
 import { db } from '@utils/database';
 import { logger } from '@utils/logger';
@@ -51,6 +213,7 @@ router.post(
       const { type, amount, dueDate, description, studentId, classId, academicSession } =
         req.body;
       const userId = (req as any).user.id;
+      const tenantId = getTenantId(req);
 
       // Validate required fields
       if (!type || !amount || !studentId || !dueDate) {
@@ -58,6 +221,18 @@ router.post(
           error: 'Missing required fields',
           required: ['type', 'amount', 'studentId', 'dueDate'],
         });
+      }
+
+      // Cross-tenant guard: never bill a student (or reference a class) from
+      // another school.
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context is required' });
+      }
+      if (!(await studentInTenant(studentId, tenantId))) {
+        return res.status(404).json({ success: false, error: 'Student not found' });
+      }
+      if (classId && !(await classInTenant(classId, tenantId))) {
+        return res.status(400).json({ success: false, error: 'Selected class does not belong to this school' });
       }
 
       const fee = await feeService.createFee(
@@ -95,6 +270,8 @@ router.post(
 router.get(
   '/fees/:feeId',
   authenticate,
+  requireStaff,
+  assertInTenant('feeId', feeInTenant),
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { feeId } = req.params;
@@ -123,6 +300,7 @@ router.get(
 router.get(
   '/students/:studentId/fees',
   authenticate,
+  assertStudentAccess,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { studentId } = req.params;
@@ -158,6 +336,7 @@ router.get(
   '/classes/:classId/fees',
   authenticate,
   requireStaff,
+  assertInTenant('classId', classInTenant),
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { classId } = req.params;
@@ -188,6 +367,7 @@ router.patch(
   '/fees/:feeId/status',
   authenticate,
   requireStaff,
+  assertInTenant('feeId', feeInTenant),
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { feeId } = req.params;
@@ -222,6 +402,7 @@ router.patch(
 router.get(
   '/students/:studentId/outstanding',
   authenticate,
+  assertStudentAccess,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { studentId } = req.params;
@@ -255,6 +436,8 @@ router.post(
     try {
       const { feeId, amount, method, transactionReference, notes, paymentDate } = req.body;
       const userId = (req as any).user.id;
+      const role = (req as any).user?.role;
+      const tenantId = getTenantId(req);
 
       if (!feeId || !amount || !method) {
         return res.status(400).json({
@@ -262,6 +445,51 @@ router.post(
           required: ['feeId', 'amount', 'method'],
         });
       }
+
+      // IDOR guard: the fee being paid MUST belong to the caller's tenant, and
+      // a student/parent may only pay their OWN fee — never record a payment
+      // against another school's or another student's fee.
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context is required' });
+      }
+      const feeRow = await db('fees')
+        .leftJoin('students', 'fees.student_id', 'students.id')
+        .where('fees.id', feeId)
+        .where(function (this: any) {
+          this.where('fees.tenant_id', tenantId).orWhere('students.tenant_id', tenantId);
+        })
+        .select('fees.id', 'fees.student_id', 'students.user_id as student_user_id')
+        .first()
+        .catch(() => null);
+      if (!feeRow) {
+        return res.status(404).json({ success: false, error: 'Fee not found' });
+      }
+      if (role === 'student') {
+        if (feeRow.student_user_id !== userId) {
+          return res.status(403).json({ success: false, error: 'You can only pay your own fees.' });
+        }
+      } else if (role === 'parent' || role === 'guardian') {
+        const linked = await db('guardians')
+          .where({ user_id: userId, student_id: feeRow.student_id })
+          .first()
+          .catch(() => null);
+        if (!linked) {
+          return res.status(403).json({ success: false, error: 'You can only pay your own child\'s fees.' });
+        }
+      } else if (!STAFF_ROLES.includes(role)) {
+        return res.status(403).json({ success: false, error: 'Access denied.' });
+      }
+
+      // Enforce the school's minimum-payment policy on manual payments too, so a
+      // below-minimum partial can't be recorded through the admin path either.
+      // (Staff may still take full settlement any time.)
+      try {
+        const { financeLedgerService } = await import('@services/financeLedgerService');
+        const minErr = await financeLedgerService.enforceMinimumPayment(tenantId, feeRow.student_id, Number(amount));
+        if (minErr) {
+          return res.status(422).json({ success: false, error: minErr });
+        }
+      } catch { /* policy check best-effort — never block on lookup failure */ }
 
       const payment = await paymentService.recordPayment(
         {
@@ -297,6 +525,7 @@ router.post(
 router.get(
   '/students/:studentId/payments',
   authenticate,
+  assertStudentAccess,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { studentId } = req.params;
@@ -340,7 +569,7 @@ router.get(
         startDate: startDate as string,
         endDate: endDate as string,
         studentId: studentId as string,
-      });
+      }, getTenantId(req) || undefined);
 
       res.status(200).json({
         success: true,
@@ -364,6 +593,7 @@ router.get(
 router.get(
   '/payments/:paymentId/receipt',
   authenticate,
+  assertInTenant('paymentId', paymentInTenant),
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { paymentId } = req.params;
@@ -394,6 +624,7 @@ router.post(
   '/payments/:paymentId/refund',
   authenticate,
   requireStaff,
+  assertInTenant('paymentId', paymentInTenant),
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { paymentId } = req.params;
@@ -434,12 +665,34 @@ router.post(
     try {
       const { studentId, feeIds, dueDate, notes } = req.body;
       const userId = (req as any).user.id;
+      const tenantId = getTenantId(req);
 
       if (!studentId || !feeIds || feeIds.length === 0) {
         return res.status(400).json({
           error: 'Missing required fields',
           required: ['studentId', 'feeIds (array with at least one fee)'],
         });
+      }
+
+      // Cross-tenant guard: the student AND every fee being invoiced must belong
+      // to the caller's tenant — never invoice another school's student/fees.
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context is required' });
+      }
+      if (!(await studentInTenant(studentId, tenantId))) {
+        return res.status(404).json({ success: false, error: 'Student not found' });
+      }
+      const feeTenantCount = await db('fees')
+        .leftJoin('students', 'fees.student_id', 'students.id')
+        .whereIn('fees.id', feeIds)
+        .where(function (this: any) {
+          this.where('fees.tenant_id', tenantId).orWhere('students.tenant_id', tenantId);
+        })
+        .countDistinct('fees.id as c')
+        .first()
+        .catch(() => null);
+      if (Number((feeTenantCount as any)?.c ?? 0) !== feeIds.length) {
+        return res.status(400).json({ success: false, error: 'One or more fees do not belong to this school' });
       }
 
       const invoice = await invoiceService.generateInvoice(
@@ -691,7 +944,7 @@ router.get(
     try {
       const { classId } = req.query;
 
-      const stats = await feeService.getFeeStatistics(classId as string);
+      const stats = await feeService.getFeeStatistics(classId as string, getTenantId(req) || undefined);
 
       res.status(200).json({
         success: true,
@@ -723,7 +976,7 @@ router.get(
       const stats = await invoiceService.getInvoiceStatistics({
         startDate: startDate as string,
         endDate: endDate as string,
-      });
+      }, getTenantId(req) || undefined);
 
       res.status(200).json({
         success: true,
@@ -753,12 +1006,21 @@ router.post(
     try {
       const { classId, fees } = req.body;
       const userId = (req as any).user.id;
+      const tenantId = getTenantId(req);
 
       if (!classId || !fees || fees.length === 0) {
         return res.status(400).json({
           error: 'Missing required fields',
           required: ['classId', 'fees (array with at least one fee)'],
         });
+      }
+
+      // Cross-tenant guard: never bulk-bill another school's class.
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context is required' });
+      }
+      if (!(await classInTenant(classId, tenantId))) {
+        return res.status(404).json({ success: false, error: 'Class not found' });
       }
 
       const results = await feeService.bulkCreateFees(classId, fees, userId);
@@ -831,12 +1093,21 @@ router.post(
     try {
       const { classId, feeType } = req.body;
       const userId = (req as any).user.id;
+      const tenantId = getTenantId(req);
 
       if (!classId || !feeType) {
         return res.status(400).json({
           error: 'Missing required fields',
           required: ['classId', 'feeType'],
         });
+      }
+
+      // Cross-tenant guard: never bulk-invoice another school's class.
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context is required' });
+      }
+      if (!(await classInTenant(classId, tenantId))) {
+        return res.status(404).json({ success: false, error: 'Class not found' });
       }
 
       const results = await invoiceService.bulkGenerateInvoices(classId, feeType, userId);
@@ -871,7 +1142,8 @@ router.get(
       const { daysOverdue } = req.query;
 
       const fees = await feeService.getOverdueFees(
-        daysOverdue ? parseInt(daysOverdue as string) : 0
+        daysOverdue ? parseInt(daysOverdue as string) : 0,
+        getTenantId(req) || undefined
       );
 
       res.status(200).json({
@@ -903,7 +1175,7 @@ router.get(
       const { type } = req.params;
       const { classId } = req.query;
 
-      const fees = await feeService.getFeesByType(type, classId as string);
+      const fees = await feeService.getFeesByType(type, classId as string, getTenantId(req) || undefined);
 
       res.status(200).json({
         success: true,
@@ -930,6 +1202,7 @@ router.patch(
   '/fees/:feeId/adjust',
   authenticate,
   requireStaff,
+  assertInTenant('feeId', feeInTenant),
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { feeId } = req.params;
@@ -981,7 +1254,8 @@ router.get(
 
       const summary = await paymentService.getPaymentSummary(
         startDate as string,
-        endDate as string
+        endDate as string,
+        getTenantId(req) || undefined
       );
 
       res.status(200).json({
@@ -1009,7 +1283,7 @@ router.get(
   requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
-      const summary = await paymentService.getPaymentMethodsSummary();
+      const summary = await paymentService.getPaymentMethodsSummary(getTenantId(req) || undefined);
 
       res.status(200).json({
         success: true,
@@ -1086,6 +1360,8 @@ router.get(
 router.get(
   '/invoices/:invoiceId/export',
   authenticate,
+  requireStaff,
+  assertInTenant('invoiceId', invoiceInTenant),
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { invoiceId } = req.params;
@@ -1120,7 +1396,8 @@ router.get(
       const { limit } = req.query;
 
       const payments = await paymentService.getRecentPayments(
-        limit ? parseInt(limit as string) : 50
+        limit ? parseInt(limit as string) : 50,
+        getTenantId(req) || undefined
       );
 
       res.status(200).json({
@@ -1148,6 +1425,7 @@ router.delete(
   '/fees/:feeId',
   authenticate,
   requireStaff,
+  assertInTenant('feeId', feeInTenant),
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { feeId } = req.params;
@@ -1181,6 +1459,8 @@ router.delete(
 router.get(
   '/fees/:feeId/payments',
   authenticate,
+  requireStaff,
+  assertInTenant('feeId', feeInTenant),
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { feeId } = req.params;
@@ -1210,6 +1490,8 @@ router.get(
 router.get(
   '/payments/:paymentId',
   authenticate,
+  requireStaff,
+  assertInTenant('paymentId', paymentInTenant),
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { paymentId } = req.params;

@@ -95,12 +95,11 @@ const PRINCIPAL: RoleGuide = {
     },
     {
       order: 2,
-      title: 'Set finance & communication defaults',
-      why: 'Decide your currency, accepted payment methods and the sender identity used for all parent/staff notifications before you invoice or message anyone.',
+      title: 'Set finance & academic defaults',
+      why: 'Decide your school payment policy (minimum payments, instalments) and attendance thresholds before you invoice anyone or track attendance.',
       required: true,
       tasks: [
-        { label: 'Financial Info — currency, payment methods, late fees', route: '/settings?tab=financial', routeLabel: 'Financial Info' },
-        { label: 'Communications — sender name & channels', route: '/settings?tab=comms', routeLabel: 'Communications' },
+        { label: 'Financial Info — payment policy (min for new / continuing, instalments)', route: '/settings?tab=financial', routeLabel: 'Financial Info' },
         { label: 'Attendance Rules — warning/critical thresholds', route: '/settings?tab=attendance', routeLabel: 'Attendance Rules' },
       ],
     },

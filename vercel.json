@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "npm install --legacy-peer-deps --include=dev",
-  "buildCommand": "(cd backend && ../node_modules/.bin/tsup) && (cd frontend && ../node_modules/.bin/vite build)",
+  "buildCommand": "(cd backend && ../node_modules/.bin/tsup && ../node_modules/.bin/knex migrate:latest --knexfile knexfile.js) && (cd frontend && ../node_modules/.bin/vite build)",
   "outputDirectory": "frontend/dist",
   "routes": [
     {

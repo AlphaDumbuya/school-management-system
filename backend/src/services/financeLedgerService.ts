@@ -223,10 +223,27 @@ class FinanceLedgerService {
     const enrolledYear = deriveAcademicYear(student?.enrollment_date);
     const isNew = !structureYear || !enrolledYear ? true : enrolledYear === structureYear;
 
-    const allowInstallments = structure ? structure.allow_installments !== false : true;
-    const minNew = Number(structure?.min_percent_new) || 0;
-    const minContinuing = Number(structure?.min_percent_continuing) || 0;
-    const minTerm = Number(structure?.min_percent_term) || 0;
+    // Layered resolution: a per-class fee-structure value OVERRIDES the school
+    // wide default when it is set (non-null); otherwise the tenant's general
+    // policy from Settings → Financial applies; otherwise a safe default.
+    // This lets a school set one policy once (the traditional case) while still
+    // allowing a specific class to differ.
+    const global = await this.getGlobalPaymentPolicy(tenantId);
+
+    const pick = <T>(structureVal: T | null | undefined, globalVal: T): T =>
+      structureVal === null || structureVal === undefined ? globalVal : structureVal;
+
+    const allowInstallments = pick<boolean>(
+      structure && structure.allow_installments != null ? structure.allow_installments !== false : null,
+      global.allow_installments,
+    );
+    const minNew = Number(pick(structure?.min_percent_new ?? null, global.min_percent_new)) || 0;
+    const minContinuing = Number(pick(structure?.min_percent_continuing ?? null, global.min_percent_continuing)) || 0;
+    const minTerm = Number(pick(structure?.min_percent_term ?? null, global.min_percent_term)) || 0;
+    const chargesCompulsory = pick<boolean>(
+      structure && structure.charges_compulsory_first_term != null ? structure.charges_compulsory_first_term === true : null,
+      global.charges_compulsory_first_term,
+    );
 
     // If installments are disabled, the minimum is effectively 100%.
     const rawMin = isNew ? minNew : minContinuing;
@@ -237,9 +254,125 @@ class FinanceLedgerService {
       is_new_student: isNew,
       min_percent: minPercent,
       min_percent_term: allowInstallments ? clampPct(minTerm) : 100,
-      charges_compulsory_first_term: structure?.charges_compulsory_first_term === true,
-      policy_notes: structure?.policy_notes ?? null,
+      charges_compulsory_first_term: chargesCompulsory,
+      policy_notes: structure?.policy_notes ?? global.policy_notes ?? null,
     };
+  }
+
+  /**
+   * The school-wide (general) payment policy, set on Settings → Financial and
+   * stored in school_config_settings. Used as the default for every class whose
+   * fee structure does not override a given rule. Safe defaults when unset:
+   * installments allowed, no minimums, charges not compulsory.
+   */
+  async getGlobalPaymentPolicy(tenantId: string): Promise<{
+    allow_installments: boolean;
+    min_percent_new: number;
+    min_percent_continuing: number;
+    min_percent_term: number;
+    charges_compulsory_first_term: boolean;
+    late_fee_percent: number;
+    policy_notes: string | null;
+  }> {
+    const rows = await db('school_config_settings')
+      .where({ tenant_id: tenantId })
+      .whereIn('setting_key', [
+        'fin_allow_installments',
+        'fin_min_percent_new',
+        'fin_min_percent_continuing',
+        'fin_min_percent_term',
+        'fin_charges_compulsory_first_term',
+        'fin_late_fee_percent',
+        'fin_policy_notes',
+      ])
+      .catch(() => [] as any[]);
+    const s: Record<string, any> = {};
+    for (const r of rows) s[r.setting_key] = r.setting_value;
+
+    const asBool = (v: any, dflt: boolean) =>
+      v === undefined || v === null ? dflt : (v === true || v === 'true' || v === 1 || v === '1');
+    const asNum = (v: any) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+
+    return {
+      allow_installments: asBool(s['fin_allow_installments'], true),
+      min_percent_new: asNum(s['fin_min_percent_new']),
+      min_percent_continuing: asNum(s['fin_min_percent_continuing']),
+      min_percent_term: asNum(s['fin_min_percent_term']),
+      charges_compulsory_first_term: asBool(s['fin_charges_compulsory_first_term'], false),
+      late_fee_percent: asNum(s['fin_late_fee_percent']),
+      policy_notes: s['fin_policy_notes'] || null,
+    };
+  }
+
+  /**
+   * Enforce the school's minimum-payment policy for a payment of `amount`
+   * against a student's outstanding fees. Returns an error message when the
+   * amount is below what the policy permits, else null (payment allowed).
+   *
+   * This is the SINGLE source of truth for payment-policy enforcement so every
+   * payment path — Monime checkout, Monime USSD payment code, and manual
+   * staff-recorded payments — applies identical rules. Full settlement
+   * (amount >= outstanding) is always allowed.
+   *
+   * Rules enforced (from the class fee structure):
+   *  - allow_installments = false → must pay the full outstanding balance.
+   *  - charges_compulsory_first_term → a partial must clear all non-tuition charges.
+   *  - min_percent (new vs continuing) → partial must be at least this % of outstanding.
+   *  - min_percent_term → partial must also meet the per-term clearance minimum.
+   */
+  async enforceMinimumPayment(
+    tenantId: string,
+    studentId: string,
+    amount: number,
+  ): Promise<string | null> {
+    const rows = await db('fees')
+      .where({ tenant_id: tenantId, student_id: studentId })
+      .whereNot('status', 'deleted')
+      .select('amount', 'balance', 'type');
+    const outstanding = rows.reduce((s: number, f: any) => s + (Number(f.balance ?? f.amount) || 0), 0);
+    if (outstanding <= 0) return null;
+
+    // Paying the full (or more) is always allowed.
+    if (amount >= outstanding - 0.001) return null;
+
+    const policy = await this.getPaymentPolicy(tenantId, studentId).catch(() => null);
+    if (!policy) return null;
+
+    if (!policy.allow_installments) {
+      return 'Part payments are not allowed for this student. Please pay the full outstanding balance.';
+    }
+
+    // Charges compulsory first: a partial must at least cover all non-tuition charges.
+    if (policy.charges_compulsory_first_term) {
+      const chargesDue = rows
+        .filter((f: any) => !/tuition/i.test(String(f.type || '')))
+        .reduce((s: number, f: any) => s + (Number(f.balance ?? f.amount) || 0), 0);
+      if (chargesDue > 0 && amount < chargesDue - 0.001) {
+        return `Your school requires all charges (Le ${chargesDue.toLocaleString(undefined, { minimumFractionDigits: 2 })}) to be paid first. Please pay at least this amount.`;
+      }
+    }
+
+    // Overall minimum % (new vs continuing).
+    if (policy.min_percent > 0) {
+      const minAmount = Math.round((policy.min_percent / 100) * outstanding * 100) / 100;
+      if (amount < minAmount - 0.001) {
+        const who = policy.is_new_student ? 'new students' : 'continuing students';
+        return `A minimum of ${policy.min_percent}% (Le ${minAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}) is required for ${who}. Please pay at least this amount.`;
+      }
+    }
+
+    // Per-term clearance minimum (applied against the same outstanding base).
+    if (policy.min_percent_term > 0) {
+      const minTermAmount = Math.round((policy.min_percent_term / 100) * outstanding * 100) / 100;
+      if (amount < minTermAmount - 0.001) {
+        return `A minimum of ${policy.min_percent_term}% per term (Le ${minTermAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}) is required. Please pay at least this amount.`;
+      }
+    }
+
+    return null;
   }
 
   /**

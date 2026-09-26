@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate } from '@middleware/authMiddleware';
+import { authenticate, attachUserContext } from '@middleware/authMiddleware';
+import { requirePlanFeature } from '@middleware/subscriptionGuard';
 import { rbacMiddleware } from '@middleware/rbacMiddleware';
 import exportService from '@services/exportService';
 import { logger } from '@utils/logger';
@@ -10,12 +11,19 @@ const router = Router();
 // Middleware
 router.use(authenticate);
 
+// Data exports are a Combra+ feature (plan flag `exports`). We gate PER-ROUTE
+// (not router-wide) because this router is mounted at the broad `/api/v1` path
+// — a router-wide `use()` would run for EVERY /api/v1/* request (including
+// platform/superadmin routes) and wrongly block them with a tenant plan check.
+// `planGate` bundles the tenant context + feature check for the export routes.
+const planGate = [attachUserContext, requirePlanFeature('exports')];
+
 /**
  * POST /api/v1/export/dashboard/pdf
  * Export dashboard data to PDF
  * Required permissions: dashboard.export
  */
-router.post('/export/dashboard/pdf', rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/export/dashboard/pdf', ...planGate, rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { dashboardType, filters, includeCharts } = req.body;
     const userId = (req as any).user.id;
@@ -65,7 +73,7 @@ router.post('/export/dashboard/pdf', rbacMiddleware('dashboard.export'), async (
  * Export dashboard data to Excel
  * Required permissions: dashboard.export
  */
-router.post('/export/dashboard/excel', rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/export/dashboard/excel', ...planGate, rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { dashboardType, filters } = req.body;
     const userId = (req as any).user.id;
@@ -114,7 +122,7 @@ router.post('/export/dashboard/excel', rbacMiddleware('dashboard.export'), async
  * Export dashboard data to CSV
  * Required permissions: dashboard.export
  */
-router.post('/export/dashboard/csv', rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/export/dashboard/csv', ...planGate, rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { dashboardType, filters } = req.body;
     const userId = (req as any).user.id;
@@ -157,7 +165,7 @@ router.post('/export/dashboard/csv', rbacMiddleware('dashboard.export'), async (
  * Email dashboard report to user
  * Required permissions: dashboard.export
  */
-router.post('/export/dashboard/email', rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/export/dashboard/email', ...planGate, rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { dashboardType, format, email } = req.body;
     const userId = (req as any).user.id;
@@ -230,7 +238,7 @@ router.post('/export/dashboard/email', rbacMiddleware('dashboard.export'), async
  * Get user's saved export templates
  * Required permissions: dashboard.export
  */
-router.get('/export/templates', rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/export/templates', ...planGate, rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user.id;
 
@@ -254,7 +262,7 @@ router.get('/export/templates', rbacMiddleware('dashboard.export'), async (req: 
  * Save current export configuration as template
  * Required permissions: dashboard.export
  */
-router.post('/export/templates/save', rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/export/templates/save', ...planGate, rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, description, format, columns, filters } = req.body;
     const userId = (req as any).user.id;
@@ -313,7 +321,7 @@ router.delete('/export/templates/:id', rbacMiddleware('dashboard.export'), async
  * Get user's export history
  * Required permissions: dashboard.export
  */
-router.get('/export/history', rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/export/history', ...planGate, rbacMiddleware('dashboard.export'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user.id;
     const { limit = 50, offset = 0 } = req.query;

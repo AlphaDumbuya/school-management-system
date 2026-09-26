@@ -162,6 +162,31 @@ export const platformService = {
   async expireSubscription(id: string) {
     return apiClient.post<{ success: boolean; data: any; message: string }>(`/api/v1/platform/tenants/${id}/subscription/expire`);
   },
+  /** Grant a free (complimentary) plan. Omit durationDays for no expiry. */
+  async grantCompPlan(id: string, planType: 'freetong' | 'combra' | 'bintumani', opts?: { durationDays?: number | null; reason?: string }) {
+    return apiClient.post<{ success: boolean; data: any; message: string }>(`/api/v1/platform/tenants/${id}/subscription/comp`, {
+      plan_type: planType,
+      duration_days: opts?.durationDays ?? null,
+      reason: opts?.reason,
+    });
+  },
+  /** Revoke a complimentary plan — school moves to Freetong. */
+  async revokeCompPlan(id: string) {
+    return apiClient.post<{ success: boolean; data: any; message: string }>(`/api/v1/platform/tenants/${id}/subscription/comp/revoke`);
+  },
+
+  // ── New-school trial config (platform owner controlled) ────────────────────
+  async getTrialConfig() {
+    return apiClient.get<{ enabled: boolean; planType: 'freetong' | 'combra' | 'bintumani'; durationDays: number }>(
+      '/api/v1/platform/settings/trial'
+    );
+  },
+  async updateTrialConfig(patch: { enabled?: boolean; plan_type?: 'freetong' | 'combra' | 'bintumani'; duration_days?: number }) {
+    return apiClient.put<{ success: boolean; message: string; data: { enabled: boolean; planType: string; durationDays: number } }>(
+      '/api/v1/platform/settings/trial',
+      patch
+    );
+  },
 
   // ── Tenant users ─────────────────────────────────────────────────────────
   async getTenantUsers(id: string, filters?: { search?: string; role?: string; status?: string }) {

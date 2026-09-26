@@ -54,21 +54,41 @@ In the Vercel dashboard → Project Settings → Environment Variables, add:
 
 > **Note:** Do NOT set `VITE_API_URL` in Vercel — leaving it empty makes the frontend use relative URLs so API calls go to the same domain. This is exactly what you want on Vercel.
 
-### 3. Run Database Migrations
+### 3. Database Migrations (run AUTOMATICALLY on every deploy)
 
-After the first deploy, run migrations against your production database:
+Migrations now run as part of the Vercel **build**. The `buildCommand` in
+`vercel.json` is:
 
-```bash
-# From the backend directory, with DATABASE_URL pointing to production:
-DATABASE_URL="your-neon-url" npm run db:migrate -w backend
+```
+(cd backend && tsup && knex migrate:latest --knexfile knexfile.js) && (cd frontend && vite build)
 ```
 
-Or use the Vercel CLI to run it in the Vercel environment:
+So `knex migrate:latest` executes against the production database on every
+deploy, right after the backend compiles and before the frontend builds. A
+failing migration fails the whole deploy — this is intentional, so you never
+ship code whose schema hasn't been applied.
+
+> **CRITICAL:** because migrations run at BUILD time, `DATABASE_URL` MUST be
+> exposed to the **Build** environment in Vercel — not just Runtime. In Vercel →
+> Project Settings → Environment Variables, ensure `DATABASE_URL` (and
+> `NODE_ENV=production`) are enabled for the **Production** (and Preview)
+> environments, which Vercel makes available to the build step. If
+> `DATABASE_URL` is missing at build time, the migrate step fails and the deploy
+> aborts. (This exact gap — migrations never running — is what previously left
+> `refresh_tokens.token_hash` missing in prod and broke login with a 500.)
+
+If you ever need to run migrations manually against production (e.g. to
+back-fill without a full redeploy):
 
 ```bash
 vercel env pull .env.production.local
-cd backend && npx knex migrate:latest
+cd backend && npx tsup && NODE_ENV=production npx knex migrate:latest --knexfile knexfile.js
 ```
+
+> Note: the production knex config reads compiled migrations from
+> `backend/dist/database/migrations/*.js`, so you must `tsup` (build) first. The
+> `tsup.config.ts` emits each migration/seed as its own file for exactly this
+> reason.
 
 ### 4. Deploy
 
@@ -105,6 +125,34 @@ If you need scheduled jobs, add them to `vercel.json`:
 ```
 
 Then create `api/cron/daily-tasks.ts` as a Vercel function.
+
+## Pre-Launch Production Checklist
+
+Confirm these before going live:
+
+- [ ] **`DATABASE_URL` available at BUILD time** (see Step 3) — required for the
+      auto-migration to run. Missing this is the #1 cause of a broken deploy.
+- [ ] **`JWT_SECRET` / `REFRESH_TOKEN_SECRET`** set to strong, unique values
+      (≥32 chars) — NOT the dev defaults.
+- [ ] **`REDIS_URL`** set to a managed Redis (Upstash TCP/TLS string, e.g.
+      `rediss://default:<pw>@<host>.upstash.io:6379` — the double-`s` TLS URL,
+      NOT the REST URL/token). This backs the distributed login/OTP rate limiter
+      so brute-force protection holds across serverless instances. The app now
+      fails OPEN if Redis is unreachable (login is never blocked by a Redis
+      outage), so this is recommended, not strictly required — but without it
+      rate limits are per-instance and weak.
+- [ ] **CSP is still Report-Only.** `vercel.json` sends
+      `Content-Security-Policy-Report-Only`. Validate the policy against all
+      flows (see `docs/CONTENT_SECURITY_POLICY.md`), then rename the header to
+      `Content-Security-Policy` to actually ENFORCE it. Tighten `connect-src` to
+      your real API origin at the same time.
+- [ ] **`FRONTEND_URL`** set to the production origin (used by CORS + email links).
+- [ ] **Do NOT set `VITE_API_URL`** in Vercel (leave empty → same-origin API).
+- [ ] **Scheduled jobs** (`node-cron`) do NOT run on serverless. If you rely on
+      the subscription-expiry sweep, SMS delivery job, or event jobs, port them
+      to Vercel Cron Jobs (see below) or run a small always-on worker elsewhere.
+- [ ] **File storage**: set `STORAGE_PROVIDER=s3` (+ AWS keys) — serverless disk
+      is ephemeral, so `local` storage loses uploads between invocations.
 
 ## Custom Domain
 

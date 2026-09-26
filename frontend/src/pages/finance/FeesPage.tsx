@@ -576,8 +576,8 @@ const FeeStructureModal: React.FC<{
             {expTotal > 0 && <p className="text-xs text-gray-500 mt-2">Total Academic Year Expenses: <span className="font-bold">{fmtLe(expTotal)}</span></p>}
           </Section>
 
-          {/* Payment policy */}
-          <Section title="Payment Policy Rules" hint="Optional school-specific rules. Leave blank if no minimum applies.">
+          {/* Payment policy — per-class OVERRIDE of the school-wide policy. */}
+          <Section title="Payment Policy Rules" hint="Per-class override. Leave a field blank to use the school-wide policy from Settings → Financial.">
             <div className="grid grid-cols-2 gap-3">
               <Controller
                 control={control}

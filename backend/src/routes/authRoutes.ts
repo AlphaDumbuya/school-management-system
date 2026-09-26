@@ -3,7 +3,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { AuthService } from '@services/authService';
 import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
-import { authenticate, authorize, rateLimitLogin, clearLoginAttempts } from '@middleware/authMiddleware';
+import { authenticate, authorize, attachUserContext, rateLimitLogin, clearLoginAttempts } from '@middleware/authMiddleware';
 import { loginLimiter, otpLimiter, passkeyLimiter } from '@middleware/rateLimit';
 import { logger } from '@utils/logger';
 import { UserRole, UserStatus } from '@types/auth';
@@ -13,51 +13,32 @@ const router = Router();
 const authService = new AuthService(db);
 
 /**
- * POST /api/v1/auth/register
- * Register a new user (admin creates initial admin user)
+ * Ensure a target user is in the SAME tenant as the caller.
+ *
+ * The /users/:id routes gate on role (principal) but the underlying service
+ * methods look users up by id ALONE. Without this check a principal of school A
+ * could read/update/deactivate a user in school B (cross-tenant IDOR). Super
+ * admins are the platform operator and are exempt (they manage across tenants
+ * via the dedicated platform routes). Returns true when access is allowed.
  */
-router.post('/register', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { email, password, first_name, last_name, role } = req.body;
+async function sameTenantAsCaller(callerUserId: string, callerRole: string, targetUserId: string): Promise<boolean> {
+  if (callerRole === UserRole.SUPER_ADMIN) return true;
+  if (callerUserId === targetUserId) return true;
+  const [caller, target] = await Promise.all([
+    db('users').select('tenant_id').where({ id: callerUserId }).first().catch(() => null),
+    db('users').select('tenant_id').where({ id: targetUserId }).first().catch(() => null),
+  ]);
+  return !!caller?.tenant_id && !!target?.tenant_id && caller.tenant_id === target.tenant_id;
+}
 
-    // Validate input
-    if (!email || !password || !first_name || !last_name) {
-      throw new AppError('Missing required fields', 400, 'VALIDATION_ERROR');
-    }
-
-    // Validate password policy
-    const passwordValidation = PasswordService.validatePasswordPolicy(password);
-    if (!passwordValidation.valid) {
-      throw new AppError(
-        `Password does not meet requirements: ${passwordValidation.errors.join(', ')}`,
-        400,
-        'VALIDATION_ERROR'
-      );
-    }
-
-    // Register user
-    const result = await authService.register({
-      email,
-      password,
-      first_name,
-      last_name,
-      role: role || UserRole.STUDENT,
-    });
-
-    res.status(201).json({
-      message: 'User registered successfully',
-      user: result.user,
-      access_token: result.access_token,
-      refresh_token: result.refresh_token,
-      expires_in: 1800, // 30 minutes
-      token_type: 'Bearer',
-    });
-
-    logger.info(`User registered: ${email}`);
-  } catch (error) {
-    next(error);
-  }
-});
+// NOTE: The old public `POST /api/v1/auth/register` route was REMOVED.
+// It was unauthenticated and accepted a caller-supplied `role`, which let
+// anyone self-assign `super_admin` (the cross-tenant platform operator role)
+// and take over the whole platform — a critical privilege-escalation hole.
+// Legitimate account creation is fully covered by:
+//   • POST /auth/register-school  — public new-school signup (role forced to PRINCIPAL)
+//   • POST /auth/users            — authenticated, principal-only, tenant-scoped
+// The frontend never used /register, so removing it has zero functional impact.
 
 /**
  * POST /api/v1/auth/register-school
@@ -829,13 +810,18 @@ router.post('/users', authenticate, authorize(UserRole.PRINCIPAL), async (req: R
  * GET /api/v1/users
  * List all users (principal only)
  */
-router.get('/users', authenticate, authorize(UserRole.PRINCIPAL), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/users', authenticate, authorize(UserRole.PRINCIPAL), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { role, status, limit = 50, offset = 0 } = req.query;
+    const tenantId = (req as any).user?.tenant_id;
+    if (!tenantId) {
+      throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    }
 
     const options: any = {
       limit: Math.min(parseInt(limit as string) || 50, 100),
       offset: parseInt(offset as string) || 0,
+      tenantId,
     };
 
     if (role && Object.values(UserRole).includes(role as UserRole)) {
@@ -870,8 +856,13 @@ router.get('/users/:id', authenticate, async (req: Request, res: Response, next:
     const currentUserRole = (req as any).auth.role;
 
     // Allow users to view their own profile, or principals to view anyone
-    if (id !== currentUserId && currentUserRole !== UserRole.PRINCIPAL) {
+    if (id !== currentUserId && currentUserRole !== UserRole.PRINCIPAL && currentUserRole !== UserRole.SUPER_ADMIN) {
       throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
+    }
+
+    // Tenant isolation: a principal may only view users within their own school.
+    if (!(await sameTenantAsCaller(currentUserId, currentUserRole, id))) {
+      throw new AppError('User not found', 404, 'NOT_FOUND');
     }
 
     const user = await authService.getUserById(id);
@@ -894,13 +885,18 @@ router.put('/users/:id', authenticate, async (req: Request, res: Response, next:
     const currentUserRole = (req as any).auth.role;
 
     // Allow users to update their own profile (except role and status), or principals to update anyone
-    if (id !== currentUserId && currentUserRole !== UserRole.PRINCIPAL) {
+    if (id !== currentUserId && currentUserRole !== UserRole.PRINCIPAL && currentUserRole !== UserRole.SUPER_ADMIN) {
       throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
     }
 
     // Non-principals cannot change role or status
-    if (currentUserRole !== UserRole.PRINCIPAL && (role !== undefined || status !== undefined)) {
+    if (currentUserRole !== UserRole.PRINCIPAL && currentUserRole !== UserRole.SUPER_ADMIN && (role !== undefined || status !== undefined)) {
       throw new AppError('Only principals can modify role or status', 403, 'INSUFFICIENT_PERMISSIONS');
+    }
+
+    // Tenant isolation: a principal may only update users within their own school.
+    if (!(await sameTenantAsCaller(currentUserId, currentUserRole, id))) {
+      throw new AppError('User not found', 404, 'NOT_FOUND');
     }
 
     const updatePayload: any = {};
@@ -932,10 +928,16 @@ router.delete('/users/:id', authenticate, authorize(UserRole.PRINCIPAL), async (
   try {
     const { id } = req.params;
     const deactivatedBy = (req as any).auth.userId;
+    const deactivatorRole = (req as any).auth.role;
 
     // Prevent admin from deactivating themselves
     if (id === deactivatedBy) {
       throw new AppError('Cannot deactivate your own account', 400, 'CANNOT_DEACTIVATE_SELF');
+    }
+
+    // Tenant isolation: a principal may only deactivate users within their own school.
+    if (!(await sameTenantAsCaller(deactivatedBy, deactivatorRole, id))) {
+      throw new AppError('User not found', 404, 'NOT_FOUND');
     }
 
     await authService.deactivateUser(id, deactivatedBy);
@@ -958,6 +960,12 @@ router.post('/users/:id/reactivate', authenticate, authorize(UserRole.PRINCIPAL)
   try {
     const { id } = req.params;
     const reactivatedBy = (req as any).auth.userId;
+    const reactivatorRole = (req as any).auth.role;
+
+    // Tenant isolation: a principal may only reactivate users within their own school.
+    if (!(await sameTenantAsCaller(reactivatedBy, reactivatorRole, id))) {
+      throw new AppError('User not found', 404, 'NOT_FOUND');
+    }
 
     await authService.reactivateUser(id, reactivatedBy);
 

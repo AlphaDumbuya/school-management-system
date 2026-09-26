@@ -10,7 +10,6 @@ import {
   Calendar,
   AlertCircle,
   DollarSign,
-  Mail,
   User,
   CreditCard,
   CheckCircle2,
@@ -25,7 +24,14 @@ import {
   HardDrive,
   Image as ImageIcon,
   Droplet,
+  Smartphone,
+  Copy,
+  Check,
+  Timer,
+  Phone,
+  XCircle,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import useAuthStore from '@store/authStore';
 import schoolConfigService, { SchoolInfo, GradeScale, BillingInvoice, SubscriptionDetails } from '../services/schoolConfigService';
 import { formatCurrency } from '@utils/formatting';
@@ -33,6 +39,7 @@ import authService from '../services/authService';
 import { FileUploader } from '@components/admin/forms/FileUploader';
 import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
 import { StorageSettings } from '@components/settings/StorageSettings';
+import { PaymentSettings } from '@components/settings/PaymentSettings';
 import { OfflineStorageSettings } from '@components/offline/OfflineStorageSettings';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -113,6 +120,43 @@ export const SettingsPage: React.FC = () => {
     }
   }, [isSuperAdmin, activeTab]);
 
+  // In-app subscription USSD payment modal state (declared before the polling
+  // effect below so it's initialized when the effect first runs).
+  const [subPay, setSubPay] = useState<{
+    sessionId: string;
+    ussdCode: string | null;
+    amount: number;
+    expireTime: string | null;
+    planType: 'freetong' | 'combra' | 'bintumani';
+    status: 'ussd' | 'completed' | 'failed' | 'cancelled';
+  } | null>(null);
+
+  // While the in-app subscription USSD modal is open, poll the session status.
+  // The webhook is authoritative, but polling reconciles server-side and updates
+  // the UI promptly once the payer completes the mobile-money prompt.
+  useEffect(() => {
+    if (!subPay || subPay.status !== 'ussd') return;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      try {
+        const res = await schoolConfigService.getSubscriptionCheckoutStatus(subPay.sessionId);
+        const s = res.success ? res.data?.status : undefined;
+        if (cancelled) return;
+        if (s === 'completed') {
+          setSubPay((p) => (p ? { ...p, status: 'completed' } : p));
+          showToast.success(`Your plan is now ${subPay.planType.toUpperCase()}.`);
+          fetchInitialData();
+        } else if (s === 'failed' || s === 'expired') {
+          setSubPay((p) => (p ? { ...p, status: 'failed' } : p));
+        } else if (s === 'cancelled') {
+          setSubPay((p) => (p ? { ...p, status: 'cancelled' } : p));
+        }
+      } catch { /* keep polling */ }
+    }, 2500);
+    return () => { cancelled = true; clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subPay?.sessionId, subPay?.status]);
+
   // Loading States
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -146,11 +190,14 @@ export const SettingsPage: React.FC = () => {
     currency: 'USD',
     payment_methods: ['cash'],
     late_fee_rate: 0,
-    system_email: '',
-    sms_sender_name: 'WiSkul',
-    whatsapp_enabled: false,
-    email_notifications_enabled: true,
-    sms_notifications_enabled: true,
+    // School-wide (general) payment policy. Each fee structure may override any
+    // of these per class; when a structure leaves a field blank, this applies.
+    fin_allow_installments: true,
+    fin_min_percent_new: 0,
+    fin_min_percent_continuing: 0,
+    fin_min_percent_term: 0,
+    fin_charges_compulsory_first_term: false,
+    fin_late_fee_percent: 0,
     language: 'en',
     date_format: 'YYYY-MM-DD',
     time_format: '12h',
@@ -239,8 +286,88 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // ── Validation helpers ──────────────────────────────────────────────────
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const URL_RE = /^https?:\/\/.+/i;
+  const isPct = (v: any) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 && n <= 100;
+  };
+
+  /** Validate the School Info form. Returns an error message or null. */
+  const validateSchoolInfo = (): string | null => {
+    if (!schoolInfo.name || !schoolInfo.name.trim()) return 'School name is required.';
+    if (schoolInfo.email && !EMAIL_RE.test(schoolInfo.email.trim())) return 'Please enter a valid school email address.';
+    if (schoolInfo.principal_email && !EMAIL_RE.test(schoolInfo.principal_email.trim())) return 'Please enter a valid principal email address.';
+    if (schoolInfo.website && !URL_RE.test(schoolInfo.website.trim())) return 'Website must start with http:// or https://';
+    if (schoolInfo.founded_year !== undefined && schoolInfo.founded_year !== null && String(schoolInfo.founded_year).trim() !== '') {
+      const y = Number(schoolInfo.founded_year);
+      const now = new Date().getFullYear();
+      if (!Number.isInteger(y) || y < 1800 || y > now) return `Founded year must be a year between 1800 and ${now}.`;
+    }
+    return null;
+  };
+
+  /** Validate the shared settings form, scoped to the active tab. */
+  const validateSettingsForTab = (): string | null => {
+    if (activeTab === 'academic') {
+      if (!settings.academic_year || !/^\d{4}\/\d{4}$/.test(String(settings.academic_year).trim())) {
+        return 'Academic year is required in the format YYYY/YYYY (e.g. 2026/2027).';
+      }
+      const count = Number(settings.term_count) || 3;
+      // Validate each active term's date ordering when both dates are provided.
+      for (let i = 1; i <= count; i++) {
+        const start = settings[`term_${i}_start`];
+        const end = settings[`term_${i}_end`];
+        if ((start && !end) || (!start && end)) {
+          return `Term ${i}: please provide both a start and an end date, or leave both blank.`;
+        }
+        if (start && end && new Date(start) >= new Date(end)) {
+          return `Term ${i}: the end date must be after the start date.`;
+        }
+      }
+      return null;
+    }
+    if (activeTab === 'id-format') {
+      const req: Array<[string, string]> = [
+        ['id_student_prefix', 'Student prefix'],
+        ['id_staff_prefix', 'Staff/Teacher prefix'],
+        ['id_admission_prefix', 'Admission prefix'],
+      ];
+      for (const [key, label] of req) {
+        if (!settings[key] || !String(settings[key]).trim()) return `${label} is required.`;
+      }
+      const pad = Number(settings.id_padding);
+      if (!Number.isInteger(pad) || pad < 1 || pad > 10) return 'ID number padding must be between 1 and 10.';
+      return null;
+    }
+    if (activeTab === 'attendance') {
+      if (!isPct(settings.min_attendance_warning)) return 'Warning threshold must be between 0 and 100.';
+      if (!isPct(settings.min_attendance_critical)) return 'Critical threshold must be between 0 and 100.';
+      if (Number(settings.min_attendance_critical) > Number(settings.min_attendance_warning)) {
+        return 'Critical threshold cannot be higher than the warning threshold.';
+      }
+      return null;
+    }
+    if (activeTab === 'financial') {
+      const checks: Array<[any, string]> = [
+        [settings.fin_min_percent_new, 'Minimum payment for new students'],
+        [settings.fin_min_percent_continuing, 'Minimum payment for continuing students'],
+        [settings.fin_min_percent_term, 'Per-term clearance minimum'],
+        [settings.fin_late_fee_percent, 'Late-fee surcharge'],
+      ];
+      for (const [val, label] of checks) {
+        if (!isPct(val)) return `${label} must be between 0 and 100.`;
+      }
+      return null;
+    }
+    return null;
+  };
+
   const handleSaveSchoolInfo = async (e: React.FormEvent) => {
     e.preventDefault();
+    const err = validateSchoolInfo();
+    if (err) { showToast.error(err); return; }
     setSaving(true);
     try {
       const res = await schoolConfigService.updateSchoolInfo(schoolInfo);
@@ -268,6 +395,8 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleSaveSettings = async () => {
+    const err = validateSettingsForTab();
+    if (err) { showToast.error(err); return; }
     setSaving(true);
     try {
       const res = await schoolConfigService.updateSettings(settings);
@@ -289,6 +418,10 @@ export const SettingsPage: React.FC = () => {
     
     if (!profileForm.firstName.trim() || !profileForm.lastName.trim() || !profileForm.email.trim()) {
       showToast.error('Please fill in all personal details fields.');
+      return;
+    }
+    if (!EMAIL_RE.test(profileForm.email.trim())) {
+      showToast.error('Please enter a valid email address.');
       return;
     }
 
@@ -361,6 +494,27 @@ export const SettingsPage: React.FC = () => {
 
   const handleSaveGradingScale = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Validate the new grading scale before saving.
+    if (!newGradeScale.name || !newGradeScale.name.trim()) {
+      showToast.error('Grading scale name is required.');
+      return;
+    }
+    if (!newGradeScale.grades || newGradeScale.grades.length === 0) {
+      showToast.error('Add at least one grade band.');
+      return;
+    }
+    for (const g of newGradeScale.grades) {
+      if (!g.grade || !String(g.grade).trim()) {
+        showToast.error('Every grade band needs a letter/label.');
+        return;
+      }
+      const min = Number(g.min_score);
+      const max = Number(g.max_score);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 100 || min > max) {
+        showToast.error(`Grade "${g.grade}": scores must be 0–100 with min ≤ max.`);
+        return;
+      }
+    }
     setSaving(true);
     try {
       const res = await schoolConfigService.saveGradingScale(newGradeScale);
@@ -409,12 +563,77 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // Plan ordering so the action button reads correctly (Upgrade / Downgrade /
+  // Current) relative to the tenant's active plan. The trial defaults to
+  // 'freetong', so an unset/blank plan is treated as the lowest tier.
+  const PLAN_RANK: Record<string, number> = { freetong: 0, combra: 1, bintumani: 2 };
+
+  // Feature lists shown on each plan card. `soon: true` marks a roadmap (V2)
+  // capability that is NOT yet available to any plan — shown so the value story
+  // is complete, but clearly badged "Soon" so it never misleads. Un-badged items
+  // are shipping V1 features that ARE enforced (see backend PLAN_LIMITS.features
+  // + subscriptionGuard). Note: SMS/WhatsApp are intentionally omitted (removed
+  // in V1).
+  type PlanFeature = { label: string; soon?: boolean };
+  const PLAN_CARD_FEATURES: Record<'freetong' | 'combra' | 'bintumani', PlanFeature[]> = {
+    freetong: [
+      { label: 'Up to 200 students' },
+      { label: 'Up to 15 staff' },
+      { label: 'Student & guardian directory' },
+      { label: 'Classes, subjects & timetable' },
+      { label: 'Attendance tracking' },
+      { label: 'Grading & report cards' },
+      { label: 'Fee invoices, receipts & online payments' },
+    ],
+    combra: [
+      { label: 'Everything in Freetong' },
+      { label: 'Up to 500 students' },
+      { label: 'Up to 40 staff' },
+      { label: 'ID card & PVC badge maker' },
+      { label: 'Events & calendar' },
+      { label: 'Discipline & conduct records' },
+      { label: 'Advanced analytics dashboards', soon: true },
+      { label: 'Data exports (Excel / PDF)', soon: true },
+    ],
+    bintumani: [
+      { label: 'Everything in Combra' },
+      { label: 'Unlimited students & staff' },
+      { label: 'Payroll & payslips', soon: true },
+      { label: 'Scholarships manager', soon: true },
+      { label: 'Custom branding', soon: true },
+      { label: 'Multi-branch support', soon: true },
+    ],
+  };
+
+  const currentPlan = (subscription?.subscription?.plan_type || 'freetong') as 'freetong' | 'combra' | 'bintumani';
+  const planButtonLabel = (target: 'freetong' | 'combra' | 'bintumani'): string => {
+    if (target === currentPlan) return 'Current Plan';
+    return (PLAN_RANK[target] ?? 0) > (PLAN_RANK[currentPlan] ?? 0) ? 'Upgrade' : 'Downgrade';
+  };
+
   const handleUpgradePlan = async (planType: 'freetong' | 'combra' | 'bintumani') => {
     setSaving(true);
     try {
+      // Plan changes are PAID (subscription revenue → the platform's own Monime
+      // account) and happen fully IN-APP via a USSD payment code — no redirect.
+      // The plan only activates via webhook once payment is confirmed.
       const res = await schoolConfigService.changePlan(planType, billingCycle);
       if (res.success) {
-        showToast.success(`Successfully subscribed to ${planType.toUpperCase()}!`);
+        const d = (res as any).data || {};
+        if (d.sessionId && d.sessionId !== 'immediate') {
+          // Open the in-app USSD modal and poll for completion.
+          setSubPay({
+            sessionId: d.sessionId,
+            ussdCode: d.ussdCode || null,
+            amount: d.amount || 0,
+            expireTime: d.expireTime || null,
+            planType,
+            status: 'ussd',
+          });
+          return;
+        }
+        // No payment needed (zero-cost change) — plan applied immediately.
+        showToast.success(`Your plan is now ${planType.toUpperCase()}.`);
         fetchInitialData();
       } else {
         // Verification gate: guide the owner to verify instead of a raw error.
@@ -462,8 +681,8 @@ export const SettingsPage: React.FC = () => {
     { id: 'grading', label: 'Grading & Results', icon: <GraduationCap size={18} />, adminOnly: true },
     { id: 'attendance', label: 'Attendance Rules', icon: <AlertCircle size={18} />, adminOnly: true },
     { id: 'financial', label: 'Financial Info', icon: <DollarSign size={18} />, adminOnly: true },
-    { id: 'comms', label: 'Communications', icon: <Mail size={18} />, adminOnly: true },
     { id: 'storage', label: 'File Storage', icon: <HardDrive size={18} />, adminOnly: true },
+    { id: 'payments', label: 'Payments', icon: <CreditCard size={18} />, adminOnly: true },
     { id: 'billing', label: 'Plan & Billing', icon: <CreditCard size={18} />, adminOnly: true },
     { id: 'report-card', label: 'Report Card', icon: <GraduationCap size={18} />, adminOnly: true },
   ];
@@ -782,7 +1001,7 @@ export const SettingsPage: React.FC = () => {
                           </h3>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="md:col-span-2">
-                              <label className="text-xs font-semibold text-gray-500 block mb-1">School Name</label>
+                              <label className="text-xs font-semibold text-gray-500 block mb-1">School Name <span className="text-rose-500">*</span></label>
                               <input
                                 type="text"
                                 value={schoolInfo.name ?? ''}
@@ -1074,7 +1293,7 @@ export const SettingsPage: React.FC = () => {
                     <CardContent className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Current Academic Year</label>
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">Current Academic Year <span className="text-rose-500">*</span></label>
                           <input
                             type="text"
                             placeholder="2026/2027"
@@ -1536,110 +1755,131 @@ export const SettingsPage: React.FC = () => {
                     <CardContent className="space-y-6">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">System Currency</label>
-                          <select
-                            value={settings.currency}
-                            onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          >
-                            <option value="SLE">SLE - Leones (Sierra Leone)</option>
-                            <option value="NLe">NLe - New Leones (Sierra Leone)</option>
-                            <option value="USD">USD - US Dollar ($)</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Late Payment Charge (%)</label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={settings.late_fee_rate}
-                            onChange={(e) => setSettings({ ...settings, late_fee_rate: Number(e.target.value) })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          />
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">Currency</label>
+                          {/* Currency is fixed to Sierra Leonean Leones (Le) system-wide —
+                              all fees, receipts, invoices and emails render in Leones. */}
+                          <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 flex items-center justify-between">
+                            <span className="font-medium">Le — Sierra Leonean Leones</span>
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Fixed</span>
+                          </div>
+                          <p className="text-[11px] text-gray-400 mt-1">All amounts across the system are in Leones.</p>
                         </div>
                       </div>
 
-                      <div className="flex justify-end mt-4">
+                      {/* ── School-wide Payment Policy ── */}
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-800 mb-1">School Payment Policy</h4>
+                        <p className="text-xs text-gray-500 mb-4">
+                          These rules apply to every class by default and are enforced automatically
+                          whenever a fee is paid (online or recorded manually). A specific class can
+                          override any of them on its fee structure.
+                        </p>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500 block mb-1">Min. payment — New students (%)</label>
+                            <input
+                              type="number" min={0} max={100}
+                              value={settings.fin_min_percent_new ?? 0}
+                              onChange={(e) => setSettings({ ...settings, fin_min_percent_new: Number(e.target.value) })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">Minimum % of their balance a new student must pay.</p>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500 block mb-1">Min. payment — Continuing (%)</label>
+                            <input
+                              type="number" min={0} max={100}
+                              value={settings.fin_min_percent_continuing ?? 0}
+                              onChange={(e) => setSettings({ ...settings, fin_min_percent_continuing: Number(e.target.value) })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">Minimum % for a continuing (returning) student.</p>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500 block mb-1">Min. per-term clearance (%)</label>
+                            <input
+                              type="number" min={0} max={100}
+                              value={settings.fin_min_percent_term ?? 0}
+                              onChange={(e) => setSettings({ ...settings, fin_min_percent_term: Number(e.target.value) })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">Minimum % that must be cleared per term.</p>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500 block mb-1">Late-fee surcharge (%)</label>
+                            <input
+                              type="number" min={0} max={100}
+                              value={settings.fin_late_fee_percent ?? 0}
+                              onChange={(e) => setSettings({ ...settings, fin_late_fee_percent: Number(e.target.value) })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">Applied to overdue balances (informational).</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={settings.fin_allow_installments !== false}
+                              onChange={(e) => setSettings({ ...settings, fin_allow_installments: e.target.checked })}
+                              className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 border-gray-300"
+                            />
+                            <span className="text-sm text-gray-700">
+                              <span className="font-semibold">Allow instalments (part payments).</span>{' '}
+                              <span className="text-gray-500">When off, families must pay the full balance in one go.</span>
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={settings.fin_charges_compulsory_first_term === true}
+                              onChange={(e) => setSettings({ ...settings, fin_charges_compulsory_first_term: e.target.checked })}
+                              className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 border-gray-300"
+                            />
+                            <span className="text-sm text-gray-700">
+                              <span className="font-semibold">Charges compulsory first.</span>{' '}
+                              <span className="text-gray-500">A part payment must clear all non-tuition charges before tuition.</span>
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
+                        <a href="/finance/fees" className="text-xs font-semibold text-blue-700 underline hover:text-blue-900">
+                          Override per class in Fee Structures →
+                        </a>
                         <Button onClick={handleSaveSettings} disabled={saving}>
                           {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                          Save Financial Configuration
+                          Save Payment Policy
                         </Button>
                       </div>
                     </CardContent>
                   </Card>
                 )}
 
-                {/* ── COMMUNICATIONS TAB ── */}
-                {activeTab === 'comms' && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2.5">
-                        <span className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><Mail size={18} /></span>
-                        Communication Sender Defaults
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="sm:col-span-2">
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Sender Email</label>
-                          <input
-                            type="email"
-                            placeholder="notifications@school.com"
-                            value={settings.system_email}
-                            onChange={(e) => setSettings({ ...settings, system_email: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">SMS Sender Name</label>
-                          <input
-                            type="text"
-                            maxLength={11}
-                            placeholder="WiSkul"
-                            value={settings.sms_sender_name}
-                            onChange={(e) => setSettings({ ...settings, sms_sender_name: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          />
-                        </div>
-                      </div>
-
-                      <hr className="my-6 border-gray-100" />
-                      <h4 className="text-sm font-bold text-gray-800 mb-3">Notification Channels</h4>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            id="email_notifications_enabled"
-                            checked={settings.email_notifications_enabled}
-                            onChange={(e) => setSettings({ ...settings, email_notifications_enabled: e.target.checked })}
-                            className="rounded text-blue-600 focus:ring-blue-500 h-4.5 w-4.5 border-gray-300"
-                          />
-                          <label htmlFor="email_notifications_enabled" className="text-sm font-semibold text-gray-700">Enable outbound Email notifications (Brevo SMTP)</label>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            id="sms_notifications_enabled"
-                            checked={settings.sms_notifications_enabled}
-                            onChange={(e) => setSettings({ ...settings, sms_notifications_enabled: e.target.checked })}
-                            className="rounded text-blue-600 focus:ring-blue-500 h-4.5 w-4.5 border-gray-300"
-                          />
-                          <label htmlFor="sms_notifications_enabled" className="text-sm font-semibold text-gray-700">Enable outbound SMS alerts (Twilio)</label>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-end mt-4">
-                        <Button onClick={handleSaveSettings} disabled={saving}>
-                          {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                          Save Communication Config
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+                {/* Communications tab removed: the tenant email sender is the
+                    school's verified sender (managed via school profile / setup),
+                    per-recipient email prefs live on each user, and SMS is not
+                    active in this version — so the tab had no functional fields. */}
 
                 {/* ── FILE STORAGE TAB ── */}
+                {/* ── PAYMENTS TAB (school's own Monime account for fee collection) ── */}
+                {activeTab === 'payments' && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Payments</CardTitle>
+                      <CardDescription>
+                        Connect your school's own Monime account so online fee payments settle directly into your account.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <PaymentSettings />
+                    </CardContent>
+                  </Card>
+                )}
+
                 {activeTab === 'storage' && (
                   <Card>
                     <CardHeader>
@@ -1660,9 +1900,55 @@ export const SettingsPage: React.FC = () => {
                   <ReportCardBorderSettings schoolInfo={schoolInfo} />
                 )}
 
+                {/* In-app subscription USSD payment modal (mobile money). */}
+                {subPay && (
+                  <SubscriptionUssdModal
+                    state={subPay}
+                    onClose={() => setSubPay(null)}
+                  />
+                )}
+
                 {/* ── PLAN & BILLING TAB ── */}
                 {activeTab === 'billing' && (
                   <div className="space-y-6">
+                    {/* Trial banner — new schools explore the top plan free for a
+                        limited time, then drop to Freetong (never locked out). */}
+                    {subscription?.subscription?.is_trial && subscription?.subscription?.end_date && (() => {
+                      const end = new Date(subscription.subscription.end_date as string);
+                      const daysLeft = Math.max(0, Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                      return (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+                          <Sparkles size={18} className="text-amber-500 shrink-0 mt-0.5" />
+                          <div className="text-sm text-amber-900">
+                            <p className="font-bold">
+                              You're on a free {String(subscription.subscription.plan_type).toUpperCase()} trial — {daysLeft} day{daysLeft === 1 ? '' : 's'} left.
+                            </p>
+                            <p className="text-xs text-amber-800/80 mt-0.5">
+                              Explore every feature. When the trial ends you'll move to the free Freetong plan automatically — you won't be locked out. Upgrade any time to keep the extras.
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Comp banner — platform owner granted this plan for free. */}
+                    {subscription?.subscription?.is_comp && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
+                        <Sparkles size={18} className="text-emerald-500 shrink-0 mt-0.5" />
+                        <div className="text-sm text-emerald-900">
+                          <p className="font-bold">
+                            Complimentary {String(subscription.subscription.plan_type).toUpperCase()} plan — a gift from WiSkul.
+                          </p>
+                          <p className="text-xs text-emerald-800/80 mt-0.5">
+                            {subscription.subscription.end_date
+                              ? `Active until ${new Date(subscription.subscription.end_date).toLocaleDateString()}. `
+                              : 'No expiry. '}
+                            You're enjoying full access at no cost. If this offer is later removed you'll move to the free Freetong plan without losing any data.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Current active plan */}
                     <Card className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white relative overflow-hidden border-none shadow-md">
                       <div className="absolute right-[-5%] top-[-10%] w-[200px] h-[200px] rounded-full bg-blue-500/10 blur-xl" />
@@ -1780,29 +2066,27 @@ export const SettingsPage: React.FC = () => {
                             </div>
                             <p className="text-gray-400 text-xs mt-1 italic">"Start free, grow strong"</p>
                             <p className="text-2xl font-black text-gray-900 mt-4">
-                              {(() => {
-                                const symbol = settings.currency === 'SLE' ? 'Le ' : settings.currency === 'NLe' ? 'NLe ' : '$';
-                                return `${symbol}${billingCycle === 'monthly' ? '400' : '4000'}`;
-                              })()}
+                              {`Le ${billingCycle === 'monthly' ? '400' : '4000'}`}
                               <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
                             </p>
                             
                             <ul className="space-y-2 mt-6 text-xs text-gray-600">
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500" /> Up to 200 Students</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500" /> Up to 15 Staff</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500" /> Student directory</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500" /> Attendance tracking</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500" /> Fee invoices & receipts</li>
+                              {PLAN_CARD_FEATURES.freetong.map((f) => (
+                                <li key={f.label} className={`flex items-center gap-2 ${f.soon ? 'text-gray-400' : ''}`}>
+                                  <CheckCircle2 size={12} className={f.soon ? 'text-gray-300' : 'text-emerald-500'} /> {f.label}
+                                  {f.soon && <span className="ml-1 text-[10px] italic text-gray-400">(coming soon)</span>}
+                                </li>
+                              ))}
                             </ul>
                           </div>
 
                           <Button
-                            variant={subscription?.subscription?.plan_type === 'freetong' ? 'outline' : 'default'}
+                            variant={currentPlan === 'freetong' ? 'outline' : 'default'}
                             onClick={() => handleUpgradePlan('freetong')}
-                            disabled={subscription?.subscription?.plan_type === 'freetong' || saving}
+                            disabled={currentPlan === 'freetong' || saving}
                             className="w-full mt-8"
                           >
-                            {subscription?.subscription?.plan_type === 'freetong' ? 'Active Plan' : 'Downgrade'}
+                            {planButtonLabel('freetong')}
                           </Button>
                         </div>
 
@@ -1824,30 +2108,27 @@ export const SettingsPage: React.FC = () => {
                             </div>
                             <p className="text-gray-400 text-xs mt-1 italic">"A mother managing her children"</p>
                             <p className="text-2xl font-black text-gray-900 mt-4">
-                              {(() => {
-                                const symbol = settings.currency === 'SLE' ? 'Le ' : settings.currency === 'NLe' ? 'NLe ' : '$';
-                                return `${symbol}${billingCycle === 'monthly' ? '900' : '9000'}`;
-                              })()}
+                              {`Le ${billingCycle === 'monthly' ? '900' : '9000'}`}
                               <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
                             </p>
                             
                             <ul className="space-y-2 mt-6 text-xs text-gray-600">
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-purple-500" /> Up to 500 Students</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-purple-500" /> Up to 40 Staff</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-purple-500" /> Everything in Freetong</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-purple-500" /> **Exams, results & cards**</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-purple-500" /> **ID card PVC badge maker**</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-purple-500" /> **WhatsApp integration**</li>
+                              {PLAN_CARD_FEATURES.combra.map((f) => (
+                                <li key={f.label} className={`flex items-center gap-2 ${f.soon ? 'text-gray-400' : ''}`}>
+                                  <CheckCircle2 size={12} className={f.soon ? 'text-gray-300' : 'text-purple-500'} /> {f.label}
+                                  {f.soon && <span className="ml-1 text-[10px] italic text-gray-400">(coming soon)</span>}
+                                </li>
+                              ))}
                             </ul>
                           </div>
 
                           <Button
-                            variant={subscription?.subscription?.plan_type === 'combra' ? 'outline' : 'default'}
+                            variant={currentPlan === 'combra' ? 'outline' : 'default'}
                             onClick={() => handleUpgradePlan('combra')}
-                            disabled={subscription?.subscription?.plan_type === 'combra' || saving}
+                            disabled={currentPlan === 'combra' || saving}
                             className="w-full mt-8 bg-purple-600 hover:bg-purple-700 text-white"
                           >
-                            {subscription?.subscription?.plan_type === 'combra' ? 'Active Plan' : 'Select Combra'}
+                            {planButtonLabel('combra')}
                           </Button>
                         </div>
 
@@ -1866,30 +2147,27 @@ export const SettingsPage: React.FC = () => {
                             </div>
                             <p className="text-gray-400 text-xs mt-1 italic">"The highest peak"</p>
                             <p className="text-2xl font-black text-gray-900 mt-4">
-                              {(() => {
-                                const symbol = settings.currency === 'SLE' ? 'Le ' : settings.currency === 'NLe' ? 'NLe ' : '$';
-                                return `${symbol}${billingCycle === 'monthly' ? '1750' : '17500'}`;
-                              })()}
+                              {`Le ${billingCycle === 'monthly' ? '1750' : '17500'}`}
                               <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
                             </p>
                             
                             <ul className="space-y-2 mt-6 text-xs text-gray-600">
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-amber-500" /> **Unlimited Students & Staff**</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-amber-500" /> Everything in Combra</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-amber-500" /> **AI analysis & insights**</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-amber-500" /> **Payroll & Salaries**</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-amber-500" /> **Scholarships manager**</li>
-                              <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-amber-500" /> Custom branding option</li>
+                              {PLAN_CARD_FEATURES.bintumani.map((f) => (
+                                <li key={f.label} className={`flex items-center gap-2 ${f.soon ? 'text-gray-400' : ''}`}>
+                                  <CheckCircle2 size={12} className={f.soon ? 'text-gray-300' : 'text-amber-500'} /> {f.label}
+                                  {f.soon && <span className="ml-1 text-[10px] italic text-gray-400">(coming soon)</span>}
+                                </li>
+                              ))}
                             </ul>
                           </div>
 
                           <Button
-                            variant={subscription?.subscription?.plan_type === 'bintumani' ? 'outline' : 'default'}
+                            variant={currentPlan === 'bintumani' ? 'outline' : 'default'}
                             onClick={() => handleUpgradePlan('bintumani')}
-                            disabled={subscription?.subscription?.plan_type === 'bintumani' || saving}
+                            disabled={currentPlan === 'bintumani' || saving}
                             className="w-full mt-8 bg-amber-500 hover:bg-amber-600 text-white"
                           >
-                            {subscription?.subscription?.plan_type === 'bintumani' ? 'Active Plan' : 'Upgrade to Bintumani'}
+                            {planButtonLabel('bintumani')}
                           </Button>
                         </div>
                       </CardContent>
@@ -1951,6 +2229,134 @@ export const SettingsPage: React.FC = () => {
 // Lets principals pick a border style for the Sierra Leone booklet report card.
 // Persisted to school_config_settings under key 'report_card_border_style'.
 // ──────────────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SubscriptionUssdModal — in-app mobile-money (USSD) payment for a plan upgrade.
+// The whole payment stays INSIDE the app: we show the USSD code the payer dials
+// on their phone (Orange Money / Afrimoney) and poll for completion. Money goes
+// to the PLATFORM's Monime account (subscription revenue).
+// ──────────────────────────────────────────────────────────────────────────────
+const SubscriptionUssdModal: React.FC<{
+  state: {
+    sessionId: string;
+    ussdCode: string | null;
+    amount: number;
+    expireTime: string | null;
+    planType: 'freetong' | 'combra' | 'bintumani';
+    status: 'ussd' | 'completed' | 'failed' | 'cancelled';
+  };
+  onClose: () => void;
+}> = ({ state, onClose }) => {
+  const { ussdCode, amount, expireTime, planType, status } = state;
+  const [copied, setCopied] = useState(false);
+  const fmtLe = (n: number) => `Le ${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  // Countdown to the code's expiry (30 min set on the backend).
+  const [remaining, setRemaining] = useState<number | null>(null);
+  useEffect(() => {
+    if (!expireTime || status !== 'ussd') { setRemaining(null); return; }
+    const target = new Date(expireTime).getTime();
+    if (Number.isNaN(target)) { setRemaining(null); return; }
+    const tick = () => setRemaining(Math.max(0, Math.round((target - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [expireTime, status]);
+  const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const expired = remaining === 0;
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  const copy = async () => {
+    if (!ussdCode) return;
+    try { await navigator.clipboard.writeText(ussdCode); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ }
+  };
+
+  const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  const telHref = ussdCode ? `tel:${encodeURIComponent(ussdCode)}` : undefined;
+
+  const terminal = status === 'completed' || status === 'failed' || status === 'cancelled';
+  const result = {
+    completed: { icon: <CheckCircle2 size={48} className="text-emerald-500" />, title: 'Payment successful', desc: `Your school is now on the ${planType.toUpperCase()} plan.` },
+    failed:    { icon: <XCircle size={48} className="text-rose-500" />, title: 'Payment failed', desc: 'We could not confirm your payment. If money was deducted, it will be reversed automatically.' },
+    cancelled: { icon: <XCircle size={48} className="text-gray-400" />, title: 'Payment cancelled', desc: 'The payment was cancelled. No charge was made and your plan is unchanged.' },
+  }[status as 'completed' | 'failed' | 'cancelled'] ?? null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="relative w-full max-w-md my-auto bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600">
+          <div className="flex items-center gap-2 text-white font-bold"><CreditCard size={18} /> Upgrade to {planType.toUpperCase()}</div>
+          <button onClick={onClose} aria-label="Close" className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white hover:bg-gray-100 ring-1 ring-white/60 shadow-sm transition shrink-0 leading-none">
+            <span className="text-indigo-700 text-xl font-black leading-none -mt-0.5">&times;</span>
+          </button>
+        </div>
+
+        <div className="p-6">
+          {status === 'ussd' && (
+            <div className="text-center">
+              <div className="flex justify-center mb-3"><div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center"><Smartphone size={24} /></div></div>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">Dial to pay <span className="text-indigo-600">{fmtLe(amount)}</span></h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">On the phone with your mobile money (Orange Money or Afrimoney), dial this code and follow the prompts:</p>
+              {ussdCode ? (
+                <>
+                  <div className="mt-4 flex items-center justify-center gap-2">
+                    <code className="text-xl font-black tracking-wide text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 select-all">{ussdCode}</code>
+                    <button onClick={copy} title="Copy code" className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition">
+                      {copied ? <Check size={18} /> : <Copy size={18} />}
+                    </button>
+                  </div>
+                  {telHref && (
+                    <a href={telHref} className="mt-3 w-full inline-flex items-center justify-center gap-2 font-semibold rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-5 py-2.5 text-sm shadow-sm hover:shadow-md transition">
+                      <Phone size={16} /> Dial now to pay
+                    </a>
+                  )}
+                  {!isMobile && (
+                    <p className="mt-2 text-[11px] text-gray-400">Tip: "Dial now" opens the phone dialer on a mobile device. On a computer, copy the code and dial it on your phone.</p>
+                  )}
+                </>
+              ) : (
+                <p className="mt-4 text-sm text-amber-600">Check your phone for a mobile-money prompt to approve this payment.</p>
+              )}
+              {remaining != null && (
+                expired ? (
+                  <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950/30 rounded-full px-3 py-1">
+                    <Timer size={13} /> Code expired — close and try again
+                  </div>
+                ) : (
+                  <div className={`mt-3 inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1 ${remaining <= 60 ? 'text-amber-700 bg-amber-50 dark:bg-amber-950/30' : 'text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800'}`}>
+                    <Timer size={13} /> Expires in {mmss(remaining)}
+                  </div>
+                )
+              )}
+              {!expired && (
+                <div className="mt-5 flex items-center justify-center gap-2 text-xs text-gray-400">
+                  <Loader2 size={12} className="animate-spin" /> Waiting for your payment…
+                </div>
+              )}
+              <p className="mt-2 text-[11px] text-gray-400">Keep this window open. Your plan activates automatically once payment is confirmed.</p>
+              <button onClick={onClose} className="mt-4 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+            </div>
+          )}
+
+          {terminal && result && (
+            <div className="text-center">
+              <div className="flex justify-center mb-4">{result.icon}</div>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">{result.title}</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{result.desc}</p>
+              <button onClick={onClose} className="mt-6 inline-flex items-center justify-center gap-2 font-semibold rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-2.5 text-sm hover:opacity-90 transition">Done</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
 
 const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> = ({ schoolInfo }) => {
   // ── Border state ──

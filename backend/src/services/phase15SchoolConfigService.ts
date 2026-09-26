@@ -233,6 +233,16 @@ export class Phase15SchoolConfigService {
         }
       });
 
+      // Ensure a schools row exists for this tenant before updating. Self-serve
+      // tenants (and any created before the schools-row was seeded at signup)
+      // may not have one yet — without this the UPDATE would match 0 rows and
+      // silently "succeed", so the principal's School Info edits would vanish.
+      // getSchoolInfo lazily creates the row, so calling it first guarantees one.
+      const existing = await this.db('schools').where('tenant_id', tenantId).first();
+      if (!existing) {
+        await this.getSchoolInfo(tenantId); // creates the baseline row
+      }
+
       // Update school
       await this.db('schools')
         .where('tenant_id', tenantId)

@@ -6,6 +6,37 @@
 
 import React, { useRef, useState, useCallback } from 'react';
 import { Upload, X, FileText, Image as ImageIcon, Loader2, Camera, RotateCcw } from 'lucide-react';
+import apiClient from '@lib/apiClient';
+
+/** Convert a data URL to a Blob for multipart upload. */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, b64] = dataUrl.split(',');
+  const mime = /:(.*?);/.exec(header)?.[1] || 'image/jpeg';
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+/**
+ * Persist a file to durable storage via the backend, returning the hosted URL.
+ * Falls back to the provided data URL (base64) if the upload fails, so the user
+ * is never blocked — fine for small images like logos/photos.
+ */
+async function uploadToServer(blob: Blob, filename: string, fallbackDataUrl: string): Promise<string> {
+  try {
+    const form = new FormData();
+    form.append('file', blob, filename);
+    // Let axios set the multipart boundary (override the instance JSON default).
+    const res: any = await apiClient.post('/api/v1/uploads', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const url = res?.data?.url ?? res?.data?.data?.url;
+    return typeof url === 'string' && url.length > 0 ? url : fallbackDataUrl;
+  } catch {
+    return fallbackDataUrl;
+  }
+}
 
 /** Compress image to fit within maxSize pixels and quality */
 function compressImage(file: File, maxSize: number = 300, quality: number = 0.7): Promise<string> {
@@ -81,12 +112,29 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     setIsUploading(true);
 
     try {
-      // Compress and convert to base64 data URL
-      const compressed = await compressImage(file, 300, 0.7);
-      onChange(compressed);
+      const isImage = file.type.startsWith('image/');
+      if (isImage) {
+        // Compress large images first, then persist to durable storage. Keep the
+        // compressed data URL as a graceful fallback if the upload endpoint is
+        // unavailable (so logos/photos still work).
+        const compressedDataUrl = await compressImage(file, 800, 0.8);
+        const blob = dataUrlToBlob(compressedDataUrl);
+        const url = await uploadToServer(blob, file.name || 'image.jpg', compressedDataUrl);
+        onChange(url);
+      } else {
+        // Non-image (PDF/DOC): upload as-is; no client fallback (too large for base64).
+        const form = new FormData();
+        form.append('file', file, file.name);
+        const res: any = await apiClient.post('/api/v1/uploads', form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        const url = res?.data?.url ?? res?.data?.data?.url;
+        if (!url) throw new Error('Upload failed. Please try again.');
+        onChange(url);
+      }
       setIsUploading(false);
     } catch (err: any) {
-      setUploadError(err?.message || 'Failed to process image');
+      setUploadError(err?.message || 'Failed to upload file');
       setIsUploading(false);
     }
   }, [maxSizeMB, onChange]);

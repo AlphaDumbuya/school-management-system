@@ -170,7 +170,46 @@ export class AuthService {
       const [newTenant] = await this.db('tenants').insert(tenantPayload).returning('*');
       const tenantId = newTenant.id;
 
-      // Save Initial School Info if table exists
+      // Create the canonical `schools` profile row. The whole system reads the
+      // school's branding/config from here (Settings → School Info, storage,
+      // report cards, ID cards) and school_config_settings FKs to it. Without
+      // this row a self-serve school had no `schools` record, so the Settings
+      // tabs and ID generation silently fell back to defaults.
+      let schoolId: string | null = null;
+      try {
+        const hasSchools = await this.db.schema.hasTable('schools');
+        if (hasSchools) {
+          const existingSchool = await this.db('schools').where('tenant_id', tenantId).first();
+          if (existingSchool) {
+            schoolId = existingSchool.school_id;
+          } else {
+            const schoolInsert: any = {
+              tenant_id: tenantId,
+              name: payload.school_name.trim(),
+              email,
+              phone: payload.contact_phone || null,
+              address: payload.address || null,
+              city: payload.city || null,
+              country: payload.country || 'Sierra Leone',
+              principal_name: `${payload.admin_first_name.trim()} ${payload.admin_last_name.trim()}`,
+              principal_email: email,
+              created_at: new Date(),
+              updated_at: new Date(),
+            };
+            // motto became a first-class column on schools (migration 134).
+            if (payload.school_motto) {
+              const hasMotto = await this.db.schema.hasColumn('schools', 'motto').catch(() => false);
+              if (hasMotto) schoolInsert.motto = payload.school_motto;
+            }
+            const [schoolRow] = await this.db('schools').insert(schoolInsert).returning('school_id');
+            schoolId = schoolRow.school_id;
+          }
+        }
+      } catch (err) {
+        logger.warn(`registerSchool: could not create schools row for tenant ${tenantId}: ${(err as Error).message}`);
+      }
+
+      // Keep the legacy school_info table populated too (older reads fall back to it).
       try {
         const hasSchoolInfo = await this.db.schema.hasTable('school_info');
         if (hasSchoolInfo) {
@@ -188,28 +227,6 @@ export class AuthService {
         }
       } catch (_) {}
 
-      // Save Initial ID Format Settings if table exists
-      try {
-        const hasSettings = await this.db.schema.hasTable('school_settings');
-        if (hasSettings) {
-          const initialSettings = [
-            { tenant_id: tenantId, setting_key: 'id_student_prefix', setting_value: payload.id_student_prefix || 'STU' },
-            { tenant_id: tenantId, setting_key: 'id_staff_prefix', setting_value: payload.id_staff_prefix || 'TCH' },
-            { tenant_id: tenantId, setting_key: 'id_admission_prefix', setting_value: payload.id_admission_prefix || 'ADM' },
-            { tenant_id: tenantId, setting_key: 'school_motto', setting_value: payload.school_motto || '' },
-            { tenant_id: tenantId, setting_key: 'school_type', setting_value: payload.school_type || 'Mixed' },
-          ];
-          if (payload.id_student_start_from) {
-            initialSettings.push({
-              tenant_id: tenantId,
-              setting_key: 'id_student_start_from',
-              setting_value: String(payload.id_student_start_from),
-            });
-          }
-          await this.db('school_settings').insert(initialSettings);
-        }
-      } catch (_) {}
-
       // Create default Academic Session for this new school
       try {
         const hasAcademicSessions = await this.db.schema.hasTable('academic_sessions');
@@ -219,7 +236,12 @@ export class AuthService {
             name: '2026/2027 Academic Year',
             start_date: '2026-09-01',
             end_date: '2027-07-31',
-            is_current: true,
+            // The academic_sessions column is `is_active` (migration 001), NOT
+            // `is_current`. Using the wrong name silently failed the insert
+            // (it's in a try/catch), so new self-serve schools got NO active
+            // session — breaking class-creation's auto-resolve which looks up
+            // `{ tenant_id, is_active: true }`.
+            is_active: true,
             created_at: new Date(),
             updated_at: new Date(),
           });
@@ -240,6 +262,42 @@ export class AuthService {
         created_at: new Date(),
         updated_at: new Date(),
       }).returning('*');
+
+      // Seed initial ID-format + school-type settings into school_config_settings
+      // — the SAME table the ID generator (utils/idGenerator) and the Settings
+      // page read from. Previously these were written to `school_settings`, a
+      // different table nothing reads, so the prefixes/type chosen at signup
+      // were silently ignored until the principal re-saved them in Settings.
+      // Done AFTER the principal exists because created_by is NOT NULL.
+      try {
+        const hasConfig = await this.db.schema.hasTable('school_config_settings');
+        if (hasConfig && schoolId) {
+          const seed: Array<{ setting_key: string; setting_value: string; data_type: string; is_public: boolean }> = [
+            { setting_key: 'id_student_prefix', setting_value: payload.id_student_prefix || 'STU', data_type: 'string', is_public: false },
+            { setting_key: 'id_staff_prefix', setting_value: payload.id_staff_prefix || 'TCH', data_type: 'string', is_public: false },
+            { setting_key: 'id_admission_prefix', setting_value: payload.id_admission_prefix || 'ADM', data_type: 'string', is_public: false },
+            { setting_key: 'school_type', setting_value: payload.school_type || 'Mixed', data_type: 'string', is_public: true },
+          ];
+          if (payload.id_student_start_from) {
+            seed.push({ setting_key: 'id_student_start_from', setting_value: String(payload.id_student_start_from), data_type: 'number', is_public: false });
+          }
+          await this.db('school_config_settings').insert(
+            seed.map((row) => ({
+              school_id: schoolId,
+              tenant_id: tenantId,
+              setting_key: row.setting_key,
+              setting_value: row.setting_value,
+              data_type: row.data_type,
+              is_public: row.is_public,
+              created_by: userRow.id,
+              created_at: new Date(),
+              updated_at: new Date(),
+            }))
+          ).onConflict(['school_id', 'setting_key']).merge();
+        }
+      } catch (err) {
+        logger.warn(`registerSchool: could not seed config settings for tenant ${tenantId}: ${(err as Error).message}`);
+      }
 
       logger.info(`Self-serve School Registered: "${payload.school_name}" by ${email}`);
 
@@ -799,17 +857,18 @@ export class AuthService {
       // Hash password
       const hashedPassword = await PasswordService.hashPassword(payload.password);
 
-      // Get or create tenant
-      let tenant = await this.db('tenants').first();
-      if (!tenant) {
-        const [newTenant] = await this.db('tenants').insert({
-          name: 'Default School',
-          slug: 'default-school',
-          status: 'active'
-        }).returning('*');
-        tenant = newTenant;
+      // The new user MUST belong to the creating principal's tenant. Previously
+      // this used `tenants.first()` (the oldest tenant in the DB), which silently
+      // placed every admin-created user into the WRONG school and broke tenant
+      // isolation. Derive the tenant from the creator instead.
+      const creator = await this.db('users')
+        .select('tenant_id')
+        .where({ id: payload.createdBy })
+        .first();
+      if (!creator?.tenant_id) {
+        throw new AppError('Cannot resolve tenant for the creating user', 400, 'TENANT_REQUIRED');
       }
-      const tenantId = tenant.id;
+      const tenantId = creator.tenant_id;
 
       // Create user
       const [userRow] = await this.db('users').insert({
@@ -1018,9 +1077,16 @@ export class AuthService {
     status?: UserStatus;
     limit?: number;
     offset?: number;
+    tenantId?: string;
   }): Promise<{ users: UserResponse[]; total: number }> {
     try {
       let query = this.db('users');
+
+      // Tenant scoping — a principal must only ever see users of their own
+      // school. Without this the list leaked every tenant's users.
+      if (options.tenantId) {
+        query = query.where('tenant_id', options.tenantId);
+      }
 
       if (options.role) {
         query = query.where('role', options.role);

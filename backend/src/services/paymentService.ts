@@ -178,11 +178,14 @@ export class PaymentService {
   /**
    * Get payment statistics
    */
-  async getPaymentStatistics(filters?: PaymentFilter): Promise<any> {
+  async getPaymentStatistics(filters?: PaymentFilter, tenantId?: string): Promise<any> {
     try {
       logger.info('Calculating payment statistics');
 
       let query = this.db('payments');
+
+      // Tenant scoping: these aggregates must never sum across schools.
+      if (tenantId) query = query.where('payments.tenant_id', tenantId);
 
       if (filters?.studentId) {
         query = query.where('student_id', filters.studentId);
@@ -208,12 +211,14 @@ export class PaymentService {
         )
         .first();
 
-      // Get payment breakdown by method
-      const byMethod = await this.db('payments')
+      // Get payment breakdown by method (same tenant scope).
+      let byMethodQuery = this.db('payments')
         .select('method')
         .sum('amount as total_amount')
         .count('* as count')
         .groupBy('method');
+      if (tenantId) byMethodQuery = byMethodQuery.where('tenant_id', tenantId);
+      const byMethod = await byMethodQuery;
 
       return {
         ...stats,
@@ -228,18 +233,24 @@ export class PaymentService {
   /**
    * Get recent payments
    */
-  async getRecentPayments(limit: number = 50): Promise<any[]> {
+  async getRecentPayments(limit: number = 50, tenantId?: string): Promise<any[]> {
     try {
-      const payments = await this.db('payments')
-        .leftJoin('users', 'payments.student_id', 'users.id')
+      // student_id references students.id (NOT users.id); join students then
+      // their optional user account for name/email. Tenant-scoped.
+      let query = this.db('payments')
+        .leftJoin('students', 'payments.student_id', 'students.id')
+        .leftJoin('users', 'students.user_id', 'users.id')
         .select(
           'payments.*',
-          'users.name as student_name',
+          this.db.raw("COALESCE(NULLIF(TRIM(CONCAT_WS(' ', students.first_name, students.last_name)), ''), NULLIF(TRIM(CONCAT_WS(' ', users.first_name, users.last_name)), '')) as student_name"),
           'users.email as student_email'
         )
         .orderBy('payments.payment_date', 'desc')
         .limit(limit);
 
+      if (tenantId) query = query.where('payments.tenant_id', tenantId);
+
+      const payments = await query;
       return payments;
     } catch (error) {
       logger.error(`Error fetching recent payments: ${error}`);
@@ -344,13 +355,15 @@ export class PaymentService {
   /**
    * Get payment summary by date range
    */
-  async getPaymentSummary(startDate: string, endDate: string): Promise<any> {
+  async getPaymentSummary(startDate: string, endDate: string, tenantId?: string): Promise<any> {
     try {
       const start = new Date(startDate);
       const end = new Date(endDate);
 
-      const summary = await this.db('payments')
-        .whereBetween('payment_date', [start, end])
+      let base = this.db('payments').whereBetween('payment_date', [start, end]);
+      if (tenantId) base = base.where('tenant_id', tenantId);
+
+      const summary = await base
         .select(
           this.db.raw('DATE(payment_date) as payment_date'),
           'method',
@@ -416,15 +429,17 @@ export class PaymentService {
   /**
    * Get payment methods summary
    */
-  async getPaymentMethodsSummary(): Promise<any[]> {
+  async getPaymentMethodsSummary(tenantId?: string): Promise<any[]> {
     try {
-      const summary = await this.db('payments')
+      let query = this.db('payments')
         .select('method')
         .count('* as count')
         .sum('amount as total_amount')
         .groupBy('method')
         .orderBy('total_amount', 'desc');
+      if (tenantId) query = query.where('tenant_id', tenantId);
 
+      const summary = await query;
       return summary;
     } catch (error) {
       logger.error(`Error getting payment methods summary: ${error}`);
