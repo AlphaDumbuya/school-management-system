@@ -55,8 +55,28 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       throw new AppError('Teacher not found or access denied', 404, 'NOT_FOUND');
     }
 
+    // Verify subject belongs to this tenant (prefer real tenant_id, legacy
+    // fallback via created_by so pre-migration-151 rows still validate).
+    const subjectCheck = await db('subjects')
+      .leftJoin('users as subj_creator', 'subjects.created_by', 'subj_creator.id')
+      .where('subjects.id', subject_id)
+      .where(function () {
+        this.where('subjects.tenant_id', tenantId).orWhere(function () {
+          this.whereNull('subjects.tenant_id').where('subj_creator.tenant_id', tenantId);
+        });
+      })
+      .first();
+    if (!subjectCheck) {
+      throw new AppError('Subject not found or access denied', 404, 'NOT_FOUND');
+    }
+
     if (!DAYS_OF_WEEK.includes(day_of_week)) {
       throw new AppError('Invalid day_of_week. Must be Monday–Friday', 400, 'VALIDATION_ERROR');
+    }
+
+    // start_time must be strictly before end_time, else the overlap logic breaks.
+    if (String(start_time) >= String(end_time)) {
+      throw new AppError('Start time must be before end time', 400, 'VALIDATION_ERROR');
     }
 
     // Check for time conflicts in the same class/day
@@ -323,6 +343,31 @@ router.put('/:slotId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPE
       throw new AppError('Timetable slot not found', 404, 'NOT_FOUND');
     }
 
+    // If the teacher or subject is being changed, verify tenant ownership.
+    if (teacher_id) {
+      const teacherCheck = await db('teachers')
+        .join('users', 'teachers.user_id', 'users.id')
+        .where('teachers.id', teacher_id)
+        .where('users.tenant_id', tenantId)
+        .first();
+      if (!teacherCheck) throw new AppError('Teacher not found or access denied', 404, 'NOT_FOUND');
+    }
+    if (subject_id) {
+      const subjectCheck = await db('subjects')
+        .leftJoin('users as subj_creator', 'subjects.created_by', 'subj_creator.id')
+        .where('subjects.id', subject_id)
+        .where(function () {
+          this.where('subjects.tenant_id', tenantId).orWhere(function () {
+            this.whereNull('subjects.tenant_id').where('subj_creator.tenant_id', tenantId);
+          });
+        })
+        .first();
+      if (!subjectCheck) throw new AppError('Subject not found or access denied', 404, 'NOT_FOUND');
+    }
+    if (day_of_week && !DAYS_OF_WEEK.includes(day_of_week)) {
+      throw new AppError('Invalid day_of_week. Must be Monday–Friday', 400, 'VALIDATION_ERROR');
+    }
+
     const updateData: any = {};
     if (subject_id) updateData.subject_id = subject_id;
     if (teacher_id) updateData.teacher_id = teacher_id;
@@ -332,24 +377,44 @@ router.put('/:slotId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPE
     if (room_number !== undefined) updateData.room_number = room_number || null;
     updateData.updated_at = new Date();
 
-    // Check for time conflicts if time changed
-    if (start_time || end_time || day_of_week) {
-      const checkDay = day_of_week || slot.day_of_week;
-      const checkStart = start_time || slot.start_time;
-      const checkEnd = end_time || slot.end_time;
-      const checkClassId = slot.class_id;
+    // Resolve the effective slot values after this update for conflict checks.
+    const checkDay = day_of_week || slot.day_of_week;
+    const checkStart = start_time || slot.start_time;
+    const checkEnd = end_time || slot.end_time;
+    const checkTeacher = teacher_id || slot.teacher_id;
 
+    if (String(checkStart) >= String(checkEnd)) {
+      throw new AppError('Start time must be before end time', 400, 'VALIDATION_ERROR');
+    }
+
+    // Class time-conflict (if day/time changed).
+    if (start_time || end_time || day_of_week) {
       const conflict = await db('schedules')
-        .where('class_id', checkClassId)
+        .where('class_id', slot.class_id)
         .where('day_of_week', checkDay)
         .whereNot('id', slotId)
         .where(function () {
           this.where('start_time', '<', checkEnd).andWhere('end_time', '>', checkStart);
         })
         .first();
-
       if (conflict) {
         throw new AppError('Time conflict with another slot', 409, 'TIME_CONFLICT');
+      }
+    }
+
+    // Teacher double-booking check (if teacher/day/time changed) — this was
+    // missing on update, so an edit could put a teacher in two classes at once.
+    if (teacher_id || start_time || end_time || day_of_week) {
+      const teacherConflict = await db('schedules')
+        .where('teacher_id', checkTeacher)
+        .where('day_of_week', checkDay)
+        .whereNot('id', slotId)
+        .where(function () {
+          this.where('start_time', '<', checkEnd).andWhere('end_time', '>', checkStart);
+        })
+        .first();
+      if (teacherConflict) {
+        throw new AppError('Teacher is already assigned to another class during this time', 409, 'TEACHER_CONFLICT');
       }
     }
 
