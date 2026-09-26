@@ -5,6 +5,7 @@
 import React from 'react';
 import { Modal } from '@components/admin/feedback/Modal';
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
+import { sanitizeMarkup } from '@lib/sanitizeHtml';
 import {
   AssignmentRecord,
   ASSIGNMENT_TYPES,
@@ -289,7 +290,7 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
               className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed prose prose-sm dark:prose-invert max-w-none
                 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
                 [&_li]:my-0.5 [&_h3]:text-base [&_h3]:font-bold [&_h3]:mt-2 [&_h3]:mb-1"
-              dangerouslySetInnerHTML={{ __html: assignment.description }}
+              dangerouslySetInnerHTML={sanitizeMarkup(assignment.description)}
             />
           </div>
         )}
@@ -304,7 +305,7 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
               className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed prose prose-sm dark:prose-invert max-w-none
                 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
                 [&_li]:my-0.5 [&_h3]:text-base [&_h3]:font-bold [&_h3]:mt-2 [&_h3]:mb-1"
-              dangerouslySetInnerHTML={{ __html: assignment.instructions }}
+              dangerouslySetInnerHTML={sanitizeMarkup(assignment.instructions)}
             />
           </div>
         )}

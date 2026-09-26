@@ -8,6 +8,7 @@ import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { Button } from '@components/ui/button';
 import { teachersService, TeacherRecord } from '@services/teachersService';
 import { studentsService } from '@services/studentsService';
+import { sanitizeMarkup } from '@lib/sanitizeHtml';
 import { showToast } from '@utils/toast';
 import { User, Mail, Phone, Calendar, KeyRound, ShieldAlert, Loader2, MapPin, Award, GraduationCap, ShieldCheck, Building, Briefcase, BookOpen, RotateCcw } from 'lucide-react';
 
@@ -298,7 +299,7 @@ export const TeacherDetailModal: React.FC<TeacherDetailModalProps> = ({
               {currentTeacher.qualifications ? (
                 <div
                   className="text-sm font-medium text-gray-800 dark:text-gray-100 mt-1 pl-6 prose dark:prose-invert max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
-                  dangerouslySetInnerHTML={{ __html: currentTeacher.qualifications }}
+                  dangerouslySetInnerHTML={sanitizeMarkup(currentTeacher.qualifications)}
                 />
               ) : (
                 <p className="text-sm font-medium text-gray-800 dark:text-gray-100 mt-1 whitespace-pre-line pl-6">—</p>
