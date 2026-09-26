@@ -146,6 +146,14 @@ export const SettingsPage: React.FC = () => {
     currency: 'USD',
     payment_methods: ['cash'],
     late_fee_rate: 0,
+    // School-wide (general) payment policy. Each fee structure may override any
+    // of these per class; when a structure leaves a field blank, this applies.
+    fin_allow_installments: true,
+    fin_min_percent_new: 0,
+    fin_min_percent_continuing: 0,
+    fin_min_percent_term: 0,
+    fin_charges_compulsory_first_term: false,
+    fin_late_fee_percent: 0,
     system_email: '',
     sms_sender_name: 'WiSkul',
     whatsapp_enabled: false,
@@ -1547,23 +1555,94 @@ export const SettingsPage: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Payment rules live per-class in Fee Structures (min % for new /
-                          continuing students, per-term clearance, instalments, late-fee
-                          surcharge). Those are the settings actually enforced at payment
-                          time, so we point the admin there instead of a dead global field. */}
-                      <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                        <div className="w-5 h-5 text-blue-500 shrink-0 mt-0.5"><DollarSign size={18} /></div>
-                        <div>
-                          <p className="text-sm font-semibold text-blue-800">Payment rules are set per class</p>
-                          <p className="text-xs text-blue-700 mt-0.5">
-                            Minimum payment for new and continuing students, per-term clearance,
-                            instalment permission and the late-fee surcharge are configured on each
-                            class&apos;s fee structure and are enforced automatically when fees are paid.
-                          </p>
-                          <a href="/finance/fees" className="inline-block mt-2 text-xs font-semibold text-blue-700 underline hover:text-blue-900">
-                            Go to Fee Structures →
-                          </a>
+                      {/* ── School-wide Payment Policy ── */}
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-800 mb-1">School Payment Policy</h4>
+                        <p className="text-xs text-gray-500 mb-4">
+                          These rules apply to every class by default and are enforced automatically
+                          whenever a fee is paid (online or recorded manually). A specific class can
+                          override any of them on its fee structure.
+                        </p>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500 block mb-1">Min. payment — New students (%)</label>
+                            <input
+                              type="number" min={0} max={100}
+                              value={settings.fin_min_percent_new ?? 0}
+                              onChange={(e) => setSettings({ ...settings, fin_min_percent_new: Number(e.target.value) })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">Minimum % of their balance a new student must pay.</p>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500 block mb-1">Min. payment — Continuing (%)</label>
+                            <input
+                              type="number" min={0} max={100}
+                              value={settings.fin_min_percent_continuing ?? 0}
+                              onChange={(e) => setSettings({ ...settings, fin_min_percent_continuing: Number(e.target.value) })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">Minimum % for a continuing (returning) student.</p>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500 block mb-1">Min. per-term clearance (%)</label>
+                            <input
+                              type="number" min={0} max={100}
+                              value={settings.fin_min_percent_term ?? 0}
+                              onChange={(e) => setSettings({ ...settings, fin_min_percent_term: Number(e.target.value) })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">Minimum % that must be cleared per term.</p>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500 block mb-1">Late-fee surcharge (%)</label>
+                            <input
+                              type="number" min={0} max={100}
+                              value={settings.fin_late_fee_percent ?? 0}
+                              onChange={(e) => setSettings({ ...settings, fin_late_fee_percent: Number(e.target.value) })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">Applied to overdue balances (informational).</p>
+                          </div>
                         </div>
+
+                        <div className="mt-4 space-y-3">
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={settings.fin_allow_installments !== false}
+                              onChange={(e) => setSettings({ ...settings, fin_allow_installments: e.target.checked })}
+                              className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 border-gray-300"
+                            />
+                            <span className="text-sm text-gray-700">
+                              <span className="font-semibold">Allow instalments (part payments).</span>{' '}
+                              <span className="text-gray-500">When off, families must pay the full balance in one go.</span>
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={settings.fin_charges_compulsory_first_term === true}
+                              onChange={(e) => setSettings({ ...settings, fin_charges_compulsory_first_term: e.target.checked })}
+                              className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 border-gray-300"
+                            />
+                            <span className="text-sm text-gray-700">
+                              <span className="font-semibold">Charges compulsory first.</span>{' '}
+                              <span className="text-gray-500">A part payment must clear all non-tuition charges before tuition.</span>
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
+                        <a href="/finance/fees" className="text-xs font-semibold text-blue-700 underline hover:text-blue-900">
+                          Override per class in Fee Structures →
+                        </a>
+                        <Button onClick={handleSaveSettings} disabled={saving}>
+                          {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                          Save Payment Policy
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
