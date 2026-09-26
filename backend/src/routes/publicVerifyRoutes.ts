@@ -102,7 +102,21 @@ router.get('/verify-report-card/:hash', async (req: Request, res: Response, next
       .digest('hex')
       .slice(0, 16);
 
-    if (code === oldExpectedHash || code === 'old-format' || code === 'missing') {
+    // The bare-string 'old-format'/'missing' fallback is ONLY honored for
+    // genuinely pre-code report cards — i.e. when the student has NO stored
+    // verification code for this year. Otherwise it could be used to bypass a
+    // card's real secret code entirely (student ids are random UUIDs, so this
+    // is defense-in-depth, but we don't leave the hole open).
+    let allowStringFallback = code === oldExpectedHash;
+    if (!allowStringFallback && (code === 'old-format' || code === 'missing')) {
+      const anyCode = await db('sl_report_card_verification_codes')
+        .where({ student_id: studentId, academic_year: academicYear })
+        .first()
+        .catch(() => null);
+      allowStringFallback = !anyCode; // only if no real code was ever issued
+    }
+
+    if (allowStringFallback) {
       // Look up the student's class from enrollments for this academic year
       const enrollment = await db('enrollments')
         .where({ student_id: studentId, academic_year: academicYear })
