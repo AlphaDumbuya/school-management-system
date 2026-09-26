@@ -28,7 +28,18 @@ let sharedStoreFactory: (() => Store) | null = null;
 try {
   const redisUrl = process.env.REDIS_URL;
   if (redisUrl) {
-    const client = new IORedis(redisUrl, { maxRetriesPerRequest: 1, enableOfflineQueue: false });
+    // enableOfflineQueue MUST stay true: rate-limit-redis synchronously loads
+    // its increment Lua script the moment the store is constructed. With the
+    // offline queue disabled that command throws immediately when Redis isn't
+    // connected yet (cold boot / Redis down) and crashes the whole process.
+    // With it enabled the command buffers until the connection is ready, and
+    // if Redis never comes up the per-command errors are handled gracefully
+    // (logged via the 'error' handler) rather than taking the server down.
+    const client = new IORedis(redisUrl, {
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: true,
+      lazyConnect: false,
+    });
     client.on('error', (err: Error) => logger.warn(`Rate-limit Redis error: ${err.message}`));
     sharedStoreFactory = () =>
       new RedisStore({
@@ -53,7 +64,18 @@ function makeLimiter(opts: Partial<Options>) {
     legacyHeaders: false,
     ...opts,
   };
-  if (sharedStoreFactory) base.store = sharedStoreFactory();
+  if (sharedStoreFactory) {
+    try {
+      base.store = sharedStoreFactory();
+    } catch (err) {
+      // Never let a Redis store failure crash the server at boot — fall back to
+      // the library's default in-memory store for this limiter.
+      logger.warn(
+        `Rate limiting: failed to create Redis store (${(err as Error).message}); ` +
+          'falling back to in-memory for this limiter.'
+      );
+    }
+  }
   return rateLimit(base);
 }
 
