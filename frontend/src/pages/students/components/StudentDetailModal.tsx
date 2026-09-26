@@ -102,37 +102,6 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           </div>
         </div>
 
-        {/* ── Demo Portal Login Credentials ── */}
-        <Section title="Portal Login Credentials (Auto-Generated)">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3.5 bg-blue-50 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-800/40 space-y-1">
-              <div className="flex items-center justify-between text-xs font-bold text-blue-800 dark:text-blue-300">
-                <span>Student Portal Demo Login</span>
-                <span className="font-mono text-[10px] bg-blue-200 dark:bg-blue-900 px-1.5 py-0.5 rounded">Role: student</span>
-              </div>
-              <p className="text-xs font-mono text-gray-700 dark:text-gray-300">
-                Username: <strong>{s.demo_login?.student_username || s.student_id}</strong>
-              </p>
-              <p className="text-xs font-mono text-gray-700 dark:text-gray-300">
-                Default Pass: <strong className="text-green-600 dark:text-green-400">{s.demo_login?.student_password || 'Uses own password'}</strong>
-              </p>
-            </div>
-
-            <div className="p-3.5 bg-purple-50 dark:bg-purple-950/40 rounded-xl border border-purple-200 dark:border-purple-800/40 space-y-1">
-              <div className="flex items-center justify-between text-xs font-bold text-purple-800 dark:text-purple-300">
-                <span>Parent Portal Demo Login</span>
-                <span className="font-mono text-[10px] bg-purple-200 dark:bg-purple-900 px-1.5 py-0.5 rounded">Role: parent</span>
-              </div>
-              <p className="text-xs font-mono text-gray-700 dark:text-gray-300">
-                Email: <strong>{s.demo_login?.parent_email || (s.email || 'Not Created')}</strong>
-              </p>
-              <p className="text-xs font-mono text-gray-700 dark:text-gray-300">
-                Default Pass: <strong className="text-purple-600 dark:text-purple-400">{s.demo_login?.parent_password || 'Uses own password'}</strong>
-              </p>
-            </div>
-          </div>
-        </Section>
-
         {/* ── Personal Information ── */}
         <Section title="Personal Information">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

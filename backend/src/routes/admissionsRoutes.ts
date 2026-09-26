@@ -374,6 +374,12 @@ router.put('/:appId/status', authenticate, authorize(UserRole.PRINCIPAL, UserRol
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
 
+    // Whitelist valid statuses so a malformed value can't be persisted.
+    const VALID_STATUSES = ['pending', 'under_review', 'interview_scheduled', 'approved', 'rejected', 'waitlist', 'enrolled'];
+    if (!status || !VALID_STATUSES.includes(status)) {
+      throw new AppError(`Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}`, 400, 'VALIDATION_ERROR');
+    }
+
     const app = await db('admission_applications')
       .where('admission_applications.id', appId)
       .where('admission_applications.tenant_id', tenantId)
