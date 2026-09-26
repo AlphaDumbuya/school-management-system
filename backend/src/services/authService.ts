@@ -799,17 +799,18 @@ export class AuthService {
       // Hash password
       const hashedPassword = await PasswordService.hashPassword(payload.password);
 
-      // Get or create tenant
-      let tenant = await this.db('tenants').first();
-      if (!tenant) {
-        const [newTenant] = await this.db('tenants').insert({
-          name: 'Default School',
-          slug: 'default-school',
-          status: 'active'
-        }).returning('*');
-        tenant = newTenant;
+      // The new user MUST belong to the creating principal's tenant. Previously
+      // this used `tenants.first()` (the oldest tenant in the DB), which silently
+      // placed every admin-created user into the WRONG school and broke tenant
+      // isolation. Derive the tenant from the creator instead.
+      const creator = await this.db('users')
+        .select('tenant_id')
+        .where({ id: payload.createdBy })
+        .first();
+      if (!creator?.tenant_id) {
+        throw new AppError('Cannot resolve tenant for the creating user', 400, 'TENANT_REQUIRED');
       }
-      const tenantId = tenant.id;
+      const tenantId = creator.tenant_id;
 
       // Create user
       const [userRow] = await this.db('users').insert({
@@ -1018,9 +1019,16 @@ export class AuthService {
     status?: UserStatus;
     limit?: number;
     offset?: number;
+    tenantId?: string;
   }): Promise<{ users: UserResponse[]; total: number }> {
     try {
       let query = this.db('users');
+
+      // Tenant scoping — a principal must only ever see users of their own
+      // school. Without this the list leaked every tenant's users.
+      if (options.tenantId) {
+        query = query.where('tenant_id', options.tenantId);
+      }
 
       if (options.role) {
         query = query.where('role', options.role);
