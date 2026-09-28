@@ -91,6 +91,11 @@ jobs:
 
       - name: Build RELEASE APK (signed)
         if: env.HAS_RELEASE_KEYSTORE == 'true'
+        # Auto-incrementing version: run_number is strictly increasing, so each
+        # APK is a newer in-place upgrade (install once → latest, not one-by-one).
+        env:
+          APP_VERSION_CODE: ${{ github.run_number }}
+          APP_VERSION_NAME: 1.0.${{ github.run_number }}
         run: |
           ./gradlew assembleRelease --no-daemon --stacktrace \
             -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/frontend/android/app/release.keystore" \
@@ -101,6 +106,9 @@ jobs:
 
       - name: Build DEBUG APK (fallback — no release keystore configured)
         if: env.HAS_RELEASE_KEYSTORE != 'true'
+        env:
+          APP_VERSION_CODE: ${{ github.run_number }}
+          APP_VERSION_NAME: 1.0.${{ github.run_number }}
         run: ./gradlew assembleDebug --no-daemon --stacktrace
         working-directory: frontend/android
 
