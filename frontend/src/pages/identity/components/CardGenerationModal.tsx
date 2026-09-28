@@ -12,6 +12,7 @@ import { showToast } from '@utils/toast';
 import { idCardService, CardFormat } from '@services/idCardService';
 import { classesService } from '@services/classesService';
 import { apiClient } from '@lib/apiClient';
+import { openUrl } from '@lib/download';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import {
   CreditCard, BadgeCheck, User, Users,
@@ -357,9 +358,9 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
                 </div>
 
                 {bulkStatus.pdfUrl && (
-                  <a href={storageUrl(bulkStatus.pdfUrl)} target="_blank" rel="noopener noreferrer" download>
-                    <Button className="gap-1.5 w-full"><Download size={15} /> Download All Cards (PDF)</Button>
-                  </a>
+                  <Button className="gap-1.5 w-full" onClick={() => openUrl(storageUrl(bulkStatus.pdfUrl!))}>
+                    <Download size={15} /> Download All Cards (PDF)
+                  </Button>
                 )}
 
                 {bulkReport?.failed?.length > 0 && (

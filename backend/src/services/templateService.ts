@@ -54,6 +54,7 @@ export interface TemplateLayout {
 
 export interface Template {
   templateId: string;
+  id: string;
   tenantId: string;
   name: string;
   version: number;
@@ -769,7 +770,11 @@ export class TemplateService {
    */
   private mapTemplateFromDb(row: any): Template {
     return {
+      // Expose both keys: `templateId` (legacy) and `id` (what the frontend
+      // CardTemplate type and row actions read). Prevents `.../undefined/...`
+      // URLs when the client uses template.id.
       templateId: row.id,
+      id: row.id,
       tenantId: row.tenant_id,
       name: row.name,
       version: row.version,

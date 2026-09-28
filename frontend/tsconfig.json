@@ -13,20 +13,22 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "baseUrl": ".",
+    // No `baseUrl` needed: with moduleResolution "bundler", TypeScript resolves
+    // these path aliases relative to this tsconfig's location. Avoids the TS 7.0
+    // `baseUrl` deprecation without needing `ignoreDeprecations`.
     "paths": {
-      "@appTypes/*": ["src/types/*"],
-      "@appTypes": ["src/types/index"],
-      "@config/*": ["src/config/*"],
-      "@services/*": ["src/services/*"],
-      "@components/*": ["src/components/*"],
-      "@pages/*": ["src/pages/*"],
-      "@store/*": ["src/store/*"],
-      "@hooks/*": ["src/hooks/*"],
-      "@utils/*": ["src/utils/*"],
-      "@lib/*": ["src/lib/*"],
-      "@styles/*": ["src/styles/*"],
-      "@router/*": ["src/router/*"]
+      "@appTypes/*": ["./src/types/*"],
+      "@appTypes": ["./src/types/index"],
+      "@config/*": ["./src/config/*"],
+      "@services/*": ["./src/services/*"],
+      "@components/*": ["./src/components/*"],
+      "@pages/*": ["./src/pages/*"],
+      "@store/*": ["./src/store/*"],
+      "@hooks/*": ["./src/hooks/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@lib/*": ["./src/lib/*"],
+      "@styles/*": ["./src/styles/*"],
+      "@router/*": ["./src/router/*"]
     }
   },
   "include": ["src"],

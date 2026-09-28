@@ -9,6 +9,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Download, ChevronDown, Loader2 } from 'lucide-react';
 import { API_CONFIG } from '@config/api.config';
 import { showToast } from '@utils/toast';
+import { saveBlob } from '@lib/download';
 
 export interface ExportButtonProps {
   /** Endpoint path, e.g. '/api/v1/finance/export'. */
@@ -119,15 +120,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       }
 
       const blob = await res.blob();
-      const objUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
       const date = new Date().toISOString().slice(0, 10);
-      link.href = objUrl;
-      link.download = `${filename}-${date}.${EXT[format]}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(objUrl);
+      await saveBlob(blob, `${filename}-${date}.${EXT[format]}`);
     } catch (err: any) {
       showToast.error(err?.message || 'Could not export. Please try again.');
     } finally {

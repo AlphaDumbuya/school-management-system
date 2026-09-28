@@ -72,6 +72,10 @@ export const TemplatesPage: React.FC = () => {
     const [approveTarget, setApproveTarget] = useState<CardTemplate | null>(null);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
+    // "Set as Default" role picker: the template being defaulted + chosen roles.
+    const [defaultTarget, setDefaultTarget] = useState<CardTemplate | null>(null);
+    const [defaultRoles, setDefaultRoles] = useState<string[]>([]);
+    const [savingDefault, setSavingDefault] = useState(false);
 
     // Fetch templates
     const { data, isLoading, error, refetch } = useQuery({
@@ -139,19 +143,36 @@ export const TemplatesPage: React.FC = () => {
     };
 
     // Handle set as default
-    const handleSetDefault = async (template: CardTemplate) => {
-        if (template.defaultForRoles.length === 0) {
-            showToast.error('Please specify roles for this template first');
+    // Open the role picker. Pre-select any roles already on the template.
+    const handleSetDefault = (template: CardTemplate) => {
+        setDefaultTarget(template);
+        setDefaultRoles(template.defaultForRoles ?? []);
+    };
+
+    // Confirm: set the template as default for the chosen role(s).
+    const confirmSetDefault = async () => {
+        if (!defaultTarget) return;
+        if (defaultRoles.length === 0) {
+            showToast.error('Select at least one role for this template.');
             return;
         }
-
+        setSavingDefault(true);
         try {
-            const role = template.defaultForRoles[0]; // Use first role for now
-            await idCardService.setDefaultTemplate(template.id, role);
+            // The service takes a single role param but posts { role }. The backend
+            // also accepts a `roles` array — send each chosen role so multiple
+            // roles can default to this template in one action.
+            for (const role of defaultRoles) {
+                await idCardService.setDefaultTemplate(defaultTarget.id, role as any);
+            }
             showToast.success('Template set as default');
             queryClient.invalidateQueries({ queryKey: ['card-templates'] });
+            setDefaultTarget(null);
+            setDefaultRoles([]);
         } catch (err: any) {
-            showToast.error(err.response?.data?.message || err.message || 'Failed to set template as default');
+            const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Failed to set template as default';
+            showToast.error(msg);
+        } finally {
+            setSavingDefault(false);
         }
     };
 
@@ -190,7 +211,7 @@ export const TemplatesPage: React.FC = () => {
             id: 'roles',
             header: 'Default For Roles',
             cell: ({ row }) => {
-                const roles = row.original.defaultForRoles;
+                const roles = row.original.defaultForRoles ?? [];
                 return roles.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
                         {roles.map((role) => (
@@ -455,6 +476,48 @@ export const TemplatesPage: React.FC = () => {
                 message={`Approve template "${approveTarget?.name}" for use?`}
                 confirmLabel="Approve"
             />
+
+            {/* Set-as-Default role picker */}
+            {defaultTarget && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={() => !savingDefault && setDefaultTarget(null)}>
+                    <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                <Star size={18} className="text-amber-500" /> Set as Default
+                            </h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                Choose which roles use <span className="font-semibold">{defaultTarget.name}</span> as their default card template.
+                            </p>
+                        </div>
+                        <div className="p-5 space-y-2">
+                            {(['student', 'teacher', 'staff', 'principal'] as const).map((role) => {
+                                const checked = defaultRoles.includes(role);
+                                return (
+                                    <label key={role} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={(e) => {
+                                                setDefaultRoles((prev) =>
+                                                    e.target.checked ? [...prev, role] : prev.filter((r) => r !== role)
+                                                );
+                                            }}
+                                            className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                                        />
+                                        <span className="text-sm font-medium text-gray-800 dark:text-gray-200 capitalize">{role}</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
+                            <Button variant="outline" onClick={() => setDefaultTarget(null)} disabled={savingDefault}>Cancel</Button>
+                            <Button onClick={confirmSetDefault} disabled={savingDefault || defaultRoles.length === 0}>
+                                {savingDefault ? 'Saving…' : 'Set as Default'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </MainLayout>
     );
 };

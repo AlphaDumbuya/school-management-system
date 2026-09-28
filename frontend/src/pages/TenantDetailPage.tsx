@@ -24,6 +24,7 @@ import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialo
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { API_CONFIG } from '@config/api.config';
+import { saveBlob } from '@lib/download';
 import platformService, { PlatformTenant } from '@services/platformService';
 import {
   SUSPENSION_CATEGORIES,
@@ -113,15 +114,8 @@ export const TenantDetailPage: React.FC = () => {
       });
       if (!res.ok) throw new Error('Backup failed');
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
       const date = new Date().toISOString().slice(0, 10);
-      a.href = url;
-      a.download = `WiSkul_Backup_${(tenant?.name || 'tenant').replace(/[^a-z0-9]+/gi, '_')}_${date}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      await saveBlob(blob, `WiSkul_Backup_${(tenant?.name || 'tenant').replace(/[^a-z0-9]+/gi, '_')}_${date}.xlsx`);
       showToast.success('Backup downloaded');
     } catch (e: any) {
       showToast.error(e?.message || 'Could not create backup.');

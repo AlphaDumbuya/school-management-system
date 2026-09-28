@@ -4,7 +4,7 @@
  * Uploads to /api/v1/uploads and returns the file URL.
  */
 
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Upload, X, FileText, Image as ImageIcon, Loader2, Camera, RotateCcw } from 'lucide-react';
 import apiClient from '@lib/apiClient';
 
@@ -39,7 +39,13 @@ async function uploadToServer(blob: Blob, filename: string, fallbackDataUrl: str
 }
 
 /** Compress image to fit within maxSize pixels and quality */
-function compressImage(file: File, maxSize: number = 300, quality: number = 0.7): Promise<string> {
+function compressImage(
+  file: File,
+  maxSize: number = 300,
+  quality: number = 0.7,
+  outType: 'image/jpeg' | 'image/png' = 'image/jpeg',
+  removeBg: boolean = false,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -58,7 +64,39 @@ function compressImage(file: File, maxSize: number = 300, quality: number = 0.7)
       const ctx = canvas.getContext('2d');
       if (!ctx) { reject(new Error('Canvas not supported')); return; }
       ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
+
+      // Background removal — knock out light/near-white pixels to transparent.
+      // Works well for dark ink (signatures/stamps) photographed on light paper.
+      // Forces PNG output so transparency is preserved.
+      if (removeBg) {
+        try {
+          const imgData = ctx.getImageData(0, 0, width, height);
+          const d = imgData.data;
+          // Pixels brighter than this luminance become fully transparent; a soft
+          // band just below it is partially faded to avoid a hard cut-out edge.
+          const HARD = 210; // >= this → transparent
+          const SOFT = 170; // between SOFT..HARD → gradual alpha
+          for (let i = 0; i < d.length; i += 4) {
+            const r = d[i], g = d[i + 1], b = d[i + 2];
+            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+            if (lum >= HARD) {
+              d[i + 3] = 0;
+            } else if (lum > SOFT) {
+              // Linear fade from opaque (at SOFT) to transparent (at HARD).
+              const a = 1 - (lum - SOFT) / (HARD - SOFT);
+              d[i + 3] = Math.round(d[i + 3] * a);
+            }
+          }
+          ctx.putImageData(imgData, 0, 0);
+        } catch {
+          // getImageData can throw on tainted canvases — fall back to as-is.
+        }
+        resolve(canvas.toDataURL('image/png'));
+        return;
+      }
+
+      // PNG keeps transparency (ideal for signatures/stamps); JPEG is smaller.
+      resolve(canvas.toDataURL(outType, quality));
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load image')); };
     img.src = url;
@@ -77,6 +115,19 @@ interface FileUploaderProps {
   previewType?: 'image' | 'file'; // how to show preview
   enableCamera?: boolean; // show camera capture option
   className?: string;
+  /**
+   * For small images (signatures, stamps, logos), store the compressed image
+   * INLINE as a base64 data URL instead of a server /storage URL. This makes the
+   * value render reliably everywhere (preview, report card, PDF) with no
+   * dependency on the storage endpoint resolving. Ignored for non-image files.
+   */
+  inlineImage?: boolean;
+  /**
+   * Knock out light/near-white background pixels to transparent on upload.
+   * Ideal for signatures/stamps photographed on paper. Forces PNG output and
+   * implies inline storage. Ignored for non-image files.
+   */
+  removeBackground?: boolean;
 }
 
 export const FileUploader: React.FC<FileUploaderProps> = ({
@@ -91,6 +142,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
   previewType = 'image',
   enableCamera = false,
   className = '',
+  inlineImage = false,
+  removeBackground = false,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -100,6 +153,12 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  // When an image preview fails to load (e.g. a non-renderable file was uploaded
+  // under previewType='image'), fall back to a filename chip instead of a blank box.
+  const [imgFailed, setImgFailed] = useState(false);
+
+  // Reset the image-failed flag whenever the value changes (new upload/removal).
+  useEffect(() => { setImgFailed(false); }, [value]);
 
   const handleUpload = useCallback(async (file: File) => {
     // Validate size
@@ -114,13 +173,22 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     try {
       const isImage = file.type.startsWith('image/');
       if (isImage) {
-        // Compress large images first, then persist to durable storage. Keep the
-        // compressed data URL as a graceful fallback if the upload endpoint is
-        // unavailable (so logos/photos still work).
-        const compressedDataUrl = await compressImage(file, 800, 0.8);
-        const blob = dataUrlToBlob(compressedDataUrl);
-        const url = await uploadToServer(blob, file.name || 'image.jpg', compressedDataUrl);
-        onChange(url);
+        // Compress large images first. For signatures/stamps we keep PNG to
+        // preserve transparency; otherwise JPEG for smaller size. Background
+        // removal forces PNG + inline so the cut-out renders everywhere.
+        const keepPng = removeBackground || (inlineImage && file.type === 'image/png');
+        const compressedDataUrl = await compressImage(
+          file, 800, 0.9, keepPng ? 'image/png' : 'image/jpeg', removeBackground,
+        );
+        if (inlineImage || removeBackground) {
+          // Store inline — renders reliably everywhere with no /storage dependency.
+          onChange(compressedDataUrl);
+        } else {
+          // Persist to durable storage; fall back to the data URL on failure.
+          const blob = dataUrlToBlob(compressedDataUrl);
+          const url = await uploadToServer(blob, file.name || 'image.jpg', compressedDataUrl);
+          onChange(url);
+        }
       } else {
         // Non-image (PDF/DOC): upload as-is; no client fallback (too large for base64).
         const form = new FormData();
@@ -137,7 +205,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       setUploadError(err?.message || 'Failed to upload file');
       setIsUploading(false);
     }
-  }, [maxSizeMB, onChange]);
+  }, [maxSizeMB, onChange, inlineImage, removeBackground]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -222,19 +290,24 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       {value && value.length > 10 ? (
         // File already uploaded — show preview
         <div className="relative rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-gray-800">
-          {previewType === 'image' ? (
-            <div className="w-full h-32 sm:h-40 flex items-center justify-center">
+          {previewType === 'image' && !imgFailed ? (
+            <div className="w-full h-32 sm:h-40 flex items-center justify-center bg-white">
               <img
                 src={value}
                 alt="Uploaded"
                 className="max-h-full max-w-full object-contain rounded-lg"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                onError={() => setImgFailed(true)}
               />
             </div>
           ) : (
             <div className="px-4 py-3 flex items-center gap-3">
               <FileText size={20} className="text-blue-500 flex-shrink-0" />
-              <span className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">{value.split('/').pop()}</span>
+              <span className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">
+                {value.startsWith('data:') ? 'Uploaded file' : value.split('/').pop()}
+              </span>
+              {previewType === 'image' && imgFailed && (
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 flex-shrink-0">Preview unavailable — use a PNG/JPG image</span>
+              )}
             </div>
           )}
           {/* Remove button */}

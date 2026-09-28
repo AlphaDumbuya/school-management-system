@@ -670,21 +670,29 @@ export const SettingsPage: React.FC = () => {
   };
   const getIDPreview = () => buildIDPreview(settings.id_student_prefix || 'STU', settings.id_student_start_from);
 
-  // Tabs mapping
+  // Tabs mapping — ordered by logical grouping so related settings sit together:
+  //   1) Personal (every user):        My Profile · Security · Offline & Storage
+  //   2) School identity (admin):      School Info · Academic Config · ID Format
+  //   3) Academic output (admin):      Grading & Results · Attendance Rules · Report Card
+  //   4) Finance & system (admin):     Financial Info · Payments · Plan & Billing · File Storage
   const tabs = [
+    // ── Personal (all roles) ──
     { id: 'profile', label: 'My Profile', icon: <User size={18} />, adminOnly: false },
     { id: 'security', label: 'Security', icon: <ShieldCheck size={18} />, adminOnly: false },
     { id: 'offline', label: 'Offline & Storage', icon: <HardDrive size={18} />, adminOnly: false, teacherOnly: true },
+    // ── School identity (admin) ──
     { id: 'school', label: 'School Info', icon: <Building size={18} />, adminOnly: true },
     { id: 'academic', label: 'Academic Config', icon: <Calendar size={18} />, adminOnly: true },
     { id: 'id-format', label: 'ID Format', icon: <Building size={18} />, adminOnly: true },
+    // ── Academic output (admin) ──
     { id: 'grading', label: 'Grading & Results', icon: <GraduationCap size={18} />, adminOnly: true },
     { id: 'attendance', label: 'Attendance Rules', icon: <AlertCircle size={18} />, adminOnly: true },
+    { id: 'report-card', label: 'Report Card', icon: <GraduationCap size={18} />, adminOnly: true },
+    // ── Finance & system (admin) ──
     { id: 'financial', label: 'Financial Info', icon: <DollarSign size={18} />, adminOnly: true },
-    { id: 'storage', label: 'File Storage', icon: <HardDrive size={18} />, adminOnly: true },
     { id: 'payments', label: 'Payments', icon: <CreditCard size={18} />, adminOnly: true },
     { id: 'billing', label: 'Plan & Billing', icon: <CreditCard size={18} />, adminOnly: true },
-    { id: 'report-card', label: 'Report Card', icon: <GraduationCap size={18} />, adminOnly: true },
+    { id: 'storage', label: 'File Storage', icon: <HardDrive size={18} />, adminOnly: true },
   ];
 
   return (
@@ -1870,9 +1878,9 @@ export const SettingsPage: React.FC = () => {
                   <Card>
                     <CardHeader>
                       <CardTitle>Payments</CardTitle>
-                      <CardDescription>
+                      <p className="text-sm text-gray-500 mt-1">
                         Connect your school's own Monime account so online fee payments settle directly into your account.
-                      </CardDescription>
+                      </p>
                     </CardHeader>
                     <CardContent>
                       <PaymentSettings />
@@ -2375,6 +2383,13 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
   const [watermarkSize, setWatermarkSize] = useState(450);
   const [showStudentPhoto, setShowStudentPhoto] = useState(true);
   const [photoFrame, setPhotoFrame] = useState<PhotoFrameStyle>('gold');
+  // Front-cover official stamp/seal and principal's signature images. When set,
+  // they replace the placeholder SEAL circle / script name on the report card.
+  const [stampUrl, setStampUrl] = useState<string>('');
+  const [signatureUrl, setSignatureUrl] = useState<string>('');
+  // Size multipliers (0.5–2) for the front-cover stamp & signature images.
+  const [stampScale, setStampScale] = useState(1);
+  const [signatureScale, setSignatureScale] = useState(1);
   const [savingDisplay, setSavingDisplay] = useState(false);
 
   // ── Mock data for the live BookletContent preview ──
@@ -2467,6 +2482,10 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
           if (typeof value.watermark_size === 'number') setWatermarkSize(value.watermark_size);
           if (typeof value.show_student_photo === 'boolean') setShowStudentPhoto(value.show_student_photo);
           if (typeof value.photo_frame === 'string') setPhotoFrame(value.photo_frame as PhotoFrameStyle);
+          if (typeof value.stamp_url === 'string') setStampUrl(value.stamp_url);
+          if (typeof value.signature_url === 'string') setSignatureUrl(value.signature_url);
+          if (typeof value.stamp_scale === 'number') setStampScale(value.stamp_scale);
+          if (typeof value.signature_scale === 'number') setSignatureScale(value.signature_scale);
         }
       } catch {
         // ignore — use defaults
@@ -2541,6 +2560,10 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
         watermark_size: watermarkSize,
         show_student_photo: showStudentPhoto,
         photo_frame: photoFrame,
+        stamp_url: stampUrl || null,
+        signature_url: signatureUrl || null,
+        stamp_scale: stampScale,
+        signature_scale: signatureScale,
       });
       showToast.success('Display options saved.');
       queryClient.invalidateQueries({ queryKey: ['report-card-display-opts'] });
@@ -2698,6 +2721,10 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
                   watermarkSize={watermarkSize}
                   showStudentPhoto={showStudentPhoto}
                   photoFrame={photoFrame}
+                  stampUrl={stampUrl || undefined}
+                  signatureUrl={signatureUrl || undefined}
+                  stampScale={stampScale}
+                  signatureScale={signatureScale}
                 />
               </div>
             </div>
@@ -2725,7 +2752,7 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
         </CardHeader>
         <CardContent className="space-y-5">
           <p className="text-sm text-gray-600">
-            Display the school logo as a faint watermark behind the results grid and the back cover.
+            Display the school logo as a faint watermark on the back cover of the report booklet.
             This adds a professional, tamper-evident security overlay to the printed report card.
           </p>
 
@@ -2734,7 +2761,7 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
             <div className="flex items-start gap-3 min-w-0">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-gray-900">Show logo watermark</p>
-                <p className="text-xs text-gray-500">Display the school logo faintly behind the results grid.</p>
+                <p className="text-xs text-gray-500">Display the school logo faintly on the back cover.</p>
               </div>
             </div>
             <button
@@ -2852,6 +2879,113 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
                 </p>
               </div>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ══════════════════════════════════════════════════════════════════════════
+          SECTION 4 — OFFICIAL STAMP & PRINCIPAL'S SIGNATURE (front cover)
+          ══════════════════════════════════════════════════════════════════════════ */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Official Stamp & Principal's Signature</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <p className="text-sm text-gray-600">
+            Upload the school's official stamp/seal and the principal's signature. When set,
+            they replace the placeholder boxes at the bottom of the report card's front cover —
+            so every generated card is pre-stamped and pre-signed. You can snap a photo of a
+            signature or stamp on plain paper — the white background is removed automatically so
+            it overlays cleanly. Leave either blank to keep the default placeholder.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {/* Official Stamp */}
+            <div>
+              <label className="text-sm font-semibold text-gray-800 block mb-1.5">Official Stamp / Seal</label>
+              <FileUploader
+                value={stampUrl}
+                onChange={(url) => setStampUrl(url || '')}
+                accept="image/png,image/jpeg,image/webp"
+                placeholder="Click or drag to upload the school stamp (PNG/JPG)"
+                previewType="image"
+                inlineImage
+                removeBackground
+                maxSizeMB={2}
+              />
+              <p className="text-[11px] text-gray-400 mt-1">The white paper background is removed automatically. Appears in the "Official Stamp" box on the front cover.</p>
+              {stampUrl && (
+                <div className="mt-3">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Stamp size: <span className="text-gray-900">{Math.round(stampScale * 100)}%</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range" min={0.5} max={2} step={0.05}
+                      value={stampScale}
+                      onChange={(e) => setStampScale(Number(e.target.value))}
+                      className="flex-1 accent-blue-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setStampScale(1)}
+                      className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-gray-400 mt-0.5"><span>Smaller</span><span>Larger</span></div>
+                </div>
+              )}
+            </div>
+
+            {/* Principal's Signature */}
+            <div>
+              <label className="text-sm font-semibold text-gray-800 block mb-1.5">Principal's Signature</label>
+              <FileUploader
+                value={signatureUrl}
+                onChange={(url) => setSignatureUrl(url || '')}
+                accept="image/png,image/jpeg,image/webp"
+                placeholder="Click or drag to upload the signature (PNG/JPG)"
+                previewType="image"
+                inlineImage
+                removeBackground
+                maxSizeMB={2}
+              />
+              <p className="text-[11px] text-gray-400 mt-1">The white paper background is removed automatically. Appears in the "Principal's Signature" box on the front cover.</p>
+              {signatureUrl && (
+                <div className="mt-3">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Signature size: <span className="text-gray-900">{Math.round(signatureScale * 100)}%</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range" min={0.5} max={2} step={0.05}
+                      value={signatureScale}
+                      onChange={(e) => setSignatureScale(Number(e.target.value))}
+                      className="flex-1 accent-blue-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSignatureScale(1)}
+                      className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-gray-400 mt-0.5"><span>Smaller</span><span>Larger</span></div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+            <ImageIcon size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-blue-700">
+              The <strong>Front Cover Preview</strong> in the Border section above updates in real time as you
+              upload. {stampUrl ? 'The uploaded stamp is currently shown.' : 'No stamp uploaded — the placeholder seal shows.'}{' '}
+              {signatureUrl ? 'The uploaded signature is currently shown.' : 'No signature uploaded — the placeholder shows.'}
+            </p>
           </div>
         </CardContent>
       </Card>
