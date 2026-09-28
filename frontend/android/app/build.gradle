@@ -9,6 +9,15 @@ if (keystorePropsFile.exists()) {
     keystoreProps.load(new FileInputStream(keystorePropsFile))
 }
 
+// Auto-incrementing version so every CI build is a strictly-newer upgrade.
+// In GitHub Actions we pass APP_VERSION_CODE (the run number) and
+// APP_VERSION_NAME; Android then treats the newest APK as an in-place update
+// over whatever is installed — the user installs ONCE and jumps to the latest
+// (all features included), instead of installing each build one by one.
+// Falls back to 1 / "1.0" for local builds where the env vars aren't set.
+def computedVersionCode = (System.getenv("APP_VERSION_CODE") ?: "1").toInteger()
+def computedVersionName = System.getenv("APP_VERSION_NAME") ?: "1.0"
+
 android {
     namespace = "sl.wiskul.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +25,8 @@ android {
         applicationId "sl.wiskul.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode computedVersionCode
+        versionName computedVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
