@@ -16,7 +16,7 @@
 import React, { useEffect, useState } from 'react';
 import { Download, X } from 'lucide-react';
 import { isAppMode } from '@lib/appMode';
-import { openUrl } from '@lib/download';
+import { openExternal } from '@lib/download';
 import { API_CONFIG } from '@config/api.config';
 
 // Where the counted, always-latest APK lives (same endpoint the download button uses).
@@ -92,7 +92,7 @@ export const NativeUpdateBanner: React.FC = () => {
       <Download size={15} />
       <span>A new version of the WiSkul app is available.</span>
       <button
-        onClick={() => openUrl(DOWNLOAD_URL)}
+        onClick={() => openExternal(DOWNLOAD_URL)}
         className="rounded-lg bg-white/20 hover:bg-white/30 px-2.5 py-0.5 font-bold"
       >
         Update
