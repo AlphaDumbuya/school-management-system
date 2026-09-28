@@ -96,11 +96,49 @@ export const ReportCardsPage: React.FC = () => {
     // parent summary doesn't carry academic_year; keep the currently selected year.
   }, [isParent, parentChildren, activeChildId]);
 
+  // Real academic years the school actually has (from academic_sessions), so
+  // staff can retrieve ANY past year — not a fabricated date list. Students/
+  // parents don't need the picker (their year is auto-resolved).
+  const { data: sessionsResp } = useQuery({
+    queryKey: ['academic-sessions'],
+    queryFn: () => schoolConfigService.listAcademicSessions(),
+    enabled: !isStudent && !isParent,
+    staleTime: 60_000,
+  });
+  const academicSessions: Array<{ name: string; is_active: boolean }> =
+    ((sessionsResp as any)?.data ?? []) as any;
+
   const yearOptions = useMemo(() => {
-    const arr = [];
-    for (let y = currentYear + 1; y >= currentYear - 3; y--) arr.push({ value: `${y}/${y + 1}`, label: `${y}/${y + 1}` });
-    return arr;
-  }, [currentYear]);
+    // Prefer the tenant's real sessions (covers decades of history).
+    const fromDb = academicSessions
+      .map((s) => String(s.name))
+      .filter((n) => /^\d{4}\/\d{4}$/.test(n));
+    const set = new Set<string>(fromDb);
+    // Always include a sensible current-year span so a brand-new school (no
+    // sessions yet) still has selectable years.
+    for (let y = currentYear + 1; y >= currentYear - 3; y--) set.add(`${y}/${y + 1}`);
+    return Array.from(set)
+      .sort((a, b) => b.localeCompare(a))
+      .map((v) => ({ value: v, label: v }));
+  }, [academicSessions, currentYear]);
+
+  // Default staff to the active session's year when it loads (so the page opens
+  // on the current year, but they can freely switch to any past year).
+  React.useEffect(() => {
+    if (isStudent || isParent) return;
+    const active = academicSessions.find((s) => s.is_active)?.name;
+    if (active && /^\d{4}\/\d{4}$/.test(active)) setAcademicYear(active);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [academicSessions.length]);
+
+  // When staff switch the year, clear the class/student picks — that year has
+  // its own classes, so a stale selection wouldn't resolve.
+  React.useEffect(() => {
+    if (isStudent || isParent) return;
+    setClassId('');
+    setStudentId('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [academicYear]);
 
   // School branding for the front cover. Kept fresh so name/logo edits made in
   // Settings show on the report card immediately — refetch on mount and treat
@@ -141,8 +179,10 @@ export const ReportCardsPage: React.FC = () => {
   const signatureScale = typeof displayOpts?.signature_scale === 'number' ? displayOpts.signature_scale : 1;
 
   const { data: classesData } = useQuery({
-    queryKey: ['report-card-classes'],
-    queryFn: () => classesService.listClasses({ limit: 100 }),
+    // Scope classes to the selected academic year so a principal viewing a past
+    // year sees THAT year's classes (each year has its own class rows).
+    queryKey: ['report-card-classes', academicYear],
+    queryFn: () => classesService.listClasses({ limit: 100, academic_year: academicYear }),
     enabled: !isStudent && !isParent,
     staleTime: 60_000,
   });

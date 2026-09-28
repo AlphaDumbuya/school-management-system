@@ -117,6 +117,16 @@ export const schoolConfigService = {
   },
 
   /**
+   * List the tenant's real academic sessions (years), newest/active first.
+   * Drives year pickers so admins can reach ANY past year with data.
+   */
+  async listAcademicSessions() {
+    return apiClient.get<Array<{ id: string; name: string; start_date: string; end_date: string; is_active: boolean }>>(
+      '/api/v1/school-config/academic-sessions',
+    );
+  },
+
+  /**
    * Start a new academic year (non-destructive rollover): archives the current
    * session, activates/creates the new one, and optionally clones classes.
    */

@@ -64,6 +64,10 @@ export interface ListClassesParams {
   level?: string;
   status?: string;
   search?: string;
+  /** Scope to the classes of a specific academic year (e.g. "2024/2025"). */
+  academic_year?: string;
+  /** Scope to a specific academic session id. */
+  academic_session_id?: string;
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
