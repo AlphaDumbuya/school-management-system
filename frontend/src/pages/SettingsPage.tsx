@@ -161,6 +161,12 @@ export const SettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // "Start New Academic Year" rollover state.
+  const [newYearOpen, setNewYearOpen] = useState(false);
+  const [newYearName, setNewYearName] = useState('');
+  const [newYearCloneClasses, setNewYearCloneClasses] = useState(true);
+  const [startingNewYear, setStartingNewYear] = useState(false);
+
   // States for Settings fields
   const [schoolInfo, setSchoolInfo] = useState<Partial<SchoolInfo>>({});
   const [settings, setSettings] = useState<Record<string, any>>({
@@ -391,6 +397,52 @@ export const SettingsPage: React.FC = () => {
       showToast.error(err.message || 'Error updating school info');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Suggest next year (e.g. current "2026/2027" → "2027/2028").
+  const suggestNextYear = (): string => {
+    const cur = String(settings.academic_year || '').trim();
+    const m = /^(\d{4})\/(\d{4})$/.exec(cur);
+    if (m) { const a = Number(m[1]) + 1; return `${a}/${a + 1}`; }
+    const y = new Date().getFullYear();
+    return `${y}/${y + 1}`;
+  };
+
+  const openNewYearDialog = () => {
+    setNewYearName(suggestNextYear());
+    setNewYearCloneClasses(true);
+    setNewYearOpen(true);
+  };
+
+  const handleStartNewYear = async () => {
+    const name = newYearName.trim();
+    if (!/^\d{4}\/\d{4}$/.test(name)) {
+      showToast.error('Enter the new year in the format YYYY/YYYY (e.g. 2027/2028).');
+      return;
+    }
+    setStartingNewYear(true);
+    try {
+      const res = await schoolConfigService.startNewAcademicYear({
+        new_year_name: name,
+        clone_classes: newYearCloneClasses,
+      });
+      if ((res as any).success !== false) {
+        const d = (res as any).data || {};
+        showToast.success(
+          `Started ${name}. ${d.classesCloned ?? 0} class(es) carried forward.` +
+          (d.classesSkipped ? ` ${d.classesSkipped} already existed.` : ''),
+        );
+        setSettings((s) => ({ ...s, academic_year: name }));
+        setNewYearOpen(false);
+        queryClient.invalidateQueries({ queryKey: ['report-card-classes'] });
+      } else {
+        throw new Error((res as any).error || 'Failed to start new academic year');
+      }
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.message || err?.message || 'Failed to start new academic year');
+    } finally {
+      setStartingNewYear(false);
     }
   };
 
@@ -1399,6 +1451,26 @@ export const SettingsPage: React.FC = () => {
                           Save Academic Config
                         </Button>
                       </div>
+
+                      {/* ── Start New Academic Year (guided, non-destructive) ── */}
+                      <div className="mt-8 border-t border-gray-100 pt-6">
+                        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                          <h4 className="text-sm font-bold text-amber-900 flex items-center gap-2">
+                            <Calendar size={16} /> Start a New Academic Year
+                          </h4>
+                          <p className="text-xs text-amber-800/90 mt-1 leading-relaxed">
+                            Opens the next academic year <strong>without deleting anything</strong>. The current
+                            year is archived (all its results, classes and records stay as history), a fresh
+                            session is activated, and your current classes are carried forward as new classes
+                            for the new year. Promote students afterwards from the Promotions page.
+                          </p>
+                          <div className="mt-3">
+                            <Button variant="outline" onClick={openNewYearDialog} className="border-amber-300 text-amber-900 hover:bg-amber-100">
+                              Start New Academic Year
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -2228,6 +2300,51 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
       </PageShell>
+
+      {/* ── Start New Academic Year dialog ── */}
+      {newYearOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={() => !startingNewYear && setNewYearOpen(false)}>
+          <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Start New Academic Year</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                The current year is archived (history preserved). This activates the new year and can carry your classes forward.
+              </p>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">New academic year (YYYY/YYYY)</label>
+                <input
+                  type="text"
+                  value={newYearName}
+                  onChange={(e) => setNewYearName(e.target.value)}
+                  placeholder="2027/2028"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                />
+              </div>
+              <label className="flex items-center gap-3 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newYearCloneClasses}
+                  onChange={(e) => setNewYearCloneClasses(e.target.checked)}
+                  className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                />
+                <span className="text-sm text-gray-800">Carry current classes forward into the new year</span>
+              </label>
+              <p className="text-[11px] text-gray-400">
+                No results, grades, enrollments or fees are deleted. After this, promote students from the Promotions page.
+              </p>
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setNewYearOpen(false)} disabled={startingNewYear}>Cancel</Button>
+              <Button onClick={handleStartNewYear} disabled={startingNewYear}>
+                {startingNewYear ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                {startingNewYear ? 'Starting…' : 'Start New Year'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 };

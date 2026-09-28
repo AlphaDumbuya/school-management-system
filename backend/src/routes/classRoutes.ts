@@ -241,6 +241,19 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       query = query.where('classes.status', status);
     }
 
+    // Optional academic-year filter (e.g. "2024/2025"): scope classes to the
+    // session whose name matches, so admins can view the classes that existed
+    // in a PAST year. Matches against academic_sessions.name (== year string).
+    const academicYear = req.query.academic_year as string;
+    if (academicYear) {
+      query = query.where('academic_sessions.name', academicYear);
+    }
+    // Optional direct session id filter.
+    const sessionId = req.query.academic_session_id as string;
+    if (sessionId) {
+      query = query.where('classes.academic_session_id', sessionId);
+    }
+
     if (search) {
       const term = `%${search.trim()}%`;
       query = query.where(function () {

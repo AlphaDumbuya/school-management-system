@@ -116,6 +116,38 @@ export const schoolConfigService = {
     return apiClient.post<{ message: string }>('/api/v1/school-config/settings', settings);
   },
 
+  /**
+   * List the tenant's real academic sessions (years), newest/active first.
+   * Drives year pickers so admins can reach ANY past year with data.
+   */
+  async listAcademicSessions() {
+    return apiClient.get<Array<{ id: string; name: string; start_date: string; end_date: string; is_active: boolean }>>(
+      '/api/v1/school-config/academic-sessions',
+    );
+  },
+
+  /**
+   * Start a new academic year (non-destructive rollover): archives the current
+   * session, activates/creates the new one, and optionally clones classes.
+   */
+  async startNewAcademicYear(payload: {
+    new_year_name: string;
+    start_date?: string | null;
+    end_date?: string | null;
+    clone_classes?: boolean;
+  }) {
+    return apiClient.post<{
+      message: string;
+      data: {
+        sessionId: string;
+        created: boolean;
+        classesCloned: number;
+        classesSkipped: number;
+        previousYearName: string | null;
+      };
+    }>('/api/v1/school-config/start-new-year', payload);
+  },
+
   async getGradingScales() {
     return apiClient.get<GradeScale[]>('/api/v1/school-config/grading-scales');
   },
