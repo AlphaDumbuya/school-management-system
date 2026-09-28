@@ -14,6 +14,29 @@ import { GraduationCap, Sparkles, FileText, X, ArrowRight, PartyPopper } from 'l
 import notificationService, { AppNotification } from '@services/notificationService';
 import useAuthStore from '@store/authStore';
 
+/**
+ * A stable identity for ONE release, so the popup shows once per release and
+ * only re-appears when a DIFFERENT term or academic year is released.
+ * Derived from the notification's data payload (student + year + term + kind).
+ */
+function releaseKey(n: AppNotification): string {
+  const d = (n.data || {}) as any;
+  const student = d.student_id ?? n.sourceId ?? 'self';
+  const year = d.academic_year ?? '';
+  const term = d.is_year ? 'year' : (d.term ?? d.term_label ?? 'term');
+  return `wiskul.resultPopup.seen.${student}.${year}.${term}`;
+}
+
+/** Has the user already seen (dismissed) this specific release? */
+function alreadySeen(n: AppNotification): boolean {
+  try { return localStorage.getItem(releaseKey(n)) === '1'; } catch { return false; }
+}
+
+/** Remember that this specific release has been shown, permanently. */
+function markSeen(n: AppNotification): void {
+  try { localStorage.setItem(releaseKey(n), '1'); } catch { /* ignore */ }
+}
+
 export const ResultReleasePopup: React.FC = () => {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
@@ -29,10 +52,22 @@ export const ResultReleasePopup: React.FC = () => {
     (async () => {
       try {
         const res = await notificationService.list({ unreadOnly: true, limit: 30 });
-        const hit = res.data.find((n) => n.notificationType === 'result_released' && !n.readAt);
+        // Newest unread result release that this user has NOT already dismissed
+        // for its specific term/year. The localStorage guard makes the popup
+        // truly one-time even if the server "mark read" didn't persist or a
+        // duplicate notification exists for the same release.
+        const hit = res.data.find(
+          (n) => n.notificationType === 'result_released' && !n.readAt && !alreadySeen(n),
+        );
         if (!cancelled && hit) {
           // Small delay so the dashboard renders behind the modal first.
-          setTimeout(() => { if (!cancelled) setNotif(hit); }, 700);
+          setTimeout(() => {
+            if (cancelled) return;
+            // Mark seen the moment we DISPLAY it, so a reload/navigation without
+            // clicking a button still counts as "already shown" — truly once.
+            markSeen(hit);
+            setNotif(hit);
+          }, 700);
         }
       } catch { /* ignore — no popup */ }
     })();
@@ -44,7 +79,9 @@ export const ResultReleasePopup: React.FC = () => {
     setClosing(true);
     setTimeout(() => { setNotif(null); setClosing(false); }, 180);
     if (current) {
-      // Mark read so it never shows again (one-time).
+      // Local guard first — guarantees one-time even if the API call fails.
+      markSeen(current);
+      // Also mark read server-side so the bell/unread count clears.
       notificationService.markRead(current.id).catch(() => {});
     }
     if (goView) {
