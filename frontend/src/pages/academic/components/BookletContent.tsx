@@ -76,6 +76,16 @@ export interface BookletContentProps {
   showStudentPhoto?: boolean;
   /** Frame style for the front-cover student photo. */
   photoFrame?: PhotoFrameStyle;
+  /** Uploaded official stamp/seal image for the front cover. When set, it
+   *  replaces the placeholder SEAL circle. */
+  stampUrl?: string;
+  /** Uploaded principal's signature image for the front cover. When set, it
+   *  replaces the placeholder script name. */
+  signatureUrl?: string;
+  /** Scale factor (0.5–2) for the uploaded stamp image on the front cover. */
+  stampScale?: number;
+  /** Scale factor (0.5–2) for the uploaded signature image on the front cover. */
+  signatureScale?: number;
 }
 
 /** Photo frame style definitions — shared by preview + PDF. */
@@ -218,7 +228,7 @@ const StudentPhoto: React.FC<{ photoUrl?: string | null; name: string; frame: Ph
 export const BookletContent: React.FC<BookletContentProps> = ({
   card, school, schoolName, schoolAddress, schoolLogo, shortName, showCover, showInner,
   showGrading = true, borderStyle, showWatermark = true, watermarkOpacity = 0.06, watermarkSize = 450, showStudentPhoto = true,
-  photoFrame = 'gold',
+  photoFrame = 'gold', stampUrl, signatureUrl, stampScale = 1, signatureScale = 1,
 }) => {
   useEffect(() => { getGradingMethod(); }, []);
 
@@ -376,14 +386,37 @@ export const BookletContent: React.FC<BookletContentProps> = ({
         <div className="flex justify-between"><span className="font-bold text-gray-600">Academic Year:</span><span className="font-bold">{card.academic_year}</span></div>
       </div>
       <div className="grid grid-cols-2 gap-4 w-full text-[14px]">
-        <div className="border-2 border-dashed border-gray-400 h-28 flex flex-col justify-between p-2">
-          <span className="text-[12px] font-bold text-gray-500 uppercase">Official Stamp</span>
-          <div className="w-16 h-16 border-2 border-blue-900 rounded-full flex items-center justify-center text-[10px] font-bold text-blue-900 mx-auto transform -rotate-12 opacity-70">{shortName}<br/>SEAL</div>
+        {/* Official Stamp — when an image is uploaded it fills the box and the
+            placeholder seal is hidden; otherwise show the dashed placeholder. */}
+        <div className={`h-28 flex flex-col p-2 ${stampUrl ? 'border-2 border-gray-200' : 'border-2 border-dashed border-gray-400'}`}>
+          <span className="text-[12px] font-bold text-gray-500 uppercase flex-shrink-0">Official Stamp</span>
+          {stampUrl ? (
+            <div className="flex-1 min-h-0 flex items-center justify-center mt-1 overflow-hidden">
+              <img src={stampUrl} alt="Official school stamp" className="w-full h-full object-contain" style={{ transform: `scale(${stampScale})` }} />
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="w-16 h-16 border-2 border-blue-900 rounded-full flex items-center justify-center text-[10px] font-bold text-blue-900 transform -rotate-12 opacity-70 text-center leading-tight">{shortName}<br/>SEAL</div>
+            </div>
+          )}
         </div>
-        <div className="border-2 border-dashed border-gray-400 h-28 flex flex-col justify-between p-2">
-          <span className="text-[12px] font-bold text-gray-500 uppercase">Principal's Signature</span>
-          {school?.principal_name && <span className="italic font-bold font-serif text-lg text-blue-900/40 text-center">{school.principal_name}</span>}
-          <div className="border-b border-gray-500 pb-0.5"><span className="text-[11px] text-gray-500 uppercase">Date:</span></div>
+        {/* Principal's Signature — when an image is uploaded it fills the box and
+            BOTH the placeholder name and the "Date:" line are hidden; otherwise
+            show the placeholder name and a Date line. */}
+        <div className={`h-28 flex flex-col p-2 ${signatureUrl ? 'border-2 border-gray-200' : 'border-2 border-dashed border-gray-400'}`}>
+          <span className="text-[12px] font-bold text-gray-500 uppercase flex-shrink-0">Principal's Signature</span>
+          {signatureUrl ? (
+            <div className="flex-1 min-h-0 flex items-center justify-center mt-1 overflow-hidden">
+              <img src={signatureUrl} alt="Principal's signature" className="w-full h-full object-contain" style={{ transform: `scale(${signatureScale})` }} />
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col justify-between">
+              <div className="flex-1 flex items-center justify-center">
+                {school?.principal_name && <span className="italic font-bold font-serif text-lg text-blue-900/40 text-center">{school.principal_name}</span>}
+              </div>
+              <div className="border-b border-gray-500 pb-0.5 flex-shrink-0"><span className="text-[11px] text-gray-500 uppercase">Date:</span></div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -482,7 +515,9 @@ export const BookletContent: React.FC<BookletContentProps> = ({
           card={card}
           schoolLogo={schoolLogo}
           shortName={shortName}
-          showWatermark={showWatermark}
+          // Watermark is intentionally OFF on the results sheet — it should only
+          // appear on the back cover. Keep the other props for layout parity.
+          showWatermark={false}
           watermarkOpacity={watermarkOpacity}
           watermarkSize={watermarkSize}
         />

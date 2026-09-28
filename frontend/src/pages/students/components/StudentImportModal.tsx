@@ -11,6 +11,7 @@ import { X, UploadCloud, Download, Loader2, CheckCircle, AlertTriangle } from 'l
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { API_CONFIG } from '@config/api.config';
+import { saveBlob } from '@lib/download';
 import { studentsService, StudentImportResult } from '@services/studentsService';
 
 interface Props {
@@ -48,14 +49,7 @@ export const StudentImportModal: React.FC<Props> = ({ isOpen, onClose, onImporte
       });
       if (!res.ok) throw new Error('Could not download the template.');
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'student_import_template.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      await saveBlob(blob, 'student_import_template.xlsx');
     } catch (e: any) {
       showToast.error(e?.message || 'Template download failed.');
     }

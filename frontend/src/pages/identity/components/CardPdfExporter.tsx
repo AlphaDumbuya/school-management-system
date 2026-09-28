@@ -10,6 +10,7 @@
  */
 
 import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
+import { saveBlob } from '@lib/download';
 import { VisualIdCardRenderer, VisualCardUserData } from './VisualIdCardRenderer';
 import { CardFormat, TemplateConfig } from '@services/idCardService';
 
@@ -105,13 +106,10 @@ export const CardPdfExporter = forwardRef<CardPdfExporterHandle, {}>((_props, re
               if (backImg) { ctx.drawImage(backImg, (w - backImg.width) / 2, y); }
 
               const mime = output === 'jpg' ? 'image/jpeg' : 'image/png';
-              const dataUrl = canvas.toDataURL(mime, output === 'jpg' ? 0.95 : undefined);
-              const a = document.createElement('a');
-              a.href = dataUrl;
-              a.download = payload.fileName.replace(/\.(pdf|png|jpg|jpeg)$/i, '') + (output === 'jpg' ? '.jpg' : '.png');
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
+              const imgName = payload.fileName.replace(/\.(pdf|png|jpg|jpeg)$/i, '') + (output === 'jpg' ? '.jpg' : '.png');
+              await new Promise<void>((res2) => {
+                canvas.toBlob(async (b) => { if (b) await saveBlob(b, imgName); res2(); }, mime, output === 'jpg' ? 0.95 : undefined);
+              });
               resolve();
               setData(null);
               return;
@@ -163,7 +161,7 @@ export const CardPdfExporter = forwardRef<CardPdfExporterHandle, {}>((_props, re
               pdf.addImage(backPng, 'PNG', 0, 0, pdf.internal.pageSize.getWidth(), pdf.internal.pageSize.getHeight(), undefined, 'FAST');
             }
 
-            pdf.save(payload.fileName);
+            await saveBlob(pdf.output('blob'), payload.fileName);
             resolve();
           } catch (err) {
             reject(err);

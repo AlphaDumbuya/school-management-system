@@ -23,6 +23,7 @@ import { showToast } from '@utils/toast';
 import { idCardService, IdCard, CardStatus } from '@services/idCardService';
 import { classesService } from '@services/classesService';
 import { apiClient } from '@lib/apiClient';
+import { openUrl } from '@lib/download';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { CardGenerationModal } from './components/CardGenerationModal';
 import { CardDetailsModal } from './components/CardDetailsModal';
@@ -649,9 +650,9 @@ function BulkGenerateTab() {
                 </div>
 
                 {jobStatus.pdfUrl && (
-                  <a href={storageUrl(jobStatus.pdfUrl)} target="_blank" rel="noopener noreferrer" download>
-                    <Button className="gap-1.5"><Download size={15} /> Download All Cards (PDF)</Button>
-                  </a>
+                  <Button className="gap-1.5" onClick={() => openUrl(storageUrl(jobStatus.pdfUrl!))}>
+                    <Download size={15} /> Download All Cards (PDF)
+                  </Button>
                 )}
 
                 {report?.failed?.length > 0 && (

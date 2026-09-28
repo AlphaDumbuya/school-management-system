@@ -65,7 +65,10 @@ export const App: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <OfflineIndicator />
       <AppRouter />
-      <ToastContainer position="top-right" closeButton={true} aria-live="polite" style={{ zIndex: 2147483647 }} />
+      {/* draggable={false}: disables swipe-to-dismiss, which avoids react-toastify's
+          "Unable to preventDefault inside passive event listener" console warning
+          on touch devices (the native app). Toasts still auto-dismiss + close button. */}
+      <ToastContainer position="top-right" closeButton={true} draggable={false} aria-live="polite" style={{ zIndex: 2147483647 }} />
     </QueryClientProvider>
   );
 };

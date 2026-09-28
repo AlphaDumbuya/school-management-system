@@ -21,6 +21,7 @@ import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import apiClient from '@lib/apiClient';
+import { saveBlob } from '@lib/download';
 import useAuth from '@hooks/useAuth';
 
 // apiClient never rejects on API errors — it resolves with { success: false, error }.
@@ -1832,14 +1833,7 @@ const OptOutsTab: React.FC = () => {
     setExporting(true);
     try {
       const blob = await apiClient.get('/api/v1/sms-whatsapp/opt-outs/export', { responseType: 'blob' } as any);
-      const url = window.URL.createObjectURL(blob as unknown as Blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'opt-outs.csv';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      await saveBlob(blob as unknown as Blob, 'opt-outs.csv');
     } catch (err: any) { showToast.apiError(err?.message || 'Failed to export opt-outs'); }
     finally { setExporting(false); }
   };

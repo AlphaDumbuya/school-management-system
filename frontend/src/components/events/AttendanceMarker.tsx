@@ -11,6 +11,7 @@ import { AttendanceMarkerProps, AttendanceStatus, BulkAttendanceDTO } from '@app
 import { eventsService } from '@services/eventsService';
 import { toast } from 'react-toastify';
 import { Search, CheckCircle, XCircle, Clock, QrCode, Download } from 'lucide-react';
+import { saveBlob } from '@lib/download';
 
 export const AttendanceMarker: React.FC<AttendanceMarkerProps> = ({
     eventId,
@@ -136,12 +137,7 @@ export const AttendanceMarker: React.FC<AttendanceMarkerProps> = ({
                 ].join('\n');
 
                 const blob = new Blob([csvContent], { type: 'text/csv' });
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `attendance-report-${eventId}.csv`;
-                link.click();
-                window.URL.revokeObjectURL(url);
+                await saveBlob(blob, `attendance-report-${eventId}.csv`);
 
                 toast.success('Attendance report downloaded');
             } else {

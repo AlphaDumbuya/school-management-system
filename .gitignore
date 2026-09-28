@@ -98,3 +98,6 @@ public/uploads/
 # 100MB file limit and bloats history). Served publicly via /api/v1/app/download.
 frontend/public/downloads/*.apk
 NUL
+
+# Local file-storage uploads (dev). Runtime artifacts — never commit.
+backend/storage/

@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { logger } from '@lib/logger';
+import { saveBlob } from '@lib/download';
 
 interface ExportTemplate {
   id: string;
@@ -185,16 +186,9 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
     }
 
     if (!sendEmail) {
-      // Download file
+      // Download file (web + native via the shared helper).
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `dashboard-${dashboardType}-${Date.now()}.${getFileExtension(format)}`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      await saveBlob(blob, `dashboard-${dashboardType}-${Date.now()}.${getFileExtension(format)}`);
     }
   };
 

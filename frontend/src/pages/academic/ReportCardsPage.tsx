@@ -44,6 +44,7 @@ import { BookletContent } from './components/BookletContent';
 import { TermResultSheet } from './components/TermResultSheet';
 import type { SLTerm } from '@services/reportCardService';
 import { Printer, Download, Users } from 'lucide-react';
+import { saveBlob, previewBlob } from '@lib/download';
 
 type ViewTerm = SLTerm | 'full';
 
@@ -133,6 +134,11 @@ export const ReportCardsPage: React.FC = () => {
   const watermarkSize = typeof displayOpts?.watermark_size === 'number' ? displayOpts.watermark_size : 450;
   const showStudentPhoto = displayOpts?.show_student_photo !== false; // default true
   const photoFrame = (typeof displayOpts?.photo_frame === 'string' ? displayOpts.photo_frame : 'gold') as any;
+  // Uploaded front-cover stamp/seal and principal's signature (optional).
+  const stampUrl = typeof displayOpts?.stamp_url === 'string' ? displayOpts.stamp_url : undefined;
+  const signatureUrl = typeof displayOpts?.signature_url === 'string' ? displayOpts.signature_url : undefined;
+  const stampScale = typeof displayOpts?.stamp_scale === 'number' ? displayOpts.stamp_scale : 1;
+  const signatureScale = typeof displayOpts?.signature_scale === 'number' ? displayOpts.signature_scale : 1;
 
   const { data: classesData } = useQuery({
     queryKey: ['report-card-classes'],
@@ -259,20 +265,19 @@ export const ReportCardsPage: React.FC = () => {
     // capturing the on-screen .term-sheet node.
     if (isSingleTerm) {
       try {
+        const nm = (card.student.name || 'student').replace(/\s+/g, '_');
+        const yr = card.academic_year.replace('/', '-');
+        const fname = `Result_${nm}_${(viewTerm as string).replace('_term', 'T')}_${yr}.pdf`;
         const blob = await reportCardService.downloadPdf(studentId, {
           class_id: classId, academic_year: academicYear, term: viewTerm as string,
         });
         if (blob) {
-          const url = URL.createObjectURL(blob);
-          window.open(url, '_blank');
-          setTimeout(() => URL.revokeObjectURL(url), 120_000);
+          await previewBlob(blob, fname);
           setExporting(false);
           return;
         }
         const cblob = await buildTermSheetPdfBlob();
-        const url = URL.createObjectURL(cblob);
-        window.open(url, '_blank');
-        setTimeout(() => URL.revokeObjectURL(url), 120_000);
+        await previewBlob(cblob, fname);
       } catch {
         printBooklet();
       } finally {
@@ -286,10 +291,9 @@ export const ReportCardsPage: React.FC = () => {
     await new Promise((r) => setTimeout(r, 200));
     try {
       const blob = await buildBookletPdfBlob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      // Revoke later so the new tab can load it first.
-      setTimeout(() => URL.revokeObjectURL(url), 120_000);
+      const nm = (card.student.name || 'student').replace(/\s+/g, '_');
+      const yr = card.academic_year.replace('/', '-');
+      await previewBlob(blob, `Report_${nm}_${yr}.pdf`);
     } catch {
       printBooklet();
       return;
@@ -338,14 +342,7 @@ export const ReportCardsPage: React.FC = () => {
         ...(isSingleTerm ? { term: viewTerm as string } : {}),
       });
       if (blob) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
+        await saveBlob(blob, fileName);
         setExporting(false);
         return;
       }
@@ -359,14 +356,7 @@ export const ReportCardsPage: React.FC = () => {
     await new Promise((r) => setTimeout(r, 200));
     try {
       const blob = isSingleTerm ? await buildTermSheetPdfBlob() : await buildBookletPdfBlob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      await saveBlob(blob, fileName);
       showToast.success(isSingleTerm ? 'Result sheet downloaded' : 'Report PDF downloaded');
     } catch (err) {
       // Absolute last resort — browser print (may add header/footer).
@@ -524,14 +514,7 @@ export const ReportCardsPage: React.FC = () => {
 
       if (ok === 0) { showToast.error('No report cards could be generated for this class'); return; }
       const blob = pdf.output('blob');
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Report_Cards_${className.replace(/\s+/g, '_')}_${academicYear.replace('/', '-')}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      await saveBlob(blob, `Report_Cards_${className.replace(/\s+/g, '_')}_${academicYear.replace('/', '-')}.pdf`);
       showToast.success(`Generated ${ok} of ${batchRoster.length} report card${batchRoster.length === 1 ? '' : 's'}`);
     } finally {
       setBatchCard(null);
@@ -795,6 +778,10 @@ export const ReportCardsPage: React.FC = () => {
                 watermarkSize={watermarkSize}
                 showStudentPhoto={showStudentPhoto}
                 photoFrame={photoFrame}
+                stampUrl={stampUrl}
+                signatureUrl={signatureUrl}
+                stampScale={stampScale}
+                signatureScale={signatureScale}
               />
             </div>
           </div>,
@@ -831,6 +818,10 @@ export const ReportCardsPage: React.FC = () => {
                 watermarkSize={watermarkSize}
                 showStudentPhoto={showStudentPhoto}
                 photoFrame={photoFrame}
+                stampUrl={stampUrl}
+                signatureUrl={signatureUrl}
+                stampScale={stampScale}
+                signatureScale={signatureScale}
               />
             )}
           </div>,
@@ -873,6 +864,10 @@ export const ReportCardsPage: React.FC = () => {
                     watermarkSize={watermarkSize}
                     showStudentPhoto={showStudentPhoto}
                     photoFrame={photoFrame}
+                    stampUrl={stampUrl}
+                    signatureUrl={signatureUrl}
+                    stampScale={stampScale}
+                    signatureScale={signatureScale}
                   />
                 )}
               </div>

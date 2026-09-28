@@ -16,6 +16,10 @@
     "sourceMap": true,
     "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
+    // `baseUrl` is required here because moduleResolution "node" resolves the
+    // `paths` aliases against it. It's flagged deprecated in the TS 7.0 preview;
+    // silence that with ignoreDeprecations (valid on the installed TS 5.x).
+    "ignoreDeprecations": "5.0",
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],

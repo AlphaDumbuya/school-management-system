@@ -9,6 +9,7 @@ import {
   TooltipProps,
 } from 'recharts';
 import { Download, TrendingUp } from 'lucide-react';
+import { saveBlob } from '@lib/download';
 import { SkeletonChart } from '../feedback/Skeleton';
 import { EmptyState } from '../feedback/EmptyState';
 import { Button } from '../../ui/button';
@@ -171,10 +172,8 @@ export const ChartCard: React.FC<ChartCardProps> = ({
       canvas.width = img.width; canvas.height = img.height;
       canvas.getContext('2d')?.drawImage(img, 0, 0);
       URL.revokeObjectURL(url);
-      const link = document.createElement('a');
-      link.download = `chart-${title.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      const fname = `chart-${title.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.png`;
+      canvas.toBlob((b) => { if (b) void saveBlob(b, fname); }, 'image/png');
     };
     img.src = url;
   };

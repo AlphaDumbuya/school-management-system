@@ -1,3 +1,5 @@
+import { saveBlob } from '@lib/download';
+
 export interface ExportColumn<T> {
   header: string;
   accessor: keyof T;
@@ -20,15 +22,10 @@ export function exportToCSV<T extends Record<string, any>>(
   );
   const csv = [header, ...body].join('\n');
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
   const date = new Date().toISOString().slice(0, 10);
-  link.href = url;
-  link.download = `${entityName.toLowerCase().replace(/\s+/g, '-')}-${date}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  const filename = `${entityName.toLowerCase().replace(/\s+/g, '-')}-${date}.csv`;
+  // Routes through the shared helper so it works on web AND in the native app.
+  void saveBlob(blob, filename);
 }
 
 export interface PDFExportOptions {
