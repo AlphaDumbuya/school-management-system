@@ -1,16 +1,10 @@
 name: Build Android APK
 
 # Builds a downloadable Android APK in the cloud — no local Android tooling needed.
-# Trigger it manually from the Actions tab (or it runs when Android/frontend
-# sources change on the branch). The APK is uploaded as a build artifact and,
-# for manual runs, attached to a GitHub Release for a permanent download URL.
-
-# MANUAL ONLY. Installed apps load their UI from the live site (server.url in
-# capacitor.config.ts), so ordinary UI/logic changes reach users automatically
-# on the next Vercel deploy — NO new APK required. Rebuild the APK here only
-# when NATIVE things change (app icon, permissions, or Capacitor plugins).
-# The old `push` trigger was removed so content-only pushes no longer burn CI
-# minutes / artifact storage.
+# Runs automatically when frontend/native sources change on the watched branches,
+# and can also be triggered manually from the Actions tab. The APK is published
+# to a GitHub Release + Vercel Blob so the in-app "Download App" button always
+# serves the latest build.
 on:
   workflow_dispatch:
     inputs:
@@ -18,6 +12,11 @@ on:
         description: 'Optional release tag to publish the APK (e.g. v1.0.0). Leave blank to only produce an artifact.'
         required: false
         default: ''
+  push:
+    branches: [main, feature/sl-report-cards, feature/financial-management-monime-payments]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/android-apk.yml'
 
 permissions:
   contents: write   # needed to publish the APK to a GitHub Release
