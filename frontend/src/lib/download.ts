@@ -70,49 +70,68 @@ function webSaveBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/** Show a brief toast (best-effort; never throws). */
+async function toast(message: string, kind: 'success' | 'error' = 'success') {
+  try {
+    const { showToast } = await import('@utils/toast');
+    kind === 'error' ? showToast.error(message) : showToast.success(message);
+  } catch { /* ignore */ }
+}
+
 /**
  * Save a generated Blob as a file.
  *  - Web: triggers a normal browser download.
- *  - Native: writes to the app cache and opens the Share sheet so the user can
- *    save it to Files / open it / send it.
+ *  - Native: writes the file DIRECTLY into the device's Documents folder (a
+ *    user-visible location, browsable via Files) and shows a confirmation toast.
+ *    No Share sheet — the file is saved straight to the device. If the direct
+ *    write fails, it falls back to the Share sheet so the action never dies.
  */
 export async function saveBlob(blob: Blob, filename: string): Promise<void> {
   if (!isAppMode()) {
     webSaveBlob(blob, filename);
     return;
   }
+  const base64 = await blobToBase64(blob);
   try {
-    const { Filesystem, Directory, Share, Capacitor } = await nativePlugins();
-    const base64 = await blobToBase64(blob);
-    const write = await Filesystem.writeFile({
+    const { Filesystem, Directory } = await nativePlugins();
+    // Documents maps to a user-visible folder on Android; the file lands there
+    // directly (no picker, no share sheet).
+    await Filesystem.writeFile({
       path: filename,
       data: base64,
-      directory: Directory.Cache,
+      directory: Directory.Documents,
       recursive: true,
     });
-    const fileUri = write.uri || Capacitor.convertFileSrc?.(write.uri);
-    await Share.share({
-      title: filename,
-      // A short prompt shown on the share sheet on some targets.
-      text: filename,
-      url: fileUri,
-      dialogTitle: 'Save or share file',
-    });
+    await toast(`Saved to Documents: ${filename}`);
   } catch (err) {
-    // If the native path fails for any reason, fall back to the web download so
-    // the user is never left with a dead button.
+    // Fallback 1: write to app storage + open the Share sheet so the user can
+    // still get the file (some devices restrict Documents writes).
     // eslint-disable-next-line no-console
-    console.warn('Native saveBlob failed, falling back to web download', err);
-    webSaveBlob(blob, filename);
+    console.warn('Direct save to Documents failed, falling back to Share', err);
+    try {
+      const { Filesystem, Directory, Share } = await nativePlugins();
+      const write = await Filesystem.writeFile({
+        path: filename,
+        data: base64,
+        directory: Directory.Cache,
+        recursive: true,
+      });
+      await Share.share({ title: filename, url: write.uri, dialogTitle: 'Save file' });
+    } catch (err2) {
+      // Fallback 2: web-style download.
+      // eslint-disable-next-line no-console
+      console.warn('Share fallback failed, using web download', err2);
+      webSaveBlob(blob, filename);
+    }
   }
 }
 
 /**
- * Open a URL that points to a file or page.
+ * Open a URL that points to a page/document you want to VIEW.
  *  - Web: opens a new tab.
- *  - Native: opens in the in-app system browser (@capacitor/browser), which can
- *    render PDFs/images and offers the OS "download/share" affordances. A
- *    server file URL (PDF/APK/xlsx) opened this way is handled by the OS.
+ *  - Native: opens in the in-app system browser (@capacitor/browser). Good for
+ *    viewing pages/PDFs, but NOT for file downloads like the APK — use
+ *    openExternal() for those.
  */
 export async function openUrl(url: string): Promise<void> {
   if (!isAppMode()) {
@@ -130,10 +149,41 @@ export async function openUrl(url: string): Promise<void> {
 }
 
 /**
- * Preview a generated Blob (e.g. a freshly built PDF).
+ * Open a URL in the EXTERNAL system browser (Chrome), not the in-app webview.
+ * This is what you want for a FILE download such as the APK: the system browser
+ * downloads the .apk and shows Android's install prompt. The in-app browser
+ * would instead offer a "Share" action for the file, which is not what users
+ * expect for an app update.
+ *
+ * Implementation: `window.open(url, '_system')` is intercepted by the Capacitor
+ * Android bridge and handed to the OS default browser. Falls back to a normal
+ * new-tab open on web or if the bridge isn't present.
+ */
+export async function openExternal(url: string): Promise<void> {
+  if (!isAppMode()) {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  try {
+    // Capacitor routes the special '_system' target to the external browser.
+    const opened = window.open(url, '_system');
+    if (!opened) {
+      // Some webviews return null even on success; also try a location assign
+      // as a fallback so the download definitely starts.
+      window.location.href = url;
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('openExternal failed, falling back', err);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
+
+/**
+ * Preview a generated Blob (e.g. a freshly built PDF for Print/Preview).
  *  - Web: opens the Blob in a new tab.
- *  - Native: Blob URLs are not viewable in the WebView, so we save + share
- *    instead (identical to saveBlob) — the OS viewer opens it.
+ *  - Native: saves it directly to Documents (no share sheet) and toasts where it
+ *    went — the user opens it from their Files app.
  */
 export async function previewBlob(blob: Blob, filename: string): Promise<void> {
   if (!isAppMode()) {
@@ -142,7 +192,9 @@ export async function previewBlob(blob: Blob, filename: string): Promise<void> {
     setTimeout(() => URL.revokeObjectURL(url), 120_000);
     return;
   }
-  // On native, sharing the saved file lets the user open it in a PDF viewer.
+  // Native "preview" == save the file directly to Documents (no share sheet).
+  // Opening it in a viewer reliably needs a FileProvider/file-opener plugin,
+  // which isn't installed; saving + toasting is the robust, predictable result.
   await saveBlob(blob, filename);
 }
 
