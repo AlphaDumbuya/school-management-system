@@ -1,13 +1,23 @@
 apply plugin: 'com.android.application'
 
-// Release signing — credentials are read from a gitignored keystore.properties
-// (see keystore.properties.example). If it's absent, release builds fall back to
-// unsigned so debug/dev builds still work without the keystore.
+// Release signing — credentials come from EITHER a gitignored keystore.properties
+// file (local dev, see keystore.properties.example) OR environment variables
+// (CI: exported from GitHub secrets). Env vars take precedence so cloud builds
+// sign with the stable release cert without needing a committed file.
+//   ANDROID_KEYSTORE_FILE, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
 def keystorePropsFile = rootProject.file("keystore.properties")
 def keystoreProps = new Properties()
 if (keystorePropsFile.exists()) {
     keystoreProps.load(new FileInputStream(keystorePropsFile))
 }
+
+// Resolve signing inputs from env first, then the properties file.
+def signingStoreFile = System.getenv("ANDROID_KEYSTORE_FILE") ?: keystoreProps['storeFile']
+def signingStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: keystoreProps['storePassword']
+def signingKeyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: keystoreProps['keyAlias']
+def signingKeyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: keystoreProps['keyPassword']
+// True only when we actually have a keystore to sign with.
+def hasReleaseSigning = signingStoreFile != null && file(signingStoreFile).exists()
 
 // Auto-incrementing version so every CI build is a strictly-newer upgrade.
 // In GitHub Actions we pass APP_VERSION_CODE (the run number) and
@@ -36,11 +46,11 @@ android {
     }
     signingConfigs {
         release {
-            if (keystorePropsFile.exists()) {
-                storeFile file(keystoreProps['storeFile'])
-                storePassword keystoreProps['storePassword']
-                keyAlias keystoreProps['keyAlias']
-                keyPassword keystoreProps['keyPassword']
+            if (hasReleaseSigning) {
+                storeFile file(signingStoreFile)
+                storePassword signingStorePassword
+                keyAlias signingKeyAlias
+                keyPassword signingKeyPassword
             }
         }
     }
@@ -48,8 +58,8 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            // Sign the release only when the keystore is configured.
-            if (keystorePropsFile.exists()) {
+            // Sign the release only when a keystore is configured (file or env).
+            if (hasReleaseSigning) {
                 signingConfig signingConfigs.release
             }
         }

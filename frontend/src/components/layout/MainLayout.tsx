@@ -13,6 +13,7 @@ import OnboardingGuide from '@components/onboarding/OnboardingGuide';
 import ImpersonationBanner from './ImpersonationBanner';
 import PromotionWelcomeBanner from './PromotionWelcomeBanner';
 import OfflineBanner from '@components/offline/OfflineBanner';
+import NativeUpdateBanner from '@components/app/NativeUpdateBanner';
 import { useSyncEngine } from '../../offline/useSyncEngine';
 import useInactivityLock from '@hooks/useInactivityLock';
 import VerifyIntroModal from '@components/verification/VerifyIntroModal';
@@ -132,8 +133,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       {/* Support-mode banner (only while impersonating) */}
       <ImpersonationBanner />
 
-      {/* Offline / update-available strip (only when relevant) */}
+      {/* Offline / web-update strip (only when relevant) */}
       <OfflineBanner />
+      {/* Native APK update prompt (installed app only, when a newer APK exists) */}
+      <NativeUpdateBanner />
 
       {/* Header */}
       <Header onMenuClick={handleMenuClick} sidebarOpen={sidebarOpen} />
