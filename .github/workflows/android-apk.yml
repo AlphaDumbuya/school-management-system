@@ -93,9 +93,16 @@ jobs:
         if: env.HAS_RELEASE_KEYSTORE == 'true'
         # Auto-incrementing version: run_number is strictly increasing, so each
         # APK is a newer in-place upgrade (install once → latest, not one-by-one).
+        # Signing is provided TWO ways for robustness: env vars consumed by
+        # app/build.gradle (ANDROID_KEYSTORE_FILE etc.) AND the AGP injected
+        # signing props. Either one produces a release-signed APK.
         env:
           APP_VERSION_CODE: ${{ github.run_number }}
           APP_VERSION_NAME: 1.0.${{ github.run_number }}
+          ANDROID_KEYSTORE_FILE: ${{ github.workspace }}/frontend/android/app/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           ./gradlew assembleRelease --no-daemon --stacktrace \
             -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/frontend/android/app/release.keystore" \
