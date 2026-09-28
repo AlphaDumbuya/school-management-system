@@ -4,6 +4,7 @@ import { UserRole } from '../types/auth';
 import { Phase15SchoolConfigService } from '../services/phase15SchoolConfigService';
 import { Phase15GradingConfigService } from '../services/phase15GradingConfigService';
 import academicYearService from '../services/academicYearService';
+import academicArchiveService from '../services/academicArchiveService';
 import { SubscriptionService } from '../services/subscriptionService';
 import { AppError } from '../middleware/errorHandler';
 import { db } from '../utils/database';
@@ -208,6 +209,32 @@ router.get('/academic-sessions', authenticate, attachUserContext, async (req: Re
     next(error);
   }
 });
+
+/**
+ * GET /api/v1/school-config/archive/:academicYear
+ * Full read-only snapshot of one academic year for the Academic Archive page:
+ * counts, finance summary, classes (with enrolled), publications, promotions,
+ * examinations. Principal/super-admin only.
+ */
+router.get(
+  '/archive/:academicYear',
+  authenticate,
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  attachUserContext,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = getTenantId(req);
+      const academicYear = String(req.params.academicYear || '').trim();
+      if (!/^\d{4}\/\d{4}$/.test(academicYear)) {
+        throw new AppError('academicYear must be in the format YYYY/YYYY', 400, 'VALIDATION_ERROR');
+      }
+      const data = await academicArchiveService.getYearSnapshot(tenantId, academicYear);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 /**
  * POST /api/v1/school-config/start-new-year

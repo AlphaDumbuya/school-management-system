@@ -34,6 +34,7 @@ import { PlatformAnalyticsPage } from '@pages/PlatformAnalyticsPage';
 import PlatformCommunicationPage from '@pages/PlatformCommunicationPage';
 import SyncIssuesPage from '@pages/offline/SyncIssuesPage';
 import { ComingSoonPage } from '@pages/ComingSoonPage';
+import { AcademicArchivePage } from '@pages/reports/AcademicArchivePage';
 import { SettingsPage } from '@pages/SettingsPage';
 
 // Built pages
@@ -419,7 +420,7 @@ const router = createBrowserRouter(
         // ── REPORTS & ANALYTICS ────────────────────────────────────
         {
           path: 'reports/academic',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><V2Route><CS /></V2Route></P>,
+          element: <P requiredRoles={['principal', 'super_admin']}><AcademicArchivePage /></P>,
         },
         {
           path: 'reports/financial',

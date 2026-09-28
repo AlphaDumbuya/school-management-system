@@ -57,6 +57,17 @@ page year dropdown (Class → Student → Year → view/print/download).
 
 ## ⏳ PENDING — pick up here when we resume
 
+### ✅ DONE — Academic Archive page (unified past-year view)
+New admin page at `/reports/academic` ("Academic Archive", principal/super_admin,
+now in the sidebar under Reports). Pick any year (from real academic_sessions)
+and see one snapshot: headline counts (classes, students enrolled, subjects,
+promotions), finance summary (billed/collected/outstanding), the year's classes
+with enrolment (+ deep-link to Report Cards for that class/year), result-release
+publications, promotion history, and examinations. Backed by
+`GET /api/v1/school-config/archive/:academicYear` (academicArchiveService
+aggregates finance/publications/promotions/exams read-only). Report Cards page
+now honors `?year=&class_id=` deep links from the archive.
+
 ### ✅ DONE — Historical (past-year) data access for admins
 - New endpoint `GET /api/v1/school-config/academic-sessions` lists the tenant's
   REAL academic years (with is_active) — the authoritative source for year

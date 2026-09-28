@@ -126,6 +126,21 @@ export const schoolConfigService = {
     );
   },
 
+  /** Full read-only snapshot of one academic year (Academic Archive page). */
+  async getYearArchive(academicYear: string) {
+    return apiClient.get<{
+      academic_year: string;
+      session_id: string | null;
+      is_active: boolean;
+      counts: { classes: number; students_enrolled: number; subjects: number };
+      finance: { billed: number; collected: number; outstanding: number } | null;
+      classes: Array<{ id: string; name: string; level: string | null; section: string | null; enrolled: number }>;
+      publications: any[];
+      promotions: any[];
+      examinations: any[];
+    }>(`/api/v1/school-config/archive/${encodeURIComponent(academicYear)}`);
+  },
+
   /**
    * Start a new academic year (non-destructive rollover): archives the current
    * session, activates/creates the new one, and optionally clones classes.

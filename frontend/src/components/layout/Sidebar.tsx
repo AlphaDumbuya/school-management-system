@@ -388,13 +388,13 @@ const navItems: NavItem[] = [
 
   // ── REPORTS & ANALYTICS ────────────────────────────────────────────
   {
-    label: 'Academic Reports',
+    label: 'Academic Archive',
     icon: <FaChartBar className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/reports/academic',
-    roles: ['super_admin', 'principal', 'teacher'],
+    roles: ['super_admin', 'principal'],
     module: 'Reports & Analytics',
     group: 'Reports',
-    version: 'v2',
+    version: 'v1',
   },
   {
     label: 'Financial Reports',
