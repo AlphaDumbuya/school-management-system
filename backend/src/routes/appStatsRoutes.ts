@@ -62,6 +62,8 @@ router.post('/app/blob-url', async (req: Request, res: Response) => {
   if (!/^https:\/\//i.test(url)) {
     return res.status(400).json({ error: 'Invalid url' });
   }
+  // Optional: the APK versionCode (CI run number) so the app can detect updates.
+  const version = Number.parseInt(String(req.body?.version ?? ''), 10);
   try {
     const has = await db.schema.hasTable('app_stats');
     if (has) {
@@ -70,11 +72,32 @@ router.post('/app/blob-url', async (req: Request, res: Response) => {
         const updated = await db('app_stats').where({ key: 'apk_blob_url' }).update({ text_value: url, updated_at: new Date() });
         if (!updated) await db('app_stats').insert({ key: 'apk_blob_url', value: 0, text_value: url }).onConflict('key').ignore();
       }
+      // Persist the latest APK versionCode (numeric `value` column).
+      if (Number.isFinite(version) && version > 0) {
+        const updatedV = await db('app_stats').where({ key: 'apk_latest_version' }).update({ value: version, updated_at: new Date() });
+        if (!updatedV) await db('app_stats').insert({ key: 'apk_latest_version', value: version }).onConflict('key').ignore();
+      }
     }
     res.json({ success: true });
   } catch (err) {
     logger.error(`Persist blob url failed: ${String((err as any)?.message || err)}`);
     res.status(500).json({ error: 'Failed to store url' });
+  }
+});
+
+/**
+ * GET /api/v1/app/version — PUBLIC. Returns the latest published APK versionCode
+ * so the installed app can compare against its own version and prompt to update.
+ * Returns { latestVersion: number | null }.
+ */
+router.get('/app/version', async (_req: Request, res: Response) => {
+  try {
+    const has = await db.schema.hasTable('app_stats');
+    const row = has ? await db('app_stats').where({ key: 'apk_latest_version' }).first() : null;
+    const latestVersion = row?.value != null ? Number(row.value) : null;
+    res.json({ latestVersion: Number.isFinite(latestVersion as number) ? latestVersion : null });
+  } catch {
+    res.json({ latestVersion: null });
   }
 });
 
