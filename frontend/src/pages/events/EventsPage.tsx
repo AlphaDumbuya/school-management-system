@@ -22,6 +22,7 @@ import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialo
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
+import { useAuth } from '@hooks/useAuth';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { eventsService } from '@services/eventsService';
@@ -65,6 +66,11 @@ function eventTypeColor(t: string): string {
 export const EventsPage: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // Only staff who own events may edit/publish/duplicate/cancel/delete. Parents,
+  // students, etc. get a read-only view (matching the backend's 403 guard), so
+  // we never show them action buttons that would just fail.
+  const canManageEvents = ['principal', 'super_admin', 'teacher'].includes(user?.role || '');
 
   // View & filter state
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
@@ -466,28 +472,32 @@ export const EventsPage: React.FC = () => {
                 label: 'View Details',
                 onClick: (row) => navigate(`/events/school/${row.event_id}`),
               },
-              {
-                label: 'Edit',
-                onClick: (row) => { setEditingEvent(row); setFormOpen(true); },
-              },
-              ...(evt.status === 'draft' ? [{
-                label: 'Publish',
-                onClick: (row: Event) => handlePublish(row),
-              }] : []),
-              {
-                label: 'Duplicate',
-                onClick: (row) => handleDuplicate(row),
-              },
-              ...(evt.status !== 'cancelled' && evt.status !== 'completed' ? [{
-                label: 'Cancel',
-                variant: 'destructive' as const,
-                onClick: (row: Event) => setCancelTarget(row),
-              }] : []),
-              {
-                label: 'Delete',
-                variant: 'destructive' as const,
-                onClick: (row: Event) => setDeleteTarget(row),
-              },
+              // Management actions only for staff who can manage events. Parents/
+              // students see just "View Details" (backend also enforces 403).
+              ...(canManageEvents ? [
+                {
+                  label: 'Edit',
+                  onClick: (row: Event) => { setEditingEvent(row); setFormOpen(true); },
+                },
+                ...(evt.status === 'draft' ? [{
+                  label: 'Publish',
+                  onClick: (row: Event) => handlePublish(row),
+                }] : []),
+                {
+                  label: 'Duplicate',
+                  onClick: (row: Event) => handleDuplicate(row),
+                },
+                ...(evt.status !== 'cancelled' && evt.status !== 'completed' ? [{
+                  label: 'Cancel',
+                  variant: 'destructive' as const,
+                  onClick: (row: Event) => setCancelTarget(row),
+                }] : []),
+                {
+                  label: 'Delete',
+                  variant: 'destructive' as const,
+                  onClick: (row: Event) => setDeleteTarget(row),
+                },
+              ] : []),
             ]}
           />
         )}
