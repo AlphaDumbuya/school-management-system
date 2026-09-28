@@ -57,6 +57,15 @@ page year dropdown (Class → Student → Year → view/print/download).
 
 ## ⏳ PENDING — pick up here when we resume
 
+### ✅ DONE — Guided "Start New Academic Year" workflow
+Implemented: backend `academicYearService.startNewAcademicYear` + route
+`POST /api/v1/school-config/start-new-year` (archives current session, activates/
+creates the new one in a transaction, clones active classes into the new session
+with next_class_id remapped, preserves all history). Frontend: "Start New
+Academic Year" panel + dialog in Settings → Academic Config (year input + "carry
+classes forward" toggle). Student promotion remains the separate reviewed
+Promotions flow. Original notes kept below for reference.
+
 ### 1. Guided "Start New Academic Year" workflow  (HIGH VALUE)
 **Why**: prevents the one real fragility — an admin reusing the SAME class row
 across years (which makes report-card year attribution fragile because SL

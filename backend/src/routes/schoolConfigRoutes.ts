@@ -3,6 +3,7 @@ import { authenticate, authorize, attachUserContext } from '../middleware/authMi
 import { UserRole } from '../types/auth';
 import { Phase15SchoolConfigService } from '../services/phase15SchoolConfigService';
 import { Phase15GradingConfigService } from '../services/phase15GradingConfigService';
+import academicYearService from '../services/academicYearService';
 import { SubscriptionService } from '../services/subscriptionService';
 import { AppError } from '../middleware/errorHandler';
 import { db } from '../utils/database';
@@ -186,6 +187,38 @@ router.post('/settings', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
     next(error);
   }
 });
+
+/**
+ * POST /api/v1/school-config/start-new-year
+ * Guided, non-destructive rollover to a new academic year: archives the current
+ * session, activates/creates the new one, and (by default) clones the current
+ * classes into the new session. Student promotion remains the separate,
+ * reviewed /api/v1/promotions/execute flow. Principal/super-admin only.
+ */
+router.post(
+  '/start-new-year',
+  authenticate,
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  attachUserContext,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = getTenantId(req);
+      const userId = req.auth!.userId;
+      const { new_year_name, start_date, end_date, clone_classes } = req.body || {};
+      const result = await academicYearService.startNewAcademicYear({
+        tenantId,
+        userId,
+        newYearName: String(new_year_name || '').trim(),
+        startDate: start_date || null,
+        endDate: end_date || null,
+        cloneClasses: clone_classes !== false,
+      });
+      res.json({ success: true, data: result, message: 'New academic year started' });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 // ============================================================================
 // GRADING CONFIGURATION ENDPOINTS
