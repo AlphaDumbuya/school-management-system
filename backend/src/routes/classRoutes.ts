@@ -244,9 +244,14 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     // Optional academic-year filter (e.g. "2024/2025"): scope classes to the
     // session whose name matches, so admins can view the classes that existed
     // in a PAST year. Matches against academic_sessions.name (== year string).
+    // Classes with NO session are always included (legacy/unassigned classes
+    // that are still in active use), so filtering never hides working classes.
     const academicYear = req.query.academic_year as string;
     if (academicYear) {
-      query = query.where('academic_sessions.name', academicYear);
+      query = query.where(function (this: any) {
+        this.where('academic_sessions.name', academicYear)
+          .orWhereNull('classes.academic_session_id');
+      });
     }
     // Optional direct session id filter.
     const sessionId = req.query.academic_session_id as string;
