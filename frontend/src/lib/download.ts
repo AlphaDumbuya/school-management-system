@@ -42,6 +42,22 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+/**
+ * Open a saved file in the OS default viewer (native only). Uses the
+ * file-opener plugin, which handles Android's FileProvider so a content URI is
+ * exposed safely. Silent on failure — the file is already saved regardless.
+ */
+async function openSavedFile(uri: string | undefined, filename: string): Promise<void> {
+  if (!uri) return;
+  try {
+    const { FileOpener } = await import('@capacitor-community/file-opener');
+    await FileOpener.open({ filePath: uri, contentType: guessMime(filename) });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('openSavedFile failed (file still saved)', err);
+  }
+}
+
 /** Best-effort MIME → file behaviour. */
 function guessMime(filename: string, fallback = 'application/octet-stream'): string {
   const ext = filename.split('.').pop()?.toLowerCase();
@@ -96,13 +112,17 @@ export async function saveBlob(blob: Blob, filename: string): Promise<void> {
     const { Filesystem, Directory } = await nativePlugins();
     // Documents maps to a user-visible folder on Android; the file lands there
     // directly (no picker, no share sheet).
-    await Filesystem.writeFile({
+    const write = await Filesystem.writeFile({
       path: filename,
       data: base64,
       directory: Directory.Documents,
       recursive: true,
     });
     await toast(`Saved to Documents: ${filename}`);
+    // Then try to OPEN it in the device's default viewer (PDF/Excel/etc.) so the
+    // user sees their download immediately. Best-effort — saving already
+    // succeeded, so a failed open is non-fatal.
+    await openSavedFile(write.uri, filename);
   } catch (err) {
     // Fallback 1: write to app storage + open the Share sheet so the user can
     // still get the file (some devices restrict Documents writes).
@@ -201,5 +221,3 @@ export async function previewBlob(blob: Blob, filename: string): Promise<void> {
 /** True when running in the native app (re-exported for convenience). */
 export { isAppMode };
 
-/** Suppress unused warning for guessMime if a caller doesn't need it. */
-void guessMime;

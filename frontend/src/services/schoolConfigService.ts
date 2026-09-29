@@ -134,11 +134,21 @@ export const schoolConfigService = {
       is_active: boolean;
       counts: { classes: number; students_enrolled: number; subjects: number };
       finance: { billed: number; collected: number; outstanding: number } | null;
+      attendance: { present: number; late: number; absent: number; excused: number; rate: number } | null;
       classes: Array<{ id: string; name: string; level: string | null; section: string | null; enrolled: number }>;
       publications: any[];
       promotions: any[];
       examinations: any[];
     }>(`/api/v1/school-config/archive/${encodeURIComponent(academicYear)}`);
+  },
+
+  /** Per-student history across all years (Academic Archive drill-down). */
+  async getStudentHistory(studentId: string) {
+    return apiClient.get<{
+      student: { id: string; name: string; admission_no: string | null } | null;
+      enrollments: Array<{ class_name: string | null; level: string | null; academic_year: string | null; status: string | null; enrollment_date: string | null }>;
+      results: Array<{ academic_year: string; term: string; subject_name: string | null; mean: number | null }>;
+    }>(`/api/v1/school-config/archive/student/${encodeURIComponent(studentId)}`);
   },
 
   /**

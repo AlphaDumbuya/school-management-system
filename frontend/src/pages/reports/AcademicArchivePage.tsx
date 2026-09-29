@@ -20,6 +20,7 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import schoolConfigService from '@services/schoolConfigService';
 import {
   Archive, GraduationCap, Users, BookOpen, Wallet, Megaphone, TrendingUp, FileText, ArrowRight,
+  CalendarCheck, Search, X, Loader2,
 } from 'lucide-react';
 
 const fmtLe = (n: number) => `Le ${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -31,6 +32,9 @@ const TERM_LABEL: Record<string, string> = {
 export const AcademicArchivePage: React.FC = () => {
   const navigate = useNavigate();
   const [year, setYear] = useState('');
+  // Per-student history drill-down.
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyId, setHistoryId] = useState('');
 
   // Real years from the school's academic sessions.
   const { data: sessionsResp } = useQuery({
@@ -65,6 +69,14 @@ export const AcademicArchivePage: React.FC = () => {
   });
   const snap = (snapResp as any)?.data ?? null;
 
+  const { data: historyResp, isLoading: historyLoading } = useQuery({
+    queryKey: ['academic-archive-student', historyId],
+    queryFn: () => schoolConfigService.getStudentHistory(historyId),
+    enabled: !!historyId,
+    staleTime: 30_000,
+  });
+  const history = (historyResp as any)?.data ?? null;
+
   return (
     <MainLayout>
       <PageShell
@@ -80,6 +92,24 @@ export const AcademicArchivePage: React.FC = () => {
           {snap?.is_active && (
             <p className="text-xs text-emerald-600 font-semibold mt-2">This is the current active year.</p>
           )}
+
+          {/* Per-student full history lookup (across ALL years) */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <label className="text-xs font-semibold text-gray-500 block mb-1">Student full history (any year)</label>
+            <div className="flex gap-2 sm:max-w-md">
+              <input
+                type="text"
+                value={historyQuery}
+                onChange={(e) => setHistoryQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && historyQuery.trim()) setHistoryId(historyQuery.trim()); }}
+                placeholder="Enter admission number…"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500"
+              />
+              <Button onClick={() => historyQuery.trim() && setHistoryId(historyQuery.trim())} className="gap-1.5">
+                <Search size={15} /> Look up
+              </Button>
+            </div>
+          </div>
         </div>
 
         {!year ? (
@@ -108,6 +138,21 @@ export const AcademicArchivePage: React.FC = () => {
                 </div>
               ) : (
                 <p className="text-sm text-gray-500">No finance data recorded for this year.</p>
+              )}
+            </Section>
+
+            {/* Attendance */}
+            <Section title="Attendance" icon={<CalendarCheck size={16} />}>
+              {snap.attendance ? (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <MiniStat label="Attendance rate" value={`${snap.attendance.rate}%`} valueClass="text-emerald-600" />
+                  <MiniStat label="Present" value={String(snap.attendance.present)} />
+                  <MiniStat label="Late" value={String(snap.attendance.late)} />
+                  <MiniStat label="Excused" value={String(snap.attendance.excused)} />
+                  <MiniStat label="Absent" value={String(snap.attendance.absent)} valueClass="text-amber-600" />
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No attendance recorded for this year.</p>
               )}
             </Section>
 
@@ -213,6 +258,71 @@ export const AcademicArchivePage: React.FC = () => {
               <Button variant="outline" onClick={() => navigate(`/academic/report-cards?year=${encodeURIComponent(year)}`)}>
                 Open Report Cards for {year}
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Per-student history modal */}
+        {historyId && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={() => { setHistoryId(''); }}>
+            <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 bg-white dark:bg-gray-900">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  {history?.student?.name || 'Student History'}
+                  {history?.student?.admission_no && <span className="text-sm font-normal text-gray-500"> · {history.student.admission_no}</span>}
+                </h3>
+                <button onClick={() => setHistoryId('')} aria-label="Close" className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+              </div>
+              <div className="p-5 space-y-5">
+                {historyLoading ? (
+                  <div className="py-10 flex justify-center text-gray-400"><Loader2 className="animate-spin" size={22} /></div>
+                ) : !history?.student ? (
+                  <p className="text-sm text-gray-500">No student found for “{historyId}”.</p>
+                ) : (
+                  <>
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-700 mb-2">Class placements by year</h4>
+                      {history.enrollments.length ? (
+                        <ul className="divide-y divide-gray-50">
+                          {history.enrollments.map((e: any, i: number) => (
+                            <li key={i} className="py-2 flex items-center justify-between text-sm">
+                              <span className="text-gray-800">{e.class_name || '—'}{e.level ? ` · ${e.level}` : ''}</span>
+                              <span className="text-gray-500">{e.academic_year || '—'} · <span className="capitalize">{e.status || ''}</span></span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="text-sm text-gray-500">No enrolment history.</p>}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-700 mb-2">Results by year</h4>
+                      {history.results.length ? (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="text-left text-gray-500 border-b border-gray-100">
+                                <th className="py-2 pr-3 font-semibold">Year</th>
+                                <th className="py-2 pr-3 font-semibold">Term</th>
+                                <th className="py-2 pr-3 font-semibold">Subject</th>
+                                <th className="py-2 font-semibold text-right">Mean</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {history.results.slice(0, 200).map((r: any, i: number) => (
+                                <tr key={i} className="border-b border-gray-50">
+                                  <td className="py-1.5 pr-3 text-gray-600">{r.academic_year}</td>
+                                  <td className="py-1.5 pr-3 text-gray-600">{TERM_LABEL[r.term] || r.term}</td>
+                                  <td className="py-1.5 pr-3 text-gray-800">{r.subject_name || '—'}</td>
+                                  <td className="py-1.5 text-right font-semibold text-gray-900">{r.mean ?? '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : <p className="text-sm text-gray-500">No results recorded.</p>}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}

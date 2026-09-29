@@ -24,10 +24,17 @@ export interface YearSnapshot {
     subjects: number;
   };
   finance: { billed: number; collected: number; outstanding: number } | null;
+  attendance: { present: number; late: number; absent: number; excused: number; rate: number } | null;
   classes: Array<{ id: string; name: string; level: string | null; section: string | null; enrolled: number }>;
   publications: any[];
   promotions: any[];
   examinations: any[];
+}
+
+export interface StudentYearHistory {
+  student: { id: string; name: string; admission_no: string | null } | null;
+  enrollments: Array<{ class_name: string | null; level: string | null; academic_year: string | null; status: string | null; enrollment_date: string | null }>;
+  results: Array<{ academic_year: string; term: string; subject_name: string | null; mean: number | null }>;
 }
 
 class AcademicArchiveService {
@@ -102,6 +109,33 @@ class AcademicArchiveService {
       logger.warn(`Archive finance summary failed for ${academicYear}: ${(e as any)?.message || e}`);
     }
 
+    // Attendance summary for the year — aggregate attendance rows for the
+    // year's classes within the session's date window (attendance is date-keyed).
+    let attendance: YearSnapshot['attendance'] = null;
+    if (classes.length && session?.start_date && session?.end_date) {
+      try {
+        const rows = await db('attendance')
+          .whereIn('class_id', classes.map((c) => c.id))
+          .whereBetween('attendance_date', [session.start_date, session.end_date])
+          .select('status')
+          .catch(() => []);
+        let present = 0, late = 0, absent = 0, excused = 0;
+        for (const r of rows as any[]) {
+          const s = String(r.status || '').toLowerCase();
+          if (s === 'present') present++;
+          else if (s === 'late') late++;
+          else if (s === 'excused') excused++;
+          else if (s === 'absent') absent++;
+        }
+        const total = present + late + absent + excused;
+        // Rate = present-or-excused-or-late over total marked.
+        const rate = total > 0 ? Math.round(((present + excused + late) / total) * 100) : 0;
+        attendance = { present, late, absent, excused, rate };
+      } catch (e) {
+        logger.warn(`Archive attendance failed for ${academicYear}: ${(e as any)?.message || e}`);
+      }
+    }
+
     // Report-card publications for the year.
     let publications: any[] = [];
     try {
@@ -137,10 +171,72 @@ class AcademicArchiveService {
       is_active: !!session?.is_active,
       counts: { classes: classes.length, students_enrolled: studentsEnrolled, subjects: subjectsCount },
       finance,
+      attendance,
       classes,
       publications,
       promotions,
       examinations,
+    };
+  }
+
+  /**
+   * Per-student history across ALL years: their enrollments (class placements
+   * per year) and their subject results (mean per subject/term/year). Lets an
+   * admin trace one student's whole journey from the archive.
+   */
+  async getStudentHistory(tenantId: string, studentId: string): Promise<StudentYearHistory> {
+    const student = await db('students')
+      .where({ tenant_id: tenantId })
+      .andWhere(function (this: any) {
+        this.where('id', studentId).orWhere('student_id', studentId);
+      })
+      .first()
+      .catch(() => null);
+    if (!student) return { student: null, enrollments: [], results: [] };
+
+    // Enrollment history (all years), newest first, with class + session name.
+    const enrollments = await db('enrollments as e')
+      .where('e.student_id', student.id)
+      .leftJoin('classes as c', 'e.class_id', 'c.id')
+      .leftJoin('academic_sessions as s', 'e.academic_session_id', 's.id')
+      .orderBy('e.enrollment_date', 'desc')
+      .select(
+        'c.name as class_name',
+        'c.level as level',
+        's.name as academic_year',
+        'e.status as status',
+        'e.enrollment_date as enrollment_date',
+      )
+      .catch(() => []);
+
+    // Subject results across years (mean per subject/term/year).
+    const results = await db('sl_subject_results as r')
+      .where({ 'r.tenant_id': tenantId, 'r.student_id': student.id })
+      .leftJoin('subjects as sub', 'r.subject_id', 'sub.id')
+      .orderBy('r.academic_year', 'desc')
+      .orderBy('r.term', 'asc')
+      .select('r.academic_year', 'r.term', 'sub.name as subject_name', 'r.mean')
+      .catch(() => []);
+
+    return {
+      student: {
+        id: student.id,
+        name: [student.first_name, student.last_name].filter(Boolean).join(' ') || student.student_id,
+        admission_no: student.student_id ?? null,
+      },
+      enrollments: enrollments.map((e: any) => ({
+        class_name: e.class_name ?? null,
+        level: e.level ?? null,
+        academic_year: e.academic_year ?? null,
+        status: e.status ?? null,
+        enrollment_date: e.enrollment_date ? new Date(e.enrollment_date).toISOString().slice(0, 10) : null,
+      })),
+      results: results.map((r: any) => ({
+        academic_year: r.academic_year,
+        term: r.term,
+        subject_name: r.subject_name ?? null,
+        mean: r.mean != null ? Number(r.mean) : null,
+      })),
     };
   }
 }

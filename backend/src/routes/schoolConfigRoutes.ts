@@ -237,6 +237,27 @@ router.get(
 );
 
 /**
+ * GET /api/v1/school-config/archive/student/:studentId
+ * Per-student history across all years (enrollments + subject results) for the
+ * Academic Archive drill-down. Principal/super-admin only.
+ */
+router.get(
+  '/archive/student/:studentId',
+  authenticate,
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  attachUserContext,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = getTenantId(req);
+      const data = await academicArchiveService.getStudentHistory(tenantId, req.params.studentId);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
  * POST /api/v1/school-config/start-new-year
  * Guided, non-destructive rollover to a new academic year: archives the current
  * session, activates/creates the new one, and (by default) clones the current

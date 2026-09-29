@@ -125,7 +125,19 @@ by a new endpoint/service action.
 - `backend/src/routes/classRoutes.ts` (class create auto-binds to active session)
 - `frontend/src/pages/SettingsPage.tsx` (Academic Config tab)
 
-### 2. Private-repo APK delivery envs  (needed for reliable in-app download)
+### 2. Private-repo APK delivery envs  — NOT NEEDED IF SHIPPING VIA PLAY STORE
+DECISION: The app will be distributed through the Google Play Store. In that
+case Google handles delivery + auto-updates, so the sideload APK plumbing is
+NOT required:
+  - BLOB_READ_WRITE_TOKEN / APK_URL_WEBHOOK_SECRET / GITHUB_RELEASE_TOKEN → not
+    needed (no one sideloads the APK).
+  - The in-app native-update banner is now SUPPRESSED on Play builds via
+    `VITE_DISTRIBUTION=play` (set that env for the Play build). Play auto-updates.
+  - Play App Signing manages the signing key; keep the upload key consistent.
+  - Content still updates instantly via Vercel (server.url) regardless of Play.
+Only revisit the envs below if you ALSO offer a direct-APK download outside Play.
+
+(Original notes retained for the direct-APK path:)
 Repo is PRIVATE, so confirm/set these so the "Download App" button + update
 banner always serve the newest APK:
 - **GitHub secret** `BLOB_READ_WRITE_TOKEN` (Vercel → Storage → Blob token).
@@ -142,10 +154,17 @@ Current installs are debug-signed. First release-signed APK requires a ONE-TIME
 uninstall + reinstall (signature change). After that, all updates are seamless.
 Consider a temporary banner message explaining the one-time reinstall.
 
-### 4. Optional: tap-to-open a saved export
-`saveBlob` currently saves to Documents + toasts (no auto-open) because opening
-a `file://` reliably needs a FileProvider/`@capacitor-community/file-opener`
-plugin. Add that plugin if we want downloads to open in a viewer automatically.
+### ✅ 4. DONE — tap-to-open saved exports
+Installed `@capacitor-community/file-opener@8` and wired `saveBlob` to open the
+saved file in the device's default viewer after writing to Documents (best-
+effort; save still succeeds if open fails). cap sync registered the plugin.
+
+### ✅ 5. DONE — Academic Archive deepened
+Added an attendance summary (present/late/excused/absent + rate, scoped to the
+session's date window) to the year snapshot, and a per-student full-history
+drill-down (enrolments by year + results by year) via
+`GET /api/v1/school-config/archive/student/:studentId`, surfaced in the archive
+page (student lookup by admission number → modal).
 
 ---
 
