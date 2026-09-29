@@ -57,6 +57,20 @@ page year dropdown (Class → Student → Year → view/print/download).
 
 ## ⏳ PENDING — pick up here when we resume
 
+### ✅ DONE — Portals auto-update on promotion / role change
+- Student & parent dashboards already resolve the "current class" from the
+  LATEST ACTIVE enrollment, so a promotion shows the new class automatically on
+  next dashboard load (server-computed; verified in studentDashboardService and
+  parentDashboardService.childSummary). New year's grades start empty until
+  published; prior years stay in the Archive/Report-Cards year picker.
+- Teacher role/assignment changes: backend was already live every request
+  (attachUserContext re-reads DB role, overrides JWT; /me returns live role).
+  Fixed the FRONTEND gap where the cached user only refreshed at app load:
+  added authStore.refreshUser() (re-fetches /me; if role changed, clears the
+  query cache) and wired App.tsx to refresh on window focus + every 2 min while
+  authenticated. So a re-roled/promoted user's sidebar/routes/portal update
+  without a manual reload or re-login.
+
 ### ✅ DONE — Academic Archive page (unified past-year view)
 New admin page at `/reports/academic` ("Academic Archive", principal/super_admin,
 now in the sidebar under Reports). Pick any year (from real academic_sessions)
