@@ -77,6 +77,8 @@ export const EventsPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  // Default to upcoming events only (hide long-past ones); toggle to include past.
+  const [includePast, setIncludePast] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -88,15 +90,23 @@ export const EventsPage: React.FC = () => {
 
   // ── Fetch Events ────────────────────────────────────────────────────────────
 
+  // Today's start (midnight) as the cutoff when hiding past events. Compares
+  // against event end_date so an in-progress multi-day event still shows.
+  const todayStart = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString(); }, []);
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['events', { search, typeFilter, statusFilter, page, pageSize }],
+    queryKey: ['events', { search, typeFilter, statusFilter, includePast, page, pageSize }],
     queryFn: () => eventsService.listEvents({
       page,
       limit: pageSize,
       search: search || undefined,
       event_type: (typeFilter as EventType) || undefined,
       status: (statusFilter as EventStatus) || undefined,
-    }),
+      // Hide past events unless "Include past" is on (or a specific status is
+      // being filtered, where the user clearly wants that full set). Backend
+      // treats start_date as "events starting on/after this date".
+      ...(!includePast && !statusFilter ? { start_date: todayStart } : {}),
+    } as any),
     staleTime: 30_000,
   });
 
@@ -326,6 +336,16 @@ export const EventsPage: React.FC = () => {
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
               </div>
+              {/* Include past toggle — default hides events that already started. */}
+              <label className="flex items-center gap-2 mt-2 text-xs font-semibold text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={includePast}
+                  onChange={(e) => { setIncludePast(e.target.checked); setPage(1); }}
+                  className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                />
+                Include past events
+              </label>
             </div>
           </div>
 
