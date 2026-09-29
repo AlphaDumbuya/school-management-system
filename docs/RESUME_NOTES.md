@@ -57,6 +57,18 @@ page year dropdown (Class → Student → Year → view/print/download).
 
 ## ⏳ PENDING — pick up here when we resume
 
+### ✅ DONE — Current vs previous year clarity on portals
+Student & parent dashboards now label the CURRENT academic year on the Results
+card ("Current year: 2027/2028") and add a "View previous years" link to
+/academic/report-cards (year picker → past report cards). Empty-state text also
+names the year ("No results published for 2027/2028 yet"). This makes it obvious
+which year's data is shown vs. history.
+NOTE (process): promotion alone is NOT a year change — the current/previous
+distinction is by academic_year. For a clean boundary, run Settings → Start New
+Academic Year (creates the new session + carries classes forward) THEN promote
+into the new-session classes. Classes with academic_session_id = null have no
+year boundary (see pending item to tie classes to sessions).
+
 ### ✅ DONE — Portals auto-update on promotion / role change
 - Student & parent dashboards already resolve the "current class" from the
   LATEST ACTIVE enrollment, so a promotion shows the new class automatically on
