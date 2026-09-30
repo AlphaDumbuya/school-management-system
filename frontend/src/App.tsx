@@ -6,6 +6,7 @@ import useAuthStore from '@store/authStore';
 import AppRouter from '@router/routes';
 import '@styles/index.css';
 import { OfflineIndicator } from '@components/pwa/OfflineIndicator';
+import { useLiveSync } from '@hooks/useLiveSync';
 
 // Singleton queryClient — but we call .clear() on logout to purge cross-tenant cache
 const queryClient = new QueryClient({
@@ -32,6 +33,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Near-real-time refresh: poll the school's change counter while visible and
+  // refetch + re-check the user when it moves (promotions, new year, roles…).
+  useLiveSync(queryClient, isAuthenticated);
 
   // Keep the current user's role/identity fresh WITHOUT a re-login, so changes
   // an admin makes (e.g. promoting a teacher to principal, or a student being
