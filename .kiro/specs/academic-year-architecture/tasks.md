@@ -108,9 +108,18 @@ Portals: admin, super_admin, teacher, student, parent, admissions_officer
 
 ## Module 8 — Promotions  (/academic/promotions)
 Portals: admin, super_admin
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] From/To clear; real year; non-destructive; idempotent; reversible path
-- [ ] Fresh candidates (no stale "Recorded")
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] From/To clear; real year; non-destructive; idempotent; reversible path
+- [x] Fresh candidates (no stale "Recorded")
+  VERIFY-PASS (no code change): `PromotionsPage.tsx` sources years from real
+  sessions (`listAcademicSessions`), defaults to the active session, scopes the
+  class picker by the selected year (`listClasses({academic_year})`), and its
+  candidate/history/execute calls all key off that year. From/To dropdowns are
+  distinct (fixed earlier) and candidates use `staleTime:0` + refetch so no
+  stale "Recorded" shows. Promotion is non-destructive (adds a
+  `student_promotions` row + moves enrollment) and reversible by deleting that
+  row. Admin/super_admin only — no student/parent portal. DB session names were
+  normalized to slash by migration 159. Meets requirements as-is.
 
 ---
 
