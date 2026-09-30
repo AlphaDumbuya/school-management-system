@@ -241,8 +241,18 @@ Portals: admin, super_admin, accountant
 
 ## Module 17 — Payments & Receipts  (/finance/payments)
 Portals: admin, super_admin, accountant
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Payments/ledger year-scoped; balances reflect selected year
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Payments/ledger year-scoped; balances reflect selected year
+  `PaymentsPage.tsx` gained a header `<YearFilter includeAllOption>` wired into
+  the analytics query. Backend `/finance/analytics` now accepts `academic_year`
+  and scopes ALL fees-derived figures (totals billed/paid/outstanding + by-term/
+  by-level/by-class + top defaulters) via a `feeYear()` helper on
+  `fees.academic_year`, so the KPIs/balances reflect the selected year (empty =
+  all years). Payment-method mix / 6-month trend / this-month remain
+  transaction-time cashflow views (not year-partitioned; `payments` has no
+  academic_year column). The raw transaction log stays a dated ledger. The
+  year-scoped tenant roll-up already existed via `financeLedgerService.
+  getTenantSummary`/`getBreakdown(academic_year)`.
 
 ## Module 18 — Fees & Payments (student/parent)  (/finance/my-fees)
 Portals: student, parent, guardian

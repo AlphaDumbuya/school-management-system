@@ -1818,12 +1818,18 @@ router.get('/finance/export', authenticate, requireStaff, async (req: Request, r
 router.get('/finance/analytics', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
+    // Optional academic-year scope for all FEES-derived figures (billed/paid/
+    // outstanding + by-term/level/class + defaulters). Omitted = all years.
+    // Payment method mix / 6-month trend / this-month stay transaction-time
+    // based (cashflow views), not partitioned by school year.
+    const analyticsYear = req.query.academic_year ? String(req.query.academic_year) : '';
+    const feeYear = (qb: any) => (analyticsYear ? qb.where('fees.academic_year', analyticsYear) : qb);
 
     // ── Totals from the FEES ledger (authoritative billed/owed, invoice-free) ──
     // collected = billed − outstanding = SUM(amount) − SUM(balance).
-    const totals = await db('fees')
+    const totals = await feeYear(db('fees')
       .where('fees.tenant_id', tenantId)
-      .whereNot('fees.status', 'deleted')
+      .whereNot('fees.status', 'deleted'))
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
         db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
@@ -1878,14 +1884,14 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
 
     // ── Collection + outstanding by class LEVEL (from fees) ──
     // collected = SUM(amount) − SUM(balance).
-    const byLevel = await db('fees')
+    const byLevel = await feeYear(db('fees')
       .join('students', 'fees.student_id', 'students.id')
       .leftJoin('enrollments', function () {
         this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
       })
       .leftJoin('classes', 'classes.id', 'enrollments.class_id')
       .where('fees.tenant_id', tenantId)
-      .whereNot('fees.status', 'deleted')
+      .whereNot('fees.status', 'deleted'))
       .select(db.raw("COALESCE(classes.level, 'Unassigned') as level"))
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
@@ -1896,7 +1902,7 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .orderByRaw("COALESCE(classes.level, 'Unassigned')");
 
     // ── Collection by CLASS (name) from fees ──
-    const byClass = await db('fees')
+    const byClass = await feeYear(db('fees')
       .join('students', 'fees.student_id', 'students.id')
       .leftJoin('enrollments', function () {
         this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
@@ -1904,7 +1910,7 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .leftJoin('classes', 'classes.id', 'enrollments.class_id')
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted')
-      .whereNotNull('classes.name')
+      .whereNotNull('classes.name'))
       .select('classes.name as class_name')
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
@@ -1916,9 +1922,9 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .limit(20);
 
     // ── Collection by TERM (from fees) ──
-    const byTerm = await db('fees')
+    const byTerm = await feeYear(db('fees')
       .where('fees.tenant_id', tenantId)
-      .whereNot('fees.status', 'deleted')
+      .whereNot('fees.status', 'deleted'))
       .select(db.raw("COALESCE(fees.term, 'Unspecified') as term"))
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
@@ -1929,7 +1935,7 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .orderByRaw("COALESCE(fees.term, 'Unspecified')");
 
     // ── Top defaulters (highest outstanding, from fees) ──
-    const topDefaulters = await db('fees')
+    const topDefaulters = await feeYear(db('fees')
       .join('students', 'fees.student_id', 'students.id')
       .leftJoin('users', 'students.user_id', 'users.id')
       .leftJoin('enrollments', function () {
@@ -1938,7 +1944,7 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .leftJoin('classes', 'classes.id', 'enrollments.class_id')
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted')
-      .where('fees.balance', '>', 0)
+      .where('fees.balance', '>', 0))
       .groupBy('students.id', 'users.first_name', 'users.last_name', 'students.first_name', 'students.last_name', 'students.student_id', 'classes.name')
       .select(
         'students.id as student_id',

@@ -24,6 +24,7 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { ChartCard } from '@components/admin/charts/ChartCard';
 import { showToast } from '@utils/toast';
 import { ExportButton } from '@components/admin/common/ExportButton';
+import { YearFilter } from '@components/common/YearFilter';
 import { financeService } from '@services/financeService';
 import { studentsService } from '@services/studentsService';
 import { classesService } from '@services/classesService';
@@ -71,9 +72,12 @@ export const PaymentsPage: React.FC = () => {
   const [remindOpen, setRemindOpen] = useState(false);
   const [receipt, setReceipt] = useState<any | null>(null);
   const [breakdownTab, setBreakdownTab] = useState<BreakdownTab>('term');
+  // Academic-year scope for the fees-derived analytics/KPIs (billed/paid/
+  // outstanding + by-term/level/class + defaulters). Empty = all years.
+  const [year, setYear] = useState('');
 
   const { data: analyticsResp, isLoading: anLoading, refetch: refetchAn } = useQuery({
-    queryKey: ['finance-analytics'], queryFn: () => financeService.getAnalytics(), staleTime: 30_000,
+    queryKey: ['finance-analytics', year], queryFn: () => financeService.getAnalytics(year || undefined), staleTime: 30_000,
   });
   const { data: payResp, isLoading, refetch } = useQuery({
     queryKey: ['finance-payments'], queryFn: () => financeService.listPayments(), staleTime: 15_000,
@@ -213,6 +217,7 @@ export const PaymentsPage: React.FC = () => {
         isRefreshing={isLoading || anLoading}
         actions={
           <div className="flex items-center gap-2">
+            <YearFilter value={year} onChange={setYear} includeAllOption />
             <div className="relative hidden sm:block">
               <select
                 value={exportStatus}
