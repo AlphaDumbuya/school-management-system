@@ -80,9 +80,17 @@ Portals: admin, super_admin, teacher, student, parent, admissions_officer
 
 ## Module 6 — Results & Grades  (/academic/results)
 Portals: admin, super_admin, teacher, student, parent, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Real year picker; results keyed by year+class; publish-gate for non-staff
-- [ ] Teacher scope to assigned subjects/classes
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Real year picker; results keyed by year+class; publish-gate for non-staff
+- [x] Teacher scope to assigned subjects/classes
+  Staff `ResultsPage.tsx` dropped the `new Date()`-fabricated `yearOptions` +
+  default; now uses `<YearFilter>` (real sessions, auto-selects active year).
+  `ScoreEntryGrid` / `ClassRankingView` / `DomainRatingsModal` receive that year
+  and query `sl_subject_results.academic_year` (normalized to slash by migration
+  159). Students/parents keep read-only, publish-gated current-year views
+  (`StudentResultsView`/`ParentResultsView` via dashboard endpoint); past-year
+  results are reached through the Academic Archive (Module 27), which the
+  dashboards link to — a deliberate boundary, no historical picker on this page.
 
 ## Module 7 — Report Cards  (/academic/report-cards)
 Portals: admin, super_admin, teacher, student, parent, admissions_officer

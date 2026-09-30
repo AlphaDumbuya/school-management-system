@@ -14,6 +14,7 @@ import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
+import { YearFilter } from '@components/common/YearFilter';
 import { Button } from '@components/ui/button';
 import { useAuth } from '@hooks/useAuth';
 import { classesService } from '@services/classesService';
@@ -26,7 +27,6 @@ import { ParentResultsView } from './components/ParentResultsView';
 import { ClassRankingView } from './components/ClassRankingView';
 
 export const ResultsPage: React.FC = () => {
-  const currentYear = new Date().getFullYear();
   const navigate = useNavigate();
   const { user } = useAuth();
   const isPrincipal = user?.role === 'principal' || user?.role === 'super_admin';
@@ -39,7 +39,9 @@ export const ResultsPage: React.FC = () => {
   useEffect(() => {
     getGradingMethod();
   }, []);
-  const [academicYear, setAcademicYear] = useState(`${currentYear}/${currentYear + 1}`);
+  // Year is chosen from the tenant's REAL sessions via <YearFilter> (auto-
+  // selects the active year on first load). No new Date() fabrication.
+  const [academicYear, setAcademicYear] = useState('');
   const [tab, setTab] = useState<'cognitive' | 'ratings' | 'ranking'>('cognitive');
 
   // Ranking tab state
@@ -73,14 +75,6 @@ export const ResultsPage: React.FC = () => {
   );
   const selectedStudent = students.find((s: any) => String(s.id) === String(ratingsStudentId));
 
-  const yearOptions = useMemo(() => {
-    const arr = [];
-    for (let y = currentYear + 1; y >= currentYear - 3; y--) {
-      arr.push({ value: `${y}/${y + 1}`, label: `${y}/${y + 1}` });
-    }
-    return arr;
-  }, [currentYear]);
-
   // Students get a read-only view of ONLY their own published results.
   if (isStudent) {
     return <StudentResultsView />;
@@ -98,7 +92,7 @@ export const ResultsPage: React.FC = () => {
         breadcrumbs={[{ label: 'Results & Grades' }]}
         actions={
           <div className="w-full sm:w-44">
-            <SearchableSelect options={yearOptions} value={academicYear} onChange={setAcademicYear} placeholder="Academic year" />
+            <YearFilter value={academicYear} onChange={setAcademicYear} className="w-full [&_select]:w-full" />
           </div>
         }
       >
