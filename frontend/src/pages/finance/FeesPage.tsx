@@ -34,7 +34,6 @@ import schoolConfigService from '@services/schoolConfigService';
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 const fmtLe = (v: number | string | null | undefined) => `Le ${(Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
-const CURRENT_YEAR = `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`;
 const LEVEL_COLORS: Record<string, string> = {
   'Nursery School': 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
   'Primary School': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',

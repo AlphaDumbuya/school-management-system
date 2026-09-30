@@ -230,8 +230,14 @@ Portals: principal, teacher
 
 ## Module 16 — Fee Structures  (/finance/fees)
 Portals: admin, super_admin, accountant
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Real year picker (done-partial); structures keyed by year; KPIs year-scoped
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Real year picker (done-partial); structures keyed by year; KPIs year-scoped
+  VERIFY-PASS (+1 cleanup): `FeesPage.tsx` already sources the year picker from
+  the tenant's REAL sessions (`listAcademicSessions`) with a small current-span
+  fallback, `year` starts empty then auto-selects the active session, and fee
+  structures are saved/read keyed by that `academic_year` string (slash-
+  normalized by migration 159). Removed a now-dead `CURRENT_YEAR` `new Date()`
+  const. Accountant/admin/super_admin see the same year-scoped structures + KPIs.
 
 ## Module 17 — Payments & Receipts  (/finance/payments)
 Portals: admin, super_admin, accountant
