@@ -284,8 +284,13 @@ Portals: admin, super_admin, teacher, parent, student, accountant, admissions_of
 
 ## Module 20 — Support  (/support)
 Portals: principal, teacher, accountant, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Ticket/contact flow works; role-appropriate
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Ticket/contact flow works; role-appropriate
+  VERIFY-PASS (no code change): Support is a help-center + ticketing system —
+  role-aware topic guides (`getModulesForRole`) + FAQ + tickets. Tickets are
+  user-scoped (`listMyTickets`), category/priority/status based, date-ordered,
+  with deep-link open from email. Operational requests, not academic-year
+  records — year filter entirely N/A. Flow (create/thread/reply) works per role.
 
 ---
 
