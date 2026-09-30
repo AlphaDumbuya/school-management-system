@@ -214,8 +214,15 @@ Portals: admin, super_admin
 
 ## Module 15 — Teacher Attendance  (/staff/attendance)
 Portals: principal, teacher
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Staff attendance scoped by date/session; teacher self, principal all
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Staff attendance scoped by date/session; teacher self, principal all
+  VERIFY-PASS (no code change): `TeacherAttendancePanel.tsx` is a DAILY HR
+  register — principals pick a date (capped at today) to view/mark the staff
+  roster; teachers self sign-in/sign-out and see their recent records. The
+  `teacher_attendance` table (migration 136) is keyed by `attendance_date` with
+  no academic_year — staff attendance is continuous by date, not partitioned by
+  school year, so a year filter isn't applicable. Correctly date-scoped;
+  teacher-self vs principal-all roles enforced.
 
 ---
 
