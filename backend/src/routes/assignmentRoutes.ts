@@ -242,11 +242,19 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       query = query.whereIn('assignments.class_id', studentClassIds);
     }
 
+    const academicYear = req.query.academic_year as string | undefined;
     if (class_id) query = query.where('assignments.class_id', class_id as string);
     if (subject_id) query = query.where('assignments.subject_id', subject_id as string);
     if (teacher_id) query = query.where('assignments.teacher_id', teacher_id as string);
     if (status) query = query.where('assignments.status', status as string);
     if (type) query = query.where('assignments.type', type as string);
+    // Scope to a specific academic year via the class's session name (null-session
+    // classes are always included so legacy assignments aren't hidden).
+    if (academicYear) {
+      query = query.where(function (this: any) {
+        this.where('academic_sessions.name', academicYear).orWhereNull('classes.academic_session_id');
+      });
+    }
     if (search) {
       const term = `%${(search as string).trim()}%`;
       query = query.where(function () {
@@ -277,6 +285,11 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     if (teacher_id) countQuery = countQuery.where('assignments.teacher_id', teacher_id as string);
     if (status) countQuery = countQuery.where('assignments.status', status as string);
     if (type) countQuery = countQuery.where('assignments.type', type as string);
+    if (academicYear) {
+      countQuery = countQuery.where(function (this: any) {
+        this.where('academic_sessions.name', academicYear).orWhereNull('classes.academic_session_id');
+      });
+    }
     if (search) {
       const term = `%${(search as string).trim()}%`;
       countQuery = countQuery.where(function () {

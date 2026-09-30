@@ -59,8 +59,13 @@ Portals: admin, super_admin, teacher, admissions_officer, student, parent
 
 ## Module 4 — Assignments  (/academic/assignments)
 Portals: admin, super_admin, teacher, student, parent/guardian
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Assignments scoped to class/current year; teacher-owned; student sees own class
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Assignments scoped to class/current year; teacher-owned; student sees own class
+  Backend `assignmentRoutes.ts` list + count queries filter by `academic_year`
+  (matches `academic_sessions.name` OR null-session so legacy rows show). Service
+  `assignmentsService.ts` gained `academic_year` param. `AssignmentsPage.tsx` adds
+  `year` state + `<YearFilter>` (staff only) passed into query + queryKey. Students/
+  parents keep their own-class read-only view (no filter needed).
 
 ## Module 5 — Exam Timetable  (/academic/exam-timetable)
 Portals: admin, super_admin, teacher, student, parent, admissions_officer

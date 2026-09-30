@@ -28,6 +28,7 @@ import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialo
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
+import { YearFilter } from '@components/common/YearFilter';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { useAuth } from '@hooks/useAuth';
@@ -244,6 +245,8 @@ export const AssignmentsPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  // Academic-year filter for staff (assignments belong to session-scoped classes).
+  const [year, setYear] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -255,13 +258,14 @@ export const AssignmentsPage: React.FC = () => {
 
   // Fetch assignments
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['assignments', { search, statusFilter, typeFilter, page, pageSize }],
+    queryKey: ['assignments', { search, statusFilter, typeFilter, year, page, pageSize }],
     queryFn: () => assignmentsService.listAssignments({
       page,
       limit: pageSize,
       status: statusFilter || undefined,
       type: typeFilter || undefined,
       search: search || undefined,
+      academic_year: year || undefined,
     }),
     staleTime: 30_000,
   });
@@ -371,6 +375,9 @@ export const AssignmentsPage: React.FC = () => {
         isRefreshing={isLoading}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
+            {canManage && (
+              <YearFilter value={year} onChange={(y) => { setYear(y); setPage(1); }} />
+            )}
             <RoleGuard roles={['principal', 'super_admin', 'teacher']}>
               <Button variant="default" size="sm" onClick={() => { setEditingAssignment(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm">
                 + Create Assignment

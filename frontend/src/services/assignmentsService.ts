@@ -59,6 +59,7 @@ export interface ListAssignmentsParams {
   teacher_id?: string;
   status?: string;
   type?: string;
+  academic_year?: string;
   search?: string;
 }
 
