@@ -203,8 +203,14 @@ Portals: admin, super_admin, teacher
 
 ## Module 14 — Teachers  (/staff/teachers)
 Portals: admin, super_admin
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Tenant-scoped; assignments reflect current session's classes
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Tenant-scoped; assignments reflect current session's classes
+  VERIFY-PASS (no code change): teachers are persistent staff, not year-scoped.
+  `TeachersPage.tsx` is a directory filtered by search/status, server-side
+  tenant-scoped. Year context lives in their class ASSIGNMENTS, which are made
+  against session-scoped classes and already year-aware via Classes (Module 1)
+  and Timetables (Module 3). A year filter on the staff directory isn't a natural
+  dimension (staff continue year over year). Meets requirements as-is.
 
 ## Module 15 — Teacher Attendance  (/staff/attendance)
 Portals: principal, teacher
