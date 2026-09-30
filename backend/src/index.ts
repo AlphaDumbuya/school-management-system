@@ -66,6 +66,8 @@ import teacherRoutes from '@routes/teacherRoutes';
 import contactRoutes from '@routes/contactRoutes';
 import newsletterRoutes from '@routes/newsletterRoutes';
 import schoolConfigRoutes from '@routes/schoolConfigRoutes';
+import liveSyncRoutes from '@routes/liveSyncRoutes';
+import { liveSyncMiddleware } from '@utils/liveSync';
 import announcementRoutes from '@routes/announcementRoutes';
 import appStatsRoutes from '@routes/appStatsRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
@@ -125,6 +127,9 @@ app.use('/api/v1/payments/monime/webhook', express.raw({ type: '*/*', limit: '2m
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(requestLogger);
+// Live portal sync: bump the school's change counter on successful structural
+// writes (promotions, new year, roles, enrollments…) so open apps refresh.
+app.use(liveSyncMiddleware);
 
 // Broad per-IP rate ceiling across the whole API. Auth routes layer stricter,
 // purpose-built limiters on top (see routes/authRoutes.ts). The webhook path is
@@ -373,6 +378,9 @@ app.use('/api/v1/announcements', announcementRoutes);
 
 // Offline sync Routes (teacher offline-first: pull/push)
 app.use('/api/v1/sync', syncRoutes);
+
+// Live portal sync version (polled by open apps to refresh after changes)
+app.use('/api/v1/live', liveSyncRoutes);
 
 // School verification Routes (account-owner instant verification)
 app.use('/api/v1/verification', verificationRoutes);
