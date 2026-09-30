@@ -168,9 +168,20 @@ Portals: admin, super_admin, teacher, admissions_officer
 
 ## Module 12 — Attendance  (/students/attendance)
 Portals: admin, super_admin, teacher, parent, student
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Register scoped to class + current session; summaries year/term scoped
-- [ ] Teacher scope; parent/student own records
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Register scoped to class + current session; summaries year/term scoped
+- [x] Teacher scope; parent/student own records
+  Staff `AttendancePage.tsx` gained a header `<YearFilter>` (auto-selects active
+  year) that scopes the class list (`att-classes` → `listClasses({academic_
+  year})`) used by BOTH the register (marking) tab and the logs class filter, so
+  you mark/view the correct year's classes; changing year clears the selected
+  class + reg roster. Marking stays date+session based (correct). The per-student
+  lifetime-totals bug was fixed in Module 11 (`/attendance/student/:id` now takes
+  `academic_year`). Student/parent self-views (`/attendance/my`, parent child
+  detail) show their current attendance; past-year is reached via the Academic
+  Archive + the year-scoped Student Profile attendance tab — deliberate boundary,
+  consistent with Results (Module 6). No backend change needed here (classes are
+  already academic_year-filterable via their session).
 
 ## Module 13 — Discipline & Conduct  (/discipline)
 Portals: admin, super_admin, teacher
