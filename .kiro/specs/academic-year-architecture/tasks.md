@@ -256,8 +256,16 @@ Portals: admin, super_admin, accountant
 
 ## Module 18 — Fees & Payments (student/parent)  (/finance/my-fees)
 Portals: student, parent, guardian
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Per-student ledger by year/term; pay flow; own data only
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Per-student ledger by year/term; pay flow; own data only
+  VERIFY-PASS (no code change): `MyFeesPage.tsx` → `StudentLedgerView.tsx`
+  already renders EVERY academic year the student has fees for
+  (`ledger.years.map`), each with a year header + per-term/charges cards, and
+  builds payable scopes (full outstanding / per-year / per-term / charges-only)
+  across ALL years. Student sees own ledger (`getMyLedger`); parent uses a child
+  switcher then that child's ledger (`getStudentLedger`) — own data only, server
+  enforced. No year filter needed: the view is inherently multi-year and a filter
+  would only HIDE history. Fully meets R7/R9 for the fees portals.
 
 ---
 
