@@ -69,8 +69,14 @@ Portals: admin, super_admin, teacher, student, parent/guardian
 
 ## Module 5 — Exam Timetable  (/academic/exam-timetable)
 Portals: admin, super_admin, teacher, student, parent, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Exams keyed by academic_year; current-year default; history selectable
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Exams keyed by academic_year; current-year default; history selectable
+  `ExamTimetablePage.tsx` dropped the `new Date()`-fabricated `yearOptions` and
+  the fabricated default year; now uses `<YearFilter>` (real sessions, auto-
+  selects active year). Shown to ALL roles so students/parents can view past-
+  year exam timetables. Backend `examinationRoutes.ts` already filters
+  `examinations.academic_year` (normalized to slash by migration 159), so the
+  canonical `YYYY/YYYY` value matches.
 
 ## Module 6 — Results & Grades  (/academic/results)
 Portals: admin, super_admin, teacher, student, parent, admissions_officer
