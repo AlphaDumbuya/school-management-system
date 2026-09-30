@@ -140,6 +140,23 @@ export const ReportCardsPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [academicYear]);
 
+  // Deep-link support: the Academic Archive links here with ?year=&class_id=.
+  // Apply them once on mount so staff land pre-filtered on the chosen year/class.
+  const deepLinkApplied = React.useRef(false);
+  React.useEffect(() => {
+    if (isStudent || isParent || deepLinkApplied.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const qYear = params.get('year');
+    const qClass = params.get('class_id');
+    if (qYear && /^\d{4}\/\d{4}$/.test(qYear)) setAcademicYear(qYear);
+    if (qClass) {
+      // Set after the year-clear effect by deferring a tick.
+      setTimeout(() => setClassId(qClass), 0);
+    }
+    deepLinkApplied.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // School branding for the front cover. Kept fresh so name/logo edits made in
   // Settings show on the report card immediately — refetch on mount and treat
   // the small payload as stale quickly (Settings also invalidates this key).

@@ -26,6 +26,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@capacitor-community/file-opener": "^8.0.1",
     "@capacitor/android": "^8.5.1",
     "@capacitor/app": "^8.1.1",
     "@capacitor/browser": "^8.0.4",

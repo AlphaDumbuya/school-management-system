@@ -21,6 +21,7 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { showToast } from '@utils/toast';
 import { classesService } from '@services/classesService';
+import schoolConfigService from '@services/schoolConfigService';
 import {
   promotionService, PromotionCandidate, PromotionOutcome, PromotionDecision,
 } from '@services/promotionService';
@@ -45,7 +46,7 @@ export const PromotionsPage: React.FC = () => {
   const queryClient = useQueryClient();
   const currentYear = new Date().getFullYear();
   const [tab, setTab] = useState<Tab>('promote');
-  const [academicYear, setAcademicYear] = useState(`${currentYear}/${currentYear + 1}`);
+  const [academicYear, setAcademicYear] = useState('');
   const [classId, setClassId] = useState('');
   const [targetClassId, setTargetClassId] = useState('');
   const [graduate, setGraduate] = useState(false);
@@ -53,15 +54,36 @@ export const PromotionsPage: React.FC = () => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Real academic years from the school's sessions (so the selected year matches
+  // the data — the fabricated new Date() list didn't match stored session names
+  // like "2024-2025"). Falls back to a computed span for a brand-new school.
+  const { data: sessionsResp } = useQuery({
+    queryKey: ['academic-sessions'],
+    queryFn: () => schoolConfigService.listAcademicSessions(),
+    staleTime: 60_000,
+  });
+  const sessions: Array<{ name: string; is_active: boolean }> = ((sessionsResp as any)?.data ?? []) as any;
+
   const yearOptions = useMemo(() => {
-    const arr = [];
-    for (let y = currentYear + 1; y >= currentYear - 3; y--) arr.push(`${y}/${y + 1}`);
-    return arr;
-  }, [currentYear]);
+    const set = new Set<string>();
+    sessions.forEach((s) => { if (s?.name) set.add(String(s.name)); });
+    for (let y = currentYear + 1; y >= currentYear - 3; y--) set.add(`${y}/${y + 1}`);
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [sessions, currentYear]);
+
+  // Default to the active session's year once loaded.
+  React.useEffect(() => {
+    if (academicYear) return;
+    const active = sessions.find((s) => s.is_active)?.name;
+    if (active) setAcademicYear(active);
+    else if (yearOptions.length) setAcademicYear(yearOptions[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions.length, yearOptions.length]);
 
   const { data: classesData } = useQuery({
-    queryKey: ['promotion-classes'],
-    queryFn: () => classesService.listClasses({ limit: 200 }),
+    // Scope classes to the selected year so the picker shows that year's classes.
+    queryKey: ['promotion-classes', academicYear],
+    queryFn: () => classesService.listClasses({ limit: 200, academic_year: academicYear || undefined }),
     staleTime: 60_000,
   });
   const classes: any[] = (classesData as any)?.data ?? [];
@@ -71,13 +93,19 @@ export const PromotionsPage: React.FC = () => {
     queryKey: ['promotion-candidates', classId, academicYear],
     queryFn: () => promotionService.getCandidates(classId, academicYear),
     enabled: canLoad && tab === 'promote',
-    staleTime: 15_000,
+    // Always fetch fresh: promotion state changes (elsewhere or a reversal) must
+    // show immediately — never a stale "Recorded" row.
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   const candidates: PromotionCandidate[] = (candData as any)?.data?.candidates ?? (candData as any)?.candidates ?? [];
 
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: ['promotion-history', classId, academicYear],
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     queryFn: () => promotionService.getHistory({
       class_id: classId || undefined,
       academic_year: academicYear || undefined,
@@ -197,10 +225,27 @@ export const PromotionsPage: React.FC = () => {
           </div>
           <div className="w-full md:w-auto">
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
-              {tab === 'promote' ? 'Class to Promote' : 'Filter by Class'}
+              {tab === 'promote' ? 'From Class' : 'Filter by Class'}
             </label>
             <div className="relative">
-              <select value={classId} onChange={(e) => { setClassId(e.target.value); setOverrides({}); }} className={`${selectCls} w-full md:w-56`}>
+              <select
+                value={classId}
+                onChange={(e) => {
+                  const newFrom = e.target.value;
+                  setClassId(newFrom);
+                  setOverrides({});
+                  // Auto-suggest the destination from the source class's configured
+                  // next class (or Graduate for a final-year class), so "To Class"
+                  // isn't just a mirror of the same list.
+                  if (tab === 'promote') {
+                    const src = classes.find((c) => String(c.id) === newFrom);
+                    if (src?.is_final_year) { setGraduate(true); setTargetClassId(''); }
+                    else if (src?.next_class_id) { setGraduate(false); setTargetClassId(String(src.next_class_id)); }
+                    else { setGraduate(false); setTargetClassId(''); }
+                  }
+                }}
+                className={`${selectCls} w-full md:w-56`}
+              >
                 <option value="">{tab === 'promote' ? '— Select a class —' : 'All classes'}</option>
                 {classes.map((c) => <option key={c.id} value={String(c.id)}>{c.name}{c.level ? ` (${c.level})` : ''}</option>)}
               </select>
@@ -210,7 +255,7 @@ export const PromotionsPage: React.FC = () => {
 
           {tab === 'promote' && (
             <div className="w-full sm:col-span-2 md:col-auto md:w-auto">
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Promote To</label>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">To Class</label>
               <div className="relative">
                 <select
                   value={graduate ? '__graduate__' : targetClassId}
@@ -381,11 +426,18 @@ export const PromotionsPage: React.FC = () => {
         onClose={() => setConfirmOpen(false)}
         onConfirm={handleExecute}
         title="Confirm Promotions"
-        message={
-          graduate
-            ? `Graduate/process ${pending.length} student(s) from this class? This closes their enrollment. This cannot be easily undone.`
-            : `Process ${pending.length} student(s)? Promoted students move to the selected class; repeaters stay. This cannot be easily undone.`
-        }
+        message={(() => {
+          const targetName = classes.find((c) => String(c.id) === targetClassId)?.name;
+          const lines: string[] = [];
+          if (graduate) {
+            lines.push(`Graduate ${stats.promoted} student(s): their enrolment is closed and they are marked graduated.`);
+          } else {
+            if (stats.promoted > 0) lines.push(`Promote ${stats.promoted} student(s)${targetName ? ` to ${targetName}` : ''} (a new enrolment is created there).`);
+            if (stats.repeat > 0) lines.push(`Keep ${stats.repeat} student(s) in this class (repeat — nothing moves).`);
+          }
+          lines.push('Prior enrolments and all results/fees are preserved as history. This cannot be easily undone.');
+          return lines.join('\n\n');
+        })()}
         confirmLabel="Process"
       />
     </MainLayout>

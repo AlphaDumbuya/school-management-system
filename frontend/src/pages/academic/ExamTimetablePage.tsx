@@ -16,6 +16,7 @@ import { KPICard } from '@components/dashboard/KPICard';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
+import { YearFilter } from '@components/common/YearFilter';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { classesService, ClassRecord } from '@services/classesService';
@@ -42,7 +43,6 @@ function formatDateLabel(dateStr: string): { weekday: string; date: string } {
 
 export const ExamTimetablePage: React.FC = () => {
   const queryClient = useQueryClient();
-  const currentYear = new Date().getFullYear();
   const { user } = useAuth();
   const isStudent = user?.role === 'student';
   const isParent = user?.role === 'parent' || user?.role === 'guardian';
@@ -50,7 +50,9 @@ export const ExamTimetablePage: React.FC = () => {
 
   const [selectedClassId, setSelectedClassId] = useState('');
   const [term, setTerm] = useState<ExamTerm>('first_term');
-  const [academicYear, setAcademicYear] = useState(`${currentYear}/${currentYear + 1}`);
+  // Academic year is chosen from the tenant's REAL sessions via <YearFilter>
+  // (auto-selects the active year on first load). No new Date() fabrication.
+  const [academicYear, setAcademicYear] = useState('');
 
   const [slotModalOpen, setSlotModalOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<ExaminationRecord | null>(null);
@@ -59,12 +61,6 @@ export const ExamTimetablePage: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<ExaminationRecord | null>(null);
   const [extraDates, setExtraDates] = useState<string[]>([]); // manually-added empty date rows
   const [addDayOpen, setAddDayOpen] = useState(false);
-
-  const yearOptions = useMemo(() => {
-    const arr = [];
-    for (let y = currentYear + 1; y >= currentYear - 2; y--) arr.push(`${y}/${y + 1}`);
-    return arr;
-  }, [currentYear]);
 
   // Classes (staff only — students/parents auto-resolve their own class).
   const { data: classesData } = useQuery({
@@ -286,11 +282,9 @@ export const ExamTimetablePage: React.FC = () => {
               {EXAM_TERMS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </div>
-          <div className="sm:w-40">
+          <div className="sm:w-44">
             <label className="text-sm font-medium text-gray-600 dark:text-gray-400 block mb-1">Academic Year</label>
-            <select value={academicYear} onChange={(e) => setAcademicYear(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
-              {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
+            <YearFilter value={academicYear} onChange={setAcademicYear} className="w-full [&_select]:w-full" />
           </div>
         </div>
 

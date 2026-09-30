@@ -37,13 +37,19 @@ async function getInstalledVersionCode(): Promise<number | null> {
   }
 }
 
+// When the app is distributed via the Play Store, Google auto-updates it, so a
+// sideload "download the new APK" prompt is redundant (and against Play policy
+// for self-updating). Set VITE_DISTRIBUTION=play for Play builds to suppress it.
+const IS_PLAY_BUILD = import.meta.env.VITE_DISTRIBUTION === 'play';
+
 export const NativeUpdateBanner: React.FC = () => {
   const [latest, setLatest] = useState<number | null>(null);
   const [installed, setInstalled] = useState<number | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    if (!isAppMode()) return; // native app only
+    if (IS_PLAY_BUILD) return;   // Play handles updates — no sideload banner.
+    if (!isAppMode()) return;    // native app only
     let cancelled = false;
 
     (async () => {
@@ -74,6 +80,7 @@ export const NativeUpdateBanner: React.FC = () => {
 
   // Show only when we know both versions and the installed one is older.
   const updateAvailable =
+    !IS_PLAY_BUILD &&
     isAppMode() &&
     !dismissed &&
     latest != null &&

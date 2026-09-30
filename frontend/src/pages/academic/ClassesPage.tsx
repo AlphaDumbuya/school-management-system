@@ -24,6 +24,7 @@ import { showToast } from '@utils/toast';
 import { useAuth } from '@hooks/useAuth';
 import { classesService, ClassRecord } from '@services/classesService';
 import { ClassFormModal } from './components/ClassFormModal';
+import { YearFilter } from '@components/common/YearFilter';
 import { ClassStudentsModal } from './components/ClassStudentsModal';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -254,6 +255,9 @@ export const ClassesPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [levelFilter, setLevelFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  // Academic year filter (managers browse any year; defaults to active). Classes
+  // are session-scoped, so this scopes the list to the chosen year's classes.
+  const [year, setYear] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -272,7 +276,7 @@ export const ClassesPage: React.FC = () => {
 
   // Fetch classes
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['classes', { search, levelFilter, statusFilter, page, pageSize, canManage }],
+    queryKey: ['classes', { search, levelFilter, statusFilter, year, page, pageSize, canManage }],
     queryFn: () => {
       const params = {
         page,
@@ -280,6 +284,8 @@ export const ClassesPage: React.FC = () => {
         level: levelFilter.length === 1 ? levelFilter[0] : undefined,
         status: statusFilter.length === 1 ? statusFilter[0] : undefined,
         search: search || undefined,
+        // Scope to the selected academic year (null-session classes still show).
+        academic_year: year || undefined,
       };
       // Managers always hit the authoritative API list (no offline roster
       // fallback, which can be a partial teacher-scoped set); teachers keep the
@@ -455,6 +461,7 @@ export const ClassesPage: React.FC = () => {
               </button>
             </div>
 
+            <YearFilter value={year} onChange={(y) => { setYear(y); setPage(1); }} />
             <RoleGuard roles={['principal', 'super_admin']}>
               <Button variant="default" size="sm" onClick={() => { setEditingClass(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm hover:shadow">
                 + Add Class

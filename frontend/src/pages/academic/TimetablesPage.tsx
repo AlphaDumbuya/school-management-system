@@ -32,6 +32,7 @@ import { Settings } from 'lucide-react';
 import { useAuth } from '@hooks/useAuth';
 import { studentDashboardService } from '@services/studentDashboardService';
 import { parentDashboardService } from '@services/parentDashboardService';
+import { YearFilter } from '@components/common/YearFilter';
 
 // ── Subject category colors ───────────────────────────────────────────────────
 
@@ -61,8 +62,9 @@ export const TimetablesPage: React.FC = () => {
   const isParent = user?.role === 'parent' || user?.role === 'guardian';
   const isViewerOnly = isStudent || isParent;
 
-  // Class selector
+  // Class selector + academic-year scope (staff). Students/parents auto-resolve.
   const [selectedClassId, setSelectedClassId] = useState<string>('');
+  const [year, setYear] = useState('');
 
   // Mobile day tab
   const [mobileDay, setMobileDay] = useState<string>('Monday');
@@ -78,8 +80,8 @@ export const TimetablesPage: React.FC = () => {
   // Fetch classes for selector (staff only — students/parents auto-resolve
   // their own class from the dashboard, never a class picker).
   const { data: classesData } = useQuery({
-    queryKey: ['classes-selector'],
-    queryFn: () => classesService.listClasses({ limit: 100 }),
+    queryKey: ['classes-selector', year],
+    queryFn: () => classesService.listClasses({ limit: 100, academic_year: year || undefined } as any),
     enabled: !isViewerOnly,
     staleTime: 60_000,
   });
@@ -281,6 +283,9 @@ export const TimetablesPage: React.FC = () => {
         breadcrumbs={[{ label: 'Timetables' }]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
+            {!isViewerOnly && (
+              <YearFilter value={year} onChange={(y) => { setYear(y); setSelectedClassId(''); }} />
+            )}
             <RoleGuard roles={['principal', 'super_admin']}>
               <Button
                 variant="outline"

@@ -33,6 +33,28 @@ export const App: React.FC = () => {
     initialize();
   }, [initialize]);
 
+  // Keep the current user's role/identity fresh WITHOUT a re-login, so changes
+  // an admin makes (e.g. promoting a teacher to principal, or a student being
+  // promoted to a new class) reflect in this session promptly:
+  //  - refresh when the window/tab regains focus, and
+  //  - refresh on a light interval while the app is open.
+  // refreshUser only purges caches when the ROLE actually changed, so this is
+  // cheap and non-disruptive.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const refresh = () => { useAuthStore.getState().refreshUser(); };
+    const onFocus = () => refresh();
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    const id = window.setInterval(refresh, 2 * 60 * 1000); // every 2 minutes
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(id);
+    };
+  }, [isAuthenticated]);
+
   // Once auth has initialized the first real screen (login or dashboard) is
   // about to render — tell the branded splash (index.html) it can fade out.
   // This makes the flow feel like one continuous splash → screen with no

@@ -29,6 +29,7 @@ import { showToast } from '@utils/toast';
 import { classesService } from '@services/classesService';
 import { feeStructureService, FeeStructure, FeeStructureExpense } from '@services/feeStructureService';
 import { financeService } from '@services/financeService';
+import schoolConfigService from '@services/schoolConfigService';
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 const fmtLe = (v: number | string | null | undefined) => `Le ${(Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
@@ -45,7 +46,7 @@ const levelCls = (l?: string) => LEVEL_COLORS[l || ''] ?? 'bg-gray-100 text-gray
 /* ── main component ──────────────────────────────────────────────────────── */
 export const FeesPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const [year, setYear] = useState(CURRENT_YEAR);
+  const [year, setYear] = useState('');
   const [search, setSearch] = useState('');
   const [configClass, setConfigClass] = useState<any | null>(null); // class object to configure
   const [billTarget, setBillTarget] = useState<FeeStructure | null>(null);
@@ -60,7 +61,7 @@ export const FeesPage: React.FC = () => {
 
   // Configured structures for the year
   const { data: structResp, isLoading: structLoading, refetch } = useQuery({
-    queryKey: ['fee-structures', year], queryFn: () => feeStructureService.list(year), staleTime: 15_000,
+    queryKey: ['fee-structures', year], queryFn: () => feeStructureService.list(year), enabled: !!year, staleTime: 15_000,
   });
   const structures: FeeStructure[] = ((structResp as any)?.data?.data ?? (structResp as any)?.data ?? []);
 
@@ -77,10 +78,32 @@ export const FeesPage: React.FC = () => {
 
   const toggleExpand = (id: string) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  // Real academic years from the school's sessions, so the year picker matches
+  // the data (fee structures are keyed by the academic_year string). Falls back
+  // to a computed span for a brand-new school.
+  const { data: sessionsResp } = useQuery({
+    queryKey: ['academic-sessions'],
+    queryFn: () => schoolConfigService.listAcademicSessions(),
+    staleTime: 60_000,
+  });
+  const sessions: Array<{ name: string; is_active: boolean }> = ((sessionsResp as any)?.data ?? []) as any;
+
   const years = useMemo(() => {
+    const set = new Set<string>();
+    sessions.forEach((s) => { if (s?.name) set.add(String(s.name)); });
     const cur = new Date().getFullYear();
-    return Array.from({ length: 5 }, (_, i) => `${cur + i - 1}/${cur + i}`);
-  }, []);
+    for (let i = 1; i >= -3; i--) set.add(`${cur + i}/${cur + i + 1}`);
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [sessions]);
+
+  // Default to the active session's year once sessions load.
+  useEffect(() => {
+    if (year) return;
+    const active = sessions.find((s) => s.is_active)?.name;
+    if (active) setYear(active);
+    else if (years.length) setYear(years[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions.length, years.length]);
 
   const totalExpected = useMemo(() => structures.reduce((s, x) => s + (Number((x as any).fullYearTotal) || 0), 0), [structures]);
 

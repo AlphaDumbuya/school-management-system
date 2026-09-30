@@ -57,6 +57,43 @@ page year dropdown (Class → Student → Year → view/print/download).
 
 ## ⏳ PENDING — pick up here when we resume
 
+### ✅ DONE — Current vs previous year clarity on portals
+Student & parent dashboards now label the CURRENT academic year on the Results
+card ("Current year: 2027/2028") and add a "View previous years" link to
+/academic/report-cards (year picker → past report cards). Empty-state text also
+names the year ("No results published for 2027/2028 yet"). This makes it obvious
+which year's data is shown vs. history.
+NOTE (process): promotion alone is NOT a year change — the current/previous
+distinction is by academic_year. For a clean boundary, run Settings → Start New
+Academic Year (creates the new session + carries classes forward) THEN promote
+into the new-session classes. Classes with academic_session_id = null have no
+year boundary (see pending item to tie classes to sessions).
+
+### ✅ DONE — Portals auto-update on promotion / role change
+- Student & parent dashboards already resolve the "current class" from the
+  LATEST ACTIVE enrollment, so a promotion shows the new class automatically on
+  next dashboard load (server-computed; verified in studentDashboardService and
+  parentDashboardService.childSummary). New year's grades start empty until
+  published; prior years stay in the Archive/Report-Cards year picker.
+- Teacher role/assignment changes: backend was already live every request
+  (attachUserContext re-reads DB role, overrides JWT; /me returns live role).
+  Fixed the FRONTEND gap where the cached user only refreshed at app load:
+  added authStore.refreshUser() (re-fetches /me; if role changed, clears the
+  query cache) and wired App.tsx to refresh on window focus + every 2 min while
+  authenticated. So a re-roled/promoted user's sidebar/routes/portal update
+  without a manual reload or re-login.
+
+### ✅ DONE — Academic Archive page (unified past-year view)
+New admin page at `/reports/academic` ("Academic Archive", principal/super_admin,
+now in the sidebar under Reports). Pick any year (from real academic_sessions)
+and see one snapshot: headline counts (classes, students enrolled, subjects,
+promotions), finance summary (billed/collected/outstanding), the year's classes
+with enrolment (+ deep-link to Report Cards for that class/year), result-release
+publications, promotion history, and examinations. Backed by
+`GET /api/v1/school-config/archive/:academicYear` (academicArchiveService
+aggregates finance/publications/promotions/exams read-only). Report Cards page
+now honors `?year=&class_id=` deep links from the archive.
+
 ### ✅ DONE — Historical (past-year) data access for admins
 - New endpoint `GET /api/v1/school-config/academic-sessions` lists the tenant's
   REAL academic years (with is_active) — the authoritative source for year
@@ -114,7 +151,19 @@ by a new endpoint/service action.
 - `backend/src/routes/classRoutes.ts` (class create auto-binds to active session)
 - `frontend/src/pages/SettingsPage.tsx` (Academic Config tab)
 
-### 2. Private-repo APK delivery envs  (needed for reliable in-app download)
+### 2. Private-repo APK delivery envs  — NOT NEEDED IF SHIPPING VIA PLAY STORE
+DECISION: The app will be distributed through the Google Play Store. In that
+case Google handles delivery + auto-updates, so the sideload APK plumbing is
+NOT required:
+  - BLOB_READ_WRITE_TOKEN / APK_URL_WEBHOOK_SECRET / GITHUB_RELEASE_TOKEN → not
+    needed (no one sideloads the APK).
+  - The in-app native-update banner is now SUPPRESSED on Play builds via
+    `VITE_DISTRIBUTION=play` (set that env for the Play build). Play auto-updates.
+  - Play App Signing manages the signing key; keep the upload key consistent.
+  - Content still updates instantly via Vercel (server.url) regardless of Play.
+Only revisit the envs below if you ALSO offer a direct-APK download outside Play.
+
+(Original notes retained for the direct-APK path:)
 Repo is PRIVATE, so confirm/set these so the "Download App" button + update
 banner always serve the newest APK:
 - **GitHub secret** `BLOB_READ_WRITE_TOKEN` (Vercel → Storage → Blob token).
@@ -131,10 +180,17 @@ Current installs are debug-signed. First release-signed APK requires a ONE-TIME
 uninstall + reinstall (signature change). After that, all updates are seamless.
 Consider a temporary banner message explaining the one-time reinstall.
 
-### 4. Optional: tap-to-open a saved export
-`saveBlob` currently saves to Documents + toasts (no auto-open) because opening
-a `file://` reliably needs a FileProvider/`@capacitor-community/file-opener`
-plugin. Add that plugin if we want downloads to open in a viewer automatically.
+### ✅ 4. DONE — tap-to-open saved exports
+Installed `@capacitor-community/file-opener@8` and wired `saveBlob` to open the
+saved file in the device's default viewer after writing to Documents (best-
+effort; save still succeeds if open fails). cap sync registered the plugin.
+
+### ✅ 5. DONE — Academic Archive deepened
+Added an attendance summary (present/late/excused/absent + rate, scoped to the
+session's date window) to the year snapshot, and a per-student full-history
+drill-down (enrolments by year + results by year) via
+`GET /api/v1/school-config/archive/student/:studentId`, surfaced in the archive
+page (student lookup by admission number → modal).
 
 ---
 
@@ -144,3 +200,32 @@ plugin. Add that plugin if we want downloads to open in a viewer automatically.
 - Run migrations: `cd backend && npm run db:migrate`
 - Cap sync (after native plugin changes): `cd frontend && npx cap sync android`
 - Build APK: GitHub → Actions → "Build Android APK" → Run workflow
+
+
+---
+
+## 🏗️ Academic Year Architecture spec (module-by-module, sidebar order)
+Spec at `.kiro/specs/academic-year-architecture/` (requirements/design/tasks).
+Goal: every sidebar module 100% production-ready across the year lifecycle and
+ALL portals, with historical (past-year) access + a universal dynamic year
+filter. Work modules in sidebar order; sign off each before the next.
+
+### ✅ Module 0 — Foundation (DONE)
+- `backend/src/utils/academicYear.ts`: `normalizeAcademicYear` (→ "YYYY/YYYY"),
+  `sameAcademicYear` (hyphen/slash tolerant), `resolveActiveYear(tenantId)`.
+- Migration `159_normalize_academic_years`: normalized `academic_sessions.name`
+  to slash, merged duplicate (tenant,name) sessions, enforced single active per
+  tenant, normalized year strings across sl_*/fees/fee_structures/examinations/
+  student_promotions, backfilled null-session active classes, recreated the
+  invariant indexes. Applied to dev DB; verified clean (1 active/tenant, no dups).
+- `frontend/src/hooks/useAcademicYears.ts`: real sessions → years[] + activeYear.
+- `frontend/src/components/common/YearFilter.tsx`: the ONE dynamic year dropdown
+  every page will use (replaces new Date() pickers as each module is worked).
+- Builds: vite + tsup clean.
+
+### Next: Module 1 — Classes & Streams (/academic/classes)
+Then 2 Subjects, 3 Timetables, 4 Assignments, 5 Exam Timetable, 6 Results,
+7 Report Cards, 8 Promotions, 9 Student Directory, 10 Admissions, 11 Student
+Profiles, 12 Attendance, 13 Discipline, 14 Teachers, 15 Teacher Attendance,
+16 Fee Structures, 17 Payments, 18 My Fees, 19 Announcements, 20 Support,
+21 ID Cards, 22 Card Templates, 23–26 Events, 27 Academic Archive.

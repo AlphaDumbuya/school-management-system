@@ -274,11 +274,18 @@ router.get(
         visibility,
       } = req.query;
 
+      // Non-managers (students/parents/etc.) must only ever see PUBLISHED events
+      // — never drafts, cancelled, or completed. Managers (principal/admin/
+      // teacher) may filter by any status they choose.
+      const isManager = ['principal', 'super_admin', 'teacher'].includes(req.user!.role);
+      const requestedStatus = (status && String(status).trim()) ? String(status).trim() : undefined;
+      const effectiveStatus = isManager ? requestedStatus : 'published';
+
       const result = await eventService.listEvents(req.user!.tenant_id, {
         page: Math.max(1, parseInt(page as string) || 1),
         limit: Math.min(100, parseInt(limit as string) || 20),
         // Strip empty strings — treat '' same as undefined
-        status:       (status && String(status).trim())       ? String(status).trim()       : undefined,
+        status:       effectiveStatus,
         event_type:   (event_type && String(event_type).trim()) ? String(event_type).trim() : undefined,
         category:     (category && String(category).trim())   ? String(category).trim()     : undefined,
         organizer_id: (organizer_id && String(organizer_id).trim()) ? String(organizer_id).trim() : undefined,

@@ -435,13 +435,26 @@ export const Phase13StudentDashboard: React.FC = () => {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <GraduationCap className="w-4 h-4" /> My Results
-                  </CardTitle>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <GraduationCap className="w-4 h-4" /> My Results
+                      {profile?.academic_year && (
+                        <span className="ml-1 inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 text-[11px] font-bold">
+                          Current year: {profile.academic_year}
+                        </span>
+                      )}
+                    </CardTitle>
+                    <button
+                      onClick={() => navigate('/academic/report-cards')}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                    >
+                      <Clock size={13} /> View previous years
+                    </button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {grades.length === 0 ? (
-                    <p className="text-sm text-gray-500 py-6 text-center">No results published yet.</p>
+                    <p className="text-sm text-gray-500 py-6 text-center">No results published for {profile?.academic_year || 'this year'} yet.</p>
                   ) : (
                     <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
                       <table className="w-full text-sm text-left">

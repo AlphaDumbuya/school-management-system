@@ -35,6 +35,12 @@ interface AuthStore {
 
   // Auth actions
   initialize: () => Promise<void>;
+  /**
+   * Re-fetch the current user from /me and update the cached store/localStorage.
+   * If the role changed (e.g. an admin promoted a teacher to principal), clear
+   * the query cache so role-scoped data + UI gating refresh without a re-login.
+   */
+  refreshUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<boolean | 'mfa_required'>;
   verifyMfa: (code: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -108,6 +114,30 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     } finally {
       setIsLoading(false);
       set({ isInitialized: true });
+    }
+  },
+
+  // Re-fetch /me and refresh the cached user. If the role changed, purge the
+  // query cache so role-gated UI (sidebar/routes) and data update immediately —
+  // this closes the gap where a promoted/re-roled user kept seeing their old
+  // portal until a manual reload or re-login.
+  refreshUser: async () => {
+    const prevRole = get().user?.role;
+    try {
+      const response = await authService.fetchMe();
+      if (response.success && response.data) {
+        set({ user: response.data });
+        if (response.data.role && response.data.role !== prevRole) {
+          // Role actually changed → clear cached role-scoped queries + send the
+          // user to their dashboard so the new portal renders cleanly.
+          try {
+            const mod = await import('../App');
+            mod.clearQueryCache?.();
+          } catch { /* non-fatal */ }
+        }
+      }
+    } catch {
+      // Non-fatal — keep the existing session/user on a transient failure.
     }
   },
 
