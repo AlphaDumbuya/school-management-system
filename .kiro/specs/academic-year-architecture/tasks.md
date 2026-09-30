@@ -94,9 +94,17 @@ Portals: admin, super_admin, teacher, student, parent, admissions_officer
 
 ## Module 7 — Report Cards  (/academic/report-cards)
 Portals: admin, super_admin, teacher, student, parent, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Year + class picker from real sessions; past years retrievable
-- [ ] Student/parent auto-resolve own; publish-gated
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Year + class picker from real sessions; past years retrievable
+- [x] Student/parent auto-resolve own; publish-gated
+  VERIFY-PASS (no code change): `ReportCardsPage.tsx` already sources years from
+  the tenant's REAL sessions (`schoolConfigService.listAcademicSessions`), builds
+  a normalized/sorted `yearOptions` with a small current-span fallback (same
+  logic `useAcademicYears` centralizes), defaults staff to the active session,
+  and scopes classes by the selected year (`listClasses({academic_year})`) so a
+  past year shows THAT year's classes. Deep-links from the Academic Archive via
+  `?year=&class_id=`. Students/parents auto-resolve their own student/class/year;
+  report card fetch is server-side publish-gated. Meets R7/R8/R9 as-is.
 
 ## Module 8 — Promotions  (/academic/promotions)
 Portals: admin, super_admin
