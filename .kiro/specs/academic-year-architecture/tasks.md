@@ -43,16 +43,19 @@ Portals: admin, super_admin, teacher, admissions_officer
 - [x] Teacher sees only assigned/led classes (pre-existing scoping kept)
 - [x] Create/edit binds to active session; year-scoped duplicate guard (pre-existing)
 
-## Module 2 — Subjects  (/academic/subjects)
+## Module 2 — Subjects  (/academic/subjects)  ✅ DONE (year filter n/a)
 Portals: admin, super_admin, teacher, admissions_officer, student, parent
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Tenant-scoped catalog correct; student/parent see own class subjects
-- [ ] Per-tenant code uniqueness (no global collision)
+- [x] Audit · [x] Gaps · [x] Fix (none needed) · [x] Verify · [x] Sign-off
+- [x] Subject CATALOG is intentionally year-agnostic (a subject persists across
+      years) → year filter n/a per R8 "unless module has no year-specific data".
+- [x] Tenant-scoped (subjects.tenant_id + legacy created_by fallback) correct.
+- [x] Student/parent see own class's subjects via /my; per-tenant code uniqueness.
 
-## Module 3 — Timetables  (/academic/timetables)
+## Module 3 — Timetables  (/academic/timetables)  ✅ DONE
 Portals: admin, super_admin, teacher, admissions_officer, student, parent
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Schedules scoped to current session's classes; student/parent see own class
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Staff get <YearFilter>; class selector scoped to the chosen year's classes
+      (changing year resets the class pick). Students/parents auto-resolve own class.
 
 ## Module 4 — Assignments  (/academic/assignments)
 Portals: admin, super_admin, teacher, student, parent/guardian
