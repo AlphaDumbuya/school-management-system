@@ -200,3 +200,32 @@ page (student lookup by admission number → modal).
 - Run migrations: `cd backend && npm run db:migrate`
 - Cap sync (after native plugin changes): `cd frontend && npx cap sync android`
 - Build APK: GitHub → Actions → "Build Android APK" → Run workflow
+
+
+---
+
+## 🏗️ Academic Year Architecture spec (module-by-module, sidebar order)
+Spec at `.kiro/specs/academic-year-architecture/` (requirements/design/tasks).
+Goal: every sidebar module 100% production-ready across the year lifecycle and
+ALL portals, with historical (past-year) access + a universal dynamic year
+filter. Work modules in sidebar order; sign off each before the next.
+
+### ✅ Module 0 — Foundation (DONE)
+- `backend/src/utils/academicYear.ts`: `normalizeAcademicYear` (→ "YYYY/YYYY"),
+  `sameAcademicYear` (hyphen/slash tolerant), `resolveActiveYear(tenantId)`.
+- Migration `159_normalize_academic_years`: normalized `academic_sessions.name`
+  to slash, merged duplicate (tenant,name) sessions, enforced single active per
+  tenant, normalized year strings across sl_*/fees/fee_structures/examinations/
+  student_promotions, backfilled null-session active classes, recreated the
+  invariant indexes. Applied to dev DB; verified clean (1 active/tenant, no dups).
+- `frontend/src/hooks/useAcademicYears.ts`: real sessions → years[] + activeYear.
+- `frontend/src/components/common/YearFilter.tsx`: the ONE dynamic year dropdown
+  every page will use (replaces new Date() pickers as each module is worked).
+- Builds: vite + tsup clean.
+
+### Next: Module 1 — Classes & Streams (/academic/classes)
+Then 2 Subjects, 3 Timetables, 4 Assignments, 5 Exam Timetable, 6 Results,
+7 Report Cards, 8 Promotions, 9 Student Directory, 10 Admissions, 11 Student
+Profiles, 12 Attendance, 13 Discipline, 14 Teachers, 15 Teacher Attendance,
+16 Fee Structures, 17 Payments, 18 My Fees, 19 Announcements, 20 Support,
+21 ID Cards, 22 Card Templates, 23–26 Events, 27 Academic Archive.
