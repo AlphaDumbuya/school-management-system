@@ -323,20 +323,36 @@ Portals: admin, super_admin
 
 ## Module 23 — School Events  (/events/school)
 Portals: admin, super_admin, teacher, parent, student
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Non-managers see published only (done-partial); upcoming default; role actions
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Non-managers see published only (done); upcoming default; role actions
+  VERIFY-PASS (no code change): events are date-based with a lifecycle
+  (draft→published→completed/cancelled), NOT academic-year partitioned. Backend
+  `GET /events` FORCES `status='published'` for non-managers
+  (`effectiveStatus = isManager ? requestedStatus : 'published'`); write/publish/
+  cancel/complete are principal/super_admin-authorized, create adds teacher.
+  `EventsPage.tsx` defaults to upcoming-only with an "Include past" toggle for
+  history + status filter for managers. Year filter not applicable (chronological).
 
 ## Module 24 — Calendar  (/events/calendar)
 Portals: admin, super_admin, teacher, parent, student
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+  VERIFY-PASS: `CalendarPage.tsx` renders by month/year via `getCalendarEvents`
+  (start/end range) — the calendar IS the time navigator; server publishes-only
+  for non-managers. Date-based, not year-partitioned.
 
 ## Module 25 — My Events  (/events/my-events)
 Portals: admin, super_admin, teacher, parent, student
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+  VERIFY-PASS: `MyEventsPage.tsx` lists the user's OWN registrations
+  (`getMyRegistrations`) — own data only, chronological. Year N/A.
 
 ## Module 26 — Event Analytics  (/events/analytics)
 Portals: admin, super_admin
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+  VERIFY-PASS: `EventAnalyticsPage.tsx` (manager-only route
+  `authorize(PRINCIPAL, SUPER_ADMIN)`) shows tenant event KPIs/trends with its
+  own date-range `AnalyticsFilters`. Events aren't year-partitioned; date filters
+  cover the time dimension. N/A for academic-year filter.
 
 ---
 
@@ -344,14 +360,47 @@ Portals: admin, super_admin
 
 ## Module 27 — Academic Archive  (/reports/academic)
 Portals: admin, super_admin
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Any past year snapshot (done); deep-links; per-student history
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Any past year snapshot (done); deep-links; per-student history
+  VERIFY-PASS (built earlier): `AcademicArchivePage.tsx` + `academicArchiveService`
+  + `/reports/academic` let admins pick any REAL past session and view that
+  year's snapshot, deep-linking into Report Cards (`?year=&class_id=`) for
+  per-student history. This is the canonical historical-access surface the
+  student/parent portals link to (Results/Attendance boundaries). Real sessions,
+  admin/super_admin scoped.
 
 ---
 
 ## Sign-off log
 (append: `Module N — <name> — YYYY-MM-DD — <commit>`)
-- Module 0 — Foundation — 2026-09-30 — (see next commit)
+- Module 0 — Foundation — 2026-09-30 — 0cf9d1e
+- Module 1 — Classes — 2026-09-30 — 59fccb6
+- Module 2 — Subjects (year N/A) — 2026-09-30 — fdfd9d9
+- Module 3 — Timetables — 2026-09-30 — fdfd9d9
+- Module 4 — Assignments — 2026-09-30 — f47dbae
+- Module 5 — Exam Timetable — 2026-09-30 — 62de84f
+- Module 6 — Results & Grades — 2026-09-30 — 3cf38f9
+- Module 7 — Report Cards — 2026-09-30 — 8ea5e51
+- Module 8 — Promotions — 2026-09-30 — 77ef567
+- Module 9 — Student Directory — 2026-09-30 — 7deffb5
+- Module 10 — Admissions — 2026-09-30 — 7dd5c62
+- Module 11 — Student Profiles — 2026-09-30 — b4b3c3f
+- Module 12 — Attendance — 2026-09-30 — 80c2d24
+- Module 13 — Discipline & Conduct (year N/A) — 2026-09-30 — 9197740
+- Module 14 — Teachers (year via assignments) — 2026-09-30 — fe4a0c9
+- Module 15 — Teacher Attendance (daily HR, year N/A) — 2026-09-30 — 8ab72e7
+- Module 16 — Fee Structures — 2026-09-30 — 41c26a0
+- Module 17 — Payments & Receipts — 2026-09-30 — 61895a5
+- Module 18 — My Fees (ledger multi-year) — 2026-09-30 — 536bbe8
+- Module 19 — Announcements (year N/A) — 2026-09-30 — b9aa859
+- Module 20 — Support (year N/A) — 2026-09-30 — e8db12b
+- Module 21 — ID Cards (year N/A) — 2026-09-30 — 3dea909
+- Module 22 — Card Templates (year N/A) — 2026-09-30 — 3dea909
+- Module 23 — School Events (published-gate, year N/A) — 2026-09-30 — (this commit)
+- Module 24 — Calendar (year N/A) — 2026-09-30 — (this commit)
+- Module 25 — My Events (year N/A) — 2026-09-30 — (this commit)
+- Module 26 — Event Analytics (year N/A) — 2026-09-30 — (this commit)
+- Module 27 — Academic Archive — 2026-09-30 — (this commit)
 
 
 
