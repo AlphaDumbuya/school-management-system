@@ -298,13 +298,24 @@ Portals: principal, teacher, accountant, admissions_officer
 
 ## Module 21 — ID Cards  (/identity/cards)
 Portals: admin, super_admin, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Cards reflect current class/session; generation + download work (web+native)
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Cards reflect current class/session; generation + download work (web+native)
+  VERIFY-PASS (no code change): ID cards are physical credentials with their own
+  EXPIRY date (6mo/1yr/2yr picker), tenant-scoped, re-issued on expiry — their
+  lifecycle is expiry-based, not academic-year partitioned (a card can span
+  years). Card face pulls the holder's current class/details at generation.
+  "By class" bulk-generate scopes RECIPIENTS (not the card's year). Generation +
+  download verified earlier through the shared `download.ts` (web + native). A
+  year filter isn't a meaningful dimension here — N/A.
 
 ## Module 22 — Card Templates  (/identity/templates)
 Portals: admin, super_admin
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Set-default + role picker; tenant-scoped; render correct
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Set-default + role picker; tenant-scoped; render correct
+  VERIFY-PASS (no code change): templates are reusable DESIGN definitions
+  (layout/colors/logo) applied to ID cards — year-agnostic by design, exactly
+  like the Subjects catalog (Module 2). Tenant-scoped; set-default + role picker
+  fixed earlier (mapper returns both `id` and `templateId`). No year dimension.
 
 ---
 
