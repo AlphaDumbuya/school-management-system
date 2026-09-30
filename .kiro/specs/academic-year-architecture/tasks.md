@@ -185,8 +185,17 @@ Portals: admin, super_admin, teacher, parent, student
 
 ## Module 13 — Discipline & Conduct  (/discipline)
 Portals: admin, super_admin, teacher
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Records tenant/student scoped; year context where relevant; teacher scope
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Records tenant/student scoped; year context where relevant; teacher scope
+  VERIFY-PASS (no code change): discipline is a student's persistent behavioral
+  HISTORY — `student_infractions`/`discipline_actions`/`behavioral_notes`/
+  `discipline_appeals`/`conduct_reports` are keyed by `incident_date` (timestamp)
+  with NO `academic_year` column, and every list/stat query is tenant-scoped
+  (verified in `disciplineService.ts`). The UI already filters by search/status/
+  severity/period and records are chronological. Year is not a natural or
+  reliably-derivable partition here (no session date ranges stored), matching the
+  spec's "year context where relevant" — not applicable. Teacher scope preserved
+  (record/view infractions + notes only; analytics reserved for principal/admin).
 
 ---
 
