@@ -35,12 +35,13 @@ Every listed module must gain the shared `<YearFilter>` and honor past years
 
 ## ACADEMIC MANAGEMENT
 
-## Module 1 — Classes & Streams  (/academic/classes)
+## Module 1 — Classes & Streams  (/academic/classes)  ✅ DONE
 Portals: admin, super_admin, teacher, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Classes are session-scoped; list can filter by year; active session default
-- [ ] Teacher sees only assigned/led classes (current year)
-- [ ] Create/edit binds to active session; no cross-year duplicate collisions
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Added shared <YearFilter>; list scoped by academic_year (null-session
+      classes still included so nothing is hidden); defaults to active year
+- [x] Teacher sees only assigned/led classes (pre-existing scoping kept)
+- [x] Create/edit binds to active session; year-scoped duplicate guard (pre-existing)
 
 ## Module 2 — Subjects  (/academic/subjects)
 Portals: admin, super_admin, teacher, admissions_officer, student, parent
