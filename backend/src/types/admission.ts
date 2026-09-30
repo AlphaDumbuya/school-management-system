@@ -246,6 +246,8 @@ export interface ApplicationListQuery {
   date_from?: string;
   date_to?: string;
   search?: string;
+  /** Canonical YYYY/YYYY — restrict to a specific intake year. */
+  academic_year?: string;
   page?: number;
   limit?: number;
 }

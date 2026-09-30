@@ -108,6 +108,7 @@ router.get(
         date_from: req.query.date_from as string,
         date_to: req.query.date_to as string,
         search: req.query.search as string,
+        academic_year: req.query.academic_year as string,
         page: req.query.page ? parseInt(req.query.page as string) : undefined,
         limit: req.query.limit ? parseInt(req.query.limit as string) : undefined
       };

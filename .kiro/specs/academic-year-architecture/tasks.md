@@ -137,9 +137,19 @@ Portals: admin, super_admin, teacher, admissions_officer
   `enrollments`→`classes`→`academic_sessions.name` (OR null-session so legacy
   classes match), applied to BOTH data + count queries. Teacher scope preserved
   (year further narrows within their assigned classes). Service type extended.
+
+## Module 10 — Admissions  (/students/admissions)
 Portals: admin, super_admin, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Applications keyed by academic_year; enroll targets active session
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Applications keyed by academic_year; enroll targets active session
+  `admission_applications` already carry `academic_year` (shown as a badge).
+  Added an OPTIONAL intake-year filter: `<YearFilter includeAllOption>` on
+  `AdmissionsPage.tsx` beside the status filter. Backend `listApplications`
+  service + `ApplicationListQuery` type + route now accept `academic_year` and
+  filter `admission_applications.academic_year`. Enroll-on-approve creates the
+  student + enrollment into the applied-for class (`class_applying_for`/
+  `grade_id`, a current-session class) — correct target. admin/super_admin/
+  admissions_officer only.
 
 ## Module 11 — Student Profiles  (/students/profiles)
 Portals: admin, super_admin, teacher, admissions_officer
@@ -254,3 +264,7 @@ Portals: admin, super_admin
 ## Sign-off log
 (append: `Module N — <name> — YYYY-MM-DD — <commit>`)
 - Module 0 — Foundation — 2026-09-30 — (see next commit)
+
+
+
+
