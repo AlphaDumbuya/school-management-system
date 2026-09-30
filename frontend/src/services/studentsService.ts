@@ -82,6 +82,8 @@ export interface ListStudentsParams {
   limit?: number;
   status?: string;
   search?: string;
+  /** Canonical YYYY/YYYY — restrict to that year's enrolled roster. */
+  academic_year?: string;
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────

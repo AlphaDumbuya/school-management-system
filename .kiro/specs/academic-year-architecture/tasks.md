@@ -127,10 +127,16 @@ Portals: admin, super_admin
 
 ## Module 9 — Student Directory  (/students/directory)
 Portals: admin, super_admin, teacher, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Current class from latest active enrollment; teacher scope; year-aware where relevant
-
-## Module 10 — Admissions  (/students/admissions)
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Current class from latest active enrollment; teacher scope; year-aware where relevant
+  Students are persistent entities; the directory defaults to the CURRENT roster
+  (latest active enrollment → class_name). Added an OPTIONAL year scope:
+  `<YearFilter includeAllOption>` on `StudentDirectoryPage.tsx` ("All years" =
+  current roster; a past year shows that year's enrolled roster). Backend
+  `GET /students` gained `academic_year`: builds a distinct student-id set from
+  `enrollments`→`classes`→`academic_sessions.name` (OR null-session so legacy
+  classes match), applied to BOTH data + count queries. Teacher scope preserved
+  (year further narrows within their assigned classes). Service type extended.
 Portals: admin, super_admin, admissions_officer
 - [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
 - [ ] Applications keyed by academic_year; enroll targets active session

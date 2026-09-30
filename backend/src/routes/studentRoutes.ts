@@ -415,6 +415,29 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
       query = query.whereIn('students.id', teacherStudentIds);
     }
 
+    // Academic-year scope: when a year is chosen, restrict to students who had
+    // an enrollment (any status) in a class of THAT session — so a past year
+    // shows that year's roster. Classes with no session are matched on the
+    // active year only via null-session handling on the caller side; here we
+    // match the session name. Omitted year = current roster (default).
+    const academicYear = req.query.academic_year as string | undefined;
+    let yearStudentIds: string[] | null = null;
+    if (academicYear) {
+      const rows = await db('enrollments')
+        .join('classes', 'enrollments.class_id', 'classes.id')
+        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where(function (this: any) {
+          this.where('academic_sessions.name', academicYear)
+            .orWhereNull('classes.academic_session_id');
+        })
+        .distinct('enrollments.student_id');
+      yearStudentIds = rows.map((r: any) => r.student_id);
+      if (yearStudentIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      query = query.whereIn('students.id', yearStudentIds);
+    }
+
     // Apply filters
     if (status) {
       if (status === 'active') {
@@ -447,6 +470,9 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     }
     if (teacherStudentIds) {
       countQuery = countQuery.whereIn('students.id', teacherStudentIds);
+    }
+    if (yearStudentIds) {
+      countQuery = countQuery.whereIn('students.id', yearStudentIds);
     }
     countQuery = countQuery.count('* as totalCount');
     if (status) {

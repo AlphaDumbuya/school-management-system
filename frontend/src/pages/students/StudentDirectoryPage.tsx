@@ -24,6 +24,7 @@ import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialo
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
+import { YearFilter } from '@components/common/YearFilter';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
@@ -70,6 +71,9 @@ export const StudentDirectoryPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  // Academic-year scope. Empty = current roster (all active). Choosing a past
+  // year shows that year's enrolled roster (historical). Real sessions only.
+  const [year, setYear] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -82,11 +86,12 @@ export const StudentDirectoryPage: React.FC = () => {
 
   // Fetch students
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['students', { search, statusFilter, page, pageSize }],
+    queryKey: ['students', { search, statusFilter, year, page, pageSize }],
     queryFn: () => studentsService.listStudents({
       page, limit: pageSize,
       status: statusFilter || undefined,
       search: search || undefined,
+      academic_year: year || undefined,
     }),
     staleTime: 30_000,
   });
@@ -331,6 +336,8 @@ export const StudentDirectoryPage: React.FC = () => {
                 <List size={18} />
               </button>
             </div>
+
+            <YearFilter value={year} onChange={(y) => { setYear(y); setPage(1); }} includeAllOption />
 
             <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
               <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="whitespace-nowrap">
