@@ -43,6 +43,7 @@ import { parentDashboardService } from '@services/parentDashboardService';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { rosterRepo } from '../../offline/repositories/rosterRepo';
 import { ExportButton } from '@components/admin/common/ExportButton';
+import { YearFilter } from '@components/common/YearFilter';
 import { TeacherAttendancePanel } from '@components/attendance/TeacherAttendancePanel';
 import { AttendanceTimeDetails, TimedAttendanceRecord } from '@components/attendance/AttendanceTimeDetails';
 
@@ -137,6 +138,11 @@ export const AttendancePage: React.FC = () => {
     setActiveTab(location.pathname === '/staff/attendance' || requestedTab === 'teachers' ? 'teachers' : 'logs');
   }, [location.pathname, requestedTab]);
 
+  // Academic-year scope for the class pickers (register + logs). Classes are
+  // session-scoped, so this shows the right year's classes. Auto-selects the
+  // active year via <YearFilter>. Empty only until sessions load.
+  const [year, setYear] = useState('');
+
   // ── Log tab state ─────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('');
@@ -185,8 +191,8 @@ export const AttendancePage: React.FC = () => {
 
   // 2. Classes list
   const { data: classesData } = useQuery({
-    queryKey: ['att-classes'],
-    queryFn: () => classesService.listClasses({ limit: 100 }),
+    queryKey: ['att-classes', year],
+    queryFn: () => classesService.listClasses({ limit: 100, academic_year: year || undefined }),
     staleTime: 120_000,
   });
   const classes = (classesData as any)?.data ?? [];
@@ -539,11 +545,19 @@ export const AttendancePage: React.FC = () => {
         }}
         isRefreshing={activeTab === 'register' ? existingFetching : activeTab === 'analytics' ? analyticsFetching : logsFetching}
         actions={
-          activeTab !== 'teachers' && <ExportButton
-            endpoint="/api/v1/attendance/export"
-            filename="attendance"
-            params={{ date: dateFilter || undefined, classId: classFilter || undefined }}
-          />
+          activeTab !== 'teachers' && (
+            <div className="flex items-center gap-2 sm:gap-3">
+              <YearFilter
+                value={year}
+                onChange={(y) => { setYear(y); setClassFilter(''); setRegClassId(''); setLoadedKey(''); }}
+              />
+              <ExportButton
+                endpoint="/api/v1/attendance/export"
+                filename="attendance"
+                params={{ date: dateFilter || undefined, classId: classFilter || undefined }}
+              />
+            </div>
+          )
         }
       >
         <div className="space-y-6">

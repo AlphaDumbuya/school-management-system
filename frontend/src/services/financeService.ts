@@ -61,7 +61,9 @@ export interface FinanceAnalytics {
 export const financeService = {
   // ── Tenant-wide overview (admin) ──────────────────────────────────────────
   getOverview: () => apiClient.get<{ success: boolean; data: FinanceOverview }>('/api/v1/finance/overview'),
-  getAnalytics: () => apiClient.get<{ success: boolean; data: FinanceAnalytics }>('/api/v1/finance/analytics'),
+  getAnalytics: (academicYear?: string) => apiClient.get<{ success: boolean; data: FinanceAnalytics }>(
+    `/api/v1/finance/analytics${academicYear ? `?academic_year=${encodeURIComponent(academicYear)}` : ''}`,
+  ),
   listInvoices: (status?: string) =>
     apiClient.get<{ success: boolean; data: (Invoice & { student_name: string; admission_no: string })[] }>(`/api/v1/finance/invoices${status ? `?status=${status}` : ''}`),
   listPayments: () => apiClient.get<{ success: boolean; data: (Payment & { student_name: string })[] }>('/api/v1/finance/payments'),

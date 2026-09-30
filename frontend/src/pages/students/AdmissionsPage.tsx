@@ -25,6 +25,7 @@ import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialo
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
+import { YearFilter } from '@components/common/YearFilter';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
@@ -69,6 +70,8 @@ export const AdmissionsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  // Intake-year scope. Empty = all years; a past year shows that intake.
+  const [year, setYear] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -111,11 +114,12 @@ export const AdmissionsPage: React.FC = () => {
   };
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['admissions', { search, statusFilter, page, pageSize }],
+    queryKey: ['admissions', { search, statusFilter, year, page, pageSize }],
     queryFn: () => admissionsService.listApplications({
       page, limit: pageSize,
       status: statusFilter || undefined,
       search: search || undefined,
+      academic_year: year || undefined,
     }),
     staleTime: 30_000,
   });
@@ -463,12 +467,15 @@ export const AdmissionsPage: React.FC = () => {
               resultCount={search ? applications.length : undefined}
               className="w-full lg:max-w-md"
             />
-            <div className="relative flex-1 sm:flex-initial sm:min-w-[160px] lg:w-auto">
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
-                <option value="">All Statuses</option>
-                {ADMISSION_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+            <div className="flex items-center gap-2">
+              <YearFilter value={year} onChange={(y) => { setYear(y); setPage(1); }} includeAllOption />
+              <div className="relative flex-1 sm:flex-initial sm:min-w-[160px] lg:w-auto">
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                  <option value="">All Statuses</option>
+                  {ADMISSION_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+              </div>
             </div>
           </div>
           {(search || statusFilter) && (

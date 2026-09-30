@@ -29,6 +29,7 @@ import { reportCardService } from '@services/reportCardService';
 import { disciplineService } from '@services/disciplineService';
 import { showToast } from '@utils/toast';
 import { AttendanceTimeDetails } from '@components/attendance/AttendanceTimeDetails';
+import { YearFilter } from '@components/common/YearFilter';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -72,6 +73,8 @@ export const StudentProfilesPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(12); // Grid of cards looks best in multiples of 3 or 4
   const [activeTab, setActiveTab] = useState<'overview' | 'academics' | 'attendance' | 'conduct' | 'billing'>('overview');
+  // Attendance tab year scope. Empty = lifetime; a year shows that year only.
+  const [attendanceYear, setAttendanceYear] = useState('');
 
   // Parent Account Modal State
   const [parentModalOpen, setParentModalOpen] = useState(false);
@@ -180,12 +183,14 @@ export const StudentProfilesPage: React.FC = () => {
 
   // B. Attendance
   const { data: attendanceData, isLoading: isAttendanceLoading } = useQuery({
-    queryKey: ['student-profile-attendance', selectedStudentId],
-    queryFn: () => studentsService.getStudentAttendance(selectedStudentId!),
+    queryKey: ['student-profile-attendance', selectedStudentId, attendanceYear],
+    queryFn: () => studentsService.getStudentAttendance(selectedStudentId!, attendanceYear || undefined),
     enabled: !!selectedStudentId && activeTab === 'attendance',
     staleTime: 30_000,
   });
-  const attendanceSummary = (attendanceData as any)?.summary ?? { total_days: 0, present_count: 0, late_count: 0, absent_count: 0, excused_count: 0, attendance_percentage: 0, at_risk: false };
+  // Backend summary uses present/late/absent/excused (NOT *_count) — keep the
+  // fallback keys identical so the KPICards render 0 (not undefined) while empty.
+  const attendanceSummary = (attendanceData as any)?.summary ?? { total_days: 0, present: 0, late: 0, absent: 0, excused: 0, attendance_percentage: 0, at_risk: false };
   const attendanceRecords = (attendanceData as any)?.records ?? [];
 
   // C. Conduct/Discipline
@@ -897,6 +902,13 @@ export const StudentProfilesPage: React.FC = () => {
                   {/* C. ATTENDANCE TAB */}
                   {activeTab === 'attendance' && (
                     <div className="space-y-6">
+                      {/* Year scope — empty = lifetime, a year narrows the tab */}
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {attendanceYear ? `Showing ${attendanceYear} attendance` : 'Showing all-time attendance'}
+                        </p>
+                        <YearFilter value={attendanceYear} onChange={setAttendanceYear} includeAllOption />
+                      </div>
                       {/* Attendance KPIs */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <KPICard title="Attendance Rate" value={`${attendanceSummary.attendance_percentage}%`} icon={<Activity size={20} />} color={attendanceSummary.attendance_percentage >= 85 ? "green" : attendanceSummary.attendance_percentage >= 75 ? "amber" : "red"} />

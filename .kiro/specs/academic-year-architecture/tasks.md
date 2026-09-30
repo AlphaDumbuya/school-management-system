@@ -137,26 +137,65 @@ Portals: admin, super_admin, teacher, admissions_officer
   `enrollments`→`classes`→`academic_sessions.name` (OR null-session so legacy
   classes match), applied to BOTH data + count queries. Teacher scope preserved
   (year further narrows within their assigned classes). Service type extended.
+
+## Module 10 — Admissions  (/students/admissions)
 Portals: admin, super_admin, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Applications keyed by academic_year; enroll targets active session
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Applications keyed by academic_year; enroll targets active session
+  `admission_applications` already carry `academic_year` (shown as a badge).
+  Added an OPTIONAL intake-year filter: `<YearFilter includeAllOption>` on
+  `AdmissionsPage.tsx` beside the status filter. Backend `listApplications`
+  service + `ApplicationListQuery` type + route now accept `academic_year` and
+  filter `admission_applications.academic_year`. Enroll-on-approve creates the
+  student + enrollment into the applied-for class (`class_applying_for`/
+  `grade_id`, a current-session class) — correct target. admin/super_admin/
+  admissions_officer only.
 
 ## Module 11 — Student Profiles  (/students/profiles)
 Portals: admin, super_admin, teacher, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Overview/academics/attendance/conduct/billing tabs year-aware
-- [ ] Attendance tab scoped to current year/term (not lifetime); fix KPI key mismatch
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Overview/academics/attendance/conduct/billing tabs year-aware
+- [x] Attendance tab scoped to current year/term (not lifetime); fix KPI key mismatch
+  Two bugs fixed on `StudentProfilesPage.tsx`:
+  (1) KPI key mismatch — the fallback summary used `present_count/late_count/
+      absent_count` while the KPICards + real backend response use
+      `present/late/absent`. Fallback keys corrected so empty state shows 0.
+  (2) Lifetime-totals — `GET /attendance/student/:id` had NO year scope. Added
+      optional `academic_year` (scopes via classes→`academic_sessions.name`, OR
+      null-session; empty = lifetime). Service `getStudentAttendance(id, year)`
+      + attendance tab `<YearFilter includeAllOption>` with a "showing X /
+      all-time" caption. Academics tab already shows per-row Year+Term.
 
 ## Module 12 — Attendance  (/students/attendance)
 Portals: admin, super_admin, teacher, parent, student
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Register scoped to class + current session; summaries year/term scoped
-- [ ] Teacher scope; parent/student own records
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Register scoped to class + current session; summaries year/term scoped
+- [x] Teacher scope; parent/student own records
+  Staff `AttendancePage.tsx` gained a header `<YearFilter>` (auto-selects active
+  year) that scopes the class list (`att-classes` → `listClasses({academic_
+  year})`) used by BOTH the register (marking) tab and the logs class filter, so
+  you mark/view the correct year's classes; changing year clears the selected
+  class + reg roster. Marking stays date+session based (correct). The per-student
+  lifetime-totals bug was fixed in Module 11 (`/attendance/student/:id` now takes
+  `academic_year`). Student/parent self-views (`/attendance/my`, parent child
+  detail) show their current attendance; past-year is reached via the Academic
+  Archive + the year-scoped Student Profile attendance tab — deliberate boundary,
+  consistent with Results (Module 6). No backend change needed here (classes are
+  already academic_year-filterable via their session).
 
 ## Module 13 — Discipline & Conduct  (/discipline)
 Portals: admin, super_admin, teacher
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Records tenant/student scoped; year context where relevant; teacher scope
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Records tenant/student scoped; year context where relevant; teacher scope
+  VERIFY-PASS (no code change): discipline is a student's persistent behavioral
+  HISTORY — `student_infractions`/`discipline_actions`/`behavioral_notes`/
+  `discipline_appeals`/`conduct_reports` are keyed by `incident_date` (timestamp)
+  with NO `academic_year` column, and every list/stat query is tenant-scoped
+  (verified in `disciplineService.ts`). The UI already filters by search/status/
+  severity/period and records are chronological. Year is not a natural or
+  reliably-derivable partition here (no session date ranges stored), matching the
+  spec's "year context where relevant" — not applicable. Teacher scope preserved
+  (record/view infractions + notes only; analytics reserved for principal/admin).
 
 ---
 
@@ -164,13 +203,26 @@ Portals: admin, super_admin, teacher
 
 ## Module 14 — Teachers  (/staff/teachers)
 Portals: admin, super_admin
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Tenant-scoped; assignments reflect current session's classes
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Tenant-scoped; assignments reflect current session's classes
+  VERIFY-PASS (no code change): teachers are persistent staff, not year-scoped.
+  `TeachersPage.tsx` is a directory filtered by search/status, server-side
+  tenant-scoped. Year context lives in their class ASSIGNMENTS, which are made
+  against session-scoped classes and already year-aware via Classes (Module 1)
+  and Timetables (Module 3). A year filter on the staff directory isn't a natural
+  dimension (staff continue year over year). Meets requirements as-is.
 
 ## Module 15 — Teacher Attendance  (/staff/attendance)
 Portals: principal, teacher
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Staff attendance scoped by date/session; teacher self, principal all
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Staff attendance scoped by date/session; teacher self, principal all
+  VERIFY-PASS (no code change): `TeacherAttendancePanel.tsx` is a DAILY HR
+  register — principals pick a date (capped at today) to view/mark the staff
+  roster; teachers self sign-in/sign-out and see their recent records. The
+  `teacher_attendance` table (migration 136) is keyed by `attendance_date` with
+  no academic_year — staff attendance is continuous by date, not partitioned by
+  school year, so a year filter isn't applicable. Correctly date-scoped;
+  teacher-self vs principal-all roles enforced.
 
 ---
 
@@ -178,18 +230,42 @@ Portals: principal, teacher
 
 ## Module 16 — Fee Structures  (/finance/fees)
 Portals: admin, super_admin, accountant
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Real year picker (done-partial); structures keyed by year; KPIs year-scoped
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Real year picker (done-partial); structures keyed by year; KPIs year-scoped
+  VERIFY-PASS (+1 cleanup): `FeesPage.tsx` already sources the year picker from
+  the tenant's REAL sessions (`listAcademicSessions`) with a small current-span
+  fallback, `year` starts empty then auto-selects the active session, and fee
+  structures are saved/read keyed by that `academic_year` string (slash-
+  normalized by migration 159). Removed a now-dead `CURRENT_YEAR` `new Date()`
+  const. Accountant/admin/super_admin see the same year-scoped structures + KPIs.
 
 ## Module 17 — Payments & Receipts  (/finance/payments)
 Portals: admin, super_admin, accountant
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Payments/ledger year-scoped; balances reflect selected year
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Payments/ledger year-scoped; balances reflect selected year
+  `PaymentsPage.tsx` gained a header `<YearFilter includeAllOption>` wired into
+  the analytics query. Backend `/finance/analytics` now accepts `academic_year`
+  and scopes ALL fees-derived figures (totals billed/paid/outstanding + by-term/
+  by-level/by-class + top defaulters) via a `feeYear()` helper on
+  `fees.academic_year`, so the KPIs/balances reflect the selected year (empty =
+  all years). Payment-method mix / 6-month trend / this-month remain
+  transaction-time cashflow views (not year-partitioned; `payments` has no
+  academic_year column). The raw transaction log stays a dated ledger. The
+  year-scoped tenant roll-up already existed via `financeLedgerService.
+  getTenantSummary`/`getBreakdown(academic_year)`.
 
 ## Module 18 — Fees & Payments (student/parent)  (/finance/my-fees)
 Portals: student, parent, guardian
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Per-student ledger by year/term; pay flow; own data only
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Per-student ledger by year/term; pay flow; own data only
+  VERIFY-PASS (no code change): `MyFeesPage.tsx` → `StudentLedgerView.tsx`
+  already renders EVERY academic year the student has fees for
+  (`ledger.years.map`), each with a year header + per-term/charges cards, and
+  builds payable scopes (full outstanding / per-year / per-term / charges-only)
+  across ALL years. Student sees own ledger (`getMyLedger`); parent uses a child
+  switcher then that child's ledger (`getStudentLedger`) — own data only, server
+  enforced. No year filter needed: the view is inherently multi-year and a filter
+  would only HIDE history. Fully meets R7/R9 for the fees portals.
 
 ---
 
@@ -197,8 +273,14 @@ Portals: student, parent, guardian
 
 ## Module 19 — Announcements  (/communication/announcements)
 Portals: admin, super_admin, teacher, parent, student, accountant, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Audience/class/role scoping correct; bell unread; teacher class scope
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Audience/class/role scoping correct; bell unread; teacher class scope
+  VERIFY-PASS (no code change): announcements are chronological, audience-
+  targeted communications — NOT academic-year entities (no year partition). The
+  page scopes correctly by role: teachers post only to classes they teach
+  (`myClasses()`) and can target their class/students/parents; dept staff →
+  students/parents; admins → any audience. List is tenant-scoped, recent-first,
+  paginated. Delivered across all portals. Year filter not applicable.
 
 ## Module 20 — Support  (/support)
 Portals: principal, teacher, accountant, admissions_officer
@@ -254,3 +336,7 @@ Portals: admin, super_admin
 ## Sign-off log
 (append: `Module N — <name> — YYYY-MM-DD — <commit>`)
 - Module 0 — Foundation — 2026-09-30 — (see next commit)
+
+
+
+

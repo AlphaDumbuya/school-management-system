@@ -123,7 +123,7 @@ export async function listApplications(
   query: ApplicationListQuery,
   tenantId?: string
 ): Promise<{ applications: AdmissionApplication[]; total: number; page: number; limit: number }> {
-  const { status, grade_id, assigned_to, date_from, date_to, search, page = 1, limit = 20 } = query;
+  const { status, grade_id, assigned_to, date_from, date_to, search, academic_year, page = 1, limit = 20 } = query;
   
   let queryBuilder = db('admission_applications').select('admission_applications.*');
 
@@ -135,6 +135,11 @@ export async function listApplications(
   // Apply filters
   if (status) {
     queryBuilder = queryBuilder.where({ status });
+  }
+
+  // Academic-year scope (canonical YYYY/YYYY). Past intakes remain retrievable.
+  if (academic_year) {
+    queryBuilder = queryBuilder.where('admission_applications.academic_year', academic_year);
   }
   
   if (grade_id) {
