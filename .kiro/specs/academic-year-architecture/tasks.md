@@ -273,8 +273,14 @@ Portals: student, parent, guardian
 
 ## Module 19 — Announcements  (/communication/announcements)
 Portals: admin, super_admin, teacher, parent, student, accountant, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Audience/class/role scoping correct; bell unread; teacher class scope
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Audience/class/role scoping correct; bell unread; teacher class scope
+  VERIFY-PASS (no code change): announcements are chronological, audience-
+  targeted communications — NOT academic-year entities (no year partition). The
+  page scopes correctly by role: teachers post only to classes they teach
+  (`myClasses()`) and can target their class/students/parents; dept staff →
+  students/parents; admins → any audience. List is tenant-scoped, recent-first,
+  paginated. Delivered across all portals. Year filter not applicable.
 
 ## Module 20 — Support  (/support)
 Portals: principal, teacher, accountant, admissions_officer
