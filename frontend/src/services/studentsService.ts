@@ -160,7 +160,7 @@ export const studentsService = {
     return apiClient.post(`/api/v1/students/${id}/reactivate`);
   },
 
-  async getStudentAttendance(studentId: string) {
+  async getStudentAttendance(studentId: string, academicYear?: string) {
     return apiClient.get<{
       student_id: string;
       summary: {
@@ -183,7 +183,9 @@ export const studentsService = {
         marked_at?: string | null;
         remarks?: string;
       }>;
-    }>(`/api/v1/attendance/student/${studentId}`);
+    }>(`/api/v1/attendance/student/${studentId}`, {
+      params: academicYear ? { academic_year: academicYear } : {},
+    });
   },
 
   async getStudentFees(studentId: string) {

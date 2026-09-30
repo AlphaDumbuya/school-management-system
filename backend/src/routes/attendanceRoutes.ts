@@ -607,12 +607,35 @@ router.get('/student/:studentId', authenticate, attachUserContext, authorize(Use
       if (!enrollment) throw new AppError('Insufficient permissions', 403, 'AUTHORIZATION_ERROR');
     }
 
+    // Academic-year scope: attendance rows belong to a class, and classes are
+    // session-scoped. Restrict to classes whose session name matches the year
+    // (null-session classes are always included so legacy rows aren't hidden).
+    // Omitting the year returns the student's full lifetime attendance.
+    const academicYear = req.query.academic_year as string | undefined;
+    let yearClassIds: string[] | undefined;
+    if (academicYear) {
+      const rows = await db('classes')
+        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where(function (this: any) {
+          this.where('academic_sessions.name', academicYear)
+            .orWhereNull('classes.academic_session_id');
+        })
+        .distinct('classes.id');
+      yearClassIds = rows.map((r: any) => r.id);
+    }
+
     let attendanceQuery = db('attendance')
       .select('id', 'class_id', 'attendance_date as date', 'status', 'session_type', 'check_in_time', 'check_out_time', 'marked_at', 'remarks')
       .where('student_id', student.id)
       .orderBy('attendance_date', 'desc')
       .orderBy('session_type', 'asc');
     if (allowedClassIds) attendanceQuery = attendanceQuery.whereIn('class_id', allowedClassIds);
+    if (yearClassIds) {
+      // No matching classes for that year → no rows.
+      attendanceQuery = yearClassIds.length
+        ? attendanceQuery.whereIn('class_id', yearClassIds)
+        : attendanceQuery.whereRaw('1 = 0');
+    }
     const attendance = await attendanceQuery;
 
     const total = attendance.length;

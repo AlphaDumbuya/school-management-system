@@ -153,9 +153,18 @@ Portals: admin, super_admin, admissions_officer
 
 ## Module 11 — Student Profiles  (/students/profiles)
 Portals: admin, super_admin, teacher, admissions_officer
-- [ ] Audit · [ ] Gaps · [ ] Fix · [ ] Verify · [ ] Sign-off
-- [ ] Overview/academics/attendance/conduct/billing tabs year-aware
-- [ ] Attendance tab scoped to current year/term (not lifetime); fix KPI key mismatch
+- [x] Audit · [x] Gaps · [x] Fix · [x] Verify · [x] Sign-off
+- [x] Overview/academics/attendance/conduct/billing tabs year-aware
+- [x] Attendance tab scoped to current year/term (not lifetime); fix KPI key mismatch
+  Two bugs fixed on `StudentProfilesPage.tsx`:
+  (1) KPI key mismatch — the fallback summary used `present_count/late_count/
+      absent_count` while the KPICards + real backend response use
+      `present/late/absent`. Fallback keys corrected so empty state shows 0.
+  (2) Lifetime-totals — `GET /attendance/student/:id` had NO year scope. Added
+      optional `academic_year` (scopes via classes→`academic_sessions.name`, OR
+      null-session; empty = lifetime). Service `getStudentAttendance(id, year)`
+      + attendance tab `<YearFilter includeAllOption>` with a "showing X /
+      all-time" caption. Academics tab already shows per-row Year+Term.
 
 ## Module 12 — Attendance  (/students/attendance)
 Portals: admin, super_admin, teacher, parent, student
