@@ -515,14 +515,15 @@ class BehavioralNoteService {
       if (options?.search) {
         const term = `%${options.search.toLowerCase()}%`;
         query = query.where(builder => {
+          // users has no student_id column — search by name or note text.
           builder.whereRaw("LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE ?", [term])
-            .orWhereRaw("LOWER(u.student_id) LIKE ?", [term])
             .orWhereRaw("LOWER(bn.content) LIKE ?", [term]);
         });
       }
 
       const items = await query.clone().limit(limit).offset(offset);
-      const countRes = await query.clone().count('* as count').first();
+      // Count without the select list / ORDER BY (Postgres rejects mixing them).
+      const countRes = await query.clone().clearSelect().clearOrder().count('* as count').first();
       const total = Number(countRes?.count || 0);
 
       return {

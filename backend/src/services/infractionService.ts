@@ -10,6 +10,15 @@ import { AppError } from '@middleware/errorHandler.js';
 import notificationService from '@services/notificationService.js';
 import emailService from '@services/emailService.js';
 import { applyYearScope, type YearScope } from '@utils/academicYear.js';
+
+// infraction_types has no severity column — derive the level the UI shows
+// (minor/moderate/serious/critical) from the points (per-incident override
+// first, else the type's default points).
+const SEVERITY_SQL = `(CASE
+  WHEN COALESCE(si.severity_override, it.default_points, 0) >= 50 THEN 'critical'
+  WHEN COALESCE(si.severity_override, it.default_points, 0) >= 25 THEN 'serious'
+  WHEN COALESCE(si.severity_override, it.default_points, 0) >= 10 THEN 'moderate'
+  ELSE 'minor' END)`;
 import {
   StudentInfraction,
   InfractionCreateInput,
@@ -110,7 +119,7 @@ class InfractionService {
         })
         .where('si.student_id', studentId)
         .where('si.tenant_id', tenantId)
-        .select('si.*', db.raw("COALESCE(it.name, si.infraction_type_id) as infraction_type_name"), 'it.severity_level')
+        .select('si.*', db.raw("COALESCE(it.name, si.infraction_type_id::text) as infraction_type_name"), db.raw(`${SEVERITY_SQL} as severity_level`))
         .orderBy('si.incident_date', 'desc');
 
       // Apply filters
@@ -529,8 +538,8 @@ class InfractionService {
         .select(
           'si.*',
           db.raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as student_name"),
-          db.raw("COALESCE(it.name, si.infraction_type_id) as infraction_type_name"),
-          'it.severity_level'
+          db.raw("COALESCE(it.name, si.infraction_type_id::text) as infraction_type_name"),
+          db.raw(`${SEVERITY_SQL} as severity_level`)
         )
         .orderBy('si.incident_date', 'desc');
 
@@ -539,20 +548,20 @@ class InfractionService {
       }
 
       if (options?.severity) {
-        query = query.where('it.severity_level', options.severity);
+        query = query.whereRaw(`${SEVERITY_SQL} = ?`, [options.severity]);
       }
 
       if (options?.search) {
         const term = `%${options.search.toLowerCase()}%`;
         query = query.where(builder => {
           builder.whereRaw("LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE ?", [term])
-            .orWhereRaw("LOWER(u.student_id) LIKE ?", [term])
-            .orWhereRaw("LOWER(COALESCE(it.name, si.infraction_type_id)) LIKE ?", [term]);
+            .orWhereRaw("LOWER(COALESCE(it.name, si.infraction_type_id::text)) LIKE ?", [term]);
         });
       }
 
       const items = await query.clone().limit(limit).offset(offset);
-      const countRes = await query.clone().count('* as count').first();
+      // Count without the select list / ORDER BY (Postgres rejects mixing them).
+      const countRes = await query.clone().clearSelect().clearOrder().count('* as count').first();
       const total = Number(countRes?.count || 0);
 
       return {
