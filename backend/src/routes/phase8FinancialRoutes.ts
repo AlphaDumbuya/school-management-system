@@ -1905,11 +1905,24 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
     const paid = Math.max(0, billed - outstanding);
     const collectionRate = billed > 0 ? Math.round((paid / billed) * 1000) / 10 : 0;
 
-    // ── Payment method breakdown ──
-    const byMethod = await db('payments')
+    // ── Payment method breakdown (scoped to selected year when specified) ──
+    const methodScope = analyticsYear && analyticsYear !== 'all' 
+      ? await resolveYearScope(tenantId, analyticsYear) 
+      : null;
+    
+    let methodQuery = db('payments')
       .join('students', 'payments.student_id', 'students.id')
       .where('students.tenant_id', tenantId)
-      .where('payments.status', 'completed')
+      .where('payments.status', 'completed');
+    
+    // If year scope exists, filter payments by date range
+    if (methodScope) {
+      methodQuery = methodQuery
+        .where('payments.payment_date', '>=', methodScope.year_from)
+        .where('payments.payment_date', '<', methodScope.year_to);
+    }
+    
+    const byMethod = await methodQuery
       .select(db.raw('COALESCE(payments.method, payments.payment_method) as method'))
       .sum('payments.amount as total')
       .count('payments.id as count')
