@@ -8,6 +8,7 @@ import { linkGuardianForStudent } from '@utils/guardianLinking';
 import { UserRole } from '../types/auth';
 import { sendExport } from '@utils/exportResponse';
 import emailService from '../services/emailService.js';
+import { normalizeAcademicYear, resolveActiveYear } from '@utils/academicYear';
 
 const router = Router();
 router.use(authenticate);
@@ -92,10 +93,10 @@ router.get('/export', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRo
 router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const createdBy = req.auth?.userId ?? null;
-    const year = new Date().getFullYear();
-    const nextYear = year + 1;
-    const academicYear = req.body.academic_year || `${year}/${nextYear}`;
     const tenantId = req.user?.tenant_id;
+    // Intake year = the one given, else the school's ACTIVE year (not a guess).
+    const academicYear = normalizeAcademicYear(req.body.academic_year)
+      || (tenantId ? (await resolveActiveYear(tenantId)).yearString : null);
 
     if (!tenantId) {
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');

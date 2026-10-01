@@ -5,6 +5,7 @@ import { AppError } from '@middleware/errorHandler';
 import { generateNextId } from '@utils/idGenerator';
 import { logger } from '@utils/logger';
 import emailService from '../services/emailService.js';
+import { resolveActiveYear } from '@utils/academicYear';
 
 const router = Router();
 const submitLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false });
@@ -41,12 +42,14 @@ function schoolClasses(tenantId: string) {
   return db('classes')
     .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
     .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+    // Applicants apply into the CURRENT year's classes only (no past-year copies).
     .where(function () {
-      this.where('academic_sessions.tenant_id', tenantId)
+      this.where({ 'academic_sessions.tenant_id': tenantId, 'academic_sessions.is_active': true })
         .orWhere(function () {
           this.whereNull('classes.academic_session_id').andWhere('class_creator.tenant_id', tenantId);
         });
     })
+    .where('classes.status', 'active')
     .select('classes.id', 'classes.name', 'classes.level')
     .orderBy('classes.name');
 }
@@ -97,11 +100,12 @@ router.post('/:schoolSlug', submitLimiter, async (req: Request, res: Response, n
       throw new AppError('Selected class is not available at this school', 400, 'INVALID_CLASS');
     }
 
-    const year = new Date().getFullYear();
+    // Intake year = the school's ACTIVE academic year (not a calendar guess).
+    const { yearString: intakeYear } = await resolveActiveYear(school.id);
     const now = new Date();
     const row: Record<string, unknown> = {
       tenant_id: school.id,
-      academic_year: `${year}/${year + 1}`,
+      academic_year: intakeYear,
       first_name: input.child_first_name.trim(),
       last_name: input.child_last_name.trim(),
       date_of_birth: input.child_dob,

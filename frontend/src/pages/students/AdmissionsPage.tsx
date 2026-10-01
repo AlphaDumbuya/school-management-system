@@ -26,6 +26,7 @@ import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
@@ -70,8 +71,11 @@ export const AdmissionsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  // Intake-year scope. Empty = all years; a past year shows that intake.
-  const [year, setYear] = useState('');
+  // Intake year: opens on the school's ACTIVE year; '' = all years.
+  const { activeYear } = useAcademicYears();
+  const [pickedYear, setYear] = useState<string | null>(null);
+  const year = pickedYear ?? activeYear;
+  const viewingOther = pickedYear !== null && pickedYear !== activeYear;
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -121,6 +125,7 @@ export const AdmissionsPage: React.FC = () => {
       search: search || undefined,
       academic_year: year || undefined,
     }),
+    enabled: pickedYear !== null || !!activeYear,
     staleTime: 30_000,
   });
 
@@ -478,6 +483,14 @@ export const AdmissionsPage: React.FC = () => {
               </div>
             </div>
           </div>
+          {viewingOther && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-900">
+              <span>{year ? <>Showing the <strong>{year}</strong> intake.</> : <>Showing applications from <strong>all years</strong>.</>} New applications go into {activeYear}.</span>
+              <button type="button" onClick={() => { setYear(activeYear); setPage(1); }} className="text-xs font-bold text-blue-700 hover:underline">
+                Back to {activeYear}
+              </button>
+            </div>
+          )}
           {(search || statusFilter) && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-450 dark:text-gray-500 flex items-center gap-1 mr-1"><SlidersHorizontal size={10} /> Filters:</span>
