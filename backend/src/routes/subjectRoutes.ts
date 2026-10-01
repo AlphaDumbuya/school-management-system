@@ -212,11 +212,20 @@ router.get('/my', authenticate, async (req: Request, res: Response, next: NextFu
     const subjectIds = new Set<string>();
     const collect = (rows: any[], key: string) => rows.forEach((r) => { if (r[key]) subjectIds.add(r[key]); });
 
-    collect(await db('class_subjects').where('class_id', classId).select('subject_id').catch(() => []), 'subject_id');
-    collect(await db('sl_subject_results').where({ tenant_id: tenantId, class_id: classId }).distinct('subject_id').catch(() => []), 'subject_id');
-    collect(await db('results').where('class_id', classId).distinct('subject_id').catch(() => []), 'subject_id');
-    // Timetable (schedules) subjects for the class.
-    collect(await db('schedules').where('class_id', classId).whereNotNull('subject_id').distinct('subject_id').catch(() => []), 'subject_id');
+    const collectFor = async (cid: string) => {
+      collect(await db('class_subjects').where('class_id', cid).select('subject_id').catch(() => []), 'subject_id');
+      collect(await db('sl_subject_results').where({ tenant_id: tenantId, class_id: cid }).distinct('subject_id').catch(() => []), 'subject_id');
+      collect(await db('results').where('class_id', cid).distinct('subject_id').catch(() => []), 'subject_id');
+      // Timetable (schedules) subjects for the class.
+      collect(await db('schedules').where('class_id', cid).whereNotNull('subject_id').distinct('subject_id').catch(() => []), 'subject_id');
+    };
+    await collectFor(classId);
+    // A class carried into a new year starts with no results (and maybe no
+    // timetable yet) — fall back to the same class in the year it came from.
+    if (subjectIds.size === 0) {
+      const cls = await db('classes').where({ id: classId }).first('carried_from_id').catch(() => null);
+      if (cls?.carried_from_id) await collectFor(cls.carried_from_id);
+    }
 
     if (subjectIds.size === 0) {
       return res.json({ data: [], pagination: { page: 1, limit: 0, total: 0, total_pages: 0 } });
