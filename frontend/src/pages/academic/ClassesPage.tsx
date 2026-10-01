@@ -25,6 +25,7 @@ import { useAuth } from '@hooks/useAuth';
 import { classesService, ClassRecord } from '@services/classesService';
 import { ClassFormModal } from './components/ClassFormModal';
 import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import { ClassStudentsModal } from './components/ClassStudentsModal';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -258,6 +259,8 @@ export const ClassesPage: React.FC = () => {
   // Academic year filter (managers browse any year; defaults to active). Classes
   // are session-scoped, so this scopes the list to the chosen year's classes.
   const [year, setYear] = useState('');
+  const { activeYear } = useAcademicYears();
+  const viewingPast = !!year && !!activeYear && year !== activeYear;
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -462,14 +465,28 @@ export const ClassesPage: React.FC = () => {
             </div>
 
             <YearFilter value={year} onChange={(y) => { setYear(y); setPage(1); }} />
-            <RoleGuard roles={['principal', 'super_admin']}>
-              <Button variant="default" size="sm" onClick={() => { setEditingClass(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm hover:shadow">
-                + Add Class
-              </Button>
-            </RoleGuard>
+            {/* New classes always join the CURRENT year, so only offer it there. */}
+            {!viewingPast && (
+              <RoleGuard roles={['principal', 'super_admin']}>
+                <Button variant="default" size="sm" onClick={() => { setEditingClass(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm hover:shadow">
+                  + Add Class
+                </Button>
+              </RoleGuard>
+            )}
           </div>
         }
       >
+        {viewingPast && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>
+              Showing <strong>{year}</strong> classes as history, with the students who were in each class that year.
+              The current year is {activeYear}.
+            </span>
+            <button type="button" onClick={() => { setYear(activeYear); setPage(1); }} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
         {/* KPI Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
           {isLoading && !data ? (
@@ -477,7 +494,7 @@ export const ClassesPage: React.FC = () => {
           ) : (
             <>
               <KPICard title="Total Classes" value={stats.total} icon={<div className="p-2 rounded-xl bg-blue-500 text-white shadow-sm flex items-center justify-center"><BookOpen size={20} /></div>} color="blue" />
-              <KPICard title="Total Enrolled" value={stats.totalEnrolled} icon={<div className="p-2 rounded-xl bg-green-500 text-white shadow-sm flex items-center justify-center"><Users size={20} /></div>} color="green" />
+              <KPICard title={viewingPast ? `Students in ${year}` : 'Total Enrolled'} value={stats.totalEnrolled} icon={<div className="p-2 rounded-xl bg-green-500 text-white shadow-sm flex items-center justify-center"><Users size={20} /></div>} color="green" />
               <KPICard title="Avg Class Size" value={stats.avgSize} icon={<div className="p-2 rounded-xl bg-purple-500 text-white shadow-sm flex items-center justify-center"><BarChart2 size={20} /></div>} color="purple" />
               <KPICard
                 title="Avg Capacity Used"
