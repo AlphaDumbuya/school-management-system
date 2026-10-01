@@ -144,46 +144,31 @@ router.post('/settings', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
       );
     }
 
-    // Sync to academic_sessions table if academic_year is updated
+    // Academic year: route through the same rollover as "Start New Academic
+    // Year" so changing it here also moves classes, setup and students into a
+    // later year (going back to an older year only re-activates it).
+    let rollover: any = null;
     if (updates.academic_year) {
-      const name = updates.academic_year;
-      const startDate = updates.term_1_start || new Date().toISOString().split('T')[0];
-      const endDate = (updates.term_count === 2 ? updates.term_2_end : updates.term_3_end) || new Date(Date.now() + 300 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-      // Mark other sessions for this tenant as inactive
-      await db('academic_sessions')
-        .where('tenant_id', tenantId)
-        .update({ is_active: false });
-
-      // Upsert academic session
-      const existing = await db('academic_sessions')
-        .where('tenant_id', tenantId)
-        .where('name', name)
-        .first();
-
-      if (existing) {
-        await db('academic_sessions')
-          .where('id', existing.id)
-          .update({
-            start_date: startDate,
-            end_date: endDate,
-            is_active: true,
+      const name = String(updates.academic_year).trim();
+      const startDate = updates.term_1_start || null;
+      const endDate = (Number(updates.term_count) === 2 ? updates.term_2_end : updates.term_3_end) || null;
+      const active = await db('academic_sessions').where({ tenant_id: tenantId, is_active: true }).first();
+      if (active?.name === name) {
+        if (startDate || endDate) {
+          await db('academic_sessions').where({ id: active.id }).update({
+            ...(startDate ? { start_date: startDate } : {}),
+            ...(endDate ? { end_date: endDate } : {}),
             updated_at: new Date(),
           });
+        }
       } else {
-        await db('academic_sessions').insert({
-          tenant_id: tenantId,
-          name: name,
-          start_date: startDate,
-          end_date: endDate,
-          is_active: true,
-          created_at: new Date(),
-          updated_at: new Date(),
+        rollover = await academicYearService.startNewAcademicYear({
+          tenantId, userId, newYearName: name, startDate, endDate, cloneClasses: true,
         });
       }
     }
 
-    res.json({ success: true, message: 'Settings saved successfully' });
+    res.json({ success: true, message: 'Settings saved successfully', rollover });
   } catch (error) {
     next(error);
   }
@@ -283,6 +268,27 @@ router.post(
         cloneClasses: clone_classes !== false,
       });
       res.json({ success: true, data: result, message: 'New academic year started' });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/v1/school-config/carry-forward
+ * Bring last year's classes, subjects, teacher assignments, timetable, fee
+ * structures and active students into the CURRENT (active) year. For years
+ * started before rollover carried everything. Idempotent — safe to re-run.
+ */
+router.post(
+  '/carry-forward',
+  authenticate,
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  attachUserContext,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await academicYearService.carryForwardIntoActive(getTenantId(req), req.auth!.userId);
+      res.json({ success: true, data: result });
     } catch (error) {
       next(error);
     }

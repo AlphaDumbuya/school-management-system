@@ -30,10 +30,20 @@ class TeacherDashboardService {
   private async getClassIds(teacherId: string): Promise<string[]> {
     const assigned = await db('teacher_assignments').where('teacher_id', teacherId).distinct('class_id');
     const led = await db('classes').where('class_teacher_id', teacherId).select('id');
-    return Array.from(new Set<string>([
+    const all = Array.from(new Set<string>([
       ...assigned.map((r: any) => r.class_id),
       ...led.map((r: any) => r.id),
     ]));
+    if (all.length === 0) return all;
+    // The dashboard follows the CURRENT academic year: keep classes in the
+    // active session (or with no session). Last year's classes stay reachable
+    // via the year filters; fall back to all if nothing is current yet.
+    const current = await db('classes')
+      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .whereIn('classes.id', all)
+      .where((q) => q.where('academic_sessions.is_active', true).orWhereNull('classes.academic_session_id'))
+      .select('classes.id');
+    return current.length ? current.map((r: any) => r.id) : all;
   }
 
   async getDashboard(userId: string, tenantId: string): Promise<any> {

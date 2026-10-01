@@ -88,6 +88,25 @@ export const PromotionsPage: React.FC = () => {
   });
   const classes: any[] = (classesData as any)?.data ?? [];
 
+  // Promoting from a PAST year? Students move into the CURRENT year's classes,
+  // so "To Class" lists the active year's classes instead of last year's.
+  const activeYear = sessions.find((s) => s.is_active)?.name || '';
+  const fromPastYear = !!academicYear && !!activeYear && academicYear !== activeYear;
+  const { data: activeClassesData } = useQuery({
+    queryKey: ['promotion-classes', activeYear],
+    queryFn: () => classesService.listClasses({ limit: 200, academic_year: activeYear }),
+    enabled: fromPastYear,
+    staleTime: 60_000,
+  });
+  const targetClasses: any[] = fromPastYear ? ((activeClassesData as any)?.data ?? []) : classes;
+  // Map a last-year class to its copy in the current year (via carried_from_id).
+  const toCurrentYear = (id?: string | null) => {
+    if (!id) return '';
+    if (!fromPastYear) return String(id);
+    const copy = targetClasses.find((c) => String(c.carried_from_id) === String(id));
+    return copy ? String(copy.id) : '';
+  };
+
   const canLoad = !!(classId && academicYear);
   const { data: candData, isLoading, error, refetch } = useQuery({
     queryKey: ['promotion-candidates', classId, academicYear],
@@ -240,7 +259,7 @@ export const PromotionsPage: React.FC = () => {
                   if (tab === 'promote') {
                     const src = classes.find((c) => String(c.id) === newFrom);
                     if (src?.is_final_year) { setGraduate(true); setTargetClassId(''); }
-                    else if (src?.next_class_id) { setGraduate(false); setTargetClassId(String(src.next_class_id)); }
+                    else if (src?.next_class_id) { setGraduate(false); setTargetClassId(toCurrentYear(src.next_class_id)); }
                     else { setGraduate(false); setTargetClassId(''); }
                   }
                 }}
@@ -266,9 +285,13 @@ export const PromotionsPage: React.FC = () => {
                   className={`${selectCls} w-full md:w-56`}
                 >
                   <option value="">— Select target class —</option>
-                  {classes.filter((c) => String(c.id) !== classId).map((c) => (
-                    <option key={c.id} value={String(c.id)}>{c.name}{c.level ? ` (${c.level})` : ''}</option>
-                  ))}
+                  {targetClasses
+                    .filter((c) => String(c.id) !== classId && String(c.carried_from_id ?? '') !== classId)
+                    .map((c) => (
+                      <option key={c.id} value={String(c.id)}>
+                        {c.name}{c.level ? ` (${c.level})` : ''}{fromPastYear ? ` · ${activeYear}` : ''}
+                      </option>
+                    ))}
                   <option value="__graduate__">🎓 Graduate (final year)</option>
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
@@ -427,7 +450,7 @@ export const PromotionsPage: React.FC = () => {
         onConfirm={handleExecute}
         title="Confirm Promotions"
         message={(() => {
-          const targetName = classes.find((c) => String(c.id) === targetClassId)?.name;
+          const targetName = targetClasses.find((c) => String(c.id) === targetClassId)?.name;
           const lines: string[] = [];
           if (graduate) {
             lines.push(`Graduate ${stats.promoted} student(s): their enrolment is closed and they are marked graduated.`);

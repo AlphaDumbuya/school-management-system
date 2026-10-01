@@ -73,8 +73,11 @@ class PromotionService {
       .join('students', 'enrollments.student_id', 'students.id')
       .leftJoin('users', 'students.user_id', 'users.id')
       .where('enrollments.class_id', classId)
-      .where('enrollments.status', 'active')
+      // 'completed' = carried into the new year's copy of this class; they can
+      // still be promoted on last year's results.
+      .whereIn('enrollments.status', ['active', 'completed'])
       .where('students.tenant_id', tenantId)
+      .distinct()
       .select(
         'students.id as student_id',
         'students.student_id as student_reg_id',
@@ -232,20 +235,34 @@ class PromotionService {
           .first();
         if (existing) { counters.skipped++; continue; }
 
-        // Confirm the student is actively enrolled in the source class.
+        // The student's current place: active in the source class, or — after
+        // a new year was started — active in that class's new-year copy.
         const enrollment = await trx('enrollments')
           .join('students', 'enrollments.student_id', 'students.id')
+          .join('classes as ec', 'enrollments.class_id', 'ec.id')
           .where('enrollments.student_id', d.student_id)
-          .where('enrollments.class_id', payload.from_class_id)
+          .where((q) => q.where('enrollments.class_id', payload.from_class_id).orWhere('ec.carried_from_id', payload.from_class_id))
           .where('enrollments.status', 'active')
           .where('students.tenant_id', tenantId)
-          .select('enrollments.id as enrollment_id')
+          .orderByRaw('CASE WHEN enrollments.class_id = ? THEN 1 ELSE 0 END', [payload.from_class_id])
+          .select('enrollments.id as enrollment_id', 'enrollments.class_id as current_class_id', 'ec.academic_session_id as current_session_id')
           .first();
 
         if (!enrollment) { counters.skipped++; continue; }
 
         const isPromotion = d.outcome === 'promoted' || d.outcome === 'promoted_effort';
-        const target = d.to_class_id ?? defaultTarget;
+        let target = d.to_class_id ?? defaultTarget;
+        // Target picked from last year (e.g. the old next-class link) but the
+        // student is already in the new year → use the target's new-year copy.
+        if (target) {
+          const tc = await trx('classes').where({ id: target }).first('academic_session_id');
+          if (tc && tc.academic_session_id !== enrollment.current_session_id) {
+            const copy = await trx('classes')
+              .where({ carried_from_id: target, academic_session_id: enrollment.current_session_id })
+              .first('id');
+            if (copy) target = copy.id;
+          }
+        }
 
         if (d.outcome === 'graduated' || (isPromotion && payload.graduate)) {
           // Graduating: close enrollment, mark student graduated, no new class.
@@ -286,8 +303,26 @@ class PromotionService {
           }
           counters.promoted++;
         } else {
-          // Repeated: keep the student in the same class for the next year.
-          // The current enrollment stays active — no move needed.
+          // Repeated: the student stays in the same class. If a newer year
+          // already has that class's copy, place them there so they follow
+          // the school into the current year; otherwise nothing moves.
+          const copy = enrollment.current_class_id === payload.from_class_id
+            ? await trx('classes as c')
+                .join('academic_sessions as s', 'c.academic_session_id', 's.id')
+                .where({ 'c.carried_from_id': payload.from_class_id, 's.is_active': true })
+                .first('c.id', 'c.academic_session_id')
+            : null;
+          if (copy) {
+            await trx('enrollments').where({ id: enrollment.enrollment_id })
+              .update({ status: 'completed', updated_at: trx.fn.now() });
+            await trx('enrollments')
+              .insert({
+                student_id: d.student_id, class_id: copy.id, academic_session_id: copy.academic_session_id,
+                enrollment_date: trx.fn.now(), status: 'active',
+              })
+              .onConflict(['student_id', 'class_id', 'academic_session_id'])
+              .merge({ status: 'active', updated_at: trx.fn.now() });
+          }
           counters.repeated++;
         }
 
