@@ -68,7 +68,9 @@ export const financeService = {
   ),
   listInvoices: (status?: string) =>
     apiClient.get<{ success: boolean; data: (Invoice & { student_name: string; admission_no: string })[] }>(`/api/v1/finance/invoices${status ? `?status=${status}` : ''}`),
-  listPayments: () => apiClient.get<{ success: boolean; data: (Payment & { student_name: string })[] }>('/api/v1/finance/payments'),
+  listPayments: (academicYear?: string) => apiClient.get<{ success: boolean; data: (Payment & { student_name: string })[] }>(
+    `/api/v1/finance/payments${academicYear ? `?academic_year=${encodeURIComponent(academicYear)}` : ''}`,
+  ),
   listFees: () => apiClient.get<{ success: boolean; data: (Fee & { student_name: string })[] }>('/api/v1/finance/fees'),
 
   // ── Fees ────────────────────────────────────────────────────────────────
