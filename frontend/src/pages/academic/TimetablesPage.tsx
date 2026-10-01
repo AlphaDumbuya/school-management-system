@@ -33,6 +33,7 @@ import { useAuth } from '@hooks/useAuth';
 import { studentDashboardService } from '@services/studentDashboardService';
 import { parentDashboardService } from '@services/parentDashboardService';
 import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 // ── Subject category colors ───────────────────────────────────────────────────
 
@@ -64,7 +65,11 @@ export const TimetablesPage: React.FC = () => {
 
   // Class selector + academic-year scope (staff). Students/parents auto-resolve.
   const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [year, setYear] = useState('');
+  const [pickedYear, setYear] = useState('');
+  const { activeYear } = useAcademicYears();
+  // One year at a time: the picked one, else the school's active year.
+  const year = pickedYear || activeYear;
+  const viewingPast = !isViewerOnly && !!year && !!activeYear && year !== activeYear;
 
   // Mobile day tab
   const [mobileDay, setMobileDay] = useState<string>('Monday');
@@ -81,8 +86,8 @@ export const TimetablesPage: React.FC = () => {
   // their own class from the dashboard, never a class picker).
   const { data: classesData } = useQuery({
     queryKey: ['classes-selector', year],
-    queryFn: () => classesService.listClasses({ limit: 100, academic_year: year || undefined } as any),
-    enabled: !isViewerOnly,
+    queryFn: () => classesService.listClasses({ limit: 100, academic_year: year } as any),
+    enabled: !isViewerOnly && !!year,
     staleTime: 60_000,
   });
   const classes: ClassRecord[] = (classesData as any)?.data ?? [];
@@ -184,6 +189,11 @@ export const TimetablesPage: React.FC = () => {
     setSlotModalOpen(true);
   };
 
+  // Editing controls: principal/super-admin, and only for the CURRENT year —
+  // a past year's timetable is read-only history.
+  const EditGuard: React.FC<{ children: React.ReactNode }> = ({ children }) =>
+    viewingPast ? null : <RoleGuard roles={['principal', 'super_admin']}>{children}</RoleGuard>;
+
   const handleEditSlot = (slot: TimetableSlot) => {
     setEditingSlot(slot);
     setPrefillDay(undefined);
@@ -227,7 +237,7 @@ export const TimetablesPage: React.FC = () => {
         <td
           key={`${day}-${periodIndex}`}
           className={`relative px-1.5 sm:px-2 py-1.5 sm:py-2 border border-gray-100 dark:border-gray-700/50 ${catBg} group cursor-pointer transition-all hover:ring-2 hover:ring-blue-400/60 hover:shadow-md rounded-sm`}
-          onClick={() => handleEditSlot(slot)}
+          onClick={() => { if (!viewingPast) handleEditSlot(slot); }}
         >
           <div className="min-w-[80px] sm:min-w-[100px]">
             <p className={`text-xs sm:text-sm font-bold truncate leading-tight ${catText}`}>
@@ -243,7 +253,7 @@ export const TimetablesPage: React.FC = () => {
             )}
           </div>
           {/* Delete button on hover */}
-          <RoleGuard roles={['principal', 'super_admin']}>
+          <EditGuard>
             <button
               onClick={(e) => { e.stopPropagation(); setDeleteTarget(slot); }}
               className="absolute top-1 right-1 p-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -251,7 +261,7 @@ export const TimetablesPage: React.FC = () => {
             >
               <Trash2 size={10} />
             </button>
-          </RoleGuard>
+          </EditGuard>
         </td>
       );
     }
@@ -262,7 +272,7 @@ export const TimetablesPage: React.FC = () => {
         key={`${day}-${periodIndex}`}
         className="px-1.5 sm:px-2 py-1.5 sm:py-2 border border-gray-100 dark:border-gray-700/50 bg-white dark:bg-gray-900 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
       >
-        <RoleGuard roles={['principal', 'super_admin']}>
+        <EditGuard>
           <button
             onClick={() => handleAddSlot(day, periodIndex)}
             className="w-full h-full min-h-[40px] sm:min-h-[50px] flex items-center justify-center text-gray-300 dark:text-gray-600 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
@@ -270,7 +280,7 @@ export const TimetablesPage: React.FC = () => {
           >
             <Plus size={16} />
           </button>
-        </RoleGuard>
+        </EditGuard>
       </td>
     );
   };
@@ -286,7 +296,7 @@ export const TimetablesPage: React.FC = () => {
             {!isViewerOnly && (
               <YearFilter value={year} onChange={(y) => { setYear(y); setSelectedClassId(''); }} />
             )}
-            <RoleGuard roles={['principal', 'super_admin']}>
+            <EditGuard>
               <Button
                 variant="outline"
                 size="sm"
@@ -305,10 +315,18 @@ export const TimetablesPage: React.FC = () => {
               >
                 + Add Period
               </Button>
-            </RoleGuard>
+            </EditGuard>
           </div>
         }
       >
+        {viewingPast && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>Showing the <strong>{year}</strong> timetable as history (read-only). The current year is {activeYear}.</span>
+            <button type="button" onClick={() => { setYear(activeYear); setSelectedClassId(''); }} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
         {/* Class selector — STAFF pick any class; PARENTS switch between their
             children; STUDENTS see their own class (no picker). */}
         {!isViewerOnly ? (
@@ -526,7 +544,7 @@ export const TimetablesPage: React.FC = () => {
                     )}
 
                     {/* Actions */}
-                    <RoleGuard roles={['principal', 'super_admin']}>
+                    <EditGuard>
                       {slot ? (
                         <div className="flex items-center gap-1">
                           <button
@@ -550,7 +568,7 @@ export const TimetablesPage: React.FC = () => {
                           <Plus size={14} />
                         </button>
                       )}
-                    </RoleGuard>
+                    </EditGuard>
                   </div>
                 );
               })}
