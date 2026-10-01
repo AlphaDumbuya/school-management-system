@@ -12,6 +12,7 @@ import { showToast } from '@utils/toast';
 import { resultsService, TERMS, getGradeLetter } from '@services/resultsService';
 import { classesService } from '@services/classesService';
 import { subjectsService } from '@services/subjectsService';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,14 +37,14 @@ export const GradeEntryModal: React.FC<GradeEntryModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const currentYear = new Date().getFullYear();
-  const defaultAcademicYear = `${currentYear}/${currentYear + 1}`;
+  // Grades are saved under the school's ACTIVE academic year, not the calendar.
+  const { activeYear } = useAcademicYears();
 
   // Selection state
   const [classId, setClassId] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [term, setTerm] = useState('');
-  const [academicYear] = useState(defaultAcademicYear);
+  const academicYear = activeYear;
   const [assessmentScheme, setAssessmentScheme] = useState<'grace' | 'rising' | 'wassce'>('grace');
 
   const schemeConfig = useMemo(() => {

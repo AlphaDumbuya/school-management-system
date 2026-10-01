@@ -12,11 +12,11 @@ import { Button } from '@components/ui/button';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { showToast } from '@utils/toast';
 import { financeService, SchoolExpense } from '@services/financeService';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 const fmtLe = (v: number | string | null | undefined) =>
   `Le ${(Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const CURRENT_YEAR = `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`;
 const TERMS = [
   { value: '', label: 'Whole year' },
   { value: 'first_term', label: 'First Term' },
@@ -27,14 +27,12 @@ const CATEGORIES = ['Salaries', 'Utilities', 'Supplies', 'Maintenance', 'Transpo
 
 export const ExpensesPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const [year, setYear] = useState(CURRENT_YEAR);
+  // Real academic years only; open on the school's active year.
+  const { years, activeYear } = useAcademicYears();
+  const [pickedYear, setYear] = useState('');
+  const year = pickedYear || activeYear;
   const [showAdd, setShowAdd] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SchoolExpense | null>(null);
-
-  const years = useMemo(() => {
-    const cur = new Date().getFullYear();
-    return Array.from({ length: 5 }, (_, i) => `${cur + i - 2}/${cur + i - 1}`);
-  }, []);
 
   const { data: expResp, isLoading, refetch } = useQuery({
     queryKey: ['school-expenses', year],

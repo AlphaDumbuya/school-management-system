@@ -87,6 +87,17 @@ export interface SubscriptionDetails {
   };
 }
 
+/** What a year rollover carried into the new year. */
+export interface CarryForwardCounts {
+  classesCloned: number;
+  classesSkipped: number;
+  subjectsCopied: number;
+  assignmentsCopied: number;
+  timetableCopied: number;
+  feeStructuresCopied: number;
+  studentsMoved: number;
+}
+
 export const schoolConfigService = {
   async getSchoolInfo() {
     return apiClient.get<SchoolInfo>('/api/v1/school-config/info');
@@ -163,14 +174,20 @@ export const schoolConfigService = {
   }) {
     return apiClient.post<{
       message: string;
-      data: {
+      data: CarryForwardCounts & {
         sessionId: string;
         created: boolean;
-        classesCloned: number;
-        classesSkipped: number;
         previousYearName: string | null;
+        carriedForward: boolean;
       };
     }>('/api/v1/school-config/start-new-year', payload);
+  },
+
+  /** Bring last year's classes, setup and active students into the current year (idempotent). */
+  async carryForwardIntoCurrentYear() {
+    return apiClient.post<CarryForwardCounts & { fromYear: string | null; toYear: string | null }>(
+      '/api/v1/school-config/carry-forward',
+    );
   },
 
   async getGradingScales() {

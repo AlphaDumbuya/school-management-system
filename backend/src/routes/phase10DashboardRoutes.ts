@@ -1,5 +1,6 @@
 import express, { Router, Request, Response } from 'express';
 import dashboardService from '@services/dashboardService';
+import yearDashboardService from '@services/yearDashboardService';
 import teacherDashboardService from '@services/teacherDashboardService';
 import studentDashboardService from '@services/studentDashboardService';
 import parentDashboardService from '@services/parentDashboardService';
@@ -371,36 +372,11 @@ router.get('/dashboards/admin/complete', authenticate, async (req: Request, res:
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // Fetch all dashboard data in parallel
-    const [metrics, alerts, financialSummary, atRiskStudents, systemHealth, academicPerformanceChart, attendanceTrendChart, feeCollectionChart, studentDistributionChart] = await Promise.all([
-      dashboardService.getAdminDashboardMetrics(tenantId),
-      dashboardService.getDashboardAlerts(tenantId),
-      dashboardService.getFinancialSummary(tenantId),
-      dashboardService.getStudentsAtRisk(tenantId, 10),
-      dashboardService.getSystemHealth(tenantId),
-      dashboardService.getAcademicPerformanceChart(tenantId),
-      dashboardService.getAttendanceTrendChart(tenantId),
-      dashboardService.getFeeCollectionChart(tenantId),
-      dashboardService.getStudentDistributionChart(tenantId),
-    ]);
-
-    res.json({
-      success: true,
-      data: {
-        metrics,
-        alerts,
-        financialSummary,
-        atRiskStudents,
-        systemHealth,
-        charts: {
-          academicPerformance: academicPerformanceChart,
-          attendanceTrend: attendanceTrendChart,
-          feeCollection: feeCollectionChart,
-          studentDistribution: studentDistributionChart,
-        },
-      },
-      timestamp: new Date().toISOString(),
-    });
+    // Year-scoped overview: ?academic_year=YYYY/YYYY (default: the active year).
+    const requestedYear = typeof req.query.academic_year === 'string' ? req.query.academic_year.trim() : undefined;
+    const data = await yearDashboardService.getDashboard(tenantId, requestedYear || undefined);
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, data, timestamp: new Date().toISOString() });
   } catch (error) {
     logger.error(`Error fetching complete dashboard: ${error}`);
     res.status(500).json({

@@ -30,9 +30,9 @@ export interface UseAcademicYears {
 }
 
 /**
- * Returns the real academic years for the tenant. Falls back to a small
- * calendar-derived span only for a brand-new school with no sessions yet, so a
- * picker is never empty.
+ * Returns the real academic years for the tenant (from academic_sessions),
+ * newest first. Never invents years; only a school with no sessions at all
+ * gets a single calendar-year entry so a picker is never empty.
  */
 export function useAcademicYears(): UseAcademicYears {
   const { data, isLoading } = useQuery({
@@ -52,13 +52,12 @@ export function useAcademicYears(): UseAcademicYears {
     return `${y}/${y + 1}`;
   }, [sessions]);
 
+  // ONLY the school's real academic years. A brand-new school with no
+  // sessions yet gets just one entry (the calendar year) so pickers aren't empty.
   const years = useMemo(() => {
     const set = new Set<string>();
-    sessions.forEach((s) => { const n = normalizeYear(s?.name); if (n) set.add(n); });
-    // Ensure the active year and a small current span are always selectable.
-    set.add(activeYear);
-    const cur = new Date().getFullYear();
-    for (let i = 1; i >= -3; i--) set.add(`${cur + i}/${cur + i + 1}`);
+    sessions.forEach((s) => { const n = normalizeYear(s?.name); if (n && /^\d{4}\/\d{4}$/.test(n)) set.add(n); });
+    if (set.size === 0) set.add(activeYear);
     return Array.from(set).sort((a, b) => b.localeCompare(a));
   }, [sessions, activeYear]);
 

@@ -9,6 +9,18 @@ const router = Router();
 router.use(authenticate);
 router.use(attachUserContext);
 
+// Enrollment statuses: who is in a class NOW vs who was in it in a past year
+// (closed when the school moved into a new year or the student moved on).
+const ACTIVE_ENROLLMENT = ['enrolled', 'active'];
+const HISTORIC_ENROLLMENT = ['enrolled', 'active', 'completed', 'promoted', 'repeated', 'graduated'];
+
+/** True when the class belongs to an academic session that is no longer active. */
+async function isPastYearClass(sessionId: string | null | undefined): Promise<boolean> {
+  if (!sessionId) return false;
+  const s = await db('academic_sessions').where({ id: sessionId }).first('is_active');
+  return !!s && s.is_active === false;
+}
+
 // ── Tenant-ownership guards ───────────────────────────────────────────────────
 // classes has no tenant_id column; a class belongs to a tenant via its session
 // (or, for session-less classes, its creator). These helpers stop a class from
@@ -195,11 +207,21 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         db.raw('COALESCE(enrollment_counts.enrolled_students, 0) as enrolled_students')
       )
       .leftJoin(
-        db('enrollments')
-          .select('class_id')
-          .count('* as enrolled_students')
-          .whereIn('status', ['enrolled', 'active'])
-          .groupBy('class_id')
+        // Current-year classes count ACTIVE enrollments; past-year classes keep
+        // their historic roster (students who were in the class that year,
+        // since closed as completed/promoted when the school moved on).
+        db('enrollments as ce')
+          .join('classes as cc', 'ce.class_id', 'cc.id')
+          .leftJoin('academic_sessions as cs', 'cc.academic_session_id', 'cs.id')
+          .select('ce.class_id')
+          .countDistinct('ce.student_id as enrolled_students')
+          .where(function (this: any) {
+            this.whereIn('ce.status', ACTIVE_ENROLLMENT)
+              .orWhere(function (this: any) {
+                this.where('cs.is_active', false).whereIn('ce.status', HISTORIC_ENROLLMENT);
+              });
+          })
+          .groupBy('ce.class_id')
           .as('enrollment_counts'),
         'classes.id',
         'enrollment_counts.class_id'
@@ -342,6 +364,10 @@ router.get('/:classId/students', authenticate, async (req: Request, res: Respons
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
 
+    // A class from a past academic year shows the students who were in it
+    // that year; a current-year class shows who is actively enrolled now.
+    const classIsPast = await isPastYearClass(classData.academic_session_id);
+
     const students = await db('students')
       .join('enrollments', 'students.id', '=', 'enrollments.student_id')
       .leftJoin('users', 'students.user_id', 'users.id')
@@ -363,10 +389,14 @@ router.get('/:classId/students', authenticate, async (req: Request, res: Respons
           .orWhere('users.tenant_id', tenantId);
       })
       .where(function () {
-        this.whereIn('enrollments.status', ['enrolled', 'active'])
+        this.whereIn('enrollments.status', classIsPast ? HISTORIC_ENROLLMENT : ACTIVE_ENROLLMENT)
           .orWhereNull('enrollments.status');
       })
+      .distinctOn('students.id')
+      .orderBy('students.id')
       .orderBy('enrollments.roll_number', 'asc');
+    students.sort((a: any, b: any) => String(a.roll_number ?? '').localeCompare(String(b.roll_number ?? ''), undefined, { numeric: true })
+      || `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`));
 
     res.json({
       success: true,
@@ -413,9 +443,13 @@ router.get('/:classId', authenticate, async (req: Request, res: Response, next: 
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
 
-    // Get enrollment count
-    const enrollmentCount = await db('enrollments').where('class_id', classData.id).whereIn('status', ['enrolled', 'active']).count('* as count').first();
+    // Enrollment count — historic roster for a past-year class, active otherwise.
+    const past = await isPastYearClass(classData.academic_session_id);
+    const enrollmentCount = await db('enrollments').where('class_id', classData.id)
+      .whereIn('status', past ? HISTORIC_ENROLLMENT : ACTIVE_ENROLLMENT)
+      .countDistinct('student_id as count').first();
     classData.enrolled_students = Number(enrollmentCount?.count ?? 0);
+    classData.is_past_year = past;
 
     res.json(classData);
   } catch (error) {

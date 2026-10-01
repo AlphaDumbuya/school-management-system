@@ -3,6 +3,8 @@ import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import { Button } from '@components/ui/button';
+import { YearTransitionDialog } from '@components/academic/YearTransitionDialog';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import {
   Settings as SettingsIcon,
   Building,
@@ -170,7 +172,7 @@ export const SettingsPage: React.FC = () => {
   // States for Settings fields
   const [schoolInfo, setSchoolInfo] = useState<Partial<SchoolInfo>>({});
   const [settings, setSettings] = useState<Record<string, any>>({
-    academic_year: '2026/2027',
+    academic_year: '', // filled from the school's active session below
     term_count: 3,
     term_1_start: '',
     term_1_end: '',
@@ -409,6 +411,40 @@ export const SettingsPage: React.FC = () => {
     return `${y}/${y + 1}`;
   };
 
+  // For a year that was started before rollover carried everything forward:
+  // pull last year's classes, setup and students into the current year.
+  // The school's active academic year (real session), for year-keyed panels.
+  const { activeYear: activeAcademicYear, isLoading: yearsLoading } = useAcademicYears();
+  // No saved academic_year setting → show the real active session, not a guess.
+  useEffect(() => {
+    if (!yearsLoading && activeAcademicYear && !settings.academic_year) {
+      setSettings((s) => (s.academic_year ? s : { ...s, academic_year: activeAcademicYear }));
+    }
+  }, [yearsLoading, activeAcademicYear, settings.academic_year]);
+  const [carryingForward, setCarryingForward] = useState(false);
+  const [carryDialogOpen, setCarryDialogOpen] = useState(false);
+  const handleCarryForward = async () => {
+    setCarryingForward(true);
+    try {
+      const res: any = await schoolConfigService.carryForwardIntoCurrentYear();
+      if (res?.success === false) throw new Error(res?.error || 'Carry forward failed');
+      const d = res?.data || {};
+      if (!d.fromYear) {
+        showToast.info('There is no earlier year to bring forward.');
+      } else {
+        showToast.success(
+          `${d.fromYear} → ${d.toYear}: ${d.studentsMoved ?? 0} student(s) moved, ${d.classesCloned ?? 0} class(es) added, ` +
+          `${d.assignmentsCopied ?? 0} teacher assignment(s), ${d.timetableCopied ?? 0} timetable slot(s), ${d.feeStructuresCopied ?? 0} fee structure(s) copied.`,
+        );
+      }
+      queryClient.invalidateQueries();
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.message || err?.message || 'Carry forward failed');
+    } finally {
+      setCarryingForward(false);
+    }
+  };
+
   const openNewYearDialog = () => {
     setNewYearName(suggestNextYear());
     setNewYearCloneClasses(true);
@@ -430,12 +466,13 @@ export const SettingsPage: React.FC = () => {
       if ((res as any).success !== false) {
         const d = (res as any).data || {};
         showToast.success(
-          `Started ${name}. ${d.classesCloned ?? 0} class(es) carried forward.` +
-          (d.classesSkipped ? ` ${d.classesSkipped} already existed.` : ''),
+          d.carriedForward
+            ? `Started ${name}: ${d.studentsMoved ?? 0} student(s) and ${(d.classesCloned ?? 0) + (d.classesSkipped ?? 0)} class(es) moved in, with subjects, teachers, timetable and fee structures.`
+            : `Switched to ${name}.`,
         );
         setSettings((s) => ({ ...s, academic_year: name }));
         setNewYearOpen(false);
-        queryClient.invalidateQueries({ queryKey: ['report-card-classes'] });
+        queryClient.invalidateQueries();
       } else {
         throw new Error((res as any).error || 'Failed to start new academic year');
       }
@@ -1459,14 +1496,19 @@ export const SettingsPage: React.FC = () => {
                             <Calendar size={16} /> Start a New Academic Year
                           </h4>
                           <p className="text-xs text-amber-800/90 mt-1 leading-relaxed">
-                            Opens the next academic year <strong>without deleting anything</strong>. The current
-                            year is archived (all its results, classes and records stay as history), a fresh
-                            session is activated, and your current classes are carried forward as new classes
-                            for the new year. Promote students afterwards from the Promotions page.
+                            Moves the whole school into the next year <strong>without deleting anything</strong>.
+                            Last year is archived as history, and its classes, subjects, teacher assignments,
+                            timetable and fee structures are copied into the new year. Every active student moves
+                            into their class for the new year (students you already promoted land in their new
+                            class). You can still promote from last year's results afterwards.
                           </p>
-                          <div className="mt-3">
+                          <div className="mt-3 flex flex-wrap gap-2">
                             <Button variant="outline" onClick={openNewYearDialog} className="border-amber-300 text-amber-900 hover:bg-amber-100">
                               Start New Academic Year
+                            </Button>
+                            <Button variant="outline" onClick={() => setCarryDialogOpen(true)} disabled={carryingForward} className="border-amber-300 text-amber-900 hover:bg-amber-100">
+                              {carryingForward ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                              Bring last year into this year
                             </Button>
                           </div>
                         </div>
@@ -1682,7 +1724,7 @@ export const SettingsPage: React.FC = () => {
                     {/* Grade controls + result release (moved here from the Results page,
                         since all configuration belongs in Settings). Principal-only;
                         the panel and its backend routes both enforce this. */}
-                    <ReportSettingsPanel academicYear={`${new Date().getFullYear()}/${new Date().getFullYear() + 1}`} />
+                    <ReportSettingsPanel academicYear={activeAcademicYear} />
 
                     {/* List active scales */}
                     <Card>
@@ -2301,6 +2343,13 @@ export const SettingsPage: React.FC = () => {
         </div>
       </PageShell>
 
+      <YearTransitionDialog
+        isOpen={carryDialogOpen}
+        onClose={() => setCarryDialogOpen(false)}
+        onConfirm={handleCarryForward}
+        toYear={settings.academic_year || null}
+      />
+
       {/* ── Start New Academic Year dialog ── */}
       {newYearOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={() => !startingNewYear && setNewYearOpen(false)}>
@@ -2329,10 +2378,10 @@ export const SettingsPage: React.FC = () => {
                   onChange={(e) => setNewYearCloneClasses(e.target.checked)}
                   className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
                 />
-                <span className="text-sm text-gray-800">Carry current classes forward into the new year</span>
+                <span className="text-sm text-gray-800">Move classes, setup and students into the new year</span>
               </label>
               <p className="text-[11px] text-gray-400">
-                No results, grades, enrollments or fees are deleted. After this, promote students from the Promotions page.
+                Nothing is deleted. Last year's results, attendance and fees stay as history. Billing for the new year is not created automatically.
               </p>
             </div>
             <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">

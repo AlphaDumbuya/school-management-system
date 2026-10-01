@@ -47,8 +47,8 @@ export const AcademicArchivePage: React.FC = () => {
   const yearOptions = useMemo(() => {
     const set = new Set<string>();
     sessions.forEach((s) => { if (/^\d{4}\/\d{4}$/.test(String(s.name))) set.add(String(s.name)); });
-    const cy = new Date().getFullYear();
-    for (let y = cy + 1; y >= cy - 5; y--) set.add(`${y}/${y + 1}`);
+    // Real years only; a school with no sessions yet gets just this year.
+    if (set.size === 0) { const cy = new Date().getFullYear(); set.add(`${cy}/${cy + 1}`); }
     return Array.from(set).sort((a, b) => b.localeCompare(a)).map((v) => ({ value: v, label: v }));
   }, [sessions]);
 

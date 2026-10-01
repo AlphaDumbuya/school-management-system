@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { dashboardService } from '@services/dashboardService';
 
 export interface DashboardMetrics {
@@ -69,7 +70,29 @@ export interface AtRiskStudent {
   severity: 'high' | 'medium' | 'low';
 }
 
+export interface DashboardYearInfo {
+  name: string | null;
+  isActive: boolean;
+  activeYear: string | null;
+  previousYear: string | null;
+  years: string[];
+  /** Active students still sitting in an older year's classes. */
+  pendingCarryForward: { fromYear: string; students: number } | null;
+}
+
+export interface DashboardActivity {
+  id: string;
+  kind: 'student' | 'payment' | 'announcement';
+  title: string;
+  sub: string;
+  at: string;
+}
+
 export interface CompleteDashboard {
+  academicYear?: DashboardYearInfo;
+  /** % change vs the previous academic year (null = no previous year data). */
+  trends?: { students: number | null; teachers: number | null; classes: number | null };
+  recentActivity?: DashboardActivity[];
   metrics: DashboardMetrics;
   alerts: DashboardAlert[];
   financialSummary: FinancialSummary;
@@ -84,36 +107,30 @@ export interface CompleteDashboard {
   timestamp: string;
 }
 
-export const useDashboard = () => {
-  const [dashboard, setDashboard] = useState<CompleteDashboard | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+/**
+ * Principal overview for one academic year ('' = the school's active year).
+ * Backed by React Query so live sync (a new year, promotions, role changes)
+ * refetches it automatically, like every other screen.
+ */
+export const useDashboard = (academicYear: string = '') => {
+  const query = useQuery({
+    queryKey: ['admin-dashboard', academicYear],
+    // Cache-buster so the service worker never serves a stale cached response.
+    queryFn: () => dashboardService.getCompleteDashboard(`${Date.now()}`, academicYear || undefined),
+    staleTime: 0,
+    refetchInterval: 300_000,
+    placeholderData: keepPreviousData,
+  });
 
+  const { refetch } = query;
   const refreshDashboard = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      // Append a cache-buster so the service worker never serves a stale cached
-      // response — the SW matches on URL, so a unique `_t` param bypasses it.
-      const data = await dashboardService.getCompleteDashboard(`${Date.now()}`);
-      setDashboard(data);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load dashboard';
-      setError(errorMessage);
-      console.error('Dashboard error:', err);
-      // Let an explicit refresh caller know that no new dashboard snapshot was
-      // loaded. The existing dashboard remains on screen, while the refresh
-      // control can accurately show its failure state.
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    await refetch({ throwOnError: true });
+  }, [refetch]);
 
   return {
-    dashboard,
-    loading,
-    error,
+    dashboard: (query.data ?? null) as CompleteDashboard | null,
+    loading: query.isFetching,
+    error: query.error ? (query.error instanceof Error ? query.error.message : 'Failed to load dashboard') : null,
     refreshDashboard,
   };
 };
