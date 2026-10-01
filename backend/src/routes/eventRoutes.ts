@@ -18,6 +18,7 @@ import { requirePlanFeature } from '../middleware/subscriptionGuard.js';
 import { UserRole } from '../types/auth.js';
 import { logger } from '../utils/logger.js';
 import db from '../utils/database.js';
+import { resolveYearScope } from '../utils/academicYear.js';
 import eventService from '../services/eventService.js';
 import eventCategoryService from '../services/eventCategoryService.js';
 import eventRegistrationService from '../services/eventRegistrationService.js';
@@ -281,7 +282,13 @@ router.get(
       const requestedStatus = (status && String(status).trim()) ? String(status).trim() : undefined;
       const effectiveStatus = isManager ? requestedStatus : 'published';
 
-      const result = await eventService.listEvents(req.user!.tenant_id, {
+      // Optional ?academic_year= → that year's date window (session start up
+      // to the next year's start). Unknown year → empty window.
+      const yearScope = await resolveYearScope(req.user!.tenant_id, req.query.academic_year);
+
+      const result: any = await eventService.listEvents(req.user!.tenant_id, {
+        year_from:    yearScope?.from ?? null,
+        year_to:      yearScope?.to ?? null,
         page: Math.max(1, parseInt(page as string) || 1),
         limit: Math.min(100, parseInt(limit as string) || 20),
         // Strip empty strings — treat '' same as undefined
@@ -303,6 +310,7 @@ router.get(
         page: result.page,
         limit: result.limit,
         totalPages: result.totalPages,
+        summary: result.summary,
         pagination: {
           total: result.total,
           page: result.page,

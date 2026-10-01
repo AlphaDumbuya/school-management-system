@@ -28,6 +28,8 @@ import { showToast } from '@utils/toast';
 import { eventsService } from '@services/eventsService';
 import { EventFormModal } from './components/EventFormModal';
 import type { Event, EventStatus, EventType } from '@appTypes/events';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -70,7 +72,14 @@ export const EventsPage: React.FC = () => {
   // Only staff who own events may edit/publish/duplicate/cancel/delete. Parents,
   // students, etc. get a read-only view (matching the backend's 403 guard), so
   // we never show them action buttons that would just fail.
-  const canManageEvents = ['principal', 'super_admin', 'teacher'].includes(user?.role || '');
+  // Academic year: opens on the ACTIVE year; '' = all years; a past year is
+  // read-only history (its events are shown in full, no edit actions).
+  const [pickedYear, setPickedYear] = useState<string | null>(null);
+  const { activeYear } = useAcademicYears();
+  const year = pickedYear ?? activeYear;
+  const yearReady = pickedYear !== null || !!activeYear;
+  const viewingPast = !!year && !!activeYear && year < activeYear;
+  const canManageEvents = !viewingPast && ['principal', 'super_admin', 'teacher'].includes(user?.role || '');
 
   // View & filter state
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
@@ -95,18 +104,21 @@ export const EventsPage: React.FC = () => {
   const todayStart = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString(); }, []);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['events', { search, typeFilter, statusFilter, includePast, page, pageSize }],
+    queryKey: ['events', { year, search, typeFilter, statusFilter, includePast, page, pageSize }],
     queryFn: () => eventsService.listEvents({
       page,
       limit: pageSize,
       search: search || undefined,
       event_type: (typeFilter as EventType) || undefined,
       status: (statusFilter as EventStatus) || undefined,
+      academic_year: year || undefined,
       // Hide past events unless "Include past" is on (or a specific status is
-      // being filtered, where the user clearly wants that full set). Backend
-      // treats start_date as "events starting on/after this date".
-      ...(!includePast && !statusFilter ? { start_date: todayStart } : {}),
+      // being filtered, where the user clearly wants that full set). A past
+      // academic year always shows its full set. Backend treats start_date as
+      // "events starting on/after this date".
+      ...(!includePast && !statusFilter && !viewingPast ? { start_date: todayStart } : {}),
     } as any),
+    enabled: yearReady,
     staleTime: 30_000,
   });
 
@@ -124,15 +136,14 @@ export const EventsPage: React.FC = () => {
     total_pages: Number((data as any)?.totalPages ?? (data as any)?.pagination?.total_pages ?? 1),
   };
   // ── KPIs ────────────────────────────────────────────────────────────────────
-  // Note: stats derived from current page; total uses server-provided count.
-  const stats = useMemo(() => {
-    const total = pagination.total || events.length;
-    const upcoming = events.filter((e) => new Date(e.start_date) > new Date()).length;
-    const published = events.filter((e) => e.status === 'published').length;
-    const totalRegistrations = events.reduce((s, e) => s + Number(e.registrations_count ?? 0), 0);
-    // When filters are active the page data is scoped — reflect that clearly
-    return { total, upcoming, published, totalRegistrations };
-  }, [events, pagination]);
+  // Server-side summary over the whole filtered set (not just this page).
+  const summary = (data as any)?.summary;
+  const stats = {
+    total: Number(summary?.total ?? pagination.total ?? 0),
+    upcoming: Number(summary?.upcoming ?? 0),
+    published: Number(summary?.published ?? 0),
+    totalRegistrations: Number(summary?.registrations ?? 0),
+  };
 
   // ── Action Handlers ─────────────────────────────────────────────────────────
 
@@ -281,14 +292,31 @@ export const EventsPage: React.FC = () => {
               </button>
             </div>
 
-            <RoleGuard roles={['principal', 'super_admin', 'teacher']}>
-              <Button variant="default" size="sm" onClick={() => { setEditingEvent(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm hover:shadow">
-                + Create Event
-              </Button>
-            </RoleGuard>
+            <YearFilter value={year} onChange={(v) => { setPickedYear(v); setPage(1); }} includeAllOption />
+
+            {!viewingPast && (
+              <RoleGuard roles={['principal', 'super_admin', 'teacher']}>
+                <Button variant="default" size="sm" onClick={() => { setEditingEvent(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm hover:shadow">
+                  + Create Event
+                </Button>
+              </RoleGuard>
+            )}
           </div>
         }
       >
+        {(viewingPast || (pickedYear === '' && !!activeYear)) && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>
+              {viewingPast
+                ? <>Showing <strong>{year}</strong> events as history (read-only). New events go into {activeYear}.</>
+                : <>Showing events from <strong>all years</strong>.</>}
+            </span>
+            <button type="button" onClick={() => { setPickedYear(activeYear); setPage(1); }} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
+
         {/* KPI Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
           {isLoading && !data ? (
@@ -336,8 +364,9 @@ export const EventsPage: React.FC = () => {
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
               </div>
-              {/* Include past toggle — default hides events that already started. */}
-              <label className="flex items-center gap-2 mt-2 text-xs font-semibold text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+              {/* Include past toggle — default hides events that already started.
+                  A past academic year always shows all of its events. */}
+              {!viewingPast && <label className="flex items-center gap-2 mt-2 text-xs font-semibold text-gray-600 dark:text-gray-400 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={includePast}
@@ -345,7 +374,7 @@ export const EventsPage: React.FC = () => {
                   className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
                 />
                 Include past events
-              </label>
+              </label>}
             </div>
           </div>
 
@@ -387,10 +416,14 @@ export const EventsPage: React.FC = () => {
             <div className="flex flex-col items-center justify-center p-12 text-center">
               <Calendar size={48} className="text-gray-400 dark:text-gray-500 mb-4" />
               <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">No events found</p>
-              <p className="text-sm text-gray-500 mt-1 mb-4">Try adjusting your filters or create a new event.</p>
-              <RoleGuard roles={['principal', 'super_admin', 'teacher']}>
-                <Button onClick={() => { setEditingEvent(null); setFormOpen(true); }}>Create your first event</Button>
-              </RoleGuard>
+              <p className="text-sm text-gray-500 mt-1 mb-4">
+                {viewingPast ? `No events were held in ${year}.` : includePast ? 'Try adjusting your filters or create a new event.' : 'No upcoming events. Tick "Include past events" to see earlier ones.'}
+              </p>
+              {!viewingPast && (
+                <RoleGuard roles={['principal', 'super_admin', 'teacher']}>
+                  <Button onClick={() => { setEditingEvent(null); setFormOpen(true); }}>Create your first event</Button>
+                </RoleGuard>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -446,7 +479,7 @@ export const EventsPage: React.FC = () => {
                         <Eye size={14} className="mr-1" /> View
                       </Button>
 
-                      <RoleGuard roles={['principal', 'super_admin']}>
+                      {!viewingPast && <RoleGuard roles={['principal', 'super_admin']}>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -467,7 +500,7 @@ export const EventsPage: React.FC = () => {
                             <XCircle size={16} />
                           </Button>
                         )}
-                      </RoleGuard>
+                      </RoleGuard>}
                     </div>
                   </div>
                 );
@@ -486,7 +519,7 @@ export const EventsPage: React.FC = () => {
             pageSize={pageSize}
             totalRows={pagination.total}
             onPageChange={setPage}            emptyMessage="No events found"
-            emptyAction={{ label: 'Create your first event', onClick: () => { setEditingEvent(null); setFormOpen(true); } }}
+            emptyAction={canManageEvents ? { label: 'Create your first event', onClick: () => { setEditingEvent(null); setFormOpen(true); } } : undefined}
             rowActions={(evt) => [
               {
                 label: 'View Details',
