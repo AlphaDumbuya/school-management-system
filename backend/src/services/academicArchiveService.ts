@@ -14,6 +14,10 @@ import financeLedgerService from './financeLedgerService.js';
 import slReportCardService from './slReportCardService.js';
 import promotionService from './promotionService.js';
 
+// Every status a student can hold in a year's class, including the statuses
+// enrollments get once the year is over (rollover marks them 'completed').
+const HISTORIC_ENROLLMENT = ['enrolled', 'active', 'completed', 'promoted', 'repeated', 'graduated'];
+
 export interface YearSnapshot {
   academic_year: string;
   session_id: string | null;
@@ -63,7 +67,7 @@ class AcademicArchiveService {
           db('enrollments')
             .select('class_id')
             .count('* as enrolled')
-            .whereIn('status', ['enrolled', 'active', 'promoted'])
+            .whereIn('status', HISTORIC_ENROLLMENT)
             .groupBy('class_id')
             .as('ec'),
           'c.id',
@@ -82,8 +86,13 @@ class AcademicArchiveService {
     let studentsEnrolled = 0;
     if (sessionId) {
       const row: any = await db('enrollments')
-        .where('academic_session_id', sessionId)
-        .whereIn('status', ['enrolled', 'active', 'promoted'])
+        .whereIn('status', HISTORIC_ENROLLMENT)
+        .where((w) => {
+          // Enrollments carry the session id when created in-year; rolled-over
+          // ones may only be linked through the year's classes.
+          w.where('academic_session_id', sessionId);
+          if (classes.length) w.orWhereIn('class_id', classes.map((c) => c.id));
+        })
         .countDistinct('student_id as c')
         .first()
         .catch(() => ({ c: 0 }));

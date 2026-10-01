@@ -151,8 +151,19 @@ export class IdCardService {
       if (provided && !isNaN(provided.getTime()) && provided.getTime() > issuedAt.getTime()) {
         expiresAt = provided;
       } else {
-        expiresAt = new Date(issuedAt);
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+        // Default: the end of the school's ACTIVE academic year (cards follow
+        // the school year), else +1 year when no usable session end exists.
+        const session = await this.db('academic_sessions')
+          .where({ tenant_id: tenantId, is_active: true })
+          .first('end_date')
+          .catch(() => null);
+        const sessionEnd = session?.end_date ? new Date(session.end_date) : null;
+        if (sessionEnd && !isNaN(sessionEnd.getTime()) && sessionEnd.getTime() > issuedAt.getTime()) {
+          expiresAt = sessionEnd;
+        } else {
+          expiresAt = new Date(issuedAt);
+          expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+        }
       }
 
       // Generate card UUID & unique card number
@@ -378,7 +389,12 @@ export class IdCardService {
           this.on('users.id', '=', 'id_cards.user_id')
             .orOn('users.id', '=', 'students.user_id');
         })
-        .leftJoin('enrollments', 'enrollments.student_id', 'students.id')
+        // Current class only: after a year rollover the old enrollment is
+        // 'completed', so an unfiltered join could print last year's class.
+        .leftJoin('enrollments', function () {
+          this.on('enrollments.student_id', '=', 'students.id')
+            .andOnVal('enrollments.status', '=', 'active');
+        })
         .leftJoin('classes', 'classes.id', 'enrollments.class_id')
         .leftJoin('teachers', function () {
           this.on('teachers.user_id', '=', 'id_cards.user_id')
@@ -549,7 +565,11 @@ export class IdCardService {
           const student = await this.db('students').where({ user_id: user.id }).first();
           if (student) {
             dobValue = student.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString() : '';
-            const enrollment = await this.db('enrollments').where({ student_id: student.id }).first();
+            // The student's CURRENT class (not a completed past-year enrollment).
+            const enrollment = await this.db('enrollments')
+              .where({ student_id: student.id, status: 'active' })
+              .orderBy('created_at', 'desc')
+              .first();
             if (enrollment) {
               const cls = await this.db('classes').where({ id: enrollment.class_id }).first();
               if (cls) {

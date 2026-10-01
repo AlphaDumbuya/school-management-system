@@ -10,11 +10,13 @@ import { RSVPButtonProps, RSVPStatus } from '@appTypes/events';
 import { eventsService } from '@services/eventsService';
 import { toast } from 'react-toastify';
 import { Check, X, HelpCircle, Users } from 'lucide-react';
+import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 
 export const RSVPButton: React.FC<RSVPButtonProps> = ({ event, onUpdate }) => {
     const [loading, setLoading] = useState(false);
     const [showGuestInput, setShowGuestInput] = useState(false);
     const [guestsCount, setGuestsCount] = useState(0);
+    const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
 
     const currentRSVP = event.user_registration?.rsvp_status;
     const isRegistered = event.is_registered;
@@ -70,10 +72,6 @@ export const RSVPButton: React.FC<RSVPButtonProps> = ({ event, onUpdate }) => {
     };
 
     const handleCancelRegistration = async () => {
-        if (!window.confirm('Are you sure you want to cancel your registration?')) {
-            return;
-        }
-
         if (!event.user_registration?.registration_id) {
             toast.error('Registration ID not found');
             return;
@@ -244,12 +242,20 @@ export const RSVPButton: React.FC<RSVPButtonProps> = ({ event, onUpdate }) => {
                     <Button
                         variant="destructive"
                         size="sm"
-                        onClick={handleCancelRegistration}
+                        onClick={() => setConfirmCancelOpen(true)}
                         disabled={loading}
                     >
                         Cancel
                     </Button>
                 </div>
+                <ConfirmationDialog
+                    isOpen={confirmCancelOpen}
+                    onClose={() => setConfirmCancelOpen(false)}
+                    onConfirm={handleCancelRegistration}
+                    title="Cancel registration"
+                    message={`Cancel your registration for "${event.title}"?`}
+                    confirmLabel="Cancel registration"
+                />
             </div>
         );
     }

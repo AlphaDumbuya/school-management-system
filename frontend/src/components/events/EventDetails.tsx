@@ -25,11 +25,13 @@ import {
     Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '@hooks/useAuth';
+import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 
 export const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onUpdate }) => {
     const [event, setEvent] = useState<Event | null>(null);
     const [loading, setLoading] = useState(true);
     const [editOpen, setEditOpen] = useState(false);
+    const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
     const { user } = useAuth();
 
     useEffect(() => {
@@ -73,10 +75,6 @@ export const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onUpdate })
     };
 
     const handleDelete = async () => {
-        if (!window.confirm('Are you sure you want to delete this event?')) {
-            return;
-        }
-
         try {
             await eventsService.deleteEvent(eventId);
             toast.success('Event deleted successfully');
@@ -148,7 +146,7 @@ export const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onUpdate })
                                         <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
                                             <Edit className="w-4 h-4" />
                                         </Button>
-                                        <Button variant="destructive" size="sm" onClick={handleDelete}>
+                                        <Button variant="destructive" size="sm" onClick={() => setConfirmDeleteOpen(true)}>
                                             <Trash2 className="w-4 h-4" />
                                         </Button>
                                     </>
@@ -324,6 +322,16 @@ export const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onUpdate })
                     onClose={() => setEditOpen(false)}
                     onSuccess={() => { setEditOpen(false); fetchEventDetails(); onUpdate?.(); }}
                     editingEvent={event}
+                />
+            )}
+            {canEdit && (
+                <ConfirmationDialog
+                    isOpen={confirmDeleteOpen}
+                    onClose={() => setConfirmDeleteOpen(false)}
+                    onConfirm={handleDelete}
+                    title="Delete event"
+                    message={`Delete "${event.title}"? This cannot be undone.`}
+                    confirmLabel="Delete event"
                 />
             )}
         </div>

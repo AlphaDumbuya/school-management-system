@@ -13,6 +13,7 @@ import {
 } from '@simplewebauthn/browser';
 import authService from '@services/authService';
 import { showToast } from '@utils/toast';
+import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 
 interface Passkey {
   id: string;
@@ -37,6 +38,9 @@ export const PasskeySettings: React.FC = () => {
   const [registering, setRegistering] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
+  // Name for the next passkey (replaces a browser prompt; renameable later).
+  const [newLabel, setNewLabel] = useState('This device');
+  const [removeId, setRemoveId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -71,7 +75,7 @@ export const PasskeySettings: React.FC = () => {
         showToast.error('Passkey setup was not completed');
         return;
       }
-      const label = window.prompt('Name this passkey (e.g. "My phone")', 'This device') || undefined;
+      const label = newLabel.trim() || 'This device';
       const verifyRes = await authService.verifyPasskeyRegistration(attResp, label);
       if (verifyRes.success) {
         showToast.success('Passkey added');
@@ -99,7 +103,6 @@ export const PasskeySettings: React.FC = () => {
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm('Remove this passkey? You will no longer be able to sign in with it.')) return;
     const res = await authService.removePasskey(id);
     if (res.success) {
       showToast.success('Passkey removed');
@@ -132,13 +135,24 @@ export const PasskeySettings: React.FC = () => {
             </p>
           </div>
         </div>
-        <button
-          onClick={addPasskey}
-          disabled={registering}
-          className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold text-sm disabled:opacity-50"
-        >
-          {registering ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Add passkey
-        </button>
+        <div className="shrink-0 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+          <label className="sr-only" htmlFor="new-passkey-name">Passkey name</label>
+          <input
+            id="new-passkey-name"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+            maxLength={64}
+            placeholder='Name, e.g. "My phone"'
+            className="w-full sm:w-40 border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#1d4ed8]"
+          />
+          <button
+            onClick={addPasskey}
+            disabled={registering}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold text-sm disabled:opacity-50"
+          >
+            {registering ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Add passkey
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -182,7 +196,7 @@ export const PasskeySettings: React.FC = () => {
                     <Pencil size={15} />
                   </button>
                   <button
-                    onClick={() => remove(pk.id)}
+                    onClick={() => setRemoveId(pk.id)}
                     className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
                     aria-label="Remove passkey"
                   >
@@ -194,6 +208,14 @@ export const PasskeySettings: React.FC = () => {
           ))}
         </ul>
       )}
+      <ConfirmationDialog
+        isOpen={!!removeId}
+        onClose={() => setRemoveId(null)}
+        onConfirm={() => (removeId ? remove(removeId) : undefined)}
+        title="Remove passkey"
+        message="Remove this passkey? You will no longer be able to sign in with it."
+        confirmLabel="Remove"
+      />
     </div>
   );
 };
