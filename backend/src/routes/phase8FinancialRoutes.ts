@@ -1527,9 +1527,14 @@ router.get(
 router.get('/finance/overview', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
-    const agg = await db('fees')
+    // Optional ?academic_year= scope (fees are keyed by academic_year).
+    // Omitted = all years, preserving the existing dashboard behaviour.
+    const overviewYear = req.query.academic_year ? String(req.query.academic_year) : '';
+    const aggQ = db('fees')
       .where('fees.tenant_id', tenantId)
-      .whereNot('fees.status', 'deleted')
+      .whereNot('fees.status', 'deleted');
+    if (overviewYear) aggQ.where('fees.academic_year', overviewYear);
+    const agg = await aggQ
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
         db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
