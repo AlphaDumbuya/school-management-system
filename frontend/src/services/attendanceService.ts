@@ -39,6 +39,8 @@ export interface ListAttendanceParams {
   date?: string;
   session_type?: SessionType;
   search?: string;
+  /** Canonical YYYY/YYYY — only that year's classes. */
+  academic_year?: string;
 }
 
 export interface BulkAttendanceRecord {
@@ -123,7 +125,7 @@ export const attendanceService = {
   },
 
   /** Server-computed attendance analytics (totals, rate, at-risk, per-class). */
-  async getAnalytics(classId?: string) {
+  async getAnalytics(classId?: string, academicYear?: string) {
     return apiClient.get<{
       success: boolean;
       data: {
@@ -131,7 +133,7 @@ export const attendanceService = {
         atRisk: { name: string; admissionNo: string; rate: number; total: number; p: number }[];
         classRates: { name: string; rate: number; total: number }[];
       };
-    }>('/api/v1/attendance/analytics', { params: { classId } });
+    }>('/api/v1/attendance/analytics', { params: { classId, academic_year: academicYear } });
   },
 
   async getClassAttendanceSummary(classId: string, date?: string, session_type?: SessionType) {
