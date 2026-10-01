@@ -120,7 +120,8 @@ export const eventsService = {
      * Get upcoming events
      */
     getUpcomingEvents: async (limit?: number): Promise<ApiResponse<Event[]>> => {
-        const url = limit ? `${BASE_PATH}/upcoming?limit=${limit}` : `${BASE_PATH}/upcoming`;
+        // Backend route is /events/view/upcoming (plain /upcoming hits /:eventId).
+        const url = limit ? `${BASE_PATH}/view/upcoming?limit=${limit}` : `${BASE_PATH}/view/upcoming`;
         return apiClient.get<Event[]>(url);
     },
 

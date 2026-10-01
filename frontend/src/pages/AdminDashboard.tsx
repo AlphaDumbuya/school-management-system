@@ -98,7 +98,13 @@ export const AdminDashboard: React.FC = () => {
     queryFn: () => eventsService.getUpcomingEvents(5),
     staleTime: 60_000,
   });
-  const events: any[] = ((upcomingEvents.data as any)?.data ?? (upcomingEvents.data as any) ?? []) as any[];
+  // Accept [..], {data:[..]} or {data:{events:[..]}}; anything else (e.g. an
+  // error object) becomes an empty list so the overview never crashes.
+  const events: any[] = (() => {
+    const r: any = upcomingEvents.data;
+    const c = Array.isArray(r) ? r : Array.isArray(r?.data) ? r.data : r?.data?.events ?? r?.events;
+    return Array.isArray(c) ? c : [];
+  })();
 
   // Finish a year transition: move students still in last year's classes.
   const [carrying, setCarrying] = useState(false);
