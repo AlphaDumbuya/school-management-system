@@ -39,11 +39,10 @@ export const YearFilter: React.FC<YearFilterProps> = ({
 
   // Default to the active year once options load (unless "All years" is chosen
   // or auto-select is disabled or a value is already set).
+  // Wait for the real sessions before picking — activeYear is '' until then.
   useEffect(() => {
-    if (noAutoSelect) return;
-    if (value) return;
-    if (includeAllOption) return; // leave on "All years" by default
-    if (activeYear) onChange(activeYear);
+    if (noAutoSelect || includeAllOption || isLoading || !activeYear) return;
+    if (!value) onChange(activeYear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeYear, isLoading]);
 

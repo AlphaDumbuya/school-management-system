@@ -20,6 +20,7 @@ import { classesService } from '@services/classesService';
 import { subjectsService } from '@services/subjectsService';
 import { timetableService } from '@services/timetableService';
 import { useAuth } from '@hooks/useAuth';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
@@ -80,12 +81,23 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
   const [levelFilter, setLevelFilter] = useState('');
 
   // Fetch dropdowns
+  // New assignments go to CURRENT-year classes only (no duplicate "JSS 3"s
+  // from past years). When editing, keep the assignment's own class listed.
+  const { activeYear } = useAcademicYears();
   const { data: classesData } = useQuery({
-    queryKey: ['classes-dropdown'],
-    queryFn: () => classesService.listClasses({ limit: 100 }),
+    queryKey: ['classes-dropdown', activeYear],
+    queryFn: () => classesService.listClasses({ limit: 100, academic_year: activeYear }),
+    enabled: !!activeYear,
     staleTime: 60_000,
   });
-  const allClasses = (classesData as any)?.data ?? [];
+  const allClasses = useMemo(() => {
+    const list = ((classesData as any)?.data ?? []) as any[];
+    const ea: any = editingAssignment;
+    if (ea?.class_id && !list.some((c) => String(c.id) === String(ea.class_id))) {
+      return [{ id: ea.class_id, name: ea.class_name || 'Current class', level: ea.class_level || '' }, ...list];
+    }
+    return list;
+  }, [classesData, editingAssignment]);
 
   // Filter classes by selected level
   const filteredClasses = useMemo(() => {

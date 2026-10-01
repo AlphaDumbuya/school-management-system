@@ -36,6 +36,7 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { showToast } from '@utils/toast';
 import { classesService } from '@services/classesService';
 import { schoolConfigService } from '@services/schoolConfigService';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import { reportCardService, ReportCard } from '@services/reportCardService';
 import { studentDashboardService } from '@services/studentDashboardService';
 import { parentDashboardService } from '@services/parentDashboardService';
@@ -48,14 +49,36 @@ import { saveBlob, previewBlob } from '@lib/download';
 
 type ViewTerm = SLTerm | 'full';
 
+/** Read-only academic-year label (students/parents see their current year). */
+const YearLabel: React.FC<{ year: string }> = ({ year }) => (
+  <div className="flex flex-col gap-1">
+    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Academic Year</span>
+    <span className="px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+      {year || '—'}
+    </span>
+  </div>
+);
+
 export const ReportCardsPage: React.FC = () => {
   const currentYear = new Date().getFullYear();
   const { user } = useAuth();
   const isStudent = user?.role === 'student';
   const isParent = user?.role === 'parent' || user?.role === 'guardian';
-  const [academicYear, setAcademicYear] = useState(`${currentYear}/${currentYear + 1}`);
+  // Year: staff = picked (or ?year= deep link) else the school's ACTIVE year;
+  // students = the year of their own class; parents = the active year (their
+  // child's current class). Never a calendar guess.
+  const { activeYear } = useAcademicYears();
+  const [pickedYear, setPickedYear] = useState(() => {
+    const q = new URLSearchParams(window.location.search).get('year');
+    return q && /^\d{4}\/\d{4}$/.test(q) ? q : '';
+  });
+  const [selfYear, setSelfYear] = useState('');
+  const academicYear = isStudent ? (selfYear || activeYear) : isParent ? activeYear : (pickedYear || activeYear);
   const [classId, setClassId] = useState('');
   const [studentId, setStudentId] = useState('');
+  // Staff switching year: that year has its own classes, so drop stale picks.
+  const setAcademicYear = (y: string) => { setPickedYear(y); setClassId(''); setStudentId(''); };
+  const viewingPast = !isStudent && !isParent && !!academicYear && !!activeYear && academicYear !== activeYear;
   const [spread, setSpread] = useState<'all' | 'cover' | 'inner'>('all');
   // Which result to view: a single term sheet (Term 1/2) or the full-year booklet.
   const [viewTerm, setViewTerm] = useState<ViewTerm>('full');
@@ -74,7 +97,7 @@ export const ReportCardsPage: React.FC = () => {
     if (!isStudent || !selfProfile) return;
     if (selfProfile.id) setStudentId(String(selfProfile.id));
     if (selfProfile.class_id) setClassId(String(selfProfile.class_id));
-    if (selfProfile.academic_year) setAcademicYear(String(selfProfile.academic_year));
+    if (selfProfile.academic_year) setSelfYear(String(selfProfile.academic_year));
   }, [isStudent, selfProfile]);
 
   // Parents: resolve their children (with class) and let them pick one.
@@ -121,37 +144,13 @@ export const ReportCardsPage: React.FC = () => {
       .map((v) => ({ value: v, label: v }));
   }, [academicSessions, currentYear]);
 
-  // Default staff to the active session's year when it loads (so the page opens
-  // on the current year, but they can freely switch to any past year).
-  React.useEffect(() => {
-    if (isStudent || isParent) return;
-    const active = academicSessions.find((s) => s.is_active)?.name;
-    if (active && /^\d{4}\/\d{4}$/.test(active)) setAcademicYear(active);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [academicSessions.length]);
-
-  // When staff switch the year, clear the class/student picks — that year has
-  // its own classes, so a stale selection wouldn't resolve.
-  React.useEffect(() => {
-    if (isStudent || isParent) return;
-    setClassId('');
-    setStudentId('');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [academicYear]);
-
-  // Deep-link support: the Academic Archive links here with ?year=&class_id=.
-  // Apply them once on mount so staff land pre-filtered on the chosen year/class.
+  // Deep link from the Academic Archive (?year=&class_id=): the year is read
+  // into pickedYear above; apply the class once on mount.
   const deepLinkApplied = React.useRef(false);
   React.useEffect(() => {
     if (isStudent || isParent || deepLinkApplied.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const qYear = params.get('year');
-    const qClass = params.get('class_id');
-    if (qYear && /^\d{4}\/\d{4}$/.test(qYear)) setAcademicYear(qYear);
-    if (qClass) {
-      // Set after the year-clear effect by deferring a tick.
-      setTimeout(() => setClassId(qClass), 0);
-    }
+    const qClass = new URLSearchParams(window.location.search).get('class_id');
+    if (qClass) setClassId(qClass);
     deepLinkApplied.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -199,7 +198,7 @@ export const ReportCardsPage: React.FC = () => {
     // year sees THAT year's classes (each year has its own class rows).
     queryKey: ['report-card-classes', academicYear],
     queryFn: () => classesService.listClasses({ limit: 100, academic_year: academicYear }),
-    enabled: !isStudent && !isParent,
+    enabled: !isStudent && !isParent && !!academicYear,
     staleTime: 60_000,
   });
   const classes = (classesData as any)?.data ?? [];
@@ -628,7 +627,7 @@ export const ReportCardsPage: React.FC = () => {
                   {selfProfile?.class_name ? ` — ${selfProfile.class_name}` : ''}
                 </span>
               </div>
-              <SearchableSelect label="Academic Year" options={yearOptions} value={academicYear} onChange={setAcademicYear} placeholder="Academic year" />
+              <YearLabel year={academicYear} />
             </div>
           ) : isParent ? (
             // Parents: pick a child + academic year (no class/student staff pickers).
@@ -653,7 +652,7 @@ export const ReportCardsPage: React.FC = () => {
                 )}
               </div>
               <div className="sm:max-w-xs">
-                <SearchableSelect label="Academic Year" options={yearOptions} value={academicYear} onChange={setAcademicYear} placeholder="Academic year" />
+                <YearLabel year={academicYear} />
               </div>
             </div>
           ) : (
@@ -661,6 +660,15 @@ export const ReportCardsPage: React.FC = () => {
               <SearchableSelect label="Class" options={classOptions} value={classId} onChange={(v) => { setClassId(v); setStudentId(''); }} placeholder="Select class..." />
               <SearchableSelect label="Student" options={studentOptions} value={studentId} onChange={setStudentId} placeholder="Select student..." />
               <SearchableSelect label="Academic Year" options={yearOptions} value={academicYear} onChange={setAcademicYear} placeholder="Academic year" />
+            </div>
+          )}
+
+          {viewingPast && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+              <span>Showing <strong>{academicYear}</strong> report cards — the classes and students of that year.</span>
+              <button type="button" onClick={() => setAcademicYear(activeYear)} className="font-bold text-blue-700 hover:underline dark:text-blue-300">
+                Back to {activeYear}
+              </button>
             </div>
           )}
 

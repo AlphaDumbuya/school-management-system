@@ -30,6 +30,7 @@ import { disciplineService } from '@services/disciplineService';
 import { showToast } from '@utils/toast';
 import { AttendanceTimeDetails } from '@components/attendance/AttendanceTimeDetails';
 import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -73,8 +74,10 @@ export const StudentProfilesPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(12); // Grid of cards looks best in multiples of 3 or 4
   const [activeTab, setActiveTab] = useState<'overview' | 'academics' | 'attendance' | 'conduct' | 'billing'>('overview');
-  // Attendance tab year scope. Empty = lifetime; a year shows that year only.
-  const [attendanceYear, setAttendanceYear] = useState('');
+  // Attendance tab year scope: opens on the school's ACTIVE year; '' = all-time.
+  const { activeYear } = useAcademicYears();
+  const [pickedAttendanceYear, setAttendanceYear] = useState<string | null>(null);
+  const attendanceYear = pickedAttendanceYear ?? activeYear;
 
   // Parent Account Modal State
   const [parentModalOpen, setParentModalOpen] = useState(false);
@@ -185,7 +188,7 @@ export const StudentProfilesPage: React.FC = () => {
   const { data: attendanceData, isLoading: isAttendanceLoading } = useQuery({
     queryKey: ['student-profile-attendance', selectedStudentId, attendanceYear],
     queryFn: () => studentsService.getStudentAttendance(selectedStudentId!, attendanceYear || undefined),
-    enabled: !!selectedStudentId && activeTab === 'attendance',
+    enabled: !!selectedStudentId && activeTab === 'attendance' && (pickedAttendanceYear !== null || !!activeYear),
     staleTime: 30_000,
   });
   // Backend summary uses present/late/absent/excused (NOT *_count) — keep the

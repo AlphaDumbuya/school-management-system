@@ -25,7 +25,7 @@ export function normalizeYear(value: string | null | undefined): string | null {
 
 export interface UseAcademicYears {
   years: string[];        // canonical, newest-first
-  activeYear: string;     // the tenant's active session year (or calendar fallback)
+  activeYear: string;     // the tenant's active session year; '' while loading
   isLoading: boolean;
 }
 
@@ -44,20 +44,26 @@ export function useAcademicYears(): UseAcademicYears {
   const sessions: Array<{ name: string; is_active: boolean }> =
     ((data as any)?.data ?? []) as any;
 
+  // The school's ACTIVE session. Empty while loading — never a calendar guess,
+  // otherwise pickers lock onto the wrong year before the real one arrives.
+  // Only a school with no sessions at all falls back to the calendar year.
   const activeYear = useMemo(() => {
+    if (isLoading) return '';
     const active = sessions.find((s) => s.is_active)?.name;
     const norm = normalizeYear(active);
     if (norm) return norm;
+    const newest = sessions.map((s) => normalizeYear(s?.name)).filter(Boolean).sort().pop();
+    if (newest) return newest as string;
     const y = new Date().getFullYear();
     return `${y}/${y + 1}`;
-  }, [sessions]);
+  }, [sessions, isLoading]);
 
   // ONLY the school's real academic years. A brand-new school with no
   // sessions yet gets just one entry (the calendar year) so pickers aren't empty.
   const years = useMemo(() => {
     const set = new Set<string>();
     sessions.forEach((s) => { const n = normalizeYear(s?.name); if (n && /^\d{4}\/\d{4}$/.test(n)) set.add(n); });
-    if (set.size === 0) set.add(activeYear);
+    if (set.size === 0 && activeYear) set.add(activeYear);
     return Array.from(set).sort((a, b) => b.localeCompare(a));
   }, [sessions, activeYear]);
 

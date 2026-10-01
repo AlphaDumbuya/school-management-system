@@ -33,6 +33,7 @@ import appealService from '../services/appealService.js';
 import conductReportService from '../services/conductReportService.js';
 import behavioralNoteService from '../services/behavioralNoteService.js';
 import disciplineAnalyticsService from '../services/disciplineAnalyticsService.js';
+import { resolveYearScope } from '../utils/academicYear.js';
 
 const router = Router();
 
@@ -83,6 +84,7 @@ router.get(
           severity: req.query.severity as string,
           // Teachers only see infractions they recorded.
           recordedBy: req.user.role === 'teacher' ? req.user.id : undefined,
+          yearScope: await resolveYearScope(req.user.tenant_id, req.query.academic_year),
           page: parseInt(req.query.page as string) || 1,
           limit: parseInt(req.query.limit as string) || 20,
         }
@@ -308,6 +310,7 @@ router.get(
           search: req.query.search as string,
           status: req.query.status as string,
           action_type: req.query.action_type as string,
+          yearScope: await resolveYearScope(req.user.tenant_id, req.query.academic_year),
           page: parseInt(req.query.page as string) || 1,
           limit: parseInt(req.query.limit as string) || 20,
         }
@@ -611,6 +614,7 @@ router.get(
         {
           search: req.query.search as string,
           status: req.query.status as string,
+          yearScope: await resolveYearScope(req.user.tenant_id, req.query.academic_year),
           page: parseInt(req.query.page as string) || 1,
           limit: parseInt(req.query.limit as string) || 20,
         }
@@ -791,6 +795,7 @@ router.get(
           note_type: req.query.note_type as string,
           // Teachers only see notes they recorded.
           recordedBy: req.user.role === 'teacher' ? req.user.id : undefined,
+          yearScope: await resolveYearScope(req.user.tenant_id, req.query.academic_year),
           page: parseInt(req.query.page as string) || 1,
           limit: parseInt(req.query.limit as string) || 20,
         }

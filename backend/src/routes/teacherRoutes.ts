@@ -10,6 +10,23 @@ import { generateNextId } from '@utils/idGenerator';
 import { sendExport } from '@utils/exportResponse';
 
 const router = Router();
+
+// A teacher's form class / assignments shown and edited here are the CURRENT
+// year's. Past-year classes keep their form teacher + assignments as history
+// (after a year change both old and new copies point at the same teacher).
+// Use with classes aliased "c" and academic_sessions aliased "s".
+const CURRENT_CLASS_SQL = '(s.is_active = true OR c.academic_session_id IS NULL)';
+
+/** Ids of the tenant's current-year classes (active session + legacy no-session). */
+async function currentYearClassIds(trx: any, tenantId: string): Promise<string[]> {
+  const rows = await trx('classes as c')
+    .leftJoin('academic_sessions as s', 'c.academic_session_id', 's.id')
+    .leftJoin('users as cc', 'c.created_by', 'cc.id')
+    .where((q: any) => q.where({ 's.tenant_id': tenantId, 's.is_active': true })
+      .orWhere((q2: any) => q2.whereNull('c.academic_session_id').where('cc.tenant_id', tenantId)))
+    .select('c.id');
+  return rows.map((r: any) => r.id);
+}
 router.use(authenticate);
 router.use(attachUserContext);
 
@@ -116,7 +133,7 @@ router.get('/export', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async
         'teachers.employment_type',
         'teachers.hire_date',
         'users.status as status',
-        db.raw('(SELECT name FROM classes WHERE class_teacher_id = teachers.id LIMIT 1) as form_class_name'),
+        db.raw(`(SELECT c.name FROM classes c LEFT JOIN academic_sessions s ON s.id = c.academic_session_id WHERE c.class_teacher_id = teachers.id AND ${CURRENT_CLASS_SQL} LIMIT 1) as form_class_name`),
       )
       .orderBy('teachers.created_at', 'desc')
       .limit(10000);
@@ -213,8 +230,8 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, U
         'teachers.department',
         'teachers.employment_type',
         'teachers.created_at',
-        db.raw('(SELECT name FROM classes WHERE class_teacher_id = teachers.id LIMIT 1) as form_class_name'),
-        db.raw('(SELECT id FROM classes WHERE class_teacher_id = teachers.id LIMIT 1) as form_class_id')
+        db.raw(`(SELECT c.name FROM classes c LEFT JOIN academic_sessions s ON s.id = c.academic_session_id WHERE c.class_teacher_id = teachers.id AND ${CURRENT_CLASS_SQL} LIMIT 1) as form_class_name`),
+        db.raw(`(SELECT c.id FROM classes c LEFT JOIN academic_sessions s ON s.id = c.academic_session_id WHERE c.class_teacher_id = teachers.id AND ${CURRENT_CLASS_SQL} LIMIT 1) as form_class_id`)
       );
 
     if (status) {
@@ -339,8 +356,8 @@ router.get('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
         'teachers.employment_type',
         'teachers.created_at',
         'teachers.updated_at',
-        db.raw('(SELECT name FROM classes WHERE class_teacher_id = teachers.id LIMIT 1) as form_class_name'),
-        db.raw('(SELECT id FROM classes WHERE class_teacher_id = teachers.id LIMIT 1) as form_class_id')
+        db.raw(`(SELECT c.name FROM classes c LEFT JOIN academic_sessions s ON s.id = c.academic_session_id WHERE c.class_teacher_id = teachers.id AND ${CURRENT_CLASS_SQL} LIMIT 1) as form_class_name`),
+        db.raw(`(SELECT c.id FROM classes c LEFT JOIN academic_sessions s ON s.id = c.academic_session_id WHERE c.class_teacher_id = teachers.id AND ${CURRENT_CLASS_SQL} LIMIT 1) as form_class_id`)
       )
       .where('teachers.id', teacherId)
       .first();
@@ -373,6 +390,10 @@ router.get('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
       })
       .where(function() {
         this.where('teacher_assignments.end_date', '>=', new Date()).orWhereNull('teacher_assignments.end_date');
+      })
+      // Current-year classes only (the form edits this year's assignments).
+      .where(function () {
+        this.where('academic_sessions.is_active', true).orWhereNull('classes.academic_session_id');
       });
 
     res.json({
@@ -600,8 +621,10 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
 
     // Remember the teacher's current form class BEFORE we change it, so the
     // notification email can tell whether they were newly assigned or removed.
+    const currentClassIds = await currentYearClassIds(trx, tenantId);
     const prevFormClass = await trx('classes')
       .where('class_teacher_id', teacherId)
+      .whereIn('id', currentClassIds.length ? currentClassIds : ['00000000-0000-0000-0000-000000000000'])
       .select('id', 'name')
       .first()
       .catch(() => null);
@@ -661,8 +684,11 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
 
     // Update Form Class if provided
     if (form_class_id !== undefined) {
-      // Clear old Form Class associations for this teacher
-      await trx('classes').where('class_teacher_id', teacherId).update({ class_teacher_id: null });
+      // Clear this teacher's CURRENT-year form class only — past years keep
+      // their form teacher as history.
+      await trx('classes').where('class_teacher_id', teacherId)
+        .whereIn('id', currentClassIds.length ? currentClassIds : ['00000000-0000-0000-0000-000000000000'])
+        .update({ class_teacher_id: null });
       
       // Associate new Form Class
       if (form_class_id) {
@@ -672,8 +698,11 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
 
     // Replace assignments if provided
     if (req.body.assigned_classes !== undefined || req.body.assigned_subjects !== undefined) {
-      // Clear existing active assignments
-      await trx('teacher_assignments').where('teacher_id', teacherId).del();
+      // Replace this teacher's CURRENT-year assignments only. Deleting all of
+      // them erased past years' teaching history (who taught what, when).
+      await trx('teacher_assignments').where('teacher_id', teacherId)
+        .whereIn('class_id', currentClassIds.length ? currentClassIds : ['00000000-0000-0000-0000-000000000000'])
+        .del();
 
       if (assigned_classes.length > 0 && assigned_subjects.length > 0) {
         const start_date = new Date().toISOString().split('T')[0];
@@ -736,8 +765,8 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
         'teachers.department',
         'teachers.employment_type',
         'teachers.updated_at',
-        db.raw('(SELECT name FROM classes WHERE class_teacher_id = teachers.id LIMIT 1) as form_class_name'),
-        db.raw('(SELECT id FROM classes WHERE class_teacher_id = teachers.id LIMIT 1) as form_class_id')
+        db.raw(`(SELECT c.name FROM classes c LEFT JOIN academic_sessions s ON s.id = c.academic_session_id WHERE c.class_teacher_id = teachers.id AND ${CURRENT_CLASS_SQL} LIMIT 1) as form_class_name`),
+        db.raw(`(SELECT c.id FROM classes c LEFT JOIN academic_sessions s ON s.id = c.academic_session_id WHERE c.class_teacher_id = teachers.id AND ${CURRENT_CLASS_SQL} LIMIT 1) as form_class_id`)
       )
       .where('teachers.id', teacherId)
       .first();

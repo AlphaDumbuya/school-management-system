@@ -29,6 +29,7 @@ import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { useAuth } from '@hooks/useAuth';
@@ -246,7 +247,12 @@ export const AssignmentsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   // Academic-year filter for staff (assignments belong to session-scoped classes).
-  const [year, setYear] = useState('');
+  const [pickedYear, setYear] = useState('');
+  const { activeYear } = useAcademicYears();
+  // Staff see one year at a time (picked, else active). Students/parents are
+  // scoped server-side to their own current class, so no year is sent.
+  const year = canManage ? (pickedYear || activeYear) : '';
+  const viewingPast = canManage && !!year && !!activeYear && year !== activeYear;
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -267,6 +273,7 @@ export const AssignmentsPage: React.FC = () => {
       search: search || undefined,
       academic_year: year || undefined,
     }),
+    enabled: !canManage || !!year,
     staleTime: 30_000,
   });
 
@@ -378,14 +385,24 @@ export const AssignmentsPage: React.FC = () => {
             {canManage && (
               <YearFilter value={year} onChange={(y) => { setYear(y); setPage(1); }} />
             )}
-            <RoleGuard roles={['principal', 'super_admin', 'teacher']}>
-              <Button variant="default" size="sm" onClick={() => { setEditingAssignment(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm">
-                + Create Assignment
-              </Button>
-            </RoleGuard>
+            {!viewingPast && (
+              <RoleGuard roles={['principal', 'super_admin', 'teacher']}>
+                <Button variant="default" size="sm" onClick={() => { setEditingAssignment(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm">
+                  + Create Assignment
+                </Button>
+              </RoleGuard>
+            )}
           </div>
         }
       >
+        {viewingPast && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>Showing <strong>{year}</strong> assignments as history. New assignments go into {activeYear}.</span>
+            <button type="button" onClick={() => { setYear(activeYear); setPage(1); }} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
         {/* Scope info banner — explains what this role can do here */}
         <div className={`mb-6 rounded-2xl border p-4 flex items-start gap-3 ${
           isTeacherRole

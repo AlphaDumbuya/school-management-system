@@ -9,6 +9,7 @@ import { logger } from '@utils/logger.js';
 import { AppError } from '@middleware/errorHandler.js';
 import notificationService from '@services/notificationService.js';
 import emailService from '@services/emailService.js';
+import { applyYearScope, type YearScope } from '@utils/academicYear.js';
 import {
   DisciplineAppeal,
   AppealCreateInput,
@@ -551,6 +552,7 @@ class AppealService {
     options?: {
       search?: string;
       status?: string;
+      yearScope?: YearScope | null;
       page?: number;
       limit?: number;
     }
@@ -574,6 +576,8 @@ class AppealService {
           'da.action_type'
         )
         .orderBy('ap.submitted_date', 'desc');
+      // Academic-year scope (appeals have no class → the year's date window).
+      query = applyYearScope(query, options?.yearScope ?? null, null, 'ap.submitted_date');
 
       if (options?.status) {
         query = query.where('ap.status', options.status);
@@ -582,13 +586,14 @@ class AppealService {
       if (options?.search) {
         const term = `%${options.search.toLowerCase()}%`;
         query = query.where(builder => {
-          builder.whereRaw("LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE ?", [term])
-            .orWhereRaw("LOWER(u.student_id) LIKE ?", [term]);
+          // users has no student_id column — search by name only.
+          builder.whereRaw("LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE ?", [term]);
         });
       }
 
       const items = await query.clone().limit(limit).offset(offset);
-      const countRes = await query.clone().count('* as count').first();
+      // Count without the select list / ORDER BY (Postgres rejects mixing them).
+      const countRes = await query.clone().clearSelect().clearOrder().count('* as count').first();
       const total = Number(countRes?.count || 0);
 
       return {

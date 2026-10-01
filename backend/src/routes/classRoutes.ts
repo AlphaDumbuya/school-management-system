@@ -268,17 +268,26 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     // in a PAST year. Matches against academic_sessions.name (== year string).
     // Classes with NO session are always included (legacy/unassigned classes
     // that are still in active use), so filtering never hides working classes.
+    // Year scope. No year given = the school's CURRENT (active) year, so every
+    // class picker shows this year's classes only (no "JSS 3" twice after a
+    // rollover). academic_year=all lists every year explicitly.
     const academicYear = req.query.academic_year as string;
-    if (academicYear) {
+    const sessionId = req.query.academic_session_id as string;
+    if (sessionId) {
+      query = query.where('classes.academic_session_id', sessionId);
+    } else if (academicYear && academicYear !== 'all') {
       query = query.where(function (this: any) {
         this.where('academic_sessions.name', academicYear)
           .orWhereNull('classes.academic_session_id');
       });
-    }
-    // Optional direct session id filter.
-    const sessionId = req.query.academic_session_id as string;
-    if (sessionId) {
-      query = query.where('classes.academic_session_id', sessionId);
+    } else if (!academicYear) {
+      const active = await db('academic_sessions').where({ tenant_id: tenantId, is_active: true }).first('id');
+      if (active) {
+        query = query.where(function (this: any) {
+          this.where('classes.academic_session_id', active.id)
+            .orWhereNull('classes.academic_session_id');
+        });
+      }
     }
 
     if (search) {

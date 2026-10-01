@@ -234,7 +234,7 @@ export const RISK_COLORS: Record<RiskLevel, string> = {
 
 export const disciplineService = {
   // Infractions
-  listAllInfractions: (params?: { search?: string; status?: string; severity?: string; page?: number; limit?: number }) =>
+  listAllInfractions: (params?: { search?: string; status?: string; severity?: string; page?: number; limit?: number; academic_year?: string }) =>
     apiClient.get<PaginatedResult<StudentInfraction>>('/api/v1/discipline/infractions', { params }),
 
   recordInfraction: (data: Record<string, unknown>) =>
@@ -266,7 +266,7 @@ export const disciplineService = {
     apiClient.get<{ repeat_offenders: RepeatOffender[] }>('/api/v1/discipline/repeat-offenders', { params }),
 
   // Actions
-  listAllActions: (params?: { search?: string; status?: string; action_type?: string; page?: number; limit?: number }) =>
+  listAllActions: (params?: { search?: string; status?: string; action_type?: string; page?: number; limit?: number; academic_year?: string }) =>
     apiClient.get<PaginatedResult<DisciplineAction>>('/api/v1/discipline/actions', { params }),
 
   assignAction: (data: Record<string, unknown>) =>
@@ -305,7 +305,7 @@ export const disciplineService = {
     apiClient.get('/api/v1/discipline/detention-calendar', { params }),
 
   // Appeals
-  listAllAppeals: (params?: { search?: string; status?: string; page?: number; limit?: number }) =>
+  listAllAppeals: (params?: { search?: string; status?: string; page?: number; limit?: number; academic_year?: string }) =>
     apiClient.get<PaginatedResult<DisciplineAppeal>>('/api/v1/discipline/appeals', { params }),
 
   submitAppeal: (data: Record<string, unknown>) =>
@@ -332,7 +332,7 @@ export const disciplineService = {
     apiClient.get<{ pending_appeals: DisciplineAppeal[] }>('/api/v1/discipline/appeals/pending', { params }),
 
   // Behavioral Notes
-  listAllNotes: (params?: { search?: string; note_type?: string; page?: number; limit?: number }) =>
+  listAllNotes: (params?: { search?: string; note_type?: string; page?: number; limit?: number; academic_year?: string }) =>
     apiClient.get<PaginatedResult<BehavioralNote>>('/api/v1/discipline/notes', { params }),
 
   createNote: (data: Record<string, unknown>) =>
@@ -356,7 +356,7 @@ export const disciplineService = {
     apiClient.post(`/api/v1/discipline/notes/${noteId}/share`, {}),
 
   // Conduct Reports
-  listAllReports: (params?: { search?: string; report_period?: string; shared?: string; page?: number; limit?: number }) =>
+  listAllReports: (params?: { search?: string; report_period?: string; shared?: string; page?: number; limit?: number; academic_year?: string }) =>
     apiClient.get<PaginatedResult<ConductReport>>('/api/v1/discipline/reports', { params }),
 
   generateReport: (data: {

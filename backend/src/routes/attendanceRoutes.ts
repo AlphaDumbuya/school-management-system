@@ -10,6 +10,26 @@ import teacherAttendanceRoutes from './teacherAttendanceRoutes';
 const router = Router();
 router.use('/teachers', teacherAttendanceRoutes);
 
+/**
+ * Class ids for one academic year of a school (attendance rows belong to a
+ * class, and classes belong to a year). Active year also includes legacy
+ * classes with no session. null = no year filter requested.
+ */
+async function yearClassIds(tenantId: string, academicYear: unknown): Promise<string[] | null> {
+  const y = typeof academicYear === 'string' ? academicYear.trim() : '';
+  if (!y || y === 'undefined' || y === 'null' || y === 'all') return null;
+  const session = await db('academic_sessions').where({ tenant_id: tenantId, name: y }).first('id', 'is_active');
+  if (!session) return [];
+  const rows = await db('classes')
+    .leftJoin('users as cc', 'classes.created_by', 'cc.id')
+    .where((q) => {
+      q.where('classes.academic_session_id', session.id);
+      if (session.is_active) q.orWhere((q2) => q2.whereNull('classes.academic_session_id').where('cc.tenant_id', tenantId));
+    })
+    .select('classes.id');
+  return rows.map((r: any) => r.id);
+}
+
 async function teacherClassIds(userId: string, tenantId: string): Promise<string[]> {
   const teacher = await db('teachers')
     .join('users as u', 'teachers.user_id', 'u.id')
@@ -157,6 +177,8 @@ router.get('/export', authenticate, attachUserContext, authorize(UserRole.SUPER_
       query = query.whereIn('attendance.class_id', classIds);
     }
 
+    const yClasses = await yearClassIds(tenantId, req.query.academic_year);
+    if (yClasses) query = query.whereIn('attendance.class_id', yClasses.length ? yClasses : ['00000000-0000-0000-0000-000000000000']);
     if (date) query = query.where('attendance.attendance_date', date);
     if (classId) query = query.where('attendance.class_id', classId);
 
@@ -366,6 +388,13 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN,
       query = query.whereIn('attendance.class_id', classIds);
     }
 
+    // Academic-year scope (that year's classes only).
+    const yClasses = await yearClassIds(tenantId, req.query.academic_year);
+    if (yClasses) {
+      if (yClasses.length === 0) return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      query = query.whereIn('attendance.class_id', yClasses);
+    }
+
     if (studentId) {
       query = query.where('attendance.student_id', studentId);
     }
@@ -443,6 +472,11 @@ router.get('/analytics', authenticate, attachUserContext, authorize(UserRole.SUP
     const tenantId = req.user?.tenant_id;
     if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     const classId = req.query.classId as string | undefined;
+    // Academic-year scope (that year's classes only).
+    const yClasses = await yearClassIds(tenantId, req.query.academic_year);
+    if (yClasses && yClasses.length === 0) {
+      return res.json({ success: true, data: { total: 0, present: 0, late: 0, absent: 0, excused: 0, rate: 0, atRisk: [], classRates: [] } });
+    }
 
     // Base scope shared by every aggregate.
     const scoped = () => {
@@ -450,6 +484,7 @@ router.get('/analytics', authenticate, attachUserContext, authorize(UserRole.SUP
         .join('students', 'attendance.student_id', 'students.id')
         .leftJoin('classes', 'attendance.class_id', 'classes.id')
         .where('students.tenant_id', tenantId);
+      if (yClasses) q = q.whereIn('attendance.class_id', yClasses);
       if (classId) q = q.where('attendance.class_id', classId);
       return q;
     };

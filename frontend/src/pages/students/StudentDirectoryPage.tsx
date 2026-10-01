@@ -25,6 +25,7 @@ import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
@@ -73,7 +74,12 @@ export const StudentDirectoryPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('');
   // Academic-year scope. Empty = current roster (all active). Choosing a past
   // year shows that year's enrolled roster (historical). Real sessions only.
-  const [year, setYear] = useState('');
+  // Opens on the school's ACTIVE year; '' (All years) = whole roster with each
+  // student's current class. A past year shows that year's roster + classes.
+  const { activeYear } = useAcademicYears();
+  const [pickedYear, setYear] = useState<string | null>(null);
+  const year = pickedYear ?? activeYear;
+  const viewingPast = !!year && !!activeYear && year !== activeYear;
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -93,6 +99,8 @@ export const StudentDirectoryPage: React.FC = () => {
       search: search || undefined,
       academic_year: year || undefined,
     }),
+    // Wait for the active year unless the user chose "All years".
+    enabled: pickedYear !== null || !!activeYear,
     staleTime: 30_000,
   });
 
@@ -357,6 +365,18 @@ export const StudentDirectoryPage: React.FC = () => {
           </div>
         }
       >
+        {(viewingPast || pickedYear === '') && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>
+              {pickedYear === ''
+                ? <>Showing <strong>every student</strong> across all years, with their current class.</>
+                : <>Showing the <strong>{year}</strong> roster, with the class each student was in that year.</>}
+            </span>
+            <button type="button" onClick={() => { setYear(activeYear); setPage(1); }} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
           {isLoading && !data ? (

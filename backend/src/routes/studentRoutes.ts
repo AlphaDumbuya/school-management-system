@@ -363,17 +363,55 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
       await syncEnrolledApplicationsToStudents(db, effectiveTenantId);
     }
 
+    // Academic-year scope. A year shows THAT year's roster, with the class each
+    // student was in that year (not their class today). No year = everyone,
+    // with their current class.
+    const academicYear = (req.query.academic_year as string | undefined)?.trim() || undefined;
+    let yearClassIds: string[] | null = null;
+    if (academicYear) {
+      const session = await db('academic_sessions').where({ tenant_id: effectiveTenantId, name: academicYear }).first('id', 'is_active');
+      const rows = session
+        ? await db('classes').leftJoin('users as cc', 'classes.created_by', 'cc.id')
+            .where((q) => {
+              q.where('classes.academic_session_id', session.id);
+              if (session.is_active) q.orWhere((q2) => q2.whereNull('classes.academic_session_id').where('cc.tenant_id', effectiveTenantId));
+            })
+            .select('classes.id')
+        : [];
+      yearClassIds = rows.map((r: any) => r.id);
+      if (yearClassIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+    }
+    const HISTORIC = ['enrolled', 'active', 'completed', 'promoted', 'repeated', 'graduated'];
+
     let query = db('students')
       .select(
         'students.*',
         'classes.name as class_name',
         'classes.level as class_level'
-      )
-      .leftJoin('enrollments', function () {
-        this.on('students.id', '=', 'enrollments.student_id')
-          .andOnIn('enrollments.status', ['enrolled', 'active']);
-      })
-      .leftJoin('classes', 'enrollments.class_id', 'classes.id');
+      );
+    if (yearClassIds) {
+      // One row per student: their (latest) enrollment in that year's classes.
+      query = query
+        .join(
+          db('enrollments').distinctOn('student_id')
+            .select('student_id', 'class_id')
+            .whereIn('class_id', yearClassIds)
+            .whereIn('status', HISTORIC)
+            .orderBy('student_id').orderBy('created_at', 'desc')
+            .as('ye'),
+          'ye.student_id', 'students.id',
+        )
+        .leftJoin('classes', 'ye.class_id', 'classes.id');
+    } else {
+      query = query
+        .leftJoin('enrollments', function () {
+          this.on('students.id', '=', 'enrollments.student_id')
+            .andOnIn('enrollments.status', ['enrolled', 'active']);
+        })
+        .leftJoin('classes', 'enrollments.class_id', 'classes.id');
+    }
 
     if (userRole !== 'super_admin') {
       query = query.where('students.tenant_id', tenantId);
@@ -420,22 +458,15 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     // shows that year's roster. Classes with no session are matched on the
     // active year only via null-session handling on the caller side; here we
     // match the session name. Omitted year = current roster (default).
-    const academicYear = req.query.academic_year as string | undefined;
+    // Same year scope for the count query (students with an enrollment in that
+    // year's classes).
     let yearStudentIds: string[] | null = null;
-    if (academicYear) {
-      const rows = await db('enrollments')
-        .join('classes', 'enrollments.class_id', 'classes.id')
-        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
-        .where(function (this: any) {
-          this.where('academic_sessions.name', academicYear)
-            .orWhereNull('classes.academic_session_id');
-        })
-        .distinct('enrollments.student_id');
+    if (yearClassIds) {
+      const rows = await db('enrollments').whereIn('class_id', yearClassIds).whereIn('status', HISTORIC).distinct('student_id');
       yearStudentIds = rows.map((r: any) => r.student_id);
       if (yearStudentIds.length === 0) {
         return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
       }
-      query = query.whereIn('students.id', yearStudentIds);
     }
 
     // Apply filters

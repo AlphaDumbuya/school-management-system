@@ -7,6 +7,7 @@
 import { db } from '@utils/database.js';
 import { logger } from '@utils/logger.js';
 import { AppError } from '@middleware/errorHandler.js';
+import { applyYearScope, type YearScope } from '@utils/academicYear.js';
 import {
   DisciplineAction,
   DisciplineActionCreateInput,
@@ -529,6 +530,7 @@ class DisciplineService {
       search?: string;
       status?: string;
       action_type?: string;
+      yearScope?: YearScope | null;
       page?: number;
       limit?: number;
     }
@@ -548,6 +550,8 @@ class DisciplineService {
           db.raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as student_name")
         )
         .orderBy('da.action_date', 'desc');
+      // Academic-year scope (actions have no class → the year's date window).
+      query = applyYearScope(query, options?.yearScope ?? null, null, 'da.action_date');
 
       if (options?.status) {
         query = query.where('da.status', options.status);
@@ -560,13 +564,14 @@ class DisciplineService {
       if (options?.search) {
         const term = `%${options.search.toLowerCase()}%`;
         query = query.where(builder => {
-          builder.whereRaw("LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE ?", [term])
-            .orWhereRaw("LOWER(u.student_id) LIKE ?", [term]);
+          // users has no student_id column — search by name only.
+          builder.whereRaw("LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE ?", [term]);
         });
       }
 
       const items = await query.clone().limit(limit).offset(offset);
-      const countRes = await query.clone().count('* as count').first();
+      // Count without the select list / ORDER BY (Postgres rejects mixing them).
+      const countRes = await query.clone().clearSelect().clearOrder().count('* as count').first();
       const total = Number(countRes?.count || 0);
 
       return {

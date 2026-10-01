@@ -37,6 +37,7 @@ export const ExpensesPage: React.FC = () => {
   const { data: expResp, isLoading, refetch } = useQuery({
     queryKey: ['school-expenses', year],
     queryFn: () => financeService.listExpenses({ academicYear: year }),
+    enabled: !!year,
     staleTime: 15_000,
   });
   const expenses: SchoolExpense[] = ((expResp as any)?.data?.data ?? (expResp as any)?.data ?? []);
@@ -44,6 +45,7 @@ export const ExpensesPage: React.FC = () => {
   const { data: summaryResp } = useQuery({
     queryKey: ['fees-vs-expenses', year],
     queryFn: () => financeService.getFeesVsExpenses(year),
+    enabled: !!year,
     staleTime: 15_000,
   });
   const summary = (summaryResp as any)?.data?.data ?? (summaryResp as any)?.data;

@@ -84,7 +84,8 @@ export const PromotionsPage: React.FC = () => {
   const { data: classesData } = useQuery({
     // Scope classes to the selected year so the picker shows that year's classes.
     queryKey: ['promotion-classes', academicYear],
-    queryFn: () => classesService.listClasses({ limit: 200, academic_year: academicYear || undefined }),
+    queryFn: () => classesService.listClasses({ limit: 200, academic_year: academicYear }),
+    enabled: !!academicYear,
     staleTime: 60_000,
   });
   const classes: any[] = (classesData as any)?.data ?? [];
@@ -237,7 +238,15 @@ export const PromotionsPage: React.FC = () => {
           <div className="w-full md:w-auto">
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Academic Year</label>
             <div className="relative">
-              <select value={academicYear} onChange={(e) => setAcademicYear(e.target.value)} className={`${selectCls} w-full md:w-40`}>
+              <select
+                value={academicYear}
+                onChange={(e) => {
+                  // Each year has its own class rows — drop picks from the old year.
+                  setAcademicYear(e.target.value);
+                  setClassId(''); setTargetClassId(''); setGraduate(false); setOverrides({});
+                }}
+                className={`${selectCls} w-full md:w-40`}
+              >
                 {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />

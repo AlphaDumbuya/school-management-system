@@ -44,6 +44,7 @@ import { SearchBar } from '@components/admin/table/SearchBar';
 import { rosterRepo } from '../../offline/repositories/rosterRepo';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import { TeacherAttendancePanel } from '@components/attendance/TeacherAttendancePanel';
 import { AttendanceTimeDetails, TimedAttendanceRecord } from '@components/attendance/AttendanceTimeDetails';
 
@@ -141,7 +142,12 @@ export const AttendancePage: React.FC = () => {
   // Academic-year scope for the class pickers (register + logs). Classes are
   // session-scoped, so this shows the right year's classes. Auto-selects the
   // active year via <YearFilter>. Empty only until sessions load.
-  const [year, setYear] = useState('');
+  const [pickedYear, setYear] = useState('');
+  const { activeYear } = useAcademicYears();
+  // One year at a time (picked, else the school's active year). Logs,
+  // analytics, export and class pickers are all scoped to it.
+  const year = pickedYear || activeYear;
+  const viewingPast = !!year && !!activeYear && year !== activeYear;
 
   // ── Log tab state ─────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
@@ -173,7 +179,7 @@ export const AttendancePage: React.FC = () => {
 
   // 1. Attendance log
   const { data: logsData, isLoading: logsLoading, isFetching: logsFetching, refetch: refetchLogs } = useQuery({
-    queryKey: ['att-logs', { search, classFilter, statusFilter, dateFilter, page }],
+    queryKey: ['att-logs', { search, classFilter, statusFilter, dateFilter, page, year }],
     queryFn: () =>
       attendanceService.listAttendance({
         page,
@@ -182,7 +188,9 @@ export const AttendancePage: React.FC = () => {
         status: statusFilter || undefined,
         date: dateFilter || undefined,
         search: search || undefined,
+        academic_year: year,
       }),
+    enabled: !!year,
     staleTime: 30_000,
   });
 
@@ -192,7 +200,8 @@ export const AttendancePage: React.FC = () => {
   // 2. Classes list
   const { data: classesData } = useQuery({
     queryKey: ['att-classes', year],
-    queryFn: () => classesService.listClasses({ limit: 100, academic_year: year || undefined }),
+    queryFn: () => classesService.listClasses({ limit: 100, academic_year: year }),
+    enabled: !!year,
     staleTime: 120_000,
   });
   const classes = (classesData as any)?.data ?? [];
@@ -260,9 +269,9 @@ export const AttendancePage: React.FC = () => {
 
   // 5. Analytics: server-computed (scales past the browser's row limits).
   const { data: analyticsData, isLoading: analyticsLoading, isFetching: analyticsFetching } = useQuery({
-    queryKey: ['att-analytics', classFilter],
-    queryFn: () => attendanceService.getAnalytics(classFilter || undefined),
-    enabled: activeTab === 'analytics',
+    queryKey: ['att-analytics', classFilter, year],
+    queryFn: () => attendanceService.getAnalytics(classFilter || undefined, year),
+    enabled: activeTab === 'analytics' && !!year,
     staleTime: 60_000,
   });
 
@@ -549,12 +558,16 @@ export const AttendancePage: React.FC = () => {
             <div className="flex items-center gap-2 sm:gap-3">
               <YearFilter
                 value={year}
-                onChange={(y) => { setYear(y); setClassFilter(''); setRegClassId(''); setLoadedKey(''); }}
+                onChange={(y) => {
+                  setYear(y); setClassFilter(''); setRegClassId(''); setLoadedKey(''); setPage(1);
+                  // The register is for today's (current-year) attendance only.
+                  if (y !== activeYear && activeTab === 'register') setActiveTab('logs');
+                }}
               />
               <ExportButton
                 endpoint="/api/v1/attendance/export"
                 filename="attendance"
-                params={{ date: dateFilter || undefined, classId: classFilter || undefined }}
+                params={{ date: dateFilter || undefined, classId: classFilter || undefined, academic_year: year || undefined }}
               />
             </div>
           )
@@ -564,7 +577,7 @@ export const AttendancePage: React.FC = () => {
 
           {/* ── Tab bar ─────────────────────────────────────────────────── */}
           <div className="flex items-center gap-2 bg-slate-100 dark:bg-gray-800 p-1.5 rounded-2xl w-full overflow-x-auto scrollbar-none whitespace-nowrap sm:w-fit">
-            {TABS.map((tab) => (
+            {TABS.filter((tab) => !(viewingPast && tab.id === 'register')).map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as ActiveTab)}
@@ -582,6 +595,15 @@ export const AttendancePage: React.FC = () => {
               </button>
             ))}
           </div>
+
+          {viewingPast && activeTab !== 'teachers' && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+              <span>Showing <strong>{year}</strong> attendance as history. Take today's register in {activeYear}.</span>
+              <button type="button" onClick={() => { setYear(activeYear); setClassFilter(''); setRegClassId(''); setLoadedKey(''); }} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+                Back to {activeYear}
+              </button>
+            </div>
+          )}
 
           {activeTab === 'teachers' && user && <TeacherAttendancePanel role={user.role} />}
 
