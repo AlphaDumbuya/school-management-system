@@ -18,8 +18,12 @@ import {
   CalendarCheck, Bell, AlertCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { KPICard } from '@components/dashboard/KPICard';
+import { YearFilter } from '@components/common/YearFilter';
+import { eventsService } from '@services/eventsService';
+import schoolConfigService from '@services/schoolConfigService';
+import { showToast } from '@utils/toast';
 import MainLayout from '@components/layout/MainLayout';
 import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 import { ChartCard } from '@components/admin/charts/ChartCard';
@@ -47,22 +51,21 @@ const timeGreeting = () => {
   return 'Good Evening';
 };
 
-// Recent activity mock items (replaced by real data when available)
-const MOCK_ACTIVITY = [
-  { id: 1, icon: <UserPlus size={15} />, color: 'bg-blue-500', title: 'New student admitted', sub: 'Amara Sesay (Primary 3)', time: '2h ago' },
-  { id: 2, icon: <Wallet size={15} />, color: 'bg-emerald-500', title: 'Fee payment received', sub: 'SLE 500 – Kadiatu Kamara', time: '4h ago' },
-  { id: 3, icon: <CalendarDays size={15} />, color: 'bg-amber-500', title: 'Timetable updated', sub: '2026/2027 Term 1', time: '5h ago' },
-  { id: 4, icon: <Bell size={15} />, color: 'bg-violet-500', title: 'New announcement posted', sub: 'School will reopen Monday, July 20', time: '6h ago' },
-  { id: 5, icon: <Briefcase size={15} />, color: 'bg-rose-500', title: 'Teacher added', sub: 'Mohamed Bangura', time: '8h ago' },
-];
+const ACTIVITY_STYLE: Record<string, { icon: React.ReactNode; color: string }> = {
+  student: { icon: <UserPlus size={15} />, color: 'bg-blue-500' },
+  payment: { icon: <Wallet size={15} />, color: 'bg-emerald-500' },
+  announcement: { icon: <Bell size={15} />, color: 'bg-violet-500' },
+};
 
-const MOCK_EVENTS = [
-  { id: 1, month: 'SEP', day: '20', title: "Parents' Meeting", sub: '10:00 AM – 12:00 PM · School Hall', color: 'bg-blue-500' },
-  { id: 2, month: 'SEP', day: '25', title: 'Mid-Term Exams Begin', sub: 'All Classes · 8:00 AM', color: 'bg-emerald-500' },
-  { id: 3, month: 'OCT', day: '05', title: 'Sports Day', sub: 'School Field · 9:00 AM', color: 'bg-amber-500' },
-  { id: 4, month: 'OCT', day: '12', title: 'End of Term', sub: 'Academic Year 2026/2027', color: 'bg-rose-500' },
-  { id: 5, month: 'OCT', day: '15', title: "Teachers' Workshop", sub: 'ICT in Education · 10:00 AM', color: 'bg-violet-500' },
-];
+const EVENT_COLORS = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-violet-500'];
+
+const timeAgo = (iso: string) => {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 3600) return `${Math.max(1, Math.round(s / 60))}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  if (s < 86400 * 30) return `${Math.round(s / 86400)}d ago`;
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+};
 
 // Quick action definitions
 const QUICK_ACTIONS = [
@@ -81,8 +84,43 @@ const QUICK_ACTIONS = [
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { dashboard, loading, error, refreshDashboard } = useDashboard();
+  const queryClient = useQueryClient();
+  // '' = the school's active year; the filter can open any real past year.
+  const [year, setYear] = useState('');
+  const { dashboard, loading, error, refreshDashboard } = useDashboard(year);
+  const yearInfo = dashboard?.academicYear;
+  const viewingPast = !!yearInfo && !yearInfo.isActive;
   const [now, setNow] = useState(new Date());
+
+  // Real upcoming events (published, from today) instead of placeholders.
+  const upcomingEvents = useQuery({
+    queryKey: ['dashboard-upcoming-events'],
+    queryFn: () => eventsService.getUpcomingEvents(5),
+    staleTime: 60_000,
+  });
+  const events: any[] = ((upcomingEvents.data as any)?.data ?? (upcomingEvents.data as any) ?? []) as any[];
+
+  // Finish a year transition: move students still in last year's classes.
+  const [carrying, setCarrying] = useState(false);
+  const pending = yearInfo?.pendingCarryForward ?? null;
+  const finishTransition = async () => {
+    if (!pending) return;
+    if (!window.confirm(
+      `Move ${pending.students} student(s) from ${pending.fromYear} into their ${yearInfo?.activeYear} classes, ` +
+      'and copy any missing classes, subjects, teacher assignments, timetable and fee structures? Last year stays as history.',
+    )) return;
+    setCarrying(true);
+    try {
+      const res: any = await schoolConfigService.carryForwardIntoCurrentYear();
+      if (res?.success === false) throw new Error(res?.error || 'Could not move students into the new year');
+      showToast.success(`${res?.data?.studentsMoved ?? 0} student(s) moved into ${res?.data?.toYear ?? 'the new year'}.`);
+      await queryClient.invalidateQueries();
+    } catch (e: any) {
+      showToast.error(e?.response?.data?.message || e?.message || 'Could not move students into the new year');
+    } finally {
+      setCarrying(false);
+    }
+  };
   const attendanceDate = now.toISOString().slice(0, 10);
   const canSeeTeacherAttendance = user?.role === 'principal' || user?.role === 'super_admin';
   const teacherAttendance = useQuery({
@@ -96,21 +134,10 @@ export const AdminDashboard: React.FC = () => {
   const refreshOverview = async () => {
     await Promise.all([
       refreshDashboard(),
+      upcomingEvents.refetch(),
       ...(canSeeTeacherAttendance ? [teacherAttendance.refetch({ throwOnError: true })] : []),
     ]);
   };
-
-  useEffect(() => {
-    // Background reloads should retain the current view if they fail. Manual
-    // reloads use the same function but let RefreshButton surface the failure.
-    const loadDashboard = () => {
-      void refreshDashboard().catch(() => undefined);
-    };
-
-    loadDashboard();
-    const interval = setInterval(loadDashboard, 300_000);
-    return () => clearInterval(interval);
-  }, [refreshDashboard]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60_000);
@@ -125,11 +152,17 @@ export const AdminDashboard: React.FC = () => {
   const firstName = user?.firstName || 'Admin';
   const greeting = timeGreeting();
 
-  // Fee collection donut data
-  const collected = dashboard?.financialSummary?.thisMonthCollected ?? 0;
+  // Fee collection donut — the selected year's fees (billed vs collected).
+  const collected = dashboard?.financialSummary?.totalRevenue ?? 0;
   const outstanding = dashboard?.financialSummary?.outstandingBalance ?? 0;
-  const totalExpected = collected + outstanding || 1;
-  const collectionPct = Math.round((collected / totalExpected) * 100);
+  const totalExpected = (dashboard?.financialSummary as any)?.totalBilled || collected + outstanding;
+  const collectionPct = totalExpected > 0 ? Math.round((collected / totalExpected) * 100) : 0;
+
+  // KPI trend vs the previous academic year (hidden when there's no prior year).
+  const yearTrend = (pct: number | null | undefined) =>
+    pct == null || !yearInfo?.previousYear
+      ? {}
+      : { trend: { value: Math.abs(pct), isPositive: pct >= 0 }, trendLabel: `vs ${yearInfo.previousYear}` };
   const teacherRows = teacherAttendance.data?.teachers ?? [];
   const onCampusCount = teacherRows.filter((teacher) => teacher.attendance?.signed_in_at && !teacher.attendance?.signed_out_at).length;
   const signedOutCount = teacherRows.filter((teacher) => teacher.attendance?.signed_out_at).length;
@@ -173,12 +206,46 @@ export const AdminDashboard: React.FC = () => {
               <div className="leading-tight">
                 <p className="text-[11px] font-bold text-gray-900 sm:hidden whitespace-nowrap">{shortDate}</p>
                 <p className="text-xs font-bold text-gray-900 hidden sm:block whitespace-nowrap">{fullDate}</p>
-                <p className="text-[10px] text-gray-400 hidden md:block">Academic Year 2026/2027</p>
+                <p className="text-[10px] text-gray-400 hidden md:block">
+                  {yearInfo?.name ? `Academic Year ${yearInfo.name}${viewingPast ? ' (past)' : ''}` : 'No academic year set'}
+                </p>
               </div>
             </div>
+            <YearFilter value={year} onChange={setYear} />
             <RefreshButton onRefresh={refreshOverview} />
           </div>
         </div>
+
+        {/* Viewing a past year — everything below is that year's snapshot */}
+        {viewingPast && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <span>Showing <strong>{yearInfo?.name}</strong>. The current year is {yearInfo?.activeYear}.</span>
+            <button type="button" onClick={() => setYear(yearInfo?.activeYear ?? '')} className="text-xs font-bold text-blue-700 hover:underline">
+              Back to {yearInfo?.activeYear}
+            </button>
+          </div>
+        )}
+
+        {/* Year transition not finished — students still in last year's classes */}
+        {!viewingPast && pending && (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+            <div className="flex items-start gap-2 text-sm text-amber-900">
+              <AlertCircle size={18} className="mt-0.5 flex-shrink-0 text-amber-600" />
+              <span>
+                <strong>{pending.students}</strong> student(s) are still in {pending.fromYear} classes, so their portals
+                still show {pending.fromYear}. Move them into {yearInfo?.activeYear} to finish the year change.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={finishTransition}
+              disabled={carrying}
+              className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-60"
+            >
+              {carrying ? 'Moving…' : `Move students into ${yearInfo?.activeYear}`}
+            </button>
+          </div>
+        )}
 
         {/* ═══ ROW 2 — KPI Cards ═══
             Mobile: 2×2 grid | lg+: 4 in a row
@@ -190,44 +257,39 @@ export const AdminDashboard: React.FC = () => {
           ) : (
             <>
               <KPICard
-                title="Total Students"
+                title="Students"
                 value={dashboard?.metrics.totalStudents ?? 0}
+                subtitle={yearInfo?.name ? `Enrolled in ${yearInfo.name}` : undefined}
                 icon={<Users size={22} />}
                 color="blue"
-                trend={{ value: 12, isPositive: true }}
-                trendLabel="vs last term"
-                sparkline={[180, 210, 195, 230, 220, 250, 240, 270, dashboard?.metrics.totalStudents ?? 280]}
+                {...yearTrend(dashboard?.trends?.students)}
                 onClick={() => navigate('/students/directory')}
               />
               <KPICard
                 title="Teachers"
                 value={dashboard?.metrics.totalTeachers ?? 0}
+                subtitle={viewingPast ? `Taught in ${yearInfo?.name}` : 'Active staff'}
                 icon={<Briefcase size={22} />}
                 color="green"
-                trend={{ value: 7, isPositive: true }}
-                trendLabel="vs last term"
-                sparkline={[20, 22, 21, 24, 23, 25, 26, 27, dashboard?.metrics.totalTeachers ?? 28]}
+                {...yearTrend(dashboard?.trends?.teachers)}
                 onClick={() => navigate('/staff/teachers')}
               />
               <KPICard
                 title="Classes"
                 value={dashboard?.metrics.totalClasses ?? 0}
+                subtitle={yearInfo?.name ? `In ${yearInfo.name}` : undefined}
                 icon={<BookOpen size={22} />}
                 color="purple"
-                trend={{ value: 0, isPositive: true }}
-                trendLabel="no change"
-                sparkline={[10, 10, 11, 11, 12, 12, 12, 12, dashboard?.metrics.totalClasses ?? 12]}
+                {...yearTrend(dashboard?.trends?.classes)}
                 onClick={() => navigate('/academic/classes')}
               />
               <KPICard
-                title="Total Revenue"
-                value={dashboard ? formatCurrency(dashboard.financialSummary?.totalRevenue ?? dashboard.metrics.totalCollected) : '—'}
+                title="Fees Collected"
+                value={dashboard ? formatCurrency(dashboard.financialSummary?.totalRevenue ?? 0) : '—'}
+                subtitle={yearInfo?.name ? `${yearInfo.name} fees` : undefined}
                 icon={<Wallet size={22} />}
                 color="amber"
-                trend={{ value: 18, isPositive: true }}
-                trendLabel="vs last month"
-                sparkline={[80000, 95000, 102000, 88000, 120000, 115000, 130000, 125000, dashboard?.financialSummary?.totalRevenue ?? 125000]}
-                onClick={() => navigate('/finance/fees')}
+                onClick={() => navigate('/finance/payments')}
               />
             </>
           )}
@@ -273,7 +335,7 @@ export const AdminDashboard: React.FC = () => {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="text-xs sm:text-sm font-bold text-gray-900">Fee Collection</h3>
-                    <p className="text-[10px] text-gray-400">This Term</p>
+                    <p className="text-[10px] text-gray-400">{yearInfo?.name ? `Academic Year ${yearInfo.name}` : 'All fees'}</p>
                   </div>
                   <span className="text-[11px] font-bold text-[#315B8C] bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100 flex-shrink-0">
                     {collectionPct}%
@@ -304,8 +366,8 @@ export const AdminDashboard: React.FC = () => {
                   <div className="flex-1 min-w-0 space-y-1.5">
                     {[
                       { color: 'bg-[#315B8C]', label: 'Collected', value: formatCurrency(collected) },
-                      { color: 'bg-gray-200',   label: 'Pending',   value: formatCurrency(outstanding) },
-                      { color: 'bg-slate-400',  label: 'Expected',  value: formatCurrency(totalExpected), border: true },
+                      { color: 'bg-gray-200',   label: 'Outstanding', value: formatCurrency(outstanding) },
+                      { color: 'bg-slate-400',  label: 'Billed',      value: formatCurrency(totalExpected), border: true },
                     ].map(({ color, label, value, border }) => (
                       <div key={label} className={`flex items-center justify-between gap-2 ${border ? 'pt-1.5 border-t border-gray-100' : ''}`}>
                         <div className="flex items-center gap-1.5 min-w-0">
@@ -371,18 +433,24 @@ export const AdminDashboard: React.FC = () => {
               <button onClick={() => navigate('/students/directory')} className="text-xs font-bold text-[#315B8C] hover:underline">View All</button>
             </div>
             <div className="divide-y divide-gray-50">
-              {MOCK_ACTIVITY.map((item) => (
-                <div key={item.id} className="flex items-start gap-3 px-4 sm:px-5 py-3 hover:bg-gray-50 transition-colors">
-                  <div className={`w-8 h-8 rounded-xl ${item.color} text-white flex items-center justify-center flex-shrink-0 shadow-sm`}>
-                    {item.icon}
+              {(dashboard?.recentActivity ?? []).length === 0 && (
+                <p className="px-4 sm:px-5 py-6 text-xs text-gray-400 text-center">No recent activity yet.</p>
+              )}
+              {(dashboard?.recentActivity ?? []).map((item) => {
+                const style = ACTIVITY_STYLE[item.kind] ?? ACTIVITY_STYLE.student;
+                return (
+                  <div key={item.id} className="flex items-start gap-3 px-4 sm:px-5 py-3 hover:bg-gray-50 transition-colors">
+                    <div className={`w-8 h-8 rounded-xl ${style.color} text-white flex items-center justify-center flex-shrink-0 shadow-sm`}>
+                      {style.icon}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-900 truncate">{item.title}</p>
+                      <p className="text-[10px] text-gray-400 truncate">{item.sub}</p>
+                    </div>
+                    <span className="text-[10px] text-gray-400 flex-shrink-0 mt-0.5 whitespace-nowrap">{timeAgo(item.at)}</span>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-gray-900 truncate">{item.title}</p>
-                    <p className="text-[10px] text-gray-400 truncate">{item.sub}</p>
-                  </div>
-                  <span className="text-[10px] text-gray-400 flex-shrink-0 mt-0.5 whitespace-nowrap">{item.time}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -393,19 +461,35 @@ export const AdminDashboard: React.FC = () => {
               <button onClick={() => navigate('/events/school')} className="text-xs font-bold text-[#315B8C] hover:underline">View All</button>
             </div>
             <div className="divide-y divide-gray-50">
-              {MOCK_EVENTS.map((ev) => (
-                <div key={ev.id} className="flex items-start gap-3 px-4 sm:px-5 py-3 hover:bg-gray-50 transition-colors group cursor-pointer">
-                  <div className={`w-11 flex-shrink-0 ${ev.color} rounded-xl text-white text-center py-1.5 shadow-sm`}>
-                    <p className="text-[9px] font-black uppercase tracking-widest opacity-80">{ev.month}</p>
-                    <p className="text-base font-black leading-none">{ev.day}</p>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-gray-900 truncate group-hover:text-[#315B8C] transition-colors">{ev.title}</p>
-                    <p className="text-[10px] text-gray-400 truncate">{ev.sub}</p>
-                  </div>
-                  <ChevronRight size={14} className="text-gray-300 group-hover:text-[#315B8C] flex-shrink-0 mt-1 transition-colors" />
-                </div>
-              ))}
+              {events.length === 0 && (
+                <p className="px-4 sm:px-5 py-6 text-xs text-gray-400 text-center">
+                  {upcomingEvents.isLoading ? 'Loading events…' : 'No upcoming events.'}
+                </p>
+              )}
+              {events.slice(0, 5).map((ev: any, i: number) => {
+                const d = new Date(ev.start_date);
+                return (
+                  <button
+                    type="button"
+                    key={ev.event_id ?? ev.id ?? i}
+                    onClick={() => navigate(ev.event_id || ev.id ? `/events/school/${ev.event_id ?? ev.id}` : '/events/school')}
+                    className="w-full text-left flex items-start gap-3 px-4 sm:px-5 py-3 hover:bg-gray-50 transition-colors group"
+                  >
+                    <div className={`w-11 flex-shrink-0 ${EVENT_COLORS[i % EVENT_COLORS.length]} rounded-xl text-white text-center py-1.5 shadow-sm`}>
+                      <p className="text-[9px] font-black uppercase tracking-widest opacity-80">{d.toLocaleDateString('en-GB', { month: 'short' })}</p>
+                      <p className="text-base font-black leading-none">{d.getDate()}</p>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-900 truncate group-hover:text-[#315B8C] transition-colors">{ev.title}</p>
+                      <p className="text-[10px] text-gray-400 truncate">
+                        {ev.all_day ? 'All day' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {ev.location ? ` · ${ev.location}` : ''}
+                      </p>
+                    </div>
+                    <ChevronRight size={14} className="text-gray-300 group-hover:text-[#315B8C] flex-shrink-0 mt-1 transition-colors" />
+                  </button>
+                );
+              })}
             </div>
           </div>
 

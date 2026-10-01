@@ -14,9 +14,11 @@ class DashboardService {
    * Get complete principal dashboard with all data
    * Falls back to individual endpoint calls if complete endpoint not available
    */
-  async getCompleteDashboard(cacheBust?: string): Promise<CompleteDashboard> {
+  async getCompleteDashboard(cacheBust?: string, academicYear?: string): Promise<CompleteDashboard> {
     try {
-      const params = cacheBust ? { _t: cacheBust } : undefined;
+      const params: Record<string, string> = {};
+      if (cacheBust) params._t = cacheBust;
+      if (academicYear) params.academic_year = academicYear;
       const response = await apiClient.get<CompleteDashboard>('/api/v1/dashboards/admin/complete', { params });
       const payload = this.unwrapResponse(response);
       if (payload) {
