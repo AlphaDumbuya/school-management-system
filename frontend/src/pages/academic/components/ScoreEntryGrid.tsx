@@ -43,12 +43,16 @@ export const ScoreEntryGrid: React.FC<Props> = ({ academicYear }) => {
   const [saving, setSaving] = useState(false);
 
   // Dropdown data
+  // Classes of the selected year — scores are keyed by that year's class rows.
   const { data: classesData } = useQuery({
-    queryKey: ['classes-dropdown'],
-    queryFn: () => classesService.listClasses({ limit: 100 }),
+    queryKey: ['score-classes', academicYear],
+    queryFn: () => classesService.listClasses({ limit: 100, academic_year: academicYear }),
+    enabled: !!academicYear,
     staleTime: 60_000,
   });
   const classes = (classesData as any)?.data ?? [];
+  // Changing the year drops a class picked from another year.
+  useEffect(() => { setClassId(''); setRows([]); }, [academicYear]);
   const classOptions = useMemo(
     () => classes.map((c: any) => ({ value: String(c.id), label: c.name, sublabel: c.level })),
     [classes],

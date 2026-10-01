@@ -15,6 +15,7 @@ import { PageShell } from '@components/admin/layout/PageShell';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
 import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import { Button } from '@components/ui/button';
 import { useAuth } from '@hooks/useAuth';
 import { classesService } from '@services/classesService';
@@ -41,7 +42,15 @@ export const ResultsPage: React.FC = () => {
   }, []);
   // Year is chosen from the tenant's REAL sessions via <YearFilter> (auto-
   // selects the active year on first load). No new Date() fabrication.
-  const [academicYear, setAcademicYear] = useState('');
+  const [pickedYear, setPickedYear] = useState('');
+  const { activeYear } = useAcademicYears();
+  const academicYear = pickedYear || activeYear;
+  const viewingPast = !!academicYear && !!activeYear && academicYear !== activeYear;
+  const setAcademicYear = (y: string) => {
+    setPickedYear(y);
+    // Class picks belong to one year's class rows — reset them on change.
+    setRankingClassId(''); setRatingsClassId(''); setRatingsStudentId('');
+  };
   const [tab, setTab] = useState<'cognitive' | 'ratings' | 'ranking'>('cognitive');
 
   // Ranking tab state
@@ -54,9 +63,9 @@ export const ResultsPage: React.FC = () => {
   const [ratingsModalOpen, setRatingsModalOpen] = useState(false);
 
   const { data: classesData } = useQuery({
-    queryKey: ['classes-dropdown'],
-    queryFn: () => classesService.listClasses({ limit: 100 }),
-    enabled: !isStudent && !isParent,
+    queryKey: ['results-classes', academicYear],
+    queryFn: () => classesService.listClasses({ limit: 100, academic_year: academicYear }),
+    enabled: !isStudent && !isParent && !!academicYear,
     staleTime: 60_000,
   });
   const classes = (classesData as any)?.data ?? [];
@@ -96,6 +105,17 @@ export const ResultsPage: React.FC = () => {
           </div>
         }
       >
+        {viewingPast && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <span>
+              You're working in <strong>{academicYear}</strong>, a past year. Scores and ratings you save here change
+              that year's records. The current year is {activeYear}.
+            </span>
+            <button type="button" onClick={() => setAcademicYear(activeYear)} className="text-xs font-bold text-amber-800 hover:underline">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
         {/* Grading method reference */}
         <div className="mb-6 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800/60 dark:to-gray-800/40 rounded-xl border border-blue-100 dark:border-gray-700 space-y-3">
           <div>
