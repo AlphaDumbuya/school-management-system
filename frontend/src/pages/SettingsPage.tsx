@@ -3,6 +3,7 @@ import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import { Button } from '@components/ui/button';
+import { YearTransitionDialog } from '@components/academic/YearTransitionDialog';
 import {
   Settings as SettingsIcon,
   Building,
@@ -412,11 +413,8 @@ export const SettingsPage: React.FC = () => {
   // For a year that was started before rollover carried everything forward:
   // pull last year's classes, setup and students into the current year.
   const [carryingForward, setCarryingForward] = useState(false);
+  const [carryDialogOpen, setCarryDialogOpen] = useState(false);
   const handleCarryForward = async () => {
-    if (!window.confirm(
-      'Move last year\'s active students into this year\'s classes, and copy any missing classes, subjects, ' +
-      'teacher assignments, timetable and fee structures? Last year\'s records are kept as history. Safe to run again.',
-    )) return;
     setCarryingForward(true);
     try {
       const res: any = await schoolConfigService.carryForwardIntoCurrentYear();
@@ -1499,7 +1497,7 @@ export const SettingsPage: React.FC = () => {
                             <Button variant="outline" onClick={openNewYearDialog} className="border-amber-300 text-amber-900 hover:bg-amber-100">
                               Start New Academic Year
                             </Button>
-                            <Button variant="outline" onClick={handleCarryForward} disabled={carryingForward} className="border-amber-300 text-amber-900 hover:bg-amber-100">
+                            <Button variant="outline" onClick={() => setCarryDialogOpen(true)} disabled={carryingForward} className="border-amber-300 text-amber-900 hover:bg-amber-100">
                               {carryingForward ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
                               Bring last year into this year
                             </Button>
@@ -2335,6 +2333,13 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
       </PageShell>
+
+      <YearTransitionDialog
+        isOpen={carryDialogOpen}
+        onClose={() => setCarryDialogOpen(false)}
+        onConfirm={handleCarryForward}
+        toYear={settings.academic_year || null}
+      />
 
       {/* ── Start New Academic Year dialog ── */}
       {newYearOpen && (

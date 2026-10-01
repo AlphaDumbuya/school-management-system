@@ -21,6 +21,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { KPICard } from '@components/dashboard/KPICard';
 import { YearFilter } from '@components/common/YearFilter';
+import { YearTransitionDialog } from '@components/academic/YearTransitionDialog';
 import { eventsService } from '@services/eventsService';
 import schoolConfigService from '@services/schoolConfigService';
 import { showToast } from '@utils/toast';
@@ -108,13 +109,10 @@ export const AdminDashboard: React.FC = () => {
 
   // Finish a year transition: move students still in last year's classes.
   const [carrying, setCarrying] = useState(false);
+  const [transitionOpen, setTransitionOpen] = useState(false);
   const pending = yearInfo?.pendingCarryForward ?? null;
   const finishTransition = async () => {
     if (!pending) return;
-    if (!window.confirm(
-      `Move ${pending.students} student(s) from ${pending.fromYear} into their ${yearInfo?.activeYear} classes, ` +
-      'and copy any missing classes, subjects, teacher assignments, timetable and fee structures? Last year stays as history.',
-    )) return;
     setCarrying(true);
     try {
       const res: any = await schoolConfigService.carryForwardIntoCurrentYear();
@@ -244,7 +242,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
             <button
               type="button"
-              onClick={finishTransition}
+              onClick={() => setTransitionOpen(true)}
               disabled={carrying}
               className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-60"
             >
@@ -252,6 +250,14 @@ export const AdminDashboard: React.FC = () => {
             </button>
           </div>
         )}
+        <YearTransitionDialog
+          isOpen={transitionOpen}
+          onClose={() => setTransitionOpen(false)}
+          onConfirm={finishTransition}
+          fromYear={pending?.fromYear}
+          toYear={yearInfo?.activeYear}
+          studentCount={pending?.students}
+        />
 
         {/* ═══ ROW 2 — KPI Cards ═══
             Mobile: 2×2 grid | lg+: 4 in a row
