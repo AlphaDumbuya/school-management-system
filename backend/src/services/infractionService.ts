@@ -9,6 +9,7 @@ import { logger } from '@utils/logger.js';
 import { AppError } from '@middleware/errorHandler.js';
 import notificationService from '@services/notificationService.js';
 import emailService from '@services/emailService.js';
+import { applyYearScope, type YearScope } from '@utils/academicYear.js';
 import {
   StudentInfraction,
   InfractionCreateInput,
@@ -498,6 +499,7 @@ class InfractionService {
       status?: string;
       severity?: string;
       recordedBy?: string;
+      yearScope?: YearScope | null;
       page?: number;
       limit?: number;
     }
@@ -520,6 +522,8 @@ class InfractionService {
       if (options?.recordedBy) {
         query = query.where('si.recorded_by', options.recordedBy);
       }
+      // Academic-year scope: the year's classes, else the year's date window.
+      query = applyYearScope(query, options?.yearScope ?? null, 'si.class_id', 'si.incident_date');
 
       query = query
         .select(

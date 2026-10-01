@@ -7,6 +7,7 @@
 import { db } from '@utils/database.js';
 import { logger } from '@utils/logger.js';
 import { AppError } from '@middleware/errorHandler.js';
+import { applyYearScope, type YearScope } from '@utils/academicYear.js';
 import {
   DisciplineAction,
   DisciplineActionCreateInput,
@@ -529,6 +530,7 @@ class DisciplineService {
       search?: string;
       status?: string;
       action_type?: string;
+      yearScope?: YearScope | null;
       page?: number;
       limit?: number;
     }
@@ -548,6 +550,8 @@ class DisciplineService {
           db.raw("CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as student_name")
         )
         .orderBy('da.action_date', 'desc');
+      // Academic-year scope (actions have no class → the year's date window).
+      query = applyYearScope(query, options?.yearScope ?? null, null, 'da.action_date');
 
       if (options?.status) {
         query = query.where('da.status', options.status);

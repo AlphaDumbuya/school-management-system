@@ -9,6 +9,7 @@ import { logger } from '@utils/logger.js';
 import { AppError } from '@middleware/errorHandler.js';
 import notificationService from '@services/notificationService.js';
 import emailService from '@services/emailService.js';
+import { applyYearScope, type YearScope } from '@utils/academicYear.js';
 import {
   DisciplineAppeal,
   AppealCreateInput,
@@ -551,6 +552,7 @@ class AppealService {
     options?: {
       search?: string;
       status?: string;
+      yearScope?: YearScope | null;
       page?: number;
       limit?: number;
     }
@@ -574,6 +576,8 @@ class AppealService {
           'da.action_type'
         )
         .orderBy('ap.submitted_date', 'desc');
+      // Academic-year scope (appeals have no class → the year's date window).
+      query = applyYearScope(query, options?.yearScope ?? null, null, 'ap.submitted_date');
 
       if (options?.status) {
         query = query.where('ap.status', options.status);

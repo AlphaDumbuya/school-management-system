@@ -23,6 +23,8 @@ import { RoleGuard } from '@components/admin/common/RoleGuard';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { useAuth } from '@hooks/useAuth';
+import { useAcademicYears } from '@hooks/useAcademicYears';
+import { YearFilter } from '@components/common/YearFilter';
 import {
   disciplineService,
   StudentInfraction, DisciplineAction, DisciplineAppeal, BehavioralNote, ConductReport,
@@ -100,6 +102,13 @@ export const DisciplinePage: React.FC = () => {
     [isStaffAdmin],
   );
   const [activeTab, setActiveTab] = useState<Tab>(isStaffAdmin ? 'dashboard' : 'infractions');
+
+  // Academic year for the record lists (picked, else the school's active year).
+  // Records match by their class's year, else by date within the year.
+  const [pickedYear, setYear] = useState('');
+  const { activeYear } = useAcademicYears();
+  const year = pickedYear || activeYear;
+  const viewingPast = !!year && !!activeYear && year !== activeYear;
 
   // Search & filter state shared across tabs
   const [search, setSearch] = useState('');
@@ -496,8 +505,24 @@ export const DisciplinePage: React.FC = () => {
         breadcrumbs={[{ label: 'Discipline & Conduct' }]}
         onRefresh={invalidate}
         isRefreshing={dashLoading}
-        actions={tabAction()}
+        actions={
+          <div className="flex items-center gap-2">
+            {/* Year applies to the record lists; the dashboard is "right now". */}
+            {['infractions', 'actions', 'appeals', 'notes'].includes(activeTab) && (
+              <YearFilter value={year} onChange={setYear} />
+            )}
+            {!viewingPast && tabAction()}
+          </div>
+        }
       >
+        {viewingPast && ['infractions', 'actions', 'appeals', 'notes'].includes(activeTab) && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>Showing <strong>{year}</strong> records as history. New records are filed in {activeYear}.</span>
+            <button type="button" onClick={() => setYear(activeYear)} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
         {/* ── Tab Navigation ─────────────────────────────────────────── */}
         <div className="flex flex-wrap gap-2 mb-6 p-1.5 bg-slate-100 dark:bg-gray-800 rounded-2xl overflow-x-auto">
           {TABS.map(tab => (
@@ -760,6 +785,7 @@ export const DisciplinePage: React.FC = () => {
         {/* ── INFRACTIONS TAB ──────────────────────────────────────────── */}
         {activeTab === 'infractions' && (
           <InfractionsTab
+            year={year}
             search={search}
             statusFilter={statusFilter}
             severityFilter={severityFilter}
@@ -773,6 +799,7 @@ export const DisciplinePage: React.FC = () => {
         {/* ── ACTIONS TAB ─────────────────────────────────────────────── */}
         {activeTab === 'actions' && (
           <ActionsTab
+            year={year}
             search={search}
             statusFilter={statusFilter}
             actionColumns={actionColumns}
@@ -782,6 +809,7 @@ export const DisciplinePage: React.FC = () => {
         {/* ── APPEALS TAB ─────────────────────────────────────────────── */}
         {activeTab === 'appeals' && (
           <AppealsTab
+            year={year}
             search={search}
             statusFilter={statusFilter}
             appealColumns={appealColumns}
@@ -792,6 +820,7 @@ export const DisciplinePage: React.FC = () => {
         {/* ── NOTES TAB ───────────────────────────────────────────────── */}
         {activeTab === 'notes' && (
           <NotesTab
+            year={year}
             search={search}
             statusFilter={statusFilter}
             noteColumns={noteColumns}
@@ -867,6 +896,7 @@ export const DisciplinePage: React.FC = () => {
 // ── Sub-tab components ────────────────────────────────────────────────────────
 
 interface InfractionsTabProps {
+  year: string;
   search: string;
   statusFilter: string;
   severityFilter: string;
@@ -876,14 +906,16 @@ interface InfractionsTabProps {
 }
 
 const InfractionsTab: React.FC<InfractionsTabProps> = ({
-  search, statusFilter, severityFilter, infractionColumns, onAssignAction,
+  year, search, statusFilter, severityFilter, infractionColumns, onAssignAction,
 }) => {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['discipline-infractions-list', { search, statusFilter, severityFilter, page }],
+    queryKey: ['discipline-infractions-list', { search, statusFilter, severityFilter, page, year }],
+    enabled: !!year,
     queryFn: () => disciplineService.listAllInfractions({
+      academic_year: year,
       search: search || undefined,
       status: statusFilter || undefined,
       severity: severityFilter || undefined,
@@ -940,19 +972,22 @@ const InfractionsTab: React.FC<InfractionsTabProps> = ({
 // ── ActionsTab ────────────────────────────────────────────────────────────────
 
 interface ActionsTabProps {
+  year: string;
   search: string;
   statusFilter: string;
   actionColumns: ColumnDef<DisciplineAction, any>[];
 }
 
-const ActionsTab: React.FC<ActionsTabProps> = ({ search, statusFilter, actionColumns }) => {
+const ActionsTab: React.FC<ActionsTabProps> = ({ year, search, statusFilter, actionColumns }) => {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['discipline-actions-list', { search, statusFilter, page }],
+    queryKey: ['discipline-actions-list', { search, statusFilter, page, year }],
+    enabled: !!year,
     queryFn: () => disciplineService.listAllActions({
+      academic_year: year,
       search: search || undefined,
       status: statusFilter || undefined,
       page,
@@ -1010,6 +1045,7 @@ const ActionsTab: React.FC<ActionsTabProps> = ({ search, statusFilter, actionCol
 // ── AppealsTab ────────────────────────────────────────────────────────────────
 
 interface AppealsTabProps {
+  year: string;
   search: string;
   statusFilter: string;
   appealColumns: ColumnDef<DisciplineAppeal, any>[];
@@ -1017,14 +1053,16 @@ interface AppealsTabProps {
 }
 
 const AppealsTab: React.FC<AppealsTabProps> = ({
-  search, statusFilter, appealColumns, onReview,
+  year, search, statusFilter, appealColumns, onReview,
 }) => {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['discipline-appeals-list', { search, statusFilter, page }],
+    queryKey: ['discipline-appeals-list', { search, statusFilter, page, year }],
+    enabled: !!year,
     queryFn: () => disciplineService.listAllAppeals({
+      academic_year: year,
       search: search || undefined,
       status: statusFilter || undefined,
       page,
@@ -1078,6 +1116,7 @@ const AppealsTab: React.FC<AppealsTabProps> = ({
 // ── NotesTab ──────────────────────────────────────────────────────────────────
 
 interface NotesTabProps {
+  year: string;
   search: string;
   statusFilter: string;
   noteColumns: ColumnDef<BehavioralNote, any>[];
@@ -1086,14 +1125,16 @@ interface NotesTabProps {
 }
 
 const NotesTab: React.FC<NotesTabProps> = ({
-  search, statusFilter, noteColumns, onEdit, onDelete,
+  year, search, statusFilter, noteColumns, onEdit, onDelete,
 }) => {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['discipline-notes-list', { search, statusFilter, page }],
+    queryKey: ['discipline-notes-list', { search, statusFilter, page, year }],
+    enabled: !!year,
     queryFn: () => disciplineService.listAllNotes({
+      academic_year: year,
       search: search || undefined,
       note_type: statusFilter || undefined,
       page,
