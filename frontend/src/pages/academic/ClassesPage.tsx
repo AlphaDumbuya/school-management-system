@@ -258,8 +258,11 @@ export const ClassesPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   // Academic year filter (managers browse any year; defaults to active). Classes
   // are session-scoped, so this scopes the list to the chosen year's classes.
-  const [year, setYear] = useState('');
+  const [pickedYear, setYear] = useState('');
   const { activeYear } = useAcademicYears();
+  // The page always shows ONE year: the one picked, else the school's active
+  // year. Nothing loads until the active year is known (no mixed-year flash).
+  const year = pickedYear || activeYear;
   const viewingPast = !!year && !!activeYear && year !== activeYear;
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
@@ -295,6 +298,7 @@ export const ClassesPage: React.FC = () => {
       // offline-capable list so their class selectors work without a network.
       return canManage ? classesService.listAllClasses(params) : classesService.listClasses(params);
     },
+    enabled: !!year,
     staleTime: 30_000,
   });
 
