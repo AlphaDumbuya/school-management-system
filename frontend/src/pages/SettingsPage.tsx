@@ -4,6 +4,7 @@ import { PageShell } from '@components/admin/layout/PageShell';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import { Button } from '@components/ui/button';
 import { YearTransitionDialog } from '@components/academic/YearTransitionDialog';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import {
   Settings as SettingsIcon,
   Building,
@@ -171,7 +172,7 @@ export const SettingsPage: React.FC = () => {
   // States for Settings fields
   const [schoolInfo, setSchoolInfo] = useState<Partial<SchoolInfo>>({});
   const [settings, setSettings] = useState<Record<string, any>>({
-    academic_year: '2026/2027',
+    academic_year: '', // filled from the school's active session below
     term_count: 3,
     term_1_start: '',
     term_1_end: '',
@@ -412,6 +413,14 @@ export const SettingsPage: React.FC = () => {
 
   // For a year that was started before rollover carried everything forward:
   // pull last year's classes, setup and students into the current year.
+  // The school's active academic year (real session), for year-keyed panels.
+  const { activeYear: activeAcademicYear, isLoading: yearsLoading } = useAcademicYears();
+  // No saved academic_year setting → show the real active session, not a guess.
+  useEffect(() => {
+    if (!yearsLoading && activeAcademicYear && !settings.academic_year) {
+      setSettings((s) => (s.academic_year ? s : { ...s, academic_year: activeAcademicYear }));
+    }
+  }, [yearsLoading, activeAcademicYear, settings.academic_year]);
   const [carryingForward, setCarryingForward] = useState(false);
   const [carryDialogOpen, setCarryDialogOpen] = useState(false);
   const handleCarryForward = async () => {
@@ -1715,7 +1724,7 @@ export const SettingsPage: React.FC = () => {
                     {/* Grade controls + result release (moved here from the Results page,
                         since all configuration belongs in Settings). Principal-only;
                         the panel and its backend routes both enforce this. */}
-                    <ReportSettingsPanel academicYear={`${new Date().getFullYear()}/${new Date().getFullYear() + 1}`} />
+                    <ReportSettingsPanel academicYear={activeAcademicYear} />
 
                     {/* List active scales */}
                     <Card>

@@ -67,7 +67,8 @@ export const PromotionsPage: React.FC = () => {
   const yearOptions = useMemo(() => {
     const set = new Set<string>();
     sessions.forEach((s) => { if (s?.name) set.add(String(s.name)); });
-    for (let y = currentYear + 1; y >= currentYear - 3; y--) set.add(`${y}/${y + 1}`);
+    // Real years only; a school with no sessions yet gets just this year.
+    if (set.size === 0) set.add(`${currentYear}/${currentYear + 1}`);
     return Array.from(set).sort((a, b) => b.localeCompare(a));
   }, [sessions, currentYear]);
 

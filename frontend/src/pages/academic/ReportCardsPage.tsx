@@ -114,9 +114,8 @@ export const ReportCardsPage: React.FC = () => {
       .map((s) => String(s.name))
       .filter((n) => /^\d{4}\/\d{4}$/.test(n));
     const set = new Set<string>(fromDb);
-    // Always include a sensible current-year span so a brand-new school (no
-    // sessions yet) still has selectable years.
-    for (let y = currentYear + 1; y >= currentYear - 3; y--) set.add(`${y}/${y + 1}`);
+    // Real years only; a school with no sessions yet gets just this year.
+    if (set.size === 0) set.add(`${currentYear}/${currentYear + 1}`);
     return Array.from(set)
       .sort((a, b) => b.localeCompare(a))
       .map((v) => ({ value: v, label: v }));

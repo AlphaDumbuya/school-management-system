@@ -90,8 +90,8 @@ export const FeesPage: React.FC = () => {
   const years = useMemo(() => {
     const set = new Set<string>();
     sessions.forEach((s) => { if (s?.name) set.add(String(s.name)); });
-    const cur = new Date().getFullYear();
-    for (let i = 1; i >= -3; i--) set.add(`${cur + i}/${cur + i + 1}`);
+    // Real years only; a school with no sessions yet gets just this year.
+    if (set.size === 0) { const cur = new Date().getFullYear(); set.add(`${cur}/${cur + 1}`); }
     return Array.from(set).sort((a, b) => b.localeCompare(a));
   }, [sessions]);
 
