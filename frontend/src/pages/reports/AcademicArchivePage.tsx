@@ -20,9 +20,11 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import schoolConfigService from '@services/schoolConfigService';
+import { studentsService } from '@services/studentsService';
+import { StudentHistoryDialog } from './components/StudentHistoryDialog';
 import {
   GraduationCap, Users, BookOpen, Wallet, Megaphone, TrendingUp, FileText, ArrowRight,
-  CalendarCheck, Search, X, Loader2, Printer, Award, ChevronRight,
+  CalendarCheck, Search, Loader2, Printer, Award,
 } from 'lucide-react';
 
 const fmtLe = (n: number) => `Le ${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -42,10 +44,25 @@ export const AcademicArchivePage: React.FC = () => {
   const year = pickedYear || activeYear;
   const viewingPast = !!year && !!activeYear && year < activeYear;
 
-  // Per-student history: search box → query (name or admission number).
+  // Per-student history: search box (name or admission number) with live
+  // suggestions; Enter / Look up opens the dialog for whatever was typed.
   const [historyInput, setHistoryInput] = useState('');
   const [historyQuery, setHistoryQuery] = useState('');
-  const lookUp = () => { const q = historyInput.trim(); if (q) setHistoryQuery(q); };
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(historyInput.trim()), 250);
+    return () => clearTimeout(t);
+  }, [historyInput]);
+  const { data: suggestResp, isFetching: suggesting } = useQuery({
+    queryKey: ['archive-student-suggest', debounced],
+    queryFn: () => studentsService.listStudents({ search: debounced, limit: 6 }),
+    enabled: debounced.length >= 2,
+    staleTime: 30_000,
+  });
+  const suggestions: any[] = ((suggestResp as any)?.data?.data ?? (suggestResp as any)?.data ?? []) as any[];
+  const openHistory = (q: string) => { const v = q.trim(); if (!v) return; setSuggestOpen(false); setHistoryQuery(v); };
+  const lookUp = () => openHistory(historyInput);
   const closeHistory = () => setHistoryQuery('');
 
   const { data: snapResp, isLoading, isError, refetch } = useQuery({
@@ -55,22 +72,6 @@ export const AcademicArchivePage: React.FC = () => {
     staleTime: 30_000,
   });
   const snap = (snapResp as any)?.data ?? null;
-
-  const { data: historyResp, isLoading: historyLoading } = useQuery({
-    queryKey: ['academic-archive-student', historyQuery],
-    queryFn: () => schoolConfigService.getStudentHistory(historyQuery),
-    enabled: !!historyQuery,
-    staleTime: 30_000,
-  });
-  const history = (historyResp as any)?.data ?? null;
-
-  // Escape closes the history dialog.
-  useEffect(() => {
-    if (!historyQuery) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeHistory(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [historyQuery]);
 
   const collectionRate = snap?.finance?.billed > 0 ? Math.round((snap.finance.collected / snap.finance.billed) * 1000) / 10 : null;
 
@@ -116,18 +117,58 @@ export const AcademicArchivePage: React.FC = () => {
           <label htmlFor="archive-student-search" className="text-sm font-semibold text-gray-700 dark:text-gray-300 block mb-1">
             Student history (every year)
           </label>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Classes, results, attendance and fees for every year the student has been at the school.</p>
           <div className="flex gap-2 sm:max-w-lg">
-            <input
-              id="archive-student-search"
-              type="text"
-              value={historyInput}
-              onChange={(e) => setHistoryInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') lookUp(); }}
-              placeholder="Student name or admission number…"
-              className="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="relative flex-1 min-w-0">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input
+                id="archive-student-search"
+                type="text"
+                autoComplete="off"
+                role="combobox"
+                aria-expanded={suggestOpen && suggestions.length > 0}
+                aria-controls="archive-student-suggestions"
+                value={historyInput}
+                onChange={(e) => { setHistoryInput(e.target.value); setSuggestOpen(true); }}
+                onFocus={() => setSuggestOpen(true)}
+                onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
+                onKeyDown={(e) => { if (e.key === 'Enter') lookUp(); if (e.key === 'Escape') setSuggestOpen(false); }}
+                placeholder="Type a name or admission number…"
+                className="w-full pl-9 pr-9 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {suggesting && <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />}
+              {suggestOpen && debounced.length >= 2 && suggestions.length > 0 && (
+                <ul
+                  id="archive-student-suggestions"
+                  role="listbox"
+                  className="absolute z-30 left-0 right-0 top-full mt-1 max-h-72 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl py-1"
+                >
+                  {suggestions.map((s: any) => {
+                    const name = `${s.first_name ?? ''} ${s.last_name ?? ''}`.trim() || s.student_id;
+                    return (
+                      <li key={s.id} role="option" aria-selected={false}>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => { setHistoryInput(name); openHistory(s.id); }}
+                          className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-gray-800"
+                        >
+                          <span className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 flex items-center justify-center text-xs font-bold">
+                            {name.split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase()}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-gray-900 dark:text-white truncate">{name}</span>
+                            <span className="block text-xs text-gray-500 truncate">{s.student_id || '—'}{s.class_name ? ` · ${s.class_name}` : ''}</span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
             <Button onClick={lookUp} disabled={!historyInput.trim()} className="gap-1.5">
-              <Search size={15} /> Look up
+              <Search size={15} /> <span className="hidden sm:inline">Look up</span>
             </Button>
           </div>
         </div>
@@ -331,127 +372,7 @@ export const AcademicArchivePage: React.FC = () => {
           </div>
         )}
 
-        {/* Per-student history dialog */}
-        {historyQuery && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 print:hidden" onClick={closeHistory}>
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="archive-history-title"
-              className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3 sticky top-0 bg-white dark:bg-gray-900">
-                <h3 id="archive-history-title" className="text-lg font-bold text-gray-900 dark:text-white">
-                  {history?.student?.name || 'Student history'}
-                  {history?.student?.admission_no && <span className="text-sm font-normal text-gray-500"> · {history.student.admission_no}</span>}
-                </h3>
-                <button onClick={closeHistory} aria-label="Close" className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"><X size={18} /></button>
-              </div>
-              <div className="p-5 space-y-6">
-                {historyLoading ? (
-                  <div className="py-10 flex justify-center text-gray-400"><Loader2 className="animate-spin" size={22} /></div>
-                ) : history?.matches?.length ? (
-                  <div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{history.matches.length} students match “{historyQuery}”. Pick one:</p>
-                    <ul className="divide-y divide-gray-100 dark:divide-gray-800 rounded-xl border border-gray-100 dark:border-gray-800">
-                      {history.matches.map((m: any) => (
-                        <li key={m.id}>
-                          <button
-                            onClick={() => setHistoryQuery(m.id)}
-                            className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
-                          >
-                            <span>
-                              <span className="font-semibold text-gray-900 dark:text-white">{m.name}</span>
-                              <span className="text-gray-500"> · {m.admission_no || '—'}{m.class_name ? ` · ${m.class_name}` : ''}</span>
-                            </span>
-                            <ChevronRight size={15} className="text-gray-400" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : !history?.student ? (
-                  <p className="text-sm text-gray-500">No student found for “{historyQuery}”.</p>
-                ) : (
-                  <>
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Class placements by year</h4>
-                      {history.enrollments.length ? (
-                        <ul className="divide-y divide-gray-50 dark:divide-gray-800">
-                          {history.enrollments.map((e: any, i: number) => (
-                            <li key={i} className="py-2 flex items-center justify-between gap-3 text-sm">
-                              <span className="text-gray-800 dark:text-gray-200">{e.class_name || '—'}{e.level ? ` · ${e.level}` : ''}</span>
-                              <span className="text-gray-500">{e.academic_year || '—'} · <span className="capitalize">{e.status || ''}</span></span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : <p className="text-sm text-gray-500">No enrolment history.</p>}
-                    </div>
-
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Term results</h4>
-                      {history.terms?.length ? (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="text-left text-gray-500 border-b border-gray-100 dark:border-gray-800">
-                                <th className="py-2 pr-3 font-semibold">Year</th>
-                                <th className="py-2 pr-3 font-semibold">Term</th>
-                                <th className="py-2 pr-3 font-semibold">Class</th>
-                                <th className="py-2 pr-3 font-semibold text-right">Overall</th>
-                                <th className="py-2 font-semibold text-right">Position</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {history.terms.map((t: any, i: number) => (
-                                <tr key={i} className="border-b border-gray-50 dark:border-gray-800">
-                                  <td className="py-1.5 pr-3 text-gray-600 dark:text-gray-400">{t.academic_year}</td>
-                                  <td className="py-1.5 pr-3 text-gray-600 dark:text-gray-400">{TERM_LABEL[t.term] || t.term}</td>
-                                  <td className="py-1.5 pr-3 text-gray-800 dark:text-gray-200">{t.class_name || '—'}</td>
-                                  <td className="py-1.5 pr-3 text-right font-semibold text-gray-900 dark:text-white">{fmtPct(t.percentage)}</td>
-                                  <td className="py-1.5 text-right text-gray-700 dark:text-gray-300">{t.position != null ? `${t.position}${t.class_size ? ` of ${t.class_size}` : ''}` : '—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : <p className="text-sm text-gray-500">No term results recorded.</p>}
-                    </div>
-
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Subject results</h4>
-                      {history.results.length ? (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="text-left text-gray-500 border-b border-gray-100 dark:border-gray-800">
-                                <th className="py-2 pr-3 font-semibold">Year</th>
-                                <th className="py-2 pr-3 font-semibold">Term</th>
-                                <th className="py-2 pr-3 font-semibold">Subject</th>
-                                <th className="py-2 font-semibold text-right">Mean</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {history.results.slice(0, 200).map((r: any, i: number) => (
-                                <tr key={i} className="border-b border-gray-50 dark:border-gray-800">
-                                  <td className="py-1.5 pr-3 text-gray-600 dark:text-gray-400">{r.academic_year}</td>
-                                  <td className="py-1.5 pr-3 text-gray-600 dark:text-gray-400">{TERM_LABEL[r.term] || r.term}</td>
-                                  <td className="py-1.5 pr-3 text-gray-800 dark:text-gray-200">{r.subject_name || '—'}</td>
-                                  <td className="py-1.5 text-right font-semibold text-gray-900 dark:text-white">{r.mean ?? '—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : <p className="text-sm text-gray-500">No subject results recorded.</p>}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        <StudentHistoryDialog query={historyQuery} onClose={closeHistory} />
       </PageShell>
     </MainLayout>
   );
