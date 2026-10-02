@@ -435,7 +435,7 @@ export const SettingsPage: React.FC = () => {
       } else {
         showToast.success(
           `${d.fromYear} → ${d.toYear}: ${d.studentsMoved ?? 0} student(s) moved, ${d.classesCloned ?? 0} class(es) added, ` +
-          `${d.assignmentsCopied ?? 0} teacher assignment(s), ${d.timetableCopied ?? 0} timetable slot(s), ${d.feeStructuresCopied ?? 0} fee structure(s) copied.`,
+          `${d.assignmentsCopied ?? 0} teacher assignment(s) and ${d.timetableCopied ?? 0} timetable slot(s) copied. Set up this year's fees in Fee Structures.`,
         );
       }
       queryClient.invalidateQueries();
@@ -468,7 +468,7 @@ export const SettingsPage: React.FC = () => {
         const d = (res as any).data || {};
         showToast.success(
           d.carriedForward
-            ? `Started ${name}: ${d.studentsMoved ?? 0} student(s) and ${(d.classesCloned ?? 0) + (d.classesSkipped ?? 0)} class(es) moved in, with subjects, teachers, timetable and fee structures.`
+            ? `Started ${name}: ${d.studentsMoved ?? 0} student(s) and ${(d.classesCloned ?? 0) + (d.classesSkipped ?? 0)} class(es) moved in, with subjects, teachers and timetable. Set up this year's fees in Fee Structures.`
             : `Switched to ${name}.`,
         );
         setSettings((s) => ({ ...s, academic_year: name }));
@@ -1498,8 +1498,9 @@ export const SettingsPage: React.FC = () => {
                           </h4>
                           <p className="text-xs text-amber-800/90 mt-1 leading-relaxed">
                             Moves the whole school into the next year <strong>without deleting anything</strong>.
-                            Last year is archived as history, and its classes, subjects, teacher assignments,
-                            timetable and fee structures are copied into the new year. Every active student moves
+                            Last year is archived as history, and its classes, subjects, teacher assignments
+                            and timetable are copied into the new year. Fee structures start fresh each year.
+                            Every active student moves
                             into their class for the new year (students you already promoted land in their new
                             class). You can still promote from last year's results afterwards.
                           </p>

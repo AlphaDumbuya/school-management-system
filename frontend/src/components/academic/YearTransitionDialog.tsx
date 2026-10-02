@@ -23,7 +23,7 @@ const MOVES = [
   'Active students into their class for the new year',
   'Classes, with the next-class order kept',
   'Class subjects and teacher assignments',
-  'Timetable and fee structures',
+  'Timetable',
 ];
 
 export const YearTransitionDialog: React.FC<YearTransitionDialogProps> = ({
@@ -89,8 +89,9 @@ export const YearTransitionDialog: React.FC<YearTransitionDialogProps> = ({
         <div className="flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400">
           <ShieldCheck size={16} className="mt-0.5 flex-shrink-0 text-gray-500" aria-hidden />
           <span>
-            Nothing is deleted. {from} results, attendance and fees stay as history. Graduated students
-            aren't moved, and new-year fees aren't billed automatically. Safe to run again.
+            Nothing is deleted. {from} results, attendance, fee structures and fees stay as history.
+            Fee structures start fresh: set up {to}'s fees on the Fee Structures page. Graduated
+            students aren't moved. Safe to run again.
           </span>
         </div>
       </div>
