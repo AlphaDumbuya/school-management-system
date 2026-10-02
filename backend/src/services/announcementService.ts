@@ -7,6 +7,7 @@
 import { db } from '@utils/database';
 import { logger } from '@utils/logger';
 import { AppError } from '@middleware/errorHandler';
+import { applyYearScope, type YearScope } from '@utils/academicYear';
 
 export type Audience = 'all' | 'teacher' | 'student' | 'parent' | 'accountant' | 'admissions_officer';
 export type Priority = 'normal' | 'high';
@@ -200,7 +201,7 @@ export class AnnouncementService {
    */
   async list(
     tenantId: string,
-    opts: { viewerRole?: string; viewerId?: string; limit?: number; offset?: number } = {}
+    opts: { viewerRole?: string; viewerId?: string; limit?: number; offset?: number; yearScope?: YearScope | null } = {}
   ) {
     if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     const limit = Math.min(opts.limit ?? 20, 100);
@@ -209,16 +210,19 @@ export class AnnouncementService {
     const viewerId = opts.viewerId;
     const viewerClassIds = viewerId ? await this.getViewerClassIds(tenantId, viewerId, opts.viewerRole) : [];
     const ctx = { viewerId, viewerClassIds };
+    // Optional academic-year scope: posts dated inside that year's window.
+    const yearScope = opts.yearScope ?? null;
 
     // Total (for pagination)
-    const countRow: any = await this.applyAudienceFilter(db('announcements'), tenantId, opts.viewerRole, ctx)
-      .count('announcements.id as count')
-      .first();
+    const countQ = this.applyAudienceFilter(db('announcements'), tenantId, opts.viewerRole, ctx);
+    applyYearScope(countQ, yearScope, null, 'announcements.created_at');
+    const countRow: any = await countQ.count('announcements.id as count').first();
     const total = Number(countRow?.count ?? 0);
 
     const q = db('announcements')
       .leftJoin('users', 'announcements.author_id', 'users.id');
     this.applyAudienceFilter(q, tenantId, opts.viewerRole, ctx);
+    applyYearScope(q, yearScope, null, 'announcements.created_at');
 
     // Join read receipts for the viewer so we can flag is_read.
     if (viewerId) {

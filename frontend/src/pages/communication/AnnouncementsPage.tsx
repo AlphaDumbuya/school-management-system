@@ -17,6 +17,8 @@ import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialo
 import { Button } from '@components/ui/button';
 import { useAuth } from '@hooks/useAuth';
 import { showToast } from '@utils/toast';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import announcementService, {
   Announcement,
   AnnouncementAudience,
@@ -113,9 +115,20 @@ export const AnnouncementsPage: React.FC = () => {
   const PAGE_SIZE = 10;
   const [limit, setLimit] = useState(PAGE_SIZE);
 
+  // Academic-year scope: opens on the ACTIVE year; '' = all years; a past year
+  // is read-only history (no posting or editing — new posts go to this year).
+  const [pickedYear, setPickedYear] = useState<string | null>(null);
+  const { activeYear } = useAcademicYears();
+  const year = pickedYear ?? activeYear;
+  const yearReady = pickedYear !== null || !!activeYear;
+  const viewingPast = !!year && !!activeYear && year < activeYear;
+  const viewingAll = pickedYear === '' && !!activeYear;
+  const setYear = (y: string) => { setPickedYear(y); setLimit(PAGE_SIZE); };
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['announcements', limit],
-    queryFn: () => announcementService.list({ limit, offset: 0 }),
+    queryKey: ['announcements', limit, year],
+    queryFn: () => announcementService.list({ limit, offset: 0, academic_year: year || undefined }),
+    enabled: yearReady,
     staleTime: 30_000,
   });
   const announcements: Announcement[] = useMemo(() => (data as any)?.data ?? [], [data]);
@@ -182,13 +195,28 @@ export const AnnouncementsPage: React.FC = () => {
         onRefresh={() => refetch()}
         isRefreshing={isLoading}
         actions={
-          canPost ? (
-            <Button onClick={openCompose} size="sm" className="whitespace-nowrap shadow-sm">
-              <Plus size={16} className="mr-1.5" /> New Announcement
-            </Button>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            <YearFilter value={year} onChange={setYear} includeAllOption />
+            {canPost && !viewingPast && (
+              <Button onClick={openCompose} size="sm" className="whitespace-nowrap shadow-sm">
+                <Plus size={16} className="mr-1.5" /> New Announcement
+              </Button>
+            )}
+          </div>
         }
       >
+        {(viewingPast || viewingAll) && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>
+              {viewingPast
+                ? <>Showing <strong>{year}</strong> announcements as history (read-only).</>
+                : <>Showing announcements from <strong>all years</strong>.</>}
+            </span>
+            <button type="button" onClick={() => setYear(activeYear)} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
         {/* List toolbar */}
         {!isLoading && !error && announcements.length > 0 && (
           <div className="flex items-center justify-between mb-4">
@@ -213,15 +241,16 @@ export const AnnouncementsPage: React.FC = () => {
           <EmptyState message="Couldn't load announcements" description="Please refresh and try again." action={{ label: 'Retry', onClick: () => refetch() }} />
         ) : announcements.length === 0 ? (
           <EmptyState
-            message="No announcements yet"
-            description={canPost ? 'Create your first announcement to reach your school community.' : 'Check back later for updates.'}
-            action={canPost ? { label: 'New Announcement', onClick: openCompose } : undefined}
+            message={viewingPast ? `No announcements in ${year}` : 'No announcements yet'}
+            description={viewingPast ? 'Nothing was posted during this academic year.' : canPost ? 'Create your first announcement to reach your school community.' : 'Check back later for updates.'}
+            action={canPost && !viewingPast ? { label: 'New Announcement', onClick: openCompose } : undefined}
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {announcements.map((a, idx) => {
               const mine = a.author_id === user?.id;
-              const canManageThis = isAdmin || (canPost && mine);
+              // Past-year posts are history: no edit/delete.
+              const canManageThis = !viewingPast && (isAdmin || (canPost && mine));
               const theme = a.priority === 'high'
                 ? { bar: 'bg-red-500', chip: 'bg-red-100 text-red-600', badge: 'bg-red-50 text-red-700 border-red-200' }
                 : themeFor(a.audience);

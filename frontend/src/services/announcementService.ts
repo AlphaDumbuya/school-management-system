@@ -42,7 +42,7 @@ export interface TeacherClass {
 
 export const announcementService = {
   /** List announcements visible to the current user. */
-  async list(params: { limit?: number; offset?: number } = {}) {
+  async list(params: { limit?: number; offset?: number; academic_year?: string } = {}) {
     return apiClient.get<Announcement[]>('/api/v1/announcements', { params });
   },
 

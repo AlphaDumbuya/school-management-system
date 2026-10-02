@@ -8,6 +8,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { UserRole } from '../types/auth';
 import announcementService from '../services/announcementService';
+import { resolveYearScope } from '@utils/academicYear';
 
 const router = Router();
 router.use(authenticate);
@@ -24,6 +25,8 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       viewerId: user.id,
       limit,
       offset,
+      // ?academic_year= → that year's date window. Omitted/'all' = all years.
+      yearScope: await resolveYearScope(user.tenant_id, req.query.academic_year),
     });
     res.json({ success: true, data: items, pagination: { total, limit, offset } });
   } catch (err) {
