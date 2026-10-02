@@ -22,6 +22,8 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Button } from '@components/ui/button';
 import { eventsService } from '@services/eventsService';
 import type { OverallStats, AnalyticsFilters } from '@appTypes/events';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -31,18 +33,28 @@ const QUICK_RANGES = [
   { label: 'Last 7 days', days: 7 },
   { label: 'Last 30 days', days: 30 },
   { label: 'Last 90 days', days: 90 },
-  { label: 'This year', days: 365 },
+  { label: 'Last 12 months', days: 365 },
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const EventAnalyticsPage: React.FC = () => {
   const [filters, setFilters] = useState<AnalyticsFilters>({});
+  // Academic year: opens on the ACTIVE year. Explicit dates (quick range or
+  // custom) take over; choosing a year again clears them.
+  const [pickedYear, setPickedYear] = useState('');
+  const { activeYear } = useAcademicYears();
+  const year = pickedYear || activeYear;
+  const hasDates = !!(filters.start_date || filters.end_date);
+  const viewingPast = !hasDates && !!year && !!activeYear && year < activeYear;
+  const pickYear = (y: string) => { setPickedYear(y); setFilters({}); };
 
   // ── Fetch Analytics ─────────────────────────────────────────────────────────
+  const query: AnalyticsFilters = hasDates ? filters : { academic_year: year || undefined };
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['event-analytics', filters],
-    queryFn: () => eventsService.getOverallAnalytics(filters),
+    queryKey: ['event-analytics', query],
+    queryFn: () => eventsService.getOverallAnalytics(query),
+    enabled: hasDates || !!year,
     staleTime: 60_000,
   });
 
@@ -67,7 +79,7 @@ export const EventAnalyticsPage: React.FC = () => {
   };
 
   const clearFilters = () => setFilters({});
-  const hasFilters = !!(filters.start_date || filters.end_date);
+  const hasFilters = hasDates;
 
   return (
     <MainLayout>
@@ -77,7 +89,25 @@ export const EventAnalyticsPage: React.FC = () => {
         breadcrumbs={[{ label: 'Events', href: '/events/school' }, { label: 'Analytics' }]}
         onRefresh={() => refetch()}
         isRefreshing={isLoading}
+        actions={<YearFilter value={hasDates ? '' : year} onChange={pickYear} noAutoSelect />}
       >
+        {/* What period the figures cover */}
+        <div className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 text-sm ${
+          viewingPast
+            ? 'border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200'
+            : 'border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300'
+        }`}>
+          <span>
+            {hasDates
+              ? <>Showing events from <strong>{filters.start_date || 'the start'}</strong> to <strong>{filters.end_date || 'today'}</strong>.</>
+              : <>Showing the <strong>{year}</strong> academic year{viewingPast ? ' (history)' : ''}.</>}
+          </span>
+          {(hasDates || viewingPast) && activeYear && (
+            <button type="button" onClick={() => pickYear(activeYear)} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          )}
+        </div>
         {/* ── Date Filter Bar ── */}
         <div className="flex flex-col gap-3 sm:gap-4 mb-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
