@@ -20,7 +20,7 @@ export interface BulkCardRequest {
   filters?: BulkFilterCriteria;  // Or filter criteria
   templateId?: string;
   format: 'pvc' | 'badge';
-  expirationDate?: string;  // Optional ISO date; defaults to 1 year per card
+  expirationDate?: string;  // Optional ISO date; defaults to the end of the active academic year
   requestedBy: string;
 }
 

@@ -10,6 +10,7 @@ import { TemplateService } from '../services/templateService.js';
 import { CardLifecycleService } from '../services/cardLifecycleService.js';
 import { BulkCardOperationService } from '../services/bulkCardOperationService.js';
 import { QrCodeService } from '../services/qrCodeService.js';
+import { resolveYearScope, applyYearScope } from '../utils/academicYear.js';
 
 /**
  * ID Card Management Routes
@@ -160,6 +161,10 @@ router.get(
         })
         .where('id_cards.tenant_id', tenantId);
 
+      // ?academic_year= → cards issued during that year (cards are valid for
+      // one academic year). Omitted/'all' = every year.
+      applyYearScope(query, await resolveYearScope(tenantId, req.query.academic_year), null, 'id_cards.issued_at');
+
       if (status) {
         query = query.where('id_cards.status', status as string);
       }
@@ -262,6 +267,8 @@ router.get(
 
       const baseQuery = db('id_cards');
       const scoped = tenantId ? baseQuery.where('tenant_id', tenantId) : baseQuery;
+      // Same academic-year scope as the card list (by issue date).
+      if (tenantId) applyYearScope(scoped, await resolveYearScope(tenantId, req.query.academic_year), null, 'issued_at');
 
       const [activeResult] = await scoped.clone().where('status', 'active').count('id as count');
       const [expiredResult] = await scoped.clone().where('status', 'expired').count('id as count');

@@ -30,6 +30,8 @@ import { CardDetailsModal } from './components/CardDetailsModal';
 import { VisualIdCardRenderer } from './components/VisualIdCardRenderer';
 import { CardPdfExporter, buildCardExportData } from './components/cardExport';
 import type { CardPdfExporterHandle } from './components/cardExport';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ActiveTab = 'cards' | 'expiring' | 'bulk' | 'qr';
@@ -88,8 +90,10 @@ function Avatar({ name, photoUrl, size = 'md' }: { name: string; photoUrl?: stri
 }
 
 // ── Visual ID Card Tile ───────────────────────────────────────────────────────
-function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReportLost, onReactivate, onDownload, downloading }: {
+function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReportLost, onReactivate, onDownload, downloading, readOnly = false }: {
   card: IdCard; onView: () => void; onRevoke: () => void; onRegenerate: () => void; onDelete: () => void; onReportLost: () => void; onReactivate: () => void; onDownload: (output: 'pdf' | 'png' | 'jpg') => void; downloading: boolean;
+  /** Past-year card: view/download only. */
+  readOnly?: boolean;
 }) {
   const user = card.user;
   const name = user ? `${user.firstName} ${user.lastName}` : 'Unknown Member';
@@ -204,6 +208,7 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReport
             onReportLost={onReportLost}
             onReactivate={onReactivate}
             onDelete={onDelete}
+            readOnly={readOnly}
           />
         </div>
       </div>
@@ -212,10 +217,11 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReport
 }
 
 // ── Tile action overflow menu ─────────────────────────────────────────────────
-function CardActionMenu({ card, downloading, onDownload, onRegenerate, onRevoke, onReportLost, onReactivate, onDelete }: {
+function CardActionMenu({ card, downloading, onDownload, onRegenerate, onRevoke, onReportLost, onReactivate, onDelete, readOnly = false }: {
   card: IdCard; downloading: boolean;
   onDownload: (output: 'pdf' | 'png' | 'jpg') => void;
   onRegenerate: () => void; onRevoke: () => void; onReportLost: () => void; onReactivate: () => void; onDelete: () => void;
+  readOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
@@ -249,6 +255,7 @@ function CardActionMenu({ card, downloading, onDownload, onRegenerate, onRevoke,
           <button onClick={act(() => onDownload('pdf'))} className={item}><FileText size={13} className="text-emerald-600" /> Save as PDF</button>
           <button onClick={act(() => onDownload('png'))} className={item}><ImageIcon size={13} className="text-emerald-600" /> Save as PNG</button>
           <button onClick={act(() => onDownload('jpg'))} className={item}><ImageIcon size={13} className="text-emerald-600" /> Save as JPG</button>
+          {!readOnly && <>
           <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
           <button onClick={act(onRegenerate)} className={item}><RotateCcw size={13} className="text-violet-600" /> Regenerate</button>
           {card.status === 'active' && (
@@ -262,6 +269,7 @@ function CardActionMenu({ card, downloading, onDownload, onRegenerate, onRevoke,
           )}
           <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
           <button onClick={act(onDelete)} className={`${item} text-red-600 dark:text-red-400`}><Trash2 size={13} /> Delete</button>
+          </>}
         </div>
       )}
     </div>
@@ -567,15 +575,13 @@ function BulkGenerateTab() {
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Expiry Date</label>
               <div className="flex gap-2 flex-wrap mb-2">
-                {[['6 mo', 6], ['1 yr', 12], ['2 yr', 24]].map(([l, m]) => {
-                  const d = new Date(); d.setMonth(d.getMonth() + (m as number));
-                  const v = d.toISOString().slice(0, 10);
-                  return <button key={l as string} onClick={() => setExpiry(v)} className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${expiry === v ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'}`}>{l}</button>;
-                })}
+                <button onClick={() => setExpiry('')} className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${expiry === '' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'}`}>
+                  End of academic year
+                </button>
               </div>
               <input type="date" value={expiry} onChange={e => setExpiry(e.target.value)} min={new Date().toISOString().slice(0, 10)}
                 className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <p className="text-[11px] text-gray-400 mt-1">Leave empty for default (1 year)</p>
+              <p className="text-[11px] text-gray-400 mt-1">Default: the end of the current academic year (cards are valid for one year). Pick a date only to override.</p>
             </div>
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
@@ -594,7 +600,7 @@ function BulkGenerateTab() {
                   : target.replace('_', ' ')],
                 ['Count', `${eligible.length} cards`],
                 ['Format', format.toUpperCase()],
-                ['Expiry', expiry ? fmt(expiry) : '1 year from today'],
+                ['Expiry', expiry ? fmt(expiry) : 'End of the academic year'],
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between"><span className="text-gray-500">{k}</span><span className="font-semibold text-gray-900 dark:text-white capitalize">{v}</span></div>
               ))}
@@ -700,6 +706,16 @@ export const IdCardsPage: React.FC = () => {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('');
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 24;
+  // Cards are valid for ONE academic year. Opens on the ACTIVE year's cards;
+  // '' = all years; a past year is history (view/download only — new cards
+  // and changes belong to the current year).
+  const [pickedYear, setPickedYear] = useState<string | null>(null);
+  const { activeYear } = useAcademicYears();
+  const year = pickedYear ?? activeYear;
+  const yearReady = pickedYear !== null || !!activeYear;
+  const viewingPast = !!year && !!activeYear && year < activeYear;
+  const viewingAll = pickedYear === '' && !!activeYear;
+  const setYear = (y: string) => { setPickedYear(y); setPage(1); };
 
   const [generationModalOpen, setGenerationModalOpen] = useState(false);
   const [detailsModal, setDetailsModal] = useState<{ open: boolean; cardId: string | null }>({ open: false, cardId: null });
@@ -761,10 +777,10 @@ export const IdCardsPage: React.FC = () => {
 
   // Fetch cards (tenant-scoped by backend)
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['id-cards', { search, statusFilter, page, PAGE_SIZE }],
-    queryFn: () => idCardService.listCards({ page, limit: PAGE_SIZE, status: statusFilter || undefined, search: search || undefined }),
+    queryKey: ['id-cards', { search, statusFilter, page, PAGE_SIZE, year }],
+    queryFn: () => idCardService.listCards({ page, limit: PAGE_SIZE, status: statusFilter || undefined, search: search || undefined, academic_year: year || undefined }),
     staleTime: 30_000,
-    enabled: activeTab === 'cards',
+    enabled: activeTab === 'cards' && yearReady,
   });
 
   const cards: IdCard[] = useMemo(() => {
@@ -776,8 +792,9 @@ export const IdCardsPage: React.FC = () => {
   const pagination = (data as any)?.pagination ?? { total: 0, total_pages: 1 };
 
   const { data: statsData } = useQuery({
-    queryKey: ['id-cards-stats'],
-    queryFn: () => idCardService.getDashboardStats(),
+    queryKey: ['id-cards-stats', year],
+    queryFn: () => idCardService.getDashboardStats(year || undefined),
+    enabled: yearReady,
     staleTime: 60_000,
   });
   const stats = (statsData as any)?.data ?? (statsData as any) ?? { totalActive: 0, totalExpired: 0, totalRevoked: 0, totalLost: 0, expiringSoon: 0 };
@@ -839,12 +856,15 @@ export const IdCardsPage: React.FC = () => {
     setReactivateTarget(null);
   };
 
+  // Past years are history: no bulk generating into them.
   const TABS = [
     { id: 'cards' as const, label: 'Cards', icon: <CreditCard size={15} /> },
     { id: 'expiring' as const, label: 'Expiring Soon', icon: <Clock size={15} />, badge: Number(stats.expiringSoon) || undefined },
-    { id: 'bulk' as const, label: 'Bulk Generate', icon: <Zap size={15} /> },
+    ...(viewingPast ? [] : [{ id: 'bulk' as const, label: 'Bulk Generate', icon: <Zap size={15} /> }]),
     { id: 'qr' as const, label: 'QR Verify', icon: <QrCode size={15} /> },
   ];
+  // Leaving the Bulk tab when switching to a past year.
+  React.useEffect(() => { if (viewingPast && activeTab === 'bulk') setActiveTab('cards'); }, [viewingPast, activeTab]);
 
   const ROLE_PILLS: { value: RoleFilter; label: string }[] = [
     { value: '', label: 'All' }, { value: 'student', label: 'Students' },
@@ -870,13 +890,28 @@ export const IdCardsPage: React.FC = () => {
                 ))}
               </div>
             )}
-            <Button size="sm" onClick={() => setGenerationModalOpen(true)} className="gap-1.5 shadow-sm">
-              <Plus size={15} /> Generate Card
-            </Button>
+            <YearFilter value={year} onChange={setYear} includeAllOption />
+            {!viewingPast && (
+              <Button size="sm" onClick={() => setGenerationModalOpen(true)} className="gap-1.5 shadow-sm">
+                <Plus size={15} /> Generate Card
+              </Button>
+            )}
           </div>
         }
       >
         <div className="space-y-6">
+          {(viewingPast || viewingAll) && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+              <span>
+                {viewingPast
+                  ? <>Showing cards issued in <strong>{year}</strong> as history. You can view and download them; issue new cards in {activeYear}.</>
+                  : <>Showing cards from <strong>all years</strong>.</>}
+              </span>
+              <button type="button" onClick={() => setYear(activeYear)} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+                Back to {activeYear}
+              </button>
+            </div>
+          )}
           {/* KPI Row */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <KPICard title="Active" value={Number(stats.totalActive ?? 0)} icon={<CheckCircle size={18} />} color="green" />
@@ -977,8 +1012,16 @@ export const IdCardsPage: React.FC = () => {
                 <div className="flex flex-col items-center justify-center py-20 text-center bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
                   <CreditCard size={52} className="text-gray-300 dark:text-gray-600 mb-4" />
                   <h3 className="text-lg font-bold text-gray-700 dark:text-white mb-1">No ID cards found</h3>
-                  <p className="text-sm text-gray-400 mb-5">Generate the first card for your school.</p>
-                  <Button onClick={() => setGenerationModalOpen(true)}><Plus size={15} className="mr-1.5" /> Generate First Card</Button>
+                  {viewingPast ? (
+                    <p className="text-sm text-gray-400">No cards were issued in {year}.</p>
+                  ) : (
+                    <>
+                      <p className="text-sm text-gray-400 mb-5">
+                        {year && !viewingAll ? `No cards issued in ${year} yet. Cards are valid for one academic year.` : 'Generate the first card for your school.'}
+                      </p>
+                      <Button onClick={() => setGenerationModalOpen(true)}><Plus size={15} className="mr-1.5" /> Generate {year && !viewingAll ? `${year} Cards` : 'First Card'}</Button>
+                    </>
+                  )}
                 </div>
               ) : viewMode === 'grid' ? (
                 <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-5">
@@ -991,7 +1034,8 @@ export const IdCardsPage: React.FC = () => {
                       onReportLost={() => setReportLostTarget(card)}
                       onReactivate={() => setReactivateTarget(card)}
                       onDownload={(output) => handleDownload(card, output)}
-                      downloading={downloadingId === card.id} />
+                      downloading={downloadingId === card.id}
+                      readOnly={viewingPast} />
                   ))}
                 </div>
               ) : (
@@ -1043,11 +1087,13 @@ export const IdCardsPage: React.FC = () => {
                                 <div className="flex items-center justify-end gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                   <button onClick={() => setDetailsModal({ open: true, cardId: card.id })} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="View"><Eye size={14} /></button>
                                   <button onClick={() => handleDownload(card)} disabled={downloadingId === card.id} className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors disabled:opacity-50" title="Download PDF">{downloadingId === card.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}</button>
+                                  {!viewingPast && <>
                                   <button onClick={() => setRegenerateTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors" title="Regenerate"><RotateCcw size={14} /></button>
                                   {card.status === 'active' && <button onClick={() => setRevokeTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Revoke"><Ban size={14} /></button>}
                                   {card.status === 'active' && <button onClick={() => setReportLostTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors" title="Report Lost"><AlertTriangle size={14} /></button>}
                                   {card.status === 'suspended' && <button onClick={() => setReactivateTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors" title="Reactivate"><RotateCcw size={14} /></button>}
                                   <button onClick={() => setDeleteTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete"><Trash2 size={14} /></button>
+                                  </>}
                                 </div>
                               </td>
                             </tr>
