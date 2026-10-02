@@ -38,8 +38,9 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         </Link>
       )}
 
-      {/* Title row: stacks on mobile (title above actions), side-by-side on sm+ */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
+      {/* Title row: stacks on phones/tablets (title above actions), side-by-side
+          on lg+ where there is room for the year filter + action buttons. */}
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
         {/* Left: optional icon chip + title + subtitle */}
         <div className="flex items-start gap-3 min-w-0">
           {icon && (
@@ -59,10 +60,11 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           </div>
         </div>
 
-        {/* Right: action slot — full width & right-aligned on mobile so buttons
-            aren't crammed left; auto width, right-aligned on sm+. */}
+        {/* Right: action slot — full width on phones/tablets and allowed to
+            wrap onto extra lines; nested action rows wrap too, so a year filter
+            plus several buttons never overflow the screen. */}
         {actions && (
-          <div className="w-full sm:w-auto flex flex-wrap items-center gap-2 justify-end sm:flex-shrink-0">
+          <div className="w-full lg:w-auto min-w-0 flex flex-wrap items-center gap-2 justify-start lg:justify-end [&_>div]:flex-wrap [&_>div]:min-w-0 [&_>div>div]:flex-wrap">
             {actions}
           </div>
         )}

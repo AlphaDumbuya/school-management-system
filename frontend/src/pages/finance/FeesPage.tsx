@@ -30,6 +30,7 @@ import { classesService } from '@services/classesService';
 import { feeStructureService, FeeStructure, FeeStructureExpense } from '@services/feeStructureService';
 import { financeService } from '@services/financeService';
 import { useAcademicYears } from '@hooks/useAcademicYears';
+import { YearFilter } from '@components/common/YearFilter';
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 const fmtLe = (v: number | string | null | undefined) => `Le ${(Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
@@ -47,7 +48,7 @@ export const FeesPage: React.FC = () => {
   const queryClient = useQueryClient();
   // Opens on the school's ACTIVE year; past years are read-only history.
   const [pickedYear, setYear] = useState('');
-  const { years, activeYear } = useAcademicYears();
+  const { activeYear } = useAcademicYears();
   const year = pickedYear || activeYear;
   const viewingPast = !!year && !!activeYear && year < activeYear;
   const [search, setSearch] = useState('');
@@ -97,14 +98,7 @@ export const FeesPage: React.FC = () => {
         onRefresh={() => refetch()}
         isRefreshing={structLoading}
         actions={
-          <div className="flex items-center gap-2">
-            <div className="relative w-36">
-              <select value={year} onChange={(e) => setYear(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {years.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
-            </div>
-          </div>
+          <YearFilter value={year} onChange={setYear} />
         }
       >
         {viewingPast && (

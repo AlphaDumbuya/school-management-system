@@ -189,9 +189,9 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         {/* ═══ ROW 1 — Greeting + date ═══ */}
-        <div className="flex items-center justify-between gap-2">
-          {/* Left: greeting — single line on mobile, wraps gracefully */}
-          <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Left: greeting — the controls drop below it on narrow phones */}
+          <div className="min-w-[12rem] flex-1">
             <h1 className="text-base xs:text-xl sm:text-2xl lg:text-3xl font-black text-gray-900 tracking-tight leading-snug">
               {greeting}, {firstName}!{' '}
               <span role="img" aria-label="wave">👋</span>
@@ -202,7 +202,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           {/* Right: compact date chip + refresh — never wider than necessary */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             {/* Mobile: icon-only date pill */}
             <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-2.5 py-2 shadow-sm">
               <CalendarCheck size={14} className="text-[#315B8C] flex-shrink-0" />
