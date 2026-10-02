@@ -4,6 +4,7 @@ import { PageShell } from '@components/admin/layout/PageShell';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import { Button } from '@components/ui/button';
 import { YearTransitionDialog } from '@components/academic/YearTransitionDialog';
+import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import {
   Settings as SettingsIcon,
@@ -637,8 +638,8 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const [scaleToDelete, setScaleToDelete] = useState<string | null>(null);
   const handleDeleteGradingScale = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this grading scale?')) return;
     try {
       const res = await schoolConfigService.deleteGradingScale(id);
       if (res.success) {
@@ -1751,7 +1752,7 @@ export const SettingsPage: React.FC = () => {
                                 </div>
                                 <Button
                                   variant="ghost"
-                                  onClick={() => s.scale_id && handleDeleteGradingScale(s.scale_id)}
+                                  onClick={() => s.scale_id && setScaleToDelete(s.scale_id)}
                                   className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 p-2 h-auto"
                                 >
                                   <Trash2 size={16} />
@@ -2348,6 +2349,15 @@ export const SettingsPage: React.FC = () => {
         onClose={() => setCarryDialogOpen(false)}
         onConfirm={handleCarryForward}
         toYear={settings.academic_year || null}
+      />
+
+      <ConfirmationDialog
+        isOpen={!!scaleToDelete}
+        onClose={() => setScaleToDelete(null)}
+        onConfirm={() => (scaleToDelete ? handleDeleteGradingScale(scaleToDelete) : undefined)}
+        title="Delete grading scale"
+        message="Delete this grading scale? This cannot be undone."
+        confirmLabel="Delete scale"
       />
 
       {/* ── Start New Academic Year dialog ── */}

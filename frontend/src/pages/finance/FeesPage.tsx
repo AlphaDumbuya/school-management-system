@@ -29,7 +29,8 @@ import { showToast } from '@utils/toast';
 import { classesService } from '@services/classesService';
 import { feeStructureService, FeeStructure, FeeStructureExpense } from '@services/feeStructureService';
 import { financeService } from '@services/financeService';
-import schoolConfigService from '@services/schoolConfigService';
+import { useAcademicYears } from '@hooks/useAcademicYears';
+import { YearFilter } from '@components/common/YearFilter';
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 const fmtLe = (v: number | string | null | undefined) => `Le ${(Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
@@ -45,16 +46,24 @@ const levelCls = (l?: string) => LEVEL_COLORS[l || ''] ?? 'bg-gray-100 text-gray
 /* ── main component ──────────────────────────────────────────────────────── */
 export const FeesPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const [year, setYear] = useState('');
+  // Opens on the school's ACTIVE year; past years are read-only history.
+  const [pickedYear, setYear] = useState('');
+  const { activeYear } = useAcademicYears();
+  const year = pickedYear || activeYear;
+  const viewingPast = !!year && !!activeYear && year < activeYear;
   const [search, setSearch] = useState('');
   const [configClass, setConfigClass] = useState<any | null>(null); // class object to configure
   const [billTarget, setBillTarget] = useState<FeeStructure | null>(null);
   const [unbillTarget, setUnbillTarget] = useState<FeeStructure | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // All classes in the tenant
+  // The classes that exist in the selected year (each year has its own class
+  // rows after a rollover, and fee structures point at that year's classes).
   const { data: classResp, isLoading: classLoading } = useQuery({
-    queryKey: ['classes-all'], queryFn: () => classesService.listClasses({ limit: 200 } as any), staleTime: 60_000,
+    queryKey: ['classes-all', year],
+    queryFn: () => classesService.listClasses({ limit: 200, academic_year: year } as any),
+    enabled: !!year,
+    staleTime: 60_000,
   });
   const classes: any[] = ((classResp as any)?.data?.data ?? (classResp as any)?.data ?? []);
 
@@ -65,7 +74,9 @@ export const FeesPage: React.FC = () => {
   const structures: FeeStructure[] = ((structResp as any)?.data?.data ?? (structResp as any)?.data ?? []);
 
   // Finance overview KPIs
-  const { data: ovResp } = useQuery({ queryKey: ['finance-overview'], queryFn: () => financeService.getOverview(), staleTime: 30_000 });
+  const { data: ovResp } = useQuery({
+    queryKey: ['finance-overview', year], queryFn: () => financeService.getOverview(year), enabled: !!year, staleTime: 30_000,
+  });
   const ov = (ovResp as any)?.data?.data ?? (ovResp as any)?.data;
 
   const configuredIds = useMemo(() => new Set(structures.map((s) => s.classId || (s as any).class_id)), [structures]);
@@ -77,33 +88,6 @@ export const FeesPage: React.FC = () => {
 
   const toggleExpand = (id: string) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  // Real academic years from the school's sessions, so the year picker matches
-  // the data (fee structures are keyed by the academic_year string). Falls back
-  // to a computed span for a brand-new school.
-  const { data: sessionsResp } = useQuery({
-    queryKey: ['academic-sessions'],
-    queryFn: () => schoolConfigService.listAcademicSessions(),
-    staleTime: 60_000,
-  });
-  const sessions: Array<{ name: string; is_active: boolean }> = ((sessionsResp as any)?.data ?? []) as any;
-
-  const years = useMemo(() => {
-    const set = new Set<string>();
-    sessions.forEach((s) => { if (s?.name) set.add(String(s.name)); });
-    // Real years only; a school with no sessions yet gets just this year.
-    if (set.size === 0) { const cur = new Date().getFullYear(); set.add(`${cur}/${cur + 1}`); }
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [sessions]);
-
-  // Default to the active session's year once sessions load.
-  useEffect(() => {
-    if (year) return;
-    const active = sessions.find((s) => s.is_active)?.name;
-    if (active) setYear(active);
-    else if (years.length) setYear(years[0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions.length, years.length]);
-
   const totalExpected = useMemo(() => structures.reduce((s, x) => s + (Number((x as any).fullYearTotal) || 0), 0), [structures]);
 
   return (
@@ -114,16 +98,18 @@ export const FeesPage: React.FC = () => {
         onRefresh={() => refetch()}
         isRefreshing={structLoading}
         actions={
-          <div className="flex items-center gap-2">
-            <div className="relative w-36">
-              <select value={year} onChange={(e) => setYear(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {years.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
-            </div>
-          </div>
+          <YearFilter value={year} onChange={setYear} />
         }
       >
+        {viewingPast && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>Showing the <strong>{year}</strong> fee structures as history (read-only). Configure and bill fees in {activeYear}.</span>
+            <button type="button" onClick={() => setYear(activeYear)} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
+
         {/* KPI row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <KPITile label="Configured Classes" value={structures.length} sub={`of ${classes.length} total`} color="blue" />
@@ -137,8 +123,8 @@ export const FeesPage: React.FC = () => {
           <SearchBar placeholder="Search classes…" onSearch={setSearch} isLoading={classLoading} className="w-full sm:max-w-md" />
         </div>
 
-        {/* Class badge grid */}
-        <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 mb-6">
+        {/* Class badge grid (configuration happens in the current year only) */}
+        {!viewingPast && <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 mb-6">
           <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-1">Quick Class Preset Setup</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
             Academic Year <span className="font-semibold">{year}</span> — pick a class below to configure its term tuition & year expenses.
@@ -206,27 +192,27 @@ export const FeesPage: React.FC = () => {
             </p>
             </>
           )}
-        </div>
+        </div>}
 
         {/* Configured structures list */}
         {structures.length === 0 ? (
           <EmptyState
-            message="No fee structures configured for this year"
-            description="Click any class badge above to set up its term tuition and year expenses."
+            message={`No fee structures configured for ${year || 'this year'}`}
+            description={viewingPast ? 'No fees were set up for this year.' : 'Click any class badge above to set up its term tuition and year expenses.'}
           />
         ) : (
           <div className="space-y-3">
             <h3 className="text-sm font-bold text-gray-900 dark:text-white">
               Academic Year Fee Structures ({structures.length})
             </h3>
-            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+            {!viewingPast && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
               <Info size={14} className="flex-shrink-0 mt-0.5" />
               <span>
                 A structure only defines the amounts. To actually charge students —
                 so they and their parents see fees in their portals — click the
                 <strong> Bill a term</strong> (layers) button on a structure.
               </span>
-            </div>
+            </div>}
             {structures.map((s: any, idx: number) => {
               const isOpen = expanded.has(s.id);
               const t1 = Number(s.term1_tuition) || 0;
@@ -260,11 +246,13 @@ export const FeesPage: React.FC = () => {
                       ) : (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400" title="Not billed yet">NOT BILLED</span>
                       )}
+                      {!viewingPast && <>
                       <button onClick={(e) => { e.stopPropagation(); setConfigClass(classes.find((c) => c.id === (s.classId || s.class_id)) ?? { id: s.classId || s.class_id, name: s.class_name, level: s.class_level }); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-600" title="Edit"><Settings2 size={15} /></button>
                       <button onClick={(e) => { e.stopPropagation(); setBillTarget(s); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-emerald-600" title="Bill a term or the full year"><Layers size={15} /></button>
                       {s.billed && (
                         <button onClick={(e) => { e.stopPropagation(); setUnbillTarget(s); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-600" title="Unbill (remove unpaid charges)"><Undo2 size={15} /></button>
                       )}
+                      </>}
                     </div>
                   </div>
                   {isOpen && (

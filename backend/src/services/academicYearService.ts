@@ -280,7 +280,8 @@ class AcademicYearService {
         .insert({ ...rest, class_id: newClass, academic_year: to.name, created_by: userId, created_at: new Date(), updated_at: new Date() })
         .returning('id');
       const newStructureId = typeof ns === 'object' ? ns.id : ns;
-      const expenses = await trx('fee_structure_expenses').where({ structure_id: oldStructureId }).select('label', 'amount');
+      // Keep each expense's optional/required flag (column defaults to required).
+      const expenses = await trx('fee_structure_expenses').where({ structure_id: oldStructureId }).select('label', 'amount', 'required');
       if (expenses.length) {
         await trx('fee_structure_expenses').insert(expenses.map((e: any) => ({ ...e, structure_id: newStructureId })));
       }

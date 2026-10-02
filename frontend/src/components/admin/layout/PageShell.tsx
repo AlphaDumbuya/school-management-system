@@ -65,8 +65,9 @@ export const PageShell: React.FC<PageShellProps> = ({
 
   // Compose a Refresh control with the page's own actions so every PageShell
   // page gets a consistent, working reload button.
+  // Wraps onto extra lines on small screens instead of overflowing.
   const headerActions = (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 min-w-0">
       <RefreshButton onRefresh={refresh} isRefreshing={isRefreshing} />
       {actions}
     </div>

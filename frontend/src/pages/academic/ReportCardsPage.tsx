@@ -37,6 +37,7 @@ import { showToast } from '@utils/toast';
 import { classesService } from '@services/classesService';
 import { schoolConfigService } from '@services/schoolConfigService';
 import { useAcademicYears } from '@hooks/useAcademicYears';
+import { YearFilter } from '@components/common/YearFilter';
 import { reportCardService, ReportCard } from '@services/reportCardService';
 import { studentDashboardService } from '@services/studentDashboardService';
 import { parentDashboardService } from '@services/parentDashboardService';
@@ -60,7 +61,6 @@ const YearLabel: React.FC<{ year: string }> = ({ year }) => (
 );
 
 export const ReportCardsPage: React.FC = () => {
-  const currentYear = new Date().getFullYear();
   const { user } = useAuth();
   const isStudent = user?.role === 'student';
   const isParent = user?.role === 'parent' || user?.role === 'guardian';
@@ -119,30 +119,8 @@ export const ReportCardsPage: React.FC = () => {
     // parent summary doesn't carry academic_year; keep the currently selected year.
   }, [isParent, parentChildren, activeChildId]);
 
-  // Real academic years the school actually has (from academic_sessions), so
-  // staff can retrieve ANY past year — not a fabricated date list. Students/
-  // parents don't need the picker (their year is auto-resolved).
-  const { data: sessionsResp } = useQuery({
-    queryKey: ['academic-sessions'],
-    queryFn: () => schoolConfigService.listAcademicSessions(),
-    enabled: !isStudent && !isParent,
-    staleTime: 60_000,
-  });
-  const academicSessions: Array<{ name: string; is_active: boolean }> =
-    ((sessionsResp as any)?.data ?? []) as any;
-
-  const yearOptions = useMemo(() => {
-    // Prefer the tenant's real sessions (covers decades of history).
-    const fromDb = academicSessions
-      .map((s) => String(s.name))
-      .filter((n) => /^\d{4}\/\d{4}$/.test(n));
-    const set = new Set<string>(fromDb);
-    // Real years only; a school with no sessions yet gets just this year.
-    if (set.size === 0) set.add(`${currentYear}/${currentYear + 1}`);
-    return Array.from(set)
-      .sort((a, b) => b.localeCompare(a))
-      .map((v) => ({ value: v, label: v }));
-  }, [academicSessions, currentYear]);
+  // Staff pick the year with the shared <YearFilter> (the school's real
+  // sessions). Students/parents don't need the picker (their year is auto-resolved).
 
   // Deep link from the Academic Archive (?year=&class_id=): the year is read
   // into pickedYear above; apply the class once on mount.
@@ -659,7 +637,10 @@ export const ReportCardsPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <SearchableSelect label="Class" options={classOptions} value={classId} onChange={(v) => { setClassId(v); setStudentId(''); }} placeholder="Select class..." />
               <SearchableSelect label="Student" options={studentOptions} value={studentId} onChange={setStudentId} placeholder="Select student..." />
-              <SearchableSelect label="Academic Year" options={yearOptions} value={academicYear} onChange={setAcademicYear} placeholder="Academic year" />
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Academic Year</label>
+                <YearFilter value={academicYear} onChange={setAcademicYear} noAutoSelect className="w-full [&_select]:w-full [&_select]:py-2.5 sm:[&_select]:py-2" />
+              </div>
             </div>
           )}
 

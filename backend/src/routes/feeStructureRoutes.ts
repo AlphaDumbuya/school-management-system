@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { authenticate, attachUserContext } from '../middleware/authMiddleware.js';
 import { db } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
+import { normalizeAcademicYear, resolveActiveYear } from '../utils/academicYear.js';
 
 const STAFF_ROLES = ['principal', 'super_admin', 'accountant'];
 const requireStaff = (req: Request, res: Response, next: NextFunction) => {
@@ -41,6 +42,25 @@ async function assertClassInTenant(classId: string, tenantId: string) {
     })
     .first();
   return !!row;
+}
+
+/**
+ * Past academic years are read-only history: no configuring, billing or
+ * unbilling. Returns true (and sends a 409) when `year` is before the
+ * school's active year. Same rule the Fee Structures page uses.
+ */
+async function rejectPastYear(res: Response, tenantId: string, year: unknown): Promise<boolean> {
+  const y = normalizeAcademicYear(year ? String(year) : null);
+  const active = (await resolveActiveYear(tenantId)).yearString;
+  if (y && active && y < active) {
+    res.status(409).json({
+      success: false,
+      error: `${y} is a past academic year and is read-only. Configure and bill fees in ${active}.`,
+      code: 'PAST_YEAR_READ_ONLY',
+    });
+    return true;
+  }
+  return false;
 }
 
 // ── List configured structures + summary ──────────────────────────────────────
@@ -136,6 +156,7 @@ router.post('/', authenticate, requireStaff, async (req: Request, res: Response,
 
     if (!classId || !academicYear) return res.status(400).json({ success: false, error: 'classId and academicYear are required' });
     if (!(await assertClassInTenant(classId, tenantId))) return res.status(403).json({ success: false, error: 'Class not in your school' });
+    if (await rejectPastYear(res, tenantId, academicYear)) return;
 
     const now = new Date();
     const payload: any = {
@@ -199,6 +220,7 @@ router.delete('/:id', authenticate, requireStaff, async (req: Request, res: Resp
     const tenantId = (req as any).user.tenant_id;
     const s = await db('fee_structures').where({ id: req.params.id, tenant_id: tenantId }).first();
     if (!s) return res.status(404).json({ success: false, error: 'Fee structure not found' });
+    if (await rejectPastYear(res, tenantId, s.academic_year)) return;
     await db('fee_structures').where({ id: s.id, tenant_id: tenantId }).del();
     res.json({ success: true });
   } catch (error) { next(error); }
@@ -275,6 +297,7 @@ router.post('/:id/bill', authenticate, requireStaff, async (req: Request, res: R
 
     const s = await db('fee_structures').where({ id: req.params.id, tenant_id: tenantId }).first();
     if (!s) return res.status(404).json({ success: false, error: 'Fee structure not found' });
+    if (await rejectPastYear(res, tenantId, s.academic_year)) return;
 
     const students = await db('enrollments')
       .join('students', 'enrollments.student_id', 'students.id')
@@ -315,6 +338,7 @@ router.post('/:id/unbill', authenticate, requireStaff, async (req: Request, res:
     const tenantId = (req as any).user.tenant_id;
     const s = await db('fee_structures').where({ id: req.params.id, tenant_id: tenantId }).first();
     if (!s) return res.status(404).json({ success: false, error: 'Fee structure not found' });
+    if (await rejectPastYear(res, tenantId, s.academic_year)) return;
 
     const rawTerm = req.body?.term;
     const term = Number(rawTerm);

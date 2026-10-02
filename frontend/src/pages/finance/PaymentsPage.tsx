@@ -25,6 +25,7 @@ import { ChartCard } from '@components/admin/charts/ChartCard';
 import { showToast } from '@utils/toast';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import { financeService } from '@services/financeService';
 import { studentsService } from '@services/studentsService';
 import { classesService } from '@services/classesService';
@@ -72,15 +73,19 @@ export const PaymentsPage: React.FC = () => {
   const [remindOpen, setRemindOpen] = useState(false);
   const [receipt, setReceipt] = useState<any | null>(null);
   const [breakdownTab, setBreakdownTab] = useState<BreakdownTab>('term');
-  // Academic-year scope for the fees-derived analytics/KPIs (billed/paid/
-  // outstanding + by-term/level/class + defaulters). Empty = all years.
-  const [year, setYear] = useState('');
+  // Academic-year scope for the KPIs, charts AND the payments ledger. Opens on
+  // the school's ACTIVE year; '' = "All years"; a past year is history.
+  const [pickedYear, setYear] = useState<string | null>(null);
+  const { activeYear } = useAcademicYears();
+  const year = pickedYear ?? activeYear;
+  const yearReady = pickedYear !== null || !!activeYear;
+  const viewingPast = !!year && !!activeYear && year < activeYear;
 
   const { data: analyticsResp, isLoading: anLoading, refetch: refetchAn } = useQuery({
-    queryKey: ['finance-analytics', year], queryFn: () => financeService.getAnalytics(year || undefined), staleTime: 30_000,
+    queryKey: ['finance-analytics', year], queryFn: () => financeService.getAnalytics(year || undefined), enabled: yearReady, staleTime: 30_000,
   });
   const { data: payResp, isLoading, refetch } = useQuery({
-    queryKey: ['finance-payments'], queryFn: () => financeService.listPayments(), staleTime: 15_000,
+    queryKey: ['finance-payments', year], queryFn: () => financeService.listPayments(year || undefined), enabled: yearReady, staleTime: 15_000,
   });
   const { data: schoolResp } = useQuery({
     queryKey: ['school-info'], queryFn: () => schoolConfigService.getSchoolInfo(), staleTime: 60_000,
@@ -89,7 +94,10 @@ export const PaymentsPage: React.FC = () => {
   // Full class list (not just classes that appear in payments) so filters show
   // every option, each with a live count of matching payments.
   const { data: classesResp } = useQuery({
-    queryKey: ['finance-filter-classes'], queryFn: () => classesService.listAllClasses({ limit: 100 }), staleTime: 60_000,
+    queryKey: ['finance-filter-classes', year],
+    queryFn: () => classesService.listAllClasses({ limit: 100, academic_year: year || 'all' }),
+    enabled: yearReady,
+    staleTime: 60_000,
   });
   const allClasses = ((classesResp as any)?.data?.data ?? (classesResp as any)?.data ?? []) as any[];
 
@@ -236,13 +244,26 @@ export const PaymentsPage: React.FC = () => {
               endpoint="/api/v1/finance/export"
               filename={exportStatus === 'unpaid' ? 'unpaid-students-report' : 'student-fees-report'}
               label="Export Report"
-              params={{ section: sectionFilter || undefined, className: classFilter || undefined, status: exportStatus || undefined }}
+              params={{ section: sectionFilter || undefined, className: classFilter || undefined, status: exportStatus || undefined, academic_year: year || undefined }}
             />
             <Button variant="outline" size="sm" onClick={() => setRemindOpen(true)}><Bell size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Send Reminders</span></Button>
             <Button variant="default" size="sm" onClick={() => setRecordOpen(true)}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Record Payment</span></Button>
           </div>
         }
       >
+        {(viewingPast || (pickedYear === '' && !!activeYear)) && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>
+              {viewingPast
+                ? <>Showing <strong>{year}</strong> fees and payments as history. Outstanding arrears can still be collected with Record Payment.</>
+                : <>Showing fees and payments from <strong>all years</strong>.</>}
+            </span>
+            <button type="button" onClick={() => setYear(activeYear)} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
+
         {/* ── Hero KPIs + collection-rate gauge ── */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
           <div className="lg:col-span-1 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-600 text-white p-6 shadow-sm flex flex-col justify-between">

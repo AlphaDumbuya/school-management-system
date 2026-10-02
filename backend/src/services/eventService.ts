@@ -363,6 +363,14 @@ export class EventService {
         query = query.where('events.end_date', '<=', filters.end_date);
       }
 
+      // Academic-year window (events are date-keyed, not session-keyed).
+      if (filters.year_from) {
+        query = query.where('events.start_date', '>=', filters.year_from);
+      }
+      if (filters.year_to) {
+        query = query.where('events.start_date', '<', filters.year_to);
+      }
+
       if (filters.category) {
         query = query
           .join(
@@ -388,6 +396,25 @@ export class EventService {
         .countDistinct('events.event_id as count')
         .first();
       const total = parseInt(String(countResult?.count ?? '0'), 10);
+
+      // KPI summary over the WHOLE filtered set (not just this page).
+      const summaryRow: any = await query.clone()
+        .select(
+          db.raw('COUNT(DISTINCT events.event_id) FILTER (WHERE events.start_date > NOW()) as upcoming'),
+          db.raw("COUNT(DISTINCT events.event_id) FILTER (WHERE events.status = 'published') as published"),
+        )
+        .first();
+      const regRow: any = await db('event_registrations')
+        .where('status', 'confirmed')
+        .whereIn('event_id', query.clone().clearSelect().clearOrder().select('events.event_id'))
+        .count('* as c')
+        .first();
+      const summary = {
+        total,
+        upcoming: Number(summaryRow?.upcoming ?? 0),
+        published: Number(summaryRow?.published ?? 0),
+        registrations: Number(regRow?.c ?? 0),
+      };
 
       // Get paginated results — include a confirmed-registration count per event
       // so the UI list/KPIs can show real numbers instead of always 0.
@@ -426,7 +453,8 @@ export class EventService {
         page,
         limit,
         totalPages: Math.ceil(total / limit),
-      };
+        summary,
+      } as PaginatedResult<Event> & { summary: typeof summary };
     } catch (error) {
       logger.error('Error listing events:', error);
       throw new Error('Failed to list events');

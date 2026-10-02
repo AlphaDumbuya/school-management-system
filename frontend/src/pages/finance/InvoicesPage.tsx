@@ -18,6 +18,8 @@ import { classesService } from '@services/classesService';
 import { FinanceOverviewCards, fmtMoney, statusPill, SwipeHint } from './FinanceOverviewCards';
 import { PayFeesButton } from '@components/finance/PayFeesButton';
 import { ExportButton } from '@components/admin/common/ExportButton';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 const TERMS = ['First Term', 'Second Term', 'Third Term'];
 
@@ -28,12 +30,21 @@ export const InvoicesPage: React.FC = () => {
   const [levelFilter, setLevelFilter] = useState('');
   const [genOpen, setGenOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  // Academic-year scope for the KPIs and the invoice list. Opens on the
+  // school's ACTIVE year; '' = "All years"; a past year is read-only history
+  // (arrears can still be reminded/paid, but no new invoices are generated).
+  const [pickedYear, setYear] = useState<string | null>(null);
+  const { activeYear } = useAcademicYears();
+  const year = pickedYear ?? activeYear;
+  const yearReady = pickedYear !== null || !!activeYear;
+  const viewingPast = !!year && !!activeYear && year < activeYear;
+  const viewingAll = pickedYear === '' && !!activeYear;
 
   const { data: overviewResp, isLoading: ovLoading, refetch: refetchOv } = useQuery({
-    queryKey: ['finance-overview'], queryFn: () => financeService.getOverview(), staleTime: 30_000,
+    queryKey: ['finance-overview', year], queryFn: () => financeService.getOverview(year || undefined), enabled: yearReady, staleTime: 30_000,
   });
   const { data: invResp, isLoading, refetch } = useQuery({
-    queryKey: ['finance-invoices', statusFilter], queryFn: () => financeService.listInvoices(statusFilter || undefined), staleTime: 15_000,
+    queryKey: ['finance-invoices', statusFilter, year], queryFn: () => financeService.listInvoices(statusFilter || undefined, year || undefined), enabled: yearReady, staleTime: 15_000,
   });
 
   const overview = (overviewResp as any)?.data?.data ?? (overviewResp as any)?.data;
@@ -64,11 +75,27 @@ export const InvoicesPage: React.FC = () => {
         isRefreshing={isLoading || ovLoading}
         actions={
           <div className="flex items-center gap-2">
-            <ExportButton endpoint="/api/v1/finance/invoices/export" filename="invoices" params={{ status: statusFilter || undefined }} />
-            <Button variant="default" size="sm" onClick={() => setGenOpen(true)}><FileStack size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Generate Invoices</span></Button>
+            <YearFilter value={year} onChange={setYear} includeAllOption />
+            <ExportButton endpoint="/api/v1/finance/invoices/export" filename="invoices" params={{ status: statusFilter || undefined, academic_year: year || undefined }} />
+            {!viewingPast && !viewingAll && (
+              <Button variant="default" size="sm" onClick={() => setGenOpen(true)}><FileStack size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Generate Invoices</span></Button>
+            )}
           </div>
         }
       >
+        {(viewingPast || viewingAll) && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>
+              {viewingPast
+                ? <>Showing <strong>{year}</strong> invoices as history. Outstanding invoices can still be reminded and paid.</>
+                : <>Showing invoices from <strong>all years</strong>.</>}
+            </span>
+            <button type="button" onClick={() => setYear(activeYear)} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
+
         <FinanceOverviewCards overview={overview} loading={ovLoading} />
 
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center mb-4">
@@ -95,7 +122,9 @@ export const InvoicesPage: React.FC = () => {
         </div>
 
         {filtered.length === 0 ? (
-          <EmptyState message="No invoices found" description="Generate invoices from students' outstanding fees." action={{ label: 'Generate Invoices', onClick: () => setGenOpen(true) }} />
+          viewingPast || viewingAll
+            ? <EmptyState message="No invoices found" description={viewingPast ? `No invoices were issued in ${year}.` : 'No invoices have been issued yet.'} />
+            : <EmptyState message="No invoices found" description="Generate invoices from students' outstanding fees." action={{ label: 'Generate Invoices', onClick: () => setGenOpen(true) }} />
         ) : (
           <>
           <SwipeHint />
@@ -147,7 +176,7 @@ export const InvoicesPage: React.FC = () => {
         )}
 
         {genOpen && (
-          <GenerateInvoicesModal onClose={() => setGenOpen(false)} onDone={() => { setGenOpen(false); queryClient.invalidateQueries({ queryKey: ['finance-invoices'] }); refetchOv(); }} />
+          <GenerateInvoicesModal academicYear={activeYear} onClose={() => setGenOpen(false)} onDone={() => { setGenOpen(false); queryClient.invalidateQueries({ queryKey: ['finance-invoices'] }); refetchOv(); }} />
         )}
         {detailId && <InvoiceDetailModal invoiceId={detailId} onClose={() => setDetailId(null)} />}
       </PageShell>
@@ -158,7 +187,7 @@ export const InvoicesPage: React.FC = () => {
 // ── Generate invoices (bulk from outstanding fees) ────────────────────────────
 type GenScope = 'class' | 'level' | 'all';
 
-const GenerateInvoicesModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ onClose, onDone }) => {
+const GenerateInvoicesModal: React.FC<{ academicYear: string; onClose: () => void; onDone: () => void }> = ({ academicYear, onClose, onDone }) => {
   const [scope, setScope] = useState<GenScope>('class');
   const [classId, setClassId] = useState('');
   const [level, setLevel] = useState('');
@@ -166,7 +195,13 @@ const GenerateInvoicesModal: React.FC<{ onClose: () => void; onDone: () => void 
   const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const { data: classesResp } = useQuery({ queryKey: ['gen-classes'], queryFn: () => classesService.listClasses({ limit: 200 } as any), staleTime: 60_000 });
+  // Only the active year's classes — invoices are generated for the current year.
+  const { data: classesResp } = useQuery({
+    queryKey: ['gen-classes', academicYear],
+    queryFn: () => classesService.listClasses({ limit: 200, academic_year: academicYear } as any),
+    enabled: !!academicYear,
+    staleTime: 60_000,
+  });
   const classes = ((classesResp as any)?.data?.data ?? (classesResp as any)?.data ?? []) as any[];
   const levels = useMemo(() => Array.from(new Set(classes.map((c: any) => c.level).filter(Boolean))).sort(), [classes]);
 
@@ -175,7 +210,7 @@ const GenerateInvoicesModal: React.FC<{ onClose: () => void; onDone: () => void 
     if (scope === 'level' && !level) { showToast.error('Select a level'); return; }
     setSaving(true);
     try {
-      const res: any = await financeService.bulkInvoice({ scope, classId: scope === 'class' ? classId : undefined, level: scope === 'level' ? level : undefined, term: term || undefined, dueDate: dueDate || undefined });
+      const res: any = await financeService.bulkInvoice({ scope, classId: scope === 'class' ? classId : undefined, level: scope === 'level' ? level : undefined, term: term || undefined, academicYear, dueDate: dueDate || undefined });
       const gen = res?.data?.data?.generated ?? res?.data?.generated ?? 0;
       showToast.success(gen > 0 ? `Generated ${gen} invoice${gen === 1 ? '' : 's'}` : 'No unbilled fees to invoice');
       onDone();
@@ -192,7 +227,7 @@ const GenerateInvoicesModal: React.FC<{ onClose: () => void; onDone: () => void 
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4">
-          <p className="text-xs text-gray-500">Bundles each student's outstanding (unbilled) fees into a single invoice.</p>
+          <p className="text-xs text-gray-500">Bundles each student's outstanding (unbilled) <strong>{academicYear}</strong> fees into a single invoice.</p>
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase">Scope</label>
             <div className="grid grid-cols-3 gap-1 mt-1 bg-gray-100 dark:bg-gray-900/50 rounded-xl p-1">

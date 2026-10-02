@@ -169,6 +169,9 @@ export interface EventFilters {
   organizer_id?: string;
   search?: string;
   visibility?: string;
+  /** Academic-year window on start_date: [year_from, year_to). Either side open. */
+  year_from?: Date | null;
+  year_to?: Date | null;
   page?: number;
   limit?: number;
 }

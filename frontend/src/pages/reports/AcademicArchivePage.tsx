@@ -8,7 +8,8 @@
  *
  * Read-only. Principal / super-admin only (route-guarded).
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MainLayout } from '@components/layout/MainLayout';
@@ -31,35 +32,18 @@ const TERM_LABEL: Record<string, string> = {
 
 export const AcademicArchivePage: React.FC = () => {
   const navigate = useNavigate();
-  const [year, setYear] = useState('');
+  // Real years only; opens on the school's ACTIVE year.
+  const [pickedYear, setYear] = useState('');
+  const { years, activeYear } = useAcademicYears();
+  const year = pickedYear || activeYear;
   // Per-student history drill-down.
   const [historyQuery, setHistoryQuery] = useState('');
   const [historyId, setHistoryId] = useState('');
 
-  // Real years from the school's academic sessions.
-  const { data: sessionsResp } = useQuery({
-    queryKey: ['academic-sessions'],
-    queryFn: () => schoolConfigService.listAcademicSessions(),
-    staleTime: 60_000,
-  });
-  const sessions: Array<{ name: string; is_active: boolean }> = ((sessionsResp as any)?.data ?? []) as any;
-
-  const yearOptions = useMemo(() => {
-    const set = new Set<string>();
-    sessions.forEach((s) => { if (/^\d{4}\/\d{4}$/.test(String(s.name))) set.add(String(s.name)); });
-    // Real years only; a school with no sessions yet gets just this year.
-    if (set.size === 0) { const cy = new Date().getFullYear(); set.add(`${cy}/${cy + 1}`); }
-    return Array.from(set).sort((a, b) => b.localeCompare(a)).map((v) => ({ value: v, label: v }));
-  }, [sessions]);
-
-  // Default to the active session's year once loaded.
-  useEffect(() => {
-    if (year) return;
-    const active = sessions.find((s) => s.is_active)?.name;
-    if (active && /^\d{4}\/\d{4}$/.test(active)) setYear(active);
-    else if (yearOptions.length) setYear(yearOptions[0].value);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions.length, yearOptions.length]);
+  const yearOptions = useMemo(
+    () => years.map((v) => ({ value: v, label: v === activeYear ? `${v} (current)` : v })),
+    [years, activeYear],
+  );
 
   const { data: snapResp, isLoading } = useQuery({
     queryKey: ['academic-archive', year],
