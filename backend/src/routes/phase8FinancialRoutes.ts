@@ -189,7 +189,7 @@ function assertInTenant(
 import { InvoiceService } from '@services/invoiceService';
 import { db } from '@utils/database';
 import { logger } from '@utils/logger';
-import { normalizeAcademicYear, resolveYearScope } from '@utils/academicYear';
+import { normalizeAcademicYear, resolveYearScope, resolveActiveYear } from '@utils/academicYear';
 import exportService from '@services/exportService';
 import { sendExport } from '@utils/exportResponse';
 import { AuditService } from '@services/auditService';
@@ -1560,7 +1560,49 @@ router.get('/finance/overview', authenticate, requireStaff, async (req: Request,
   }
 });
 
-// GET /api/v1/finance/invoices — all invoices for the tenant (with student name).
+/**
+ * Scope an invoices query (already joined to `students`) to one academic year
+ * and join the class the student was in THAT year. An invoice's year is its own
+ * academic_year, else the year of the fees it bundles, else (no fees linked)
+ * the year's date window on created_at. No year = all years, current class.
+ */
+async function scopeInvoicesToYear(q: any, tenantId: string, rawYear: unknown) {
+  const year = normalizeAcademicYear(rawYear ? String(rawYear) : null);
+  const scope = year && year !== 'all' ? await resolveYearScope(tenantId, year) : null;
+  if (!scope) {
+    q.leftJoin('enrollments', function (this: any) {
+      this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
+    }).leftJoin('classes', 'classes.id', 'enrollments.class_id');
+    return q;
+  }
+  const feeYearSql = '(SELECT MIN(f.academic_year) FROM invoice_items ii JOIN fees f ON f.id = ii.fee_id WHERE ii.invoice_id = invoices.id)';
+  q.where((w: any) => {
+    w.where('invoices.academic_year', year)
+      .orWhere((w2: any) => {
+        w2.whereNull('invoices.academic_year').whereRaw(`${feeYearSql} = ?`, [year]);
+      })
+      .orWhere((w3: any) => {
+        w3.whereNull('invoices.academic_year').whereRaw(`${feeYearSql} IS NULL`);
+        if (scope.from) w3.where('invoices.created_at', '>=', scope.from);
+        if (scope.to) w3.where('invoices.created_at', '<', scope.to);
+      });
+  });
+  const HISTORIC = ['enrolled', 'active', 'completed', 'promoted', 'repeated', 'graduated'];
+  const yearClassIds = scope.classIds.length ? scope.classIds : ['00000000-0000-0000-0000-000000000000'];
+  q.leftJoin(
+    db('enrollments').distinctOn('student_id')
+      .select('student_id', 'class_id')
+      .whereIn('class_id', yearClassIds)
+      .whereIn('status', HISTORIC)
+      .orderBy('student_id').orderBy('created_at', 'desc')
+      .as('ye'),
+    'ye.student_id', 'students.id',
+  ).leftJoin('classes', 'classes.id', 'ye.class_id');
+  return q;
+}
+
+// GET /api/v1/finance/invoices?status=&academic_year= — invoices for the tenant
+// (with student name + the class they were in that year).
 router.get('/finance/invoices', authenticate, requireStaff, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user.tenant_id;
@@ -1568,11 +1610,9 @@ router.get('/finance/invoices', authenticate, requireStaff, async (req: Request,
     let q = db('invoices')
       .join('students', 'invoices.student_id', 'students.id')
       .leftJoin('users', 'students.user_id', 'users.id')
-      .where('students.tenant_id', tenantId)
-      .leftJoin('enrollments', function () {
-        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
-      })
-      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+      .where('students.tenant_id', tenantId);
+    await scopeInvoicesToYear(q, tenantId, req.query.academic_year);
+    q = q
       .select(
         'invoices.*',
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
@@ -1598,18 +1638,16 @@ router.get('/finance/invoices/export', authenticate, requireStaff, async (req: R
     let q = db('invoices')
       .join('students', 'invoices.student_id', 'students.id')
       .leftJoin('users', 'students.user_id', 'users.id')
-      .leftJoin('enrollments', function () {
-        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
-      })
-      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
-      .where('students.tenant_id', tenantId)
+      .where('students.tenant_id', tenantId);
+    await scopeInvoicesToYear(q, tenantId, req.query.academic_year);
+    q = q
       .select(
         'invoices.invoice_number',
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.first_name || ' ' || students.last_name, students.student_id) as student_name"),
         'students.student_id as admission_no',
         'classes.name as class_name',
         'invoices.total_amount',
-        'invoices.amount_paid',
+        'invoices.total_paid as amount_paid',
         'invoices.status',
         'invoices.due_date',
         'invoices.created_at',
@@ -2158,7 +2196,11 @@ router.post('/finance/bulk-invoice', authenticate, requireStaff, async (req: Req
   try {
     const tenantId = (req as any).user.tenant_id;
     const userId = (req as any).user.id;
-    const { scope, classId, level, term, academicYear, dueDate } = req.body || {};
+    const { scope, classId, level, term, dueDate } = req.body || {};
+    // Invoices are always tagged with a real year: the one sent, else the
+    // school's ACTIVE year (never null, so year filters can find them).
+    const academicYear = normalizeAcademicYear(req.body?.academicYear || null)
+      || (await resolveActiveYear(tenantId)).yearString;
 
     // Students in scope.
     let sq = db('students')

@@ -66,8 +66,13 @@ export const financeService = {
   getAnalytics: (academicYear?: string) => apiClient.get<{ success: boolean; data: FinanceAnalytics }>(
     `/api/v1/finance/analytics${academicYear ? `?academic_year=${encodeURIComponent(academicYear)}` : ''}`,
   ),
-  listInvoices: (status?: string) =>
-    apiClient.get<{ success: boolean; data: (Invoice & { student_name: string; admission_no: string })[] }>(`/api/v1/finance/invoices${status ? `?status=${status}` : ''}`),
+  listInvoices: (status?: string, academicYear?: string) => {
+    const qs = new URLSearchParams();
+    if (status) qs.set('status', status);
+    if (academicYear) qs.set('academic_year', academicYear);
+    const s = qs.toString();
+    return apiClient.get<{ success: boolean; data: (Invoice & { student_name: string; admission_no: string })[] }>(`/api/v1/finance/invoices${s ? `?${s}` : ''}`);
+  },
   listPayments: (academicYear?: string) => apiClient.get<{ success: boolean; data: (Payment & { student_name: string })[] }>(
     `/api/v1/finance/payments${academicYear ? `?academic_year=${encodeURIComponent(academicYear)}` : ''}`,
   ),

@@ -233,17 +233,15 @@ const navItems: NavItem[] = [
     group: 'Finance',
     version: 'v1',
   },
-  // Invoices hidden from the sidebar — the route/page still exist but fee
-  // collection now runs off billing + the Payments page balance reminders.
-  // {
-  //   label: 'Invoices',
-  //   icon: <FaFileImport className="w-4 sm:w-5 h-4 sm:h-5" />,
-  //   path: '/finance/invoices',
-  //   roles: ['super_admin', 'principal', 'accountant'],
-  //   module: 'Financial Management',
-  //   group: 'Finance',
-  //   version: 'v1',
-  // },
+  {
+    label: 'Invoices',
+    icon: <FaFileImport className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/invoices',
+    roles: ['super_admin', 'principal', 'accountant'],
+    module: 'Financial Management',
+    group: 'Finance',
+    version: 'v1',
+  },
   {
     label: 'Payments & Receipts',
     icon: <FaMoneyBill className="w-4 sm:w-5 h-4 sm:h-5" />,
