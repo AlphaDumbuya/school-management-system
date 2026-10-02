@@ -1906,22 +1906,30 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
     const collectionRate = billed > 0 ? Math.round((paid / billed) * 1000) / 10 : 0;
 
     // ── Payment method breakdown (scoped to selected year when specified) ──
-    const methodScope = analyticsYear && analyticsYear !== 'all' 
-      ? await resolveYearScope(tenantId, analyticsYear) 
+    // Same rule as the payments ledger: a payment belongs to the year of the
+    // fee it settles; unlinked payments fall back to the year's date window.
+    const methodYear = normalizeAcademicYear(analyticsYear || null);
+    const methodScope = methodYear && methodYear !== 'all'
+      ? await resolveYearScope(tenantId, methodYear)
       : null;
-    
-    let methodQuery = db('payments')
+
+    const methodQuery = db('payments')
       .join('students', 'payments.student_id', 'students.id')
       .where('students.tenant_id', tenantId)
       .where('payments.status', 'completed');
-    
-    // If year scope exists, filter payments by date range
+
     if (methodScope) {
-      methodQuery = methodQuery
-        .where('payments.payment_date', '>=', methodScope.year_from)
-        .where('payments.payment_date', '<', methodScope.year_to);
+      methodQuery
+        .leftJoin('fees as pf', db.raw('pf.id::text'), 'payments.fee_id')
+        .where((w) => {
+          w.where('pf.academic_year', methodYear).orWhere((w2) => {
+            w2.whereNull('pf.id');
+            if (methodScope.from) w2.where('payments.payment_date', '>=', methodScope.from);
+            if (methodScope.to) w2.where('payments.payment_date', '<', methodScope.to);
+          });
+        });
     }
-    
+
     const byMethod = await methodQuery
       .select(db.raw('COALESCE(payments.method, payments.payment_method) as method'))
       .sum('payments.amount as total')
