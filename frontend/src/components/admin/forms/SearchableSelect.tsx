@@ -4,8 +4,9 @@
  * (classes, subjects, teachers, students).
  */
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, ChevronDown, X, Check } from 'lucide-react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronDown, X, Check } from 'lucide-react';
 import { SearchBar } from '@components/admin/table/SearchBar';
 
 export interface SelectOption {
@@ -42,16 +43,34 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Menu position, kept glued under the trigger while open (scroll/resize).
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  // Close on outside click
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const place = () => {
+      const r = containerRef.current?.getBoundingClientRect();
+      if (r) setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [isOpen]);
+
+  // Close on outside click (the menu lives in a portal, so check it too).
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-        setSearch('');
-      }
+      const t = e.target as Node;
+      if (containerRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setIsOpen(false);
+      setSearch('');
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -129,17 +148,16 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           </div>
         </button>
 
-        {/* Dropdown — uses fixed positioning to escape overflow clipping */}
-        {isOpen && (
+        {/* Dropdown — rendered in a portal on <body> so no parent's overflow,
+            transform or stacking order can hide it or shift it away from the
+            field; it stays directly under the trigger. */}
+        {isOpen && rect && createPortal(
           <>
             <div className="fixed inset-0 z-[60]" onClick={() => { setIsOpen(false); setSearch(''); }} aria-hidden />
             <div
+              ref={menuRef}
               className="fixed z-[70] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
-              style={{
-                top: containerRef.current ? containerRef.current.getBoundingClientRect().bottom + 4 : 0,
-                left: containerRef.current ? containerRef.current.getBoundingClientRect().left : 0,
-                width: containerRef.current ? containerRef.current.getBoundingClientRect().width : 'auto',
-              }}
+              style={{ top: rect.top, left: rect.left, width: rect.width }}
             >
             {/* Shared SearchBar inside Dropdown Popover */}
             <div className="p-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/30">
@@ -186,7 +204,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
               )}
             </div>
           </div>
-          </>
+          </>,
+          document.body,
         )}
       </div>
 

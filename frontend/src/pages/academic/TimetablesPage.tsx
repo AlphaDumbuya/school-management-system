@@ -144,12 +144,32 @@ export const TimetablesPage: React.FC = () => {
   const schoolLevel: SchoolLevel = selectedClass ? getSchoolLevel(selectedClass.level) : 'sss';
 
   // Fetch custom periods from API (tenant-scoped) with localStorage fallback
-  const [periods, setPeriods] = useState<PeriodDefinition[]>(PERIOD_STRUCTURES.sss);
+  const [configPeriods, setPeriods] = useState<PeriodDefinition[]>(PERIOD_STRUCTURES.sss);
   useEffect(() => {
     getCustomPeriodsAsync(schoolLevel).then(setPeriods);
   }, [schoolLevel]);
 
-  const teachablePeriods = periods.filter((p) => !p.isBreak).length;
+  // Period times are school-wide, not per year. If they were changed after a
+  // past year, that year's slots no longer line up with today's periods — so
+  // for history, add a row for every slot time that isn't a current period
+  // (nothing from the past year is hidden).
+  const periods = useMemo(() => {
+    if (!viewingPast) return configPeriods;
+    const known = new Set(configPeriods.map((p) => `${p.start}-${p.end}`));
+    const extra = new Map<string, PeriodDefinition>();
+    DAYS_OF_WEEK.forEach((day) => {
+      (weekly[day] || []).forEach((slot: TimetableSlot) => {
+        const start = (slot.start_time || '').substring(0, 5);
+        const end = (slot.end_time || '').substring(0, 5);
+        const key = `${start}-${end}`;
+        if (start && end && !known.has(key) && !extra.has(key)) extra.set(key, { label: `${start}–${end}`, start, end });
+      });
+    });
+    if (extra.size === 0) return configPeriods;
+    return [...configPeriods, ...extra.values()].sort((a, b) => a.start.localeCompare(b.start));
+  }, [configPeriods, viewingPast, weekly]);
+
+  const teachablePeriods = configPeriods.filter((p) => !p.isBreak).length;
 
   // KPI calculations
   const stats = useMemo(() => {

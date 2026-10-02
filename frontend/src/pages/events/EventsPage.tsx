@@ -292,8 +292,6 @@ export const EventsPage: React.FC = () => {
               </button>
             </div>
 
-            <YearFilter value={year} onChange={(v) => { setPickedYear(v); setPage(1); }} includeAllOption />
-
             {!viewingPast && (
               <RoleGuard roles={['principal', 'super_admin', 'teacher']}>
                 <Button variant="default" size="sm" onClick={() => { setEditingEvent(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm hover:shadow">
@@ -344,7 +342,13 @@ export const EventsPage: React.FC = () => {
             />
 
             {/* Filter Dropdowns */}
-            <div className="flex items-center gap-2 sm:gap-2.5 w-full lg:w-auto">
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-2.5 w-full lg:w-auto">
+              <YearFilter
+                value={year}
+                onChange={(v) => { setPickedYear(v); setPage(1); }}
+                includeAllOption
+                className="col-span-2 sm:col-span-1 [&_select]:w-full [&_select]:py-2.5 sm:[&_select]:py-2 sm:min-w-[150px]"
+              />
               <div className="relative flex-1 sm:flex-initial sm:min-w-[130px]">
                 <select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }} className="w-full appearance-none pl-3 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all">
                   <option value="">All Types</option>
@@ -366,7 +370,7 @@ export const EventsPage: React.FC = () => {
               </div>
               {/* Include past toggle — default hides events that already started.
                   A past academic year always shows all of its events. */}
-              {!viewingPast && <label className="flex items-center gap-2 mt-2 text-xs font-semibold text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+              {!viewingPast && <label className="col-span-2 flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-400 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={includePast}

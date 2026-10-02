@@ -11,6 +11,36 @@ router.use(attachUserContext);
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
+/** The academic session a class belongs to, and whether it's the active year. */
+async function classYear(classId: string): Promise<{ sessionId: string | null; isPast: boolean }> {
+  const row = await db('classes')
+    .leftJoin('academic_sessions as s', 'classes.academic_session_id', 's.id')
+    .where('classes.id', classId)
+    .first('classes.academic_session_id as session_id', 's.is_active as session_active');
+  const sessionId = row?.session_id ?? null;
+  // Legacy classes with no session are treated as current.
+  return { sessionId, isPast: !!sessionId && row?.session_active === false };
+}
+
+/** A past year's timetable is read-only history. */
+function assertCurrentYear(isPast: boolean) {
+  if (isPast) {
+    throw new AppError('This timetable belongs to a past academic year and is read-only', 409, 'PAST_YEAR_READ_ONLY');
+  }
+}
+
+/**
+ * Teacher double-booking only counts within the SAME academic year. After a
+ * rollover every slot has a twin in last year's copy of the class; those must
+ * not block editing this year's timetable.
+ */
+function sameYearSchedules(sessionId: string | null) {
+  const q = db('schedules').join('classes as yc', 'schedules.class_id', 'yc.id');
+  if (sessionId) q.where('yc.academic_session_id', sessionId);
+  else q.whereNull('yc.academic_session_id');
+  return q;
+}
+
 /**
  * POST /api/v1/timetable
  * Create a new timetable slot
@@ -44,6 +74,8 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
     if (!classCheck) {
       throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
     }
+    const target = await classYear(class_id);
+    assertCurrentYear(target.isPast);
 
     // Verify teacher belongs to this tenant
     const teacherCheck = await db('teachers')
@@ -92,14 +124,14 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       throw new AppError('Time conflict: another slot already occupies this time for this class', 409, 'TIME_CONFLICT');
     }
 
-    // Check teacher availability
-    const teacherConflict = await db('schedules')
-      .where('teacher_id', teacher_id)
-      .where('day_of_week', day_of_week)
+    // Check teacher availability (same academic year only)
+    const teacherConflict = await sameYearSchedules(target.sessionId)
+      .where('schedules.teacher_id', teacher_id)
+      .where('schedules.day_of_week', day_of_week)
       .where(function () {
-        this.where('start_time', '<', end_time).andWhere('end_time', '>', start_time);
+        this.where('schedules.start_time', '<', end_time).andWhere('schedules.end_time', '>', start_time);
       })
-      .first();
+      .first('schedules.id');
 
     if (teacherConflict) {
       throw new AppError('Teacher is already assigned to another class during this time', 409, 'TEACHER_CONFLICT');
@@ -113,6 +145,9 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       start_time,
       end_time,
       room_number: room_number || null,
+      // Tag the slot with its year (the class's session) and author.
+      academic_session_id: target.sessionId,
+      created_by: req.user?.id ?? null,
       created_at: new Date(),
       updated_at: new Date(),
     }).returning('*');
@@ -342,6 +377,8 @@ router.put('/:slotId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPE
     if (!slot) {
       throw new AppError('Timetable slot not found', 404, 'NOT_FOUND');
     }
+    const slotYear = await classYear(slot.class_id);
+    assertCurrentYear(slotYear.isPast);
 
     // If the teacher or subject is being changed, verify tenant ownership.
     if (teacher_id) {
@@ -405,14 +442,14 @@ router.put('/:slotId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPE
     // Teacher double-booking check (if teacher/day/time changed) — this was
     // missing on update, so an edit could put a teacher in two classes at once.
     if (teacher_id || start_time || end_time || day_of_week) {
-      const teacherConflict = await db('schedules')
-        .where('teacher_id', checkTeacher)
-        .where('day_of_week', checkDay)
-        .whereNot('id', slotId)
+      const teacherConflict = await sameYearSchedules(slotYear.sessionId)
+        .where('schedules.teacher_id', checkTeacher)
+        .where('schedules.day_of_week', checkDay)
+        .whereNot('schedules.id', slotId)
         .where(function () {
-          this.where('start_time', '<', checkEnd).andWhere('end_time', '>', checkStart);
+          this.where('schedules.start_time', '<', checkEnd).andWhere('schedules.end_time', '>', checkStart);
         })
-        .first();
+        .first('schedules.id');
       if (teacherConflict) {
         throw new AppError('Teacher is already assigned to another class during this time', 409, 'TEACHER_CONFLICT');
       }
@@ -462,6 +499,7 @@ router.delete('/:slotId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
     if (!slot) {
       throw new AppError('Timetable slot not found', 404, 'NOT_FOUND');
     }
+    assertCurrentYear((await classYear(slot.class_id)).isPast);
 
     await db('schedules').where('id', slotId).del();
 
