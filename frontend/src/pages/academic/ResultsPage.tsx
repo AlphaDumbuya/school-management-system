@@ -8,7 +8,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Star, BookOpen, Trophy } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -21,7 +21,7 @@ import { useAuth } from '@hooks/useAuth';
 import { classesService } from '@services/classesService';
 import { ScoreEntryGrid } from './components/ScoreEntryGrid';
 import { DomainRatingsModal } from './components/DomainRatingsModal';
-import { SL_TERMS, SLTerm, SL_GRADING_METHOD, CONDUCT_CODES, getGradingMethod } from '@services/reportCardService';
+import { SL_TERMS, SLTerm, SL_GRADING_METHOD, CONDUCT_CODES, getGradingMethod, reportCardService } from '@services/reportCardService';
 
 import { StudentResultsView } from './components/StudentResultsView';
 import { ParentResultsView } from './components/ParentResultsView';
@@ -29,6 +29,7 @@ import { ClassRankingView } from './components/ClassRankingView';
 
 export const ResultsPage: React.FC = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const isPrincipal = user?.role === 'principal' || user?.role === 'super_admin';
   const isStudent = user?.role === 'student';
@@ -83,6 +84,33 @@ export const ResultsPage: React.FC = () => {
     [students],
   );
   const selectedStudent = students.find((s: any) => String(s.id) === String(ratingsStudentId));
+
+  // Existing ratings + conduct/comment for the chosen student & term, so the
+  // ratings dialog opens with what's saved (not blank).
+  const { data: savedCardResp, isFetching: loadingSaved } = useQuery({
+    queryKey: ['report-card', ratingsStudentId, ratingsClassId, academicYear],
+    queryFn: () => reportCardService.getReportCard(ratingsStudentId, { class_id: ratingsClassId, academic_year: academicYear }),
+    enabled: !!ratingsStudentId && !!ratingsClassId && !!academicYear && ratingsModalOpen,
+    staleTime: 0,
+  });
+  const savedCard: any = (savedCardResp as any)?.data?.data ?? (savedCardResp as any)?.data ?? null;
+  const initialRatings = useMemo(() => {
+    if (!savedCard) return null;
+    const pick = (domain: 'affective' | 'psychomotor') => {
+      const out: Record<number, { r1: number | null; r2: number | null }> = {};
+      Object.entries(savedCard.domain_ratings?.[domain] ?? {}).forEach(([idx, t]: [string, any]) => {
+        const v = t?.terms?.[ratingsTerm];
+        if (v) out[Number(idx)] = { r1: v.r1 ?? null, r2: v.r2 ?? null };
+      });
+      return out;
+    };
+    const ts = savedCard.term_summaries?.[ratingsTerm];
+    return {
+      affective: pick('affective'),
+      psychomotor: pick('psychomotor'),
+      termRecord: { conduct: ts?.conduct ?? '', teacher_comment: ts?.teacher_comment ?? '' },
+    };
+  }, [savedCard, ratingsTerm]);
 
   // Students get a read-only view of ONLY their own published results.
   if (isStudent) {
@@ -264,9 +292,15 @@ export const ResultsPage: React.FC = () => {
 
       {selectedStudent && (
         <DomainRatingsModal
-          isOpen={ratingsModalOpen}
+          isOpen={ratingsModalOpen && !loadingSaved}
           onClose={() => setRatingsModalOpen(false)}
-          onSuccess={() => {}}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['report-card'] });
+            queryClient.invalidateQueries({ queryKey: ['class-ranking'] });
+          }}
+          initialAffective={initialRatings?.affective}
+          initialPsychomotor={initialRatings?.psychomotor}
+          initialTermRecord={initialRatings?.termRecord}
           studentId={ratingsStudentId}
           studentName={`${selectedStudent.first_name} ${selectedStudent.last_name}`}
           classId={ratingsClassId}

@@ -374,9 +374,12 @@ router.put('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, UserRol
               .where('class_creator.tenant_id', tenantId);
           });
       })
-      .select('assignments.*')
+      .select('assignments.*', 'academic_sessions.is_active as session_active')
       .first();
     if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
+    if (assignment.session_active === false) {
+      throw new AppError('Past academic years are read-only', 409, 'PAST_YEAR_READ_ONLY');
+    }
     if (!(await teacherOwnsAssignment(req, assignment.teacher_id))) {
       throw new AppError('You can only edit your own assignments', 403, 'FORBIDDEN');
     }
@@ -432,9 +435,12 @@ router.delete('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, User
               .where('class_creator.tenant_id', tenantId);
           });
       })
-      .select('assignments.*')
+      .select('assignments.*', 'academic_sessions.is_active as session_active')
       .first();
     if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
+    if (assignment.session_active === false) {
+      throw new AppError('Past academic years are read-only', 409, 'PAST_YEAR_READ_ONLY');
+    }
     if (!(await teacherOwnsAssignment(req, assignment.teacher_id))) {
       throw new AppError('You can only delete your own assignments', 403, 'FORBIDDEN');
     }

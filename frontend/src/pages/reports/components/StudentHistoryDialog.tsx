@@ -40,9 +40,11 @@ export interface StudentHistoryDialogProps {
   /** Name, admission number or student id. Empty = closed. */
   query: string;
   onClose: () => void;
+  /** Year selected on the archive page — the dialog opens on it. */
+  preferredYear?: string;
 }
 
-export const StudentHistoryDialog: React.FC<StudentHistoryDialogProps> = ({ query, onClose }) => {
+export const StudentHistoryDialog: React.FC<StudentHistoryDialogProps> = ({ query, onClose, preferredYear }) => {
   const navigate = useNavigate();
   // Picking a match re-queries by id.
   const [lookup, setLookup] = useState(query);
@@ -58,7 +60,12 @@ export const StudentHistoryDialog: React.FC<StudentHistoryDialogProps> = ({ quer
 
   const years = h?.years ?? [];
   const [year, setYear] = useState('');
-  useEffect(() => { setYear(years[0]?.academic_year ?? ''); }, [h?.student?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Open on the year picked on the archive page. If the student has nothing
+  // recorded for it, fall back to their newest year.
+  useEffect(() => {
+    const has = (y?: string) => !!y && years.some((x) => x.academic_year === y);
+    setYear(has(preferredYear) ? preferredYear! : years[0]?.academic_year ?? '');
+  }, [h?.student?.id, preferredYear, query]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const yearData = useMemo(() => {
     if (!h?.student || !year) return null;

@@ -35,6 +35,8 @@ export const PaymentSettings: React.FC = () => {
       if (res.success && res.data) {
         setConfig(res.data);
         setSpaceId(res.data.spaceId || '');
+      } else {
+        showToast.error((res as any).error || 'Could not load payment settings');
       }
     } catch {
       showToast.error('Could not load payment settings');
@@ -83,9 +85,11 @@ export const PaymentSettings: React.FC = () => {
       if (res.success) {
         showToast.success(res.message || 'Online payments turned off');
         setConfig(res.data);
+      } else {
+        showToast.error((res as any).error || 'Failed to turn off online payments');
       }
     } catch (e: any) {
-      showToast.error(e?.response?.data?.error || 'Failed to update');
+      showToast.error(e?.message || 'Failed to update');
     } finally {
       setSaving(false);
     }

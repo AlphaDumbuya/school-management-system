@@ -598,7 +598,12 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
       });
     });
     const seen = new Set<string>();
-    return out.filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)));
+    // A fee can't be paid beyond its balance (the server rejects it), so only
+    // offer buckets that still have something outstanding, priced at that.
+    return out
+      .filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)))
+      .filter((s) => s.outstanding > 0.005)
+      .map((s) => ({ ...s, amount: Math.round(s.outstanding * 100) / 100 }));
   }, [ledger]);
 
   const selectedScope = scopes.find((s) => s.id === scopeId) || null;
@@ -620,31 +625,42 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
       // Apply the amount across the scope's fees oldest-first (the ledger orders
       // charges chronologically) — one recordPayment call per fee until the
       // amount is exhausted. Mirrors the online settle-across-fees logic.
-      //
-      // We settle each fee's OUTSTANDING first. When the whole scope is already
-      // fully paid (advance payment for a future term), there's no outstanding
-      // to soak up, so we fall back to distributing against the fees' BILLED
-      // amounts — this records the payment against the charge as an overpayment.
       const feeOutstanding = new Map<string, number>();
-      const feeBilled = new Map<string, number>();
       ledger.years?.forEach((y: any) => y.terms?.forEach((t: any) => t.charges?.forEach((c: any) => {
         feeOutstanding.set(c.id, Number(c.outstanding || 0));
-        feeBilled.set(c.id, Number(c.amount || 0));
       })));
-      const scopeHasOutstanding = selectedScope.outstanding > 0.001;
-      const feeBalances = scopeHasOutstanding ? feeOutstanding : feeBilled;
-      let remaining = amt;
+      let remaining = Math.round(amt * 100) / 100;
       let recorded = 0;
+      let failure: string | null = null;
       for (const fid of selectedScope.feeIds) {
-        if (remaining <= 0) break;
-        const bal = feeBalances.get(fid) || 0;
+        if (remaining <= 0.005) break;
+        const bal = Math.round((feeOutstanding.get(fid) || 0) * 100) / 100;
         if (bal <= 0) continue;
-        const pay = Math.min(bal, remaining);
-        const res: any = await financeService.recordPayment({ feeId: fid, amount: Math.round(pay * 100) / 100, method, transactionReference: reference || undefined });
-        const body = res?.data ?? res;
-        if (body?.success === false) { showToast.error(body?.error || body?.message || 'Failed to record payment'); setSaving(false); return; }
+        const pay = Math.round(Math.min(bal, remaining) * 100) / 100;
+        try {
+          const res: any = await financeService.recordPayment({ feeId: fid, amount: pay, method, transactionReference: reference || undefined });
+          const body = res?.data ?? res;
+          if (res?.success === false || body?.success === false) {
+            failure = body?.error || body?.message || res?.error || 'Failed to record payment';
+            break;
+          }
+        } catch (e: any) {
+          failure = e?.response?.data?.error || e?.response?.data?.message || 'Failed to record payment';
+          break;
+        }
         remaining = Math.round((remaining - pay) * 100) / 100;
-        recorded += pay;
+        recorded = Math.round((recorded + pay) * 100) / 100;
+      }
+      if (failure) {
+        // Some fees may already be settled; say exactly what went through and
+        // refresh so the ledger shows the true state before any retry.
+        if (recorded > 0) {
+          showToast.error(`Only ${fmtMoney(recorded)} of ${fmtMoney(amt)} was recorded. ${failure}`);
+          onSaved();
+        } else {
+          showToast.error(failure);
+        }
+        return;
       }
       showToast.success(`Recorded ${fmtMoney(recorded)} for ${selectedScope.label}`);
       onSaved();
@@ -715,14 +731,15 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
                       <div className={`font-bold ${selectedScope.outstanding > 0.001 ? 'text-rose-600' : 'text-emerald-600'}`}>{fmtMoney(selectedScope.amount)}</div>
                     </div>
                   </div>
-                  {selectedScope.outstanding <= 0.001 && (
-                    <div className="mt-2 text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg px-2 py-1">
-                      This selection is already fully paid — recording here logs an advance / additional payment.
-                    </div>
-                  )}
                 </div>
               )}
-              {scopes.length === 0 && <p className="text-xs text-gray-400 mt-1">No billed fees for this student yet.</p>}
+              {ledger && scopes.length === 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {Number(ledger.totals?.billed || 0) > 0
+                    ? 'This student has no outstanding balance. Everything billed is paid.'
+                    : 'No billed fees for this student yet.'}
+                </p>
+              )}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">

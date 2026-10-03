@@ -1194,6 +1194,9 @@ export class SLReportCardService {
       for (const e of entries) {
         if (!validRating(e.r1) || !validRating(e.r2)) throw new Error('Ratings must be between 1 and 5');
         if (e.trait_index < 1 || e.trait_index > 12) continue;
+        // A trait left blank is "not rated in this save" — never wipe a saved
+        // rating with nulls (the form may not have loaded the existing values).
+        if (e.r1 == null && e.r2 == null) continue;
 
         const existing = await trx('sl_domain_ratings')
           .where({ tenant_id: tenantId, student_id, class_id, term, academic_year, domain: e.domain, trait_index: e.trait_index })
@@ -1259,12 +1262,11 @@ export class SLReportCardService {
       .where({ tenant_id: tenantId, student_id, class_id, term, academic_year })
       .first();
 
-    const fields = {
-      conduct: payload.conduct ?? null,
-      teacher_comment: payload.teacher_comment ?? null,
-      teacher_signed_by: userId,
-      updated_at: db.fn.now(),
-    };
+    // Only fields actually sent are written; an omitted conduct/comment keeps
+    // what's already saved instead of being cleared.
+    const fields: Record<string, any> = { teacher_signed_by: userId, updated_at: db.fn.now() };
+    if (payload.conduct !== undefined) fields.conduct = payload.conduct || null;
+    if (payload.teacher_comment !== undefined) fields.teacher_comment = payload.teacher_comment || null;
 
     if (existing) {
       await db('sl_term_summaries').where({ id: existing.id }).update(fields);

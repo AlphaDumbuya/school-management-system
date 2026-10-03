@@ -34,50 +34,62 @@ export class PaymentService {
     try {
       logger.info(`Recording payment for fee ${data.feeId}`);
 
-      // Validate fee exists
-      const fee = await this.db('fees')
-        .where('id', data.feeId)
-        .first();
-
-      if (!fee) {
-        throw new Error(`Fee ${data.feeId} not found`);
-      }
-
-      // Validate payment amount doesn't exceed balance
-      if (data.amount > fee.balance) {
-        throw new Error(`Payment amount exceeds outstanding balance`);
+      // Money is handled in cents-precision to avoid float drift (0.1 + 0.2).
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+      const amount = round2(Number(data.amount));
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error('Payment amount must be greater than zero');
       }
 
       // Generate payment ID — payments.id is a UUID column.
       const paymentId = crypto.randomUUID();
+      let payment: any;
+      let fee: any;
 
-      const payment = {
-        id: paymentId,
-        fee_id: data.feeId,
-        student_id: fee.student_id,
-        amount: data.amount,
-        method: data.method,
-        transaction_reference: data.transactionReference || null,
-        notes: data.notes || null,
-        payment_date: new Date(data.paymentDate || new Date()),
-        status: 'completed',
-        created_by: userId,
-        created_at: new Date(),
-      };
+      // Lock the fee row so two simultaneous payments can't both read the same
+      // balance and over-pay it; insert + balance update commit together.
+      await this.db.transaction(async (trx) => {
+        fee = await trx('fees').where('id', data.feeId).forUpdate().first();
 
-      await this.db('payments').insert(payment);
+        if (!fee) {
+          throw new Error(`Fee ${data.feeId} not found`);
+        }
 
-      // Update fee balance and status
-      const newBalance = fee.balance - data.amount;
-      const newStatus = newBalance === 0 ? 'paid' : 'partial';
+        const balance = round2(Number(fee.balance) || 0);
+        // Validate payment amount doesn't exceed balance (1 cent tolerance).
+        if (amount > balance + 0.005) {
+          throw new Error(`Payment amount exceeds outstanding balance`);
+        }
 
-      await this.db('fees')
-        .where('id', data.feeId)
-        .update({
-          balance: newBalance,
-          status: newStatus,
-          updated_at: new Date(),
-        });
+        payment = {
+          id: paymentId,
+          fee_id: data.feeId,
+          student_id: fee.student_id,
+          amount,
+          method: data.method,
+          transaction_reference: data.transactionReference || null,
+          notes: data.notes || null,
+          payment_date: new Date(data.paymentDate || new Date()),
+          status: 'completed',
+          created_by: userId,
+          created_at: new Date(),
+        };
+
+        await trx('payments').insert(payment);
+
+        // Update fee balance and status. Anything under half a cent is paid.
+        let newBalance = round2(balance - amount);
+        if (newBalance <= 0.005) newBalance = 0;
+        const newStatus = newBalance === 0 ? 'paid' : 'partial';
+
+        await trx('fees')
+          .where('id', data.feeId)
+          .update({
+            balance: newBalance,
+            status: newStatus,
+            updated_at: new Date(),
+          });
+      });
 
       // Log to audit
       await this.auditService.logAudit({
@@ -87,7 +99,7 @@ export class PaymentService {
         performedBy: userId,
         details: {
           feeId: data.feeId,
-          amount: data.amount,
+          amount,
           method: data.method,
           studentId: fee.student_id,
         },

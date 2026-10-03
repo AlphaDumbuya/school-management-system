@@ -79,6 +79,12 @@ async function assertCardInTenant(req: Request, cardId: string): Promise<any> {
   return row;
 }
 
+/** Roles that manage ID cards (matches the ID Cards page access). */
+function isCardStaff(req: Request): boolean {
+  const role = String((req as any).user?.role || (req as any).auth?.role || '');
+  return [UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER].map(String).includes(role);
+}
+
 /** Assert a bulk job belongs to the caller's tenant. */
 async function assertBulkJobInTenant(req: Request, jobId: string): Promise<void> {
   const tenantId = (req as any).user?.tenant_id;
@@ -94,6 +100,7 @@ async function assertBulkJobInTenant(req: Request, jobId: string): Promise<void>
  */
 router.get(
   '/',
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
@@ -254,6 +261,7 @@ router.get(
  */
 router.get(
   '/stats',
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = (req as any).user?.tenant_id;
@@ -305,6 +313,7 @@ router.get(
  */
 router.get(
   '/eligible-members',
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { search, role, classId } = req.query;
@@ -488,6 +497,7 @@ router.post(
  */
 router.get(
   '/:cardId',
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
@@ -538,6 +548,10 @@ router.get(
       const { userId } = req.params;
       const tenantId = (req as any).user?.tenant_id;
       if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+      // Staff can look up anyone; everyone else only their own cards.
+      if (!isCardStaff(req) && String((req as any).user?.id) !== String(userId)) {
+        throw new AppError('You can only view your own ID cards', 403, 'FORBIDDEN');
+      }
       // Only return cards whose card row is in the caller's tenant — never let a
       // userId from another school surface cards.
       const cards = await idCardService.getCardsByUserId(userId);
@@ -617,7 +631,11 @@ router.post(
       const { cardId } = req.params;
       const { reason } = req.body;
       const reportedBy = (req as any).user.id;
-      await assertCardInTenant(req, cardId); // tenant guard
+      const card = await assertCardInTenant(req, cardId); // tenant guard
+      // Card holders may report their own card lost; staff may report any.
+      if (!isCardStaff(req) && String(card.user_id) !== String(reportedBy)) {
+        throw new AppError('You can only report your own card as lost', 403, 'FORBIDDEN');
+      }
 
       await lifecycleService.reportLost(cardId, reportedBy, reason);
 
@@ -685,6 +703,7 @@ router.post(
  */
 router.get(
   '/:cardId/history',
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { cardId } = req.params;
@@ -748,6 +767,7 @@ router.post(
  */
 router.get(
   '/bulk/:jobId/status',
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { jobId } = req.params;
@@ -789,6 +809,7 @@ router.post(
  */
 router.get(
   '/bulk/:jobId/report',
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { jobId } = req.params;

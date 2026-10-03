@@ -21,6 +21,10 @@ async function isPastYearClass(sessionId: string | null | undefined): Promise<bo
   return !!s && s.is_active === false;
 }
 
+/** A past academic year's classes are read-only history. */
+const PAST_YEAR_ERROR = () =>
+  new AppError('This class belongs to a past academic year and is read-only.', 409, 'PAST_YEAR_READ_ONLY');
+
 // ── Tenant-ownership guards ───────────────────────────────────────────────────
 // classes has no tenant_id column; a class belongs to a tenant via its session
 // (or, for session-less classes, its creator). These helpers stop a class from
@@ -498,6 +502,8 @@ router.put('/:classId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUP
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
 
+    if (await isPastYearClass(classData.academic_session_id)) throw PAST_YEAR_ERROR();
+
     // Cross-tenant reference guards on update too.
     await assertTeacherInTenant(class_teacher_id, tenantId);
     await assertNextClassInTenant(next_class_id, tenantId);
@@ -571,6 +577,7 @@ router.delete('/:classId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.
     if (!classData) {
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
+    if (await isPastYearClass(classData.academic_session_id)) throw PAST_YEAR_ERROR();
 
     await db('classes').where('id', classId).update({
       status: 'inactive',
@@ -616,6 +623,7 @@ router.delete('/:classId/permanent', authenticate, authorize(UserRole.PRINCIPAL,
     if (!classData) {
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
+    if (await isPastYearClass(classData.academic_session_id)) throw PAST_YEAR_ERROR();
 
     // Check if class has any enrollments
     const enrollmentCount = await db('enrollments').where('class_id', classId).count('* as count').first();

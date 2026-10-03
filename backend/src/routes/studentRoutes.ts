@@ -15,7 +15,13 @@ import multer from 'multer';
 
 const uploadCsv = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 }, // 5MB, one file
+  // CSV only. Browsers report CSV under several MIME types, so the extension
+  // is the reliable check.
+  fileFilter: (_req, file, cb) => {
+    if (/\.csv$/i.test(file.originalname || '')) return cb(null, true);
+    cb(new AppError('Only .csv files can be imported. Save your spreadsheet as CSV and try again.', 400, 'INVALID_FILE_TYPE') as any);
+  },
 });
 
 const router = Router();
@@ -388,6 +394,7 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     let query = db('students')
       .select(
         'students.*',
+        'classes.id as class_id',
         'classes.name as class_name',
         'classes.level as class_level'
       );
@@ -528,6 +535,44 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     const totalResult: any = await countQuery.first();
     const totalRaw = totalResult?.totalCount ?? totalResult?.count;
 
+    // KPI totals across the WHOLE filtered set (not just this page). Same
+    // tenant / teacher / year / search scope; ignores the status filter so each
+    // card always shows its own count.
+    let statsQuery = db('students');
+    if (userRole !== 'super_admin') {
+      statsQuery = statsQuery.where('students.tenant_id', tenantId);
+    } else if (requestedTenantId && requestedTenantId !== 'all') {
+      statsQuery = statsQuery.where('students.tenant_id', requestedTenantId);
+    }
+    if (teacherStudentIds) statsQuery = statsQuery.whereIn('students.id', teacherStudentIds);
+    if (yearStudentIds) statsQuery = statsQuery.whereIn('students.id', yearStudentIds);
+    if (search) {
+      const term = `%${search.trim()}%`;
+      statsQuery = statsQuery.where(function () {
+        this.where('students.first_name', 'ilike', term)
+          .orWhere('students.last_name', 'ilike', term)
+          .orWhere('students.student_id', 'ilike', term)
+          .orWhere('students.email', 'ilike', term)
+          .orWhereRaw("CONCAT_WS(' ', students.first_name, students.last_name) ILIKE ?", [term])
+          .orWhereRaw("CONCAT_WS(' ', students.last_name, students.first_name) ILIKE ?", [term]);
+      });
+    }
+    const statusRows: any[] = await statsQuery
+      .select('students.status')
+      .count('students.id as count')
+      .groupBy('students.status');
+    const stats = statusRows.reduce(
+      (acc: any, r: any) => {
+        const c = Number(r.count) || 0;
+        acc.total += c;
+        if (r.status === 'active' || r.status === 'enrolled') acc.active += c;
+        else if (r.status === 'inactive' || r.status === 'suspended') acc.inactive += c;
+        else if (r.status === 'graduated') acc.graduated += c;
+        return acc;
+      },
+      { total: 0, active: 0, inactive: 0, graduated: 0 },
+    );
+
     // Get paginated results — ordered by student ID (001, 002, 003 …). IDs are
     // zero-padded with a shared prefix so a plain ascending sort is correct;
     // students without an ID sort last, then by enrollment date.
@@ -541,6 +586,7 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
 
     res.json({
       data: students,
+      stats,
       pagination: {
         page,
         limit,
@@ -959,7 +1005,61 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
 
     updateData.updated_at = new Date();
 
-    await db('students').where('id', student.id).andWhere('tenant_id', tenantId).update(updateData);
+    // Class change: managers only, and only within the CURRENT academic year.
+    // Past-year enrollments are history and are never rewritten here.
+    const { class_id } = req.body;
+    let moveToClass: any = null;
+    if (class_id && isManager) {
+      moveToClass = await db('classes')
+        .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+        .where('classes.id', class_id)
+        .where('academic_sessions.tenant_id', tenantId)
+        .select('classes.id', 'classes.academic_session_id', 'academic_sessions.is_active')
+        .first();
+      if (!moveToClass) throw new AppError('Selected class does not belong to this school', 400, 'INVALID_CLASS');
+      if (!moveToClass.is_active) {
+        // Re-submitting the class they're already in (e.g. a form prefilled
+        // with last year's class) is a no-op, not an error.
+        const already = await db('enrollments')
+          .where({ student_id: student.id, class_id: moveToClass.id })
+          .first('id');
+        if (!already) {
+          throw new AppError('Students can only be moved into a class of the current academic year', 409, 'PAST_YEAR_READ_ONLY');
+        }
+        moveToClass = null;
+      }
+    }
+
+    await db.transaction(async (trx) => {
+      await trx('students').where('id', student.id).andWhere('tenant_id', tenantId).update(updateData);
+
+      if (moveToClass) {
+        // The student's live enrollment in the current year, if any.
+        const current = await trx('enrollments')
+          .join('classes', 'enrollments.class_id', 'classes.id')
+          .where('enrollments.student_id', student.id)
+          .where('classes.academic_session_id', moveToClass.academic_session_id)
+          .whereIn('enrollments.status', ['enrolled', 'active'])
+          .select('enrollments.id', 'enrollments.class_id')
+          .first();
+
+        if (!current) {
+          await trx('enrollments').insert({
+            student_id: student.id,
+            class_id: moveToClass.id,
+            academic_session_id: moveToClass.academic_session_id,
+            enrollment_date: new Date().toISOString().split('T')[0],
+            status: 'active',
+            created_at: new Date(),
+            updated_at: new Date(),
+          });
+        } else if (String(current.class_id) !== String(moveToClass.id)) {
+          await trx('enrollments')
+            .where('id', current.id)
+            .update({ class_id: moveToClass.id, updated_at: new Date() });
+        }
+      }
+    });
 
     const updatedStudent = await db('students')
       .select('id', 'student_id', 'first_name', 'last_name', 'email', 'date_of_birth', 'gender', 'phone', 'status', 'created_at', 'updated_at')

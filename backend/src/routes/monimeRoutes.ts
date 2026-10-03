@@ -307,7 +307,14 @@ router.post('/monime/webhook', async (req: Request, res: Response) => {
       return res.status(401).json({ received: false });
     }
 
-    const event = JSON.parse(raw.toString('utf8'));
+    let event: any;
+    try {
+      event = JSON.parse(raw.toString('utf8'));
+    } catch {
+      // Malformed body will never parse on retry either — ack and log.
+      logger.warn('Monime webhook: unparseable body');
+      return res.status(200).json({ received: true });
+    }
     // Correlate by our callbackState (session id) or provider session id.
     // Monime wraps resource events as { event:{name}, object:{id,type}, data:{...} }.
     const eventName: string = event?.event?.name || event?.type || '';
@@ -370,8 +377,10 @@ router.post('/monime/webhook', async (req: Request, res: Response) => {
     return res.status(200).json({ received: true });
   } catch (error) {
     logger.error('Monime webhook error', { error: (error as Error).message });
-    // Still 200 so the provider doesn't hammer retries on our parsing bugs.
-    return res.status(200).json({ received: true });
+    // 500 so the provider RETRIES: a paid-but-unrecorded payment is far worse
+    // than a retry. Reconciliation is idempotent (session row locked + status
+    // checked in-transaction), so retries can't double-record.
+    return res.status(500).json({ received: false });
   }
 });
 
@@ -427,7 +436,14 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
     return;
   }
 
+  let applied = false;
   await db.transaction(async (trx) => {
+    // Lock the session row and re-check inside the transaction so a retried or
+    // duplicated webhook arriving at the same moment can't record twice.
+    const locked = await trx('payment_sessions').where({ id: sessionId }).forUpdate().first();
+    if (!locked || locked.status === 'completed') return;
+    applied = true;
+
     // Record the payment (payments.id is a uuid PK).
     const paymentId = crypto.randomUUID();
     await trx('payments').insert({
@@ -482,6 +498,7 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
       updated_at: new Date(),
     });
   });
+  if (!applied) return; // another delivery already reconciled it
 
   logger.info(`Monime payment reconciled for session ${sessionId}`);
 

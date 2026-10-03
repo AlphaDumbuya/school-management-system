@@ -9,7 +9,8 @@
  *
  * Read-only. Principal / super-admin only (route-guarded).
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { SearchBar } from '@components/admin/table/SearchBar';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MainLayout } from '@components/layout/MainLayout';
@@ -46,14 +47,12 @@ export const AcademicArchivePage: React.FC = () => {
 
   // Per-student history: search box (name or admission number) with live
   // suggestions; Enter / Look up opens the dialog for whatever was typed.
+  // The shared <SearchBar> already debounces, so its value drives suggestions.
   const [historyInput, setHistoryInput] = useState('');
   const [historyQuery, setHistoryQuery] = useState('');
   const [suggestOpen, setSuggestOpen] = useState(false);
-  const [debounced, setDebounced] = useState('');
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(historyInput.trim()), 250);
-    return () => clearTimeout(t);
-  }, [historyInput]);
+  const debounced = historyInput.trim();
+  const onSearchInput = useCallback((v: string) => { setHistoryInput(v); setSuggestOpen(true); }, []);
   const { data: suggestResp, isFetching: suggesting } = useQuery({
     queryKey: ['archive-student-suggest', debounced],
     queryFn: () => studentsService.listStudents({ search: debounced, limit: 6 }),
@@ -62,7 +61,6 @@ export const AcademicArchivePage: React.FC = () => {
   });
   const suggestions: any[] = ((suggestResp as any)?.data?.data ?? (suggestResp as any)?.data ?? []) as any[];
   const openHistory = (q: string) => { const v = q.trim(); if (!v) return; setSuggestOpen(false); setHistoryQuery(v); };
-  const lookUp = () => openHistory(historyInput);
   const closeHistory = () => setHistoryQuery('');
 
   const { data: snapResp, isLoading, isError, refetch } = useQuery({
@@ -114,29 +112,30 @@ export const AcademicArchivePage: React.FC = () => {
 
         {/* Per-student full history lookup (across ALL years) */}
         <div className="p-4 mb-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 print:hidden">
-          <label htmlFor="archive-student-search" className="text-sm font-semibold text-gray-700 dark:text-gray-300 block mb-1">
-            Student history (every year)
-          </label>
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Student history (every year)</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Classes, results, attendance and fees for every year the student has been at the school.</p>
-          <div className="flex gap-2 sm:max-w-lg">
-            <div className="relative flex-1 min-w-0">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              <input
-                id="archive-student-search"
-                type="text"
-                autoComplete="off"
-                role="combobox"
-                aria-expanded={suggestOpen && suggestions.length > 0}
-                aria-controls="archive-student-suggestions"
-                value={historyInput}
-                onChange={(e) => { setHistoryInput(e.target.value); setSuggestOpen(true); }}
-                onFocus={() => setSuggestOpen(true)}
-                onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
-                onKeyDown={(e) => { if (e.key === 'Enter') lookUp(); if (e.key === 'Escape') setSuggestOpen(false); }}
+          {/* Enter submits the form → opens history for exactly what's typed. */}
+          <form
+            className="flex gap-2 sm:max-w-lg"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const v = (e.currentTarget.querySelector('input') as HTMLInputElement | null)?.value ?? historyInput;
+              openHistory(v);
+            }}
+          >
+            <div
+              className="relative flex-1 min-w-0"
+              onFocus={() => setSuggestOpen(true)}
+              onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSuggestOpen(false); }}
+              onKeyDown={(e) => { if (e.key === 'Escape') setSuggestOpen(false); }}
+            >
+              <SearchBar
                 placeholder="Type a name or admission number…"
-                className="w-full pl-9 pr-9 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onSearch={onSearchInput}
+                debounceMs={250}
+                isLoading={suggesting}
+                className="w-full"
               />
-              {suggesting && <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />}
               {suggestOpen && debounced.length >= 2 && suggestions.length > 0 && (
                 <ul
                   id="archive-student-suggestions"
@@ -150,7 +149,7 @@ export const AcademicArchivePage: React.FC = () => {
                         <button
                           type="button"
                           onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => { setHistoryInput(name); openHistory(s.id); }}
+                          onClick={() => openHistory(s.id)}
                           className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-gray-800"
                         >
                           <span className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 flex items-center justify-center text-xs font-bold">
@@ -167,10 +166,10 @@ export const AcademicArchivePage: React.FC = () => {
                 </ul>
               )}
             </div>
-            <Button onClick={lookUp} disabled={!historyInput.trim()} className="gap-1.5">
+            <Button type="submit" disabled={!historyInput.trim()} className="gap-1.5 h-[38px]">
               <Search size={15} /> <span className="hidden sm:inline">Look up</span>
             </Button>
-          </div>
+          </form>
         </div>
 
         {!year ? (
@@ -372,7 +371,7 @@ export const AcademicArchivePage: React.FC = () => {
           </div>
         )}
 
-        <StudentHistoryDialog query={historyQuery} onClose={closeHistory} />
+        <StudentHistoryDialog query={historyQuery} onClose={closeHistory} preferredYear={year} />
       </PageShell>
     </MainLayout>
   );

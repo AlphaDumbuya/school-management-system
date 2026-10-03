@@ -85,9 +85,16 @@ class AcademicYearService {
       let session = await trx('academic_sessions').where({ tenant_id: tenantId, name }).first();
       let created = false;
       if (session) {
+        // Re-activating an existing year keeps its real dates; only dates the
+        // caller explicitly sent replace them (never today / today+300).
         await trx('academic_sessions')
           .where({ id: session.id })
-          .update({ start_date: startDate, end_date: endDate, is_active: true, updated_at: new Date() });
+          .update({
+            ...(input.startDate ? { start_date: input.startDate } : {}),
+            ...(input.endDate ? { end_date: input.endDate } : {}),
+            is_active: true,
+            updated_at: new Date(),
+          });
       } else {
         [session] = await trx('academic_sessions')
           .insert({

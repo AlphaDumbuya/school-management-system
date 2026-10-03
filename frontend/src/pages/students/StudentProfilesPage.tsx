@@ -323,9 +323,9 @@ export const StudentProfilesPage: React.FC = () => {
     setResettingRole(role);
     try {
       const res: any = await studentsService.resetUserPassword(userId);
-      const data = res?.data ?? res;
-      const pwd = data?.temporary_password;
-      showToast.success(`${role === 'student' ? 'Student' : 'Parent'} password reset. New demo password: ${pwd}`);
+      if (res?.success === false) throw new Error(res?.error || 'Failed to reset password.');
+      // Never put the password itself in a toast; it's shown (masked) on the card.
+      showToast.success(`${role === 'student' ? 'Student' : 'Parent'} password reset. Use "Show" on the credentials card to see it.`);
       queryClient.invalidateQueries({ queryKey: ['student-profile-details', student!.id] });
     } catch (err: any) {
       showToast.error(err?.response?.data?.error || err?.response?.data?.message || 'Failed to reset password.');
@@ -734,9 +734,15 @@ export const StudentProfilesPage: React.FC = () => {
                             <h3 className="text-xs font-extrabold uppercase tracking-widest text-indigo-300 flex items-center gap-2">
                               <Shield size={16} className="text-indigo-400" /> Portal Login Credentials
                             </h3>
-                            <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full">
-                              Auto-Generated
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setShowCredentials((v) => !v)}
+                              aria-pressed={showCredentials}
+                              aria-label={showCredentials ? 'Hide passwords' : 'Show passwords'}
+                              className="text-[10px] font-bold uppercase tracking-wider bg-white/10 hover:bg-white/20 text-indigo-100 border border-white/20 px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+                            >
+                              {showCredentials ? <><EyeOff size={11} /> Hide</> : <><Eye size={11} /> Show</>}
+                            </button>
                           </div>
 
                           <div className="space-y-3 text-xs">
@@ -750,7 +756,7 @@ export const StudentProfilesPage: React.FC = () => {
                                 Username: <strong className="text-slate-100">{student.demo_login?.student_username || student.student_id}</strong>
                               </p>
                               <p className="text-slate-400 font-mono text-[11px]">
-                                Password: <strong className="text-emerald-400">{student.demo_login?.student_password || 'Uses their own password'}</strong>
+                                Password: <strong className="text-emerald-400">{student.demo_login?.student_password ? (showCredentials ? student.demo_login.student_password : '••••••••') : 'Uses their own password'}</strong>
                               </p>
                               {canManage && (
                                 <button
@@ -774,7 +780,7 @@ export const StudentProfilesPage: React.FC = () => {
                                 Email: <strong className="text-slate-100">{student.demo_login?.parent_email || (student.email || 'Not Created')}</strong>
                               </p>
                               <p className="text-slate-400 font-mono text-[11px]">
-                                Password: <strong className="text-purple-300">{student.demo_login?.parent_password || 'Uses their own password'}</strong>
+                                Password: <strong className="text-purple-300">{student.demo_login?.parent_password ? (showCredentials ? student.demo_login.parent_password : '••••••••') : 'Uses their own password'}</strong>
                               </p>
                               {canManage && student.demo_login?.parent_user_id && (
                                 <button

@@ -10,6 +10,7 @@ import { AppError } from '@middleware/errorHandler.js';
 import notificationService from '@services/notificationService.js';
 import emailService from '@services/emailService.js';
 import { ConductReport } from '@types/discipline.js';
+import { applyYearScope, type YearScope } from '@utils/academicYear.js';
 
 class ConductReportService {
   /**
@@ -160,6 +161,7 @@ class ConductReportService {
       search?: string;
       report_period?: string;
       shared?: string;
+      yearScope?: YearScope | null;
       page?: number;
       limit?: number;
     }
@@ -187,6 +189,9 @@ class ConductReportService {
       if (options?.report_period) {
         query = query.where('cr.report_period', options.report_period);
       }
+
+      // Academic-year scope: reports have no class, so match the year's dates.
+      query = applyYearScope(query, options?.yearScope ?? null, null, 'cr.created_at');
 
       if (options?.shared === 'true') {
         query = query.where('cr.parent_shared', true);

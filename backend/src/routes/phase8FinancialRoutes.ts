@@ -511,9 +511,14 @@ router.post(
       });
     } catch (error) {
       logger.error(`Error recording payment: ${error}`);
+      const msg = (error as Error).message || '';
+      // Validation failures from the service are the caller's fault, not a 500.
+      if (/exceeds outstanding balance|greater than zero|not found/i.test(msg)) {
+        return res.status(400).json({ success: false, error: msg, message: msg });
+      }
       res.status(500).json({
         error: 'Internal server error',
-        message: (error as Error).message,
+        message: msg,
       });
     }
   }

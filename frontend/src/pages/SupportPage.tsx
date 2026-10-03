@@ -23,7 +23,11 @@ import { Button } from '@components/ui/button';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { showToast } from '@utils/toast';
 import { useAuth } from '@hooks/useAuth';
-import { getModulesForRole, richToPlain, HelpModule } from '@lib/helpCenter';
+import {
+  getCollectionsForRole, getPopularArticles, searchArticles, articlePath,
+  type HelpArticle, type HelpCollection,
+} from '@lib/helpCenter';
+import { COLLECTION_ICONS } from './support/helpUi';
 import {
   supportService, SupportTicket, TicketStatus,
   TICKET_CATEGORIES, TICKET_PRIORITIES,
@@ -41,11 +45,6 @@ const PRIORITY_BADGE: Record<string, string> = {
   medium: 'text-blue-600',
   high: 'text-amber-600',
   urgent: 'text-red-600',
-};
-
-const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
-  Settings, Users, GraduationCap, ClipboardCheck, Wallet, CreditCard,
-  CalendarDays, Megaphone, BookOpen, Building, ShieldCheck,
 };
 
 const TOPIC_ACCENTS = [
@@ -101,30 +100,28 @@ export const SupportPage: React.FC = () => {
     }
   }, [searchParams, tickets, setSearchParams]);
 
-  const modules = useMemo(() => getModulesForRole(role), [role]);
-  const q = search.trim().toLowerCase();
+  // Open the ticket composer when arrived via a "Raise a ticket" link.
+  useEffect(() => {
+    const st = (window.history.state && (window.history.state as any).usr) || null;
+    if (st && st.openTicket) setCreating(true);
+  }, []);
 
-  const filteredModules = useMemo(() => {
-    if (!q) return modules;
-    return modules.filter((m) =>
-      m.title.toLowerCase().includes(q) ||
-      m.summary.toLowerCase().includes(q) ||
-      richToPlain(m.intro).toLowerCase().includes(q) ||
-      m.articles.some((a) => a.heading.toLowerCase().includes(q))
-    );
-  }, [modules, q]);
-
+  const collections = useMemo(() => getCollectionsForRole(role), [role]);
+  const popular = useMemo(() => getPopularArticles(role), [role]);
+  const q = search.trim();
+  const results = useMemo(() => (q.length > 1 ? searchArticles(q, role) : []), [q, role]);
   const filteredFaqs = useMemo(() => {
-    if (!q) return COMMON_FAQ;
-    return COMMON_FAQ.filter((f) => f.q.toLowerCase().includes(q) || f.a.toLowerCase().includes(q));
+    const ql = q.toLowerCase();
+    if (!ql) return COMMON_FAQ;
+    return COMMON_FAQ.filter((f) => f.q.toLowerCase().includes(ql) || f.a.toLowerCase().includes(ql));
   }, [q]);
 
   return (
     <MainLayout>
       <PageShell
-        title="Help & Support"
-        subtitle="Browse guides by topic, or reach the WiSkul team"
-        breadcrumbs={[{ label: 'Support' }]}
+        title="Help Center"
+        subtitle="Search the knowledge base, or reach the WiSkul team"
+        breadcrumbs={[{ label: 'Help Center' }]}
         onRefresh={() => refetch()}
         isRefreshing={isLoading}
         actions={
@@ -140,72 +137,91 @@ export const SupportPage: React.FC = () => {
           </div>
           <h2 className="mt-2 text-xl sm:text-2xl font-bold">How can we help you today?</h2>
           <p className="mt-1 text-sm text-blue-100 max-w-xl">
-            Pick a topic to see a step-by-step guide, search for something specific, or raise a ticket.
+            Search the knowledge base, browse by topic, or raise a ticket.
           </p>
           <div className="mt-4 relative max-w-xl">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search help topics…"
+              placeholder="Search for anything — e.g. “record a payment”, “2FA”, “new year”…"
               className="w-full rounded-xl border border-transparent bg-white pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white/60"
             />
           </div>
         </div>
 
-        {/* Quick actions */}
-        <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <QuickAction icon={Rocket} label="Getting started" to="/guide" accent="blue" />
-          <QuickAction icon={Ticket} label="My tickets" onClick={() => document.getElementById('tickets-section')?.scrollIntoView({ behavior: 'smooth' })} accent="violet" />
-          <QuickAction icon={Mail} label="Email support" href="mailto:support@wiskulsl.com" accent="emerald" />
-          <QuickAction icon={ShieldCheck} label="Account security" to="/settings?tab=security" accent="amber" />
-        </div>
-
-        {/* Topic directory */}
-        <section className="mt-8">
-          <div className="flex items-center gap-2 mb-3">
-            <BookOpen size={18} className="text-blue-600" />
-            <h3 className="text-base font-bold text-gray-900 dark:text-white">Browse by topic</h3>
-          </div>
-
-          {filteredModules.length === 0 ? (
-            <p className="text-sm text-gray-500">No topics match “{search}”. Try a different search or raise a ticket below.</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredModules.map((m, i) => (
-                <TopicCard key={m.id} module={m} accent={TOPIC_ACCENTS[i % TOPIC_ACCENTS.length]} />
+        {/* Search results take over the page while typing */}
+        {q.length > 1 ? (
+          <section className="mt-6">
+            <p className="text-sm text-gray-500 mb-3">
+              {results.length === 0 ? <>No articles match “{search}”. Try different words, or raise a ticket below.</> : <>{results.length} result{results.length === 1 ? '' : 's'} for “{search}”</>}
+            </p>
+            <div className="space-y-2">
+              {results.map(({ article, snippet }) => (
+                <Link key={article.id} to={articlePath(article)} className="block rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:border-blue-300 group">
+                  <p className="font-semibold text-gray-900 dark:text-white group-hover:text-blue-600">{article.title}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{snippet || article.summary}</p>
+                </Link>
               ))}
             </div>
-          )}
-        </section>
+            {filteredFaqs.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Quick answers</h3>
+                <FaqList faqs={filteredFaqs} openFaq={openFaq} setOpenFaq={setOpenFaq} />
+              </div>
+            )}
+          </section>
+        ) : (
+          <>
+            {/* Quick actions */}
+            <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <QuickAction icon={Rocket} label="Getting started" to="/support/getting-started/welcome" accent="blue" />
+              <QuickAction icon={Ticket} label="My tickets" onClick={() => document.getElementById('tickets-section')?.scrollIntoView({ behavior: 'smooth' })} accent="violet" />
+              <QuickAction icon={Mail} label="Email support" href="mailto:support@wiskulsl.com" accent="emerald" />
+              <QuickAction icon={ShieldCheck} label="Account security" to="/support/account/account-security" accent="amber" />
+            </div>
 
-        {/* FAQ */}
-        <section className="mt-8">
-          <div className="flex items-center gap-2 mb-3">
-            <HelpCircle size={18} className="text-blue-600" />
-            <h3 className="text-base font-bold text-gray-900 dark:text-white">Quick answers</h3>
-          </div>
-          {filteredFaqs.length === 0 ? (
-            <p className="text-sm text-gray-500">No answers match “{search}”.</p>
-          ) : (
-            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700 overflow-hidden bg-white dark:bg-gray-800">
-              {filteredFaqs.map((f, i) => (
-                <div key={i}>
-                  <button
-                    onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                    className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40"
-                  >
-                    <span className="text-sm font-semibold text-gray-900 dark:text-white">{f.q}</span>
-                    <ChevronDown size={18} className={`shrink-0 text-gray-400 transition-transform ${openFaq === i ? 'rotate-180' : ''}`} />
-                  </button>
-                  {openFaq === i && (
-                    <div className="px-4 pb-4 -mt-1 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">{f.a}</div>
-                  )}
+            {/* Popular articles */}
+            {popular.length > 0 && (
+              <section className="mt-8">
+                <div className="flex items-center gap-2 mb-3">
+                  <Star size={18} className="text-amber-500" />
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white">Popular articles</h3>
                 </div>
-              ))}
-            </div>
-          )}
-        </section>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {popular.map((a) => (
+                    <Link key={a.id} to={articlePath(a)} className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 hover:border-blue-300 group">
+                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 group-hover:text-blue-600">{a.title}</span>
+                      <ArrowRight size={15} className="shrink-0 text-gray-300 group-hover:text-blue-500" />
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Collections */}
+            <section className="mt-8">
+              <div className="flex items-center gap-2 mb-3">
+                <BookOpen size={18} className="text-blue-600" />
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">Browse by topic</h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {collections.map((c, i) => (
+                  <CollectionCard key={c.id} collection={c} count={c.articles.length} accent={TOPIC_ACCENTS[i % TOPIC_ACCENTS.length]} />
+                ))}
+              </div>
+            </section>
+
+            {/* FAQ */}
+            <section className="mt-8">
+              <div className="flex items-center gap-2 mb-3">
+                <HelpCircle size={18} className="text-blue-600" />
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">Quick answers</h3>
+              </div>
+              <FaqList faqs={COMMON_FAQ} openFaq={openFaq} setOpenFaq={setOpenFaq} />
+            </section>
+          </>
+        )}
 
         {/* Contact CTA */}
         <section className="mt-8 rounded-2xl border border-blue-100 dark:border-blue-900/40 bg-blue-50 dark:bg-blue-900/20 p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -316,23 +332,46 @@ const QuickAction: React.FC<{
   return <button type="button" onClick={onClick} className="w-full">{inner}</button>;
 };
 
-// ── Topic card → links to the module guide ─────────────────────────────────────
-const TopicCard: React.FC<{ module: HelpModule; accent: string }> = ({ module, accent }) => {
-  const Icon = ICONS[module.icon] || BookOpen;
+// ── Collection card → links to the collection page ─────────────────────────────
+const CollectionCard: React.FC<{ collection: HelpCollection; count: number; accent: string }> = ({ collection, count, accent }) => {
+  const Icon = COLLECTION_ICONS[collection.icon] || BookOpen;
   return (
     <Link
-      to={`/support/${module.id}`}
+      to={`/support/${collection.id}`}
       className="group rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 flex flex-col hover:border-blue-300 hover:shadow-sm transition-all"
     >
       <span className={`inline-flex h-11 w-11 items-center justify-center rounded-xl ${accent}`}>
         <Icon size={22} />
       </span>
-      <h4 className="mt-3 font-bold text-gray-900 dark:text-white">{module.title}</h4>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex-1">{module.summary}</p>
+      <h4 className="mt-3 font-bold text-gray-900 dark:text-white">{collection.title}</h4>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex-1">{collection.description}</p>
       <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 group-hover:gap-1.5 transition-all">
-        View guide <ArrowRight size={14} />
+        {count} article{count === 1 ? '' : 's'} <ArrowRight size={14} />
       </span>
     </Link>
+  );
+};
+
+// ── FAQ accordion ──────────────────────────────────────────────────────────────
+const FaqList: React.FC<{ faqs: Faq[]; openFaq: number | null; setOpenFaq: (i: number | null) => void }> = ({ faqs, openFaq, setOpenFaq }) => {
+  if (faqs.length === 0) return <p className="text-sm text-gray-500">No answers match your search.</p>;
+  return (
+    <div className="rounded-2xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+      {faqs.map((f, i) => (
+        <div key={i}>
+          <button
+            onClick={() => setOpenFaq(openFaq === i ? null : i)}
+            className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40"
+          >
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">{f.q}</span>
+            <ChevronDown size={18} className={`shrink-0 text-gray-400 transition-transform ${openFaq === i ? 'rotate-180' : ''}`} />
+          </button>
+          {openFaq === i && (
+            <div className="px-4 pb-4 -mt-1 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">{f.a}</div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 };
 
@@ -640,7 +679,8 @@ const NewTicketModal: React.FC<{ onClose: () => void; onCreated: () => void }> =
                           <button
                             type="button"
                             onClick={() => removeAttachment(i)}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full bg-red-500 text-white transition-opacity"
+                            aria-label="Remove attachment"
+                            className="sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 p-1.5 rounded-full bg-red-500 text-white transition-opacity"
                           >
                             <Trash2 size={14} />
                           </button>

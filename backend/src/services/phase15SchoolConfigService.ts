@@ -404,7 +404,7 @@ export class Phase15SchoolConfigService {
           value = Number(value);
           break;
         case 'boolean':
-          value = Boolean(value);
+          value = value === true || value === 'true' || value === '1' || value === 1; // TEXT column: 'false' must stay false
           break;
         case 'json':
           if (typeof value === 'string') {
@@ -522,7 +522,7 @@ export class Phase15SchoolConfigService {
         } else if (setting.data_type === 'number') {
           value = Number(value);
         } else if (setting.data_type === 'boolean') {
-          value = Boolean(value);
+          value = value === true || value === 'true' || value === '1' || value === 1; // TEXT column: 'false' must stay false
         }
         result[setting.setting_key] = value;
       });
@@ -573,7 +573,7 @@ export class Phase15SchoolConfigService {
         } else if (setting.data_type === 'number') {
           value = Number(value);
         } else if (setting.data_type === 'boolean') {
-          value = Boolean(value);
+          value = value === true || value === 'true' || value === '1' || value === 1; // TEXT column: 'false' must stay false
         }
         result[setting.setting_key] = {
           value,
