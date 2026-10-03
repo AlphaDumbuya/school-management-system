@@ -242,7 +242,7 @@ export const disciplineService = {
 
   getStudentInfractions: (
     studentId: string,
-    params?: { status?: string; severity?: string; date_from?: string; date_to?: string; page?: number; limit?: number }
+    params?: { status?: string; severity?: string; date_from?: string; date_to?: string; page?: number; limit?: number; academic_year?: string }
   ) => apiClient.get<PaginatedResult<StudentInfraction>>(`/api/v1/discipline/infractions/${studentId}`, { params }),
 
   getInfraction: (studentId: string, infractionId: string) =>
@@ -274,7 +274,7 @@ export const disciplineService = {
 
   getStudentActions: (
     studentId: string,
-    params?: { status?: string; action_type?: string; page?: number; limit?: number }
+    params?: { status?: string; action_type?: string; page?: number; limit?: number; academic_year?: string }
   ) => apiClient.get<PaginatedResult<DisciplineAction>>(`/api/v1/discipline/actions/${studentId}`, { params }),
 
   updateActionStatus: (actionId: string, data: { status: string; notes?: string }) =>
@@ -389,8 +389,10 @@ export const disciplineService = {
     apiClient.get('/api/v1/discipline/analytics/report'),
 
   // Statistics
-  getStudentStats: (studentId: string) =>
-    apiClient.get<StudentDisciplineStats>(`/api/v1/discipline/statistics/student/${studentId}`),
+  getStudentStats: (studentId: string, academicYear?: string) =>
+    apiClient.get<StudentDisciplineStats>(`/api/v1/discipline/statistics/student/${studentId}`, {
+      params: academicYear ? { academic_year: academicYear } : undefined,
+    }),
 
   getClassStats: (classId: string) =>
     apiClient.get(`/api/v1/discipline/statistics/class/${classId}`),

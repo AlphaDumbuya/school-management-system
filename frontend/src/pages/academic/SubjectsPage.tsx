@@ -166,7 +166,8 @@ export const SubjectsPage: React.FC = () => {
   const { canAccess, user } = useAuth();
   const canManage = canAccess(['principal', 'super_admin']);
   const isStudent = user?.role === 'student';
-  const isParent = user?.role === 'parent' || user?.role === 'guardian';
+  // 'guardian' is a legacy alias for parent (not in UserRole, but the column is free text).
+  const isParent = user?.role === 'parent' || (user?.role as string | undefined) === 'guardian';
   const isViewerOnly = isStudent || isParent;
 
   // Parent multi-child switcher.
@@ -224,14 +225,24 @@ export const SubjectsPage: React.FC = () => {
     : allSubjects;
   const pagination = (data as any)?.pagination ?? { total: 0, total_pages: 1 };
 
-  // KPI calculations
+  // KPIs: staff get the server's whole-set totals (the list is paginated);
+  // students/parents get their own short list, counted directly.
+  const serverStats = !isViewerOnly ? (data as any)?.stats : null;
   const stats = useMemo(() => {
-    const total = Number(pagination.total ?? subjects.length);
+    if (serverStats) {
+      return {
+        total: Number(serverStats.total ?? 0),
+        core: Number(serverStats.core ?? 0),
+        elective: Number(serverStats.elective ?? 0),
+        active: Number(serverStats.active ?? 0),
+      };
+    }
+    const total = isViewerOnly ? subjects.length : Number(pagination.total ?? subjects.length);
     const core = subjects.filter((s) => s.category === 'core').length;
     const elective = subjects.filter((s) => s.is_elective).length;
     const active = subjects.filter((s) => s.status === 'active').length;
     return { total, core, elective, active };
-  }, [subjects, pagination]);
+  }, [subjects, pagination, serverStats, isViewerOnly]);
 
   // Activate / Deactivate handler
   const handleToggleStatus = async () => {

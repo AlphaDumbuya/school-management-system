@@ -139,10 +139,27 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 
     const totalResult = await query.clone().clearSelect().clearOrder().count('subjects.id as count').first();
     const total = Number(totalResult?.count ?? 0);
+
+    // KPI totals across the WHOLE filtered set (not just this page).
+    const agg: any = await query.clone().clearSelect().clearOrder()
+      .select(
+        db.raw("COUNT(*) FILTER (WHERE subjects.category = 'core') as core"),
+        db.raw('COUNT(*) FILTER (WHERE subjects.is_elective = true) as elective'),
+        db.raw("COUNT(*) FILTER (WHERE subjects.status = 'active') as active"),
+      )
+      .first();
+    const stats = {
+      total,
+      core: Number(agg?.core ?? 0),
+      elective: Number(agg?.elective ?? 0),
+      active: Number(agg?.active ?? 0),
+    };
+
     const subjects = await query.limit(limit).offset(offset).orderBy('subjects.code', 'asc');
 
     res.json({
       data: subjects.map(mapSubject),
+      stats,
       pagination: {
         page,
         limit,

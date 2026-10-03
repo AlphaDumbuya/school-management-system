@@ -4,10 +4,34 @@ import { authenticate, authorize, attachUserContext } from '@middleware/authMidd
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
+import { normalizeAcademicYear, resolveActiveYear } from '../utils/academicYear.js';
 
 const router = Router();
 router.use(authenticate);
 router.use(attachUserContext);
+
+/**
+ * A past academic year's exam timetable is read-only history. An exam is
+ * "past" when its class belongs to an inactive session, or its academic_year
+ * isn't the school's active year (legacy classes with no session count as current).
+ */
+async function assertExamCurrentYear(tenantId: string, classId?: string | null, academicYear?: string | null) {
+  if (classId) {
+    const cls = await db('classes')
+      .leftJoin('academic_sessions as s', 'classes.academic_session_id', 's.id')
+      .where('classes.id', classId)
+      .first('s.id as session_id', 's.is_active');
+    if (cls?.session_id && cls.is_active === false) {
+      throw new AppError('This exam timetable belongs to a past academic year and is read-only', 409, 'PAST_YEAR_READ_ONLY');
+    }
+  }
+  if (academicYear) {
+    const { yearString } = await resolveActiveYear(tenantId);
+    if (normalizeAcademicYear(academicYear) !== yearString) {
+      throw new AppError('Exams can only be scheduled in the current academic year', 409, 'PAST_YEAR_READ_ONLY');
+    }
+  }
+}
 
 /**
  * POST /api/v1/examinations
@@ -65,6 +89,7 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
     if (end_date && String(end_date) < String(start_date)) {
       throw new AppError('End date/time cannot be before the start', 400, 'VALIDATION_ERROR');
     }
+    await assertExamCurrentYear(tenantId, class_id, academic_year);
 
     const [inserted] = await db('examinations').insert({
       title: title.trim(),
@@ -281,6 +306,9 @@ router.put('/:examId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPE
       .select('examinations.*')
       .first();
     if (!exam) throw new AppError('Examination not found', 404, 'NOT_FOUND');
+    // Neither the existing exam nor its new target may be in a past year.
+    await assertExamCurrentYear(tenantId, exam.class_id, exam.academic_year);
+    await assertExamCurrentYear(tenantId, class_id || null, academic_year || null);
 
     // Validate any changed class/subject belong to this tenant.
     if (class_id) {
@@ -363,6 +391,7 @@ router.delete('/:examId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
       .select('examinations.*')
       .first();
     if (!exam) throw new AppError('Examination not found', 404, 'NOT_FOUND');
+    await assertExamCurrentYear(tenantId, exam.class_id, exam.academic_year);
 
     await db('examinations').where('id', examId).del();
     res.json({ message: 'Examination deleted successfully' });

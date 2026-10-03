@@ -1,4 +1,38 @@
 import { apiClient } from '@lib/apiClient';
+import useAuthStore from '@store/authStore';
+
+// ── Device copy of the school's academic sessions (for offline year filters) ──
+export interface CachedSession { id: string; name: string; is_active: boolean }
+
+const sessionsKey = () => {
+  const u: any = useAuthStore.getState().user;
+  return `wiskul.sessions.${u?.tenantId ?? u?.tenant_id ?? 'none'}`;
+};
+
+/** Canonical "YYYY/YYYY" (accepts YYYY-YYYY); anything else is returned trimmed. */
+const canonYear = (v: string) => {
+  const s = String(v ?? '').trim();
+  const m = /^(\d{4})[-/](\d{4})$/.exec(s);
+  return m ? `${m[1]}/${m[2]}` : s;
+};
+
+function rememberAcademicSessions(list: Array<{ id: string; name: string; is_active: boolean }>) {
+  try {
+    const slim: CachedSession[] = list.map((s) => ({ id: String(s.id), name: canonYear(s.name), is_active: !!s.is_active }));
+    localStorage.setItem(sessionsKey(), JSON.stringify(slim));
+  } catch { /* storage unavailable — offline year filtering degrades gracefully */ }
+}
+
+/** The school's sessions as last seen online on this device (tenant-scoped). */
+export function getCachedAcademicSessions(): CachedSession[] {
+  try {
+    const raw = localStorage.getItem(sessionsKey());
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 export interface SchoolInfo {
   school_id: string;
@@ -151,9 +185,14 @@ export const schoolConfigService = {
    * Drives year pickers so admins can reach ANY past year with data.
    */
   async listAcademicSessions() {
-    return apiClient.get<Array<{ id: string; name: string; start_date: string; end_date: string; is_active: boolean }>>(
+    const res = await apiClient.get<Array<{ id: string; name: string; start_date: string; end_date: string; is_active: boolean }>>(
       '/api/v1/school-config/academic-sessions',
     );
+    // Remember the sessions on this device so offline caches (e.g. the
+    // teacher's class roster) can still be filtered by academic year.
+    const list = (res as any)?.data;
+    if ((res as any)?.success !== false && Array.isArray(list)) rememberAcademicSessions(list);
+    return res;
   },
 
   /** Full read-only snapshot of one academic year (Academic Archive page). */

@@ -4,6 +4,7 @@ import { authenticate, authorize, attachUserContext } from '@middleware/authMidd
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
+import { normalizeAcademicYear } from '../utils/academicYear.js';
 
 const router = Router();
 router.use(authenticate);
@@ -275,22 +276,30 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     // Year scope. No year given = the school's CURRENT (active) year, so every
     // class picker shows this year's classes only (no "JSS 3" twice after a
     // rollover). academic_year=all lists every year explicitly.
+    //
+    // Legacy classes with no session belong to the ACTIVE year only — they must
+    // not appear inside a past year's history. A year that doesn't exist for
+    // this school shows nothing (never a different year's classes), except for
+    // a brand-new school with no sessions at all, where nothing is year-bound.
     const academicYear = req.query.academic_year as string;
     const sessionId = req.query.academic_session_id as string;
+    let scopedSession: { id: string; name: string; is_active: boolean } | null = null;
     if (sessionId) {
       query = query.where('classes.academic_session_id', sessionId);
-    } else if (academicYear && academicYear !== 'all') {
-      query = query.where(function (this: any) {
-        this.where('academic_sessions.name', academicYear)
-          .orWhereNull('classes.academic_session_id');
-      });
-    } else if (!academicYear) {
-      const active = await db('academic_sessions').where({ tenant_id: tenantId, is_active: true }).first('id');
-      if (active) {
+    } else if (academicYear !== 'all') {
+      const sessions = await db('academic_sessions').where({ tenant_id: tenantId }).select('id', 'name', 'is_active');
+      const wanted = academicYear ? normalizeAcademicYear(academicYear) : null;
+      scopedSession = (wanted
+        ? sessions.find((s: any) => normalizeAcademicYear(s.name) === wanted)
+        : sessions.find((s: any) => s.is_active)) ?? null;
+      if (scopedSession) {
+        const s = scopedSession;
         query = query.where(function (this: any) {
-          this.where('classes.academic_session_id', active.id)
-            .orWhereNull('classes.academic_session_id');
+          this.where('classes.academic_session_id', s.id);
+          if (s.is_active) this.orWhereNull('classes.academic_session_id');
         });
+      } else if (wanted && sessions.length > 0) {
+        return res.json({ data: [], stats: { total: 0, total_enrolled: 0, avg_size: 0, avg_capacity_pct: 0 }, pending_transition: null, pagination: { page, limit, total: 0, total_pages: 0 } });
       }
     }
 
@@ -306,10 +315,53 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     const totalResult = await query.clone().clearSelect().clearOrder().count('classes.id as count').first();
     const total = Number(totalResult?.count ?? 0);
 
+    // KPI totals across the WHOLE filtered set (not just this page).
+    const agg: any = await query.clone().clearSelect().clearOrder()
+      .select(
+        db.raw('COALESCE(SUM(COALESCE(enrollment_counts.enrolled_students, 0)), 0) as enrolled'),
+        db.raw('AVG(CASE WHEN classes.capacity > 0 THEN COALESCE(enrollment_counts.enrolled_students, 0)::float / classes.capacity * 100 END) as cap_pct'),
+      )
+      .first();
+    const totalEnrolled = Number(agg?.enrolled ?? 0);
+    const stats = {
+      total,
+      total_enrolled: totalEnrolled,
+      avg_size: total > 0 ? Math.round(totalEnrolled / total) : 0,
+      avg_capacity_pct: Math.round(Number(agg?.cap_pct ?? 0)),
+    };
+
+    // Year transition in progress (current year only): students still actively
+    // enrolled in LAST year's copies of these classes, i.e. not yet moved into
+    // this year. The page shows a notice until the principal finishes it.
+    let pendingTransition: { fromYear: string; students: number } | null = null;
+    if (scopedSession?.is_active) {
+      const prevIds = (await query.clone().clearSelect().clearOrder()
+        .whereNotNull('classes.carried_from_id')
+        .select('classes.carried_from_id'))
+        .map((r: any) => r.carried_from_id);
+      if (prevIds.length) {
+        const left: any = await db('enrollments')
+          .whereIn('class_id', prevIds)
+          .whereIn('status', ACTIVE_ENROLLMENT)
+          .countDistinct('student_id as cnt')
+          .first();
+        const students = Number(left?.cnt ?? 0);
+        if (students > 0) {
+          const from: any = await db('classes')
+            .join('academic_sessions as ps', 'classes.academic_session_id', 'ps.id')
+            .whereIn('classes.id', prevIds)
+            .first('ps.name');
+          pendingTransition = { fromYear: normalizeAcademicYear(from?.name) || 'last year', students };
+        }
+      }
+    }
+
     const classes = await query.limit(limit).offset(offset).orderBy('classes.level', 'asc').orderBy('classes.name', 'asc');
 
     res.json({
       data: classes,
+      stats,
+      pending_transition: pendingTransition,
       pagination: {
         page,
         limit,

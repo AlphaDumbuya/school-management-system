@@ -84,6 +84,8 @@ export interface ListStudentsParams {
   search?: string;
   /** Canonical YYYY/YYYY — restrict to that year's enrolled roster. */
   academic_year?: string;
+  /** Only students in this class (server-side, across every page). */
+  class_id?: string;
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────

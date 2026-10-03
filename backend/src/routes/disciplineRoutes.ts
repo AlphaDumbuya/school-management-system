@@ -114,9 +114,10 @@ router.get(
           severity: req.query.severity as string,
           date_from: req.query.date_from ? new Date(req.query.date_from as string) : undefined,
           date_to: req.query.date_to ? new Date(req.query.date_to as string) : undefined,
+          yearScope: await resolveYearScope(req.user!.tenant_id, req.query.academic_year),
           page: parseInt(req.query.page as string) || 1,
           limit: parseInt(req.query.limit as string) || 20,
-        }
+        } as any
       );
 
       res.json(result);
@@ -342,7 +343,8 @@ router.get(
             status: req.query.status as string,
             action_type: req.query.action_type as string,
           },
-        }
+          yearScope: await resolveYearScope(req.user!.tenant_id, req.query.academic_year),
+        } as any
       );
 
       res.json(result);
@@ -1140,7 +1142,8 @@ router.get(
     try {
       const stats = await disciplineService.getStudentStats(
         req.params.studentId,
-        req.user.tenant_id
+        req.user!.tenant_id,
+        await resolveYearScope(req.user!.tenant_id, req.query.academic_year),
       );
 
       res.json(stats);

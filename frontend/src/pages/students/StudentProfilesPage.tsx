@@ -74,10 +74,23 @@ export const StudentProfilesPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(12); // Grid of cards looks best in multiples of 3 or 4
   const [activeTab, setActiveTab] = useState<'overview' | 'academics' | 'attendance' | 'conduct' | 'billing'>('overview');
-  // Attendance tab year scope: opens on the school's ACTIVE year; '' = all-time.
+  // ONE academic year drives the whole page: the student list (that year's
+  // roster + the class each student was in), the class filter options, and
+  // every profile tab (results, attendance, conduct). Opens on the school's
+  // ACTIVE year; '' = All years; a past year is history.
   const { activeYear } = useAcademicYears();
-  const [pickedAttendanceYear, setAttendanceYear] = useState<string | null>(null);
-  const attendanceYear = pickedAttendanceYear ?? activeYear;
+  const [pickedYear, setPickedYear] = useState<string | null>(null);
+  const year = pickedYear ?? activeYear;
+  const yearReady = pickedYear !== null || !!activeYear;
+  const viewingPast = !!year && !!activeYear && year < activeYear;
+  const viewingAll = pickedYear === '' && !!activeYear;
+  const changeYear = (y: string) => {
+    // The current year is stored as "not picked" so the page follows a rollover.
+    setPickedYear(y === activeYear ? null : y);
+    setClassFilter('');
+    setPage(1);
+  };
+  const attendanceYear = year;
 
   // Parent Account Modal State
   const [parentModalOpen, setParentModalOpen] = useState(false);
@@ -120,13 +133,16 @@ export const StudentProfilesPage: React.FC = () => {
 
   // 1. Fetch Students list
   const { data: studentsData, isLoading: isStudentsLoading, refetch } = useQuery({
-    queryKey: ['students-profiles', { search, statusFilter, classFilter, page, pageSize }],
+    queryKey: ['students-profiles', { search, statusFilter, classFilter, page, pageSize, year }],
     queryFn: () => studentsService.listStudents({
       page,
       limit: pageSize,
       status: statusFilter || undefined,
       search: search || undefined,
+      class_id: classFilter || undefined,
+      academic_year: year || undefined,
     }),
+    enabled: yearReady,
     staleTime: 30_000,
   });
 
@@ -134,18 +150,17 @@ export const StudentProfilesPage: React.FC = () => {
   const pagination = (studentsData as any)?.pagination ?? { total: 0, total_pages: 1 };
 
   // Fetch classes for dropdown filter
+  // Class filter options = the selected year's classes ('' → every year).
   const { data: classesData } = useQuery({
-    queryKey: ['profiles-classes-filter'],
-    queryFn: () => classesService.listClasses({ limit: 100 }),
+    queryKey: ['profiles-classes-filter', year],
+    queryFn: () => classesService.listClasses({ limit: 100, academic_year: year || 'all' }),
+    enabled: yearReady,
     staleTime: 60_000,
   });
   const classesList = (classesData as any)?.data ?? [];
 
-  // Filter students by class locally if classFilter is set (in case class filtering isn't supported at server-level)
-  const filteredStudents = useMemo(() => {
-    if (!classFilter) return students;
-    return students.filter((s: any) => String(s.class_id) === classFilter);
-  }, [students, classFilter]);
+  // The class filter is applied by the server across every page.
+  const filteredStudents = students;
 
   // 2. Fetch Selected Student Details
   const { data: studentDetails, isLoading: isDetailsLoading } = useQuery({
@@ -155,8 +170,12 @@ export const StudentProfilesPage: React.FC = () => {
     staleTime: 30_000,
   });
 
+  // The API answers "not your student" etc. with { success:false, error }.
+  const detailsError: string | null = (studentDetails as any)?.success === false
+    ? ((studentDetails as any)?.error || 'This profile could not be loaded.')
+    : null;
   const student = useMemo(() => {
-    if (!studentDetails) return null;
+    if (!studentDetails || (studentDetails as any)?.success === false) return null;
     const raw = studentDetails as any;
     if (raw.first_name || raw.student_id || raw.id) return raw;
     if (raw.data && (raw.data.first_name || raw.data.student_id || raw.data.id)) return raw.data;
@@ -166,9 +185,9 @@ export const StudentProfilesPage: React.FC = () => {
   // 3. Fetch Selected Student Sub-resources
   // A. Academics (SL subject results — Test 1 / Test 2 / Mean, the correct source)
   const { data: gradesData, isLoading: isGradesLoading } = useQuery({
-    queryKey: ['student-profile-results', selectedStudentId],
-    queryFn: () => reportCardService.getStudentResultsSummary(selectedStudentId!),
-    enabled: !!selectedStudentId && activeTab === 'academics',
+    queryKey: ['student-profile-results', selectedStudentId, year],
+    queryFn: () => reportCardService.getStudentResultsSummary(selectedStudentId!, year || undefined),
+    enabled: !!selectedStudentId && activeTab === 'academics' && yearReady,
     staleTime: 30_000,
   });
   const gradesPayload = (gradesData as any)?.data ?? {};
@@ -188,7 +207,7 @@ export const StudentProfilesPage: React.FC = () => {
   const { data: attendanceData, isLoading: isAttendanceLoading } = useQuery({
     queryKey: ['student-profile-attendance', selectedStudentId, attendanceYear],
     queryFn: () => studentsService.getStudentAttendance(selectedStudentId!, attendanceYear || undefined),
-    enabled: !!selectedStudentId && activeTab === 'attendance' && (pickedAttendanceYear !== null || !!activeYear),
+    enabled: !!selectedStudentId && activeTab === 'attendance' && yearReady,
     staleTime: 30_000,
   });
   // Backend summary uses present/late/absent/excused (NOT *_count) — keep the
@@ -197,26 +216,29 @@ export const StudentProfilesPage: React.FC = () => {
   const attendanceRecords = (attendanceData as any)?.records ?? [];
 
   // C. Conduct/Discipline
+  // Discipline records are keyed by the student's USER account id (their FK
+  // references users.id), not the students.id used everywhere else here.
+  const conductId: string | null = student?.user_id ? String(student.user_id) : null;
   const { data: disciplineStatsData, isLoading: isDisciplineStatsLoading } = useQuery({
-    queryKey: ['student-profile-discipline-stats', selectedStudentId],
-    queryFn: () => disciplineService.getStudentStats(selectedStudentId!),
-    enabled: !!selectedStudentId && activeTab === 'conduct',
+    queryKey: ['student-profile-discipline-stats', conductId, year],
+    queryFn: () => disciplineService.getStudentStats(conductId!, year || undefined),
+    enabled: !!conductId && activeTab === 'conduct' && yearReady,
     staleTime: 30_000,
   });
   const disciplineStats = disciplineStatsData as any;
 
   const { data: infractionsData } = useQuery({
-    queryKey: ['student-profile-infractions', selectedStudentId],
-    queryFn: () => disciplineService.getStudentInfractions(selectedStudentId!),
-    enabled: !!selectedStudentId && activeTab === 'conduct',
+    queryKey: ['student-profile-infractions', conductId, year],
+    queryFn: () => disciplineService.getStudentInfractions(conductId!, { academic_year: year || undefined }),
+    enabled: !!conductId && activeTab === 'conduct' && yearReady,
     staleTime: 30_000,
   });
   const infractions = (infractionsData as any)?.data ?? [];
 
   const { data: actionsData } = useQuery({
-    queryKey: ['student-profile-discipline-actions', selectedStudentId],
-    queryFn: () => disciplineService.getStudentActions(selectedStudentId!),
-    enabled: !!selectedStudentId && activeTab === 'conduct',
+    queryKey: ['student-profile-discipline-actions', conductId, year],
+    queryFn: () => disciplineService.getStudentActions(conductId!, { academic_year: year || undefined }),
+    enabled: !!conductId && activeTab === 'conduct' && yearReady,
     staleTime: 30_000,
   });
   const actions = (actionsData as any)?.data ?? [];
@@ -346,7 +368,20 @@ export const StudentProfilesPage: React.FC = () => {
         }
         onRefresh={() => refetch()}
         isRefreshing={isStudentsLoading}
+        actions={<YearFilter value={year} onChange={changeYear} includeAllOption />}
       >
+        {(viewingPast || viewingAll) && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>
+              {viewingPast
+                ? <>Showing the <strong>{year}</strong> roster and each student's {year} results, attendance and conduct, as history.</>
+                : <>Showing students and records from <strong>all years</strong>.</>}
+            </span>
+            <button type="button" onClick={() => changeYear(activeYear)} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
         {/* ── SCREEN 1: DIRECTORY GRID ────────────────────────────────────────── */}
         {!selectedStudentId ? (
           <div className="space-y-6">
@@ -578,7 +613,13 @@ export const StudentProfilesPage: React.FC = () => {
               )}
             </div>
 
-            {isDetailsLoading || !student ? (
+            {detailsError ? (
+              <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border border-gray-150 dark:border-gray-700 text-center">
+                <p className="text-base font-semibold text-gray-800 dark:text-gray-100">Profile unavailable</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{detailsError}</p>
+                <Button variant="outline" size="sm" className="mt-4" onClick={handleBackToList}>Back to list</Button>
+              </div>
+            ) : isDetailsLoading || !student ? (
               <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border border-gray-150 dark:border-gray-700 animate-pulse space-y-6">
                 <div className="flex items-center gap-4">
                   <div className="w-20 h-20 bg-gray-250 dark:bg-gray-700 rounded-2xl" />
@@ -911,13 +952,10 @@ export const StudentProfilesPage: React.FC = () => {
                   {/* C. ATTENDANCE TAB */}
                   {activeTab === 'attendance' && (
                     <div className="space-y-6">
-                      {/* Year scope — empty = lifetime, a year narrows the tab */}
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {attendanceYear ? `Showing ${attendanceYear} attendance` : 'Showing all-time attendance'}
-                        </p>
-                        <YearFilter value={attendanceYear} onChange={setAttendanceYear} includeAllOption />
-                      </div>
+                      {/* Year scope follows the page's academic year filter. */}
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {attendanceYear ? `Showing ${attendanceYear} attendance` : 'Showing all-time attendance'}
+                      </p>
                       {/* Attendance KPIs */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <KPICard title="Attendance Rate" value={`${attendanceSummary.attendance_percentage}%`} icon={<Activity size={20} />} color={attendanceSummary.attendance_percentage >= 85 ? "green" : attendanceSummary.attendance_percentage >= 75 ? "amber" : "red"} />
