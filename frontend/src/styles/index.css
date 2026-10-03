@@ -87,6 +87,44 @@ textarea:focus {
   outline: none;
 }
 
+/*
+ * Native <select> option styling.
+ *
+ * On Android WebView the native dropdown paints each <option> with the system
+ * accent (a blue fill), and the currently-selected option keeps that blue
+ * background even when the list isn't focused — so every dropdown looks like it
+ * has a blue-highlighted item on mobile. Desktop browsers render the listbox
+ * with neutral colours, which is why it only shows on the app.
+ *
+ * Pinning explicit option colours + a neutral accent-color on the control makes
+ * the native popup render on a white (dark: slate) surface with dark text, and
+ * stops the checked option from being force-filled blue. Scoped to options so
+ * it never touches our custom portal dropdowns (SearchableSelect etc.).
+ */
+select {
+  accent-color: #2563eb; /* neutralise the OS accent used for the highlight */
+}
+select option {
+  background-color: #ffffff;
+  color: #111827; /* gray-900 */
+}
+select option:checked,
+select option:hover,
+select option:focus {
+  background-color: #eff6ff; /* blue-50 — gentle tint instead of solid blue */
+  color: #111827;
+}
+.dark select option {
+  background-color: #1f2937; /* gray-800 */
+  color: #f3f4f6; /* gray-100 */
+}
+.dark select option:checked,
+.dark select option:hover,
+.dark select option:focus {
+  background-color: #374151; /* gray-700 */
+  color: #f3f4f6;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
