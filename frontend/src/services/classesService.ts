@@ -6,6 +6,7 @@
 import { apiClient } from '@lib/apiClient';
 import useAuthStore from '@store/authStore';
 import { rosterRepo } from '../offline/repositories/rosterRepo';
+import { getCachedAcademicSessions } from './schoolConfigService';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -85,13 +86,16 @@ export const classesService = {
     const res = await apiClient
       .get<{ data: ClassRecord[]; pagination: any }>('/api/v1/classes', { params })
       .catch(() => null as any);
-    const list = (res as any)?.data?.data ?? (res as any)?.data ?? [];
-    if (res && (Array.isArray(list) ? list.length > 0 : true) && navigator.onLine) {
+    // Trust a successful online answer EVEN WHEN EMPTY. An empty list is a real
+    // result (a past year the teacher didn't teach, or a new year they aren't
+    // assigned in yet); replacing it with the cache would show other years'
+    // classes under the selected year.
+    if (res && (res as any).success !== false && navigator.onLine) {
       return res;
     }
-    const cached = await classesService._cachedClasses();
+    const cached = await classesService._cachedClasses(params);
     if (cached.length) {
-      return { success: true, data: cached, pagination: { total: cached.length } } as any;
+      return { success: true, data: cached, pagination: { total: cached.length }, offline: true } as any;
     }
     return res ?? ({ success: false, data: [] } as any);
   },
@@ -108,11 +112,41 @@ export const classesService = {
     return res ?? ({ success: false, data: [] } as any);
   },
 
-  /** Read classes from the teacher offline cache (best-effort). */
-  async _cachedClasses(): Promise<ClassRecord[]> {
+  /**
+   * Read classes from the teacher offline cache (best-effort), applying the
+   * same filters the API would. The cache holds every year's classes, so the
+   * year filter matters: legacy classes with no session count as the active year.
+   */
+  async _cachedClasses(params: ListClassesParams = {}): Promise<ClassRecord[]> {
     const uid = (useAuthStore.getState().user as any)?.id;
     if (!uid) return [];
-    return rosterRepo.list(uid, 'classes').catch(() => []);
+    let rows: ClassRecord[] = await rosterRepo.list(uid, 'classes').catch(() => []);
+
+    if (params.academic_session_id) {
+      rows = rows.filter((c) => String(c.academic_session_id ?? '') === String(params.academic_session_id));
+    } else if (params.academic_year !== 'all') {
+      // Same rule as the API: the requested year, else the active year.
+      const sessions = getCachedAcademicSessions();
+      if (sessions.length) {
+        const session = params.academic_year
+          ? sessions.find((s) => s.name === params.academic_year)
+          : sessions.find((s) => s.is_active);
+        rows = session
+          ? rows.filter((c) => (c.academic_session_id
+              ? String(c.academic_session_id) === String(session.id)
+              : session.is_active))
+          : [];
+      }
+      // No sessions remembered on this device yet: can't tell years apart, so
+      // serve the cache unfiltered rather than nothing.
+    }
+    if (params.level) rows = rows.filter((c) => c.level === params.level);
+    if (params.status) rows = rows.filter((c) => c.status === params.status);
+    if (params.search) {
+      const t = params.search.trim().toLowerCase();
+      rows = rows.filter((c) => [c.name, c.room_number, c.building].some((v) => String(v ?? '').toLowerCase().includes(t)));
+    }
+    return rows;
   },
 
   /** GET /api/v1/classes/:id — single class with enrollment count */

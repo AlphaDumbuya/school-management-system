@@ -384,7 +384,7 @@ export const reportCardService = {
    * All SL subject results for a student (Test1/Test2/Mean + grade) for the
    * profile Academics tab — the correct SL source, not the legacy CA/Exam table.
    */
-  async getStudentResultsSummary(studentId: string) {
+  async getStudentResultsSummary(studentId: string, academicYear?: string) {
     return apiClient.get<{
       success: boolean;
       data: {
@@ -403,7 +403,9 @@ export const reportCardService = {
           remark: string;
         }>;
       };
-    }>(`${BASE}/student/${studentId}/summary`);
+    }>(`${BASE}/student/${studentId}/summary`, {
+      params: academicYear ? { academic_year: academicYear } : undefined,
+    });
   },
 };
 

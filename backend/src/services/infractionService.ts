@@ -139,6 +139,9 @@ class InfractionService {
         query = query.where('incident_date', '<=', options.date_to);
       }
 
+      // Academic-year scope: the year's classes, else the year's date window.
+      query = applyYearScope(query, (options as any)?.yearScope ?? null, 'si.class_id', 'si.incident_date');
+
       // Pagination
       const page = options?.page || 1;
       const limit = options?.limit || 20;
@@ -149,15 +152,17 @@ class InfractionService {
         .limit(limit)
         .offset(offset);
 
-      const total = await query.clone().count('* as count').first();
+      // Count without the select list / ORDER BY (Postgres rejects mixing them).
+      const total = await query.clone().clearSelect().clearOrder().count('* as count').first();
+      const totalCount = Number(total?.count || 0);
 
       return {
         data: infractions,
         pagination: {
           page,
           limit,
-          total: total?.count || 0,
-          total_pages: Math.ceil((total?.count || 0) / limit),
+          total: totalCount,
+          total_pages: Math.ceil(totalCount / limit),
         },
       };
     } catch (error) {
@@ -310,15 +315,17 @@ class InfractionService {
         .limit(limit)
         .offset(offset);
 
-      const total = await query.clone().count('* as count').first();
+      // Count without the select list / ORDER BY (Postgres rejects mixing them).
+      const total = await query.clone().clearSelect().clearOrder().count('* as count').first();
+      const totalCount = Number(total?.count || 0);
 
       return {
         data: infractions,
         pagination: {
           page,
           limit,
-          total: total?.count || 0,
-          total_pages: Math.ceil((total?.count || 0) / limit),
+          total: totalCount,
+          total_pages: Math.ceil(totalCount / limit),
         },
       };
     } catch (error) {

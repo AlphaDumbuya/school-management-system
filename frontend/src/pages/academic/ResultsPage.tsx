@@ -33,7 +33,8 @@ export const ResultsPage: React.FC = () => {
   const { user } = useAuth();
   const isPrincipal = user?.role === 'principal' || user?.role === 'super_admin';
   const isStudent = user?.role === 'student';
-  const isParent = user?.role === 'parent' || user?.role === 'guardian';
+  // 'guardian' is a legacy alias for parent (not in UserRole, but the column is free text).
+  const isParent = user?.role === 'parent' || (user?.role as string | undefined) === 'guardian';
 
   // Pre-warm the grading method cache once the user is authenticated.
   // Previously this was a module-level call that fired before auth was ready,
@@ -48,7 +49,8 @@ export const ResultsPage: React.FC = () => {
   const academicYear = pickedYear || activeYear;
   const viewingPast = !!academicYear && !!activeYear && academicYear !== activeYear;
   const setAcademicYear = (y: string) => {
-    setPickedYear(y);
+    // The current year is stored as '' so the page follows a rollover by itself.
+    setPickedYear(y === activeYear ? '' : y);
     // Class picks belong to one year's class rows — reset them on change.
     setRankingClassId(''); setRatingsClassId(''); setRatingsStudentId('');
   };
@@ -129,7 +131,7 @@ export const ResultsPage: React.FC = () => {
         breadcrumbs={[{ label: 'Results & Grades' }]}
         actions={
           <div className="w-full sm:w-44">
-            <YearFilter value={academicYear} onChange={setAcademicYear} className="w-full [&_select]:w-full" />
+            <YearFilter value={academicYear} onChange={setAcademicYear} noAutoSelect className="w-full [&_select]:w-full" />
           </div>
         }
       >
@@ -139,7 +141,7 @@ export const ResultsPage: React.FC = () => {
               You're working in <strong>{academicYear}</strong>, a past year. Scores and ratings you save here change
               that year's records. The current year is {activeYear}.
             </span>
-            <button type="button" onClick={() => setAcademicYear(activeYear)} className="text-xs font-bold text-amber-800 hover:underline">
+            <button type="button" onClick={() => setAcademicYear('')} className="text-xs font-bold text-amber-800 hover:underline">
               Back to {activeYear}
             </button>
           </div>

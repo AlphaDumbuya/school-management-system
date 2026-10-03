@@ -124,21 +124,26 @@ class DisciplineService {
         query = query.where('action_date', '<=', options.filters.date_to);
       }
 
+      // Academic-year scope (actions have no class column → the year's dates).
+      query = applyYearScope(query, (options as any)?.yearScope ?? null, null, 'action_date');
+
       // Pagination
       const page = options?.page || 1;
       const limit = options?.limit || 20;
       const offset = (page - 1) * limit;
 
       const actions = await query.clone().limit(limit).offset(offset);
-      const total = await query.clone().count('* as count').first();
+      // Count without ORDER BY (Postgres rejects it alongside an aggregate).
+      const total = await query.clone().clearSelect().clearOrder().count('* as count').first();
+      const totalCount = Number(total?.count || 0);
 
       return {
         data: actions,
         pagination: {
           page,
           limit,
-          total: total?.count || 0,
-          total_pages: Math.ceil((total?.count || 0) / limit),
+          total: totalCount,
+          total_pages: Math.ceil(totalCount / limit),
         },
       };
     } catch (error) {
@@ -261,55 +266,58 @@ class DisciplineService {
   /**
    * Get student discipline statistics
    */
-  async getStudentStats(studentId: string, tenantId: string): Promise<StudentDisciplineStats> {
+  async getStudentStats(studentId: string, tenantId: string, yearScope: YearScope | null = null): Promise<StudentDisciplineStats> {
     try {
+      // Every count follows the chosen academic year (class first, else dates).
+      const inYear = (q: any, classCol: string | null, dateCol: string) => applyYearScope(q, yearScope, classCol, dateCol);
+
       // Get total infractions
-      const infractions = await db('student_infractions')
-        .where({ student_id: studentId, tenant_id: tenantId })
+      const infractions = await inYear(db('student_infractions')
+        .where({ student_id: studentId, tenant_id: tenantId }), 'class_id', 'incident_date')
         .count('* as count')
         .first();
 
       // Get total points
-      const pointsResult = await db('student_infractions as si')
+      const pointsResult = await inYear(db('student_infractions as si')
         .leftJoin('infraction_types as it', 'si.infraction_type_id', '=', 'it.infraction_type_id')
         .where('si.student_id', studentId)
-        .where('si.tenant_id', tenantId)
+        .where('si.tenant_id', tenantId), 'si.class_id', 'si.incident_date')
         .sum('it.default_points as total')
         .first();
 
       // Get active actions
-      const activeActions = await db('discipline_actions')
+      const activeActions = await inYear(db('discipline_actions')
         .where({
           student_id: studentId,
           tenant_id: tenantId,
           status: 'active',
-        })
+        }), null, 'action_date')
         .count('* as count')
         .first();
 
       // Get pending appeals
-      const pendingAppeals = await db('discipline_appeals')
+      const pendingAppeals = await inYear(db('discipline_appeals')
         .where({
           student_id: studentId,
           tenant_id: tenantId,
           status: 'pending',
-        })
+        }), null, 'submitted_date')
         .count('* as count')
         .first();
 
       // Get positive notes
-      const positiveNotes = await db('behavioral_notes')
+      const positiveNotes = await inYear(db('behavioral_notes')
         .where({
           student_id: studentId,
           tenant_id: tenantId,
           note_type: 'positive',
-        })
+        }), 'class_id', 'note_date')
         .count('* as count')
         .first();
 
       // Get last infraction date
-      const lastInfraction = await db('student_infractions')
-        .where({ student_id: studentId, tenant_id: tenantId })
+      const lastInfraction = await inYear(db('student_infractions')
+        .where({ student_id: studentId, tenant_id: tenantId }), 'class_id', 'incident_date')
         .orderBy('incident_date', 'desc')
         .first();
 

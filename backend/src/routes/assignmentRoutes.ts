@@ -4,6 +4,7 @@ import { authenticate, authorize, attachUserContext } from '@middleware/authMidd
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
+import { normalizeAcademicYear } from '../utils/academicYear.js';
 
 const router = Router();
 router.use(authenticate);
@@ -169,13 +170,26 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
               .where('class_creator.tenant_id', tenantId);
           });
       })
+      // Submission counts per assignment (the UI shows "N / M graded").
+      .leftJoin(
+        db('assignment_submissions')
+          .select('assignment_id')
+          .count('* as total_submissions')
+          .select(db.raw("COUNT(*) FILTER (WHERE status = 'graded' OR graded_at IS NOT NULL) as graded_count"))
+          .groupBy('assignment_id')
+          .as('sub_counts'),
+        'sub_counts.assignment_id',
+        'assignments.id',
+      )
       .select(
         'assignments.*',
         'classes.name as class_name',
         'classes.level as class_level',
         'subjects.name as subject_name',
         'subjects.code as subject_code',
-        db.raw("COALESCE(users.first_name || ' ' || users.last_name, 'Unknown') as teacher_name")
+        db.raw("COALESCE(users.first_name || ' ' || users.last_name, 'Unknown') as teacher_name"),
+        db.raw('COALESCE(sub_counts.total_submissions, 0)::int as total_submissions'),
+        db.raw('COALESCE(sub_counts.graded_count, 0)::int as graded_count'),
       );
 
     // Teacher scoping: teachers only see assignments they created/own. Resolve
@@ -243,18 +257,32 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     }
 
     const academicYear = req.query.academic_year as string | undefined;
+    // Resolve the requested year against the school's real sessions. Legacy
+    // classes with no session belong to the ACTIVE year only (never inside a
+    // past year's history); an unknown year shows nothing.
+    let yearSession: { id: string; is_active: boolean } | null = null;
+    if (academicYear && academicYear !== 'all') {
+      const sessions = await db('academic_sessions').where({ tenant_id: tenantId }).select('id', 'name', 'is_active');
+      const wanted = normalizeAcademicYear(academicYear);
+      yearSession = sessions.find((s: any) => normalizeAcademicYear(s.name) === wanted) ?? null;
+      if (!yearSession && sessions.length > 0) {
+        return res.json({ data: [], stats: { total: 0, active: 0, overdue: 0, submissions: 0 }, pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+    }
+    const applyYear = (q: any) => {
+      if (!yearSession) return q;
+      const s = yearSession;
+      return q.where(function (this: any) {
+        this.where('classes.academic_session_id', s.id);
+        if (s.is_active) this.orWhereNull('classes.academic_session_id');
+      });
+    };
     if (class_id) query = query.where('assignments.class_id', class_id as string);
     if (subject_id) query = query.where('assignments.subject_id', subject_id as string);
     if (teacher_id) query = query.where('assignments.teacher_id', teacher_id as string);
     if (status) query = query.where('assignments.status', status as string);
     if (type) query = query.where('assignments.type', type as string);
-    // Scope to a specific academic year via the class's session name (null-session
-    // classes are always included so legacy assignments aren't hidden).
-    if (academicYear) {
-      query = query.where(function (this: any) {
-        this.where('academic_sessions.name', academicYear).orWhereNull('classes.academic_session_id');
-      });
-    }
+    query = applyYear(query);
     if (search) {
       const term = `%${(search as string).trim()}%`;
       query = query.where(function () {
@@ -285,11 +313,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     if (teacher_id) countQuery = countQuery.where('assignments.teacher_id', teacher_id as string);
     if (status) countQuery = countQuery.where('assignments.status', status as string);
     if (type) countQuery = countQuery.where('assignments.type', type as string);
-    if (academicYear) {
-      countQuery = countQuery.where(function (this: any) {
-        this.where('academic_sessions.name', academicYear).orWhereNull('classes.academic_session_id');
-      });
-    }
+    countQuery = applyYear(countQuery);
     if (search) {
       const term = `%${(search as string).trim()}%`;
       countQuery = countQuery.where(function () {
@@ -300,10 +324,27 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 
     const totalResult = await countQuery.first();
     const total = Number(totalResult?.count ?? 0);
+
+    // KPI totals across the WHOLE filtered set (not just this page).
+    const agg: any = await query.clone().clearSelect().clearOrder()
+      .select(
+        db.raw("COUNT(*) FILTER (WHERE assignments.status = 'active') as active"),
+        db.raw("COUNT(*) FILTER (WHERE assignments.status = 'active' AND assignments.due_date < CURRENT_DATE) as overdue"),
+        db.raw('COALESCE(SUM(sub_counts.total_submissions), 0) as submissions'),
+      )
+      .first();
+    const stats = {
+      total,
+      active: Number(agg?.active ?? 0),
+      overdue: Number(agg?.overdue ?? 0),
+      submissions: Number(agg?.submissions ?? 0),
+    };
+
     const assignments = await query.limit(limit).offset(offset).orderBy('assignments.due_date', 'desc');
 
     res.json({
       data: assignments,
+      stats,
       pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
     });
   } catch (error) {

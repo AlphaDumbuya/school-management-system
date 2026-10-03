@@ -305,31 +305,58 @@ export const ClassesPage: React.FC = () => {
   const classes: ClassRecord[] = (data as any)?.data ?? [];
   const pagination = (data as any)?.pagination ?? { total: 0, total_pages: 1 };
 
-  // Distinct levels a teacher actually teaches — fetched WITHOUT the level
-  // filter so switching levels stays possible. Skipped for managers.
+  // Distinct levels a teacher teaches IN THE SELECTED YEAR — fetched without
+  // the level filter so switching levels stays possible. Skipped for managers.
   const { data: teacherLevelsData } = useQuery({
-    queryKey: ['classes-teacher-levels'],
-    queryFn: () => classesService.listClasses({ limit: 100 }),
-    enabled: !canManage,
+    queryKey: ['classes-teacher-levels', year],
+    queryFn: () => classesService.listClasses({ limit: 100, academic_year: year || undefined }),
+    enabled: !canManage && !!year,
     staleTime: 300_000,
   });
   const teacherLevels = useMemo(
     () => Array.from(new Set(((teacherLevelsData as any)?.data ?? []).map((c: ClassRecord) => c.level).filter(Boolean))) as string[],
     [teacherLevelsData],
   );
+  // A level picked in one year may not exist in another — drop it so the
+  // list never goes blank because of a stale filter.
+  useEffect(() => {
+    if (canManage || !teacherLevelsData || levelFilter.length === 0) return;
+    if (!teacherLevels.includes(levelFilter[0])) setLevelFilter([]);
+  }, [canManage, teacherLevelsData, teacherLevels, levelFilter]);
 
-  // KPI calculations
+  // Switching year resets everything that belonged to the previous year.
+  const changeYear = (y: string) => {
+    setYear(y === activeYear ? '' : y);
+    setPage(1);
+    setSelectedRows([]);
+  };
+
+  // KPIs: the server's whole-year totals; computed from the page only as an
+  // offline fallback.
+  const serverStats = (data as any)?.stats;
+  const pendingTransition = !viewingPast ? ((data as any)?.pending_transition ?? null) as { fromYear: string; students: number } | null : null;
   const stats = useMemo(() => {
+    if (serverStats) {
+      return {
+        total: Number(serverStats.total ?? 0),
+        totalEnrolled: Number(serverStats.total_enrolled ?? 0),
+        avgSize: Number(serverStats.avg_size ?? 0),
+        avgCapPct: Number(serverStats.avg_capacity_pct ?? 0),
+      };
+    }
     const total = pagination.total ?? classes.length;
     const totalEnrolled = classes.reduce((s, c) => s + Number(c.enrolled_students ?? 0), 0);
-    const avgSize = classes.length > 0
-      ? Math.round(classes.reduce((s, c) => s + Number(c.enrolled_students ?? 0), 0) / classes.length)
-      : 0;
-    const avgCapPct = classes.length > 0
-      ? Math.round(classes.reduce((s, c) => s + (Number(c.enrolled_students ?? 0) / c.capacity) * 100, 0) / classes.length)
+    const avgSize = classes.length > 0 ? Math.round(totalEnrolled / classes.length) : 0;
+    const withCap = classes.filter((c) => Number(c.capacity) > 0);
+    const avgCapPct = withCap.length > 0
+      ? Math.round(withCap.reduce((s, c) => s + (Number(c.enrolled_students ?? 0) / Number(c.capacity)) * 100, 0) / withCap.length)
       : 0;
     return { total, totalEnrolled, avgSize, avgCapPct };
-  }, [classes, pagination]);
+  }, [classes, pagination, serverStats]);
+
+  const emptyText = viewingPast
+    ? (canManage ? `No classes in ${year}.` : `You didn't teach any classes in ${year}.`)
+    : (canManage ? 'Try adjusting your filters or search query.' : `You have no classes assigned for ${activeYear} yet.`);
 
   // Deactivate handler
   const handleDeactivate = async () => {
@@ -406,7 +433,7 @@ export const ClassesPage: React.FC = () => {
       cell: ({ row }) => {
         const cls = row.original;
         const enrolled = Number(cls.enrolled_students ?? 0);
-        const pct = Math.min(100, Math.round((enrolled / cls.capacity) * 100));
+        const pct = Number(cls.capacity) > 0 ? Math.min(100, Math.round((enrolled / Number(cls.capacity)) * 100)) : 0;
         return (
           <div className="min-w-[140px]">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
@@ -468,7 +495,9 @@ export const ClassesPage: React.FC = () => {
               </button>
             </div>
 
-            <YearFilter value={year} onChange={(y) => { setYear(y); setPage(1); }} />
+            {/* noAutoSelect + current year stored as '' → the page follows the
+                school into a new year after a rollover by itself. */}
+            <YearFilter value={year} onChange={changeYear} noAutoSelect />
             {/* New classes always join the CURRENT year, so only offer it there. */}
             {!viewingPast && (
               <RoleGuard roles={['principal', 'super_admin']}>
@@ -486,9 +515,19 @@ export const ClassesPage: React.FC = () => {
               Showing <strong>{year}</strong> classes as history, with the students who were in each class that year.
               The current year is {activeYear}.
             </span>
-            <button type="button" onClick={() => { setYear(activeYear); setPage(1); }} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+            <button type="button" onClick={() => changeYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
               Back to {activeYear}
             </button>
+          </div>
+        )}
+        {/* Year transition in progress: classes were copied into the new year,
+            but some students are still sitting in last year's copies. */}
+        {pendingTransition && (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <strong>{activeYear} is being set up.</strong>{' '}
+            {pendingTransition.students} student{pendingTransition.students === 1 ? ' is' : 's are'} still in{' '}
+            {pendingTransition.fromYear} classes and {pendingTransition.students === 1 ? 'is' : 'are'} not counted below yet.
+            {canManage ? ' Finish the move from the Overview page.' : ' They will appear once the principal moves them into this year.'}
           </div>
         )}
         {/* KPI Row */}
@@ -605,7 +644,7 @@ export const ClassesPage: React.FC = () => {
         </div>
 
         {/* Bulk toolbar */}
-        {selectedRows.length > 0 && (
+        {selectedRows.length > 0 && !viewingPast && (
           <RoleGuard roles={['principal', 'super_admin']}>
             <BulkToolbar
               selectedCount={selectedRows.length}
@@ -614,13 +653,16 @@ export const ClassesPage: React.FC = () => {
                 {
                   label: 'Deactivate selected',
                   variant: 'destructive',
-                  onClick: () => {
-                    // Deactivate all selected one by one
-                    Promise.all(selectedRows.map((c) => classesService.deactivateClass(c.id))).then(() => {
-                      showToast.success(`${selectedRows.length} classes deactivated`);
-                      queryClient.invalidateQueries({ queryKey: ['classes'] });
-                      setSelectedRows([]);
-                    });
+                  onClick: async () => {
+                    const results = await Promise.all(
+                      selectedRows.map((c) => classesService.deactivateClass(c.id).catch(() => ({ success: false } as any))),
+                    );
+                    const failed = results.filter((r: any) => r?.success === false).length;
+                    const done = results.length - failed;
+                    if (done > 0) showToast.success(`${done} class${done === 1 ? '' : 'es'} deactivated`);
+                    if (failed > 0) showToast.error(`${failed} class${failed === 1 ? '' : 'es'} could not be deactivated`);
+                    queryClient.invalidateQueries({ queryKey: ['classes'] });
+                    setSelectedRows([]);
                   },
                 },
               ]}
@@ -640,11 +682,9 @@ export const ClassesPage: React.FC = () => {
           ) : classes.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 bg-transparent dark:bg-transparent text-center">
               <BookOpen size={48} className="text-gray-400 dark:text-gray-500 mb-4" />
-              <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">No classes found</p>
-              <p className="text-sm text-gray-500 mt-1 mb-4">
-                {canManage ? 'Try adjusting your filters or search query.' : 'You have not been assigned to any classes yet.'}
-              </p>
-              {canManage && (
+              <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">{viewingPast ? `No classes in ${year}` : 'No classes found'}</p>
+              <p className="text-sm text-gray-500 mt-1 mb-4">{emptyText}</p>
+              {canManage && !viewingPast && (
                 <Button onClick={() => { setEditingClass(null); setFormOpen(true); }}>Add your first class</Button>
               )}
             </div>
@@ -652,7 +692,7 @@ export const ClassesPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {classes.map((cls, idx) => {
                 const enrolled = Number(cls.enrolled_students ?? 0);
-                const pct = Math.min(100, Math.round((enrolled / cls.capacity) * 100));
+                const pct = Number(cls.capacity) > 0 ? Math.min(100, Math.round((enrolled / Number(cls.capacity)) * 100)) : 0;
                 const capColor = capacityColor(pct);
 
                 const colorMap = {
@@ -806,8 +846,8 @@ export const ClassesPage: React.FC = () => {
             onPageChange={setPage}
             enableRowSelection={canManage}
             onSelectionChange={setSelectedRows}
-            emptyMessage={canManage ? 'No classes found' : 'You have not been assigned to any classes yet.'}
-            emptyAction={canManage ? { label: 'Add your first class', onClick: () => { setEditingClass(null); setFormOpen(true); } } : undefined}
+            emptyMessage={canManage && !viewingPast ? 'No classes found' : emptyText}
+            emptyAction={canManage && !viewingPast ? { label: 'Add your first class', onClick: () => { setEditingClass(null); setFormOpen(true); } } : undefined}
             rowActions={(cls) => [
               // View Students is available to everyone (read-only)
               {

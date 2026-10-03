@@ -63,7 +63,8 @@ const YearLabel: React.FC<{ year: string }> = ({ year }) => (
 export const ReportCardsPage: React.FC = () => {
   const { user } = useAuth();
   const isStudent = user?.role === 'student';
-  const isParent = user?.role === 'parent' || user?.role === 'guardian';
+  // 'guardian' is a legacy alias for parent (not in UserRole, but the column is free text).
+  const isParent = user?.role === 'parent' || (user?.role as string | undefined) === 'guardian';
   // Year: staff = picked (or ?year= deep link) else the school's ACTIVE year;
   // students = the year of their own class; parents = the active year (their
   // child's current class). Never a calendar guess.
@@ -77,7 +78,8 @@ export const ReportCardsPage: React.FC = () => {
   const [classId, setClassId] = useState('');
   const [studentId, setStudentId] = useState('');
   // Staff switching year: that year has its own classes, so drop stale picks.
-  const setAcademicYear = (y: string) => { setPickedYear(y); setClassId(''); setStudentId(''); };
+  // The current year is stored as '' so the page follows a rollover by itself.
+  const setAcademicYear = (y: string) => { setPickedYear(y === activeYear ? '' : y); setClassId(''); setStudentId(''); };
   const viewingPast = !isStudent && !isParent && !!academicYear && !!activeYear && academicYear !== activeYear;
   const [spread, setSpread] = useState<'all' | 'cover' | 'inner'>('all');
   // Which result to view: a single term sheet (Term 1/2) or the full-year booklet.
@@ -204,7 +206,13 @@ export const ReportCardsPage: React.FC = () => {
     enabled: canLoad,
     staleTime: 15_000,
   });
-  const card: ReportCard | null = (cardResp as any)?.data ?? null;
+  const card: ReportCard | null = (cardResp as any)?.success === false ? null : ((cardResp as any)?.data ?? null);
+  // The API answers access problems (not permitted, not your class, not yet
+  // published) with { success:false, error } instead of throwing — surface it
+  // rather than rendering an unexplained blank page.
+  const cardError: string | null = (cardResp as any)?.success === false
+    ? ((cardResp as any)?.error || 'This report card could not be loaded.')
+    : null;
 
   // Released terms for the current card. Staff (no publish gate) may view any
   // term; students/parents only see released ones.
@@ -650,7 +658,7 @@ export const ReportCardsPage: React.FC = () => {
           {viewingPast && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
               <span>Showing <strong>{academicYear}</strong> report cards — the classes and students of that year.</span>
-              <button type="button" onClick={() => setAcademicYear(activeYear)} className="font-bold text-blue-700 hover:underline dark:text-blue-300">
+              <button type="button" onClick={() => setAcademicYear('')} className="font-bold text-blue-700 hover:underline dark:text-blue-300">
                 Back to {activeYear}
               </button>
             </div>
@@ -722,23 +730,36 @@ export const ReportCardsPage: React.FC = () => {
           <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300 print:hidden">
             <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-amber-500 text-white text-xs font-bold">!</span>
             <span>
-              <strong>Draft — not yet released.</strong> Parents and students can't see this report until you publish it in Settings → Grading &amp; Results.
+              <strong>Draft — not yet released.</strong>{' '}
+              {user?.role === 'teacher'
+                ? "Parents and students can't see this report until the principal publishes the results."
+                : <>Parents and students can't see this report until you publish it in Settings → Grading &amp; Results.</>}
             </span>
           </div>
         )}
 
         {!canLoad && (
           <EmptyState
-            message={isStudent || isParent ? 'Report card unavailable' : 'Select a student'}
+            message={isStudent || isParent
+              ? 'Report card unavailable'
+              : classesData && classes.length === 0
+                ? (viewingPast ? `No classes in ${academicYear}` : 'No classes yet')
+                : 'Select a student'}
             description={isStudent
               ? 'Your report card will appear here once your results are published.'
               : isParent
                 ? 'Select a child. The report card appears once results are published.'
-                : 'Choose a class, student and academic year to generate the report booklet.'}
+                : classesData && classes.length === 0
+                  ? (user?.role === 'teacher'
+                      ? (viewingPast ? `You didn't teach any classes in ${academicYear}.` : `You have no classes assigned for ${activeYear} yet.`)
+                      : `There are no classes in ${academicYear}.`)
+                  : 'Choose a class, student and academic year to generate the report booklet.'}
           />
         )}
         {canLoad && isLoading && <div className="grid gap-3"><SkeletonCard /><SkeletonCard /></div>}
-        {canLoad && error && <EmptyState message="Failed to load report" description="There was an error generating this report card." />}
+        {canLoad && !isLoading && (error || cardError) && (
+          <EmptyState message="Report card unavailable" description={cardError || 'There was an error generating this report card.'} />
+        )}
 
         {/* Print CSS — hide the whole app (#root) and print ONLY the portaled booklet.
             The booklet is portaled to <body> so no layout ancestor can clip or blank it. */}

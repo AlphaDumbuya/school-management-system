@@ -114,6 +114,24 @@ export class SLReportCardService {
     if (!s) throw new Error('Student not found or access denied');
   }
 
+  /**
+   * Enrollment statuses that make up a class's results roster. A current-year
+   * class lists who is enrolled now. A PAST-year class lists everyone who was
+   * in it that year (since closed as completed / promoted / repeated /
+   * graduated); otherwise past-year results, rankings and corrections would
+   * show an empty class.
+   */
+  private async rosterStatuses(classId: string): Promise<string[]> {
+    const row = await db('classes')
+      .leftJoin('academic_sessions as s', 'classes.academic_session_id', 's.id')
+      .where('classes.id', classId)
+      .first('s.id as session_id', 's.is_active');
+    const past = !!row?.session_id && row.is_active === false;
+    return past
+      ? ['enrolled', 'active', 'completed', 'promoted', 'repeated', 'graduated']
+      : ['enrolled', 'active'];
+  }
+
   private async assertClassInTenant(classId: string, tenantId: string): Promise<void> {
     const c = await db('classes')
       .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
@@ -830,6 +848,8 @@ export class SLReportCardService {
     }>;
   }> {
     await this.assertClassInTenant(classId, tenantId);
+    // A teacher may only rank the classes they teach or lead.
+    if (role === 'teacher') await this.assertTeacherScope(viewerUserId, tenantId, role, classId);
     const isStaff = ['principal', 'super_admin', 'teacher'].includes(role);
     const isYear = !term || term === 'full';
     const normTerm = isYear ? null : term!;
@@ -863,11 +883,12 @@ export class SLReportCardService {
     const cls = await db('classes').where({ id: classId }).first().catch(() => null);
     const className = cls?.name || cls?.class_name || null;
 
-    // Roster (active enrollments) joined to students for names/photos.
+    // Roster joined to students for names/photos (historic for a past year).
     const roster = await db('enrollments as e')
       .join('students as s', 'e.student_id', 's.id')
       .where('e.class_id', classId)
-      .where('e.status', 'active')
+      .whereIn('e.status', await this.rosterStatuses(classId))
+      .distinctOn('s.id')
       .where('s.tenant_id', tenantId)
       .select('s.id as student_id', 's.first_name', 's.last_name', 's.student_id as admission_no', 's.photo_url');
 
@@ -1490,20 +1511,24 @@ export class SLReportCardService {
   ): Promise<any[]> {
     await this.assertClassInTenant(classId, tenantId);
 
-    // All students enrolled in the class (via enrollments)
-    const students = await db('enrollments')
+    // All students in the class (historic roster for a past year, so late
+    // corrections to last year's scores are possible).
+    const studentRows = await db('enrollments')
       .join('students', 'enrollments.student_id', 'students.id')
       .leftJoin('users', 'students.user_id', 'users.id')
       .where('enrollments.class_id', classId)
-      .where('enrollments.status', 'active')
+      .whereIn('enrollments.status', await this.rosterStatuses(classId))
       .where('students.tenant_id', tenantId)
+      .distinctOn('students.id')
       .select(
         'students.id as student_id',
         'students.student_id as roll_number',
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.student_id) as student_name"),
       )
-      // Ordered by student ID (001, 002, 003 …) for a consistent results roster.
-      .orderBy('students.student_id', 'asc');
+      .orderBy('students.id');
+    // Ordered by student ID (001, 002, 003 …) for a consistent results roster.
+    const students = studentRows.sort((a: any, b: any) =>
+      String(a.roll_number ?? '').localeCompare(String(b.roll_number ?? ''), undefined, { numeric: true }));
 
     const existing = await db('sl_subject_results')
       .where({ tenant_id: tenantId, class_id: classId, subject_id: subjectId, term, academic_year: academicYear })
@@ -1812,7 +1837,7 @@ export class SLReportCardService {
       const dobRows = await db('enrollments')
         .join('students', 'enrollments.student_id', 'students.id')
         .where('enrollments.class_id', classId)
-        .where('enrollments.status', 'active')
+        .whereIn('enrollments.status', await this.rosterStatuses(classId))
         .where('students.tenant_id', tenantId)
         .whereNotNull('students.date_of_birth')
         .select('students.date_of_birth');
@@ -2060,7 +2085,7 @@ export class SLReportCardService {
     const row = await db('enrollments')
       .join('students', 'enrollments.student_id', 'students.id')
       .where('enrollments.class_id', classId)
-      .where('enrollments.status', 'active')
+      .whereIn('enrollments.status', await this.rosterStatuses(classId))
       .where('students.tenant_id', tenantId)
       .countDistinct('students.id as count')
       .first();
@@ -2180,6 +2205,7 @@ export class SLReportCardService {
   async getStudentResultsSummary(
     tenantId: string,
     studentId: string,
+    academicYear?: string | null,
   ): Promise<{
     stats: { subjects: number; avg_test1: number; avg_test2: number; avg_mean: number };
     results: Array<{
@@ -2201,7 +2227,7 @@ export class SLReportCardService {
     // Load tenant's configured grading scale
     const gradingScale = await getTenantGradingScale(tenantId);
 
-    const rows = await db('sl_subject_results as sr')
+    const rows: any[] = await db('sl_subject_results as sr')
       .join('subjects as s', 'sr.subject_id', 's.id')
       .where('sr.tenant_id', tenantId)
       .where('sr.student_id', studentId)
@@ -2216,6 +2242,8 @@ export class SLReportCardService {
         'sr.mean',
         'sr.subject_rank',
       )
+      // Optional academic-year scope (results carry their own year string).
+      .modify((q: any) => { if (academicYear) q.where('sr.academic_year', academicYear); })
       .orderBy('sr.academic_year', 'desc')
       .orderBy('sr.term', 'asc')
       .orderBy('s.name', 'asc');

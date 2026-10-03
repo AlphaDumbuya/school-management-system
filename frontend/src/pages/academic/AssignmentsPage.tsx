@@ -240,7 +240,8 @@ export const AssignmentsPage: React.FC = () => {
   const canManage = canAccess(['principal', 'super_admin', 'teacher']);
   const isTeacherRole = user?.role === 'teacher';
   const isStudentRole = user?.role === 'student';
-  const isParentRole = user?.role === 'parent' || user?.role === 'guardian';
+  // 'guardian' is a legacy alias for parent (not in UserRole, but the column is free text).
+  const isParentRole = user?.role === 'parent' || (user?.role as string | undefined) === 'guardian';
 
   // Filter state
   const [search, setSearch] = useState('');
@@ -253,6 +254,10 @@ export const AssignmentsPage: React.FC = () => {
   // scoped server-side to their own current class, so no year is sent.
   const year = canManage ? (pickedYear || activeYear) : '';
   const viewingPast = canManage && !!year && !!activeYear && year !== activeYear;
+  // Create / edit / delete: staff only, and only in the current year.
+  const canEditHere = canManage && !viewingPast;
+  // The current year is stored as '' so the page follows a rollover by itself.
+  const changeYear = (y: string) => { setYear(y === activeYear ? '' : y); setPage(1); };
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -280,21 +285,36 @@ export const AssignmentsPage: React.FC = () => {
   const assignments: AssignmentRecord[] = (data as any)?.data ?? [];
   const pagination = (data as any)?.pagination ?? { total: 0, total_pages: 1 };
 
-  // KPIs
+  // KPIs: the server's whole-set totals; computed from the page only as a fallback.
+  const serverStats = (data as any)?.stats;
   const stats = useMemo(() => {
+    if (serverStats) {
+      return {
+        total: Number(serverStats.total ?? 0),
+        active: Number(serverStats.active ?? 0),
+        overdue: Number(serverStats.overdue ?? 0),
+        totalSubmissions: Number(serverStats.submissions ?? 0),
+      };
+    }
     const total = Number(pagination.total ?? assignments.length);
     const active = assignments.filter((a) => a.status === 'active').length;
     const overdue = assignments.filter((a) => a.status === 'active' && isOverdue(a.due_date)).length;
     const totalSubmissions = assignments.reduce((s, a) => s + Number(a.total_submissions ?? 0), 0);
     return { total, active, overdue, totalSubmissions };
-  }, [assignments, pagination]);
+  }, [assignments, pagination, serverStats]);
+
+  const emptyText = viewingPast
+    ? `No assignments in ${year}.`
+    : canManage ? 'No assignments found' : 'No assignments for your class yet.';
 
   // Delete handler
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const res = await assignmentsService.deleteAssignment(deleteTarget.id);
+    const res: any = await assignmentsService.deleteAssignment(deleteTarget.id);
     if (res.success !== false) {
-      showToast.deleted('Assignment');
+      // The API closes (rather than deletes) an assignment that has submissions.
+      if (/closed/i.test(res?.message || res?.data?.message || '')) showToast.success('Assignment closed — it already has submissions');
+      else showToast.deleted('Assignment');
       queryClient.invalidateQueries({ queryKey: ['assignments'] });
     } else {
       showToast.apiError(res.error);
@@ -383,7 +403,7 @@ export const AssignmentsPage: React.FC = () => {
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
             {canManage && (
-              <YearFilter value={year} onChange={(y) => { setYear(y); setPage(1); }} />
+              <YearFilter value={year} onChange={changeYear} noAutoSelect />
             )}
             {!viewingPast && (
               <RoleGuard roles={['principal', 'super_admin', 'teacher']}>
@@ -398,7 +418,7 @@ export const AssignmentsPage: React.FC = () => {
         {viewingPast && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
             <span>Showing <strong>{year}</strong> assignments as history. New assignments go into {activeYear}.</span>
-            <button type="button" onClick={() => { setYear(activeYear); setPage(1); }} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+            <button type="button" onClick={() => changeYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
               Back to {activeYear}
             </button>
           </div>
@@ -544,10 +564,10 @@ export const AssignmentsPage: React.FC = () => {
           pageSize={pageSize}
           totalRows={Number(pagination.total)}
           onPageChange={setPage}
-          emptyMessage="No assignments found"
-          emptyAction={canManage ? { label: 'Create your first assignment', onClick: () => { setEditingAssignment(null); setFormOpen(true); } } : undefined}
+          emptyMessage={emptyText}
+          emptyAction={canEditHere ? { label: 'Create your first assignment', onClick: () => { setEditingAssignment(null); setFormOpen(true); } } : undefined}
           rowActions={(row) => (
-            canManage && !viewingPast
+            canEditHere
               ? [
                   { label: 'View', onClick: (r) => setViewingAssignment(r) },
                   { label: 'Edit', onClick: (r) => { setEditingAssignment(r); setFormOpen(true); } },
@@ -565,7 +585,8 @@ export const AssignmentsPage: React.FC = () => {
         isOpen={!!viewingAssignment}
         onClose={() => setViewingAssignment(null)}
         assignment={viewingAssignment}
-        onEdit={viewingPast ? undefined : (a) => { setEditingAssignment(a); setFormOpen(true); }}
+        // Students / parents must never see Edit; staff only in the current year.
+        onEdit={canEditHere ? (a) => { setEditingAssignment(a); setFormOpen(true); } : undefined}
       />
 
       {/* Form Modal */}

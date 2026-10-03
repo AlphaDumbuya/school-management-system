@@ -58,10 +58,12 @@ const CATEGORY_TEXT: Record<string, string> = {
 
 export const TimetablesPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, canAccess } = useAuth();
   const isStudent = user?.role === 'student';
-  const isParent = user?.role === 'parent' || user?.role === 'guardian';
+  // 'guardian' is a legacy alias for parent (not in UserRole, but the column is free text).
+  const isParent = user?.role === 'parent' || (user?.role as string | undefined) === 'guardian';
   const isViewerOnly = isStudent || isParent;
+  const canManage = canAccess(['principal', 'super_admin']);
 
   // Class selector + academic-year scope (staff). Students/parents auto-resolve.
   const [selectedClassId, setSelectedClassId] = useState<string>('');
@@ -70,6 +72,10 @@ export const TimetablesPage: React.FC = () => {
   // One year at a time: the picked one, else the school's active year.
   const year = pickedYear || activeYear;
   const viewingPast = !isViewerOnly && !!year && !!activeYear && year !== activeYear;
+  // Only managers edit, and only the current year (teachers view their classes).
+  const canEdit = canManage && !viewingPast;
+  // The current year is stored as '' so the page follows a rollover by itself.
+  const changeYear = (y: string) => { setYear(y === activeYear ? '' : y); setSelectedClassId(''); };
 
   // Mobile day tab
   const [mobileDay, setMobileDay] = useState<string>('Monday');
@@ -122,8 +128,14 @@ export const TimetablesPage: React.FC = () => {
       if (child?.class_id) setSelectedClassId(String(child.class_id));
       return;
     }
-    if (!selectedClassId && classes.length > 0) {
+    // Staff: default to the first class, and drop a selection that isn't in the
+    // selected year's list (e.g. after a rollover or a year switch).
+    if (!classesData) return;
+    const inList = classes.some((c) => String(c.id) === selectedClassId);
+    if ((!selectedClassId || !inList) && classes.length > 0) {
       setSelectedClassId(String(classes[0].id));
+    } else if (selectedClassId && !inList) {
+      setSelectedClassId('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classes, selectedClassId, isStudent, isParent, studentDash, parentChildren, activeChildId]);
@@ -256,8 +268,8 @@ export const TimetablesPage: React.FC = () => {
       return (
         <td
           key={`${day}-${periodIndex}`}
-          className={`relative px-1.5 sm:px-2 py-1.5 sm:py-2 border border-gray-100 dark:border-gray-700/50 ${catBg} group cursor-pointer transition-all hover:ring-2 hover:ring-blue-400/60 hover:shadow-md rounded-sm`}
-          onClick={() => { if (!viewingPast) handleEditSlot(slot); }}
+          className={`relative px-1.5 sm:px-2 py-1.5 sm:py-2 border border-gray-100 dark:border-gray-700/50 ${catBg} group transition-all rounded-sm ${canEdit ? 'cursor-pointer hover:ring-2 hover:ring-blue-400/60 hover:shadow-md' : ''}`}
+          onClick={() => { if (canEdit) handleEditSlot(slot); }}
         >
           <div className="min-w-[80px] sm:min-w-[100px]">
             <p className={`text-xs sm:text-sm font-bold truncate leading-tight ${catText}`}>
@@ -315,7 +327,7 @@ export const TimetablesPage: React.FC = () => {
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
             {!isViewerOnly && (
-              <YearFilter value={year} onChange={(y) => { setYear(y); setSelectedClassId(''); }} />
+              <YearFilter value={year} onChange={changeYear} noAutoSelect />
             )}
             <EditGuard>
               <Button
@@ -343,7 +355,7 @@ export const TimetablesPage: React.FC = () => {
         {viewingPast && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
             <span>Showing the <strong>{year}</strong> timetable as history (read-only). The current year is {activeYear}.</span>
-            <button type="button" onClick={() => { setYear(activeYear); setSelectedClassId(''); }} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+            <button type="button" onClick={() => changeYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
               Back to {activeYear}
             </button>
           </div>
@@ -392,12 +404,22 @@ export const TimetablesPage: React.FC = () => {
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Calendar size={56} className="text-gray-300 dark:text-gray-600 mb-4" />
             <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
-              {isViewerOnly ? 'No class timetable available yet' : 'Select a class to view its timetable'}
+              {isViewerOnly
+                ? 'No class timetable available yet'
+                : classesData && classes.length === 0
+                  ? (viewingPast ? `No classes in ${year}` : 'No classes yet')
+                  : 'Select a class to view its timetable'}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {isViewerOnly
                 ? 'Your timetable will appear here once you are enrolled in a class with a schedule.'
-                : 'Choose a class from the selector above to manage its weekly schedule.'}
+                : classesData && classes.length === 0
+                  ? (canManage
+                      ? (viewingPast ? `There were no classes in ${year}.` : 'Create classes first, then build their weekly schedule.')
+                      : (viewingPast ? `You didn't teach any classes in ${year}.` : `You have no classes assigned for ${activeYear} yet.`))
+                  : canManage
+                    ? 'Choose a class from the selector above to manage its weekly schedule.'
+                    : 'Choose one of your classes from the selector above to see its weekly schedule.'}
             </p>
           </div>
         )}
@@ -570,12 +592,14 @@ export const TimetablesPage: React.FC = () => {
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleEditSlot(slot)}
+                            aria-label="Edit period"
                             className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
                           >
                             <Edit size={14} />
                           </button>
                           <button
                             onClick={() => setDeleteTarget(slot)}
+                            aria-label="Remove period"
                             className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
                           >
                             <Trash2 size={14} />
@@ -584,6 +608,7 @@ export const TimetablesPage: React.FC = () => {
                       ) : (
                         <button
                           onClick={() => handleAddSlot(mobileDay, periodIndex)}
+                          aria-label="Add period"
                           className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
                         >
                           <Plus size={14} />

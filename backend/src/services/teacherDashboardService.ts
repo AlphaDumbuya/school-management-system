@@ -11,6 +11,7 @@
 
 import db from '../utils/database.js';
 import { logger } from '../utils/logger.js';
+import { normalizeAcademicYear, resolveActiveYear } from '../utils/academicYear.js';
 
 const DOW = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -26,8 +27,14 @@ class TeacherDashboardService {
     return row?.id ?? null;
   }
 
-  /** The class ids a teacher can act on: assigned subjects + classes they lead. */
-  private async getClassIds(teacherId: string): Promise<string[]> {
+  /**
+   * The class ids a teacher can act on for a given academic year: assigned
+   * subjects + classes they lead, scoped to the requested year.
+   *   - No year (or the active year): classes in the active session (plus
+   *     legacy null-session classes), falling back to all if nothing is current.
+   *   - A specific (past) year: only that session's classes.
+   */
+  private async getClassIds(teacherId: string, tenantId: string, academicYear?: string): Promise<string[]> {
     const assigned = await db('teacher_assignments').where('teacher_id', teacherId).distinct('class_id');
     const led = await db('classes').where('class_teacher_id', teacherId).select('id');
     const all = Array.from(new Set<string>([
@@ -35,23 +42,77 @@ class TeacherDashboardService {
       ...led.map((r: any) => r.id),
     ]));
     if (all.length === 0) return all;
-    // The dashboard follows the CURRENT academic year: keep classes in the
-    // active session (or with no session). Last year's classes stay reachable
-    // via the year filters; fall back to all if nothing is current yet.
-    const current = await db('classes')
-      .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
-      .whereIn('classes.id', all)
-      .where((q) => q.where('academic_sessions.is_active', true).orWhereNull('classes.academic_session_id'))
-      .select('classes.id');
-    return current.length ? current.map((r: any) => r.id) : all;
+
+    // Match the requested year against the tenant's REAL sessions (names are
+    // normalised the same way as everywhere else), default = the active one.
+    const sessions = await db('academic_sessions')
+      .where({ tenant_id: tenantId })
+      .select('id', 'name', 'is_active');
+    const y = normalizeAcademicYear(academicYear ?? null);
+    const session = y
+      ? sessions.find((s: any) => normalizeAcademicYear(s.name) === y)
+      : sessions.find((s: any) => s.is_active);
+
+    // A brand-new school with no sessions at all: nothing is year-bound yet.
+    if (sessions.length === 0) return all;
+    // A year that doesn't exist for this school shows nothing (never another year).
+    if (!session) return [];
+
+    // Only that session's classes. The active year also keeps legacy classes
+    // with no session. No "fall back to every class" — right after a rollover a
+    // teacher who isn't assigned in the new year yet must see an empty year,
+    // not last year's classes posing as current.
+    const rows = await db('classes')
+      .whereIn('id', all)
+      .where((q) => {
+        q.where('academic_session_id', session.id);
+        if (session.is_active) q.orWhereNull('academic_session_id');
+      })
+      .select('id');
+    return rows.map((r: any) => r.id);
   }
 
-  async getDashboard(userId: string, tenantId: string): Promise<any> {
+  /**
+   * Year transition still in progress: after Start New Academic Year, students
+   * can still be sitting in LAST year's copies of this teacher's classes until
+   * the principal finishes moving them. Returns how many, or null.
+   */
+  private async getPendingTransition(classIds: string[], tenantId: string): Promise<{ fromYear: string; students: number } | null> {
+    if (classIds.length === 0) return null;
+    const prevIds = (await db('classes').whereIn('id', classIds).whereNotNull('carried_from_id').select('carried_from_id'))
+      .map((r: any) => r.carried_from_id);
+    if (prevIds.length === 0) return null;
+    const left = await db('enrollments')
+      .whereIn('class_id', prevIds)
+      .whereIn('status', ['enrolled', 'active'])
+      .countDistinct('student_id as cnt')
+      .first();
+    const students = Number(left?.cnt ?? 0);
+    if (students === 0) return null;
+    const from = await db('classes')
+      .join('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+      .whereIn('classes.id', prevIds)
+      .where('academic_sessions.tenant_id', tenantId)
+      .first('academic_sessions.name');
+    return { fromYear: normalizeAcademicYear(from?.name ?? null) || 'last year', students };
+  }
+
+  async getDashboard(userId: string, tenantId: string, academicYear?: string): Promise<any> {
     try {
+      // Is the requested year a PAST year? (schedule + "today" only make sense
+      // for the current year; a past year is a static record.)
+      const activeYear = (await resolveActiveYear(tenantId)).yearString;
+      const requestedYear = normalizeAcademicYear(academicYear ?? null);
+      const viewingPast = !!requestedYear && requestedYear !== activeYear;
+
       const teacherId = await this.getTeacherId(userId, tenantId);
       if (!teacherId) {
         return {
           teacher_profile_missing: true,
+          academic_year: requestedYear || activeYear,
+          active_year: activeYear,
+          viewing_past: viewingPast,
+          pending_transition: null,
           stats: { total_classes: 0, total_students: 0, total_subjects: 0, classes_today: 0 },
           classes: [],
           today_schedule: [],
@@ -59,13 +120,24 @@ class TeacherDashboardService {
         };
       }
 
-      const classIds = await this.getClassIds(teacherId);
+      const classIds = await this.getClassIds(teacherId, tenantId, academicYear);
 
-      // Distinct subjects the teacher is assigned to
-      const subjectRows = await db('teacher_assignments')
-        .where('teacher_id', teacherId)
-        .distinct('subject_id');
+      // Distinct subjects the teacher is assigned to in these (year-scoped) classes.
+      const subjectRows = classIds.length
+        ? await db('teacher_assignments')
+            .where('teacher_id', teacherId)
+            .whereIn('class_id', classIds)
+            .distinct('subject_id')
+        : [];
       const totalSubjects = subjectRows.length;
+
+      // Enrollment statuses that count as "in the class". For the current year
+      // that's the live set; for a PAST year students have since been promoted/
+      // graduated, so we count every historic status — otherwise a past year
+      // would show 0 students in every class.
+      const ENROLL_STATUSES = viewingPast
+        ? ['enrolled', 'active', 'completed', 'promoted', 'repeated', 'graduated']
+        : ['enrolled', 'active'];
 
       // ── Assigned classes with student counts + subjects ──────────────────────
       let classes: any[] = [];
@@ -85,10 +157,10 @@ class TeacherDashboardService {
             db.raw("CONCAT(COALESCE(ctu.first_name, ''), ' ', COALESCE(ctu.last_name, '')) as class_teacher_name"),
           );
 
-        // Active enrollment counts per class
+        // Enrollment counts per class (live set, or historic for a past year)
         const counts = await db('enrollments')
           .whereIn('class_id', classIds)
-          .where('status', 'active')
+          .whereIn('status', ENROLL_STATUSES)
           .groupBy('class_id')
           .select('class_id')
           .count('* as cnt');
@@ -130,15 +202,17 @@ class TeacherDashboardService {
       if (classIds.length > 1) {
         const distinct = await db('enrollments')
           .whereIn('class_id', classIds)
-          .where('status', 'active')
+          .whereIn('status', ENROLL_STATUSES)
           .countDistinct('student_id as cnt')
           .first();
         distinctStudents = Number(distinct?.cnt ?? totalStudents);
       }
 
       // ── Today's schedule ─────────────────────────────────────────────────────
+      // Only meaningful for the current year — a past year is a static record,
+      // so "today's classes" is empty when viewing history.
       const todayName = DOW[new Date().getDay()];
-      const scheduleRows = await db('schedules as sc')
+      const scheduleRows = viewingPast ? [] : await db('schedules as sc')
         .leftJoin('classes as c', 'sc.class_id', 'c.id')
         .leftJoin('subjects as s', 'sc.subject_id', 's.id')
         .where('sc.teacher_id', teacherId)
@@ -217,7 +291,14 @@ class TeacherDashboardService {
       // Sort combined activity by time desc, keep the latest 6
       recentActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
+      // Transition awareness (current year only).
+      const pendingTransition = viewingPast ? null : await this.getPendingTransition(classIds, tenantId);
+
       return {
+        academic_year: requestedYear || activeYear,
+        active_year: activeYear,
+        viewing_past: viewingPast,
+        pending_transition: pendingTransition,
         stats: {
           total_classes: classIds.length,
           total_students: distinctStudents,

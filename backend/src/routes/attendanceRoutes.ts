@@ -6,6 +6,7 @@ import { logger } from '@utils/logger';
 import { db } from '@utils/database';
 import { sendExport } from '@utils/exportResponse';
 import teacherAttendanceRoutes from './teacherAttendanceRoutes';
+import { resolveYearScope } from '../utils/academicYear.js';
 
 const router = Router();
 router.use('/teachers', teacherAttendanceRoutes);
@@ -595,7 +596,8 @@ router.get('/my', authenticate, attachUserContext, authorize(UserRole.STUDENT), 
         absent,
         excused,
         attendance_percentage: attendancePercentage,
-        at_risk: attendancePercentage < 75,
+        // No records yet (e.g. a fresh year) is not "at risk".
+        at_risk: total > 0 && attendancePercentage < 75,
       },
       records: attendance,
     });
@@ -634,29 +636,24 @@ router.get('/student/:studentId', authenticate, attachUserContext, authorize(Use
     if (currentUser.role === 'teacher') {
       allowedClassIds = await teacherClassIds(currentUser.id, tenantId);
       if (allowedClassIds.length === 0) throw new AppError('Insufficient permissions', 403, 'AUTHORIZATION_ERROR');
+      // Is or WAS in one of the teacher's classes (any status) — so a teacher
+      // can still open last year's attendance after the student moved up.
       const enrollment = await db('enrollments')
         .where('student_id', student.id)
         .whereIn('class_id', allowedClassIds)
-        .where(function () { this.whereIn('status', ['active', 'enrolled']).orWhereNull('status'); })
         .first();
       if (!enrollment) throw new AppError('Insufficient permissions', 403, 'AUTHORIZATION_ERROR');
     }
 
     // Academic-year scope: attendance rows belong to a class, and classes are
-    // session-scoped. Restrict to classes whose session name matches the year
-    // (null-session classes are always included so legacy rows aren't hidden).
-    // Omitting the year returns the student's full lifetime attendance.
+    // session-scoped. Matched against THIS school's sessions (normalised);
+    // legacy classes with no session only count for the active year. Omitting
+    // the year returns the student's full lifetime attendance.
     const academicYear = req.query.academic_year as string | undefined;
     let yearClassIds: string[] | undefined;
     if (academicYear) {
-      const rows = await db('classes')
-        .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
-        .where(function (this: any) {
-          this.where('academic_sessions.name', academicYear)
-            .orWhereNull('classes.academic_session_id');
-        })
-        .distinct('classes.id');
-      yearClassIds = rows.map((r: any) => r.id);
+      const scope = await resolveYearScope(tenantId, academicYear);
+      yearClassIds = scope ? scope.classIds.map(String) : undefined;
     }
 
     let attendanceQuery = db('attendance')
@@ -690,7 +687,8 @@ router.get('/student/:studentId', authenticate, attachUserContext, authorize(Use
         absent,
         excused,
         attendance_percentage: attendancePercentage,
-        at_risk: attendancePercentage < 75,
+        // No records yet (e.g. a fresh year) is not "at risk".
+        at_risk: total > 0 && attendancePercentage < 75,
       },
       records: attendance,
     });

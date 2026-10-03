@@ -44,10 +44,12 @@ function formatDateLabel(dateStr: string): { weekday: string; date: string } {
 
 export const ExamTimetablePage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, canAccess } = useAuth();
   const isStudent = user?.role === 'student';
-  const isParent = user?.role === 'parent' || user?.role === 'guardian';
+  // 'guardian' is a legacy alias for parent (not in UserRole, but the column is free text).
+  const isParent = user?.role === 'parent' || (user?.role as string | undefined) === 'guardian';
   const isViewerOnly = isStudent || isParent;
+  const canManage = canAccess(['principal', 'super_admin']);
 
   const [selectedClassId, setSelectedClassId] = useState('');
   const [term, setTerm] = useState<ExamTerm>('first_term');
@@ -59,7 +61,10 @@ export const ExamTimetablePage: React.FC = () => {
   // the current year — their class IS this year's class.
   const academicYear = isViewerOnly ? activeYear : (pickedYear || activeYear);
   const viewingPast = !isViewerOnly && !!academicYear && !!activeYear && academicYear !== activeYear;
-  const setAcademicYear = (y: string) => { setPickedYear(y); setSelectedClassId(''); setExtraDates([]); };
+  // Only managers edit, and only the current year (teachers view their classes).
+  const canEdit = canManage && !viewingPast;
+  // The current year is stored as '' so the page follows a rollover by itself.
+  const setAcademicYear = (y: string) => { setPickedYear(y === activeYear ? '' : y); setSelectedClassId(''); setExtraDates([]); };
 
   const [slotModalOpen, setSlotModalOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<ExaminationRecord | null>(null);
@@ -109,11 +114,20 @@ export const ExamTimetablePage: React.FC = () => {
       if (child?.class_id) setSelectedClassId(String(child.class_id));
       return;
     }
-    if (!selectedClassId && classes.length > 0) {
+    // Staff: default to the first class, and drop a selection that isn't in the
+    // selected year's list (e.g. after a rollover or a year switch).
+    if (!classesData) return;
+    const inList = classes.some((c) => String(c.id) === selectedClassId);
+    if ((!selectedClassId || !inList) && classes.length > 0) {
       setSelectedClassId(String(classes[0].id));
+    } else if (selectedClassId && !inList) {
+      setSelectedClassId('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classes, selectedClassId, isStudent, isParent, studentDash, parentChildren, activeChildId]);
+  }, [classesData, selectedClassId, isStudent, isParent, studentDash, parentChildren, activeChildId]);
+
+  // Manually-added empty date rows belong to one class + term only.
+  useEffect(() => { setExtraDates([]); }, [selectedClassId, term]);
 
   // Exams for this class + term + year
   const canLoad = !!(selectedClassId && term && academicYear);
@@ -185,8 +199,8 @@ export const ExamTimetablePage: React.FC = () => {
       return (
         <td className="p-1.5 border border-gray-100 dark:border-gray-700/50 align-top">
           <div
-            onClick={isViewerOnly || viewingPast ? undefined : () => openEdit(exam)}
-            className={`group relative rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-2 transition-all min-w-[120px] ${isViewerOnly || viewingPast ? '' : 'cursor-pointer hover:ring-2 hover:ring-blue-400/50'}`}
+            onClick={canEdit ? () => openEdit(exam) : undefined}
+            className={`group relative rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-2 transition-all min-w-[120px] ${canEdit ? 'cursor-pointer hover:ring-2 hover:ring-blue-400/50' : ''}`}
           >
             <p className="text-xs font-bold text-gray-900 dark:text-white truncate leading-tight">
               {exam.subject_name || exam.subject_code || exam.title}
@@ -298,7 +312,7 @@ export const ExamTimetablePage: React.FC = () => {
           {!isViewerOnly && (
             <div className="sm:w-44">
               <label className="text-sm font-medium text-gray-600 dark:text-gray-400 block mb-1">Academic Year</label>
-              <YearFilter value={academicYear} onChange={setAcademicYear} className="w-full [&_select]:w-full" />
+              <YearFilter value={academicYear} onChange={setAcademicYear} noAutoSelect className="w-full [&_select]:w-full" />
             </div>
           )}
         </div>
@@ -306,7 +320,7 @@ export const ExamTimetablePage: React.FC = () => {
         {viewingPast && (
           <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
             <span>Showing the <strong>{academicYear}</strong> exam timetable as history (read-only). The current year is {activeYear}.</span>
-            <button type="button" onClick={() => setAcademicYear(activeYear)} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+            <button type="button" onClick={() => setAcademicYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
               Back to {activeYear}
             </button>
           </div>
@@ -317,10 +331,20 @@ export const ExamTimetablePage: React.FC = () => {
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <FileText size={56} className="text-gray-300 dark:text-gray-600 mb-4" />
             <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
-              {isViewerOnly ? 'No exam timetable available yet' : 'Select a class to build its exam timetable'}
+              {isViewerOnly
+                ? 'No exam timetable available yet'
+                : classesData && classes.length === 0
+                  ? (viewingPast ? `No classes in ${academicYear}` : 'No classes yet')
+                  : canManage ? 'Select a class to build its exam timetable' : 'Select a class to see its exam timetable'}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {isViewerOnly ? 'Your exam schedule will appear here once your class is enrolled and exams are scheduled.' : 'Choose a class, term and year above.'}
+              {isViewerOnly
+                ? 'Your exam schedule will appear here once your class is enrolled and exams are scheduled.'
+                : classesData && classes.length === 0
+                  ? (canManage
+                      ? (viewingPast ? `There were no classes in ${academicYear}.` : 'Create classes first, then schedule their exams.')
+                      : (viewingPast ? `You didn't teach any classes in ${academicYear}.` : `You have no classes assigned for ${activeYear} yet.`))
+                  : 'Choose a class, term and year above.'}
             </p>
           </div>
         )}
@@ -346,8 +370,12 @@ export const ExamTimetablePage: React.FC = () => {
               allDates.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-gray-300 dark:border-gray-700 rounded-xl">
                   <Calendar size={40} className="text-gray-300 dark:text-gray-600 mb-3" />
-                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">No exams scheduled yet</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-4">Add an exam day or schedule the first exam.</p>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    {viewingPast ? `No exams were scheduled for this term in ${academicYear}` : 'No exams scheduled yet'}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-4">
+                    {canEdit ? 'Add an exam day or schedule the first exam.' : viewingPast ? 'Try another term.' : 'The exam schedule will appear here once it is published.'}
+                  </p>
                   <EditGuard>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={() => setAddDayOpen(true)}><CalendarPlus size={14} className="mr-1.5" /> Add Exam Day</Button>

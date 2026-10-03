@@ -12,6 +12,7 @@ import { provisionStudentAccounts } from '@utils/studentAccounts';
 import { sendExport } from '@utils/exportResponse';
 import { importStudents } from '@services/studentImportService';
 import multer from 'multer';
+import { normalizeAcademicYear } from '../utils/academicYear.js';
 
 const uploadCsv = multer({
   storage: multer.memoryStorage(),
@@ -375,7 +376,9 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     const academicYear = (req.query.academic_year as string | undefined)?.trim() || undefined;
     let yearClassIds: string[] | null = null;
     if (academicYear) {
-      const session = await db('academic_sessions').where({ tenant_id: effectiveTenantId, name: academicYear }).first('id', 'is_active');
+      const wantedYear = normalizeAcademicYear(academicYear);
+      const session = (await db('academic_sessions').where({ tenant_id: effectiveTenantId }).select('id', 'name', 'is_active'))
+        .find((s: any) => normalizeAcademicYear(s.name) === wantedYear);
       const rows = session
         ? await db('classes').leftJoin('users as cc', 'classes.created_by', 'cc.id')
             .where((q) => {
@@ -391,6 +394,49 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     }
     const HISTORIC = ['enrolled', 'active', 'completed', 'promoted', 'repeated', 'graduated'];
 
+    // Teacher scoping: teachers only see students in classes they teach
+    // (teacher_assignments) or lead (class_teacher_id). With a year chosen, it's
+    // the teacher's classes OF THAT YEAR and everyone who was in them that year
+    // (historic statuses); with no year, who is enrolled in their classes now.
+    let teacherStudentIds: string[] | null = null;
+    let teacherYearClassIds: string[] | null = null;
+    if (userRole === 'teacher') {
+      const teacher = await db('teachers')
+        .join('users as u', 'teachers.user_id', 'u.id')
+        .where('teachers.user_id', req.user!.id)
+        .where('u.tenant_id', tenantId)
+        .select('teachers.id')
+        .first();
+      if (!teacher) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      const assigned = await db('teacher_assignments').where('teacher_id', teacher.id).distinct('class_id');
+      const led = await db('classes').where('class_teacher_id', teacher.id).select('id');
+      let classIds = Array.from(new Set<string>([
+        ...assigned.map((r: any) => r.class_id),
+        ...led.map((r: any) => r.id),
+      ]));
+      if (yearClassIds) {
+        const inYear = new Set(yearClassIds.map(String));
+        classIds = classIds.filter((id) => inYear.has(String(id)));
+        teacherYearClassIds = classIds;
+      }
+      if (classIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      const enrolled = await db('enrollments')
+        .whereIn('class_id', classIds)
+        .whereIn('status', yearClassIds ? HISTORIC : ['enrolled', 'active'])
+        .distinct('student_id');
+      teacherStudentIds = enrolled.map((r: any) => r.student_id);
+      if (teacherStudentIds.length === 0) {
+        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+    }
+    // The class shown for each student in a chosen year: for a teacher, their
+    // own class of that year (never another teacher's class).
+    const rosterClassIds = teacherYearClassIds ?? yearClassIds;
+
     let query = db('students')
       .select(
         'students.*',
@@ -398,13 +444,13 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
         'classes.name as class_name',
         'classes.level as class_level'
       );
-    if (yearClassIds) {
+    if (rosterClassIds) {
       // One row per student: their (latest) enrollment in that year's classes.
       query = query
         .join(
           db('enrollments').distinctOn('student_id')
             .select('student_id', 'class_id')
-            .whereIn('class_id', yearClassIds)
+            .whereIn('class_id', rosterClassIds)
             .whereIn('status', HISTORIC)
             .orderBy('student_id').orderBy('created_at', 'desc')
             .as('ye'),
@@ -426,39 +472,7 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
       query = query.where('students.tenant_id', requestedTenantId);
     }
 
-    // Teacher scoping: teachers only see students enrolled in classes they
-    // teach (teacher_assignments) or lead (class_teacher_id). Resolve the
-    // eligible student ids once and constrain both data + count queries.
-    let teacherStudentIds: string[] | null = null;
-    if (userRole === 'teacher') {
-      const teacher = await db('teachers')
-        .join('users as u', 'teachers.user_id', 'u.id')
-        .where('teachers.user_id', req.user!.id)
-        .where('u.tenant_id', tenantId)
-        .select('teachers.id')
-        .first();
-      if (!teacher) {
-        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
-      }
-      const assigned = await db('teacher_assignments').where('teacher_id', teacher.id).distinct('class_id');
-      const led = await db('classes').where('class_teacher_id', teacher.id).select('id');
-      const classIds = Array.from(new Set<string>([
-        ...assigned.map((r: any) => r.class_id),
-        ...led.map((r: any) => r.id),
-      ]));
-      if (classIds.length === 0) {
-        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
-      }
-      const enrolled = await db('enrollments')
-        .whereIn('class_id', classIds)
-        .whereIn('status', ['enrolled', 'active'])
-        .distinct('student_id');
-      teacherStudentIds = enrolled.map((r: any) => r.student_id);
-      if (teacherStudentIds.length === 0) {
-        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
-      }
-      query = query.whereIn('students.id', teacherStudentIds);
-    }
+    if (teacherStudentIds) query = query.whereIn('students.id', teacherStudentIds);
 
     // Academic-year scope: when a year is chosen, restrict to students who had
     // an enrollment (any status) in a class of THAT session — so a past year
@@ -474,6 +488,23 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
       if (yearStudentIds.length === 0) {
         return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
       }
+    }
+
+    // Optional class filter (server-side, so it covers every page — not only
+    // the rows currently loaded). In a chosen year it's who was in that class
+    // that year; otherwise who is enrolled in it now.
+    const classFilterId = (req.query.class_id as string | undefined)?.trim() || undefined;
+    let classStudentIds: string[] | null = null;
+    if (classFilterId) {
+      const rows = await db('enrollments')
+        .where('class_id', classFilterId)
+        .whereIn('status', yearClassIds ? HISTORIC : ['enrolled', 'active'])
+        .distinct('student_id');
+      classStudentIds = rows.map((r: any) => r.student_id);
+      if (classStudentIds.length === 0) {
+        return res.json({ data: [], stats: { total: 0, active: 0, inactive: 0, graduated: 0 }, pagination: { page, limit, total: 0, total_pages: 0 } });
+      }
+      query = query.whereIn('students.id', classStudentIds);
     }
 
     // Apply filters
@@ -512,6 +543,9 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     if (yearStudentIds) {
       countQuery = countQuery.whereIn('students.id', yearStudentIds);
     }
+    if (classStudentIds) {
+      countQuery = countQuery.whereIn('students.id', classStudentIds);
+    }
     countQuery = countQuery.count('* as totalCount');
     if (status) {
       if (status === 'active') {
@@ -546,6 +580,7 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     }
     if (teacherStudentIds) statsQuery = statsQuery.whereIn('students.id', teacherStudentIds);
     if (yearStudentIds) statsQuery = statsQuery.whereIn('students.id', yearStudentIds);
+    if (classStudentIds) statsQuery = statsQuery.whereIn('students.id', classStudentIds);
     if (search) {
       const term = `%${search.trim()}%`;
       statsQuery = statsQuery.where(function () {
@@ -818,12 +853,29 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
       }
     }
 
+    // Teachers: only students who are (or were) in one of their classes —
+    // the same scope as their directory list.
+    if (currentUser.role === 'teacher') {
+      const { teacherCanAccessStudent } = await import('../utils/teacherScope.js');
+      // Non-super-admins always have a tenant here (checked above); '' fails closed.
+      if (!(await teacherCanAccessStudent(currentUser.userId, tenantId ?? '', String(student.id)))) {
+        throw new AppError('You can only view students in your classes', 403, 'AUTHORIZATION_ERROR');
+      }
+    }
+
+    // Credential material (temp passwords) is SENSITIVE — only expose it to the
+    // staff roles who legitimately hand out / reset credentials. Students,
+    // parents and teachers viewing a profile never receive passwords.
+    const canSeeCredentials = ['principal', 'super_admin', 'admissions_officer'].includes(currentUser.role as string);
+
     // Ensure student + parent login accounts exist with RANDOM per-account temp
     // passwords (no shared guessable defaults). Delegated to the hardened util,
     // which only (re)sets a password for accounts that have never logged in, so
-    // a real user's chosen password is never overwritten.
+    // a real user's chosen password is never overwritten. Only the roles that
+    // hand out credentials trigger this — merely VIEWING a profile as a teacher,
+    // student or parent must not create accounts as a side effect.
     const safeStudentId = (student.student_id || 'student').toLowerCase();
-
+    if (canSeeCredentials) {
     let guardianRecord: any = null;
     try {
       if (await db.schema.hasTable('guardians')) {
@@ -855,11 +907,6 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
       ? await db('users').where('id', provisioned.parentUserId).first()
       : null;
 
-    // Credential material (temp passwords) is SENSITIVE — only expose it to the
-    // staff roles who legitimately hand out / reset credentials. Students,
-    // parents and teachers viewing a profile never receive passwords.
-    const canSeeCredentials = ['principal', 'super_admin', 'admissions_officer'].includes(currentUser.role as string);
-    if (canSeeCredentials) {
       student.login_credentials = {
         // Students sign in with their student ID NUMBER as the username.
         student_username: studentUser?.username || provisioned.studentUsername || student.student_id || safeStudentId,

@@ -5,7 +5,7 @@
  * scoped tools (SL grade entry, attendance, report cards).
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -19,6 +19,8 @@ import { WelcomeHero } from '@components/dashboard/WelcomeHero';
 import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Button } from '@components/ui/button';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import useAuthStore from '@store/authStore';
 import { teacherDashboardService, TeacherDashboardData } from '@services/teacherDashboardService';
 
@@ -49,9 +51,22 @@ export const Phase13TeacherDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
+  // Academic year: opens on the school's active year; a past year is a
+  // read-only teaching record. Follows the school automatically after rollover.
+  const [pickedYear, setYear] = useState('');
+  const { activeYear, years, isLoading: yearsLoading } = useAcademicYears();
+  // A picked year that no longer exists (e.g. a removed test year) falls back
+  // to the school's current year instead of showing an empty, orphaned view.
+  useEffect(() => {
+    if (!yearsLoading && pickedYear && !years.includes(pickedYear)) setYear('');
+  }, [yearsLoading, years, pickedYear]);
+  const year = pickedYear || activeYear;
+  const viewingPast = !!year && !!activeYear && year !== activeYear;
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['teacher-dashboard'],
-    queryFn: () => teacherDashboardService.getDashboard(),
+    queryKey: ['teacher-dashboard', year],
+    queryFn: () => teacherDashboardService.getDashboard(year || undefined),
+    enabled: !!year,
     staleTime: 60_000,
   });
 
@@ -77,7 +92,32 @@ export const Phase13TeacherDashboard: React.FC = () => {
         subtitle="Your classes and schedule"
         onRefresh={() => refetch()}
         isRefreshing={isLoading}
+        // noAutoSelect: keep pickedYear empty until the teacher actually picks,
+        // so after a rollover the overview moves to the NEW year by itself
+        // instead of staying pinned to the year that was active on load.
+        actions={<YearFilter value={year} onChange={(y) => setYear(y === activeYear ? '' : y)} noAutoSelect />}
       >
+        {viewingPast && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>
+              Showing your <strong>{year}</strong> teaching record as history — the classes and students you had that year.
+              The current year is {activeYear}.
+            </span>
+            <button type="button" onClick={() => setYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
+        {/* Year transition in progress: the school started the new year but
+            students haven't all been moved into this year's classes yet. */}
+        {!viewingPast && dash?.pending_transition && (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <strong>{activeYear} is being set up.</strong>{' '}
+            {dash.pending_transition.students} student{dash.pending_transition.students === 1 ? ' is' : 's are'} still
+            in your {dash.pending_transition.fromYear} classes and will appear here once the principal moves them into
+            this year. Your class lists and student counts below only show students already in {activeYear}.
+          </div>
+        )}
         <WelcomeHero
           firstName={user?.firstName ?? (user as any)?.first_name}
           role="teacher"
@@ -106,18 +146,20 @@ export const Phase13TeacherDashboard: React.FC = () => {
               <KPICard title="Classes Today" value={stats.classes_today} icon={<div className="p-2 rounded-xl bg-amber-500 text-white"><Calendar size={20} /></div>} color="amber" />
             </div>
 
-            {/* Quick actions */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Quick Actions</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {quickActions.map((a) => (
-                  <Button key={a.label} variant="outline" className="flex flex-col items-center gap-2 h-auto py-4" onClick={() => navigate(a.route)}>
-                    {a.icon}
-                    <span className="text-xs font-medium">{a.label}</span>
-                  </Button>
-                ))}
+            {/* Quick actions — live tools, hidden when viewing a past year. */}
+            {!viewingPast && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Quick Actions</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {quickActions.map((a) => (
+                    <Button key={a.label} variant="outline" className="flex flex-col items-center gap-2 h-auto py-4" onClick={() => navigate(a.route)}>
+                      {a.icon}
+                      <span className="text-xs font-medium">{a.label}</span>
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Left column: today's schedule + announcements */}
@@ -126,7 +168,9 @@ export const Phase13TeacherDashboard: React.FC = () => {
                   <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                     <Calendar size={16} className="text-blue-500" /> Today's Schedule
                   </h3>
-                  {schedule.length === 0 ? (
+                  {viewingPast ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">Today's schedule isn't shown for a past year.</p>
+                  ) : schedule.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">No classes scheduled for today.</p>
                   ) : (
                     <div className="space-y-2.5">
@@ -146,8 +190,9 @@ export const Phase13TeacherDashboard: React.FC = () => {
                   )}
                 </div>
 
-                {/* Teacher-scoped announcements (tenant + role filtered by the API) */}
-                <AnnouncementsWidget limit={4} />
+                {/* Teacher-scoped announcements — "latest news", a live concept,
+                    so hidden when viewing a past year's record. */}
+                {!viewingPast && <AnnouncementsWidget limit={4} />}
               </div>
 
               {/* Assigned classes */}
@@ -156,7 +201,12 @@ export const Phase13TeacherDashboard: React.FC = () => {
                   <BookOpen size={16} className="text-purple-500" /> My Classes
                 </h3>
                 {classes.length === 0 ? (
-                  <EmptyState message="No classes assigned" description="Your principal hasn't assigned you to any classes or subjects yet." />
+                  <EmptyState
+                    message={viewingPast ? `No classes in ${year}` : `No classes assigned for ${activeYear}`}
+                    description={viewingPast
+                      ? `You didn't teach any classes in ${year}.`
+                      : `Your principal hasn't assigned you to any classes or subjects in ${activeYear} yet. Last year's classes are still available from the year filter.`}
+                  />
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {classes.map((c) => (
@@ -182,14 +232,17 @@ export const Phase13TeacherDashboard: React.FC = () => {
                             ))}
                           </div>
                         )}
-                        <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => navigate('/academic/results')}>
-                            <ClipboardList size={13} className="mr-1" /> Scores
-                          </Button>
-                          <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => navigate('/students/attendance')}>
-                            <ClipboardCheck size={13} className="mr-1" /> Attendance
-                          </Button>
-                        </div>
+                        {/* Live-action shortcuts — hidden in a past year (history is read-only). */}
+                        {!viewingPast && (
+                          <div className="flex items-center gap-2">
+                            <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => navigate('/academic/results')}>
+                              <ClipboardList size={13} className="mr-1" /> Scores
+                            </Button>
+                            <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => navigate('/students/attendance')}>
+                              <ClipboardCheck size={13} className="mr-1" /> Attendance
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -197,11 +250,13 @@ export const Phase13TeacherDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Recent activity */}
+            {/* Activity — "Recent" for the current year, a year record otherwise. */}
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">{viewingPast ? `Activity in ${year}` : 'Recent Activity'}</h3>
               {activity.length === 0 ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">No recent activity yet. Entered scores and marked attendance will show here.</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
+                  {viewingPast ? `No recorded activity for ${year}.` : 'No recent activity yet. Entered scores and marked attendance will show here.'}
+                </p>
               ) : (
                 <div className="space-y-2">
                   {activity.map((a, i) => (

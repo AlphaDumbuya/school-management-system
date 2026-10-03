@@ -68,8 +68,9 @@ router.get('/grid', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole
     if (!class_id || !subject_id || !term || !academic_year) {
       return res.status(400).json({ success: false, error: 'class_id, subject_id, term, academic_year are required' });
     }
-    // Unpublished scores: staff only, and a teacher only for their own classes.
-    await slReportCardService.assertTeacherScope(req.user!.id, tenant(req), req.user!.role, class_id as string);
+    // Unpublished scores: staff only, and a teacher only for the subjects they
+    // teach in that class (a class teacher may see every subject of the class).
+    await slReportCardService.assertTeacherScope(req.user!.id, tenant(req), req.user!.role, class_id as string, subject_id as string);
     const grid = await slReportCardService.getClassSubjectGrid(
       tenant(req),
       class_id as string,
@@ -307,7 +308,15 @@ router.get('/my/subjects', async (req: Request, res: Response, next: NextFunctio
 // publish-gated report card / dashboard views instead).
 router.get('/student/:studentId/summary', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER, UserRole.ADMISSIONS_OFFICER), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const data = await slReportCardService.getStudentResultsSummary(tenant(req), req.params.studentId);
+    // Teachers: only students who are (or were) in one of their classes.
+    if (req.user!.role === 'teacher') {
+      const { teacherCanAccessStudent } = await import('../utils/teacherScope.js');
+      if (!(await teacherCanAccessStudent(req.user!.id, tenant(req), req.params.studentId))) {
+        return res.status(403).json({ success: false, error: 'You can only view students in your classes' });
+      }
+    }
+    const yr = typeof req.query.academic_year === 'string' && req.query.academic_year.trim() ? req.query.academic_year.trim() : null;
+    const data = await slReportCardService.getStudentResultsSummary(tenant(req), req.params.studentId, yr);
     res.json({ success: true, data });
   } catch (error) {
     logger.error('Error getting student results summary:', error);
@@ -335,7 +344,7 @@ router.get('/ranking', async (req: Request, res: Response, next: NextFunction) =
     res.json({ success: true, data });
   } catch (error: any) {
     logger.error('Error getting class ranking:', error);
-    if (error.message?.includes('only view') || error.message?.includes('authorized')) {
+    if (error.message?.includes('only view') || error.message?.includes('authorized') || error.message?.includes('assigned') || error.message?.includes('Teacher profile')) {
       return res.status(403).json({ success: false, error: error.message });
     }
     next(error);

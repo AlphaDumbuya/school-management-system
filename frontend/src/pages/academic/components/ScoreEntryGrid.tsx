@@ -162,7 +162,11 @@ export const ScoreEntryGrid: React.FC<Props> = ({ academicYear }) => {
 
       {!canLoad && (
         <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl">
-          Select a class, subject and term to begin entering scores.
+          {classesData && classes.length === 0
+            ? `There are no classes to enter scores for in ${academicYear}.`
+            : classId && subjectOptions.length === 0 && mySubjectsData
+              ? "You don't teach any subject in this class this year."
+              : 'Select a class, subject and term to begin entering scores.'}
         </div>
       )}
 

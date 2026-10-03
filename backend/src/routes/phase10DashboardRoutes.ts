@@ -401,7 +401,8 @@ router.get('/dashboards/teacher', authenticate, async (req: Request, res: Respon
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const data = await teacherDashboardService.getDashboard(req.user.id, req.user.tenant_id);
+    const requestedYear = typeof req.query.academic_year === 'string' ? req.query.academic_year.trim() : undefined;
+    const data = await teacherDashboardService.getDashboard(req.user.id, req.user.tenant_id, requestedYear || undefined);
     res.json({ success: true, data });
   } catch (error) {
     logger.error(`Error fetching teacher dashboard: ${error}`);
