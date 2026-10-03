@@ -40,10 +40,17 @@ export const GuidePage: React.FC = () => {
   const [replayed, setReplayed] = useState(false);
 
   const replayWalkthrough = () => {
+    // Clear the stored "done" flag so a future first-login still shows it…
     resetOnboarding(user?.id, user?.tenantId);
     setReplayed(true);
-    // Navigating to the dashboard re-triggers the first-login walkthrough.
+    // …then go to the dashboard and explicitly ask the layout to open the
+    // walkthrough. The event is dispatched after navigation so the destination
+    // layout's listener is already mounted (the server-side hasOnboarded flag
+    // would otherwise suppress it).
     navigate('/dashboard');
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('wiskul:replay-walkthrough'));
+    }, 400);
   };
 
   const SectionCard: React.FC<{ section: GuideSection; i: number }> = ({ section, i }) => {

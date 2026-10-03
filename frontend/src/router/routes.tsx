@@ -220,7 +220,11 @@ const router = createBrowserRouter(
           element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'accountant', 'admissions_officer']}><SupportPage /></P>,
         },
         {
-          path: 'support/:topicId',
+          path: 'support/:collectionId',
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'accountant', 'admissions_officer']}><SupportTopicPage /></P>,
+        },
+        {
+          path: 'support/:collectionId/:articleId',
           element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'accountant', 'admissions_officer']}><SupportTopicPage /></P>,
         },
 

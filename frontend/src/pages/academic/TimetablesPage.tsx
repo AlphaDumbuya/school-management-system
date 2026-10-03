@@ -276,7 +276,8 @@ export const TimetablesPage: React.FC = () => {
           <EditGuard>
             <button
               onClick={(e) => { e.stopPropagation(); setDeleteTarget(slot); }}
-              className="absolute top-1 right-1 p-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute top-1 right-1 p-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-500 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity"
+              aria-label="Remove"
               title="Remove"
             >
               <Trash2 size={10} />

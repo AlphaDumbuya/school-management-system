@@ -333,6 +333,8 @@ export interface AnalyticsFilters {
     start_date?: string;
     end_date?: string;
     category?: string;
+    /** Academic year window (used when no explicit dates are set). */
+    academic_year?: string;
 }
 
 // ============================================================================

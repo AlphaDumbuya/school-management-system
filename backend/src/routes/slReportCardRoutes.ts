@@ -62,12 +62,14 @@ router.get('/config', authenticate, async (req: Request, res: Response) => {
  * GET /grid?class_id&subject_id&term&academic_year
  * Returns each student in the class with their existing Test1/Test2/mean.
  */
-router.get('/grid', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/grid', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { class_id, subject_id, term, academic_year } = req.query;
     if (!class_id || !subject_id || !term || !academic_year) {
       return res.status(400).json({ success: false, error: 'class_id, subject_id, term, academic_year are required' });
     }
+    // Unpublished scores: staff only, and a teacher only for their own classes.
+    await slReportCardService.assertTeacherScope(req.user!.id, tenant(req), req.user!.role, class_id as string);
     const grid = await slReportCardService.getClassSubjectGrid(
       tenant(req),
       class_id as string,
@@ -76,7 +78,10 @@ router.get('/grid', async (req: Request, res: Response, next: NextFunction) => {
       academic_year as string,
     );
     res.json({ success: true, data: grid });
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.message?.includes('assigned') || error?.message?.includes('authorized') || error?.message?.includes('Teacher profile')) {
+      return res.status(403).json({ success: false, error: error.message });
+    }
     logger.error('Error getting SL score grid:', error);
     next(error);
   }
@@ -298,7 +303,9 @@ router.get('/my/subjects', async (req: Request, res: Response, next: NextFunctio
  * student-profile "Academics" tab. Declared BEFORE /:studentId so "student"
  * isn't captured as a studentId param.
  */
-router.get('/student/:studentId/summary', async (req: Request, res: Response, next: NextFunction) => {
+// Staff-only: this summary is not publish-gated (students/parents use the
+// publish-gated report card / dashboard views instead).
+router.get('/student/:studentId/summary', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER, UserRole.ADMISSIONS_OFFICER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = await slReportCardService.getStudentResultsSummary(tenant(req), req.params.studentId);
     res.json({ success: true, data });

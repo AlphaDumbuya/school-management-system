@@ -21,7 +21,8 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { showToast } from '@utils/toast';
 import { classesService } from '@services/classesService';
-import schoolConfigService from '@services/schoolConfigService';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import {
   promotionService, PromotionCandidate, PromotionOutcome, PromotionDecision,
 } from '@services/promotionService';
@@ -44,42 +45,17 @@ const OUTCOME_LABELS: Record<PromotionOutcome, string> = {
 
 export const PromotionsPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const currentYear = new Date().getFullYear();
   const [tab, setTab] = useState<Tab>('promote');
-  const [academicYear, setAcademicYear] = useState('');
+  // Real years only (shared source); opens on the school's ACTIVE year.
+  const { activeYear } = useAcademicYears();
+  const [pickedYear, setPickedYear] = useState('');
+  const academicYear = pickedYear || activeYear;
   const [classId, setClassId] = useState('');
   const [targetClassId, setTargetClassId] = useState('');
   const [graduate, setGraduate] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, PromotionOutcome>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  // Real academic years from the school's sessions (so the selected year matches
-  // the data — the fabricated new Date() list didn't match stored session names
-  // like "2024-2025"). Falls back to a computed span for a brand-new school.
-  const { data: sessionsResp } = useQuery({
-    queryKey: ['academic-sessions'],
-    queryFn: () => schoolConfigService.listAcademicSessions(),
-    staleTime: 60_000,
-  });
-  const sessions: Array<{ name: string; is_active: boolean }> = ((sessionsResp as any)?.data ?? []) as any;
-
-  const yearOptions = useMemo(() => {
-    const set = new Set<string>();
-    sessions.forEach((s) => { if (s?.name) set.add(String(s.name)); });
-    // Real years only; a school with no sessions yet gets just this year.
-    if (set.size === 0) set.add(`${currentYear}/${currentYear + 1}`);
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [sessions, currentYear]);
-
-  // Default to the active session's year once loaded.
-  React.useEffect(() => {
-    if (academicYear) return;
-    const active = sessions.find((s) => s.is_active)?.name;
-    if (active) setAcademicYear(active);
-    else if (yearOptions.length) setAcademicYear(yearOptions[0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions.length, yearOptions.length]);
 
   const { data: classesData } = useQuery({
     // Scope classes to the selected year so the picker shows that year's classes.
@@ -92,7 +68,6 @@ export const PromotionsPage: React.FC = () => {
 
   // Promoting from a PAST year? Students move into the CURRENT year's classes,
   // so "To Class" lists the active year's classes instead of last year's.
-  const activeYear = sessions.find((s) => s.is_active)?.name || '';
   const fromPastYear = !!academicYear && !!activeYear && academicYear !== activeYear;
   const { data: activeClassesData } = useQuery({
     queryKey: ['promotion-classes', activeYear],
@@ -237,20 +212,16 @@ export const PromotionsPage: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-row md:items-end gap-3 mb-6">
           <div className="w-full md:w-auto">
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Academic Year</label>
-            <div className="relative">
-              <select
-                value={academicYear}
-                onChange={(e) => {
-                  // Each year has its own class rows — drop picks from the old year.
-                  setAcademicYear(e.target.value);
-                  setClassId(''); setTargetClassId(''); setGraduate(false); setOverrides({});
-                }}
-                className={`${selectCls} w-full md:w-40`}
-              >
-                {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
-            </div>
+            <YearFilter
+              value={academicYear}
+              onChange={(y) => {
+                // Each year has its own class rows — drop picks from the old year.
+                setPickedYear(y);
+                setClassId(''); setTargetClassId(''); setGraduate(false); setOverrides({});
+              }}
+              noAutoSelect
+              className="w-full md:w-40 [&_select]:w-full"
+            />
           </div>
           <div className="w-full md:w-auto">
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">

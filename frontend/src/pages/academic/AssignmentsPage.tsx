@@ -547,7 +547,7 @@ export const AssignmentsPage: React.FC = () => {
           emptyMessage="No assignments found"
           emptyAction={canManage ? { label: 'Create your first assignment', onClick: () => { setEditingAssignment(null); setFormOpen(true); } } : undefined}
           rowActions={(row) => (
-            canManage
+            canManage && !viewingPast
               ? [
                   { label: 'View', onClick: (r) => setViewingAssignment(r) },
                   { label: 'Edit', onClick: (r) => { setEditingAssignment(r); setFormOpen(true); } },
@@ -565,7 +565,7 @@ export const AssignmentsPage: React.FC = () => {
         isOpen={!!viewingAssignment}
         onClose={() => setViewingAssignment(null)}
         assignment={viewingAssignment}
-        onEdit={(a) => { setEditingAssignment(a); setFormOpen(true); }}
+        onEdit={viewingPast ? undefined : (a) => { setEditingAssignment(a); setFormOpen(true); }}
       />
 
       {/* Form Modal */}

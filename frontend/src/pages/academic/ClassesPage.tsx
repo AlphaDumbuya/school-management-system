@@ -754,7 +754,7 @@ export const ClassesPage: React.FC = () => {
                         Students
                       </Button>
 
-                      <RoleGuard roles={['principal', 'super_admin']}>
+                      {!viewingPast && <RoleGuard roles={['principal', 'super_admin']}>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -785,7 +785,7 @@ export const ClassesPage: React.FC = () => {
                             <Trash2 size={16} className="text-red-500 group-hover:text-red-600 dark:group-hover:text-red-450 transition-colors" />
                           </Button>
                         )}
-                      </RoleGuard>
+                      </RoleGuard>}
                     </div>
                   </div>
                 );
@@ -814,8 +814,9 @@ export const ClassesPage: React.FC = () => {
                 label: 'View Students',
                 onClick: (row) => setStudentsModal({ open: true, classId: row.id, className: row.name }),
               },
-              // Management actions are principal / super_admin only
-              ...(canManage ? [
+              // Management actions are principal / super_admin only, and only
+              // for the current year (a past year's classes are history).
+              ...(canManage && !viewingPast ? [
                 {
                   label: 'Edit',
                   onClick: (row: ClassRecord) => { setEditingClass(row); setFormOpen(true); },

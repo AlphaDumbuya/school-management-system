@@ -10,7 +10,7 @@ import { teachersService, TeacherRecord } from '@services/teachersService';
 import { studentsService } from '@services/studentsService';
 import { sanitizeMarkup } from '@lib/sanitizeHtml';
 import { showToast } from '@utils/toast';
-import { User, Mail, Phone, Calendar, KeyRound, ShieldAlert, Loader2, MapPin, Award, GraduationCap, ShieldCheck, Building, Briefcase, BookOpen, RotateCcw } from 'lucide-react';
+import { User, Mail, Phone, Calendar, KeyRound, ShieldAlert, Loader2, MapPin, Award, GraduationCap, ShieldCheck, Building, Briefcase, BookOpen, RotateCcw, Eye, EyeOff } from 'lucide-react';
 
 interface TeacherDetailModalProps {
   isOpen: boolean;
@@ -84,6 +84,8 @@ export const TeacherDetailModal: React.FC<TeacherDetailModalProps> = ({
   const [detailedTeacher, setDetailedTeacher] = useState<TeacherRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [resetting, setResetting] = useState(false);
+  // Passwords are masked until explicitly revealed.
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (isOpen && teacher) {
@@ -105,6 +107,7 @@ export const TeacherDetailModal: React.FC<TeacherDetailModalProps> = ({
         });
     } else {
       setDetailedTeacher(null);
+      setShowPassword(false);
     }
   }, [isOpen, teacher]);
 
@@ -114,10 +117,12 @@ export const TeacherDetailModal: React.FC<TeacherDetailModalProps> = ({
     setResetting(true);
     try {
       const res: any = await studentsService.resetUserPassword(uid);
+      if (res?.success === false) throw new Error(res?.error || 'Failed to reset password.');
       const pwd = (res?.data ?? res)?.temporary_password;
-      // Reflect the new demo password immediately in the modal.
+      // Reflect the new demo password immediately in the modal (masked).
       setDetailedTeacher((prev) => prev ? { ...prev, temp_password: pwd, last_login: null } as TeacherRecord : prev);
-      showToast.success(`Password reset. New demo password: ${pwd}`);
+      setShowPassword(false);
+      showToast.success('Password reset. Use "Show" to see the new demo password.');
     } catch (err: any) {
       showToast.error(err?.response?.data?.error || err?.response?.data?.message || 'Failed to reset password.');
     } finally {
@@ -256,9 +261,19 @@ export const TeacherDetailModal: React.FC<TeacherDetailModalProps> = ({
                 {currentTeacher.temp_password && (
                   <div>
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Demo / Temporary Password</span>
-                    <span className="text-xs font-mono font-bold text-gray-850 dark:text-gray-100 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-0.5 rounded mt-1 inline-block select-all">
-                      {currentTeacher.temp_password}
-                    </span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs font-mono font-bold text-gray-850 dark:text-gray-100 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-0.5 rounded inline-block select-all">
+                        {showPassword ? currentTeacher.temp_password : '••••••••'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                      >
+                        {showPassword ? <><EyeOff size={13} /> Hide</> : <><Eye size={13} /> Show</>}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

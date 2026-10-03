@@ -967,6 +967,7 @@ router.get(
         search: req.query.search as string,
         report_period: req.query.report_period as string,
         shared: req.query.shared as string,
+        yearScope: await resolveYearScope((req as any).user.tenant_id, req.query.academic_year),
         page: parseInt(req.query.page as string) || 1,
         limit: parseInt(req.query.limit as string) || 20,
       });

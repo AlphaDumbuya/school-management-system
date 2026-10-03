@@ -98,6 +98,25 @@ export interface CarryForwardCounts {
   studentsMoved: number;
 }
 
+/** One student's record across every academic year (Academic Archive). */
+export interface StudentHistory {
+  student: {
+    id: string; name: string; admission_no: string | null;
+    photo_url?: string | null; status?: string | null; gender?: string | null;
+    date_of_birth?: string | null; enrollment_date?: string | null; current_class?: string | null;
+  } | null;
+  /** Several students matched a name search — pick one. */
+  matches?: Array<{ id: string; name: string; admission_no: string | null; class_name: string | null }>;
+  years?: Array<{
+    academic_year: string;
+    attendance: { present: number; late: number; absent: number; excused: number; rate: number | null };
+    fees: { billed: number; paid: number; outstanding: number };
+  }>;
+  enrollments: Array<{ class_id: string | null; class_name: string | null; level: string | null; academic_year: string | null; status: string | null; enrollment_date: string | null }>;
+  terms: Array<{ academic_year: string; term: string; class_name: string | null; percentage: number | null; position: number | null; class_size: number | null }>;
+  results: Array<{ academic_year: string; term: string; subject_name: string | null; mean: number | null }>;
+}
+
 export const schoolConfigService = {
   async getSchoolInfo() {
     return apiClient.get<SchoolInfo>('/api/v1/school-config/info');
@@ -146,20 +165,25 @@ export const schoolConfigService = {
       counts: { classes: number; students_enrolled: number; subjects: number };
       finance: { billed: number; collected: number; outstanding: number } | null;
       attendance: { present: number; late: number; absent: number; excused: number; rate: number } | null;
-      classes: Array<{ id: string; name: string; level: string | null; section: string | null; enrolled: number }>;
+      classes: Array<{
+        id: string; name: string; level: string | null; section: string | null; enrolled: number;
+        class_teacher: string | null;
+        results: { students: number; average: number | null; top_student: string | null; top_average: number | null };
+      }>;
+      results: { students: number; average: number | null; classes_with_results: number; terms: string[] } | null;
       publications: any[];
       promotions: any[];
       examinations: any[];
     }>(`/api/v1/school-config/archive/${encodeURIComponent(academicYear)}`);
   },
 
-  /** Per-student history across all years (Academic Archive drill-down). */
-  async getStudentHistory(studentId: string) {
-    return apiClient.get<{
-      student: { id: string; name: string; admission_no: string | null } | null;
-      enrollments: Array<{ class_name: string | null; level: string | null; academic_year: string | null; status: string | null; enrollment_date: string | null }>;
-      results: Array<{ academic_year: string; term: string; subject_name: string | null; mean: number | null }>;
-    }>(`/api/v1/school-config/archive/student/${encodeURIComponent(studentId)}`);
+  /**
+   * Per-student history across all years (Academic Archive drill-down).
+   * Accepts an admission number or a name; several name matches come back in
+   * `matches` so the user can pick one.
+   */
+  async getStudentHistory(query: string) {
+    return apiClient.get<StudentHistory>(`/api/v1/school-config/archive/student/${encodeURIComponent(query)}`);
   },
 
   /**

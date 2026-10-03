@@ -163,6 +163,7 @@ export const SettingsPage: React.FC = () => {
   // Loading States
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [settingsLoadFailed, setSettingsLoadFailed] = useState(false);
 
   // "Start New Academic Year" rollover state.
   const [newYearOpen, setNewYearOpen] = useState(false);
@@ -196,9 +197,7 @@ export const SettingsPage: React.FC = () => {
     min_attendance_warning: 75,
     min_attendance_critical: 60,
     late_cutoff_time: '08:30',
-    currency: 'USD',
-    payment_methods: ['cash'],
-    late_fee_rate: 0,
+    currency: 'SLE',
     // School-wide (general) payment policy. Each fee structure may override any
     // of these per class; when a structure leaves a field blank, this applies.
     fin_allow_installments: true,
@@ -273,6 +272,14 @@ export const SettingsPage: React.FC = () => {
         }
         if (settingsRes.success && settingsRes.data) {
           setSettings((prev) => ({ ...prev, ...settingsRes.data }));
+          setSettingsLoadFailed(false);
+        } else {
+          // Never let a failed load + Save overwrite real settings with defaults.
+          setSettingsLoadFailed(true);
+          showToast.error("Couldn't load your school settings. Saving is disabled until they load — please refresh.");
+        }
+        if (!infoRes.success) {
+          showToast.error("Couldn't load School Info. Please refresh before editing it.");
         }
         if (scalesRes.success && scalesRes.data) {
           setGradingScales(scalesRes.data);
@@ -320,9 +327,6 @@ export const SettingsPage: React.FC = () => {
   /** Validate the shared settings form, scoped to the active tab. */
   const validateSettingsForTab = (): string | null => {
     if (activeTab === 'academic') {
-      if (!settings.academic_year || !/^\d{4}\/\d{4}$/.test(String(settings.academic_year).trim())) {
-        return 'Academic year is required in the format YYYY/YYYY (e.g. 2026/2027).';
-      }
       const count = Number(settings.term_count) || 3;
       // Validate each active term's date ordering when both dates are provided.
       for (let i = 1; i <= count; i++) {
@@ -405,7 +409,7 @@ export const SettingsPage: React.FC = () => {
 
   // Suggest next year (e.g. current "2026/2027" → "2027/2028").
   const suggestNextYear = (): string => {
-    const cur = String(settings.academic_year || '').trim();
+    const cur = String(activeAcademicYear || settings.academic_year || '').trim();
     const m = /^(\d{4})\/(\d{4})$/.exec(cur);
     if (m) { const a = Number(m[1]) + 1; return `${a}/${a + 1}`; }
     const y = new Date().getFullYear();
@@ -435,7 +439,7 @@ export const SettingsPage: React.FC = () => {
       } else {
         showToast.success(
           `${d.fromYear} → ${d.toYear}: ${d.studentsMoved ?? 0} student(s) moved, ${d.classesCloned ?? 0} class(es) added, ` +
-          `${d.assignmentsCopied ?? 0} teacher assignment(s), ${d.timetableCopied ?? 0} timetable slot(s), ${d.feeStructuresCopied ?? 0} fee structure(s) copied.`,
+          `${d.assignmentsCopied ?? 0} teacher assignment(s) and ${d.timetableCopied ?? 0} timetable slot(s) copied. Set up this year's fees in Fee Structures.`,
         );
       }
       queryClient.invalidateQueries();
@@ -468,7 +472,7 @@ export const SettingsPage: React.FC = () => {
         const d = (res as any).data || {};
         showToast.success(
           d.carriedForward
-            ? `Started ${name}: ${d.studentsMoved ?? 0} student(s) and ${(d.classesCloned ?? 0) + (d.classesSkipped ?? 0)} class(es) moved in, with subjects, teachers, timetable and fee structures.`
+            ? `Started ${name}: ${d.studentsMoved ?? 0} student(s) and ${(d.classesCloned ?? 0) + (d.classesSkipped ?? 0)} class(es) moved in, with subjects, teachers and timetable. Set up this year's fees in Fee Structures.`
             : `Switched to ${name}.`,
         );
         setSettings((s) => ({ ...s, academic_year: name }));
@@ -484,12 +488,29 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // Each tab owns ONLY its own keys — a save never writes another tab's values
+  // (or hidden defaults) over what's stored.
+  const TAB_KEYS: Record<string, (k: string) => boolean> = {
+    profile: (k) => ['language', 'date_format'].includes(k),
+    academic: (k) => k === 'term_count' || /^term_\d_(start|end)$/.test(k),
+    'id-format': (k) => k.startsWith('id_'),
+    attendance: (k) => ['min_attendance_warning', 'min_attendance_critical', 'late_cutoff_time'].includes(k),
+    financial: (k) => k.startsWith('fin_'),
+  };
+
   const handleSaveSettings = async () => {
+    if (settingsLoadFailed) {
+      showToast.error("Your saved settings couldn't be loaded, so saving is disabled to protect them. Refresh the page and try again.");
+      return;
+    }
     const err = validateSettingsForTab();
     if (err) { showToast.error(err); return; }
+    const owns = TAB_KEYS[activeTab];
+    if (!owns) return;
+    const payload = Object.fromEntries(Object.entries(settings).filter(([k]) => owns(k)));
     setSaving(true);
     try {
-      const res = await schoolConfigService.updateSettings(settings);
+      const res = await schoolConfigService.updateSettings(payload);
       if (res.success) {
         showToast.success('Settings saved successfully!');
       } else {
@@ -784,6 +805,19 @@ export const SettingsPage: React.FC = () => {
     { id: 'billing', label: 'Plan & Billing', icon: <CreditCard size={18} />, adminOnly: true },
     { id: 'storage', label: 'File Storage', icon: <HardDrive size={18} />, adminOnly: true },
   ];
+  const tabAllowed = (id: string) => {
+    const t = tabs.find((x) => x.id === id);
+    if (!t) return false;
+    if (t.adminOnly && !isPrincipalOrSuper) return false;
+    if ((t as any).teacherOnly && !isTeacher) return false;
+    return true;
+  };
+  // Unknown (?tab=typo) or not-permitted tabs fall back to My Profile instead
+  // of rendering a blank panel or an admin form the user can't use.
+  useEffect(() => {
+    if (!tabAllowed(activeTab)) setActiveTab('profile');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isPrincipalOrSuper, isTeacher]);
 
   return (
     <MainLayout>
@@ -1391,14 +1425,13 @@ export const SettingsPage: React.FC = () => {
                     <CardContent className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs font-semibold text-gray-500 block mb-1">Current Academic Year <span className="text-rose-500">*</span></label>
-                          <input
-                            type="text"
-                            placeholder="2026/2027"
-                            value={settings.academic_year}
-                            onChange={(e) => setSettings({ ...settings, academic_year: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                          />
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">Current Academic Year</label>
+                          {/* Read-only: the year only changes through "Start New Academic Year" below. */}
+                          <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900 font-semibold flex items-center justify-between">
+                            <span>{activeAcademicYear || '—'}</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-600">Active</span>
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-1">To move to the next year, use Start New Academic Year below.</p>
                         </div>
                         <div>
                           <label className="text-xs font-semibold text-gray-500 block mb-1">Terms Count</label>
@@ -1498,8 +1531,9 @@ export const SettingsPage: React.FC = () => {
                           </h4>
                           <p className="text-xs text-amber-800/90 mt-1 leading-relaxed">
                             Moves the whole school into the next year <strong>without deleting anything</strong>.
-                            Last year is archived as history, and its classes, subjects, teacher assignments,
-                            timetable and fee structures are copied into the new year. Every active student moves
+                            Last year is archived as history, and its classes, subjects, teacher assignments
+                            and timetable are copied into the new year. Fee structures start fresh each year.
+                            Every active student moves
                             into their class for the new year (students you already promoted land in their new
                             class). You can still promote from last year's results afterwards.
                           </p>
@@ -2542,6 +2576,12 @@ const SubscriptionUssdModal: React.FC<{
   );
 };
 
+/** apiClient never throws — turn a `{ success: false }` response into an error. */
+const assertSaved = (res: any) => {
+  if (res && res.success === false) throw new Error(res.error || 'Save failed');
+  return res;
+};
+
 const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> = ({ schoolInfo }) => {
   // ── Border state ──
   const [selectedPreset, setSelectedPreset] = useState<string>('classic');
@@ -2673,14 +2713,14 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
   const handleSaveBorder = async () => {
     setSaving(true);
     try {
-      await schoolConfigService.updateSetting('report_card_border_style', {
+      assertSaved(await schoolConfigService.updateSetting('report_card_border_style', {
         preset: selectedPreset,
         color: customColor,
         width: customWidth,
         style: customStyle,
         padding: customPadding,
         radius: customRadius,
-      });
+      }));
       showToast.success('Report card border style saved.');
       queryClient.invalidateQueries({ queryKey: ['report-card-border-style'] });
     } catch {
@@ -2719,7 +2759,7 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
     setCustomPadding(8);
     setCustomRadius(0);
     try {
-      await schoolConfigService.updateSetting('report_card_border_style', { preset: 'classic', color: '#1f2937', width: 2, style: 'solid', padding: 8, radius: 0 });
+      assertSaved(await schoolConfigService.updateSetting('report_card_border_style', { preset: 'classic', color: '#1f2937', width: 2, style: 'solid', padding: 8, radius: 0 }));
       queryClient.invalidateQueries({ queryKey: ['report-card-border-style'] });
       showToast.success('Reset to classic style.');
     } catch {
@@ -2730,7 +2770,7 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
   const handleSaveDisplay = async () => {
     setSavingDisplay(true);
     try {
-      await schoolConfigService.updateSetting('report_card_display_opts', {
+      assertSaved(await schoolConfigService.updateSetting('report_card_display_opts', {
         show_watermark: showWatermark,
         watermark_opacity: watermarkOpacity,
         watermark_size: watermarkSize,
@@ -2740,7 +2780,7 @@ const ReportCardBorderSettings: React.FC<{ schoolInfo?: Partial<SchoolInfo> }> =
         signature_url: signatureUrl || null,
         stamp_scale: stampScale,
         signature_scale: signatureScale,
-      });
+      }));
       showToast.success('Display options saved.');
       queryClient.invalidateQueries({ queryKey: ['report-card-display-opts'] });
     } catch {

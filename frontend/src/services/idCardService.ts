@@ -235,6 +235,7 @@ export const idCardService = {
         status?: CardStatus;
         search?: string;
         userId?: string;
+        academic_year?: string;
     }) => {
         return apiClient.get('/api/v1/id-cards', { params });
     },
@@ -436,8 +437,8 @@ export const idCardService = {
     /**
      * Get dashboard statistics
      */
-    getDashboardStats: async () => {
-        return apiClient.get('/api/v1/id-cards/stats');
+    getDashboardStats: async (academicYear?: string) => {
+        return apiClient.get('/api/v1/id-cards/stats', { params: academicYear ? { academic_year: academicYear } : undefined });
     },
 
     /**

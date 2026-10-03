@@ -122,13 +122,16 @@ export const ReportCardsPage: React.FC = () => {
   // Staff pick the year with the shared <YearFilter> (the school's real
   // sessions). Students/parents don't need the picker (their year is auto-resolved).
 
-  // Deep link from the Academic Archive (?year=&class_id=): the year is read
-  // into pickedYear above; apply the class once on mount.
+  // Deep link from the Academic Archive (?year=&class_id=&student_id=): the
+  // year is read into pickedYear above; apply class (+ student) once on mount.
   const deepLinkApplied = React.useRef(false);
   React.useEffect(() => {
     if (isStudent || isParent || deepLinkApplied.current) return;
-    const qClass = new URLSearchParams(window.location.search).get('class_id');
+    const qs = new URLSearchParams(window.location.search);
+    const qClass = qs.get('class_id');
     if (qClass) setClassId(qClass);
+    const qStudent = qs.get('student_id');
+    if (qClass && qStudent) setStudentId(qStudent);
     deepLinkApplied.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

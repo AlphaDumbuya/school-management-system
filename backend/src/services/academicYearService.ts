@@ -5,7 +5,8 @@
  *   1. archive the current session, activate/create the new one
  *   2. carry forward last year's setup into the new year:
  *        classes (new rows, linked via carried_from_id, next-class map rebuilt)
- *        class subjects, teacher assignments, timetable, fee structures
+ *        class subjects, teacher assignments, timetable
+ *        (fee structures are NOT copied — each year sets up its own fees)
  *   3. move every active student into their class for the new year:
  *        - their CURRENT class carried forward (a student already promoted
  *          last year sits in their new class, so they land in its clone)
@@ -84,9 +85,16 @@ class AcademicYearService {
       let session = await trx('academic_sessions').where({ tenant_id: tenantId, name }).first();
       let created = false;
       if (session) {
+        // Re-activating an existing year keeps its real dates; only dates the
+        // caller explicitly sent replace them (never today / today+300).
         await trx('academic_sessions')
           .where({ id: session.id })
-          .update({ start_date: startDate, end_date: endDate, is_active: true, updated_at: new Date() });
+          .update({
+            ...(input.startDate ? { start_date: input.startDate } : {}),
+            ...(input.endDate ? { end_date: input.endDate } : {}),
+            is_active: true,
+            updated_at: new Date(),
+          });
       } else {
         [session] = await trx('academic_sessions')
           .insert({
@@ -266,27 +274,10 @@ class AcademicYearService {
       }
     }
 
-    // ── Fee structures (templates only — nobody is billed automatically) ────
-    const structures = await trx('fee_structures')
-      .where({ tenant_id: tenantId, academic_year: from.name })
-      .whereIn('class_id', oldIds);
-    for (const s of structures) {
-      const newClass = idMap.get(s.class_id)!;
-      const exists = await trx('fee_structures')
-        .where({ tenant_id: tenantId, class_id: newClass, academic_year: to.name }).first('id');
-      if (exists) continue;
-      const { id: oldStructureId, created_at: _c, updated_at: _u, ...rest } = s;
-      const [ns] = await trx('fee_structures')
-        .insert({ ...rest, class_id: newClass, academic_year: to.name, created_by: userId, created_at: new Date(), updated_at: new Date() })
-        .returning('id');
-      const newStructureId = typeof ns === 'object' ? ns.id : ns;
-      // Keep each expense's optional/required flag (column defaults to required).
-      const expenses = await trx('fee_structure_expenses').where({ structure_id: oldStructureId }).select('label', 'amount', 'required');
-      if (expenses.length) {
-        await trx('fee_structure_expenses').insert(expenses.map((e: any) => ({ ...e, structure_id: newStructureId })));
-      }
-      out.feeStructuresCopied++;
-    }
+    // ── Fee structures are NOT carried forward ──────────────────────────────
+    // Each academic year has its own fees, so the new year starts with no
+    // structures; the school configures them on the Fee Structures page.
+    // Last year's structures stay as read-only history.
 
     // ── Students: move each active enrollment into its class's new-year copy ─
     const enrollments = await trx('enrollments')

@@ -120,12 +120,21 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { start_date, end_date } = req.query;
+      // Explicit dates win; otherwise ?academic_year= → that year's window
+      // (same window School Events uses). Open edges become far bounds so the
+      // newest year includes upcoming events.
+      let start = start_date ? new Date(start_date as string) : undefined;
+      let end = end_date ? new Date(end_date as string) : undefined;
+      if (!start && !end && req.query.academic_year) {
+        const scope = await resolveYearScope(req.user!.tenant_id, req.query.academic_year);
+        if (scope) {
+          start = scope.from ?? new Date('2000-01-01T00:00:00Z');
+          end = scope.to ? new Date(scope.to.getTime() - 1) : new Date('2100-01-01T00:00:00Z');
+        }
+      }
       const analytics = await eventAnalyticsService.getDashboardSummary(
         req.user!.tenant_id,
-        {
-          start_date: start_date ? new Date(start_date as string) : undefined,
-          end_date: end_date ? new Date(end_date as string) : undefined,
-        },
+        { start_date: start, end_date: end },
       );
       res.json({ success: true, data: analytics });
     } catch (error) {

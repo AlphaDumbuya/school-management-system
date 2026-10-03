@@ -128,6 +128,23 @@ router.post('/settings', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
       }
     }
 
+    // The academic year is NEVER changed through a settings save. Changing year
+    // is a deliberate rollover (POST /start-new-academic-year, with its own
+    // confirmation dialog). A stale or mistyped `academic_year` here must not
+    // move the school into another year, so it's pinned to the active session.
+    const active = await db('academic_sessions').where({ tenant_id: tenantId, is_active: true }).first();
+    if ('academic_year' in updates) {
+      if (active?.name) updates.academic_year = active.name;
+      else delete updates.academic_year;
+    }
+    // Term dates saved on the Academic tab define the ACTIVE year's span.
+    const termCount = Number(updates.term_count ?? 3);
+    const startDate = updates.term_1_start || null;
+    const endDate = (termCount === 2 ? updates.term_2_end : updates.term_3_end) || null;
+    if (startDate && endDate && new Date(startDate) >= new Date(endDate)) {
+      throw new AppError('The academic year must end after it starts (check Term 1 start and the last term end).', 400, 'VALIDATION_ERROR');
+    }
+
     for (const [key, value] of Object.entries(updates)) {
       let dataType: 'string' | 'number' | 'boolean' | 'json' = 'string';
       if (typeof value === 'boolean') dataType = 'boolean';
@@ -144,31 +161,15 @@ router.post('/settings', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
       );
     }
 
-    // Academic year: route through the same rollover as "Start New Academic
-    // Year" so changing it here also moves classes, setup and students into a
-    // later year (going back to an older year only re-activates it).
-    let rollover: any = null;
-    if (updates.academic_year) {
-      const name = String(updates.academic_year).trim();
-      const startDate = updates.term_1_start || null;
-      const endDate = (Number(updates.term_count) === 2 ? updates.term_2_end : updates.term_3_end) || null;
-      const active = await db('academic_sessions').where({ tenant_id: tenantId, is_active: true }).first();
-      if (active?.name === name) {
-        if (startDate || endDate) {
-          await db('academic_sessions').where({ id: active.id }).update({
-            ...(startDate ? { start_date: startDate } : {}),
-            ...(endDate ? { end_date: endDate } : {}),
-            updated_at: new Date(),
-          });
-        }
-      } else {
-        rollover = await academicYearService.startNewAcademicYear({
-          tenantId, userId, newYearName: name, startDate, endDate, cloneClasses: true,
-        });
-      }
+    if (active && (startDate || endDate)) {
+      await db('academic_sessions').where({ id: active.id }).update({
+        ...(startDate ? { start_date: startDate } : {}),
+        ...(endDate ? { end_date: endDate } : {}),
+        updated_at: new Date(),
+      });
     }
 
-    res.json({ success: true, message: 'Settings saved successfully', rollover });
+    res.json({ success: true, message: 'Settings saved successfully' });
   } catch (error) {
     next(error);
   }

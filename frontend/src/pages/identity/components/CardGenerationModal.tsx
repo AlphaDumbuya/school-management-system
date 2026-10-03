@@ -642,7 +642,7 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
             className={selectCls}
           />
           <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-            Leave empty for default: 1 year from today.
+            Leave empty to expire at the end of the current academic year (cards are valid for one year).
           </p>
         </div>
 

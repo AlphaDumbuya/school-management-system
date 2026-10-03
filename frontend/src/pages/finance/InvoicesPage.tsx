@@ -61,9 +61,20 @@ export const InvoicesPage: React.FC = () => {
     await Promise.all([refetch(), refetchOv()]);
   };
 
+  // Per-invoice sending state so a double-tap can't send two reminders.
+  const [remindingId, setRemindingId] = useState<string | null>(null);
   const remind = async (id: string) => {
-    try { await financeService.sendInvoiceReminder(id); showToast.success('Reminder sent'); }
-    catch { showToast.error('Failed to send reminder'); }
+    if (remindingId) return;
+    setRemindingId(id);
+    try {
+      const res: any = await financeService.sendInvoiceReminder(id);
+      if (res?.success === false) showToast.error(res?.error || 'Failed to send reminder');
+      else showToast.success('Reminder sent');
+    } catch {
+      showToast.error('Failed to send reminder');
+    } finally {
+      setRemindingId(null);
+    }
   };
 
   return (
@@ -160,7 +171,7 @@ export const InvoicesPage: React.FC = () => {
                           <button onClick={() => setDetailId(inv.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" title="View"><Eye size={15} /></button>
                           {bal > 0 && inv.status !== 'paid' && (
                             <>
-                              <button onClick={() => remind(inv.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20" title="Send reminder"><Bell size={15} /></button>
+                              <button onClick={() => remind(inv.id)} disabled={remindingId === inv.id} aria-label="Send reminder" className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50" title="Send reminder">{remindingId === inv.id ? <Loader2 size={15} className="animate-spin" /> : <Bell size={15} />}</button>
                               <PayFeesButton invoiceId={inv.id} size="sm">Pay</PayFeesButton>
                             </>
                           )}

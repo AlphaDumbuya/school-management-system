@@ -141,8 +141,8 @@ export class IdCardService {
         );
       }
 
-      // Calculate expiration date. Defaults to 1 year from issue when not
-      // supplied. The DB enforces expires_at > issued_at, so we normalise any
+      // Calculate expiration date. Defaults to the end of the ACTIVE academic
+      // year (a card is valid for one school year) when not supplied. The DB enforces expires_at > issued_at, so we normalise any
       // provided date and guarantee it is strictly after issue (fall back to
       // +1 year if the caller passes a today/past/invalid expiry).
       const issuedAt = new Date();

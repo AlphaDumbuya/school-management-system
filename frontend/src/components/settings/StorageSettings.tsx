@@ -34,6 +34,8 @@ export const StorageSettings: React.FC = () => {
         setConfig(res.data);
         setMode(res.data.provider);
         setAppId(res.data.appId || '');
+      } else {
+        showToast.error((res as any).error || 'Could not load storage settings');
       }
     } catch {
       showToast.error('Could not load storage settings');

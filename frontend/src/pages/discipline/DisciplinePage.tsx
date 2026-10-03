@@ -20,6 +20,7 @@ import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { SkeletonCard } from '@components/admin/feedback/Skeleton';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
+import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { useAuth } from '@hooks/useAuth';
@@ -122,6 +123,23 @@ export const DisciplinePage: React.FC = () => {
   const [noteModal, setNoteModal] = useState<{ open: boolean; studentId?: string; studentName?: string; editing?: BehavioralNote | null }>({ open: false });
   const [reportModal, setReportModal] = useState(false);
   const [reportViewModal, setReportViewModal] = useState<{ open: boolean; report: ConductReport | null }>({ open: false, report: null });
+  const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
+
+  const handleDeleteNote = async () => {
+    if (!noteToDelete) return;
+    try {
+      const res: any = await disciplineService.deleteNote(noteToDelete);
+      if (res?.success === false) {
+        showToast.apiError(res.error);
+      } else {
+        showToast.deleted('Note');
+        queryClient.invalidateQueries({ queryKey: ['discipline-notes-list'] });
+      }
+    } catch {
+      showToast.error('Failed to delete note');
+    }
+    setNoteToDelete(null);
+  };
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
@@ -790,6 +808,7 @@ export const DisciplinePage: React.FC = () => {
             statusFilter={statusFilter}
             severityFilter={severityFilter}
             infractionColumns={infractionColumns}
+            readOnly={viewingPast}
             onAssignAction={(studentId, studentName, infractionId) =>
               setActionModal({ open: true, studentId, studentName, infractionId })}
             onRecordInfraction={() => setInfractionModal(true)}
@@ -799,6 +818,7 @@ export const DisciplinePage: React.FC = () => {
         {/* ── ACTIONS TAB ─────────────────────────────────────────────── */}
         {activeTab === 'actions' && (
           <ActionsTab
+            readOnly={viewingPast}
             year={year}
             search={search}
             statusFilter={statusFilter}
@@ -809,6 +829,7 @@ export const DisciplinePage: React.FC = () => {
         {/* ── APPEALS TAB ─────────────────────────────────────────────── */}
         {activeTab === 'appeals' && (
           <AppealsTab
+            readOnly={viewingPast}
             year={year}
             search={search}
             statusFilter={statusFilter}
@@ -820,22 +841,20 @@ export const DisciplinePage: React.FC = () => {
         {/* ── NOTES TAB ───────────────────────────────────────────────── */}
         {activeTab === 'notes' && (
           <NotesTab
+            readOnly={viewingPast}
             year={year}
             search={search}
             statusFilter={statusFilter}
             noteColumns={noteColumns}
             onEdit={(note) => setNoteModal({ open: true, studentId: note.student_id, studentName: note.student_name, editing: note })}
-            onDelete={async (noteId) => {
-              await disciplineService.deleteNote(noteId);
-              showToast.deleted('Note');
-              queryClient.invalidateQueries({ queryKey: ['discipline-notes-list'] });
-            }}
+            onDelete={(noteId) => setNoteToDelete(noteId)}
           />
         )}
 
         {/* ── CONDUCT REPORTS TAB ─────────────────────────────────────── */}
         {activeTab === 'reports' && (
           <ReportsTab
+            year={year}
             search={search}
             periodFilter={statusFilter}
             reportColumns={reportColumns}
@@ -876,6 +895,15 @@ export const DisciplinePage: React.FC = () => {
         editingNote={noteModal.editing}
       />
 
+      <ConfirmationDialog
+        isOpen={!!noteToDelete}
+        onClose={() => setNoteToDelete(null)}
+        onConfirm={handleDeleteNote}
+        title="Delete behavioural note"
+        message="Delete this note permanently? This cannot be undone."
+        confirmLabel="Delete"
+      />
+
       <ConductReportModal
         isOpen={reportModal}
         onClose={() => setReportModal(false)}
@@ -903,10 +931,12 @@ interface InfractionsTabProps {
   infractionColumns: ColumnDef<StudentInfraction, any>[];
   onAssignAction: (studentId: string, studentName: string, infractionId: string) => void;
   onRecordInfraction: () => void;
+  /** Past academic year: history only, no row actions. */
+  readOnly?: boolean;
 }
 
 const InfractionsTab: React.FC<InfractionsTabProps> = ({
-  year, search, statusFilter, severityFilter, infractionColumns, onAssignAction,
+  year, search, statusFilter, severityFilter, infractionColumns, onAssignAction, readOnly,
 }) => {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
@@ -936,7 +966,7 @@ const InfractionsTab: React.FC<InfractionsTabProps> = ({
         {
           id: '_actions',
           header: '',
-          cell: ({ row }) => (
+          cell: ({ row }) => readOnly ? null : (
             <RoleGuard roles={['principal', 'super_admin']}>
               <Button
                 variant="outline"
@@ -976,9 +1006,10 @@ interface ActionsTabProps {
   search: string;
   statusFilter: string;
   actionColumns: ColumnDef<DisciplineAction, any>[];
+  readOnly?: boolean;
 }
 
-const ActionsTab: React.FC<ActionsTabProps> = ({ year, search, statusFilter, actionColumns }) => {
+const ActionsTab: React.FC<ActionsTabProps> = ({ year, search, statusFilter, actionColumns, readOnly }) => {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
@@ -1009,14 +1040,19 @@ const ActionsTab: React.FC<ActionsTabProps> = ({ year, search, statusFilter, act
           header: '',
           cell: ({ row }) => (
             <RoleGuard roles={['principal', 'super_admin']}>
-              {row.original.status === 'active' && (
+              {!readOnly && row.original.status === 'active' && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={async () => {
-                    await disciplineService.cancelAction(row.original.action_id, 'Cancelled by principal');
-                    showToast.success('Action cancelled');
-                    queryClient.invalidateQueries({ queryKey: ['discipline-actions-list'] });
+                    try {
+                      const r: any = await disciplineService.cancelAction(row.original.action_id, 'Cancelled by principal');
+                      if (r?.success === false) { showToast.apiError(r.error); return; }
+                      showToast.success('Action cancelled');
+                      queryClient.invalidateQueries({ queryKey: ['discipline-actions-list'] });
+                    } catch {
+                      showToast.error('Failed to cancel action');
+                    }
                   }}
                 >
                   Cancel
@@ -1050,10 +1086,11 @@ interface AppealsTabProps {
   statusFilter: string;
   appealColumns: ColumnDef<DisciplineAppeal, any>[];
   onReview: (appeal: DisciplineAppeal) => void;
+  readOnly?: boolean;
 }
 
 const AppealsTab: React.FC<AppealsTabProps> = ({
-  year, search, statusFilter, appealColumns, onReview,
+  year, search, statusFilter, appealColumns, onReview, readOnly,
 }) => {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
@@ -1083,7 +1120,7 @@ const AppealsTab: React.FC<AppealsTabProps> = ({
           id: '_review',
           header: '',
           cell: ({ row }) => (
-            row.original.status === 'pending' || row.original.status === 'under_review' ? (
+            !readOnly && (row.original.status === 'pending' || row.original.status === 'under_review') ? (
               <RoleGuard roles={['principal', 'super_admin']}>
                 <Button
                   variant="outline"
@@ -1122,10 +1159,11 @@ interface NotesTabProps {
   noteColumns: ColumnDef<BehavioralNote, any>[];
   onEdit: (note: BehavioralNote) => void;
   onDelete: (noteId: string) => void;
+  readOnly?: boolean;
 }
 
 const NotesTab: React.FC<NotesTabProps> = ({
-  year, search, statusFilter, noteColumns, onEdit, onDelete,
+  year, search, statusFilter, noteColumns, onEdit, onDelete, readOnly,
 }) => {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
@@ -1154,7 +1192,7 @@ const NotesTab: React.FC<NotesTabProps> = ({
         {
           id: '_actions',
           header: '',
-          cell: ({ row }) => (
+          cell: ({ row }) => readOnly ? null : (
             <RoleGuard roles={['principal', 'teacher', 'super_admin']}>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => onEdit(row.original)}>Edit</Button>
@@ -1192,19 +1230,22 @@ const NotesTab: React.FC<NotesTabProps> = ({
 // ── ReportsTab ────────────────────────────────────────────────────────────────
 
 interface ReportsTabProps {
+  year: string;
   search: string;
   periodFilter: string;
   reportColumns: ColumnDef<ConductReport, any>[];
   onView: (report: ConductReport) => void;
 }
 
-const ReportsTab: React.FC<ReportsTabProps> = ({ search, periodFilter, reportColumns, onView }) => {
+const ReportsTab: React.FC<ReportsTabProps> = ({ year, search, periodFilter, reportColumns, onView }) => {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['discipline-reports-list', { search, periodFilter, page }],
+    queryKey: ['discipline-reports-list', { search, periodFilter, page, year }],
+    enabled: !!year,
     queryFn: () => disciplineService.listAllReports({
+      academic_year: year,
       search: search || undefined,
       report_period: periodFilter || undefined,
       page,

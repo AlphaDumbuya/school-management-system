@@ -108,23 +108,30 @@ export const StudentDirectoryPage: React.FC = () => {
   const pagination = (data as any)?.pagination ?? { total: 0, total_pages: 1 };
 
   // KPIs
+  const serverStats = (data as any)?.stats;
   const stats = useMemo(() => {
+    // Prefer the server's whole-set totals; fall back to the current page.
+    if (serverStats) return serverStats as { total: number; active: number; inactive: number; graduated: number };
     const total = Number(pagination.total ?? students.length);
     const active = students.filter((s) => s.status === 'active').length;
     const inactive = students.filter((s) => s.status === 'inactive' || s.status === 'suspended').length;
     const graduated = students.filter((s) => s.status === 'graduated').length;
     return { total, active, inactive, graduated };
-  }, [students, pagination]);
+  }, [students, pagination, serverStats]);
 
   // Deactivate handler
   const handleDeactivate = async () => {
     if (!deactivateTarget) return;
-    const res = await studentsService.deactivateStudent(deactivateTarget.id);
-    if (res.success !== false) {
-      showToast.deleted('Student');
-      queryClient.invalidateQueries({ queryKey: ['students'] });
-    } else {
-      showToast.apiError(res.error);
+    try {
+      const res = await studentsService.deactivateStudent(deactivateTarget.id);
+      if (res.success !== false) {
+        showToast.deleted('Student');
+        queryClient.invalidateQueries({ queryKey: ['students'] });
+      } else {
+        showToast.apiError(res.error);
+      }
+    } catch {
+      showToast.error('Failed to deactivate student');
     }
     setDeactivateTarget(null);
   };
@@ -148,14 +155,21 @@ export const StudentDirectoryPage: React.FC = () => {
 
   // Reactivate handler
   const handleReactivate = async (student: StudentRecord) => {
-    const res = await studentsService.reactivateStudent(student.id);
-    if (res.success !== false) {
-      showToast.success('Student reactivated');
-      queryClient.invalidateQueries({ queryKey: ['students'] });
-    } else {
-      showToast.apiError(res.error);
+    try {
+      const res = await studentsService.reactivateStudent(student.id);
+      if (res.success !== false) {
+        showToast.success('Student reactivated');
+        queryClient.invalidateQueries({ queryKey: ['students'] });
+      } else {
+        showToast.apiError(res.error);
+      }
+    } catch {
+      showToast.error('Failed to reactivate student');
     }
   };
+
+  // Past years are history: no edits/deactivations from that view.
+  const canManageHere = canManage && !viewingPast;
 
   // ── Table columns ─────────────────────────────────────────────────────────
   const columns: ColumnDef<StudentRecord, any>[] = [
@@ -294,7 +308,8 @@ export const StudentDirectoryPage: React.FC = () => {
               <Eye size={13} /> View
             </button>
 
-            <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
+            {canManageHere && (
+              <>
               <button
                 onClick={() => { setEditingStudent(student); setFormOpen(true); }}
                 className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -308,7 +323,8 @@ export const StudentDirectoryPage: React.FC = () => {
                 <Trash2 size={13} />
                 {student.status === 'active' ? 'Deactivate' : 'Reactivate'}
               </button>
-            </RoleGuard>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -465,7 +481,7 @@ export const StudentDirectoryPage: React.FC = () => {
               // View is available to everyone (read-only)
               { label: 'View Details', onClick: (r: StudentRecord) => setViewingStudent(r) },
               // Management actions are staff/admissions only
-              ...(canManage ? [
+              ...(canManageHere ? [
                 { label: 'Edit', onClick: (r: StudentRecord) => { setEditingStudent(r); setFormOpen(true); } },
                 ...(row.status === 'active'
                   ? [{ label: 'Deactivate', variant: 'destructive' as const, onClick: (r: StudentRecord) => setDeactivateTarget(r) }]
@@ -518,7 +534,7 @@ export const StudentDirectoryPage: React.FC = () => {
         isOpen={!!viewingStudent}
         onClose={() => setViewingStudent(null)}
         student={viewingStudent}
-        onEdit={(s) => { setEditingStudent(s); setFormOpen(true); }}
+        onEdit={canManageHere ? (s) => { setEditingStudent(s); setFormOpen(true); } : undefined}
         onCreateParentAccount={(s) => navigate('/students/profiles', { state: { studentId: s.id, openParentModal: true } })}
       />
     </MainLayout>
