@@ -370,7 +370,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             { title: 'Open Payments settings', body: [['Go to ', link('Settings → Payments', '/settings?tab=payments'), '.']] },
             { title: 'Enter your Monime details', body: [['Paste your Monime Space ID and access token, then save.']] },
           ]),
-          note(['Online fee payments then settle directly into your school\'s own Monime account. You can switch online payments off at any time.']),
+          note(['Once connected, online fee payments settle directly into your school\'s own Monime account. Set this up as part of your finance configuration so parents can pay online from day one.']),
         ],
       },
     ],

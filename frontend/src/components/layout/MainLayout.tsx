@@ -41,6 +41,15 @@ const OnboardingController: React.FC = () => {
     }
   }, [user?.id, user?.tenantId, (user as any)?.hasOnboarded]);
 
+  // Explicit replay from the Guide page: the stored "done" flags (and the
+  // server-side hasOnboarded) would otherwise suppress a repeat showing, so the
+  // Guide fires this event to force the walkthrough open regardless.
+  useEffect(() => {
+    const onReplay = () => setShow(true);
+    window.addEventListener('wiskul:replay-walkthrough', onReplay);
+    return () => window.removeEventListener('wiskul:replay-walkthrough', onReplay);
+  }, []);
+
   if (!show) return null;
   return <OnboardingGuide onClose={() => setShow(false)} />;
 };
