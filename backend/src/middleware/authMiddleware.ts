@@ -37,11 +37,18 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
     try {
       const payload = JWTService.verifyAccessToken(token);
 
+      // Routers run `authenticate → attachUserContext` and most handlers repeat
+      // `authenticate`. Keep the LIVE role/tenant attachUserContext already
+      // loaded for this user; otherwise the repeat call would put the token's
+      // (up to 30-min-old) role back, and authorize() would keep a promoted or
+      // demoted user on their old permissions until the token is reissued.
+      const live = req.user && String(req.user.id) === String(payload.userId) ? req.user : null;
       req.auth = {
         userId: payload.userId,
         email: payload.email,
-        role: payload.role,
+        role: (live?.role as any) || payload.role,
         permissions: [], // Will be populated by permission middleware
+        ...(live?.tenant_id ? { tenantId: live.tenant_id } : {}),
       };
 
       next();
@@ -134,14 +141,27 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
  */
 export const authorize = (...allowedRoles: Array<UserRole | UserRole[]>) => {
   const flatRoles = allowedRoles.flat() as UserRole[];
-  return (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.auth) {
         throw new AppError('Authentication required', 401, 'NOT_AUTHENTICATED');
       }
 
-      if (!flatRoles.includes(req.auth.role)) {
-        logger.warn(`Unauthorized access attempt by user ${req.auth.userId} with role ${req.auth.role}`);
+      // Decide on the LIVE role. Routers without attachUserContext only have
+      // the token's role, which can be up to 30 minutes stale after a role
+      // change (promotion, demotion, portal move), so read it from the DB.
+      let role = req.auth.role;
+      if (!req.user || String(req.user.id) !== String(req.auth.userId)) {
+        const row = await db('users').where('id', req.auth.userId).first('role', 'status').catch(() => null);
+        if (row && row.status && String(row.status).trim().toLowerCase() !== 'active') {
+          throw new AppError(`Your account is ${row.status}. Please contact your school administrator.`, 403, 'ACCOUNT_INACTIVE');
+        }
+        if (row?.role) role = row.role;
+        req.auth.role = role;
+      }
+
+      if (!flatRoles.includes(role)) {
+        logger.warn(`Unauthorized access attempt by user ${req.auth.userId} with role ${role}`);
         throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
       }
 

@@ -4,6 +4,7 @@ import { authenticate, authorize, attachUserContext } from '@middleware/authMidd
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
+import { studentIdForUser, childIdForParent, studentYearScope } from '../utils/studentScope.js';
 
 const router = Router();
 router.use(authenticate);
@@ -191,18 +192,10 @@ router.get('/my', authenticate, async (req: Request, res: Response, next: NextFu
     // Resolve the target student for this viewer.
     let studentId: string | null = null;
     if (role === 'student') {
-      const stu = await db('students').where({ tenant_id: tenantId, user_id: userId }).first();
-      studentId = stu?.id ?? null;
+      studentId = await studentIdForUser(userId as string, tenantId);
     } else if (role === 'parent' || role === 'guardian') {
-      const childId = req.query.child_id as string | undefined;
       // Verify the requested child (or the parent's first ward) is linked.
-      let g = db('guardians as g')
-        .join('students as s', 'g.student_id', 's.id')
-        .where('g.user_id', userId)
-        .where('s.tenant_id', tenantId);
-      if (childId) g = g.where('s.id', childId);
-      const row = await g.orderBy('g.is_primary_guardian', 'desc').select('s.id').first();
-      studentId = row?.id ?? null;
+      studentId = await childIdForParent(userId as string, tenantId, (req.query.child_id as string | undefined) || null);
     } else {
       // Staff hitting this endpoint → no self-scope; return empty (they use the
       // full list). Keeps the endpoint student/parent-focused.
@@ -213,16 +206,27 @@ router.get('/my', authenticate, async (req: Request, res: Response, next: NextFu
       return res.json({ data: [], pagination: { page: 1, limit: 0, total: 0, total_pages: 0 } });
     }
 
-    // Active class for the student.
-    const enrolment = await db('enrollments')
-      .where('student_id', studentId)
-      .whereIn('status', ['active', 'enrolled'])
-      .orderBy('created_at', 'desc')
-      .select('class_id')
-      .first();
-    const classId = enrolment?.class_id ?? null;
-    if (!classId) {
-      return res.json({ data: [], pagination: { page: 1, limit: 0, total: 0, total_pages: 0 } });
+    // The student's classes in the requested year (default = active year).
+    // Every class that year counts (promoted mid-year → both classes). While a
+    // rollover is unfinished, the class they're still in from last year is
+    // what they actually study, so use it and say so.
+    const scope = await studentYearScope(tenantId, studentId, (req.query.academic_year as string) || null);
+    const classIds = scope.classes.map((c) => c.id);
+    const fromTransition = classIds.length === 0 && !!scope.pendingTransition;
+    if (fromTransition) classIds.push(scope.pendingTransition!.classId);
+    const meta = {
+      academic_year: scope.academicYear,
+      active_year: scope.activeYear,
+      viewing_past: scope.viewingPast,
+      classes: fromTransition
+        ? [{ id: scope.pendingTransition!.classId, name: scope.pendingTransition!.className }]
+        : scope.classes.map((c) => ({ id: c.id, name: c.name })),
+      pending_transition: scope.pendingTransition
+        ? { fromYear: scope.pendingTransition.fromYear, className: scope.pendingTransition.className }
+        : null,
+    };
+    if (classIds.length === 0) {
+      return res.json({ data: [], meta, pagination: { page: 1, limit: 0, total: 0, total_pages: 0 } });
     }
 
     // Union of subject ids linked to this class from all reliable sources.
@@ -236,26 +240,29 @@ router.get('/my', authenticate, async (req: Request, res: Response, next: NextFu
       // Timetable (schedules) subjects for the class.
       collect(await db('schedules').where('class_id', cid).whereNotNull('subject_id').distinct('subject_id').catch(() => []), 'subject_id');
     };
-    await collectFor(classId);
+    for (const cid of classIds) await collectFor(cid);
     // A class carried into a new year starts with no results (and maybe no
     // timetable yet) — fall back to the same class in the year it came from.
     if (subjectIds.size === 0) {
-      const cls = await db('classes').where({ id: classId }).first('carried_from_id').catch(() => null);
-      if (cls?.carried_from_id) await collectFor(cls.carried_from_id);
+      for (const cid of classIds) {
+        const cls = await db('classes').where({ id: cid }).first('carried_from_id').catch(() => null);
+        if (cls?.carried_from_id) await collectFor(cls.carried_from_id);
+      }
     }
 
     if (subjectIds.size === 0) {
-      return res.json({ data: [], pagination: { page: 1, limit: 0, total: 0, total_pages: 0 } });
+      return res.json({ data: [], meta, pagination: { page: 1, limit: 0, total: 0, total_pages: 0 } });
     }
 
-    const subjects = await scopeSubjectsToTenant(db('subjects'), tenantId)
-      .whereIn('subjects.id', Array.from(subjectIds))
-      .where('subjects.status', 'active')
-      .select('subjects.*')
-      .orderBy('subjects.code', 'asc');
+    let subjectQ = scopeSubjectsToTenant(db('subjects'), tenantId)
+      .whereIn('subjects.id', Array.from(subjectIds));
+    // A past year is history: keep subjects taken then even if since retired.
+    if (!scope.viewingPast) subjectQ = subjectQ.where('subjects.status', 'active');
+    const subjects = await subjectQ.select('subjects.*').orderBy('subjects.code', 'asc');
 
     res.json({
       data: subjects.map(mapSubject),
+      meta,
       pagination: { page: 1, limit: subjects.length, total: subjects.length, total_pages: 1 },
     });
   } catch (error) {

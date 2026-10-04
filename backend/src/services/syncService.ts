@@ -34,13 +34,29 @@ export class SyncService {
 
     if (!teacher) return { tenantId, teacherId: null, classIds: [], studentIds: [] };
 
+    // CURRENT classes only: an assignment that has ended (teacher moved off the
+    // class, or last year's after a rollover) and past-session classes are
+    // history, not offline work. Re-resolved on every pull/push, so a
+    // reassignment takes effect on the next sync.
+    const today = new Date().toISOString().slice(0, 10);
+    const currentClass = (q: any) => q.where((w: any) => w.whereNull('s.id').orWhere('s.is_active', true));
     const [assigned, led] = await Promise.all([
-      db('teacher_assignments').where({ teacher_id: teacher.id }).distinct('class_id'),
-      db('classes').where({ class_teacher_id: teacher.id }).select('id'),
+      currentClass(
+        db('teacher_assignments as ta')
+          .join('classes as c', 'ta.class_id', 'c.id')
+          .leftJoin('academic_sessions as s', 'c.academic_session_id', 's.id')
+          .where('ta.teacher_id', teacher.id)
+          .where((w: any) => w.whereNull('ta.end_date').orWhere('ta.end_date', '>=', today)),
+      ).distinct('ta.class_id as class_id'),
+      currentClass(
+        db('classes as c')
+          .leftJoin('academic_sessions as s', 'c.academic_session_id', 's.id')
+          .where('c.class_teacher_id', teacher.id),
+      ).select('c.id'),
     ]);
     const classIds = Array.from(
       new Set([...assigned.map((r: any) => r.class_id), ...led.map((r: any) => r.id)].filter(Boolean))
-    );
+    ) as string[];
 
     let studentIds: string[] = [];
     if (classIds.length) {
@@ -62,8 +78,12 @@ export class SyncService {
       (sinceDate ? q.where(col, '>', sinceDate) : q) as T;
 
     // No classes → nothing to sync (teacher not yet assigned).
+    // `scope` is the teacher's FULL current class/student set (not a delta), so
+    // the device can drop classes they were moved off and students who were
+    // promoted out, and re-pull in full when a new class appears.
+    const scopeOut = { class_ids: scope.classIds, student_ids: scope.studentIds };
     if (scope.classIds.length === 0) {
-      return { serverTime: new Date().toISOString(), classes: [], students: [], subjects: [], timetable: [], attendance: [], grades: [], assignments: [], enrollments: [] };
+      return { serverTime: new Date().toISOString(), scope: scopeOut, classes: [], students: [], subjects: [], timetable: [], attendance: [], grades: [], assignments: [], enrollments: [] };
     }
 
     const [classes, students, subjects, timetable, attendance, grades, assignments, enrollments] = await Promise.all([
@@ -94,6 +114,7 @@ export class SyncService {
 
     return {
       serverTime: new Date().toISOString(),
+      scope: scopeOut,
       classes, students, subjects, timetable, attendance, grades, assignments, enrollments,
     };
   }

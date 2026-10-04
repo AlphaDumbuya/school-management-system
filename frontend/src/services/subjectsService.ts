@@ -82,10 +82,21 @@ export const subjectsService = {
    * GET /api/v1/subjects/my — subjects for the caller's OWN class only.
    * Students: their class's subjects. Parents: a child's subjects (pass childId).
    */
-  async listMySubjects(childId?: string) {
-    return apiClient.get<{ data: SubjectRecord[]; pagination: any }>(
+  /** Subjects of the caller's (or a parent's child's) classes in one academic year. */
+  async listMySubjects(childId?: string, academicYear?: string) {
+    return apiClient.get<{
+      data: SubjectRecord[];
+      pagination: any;
+      meta?: {
+        academic_year: string;
+        active_year: string;
+        viewing_past: boolean;
+        classes: { id: string; name: string }[];
+        pending_transition: { fromYear: string; className: string } | null;
+      };
+    }>(
       '/api/v1/subjects/my',
-      { params: childId ? { child_id: childId } : {} },
+      { params: { child_id: childId || undefined, academic_year: academicYear || undefined } },
     );
   },
 

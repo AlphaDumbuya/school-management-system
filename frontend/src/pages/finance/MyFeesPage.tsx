@@ -17,6 +17,8 @@ import { StudentLedgerView } from '@components/finance/StudentLedgerView';
 import { PayFeesButton } from '@components/finance/PayFeesButton';
 import { parentDashboardService } from '@services/parentDashboardService';
 import { financeLedgerService } from '@services/financeLedgerService';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 const fmtLe = (v: number | null | undefined) =>
   `Le ${(Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -24,7 +26,7 @@ const fmtLe = (v: number | null | undefined) =>
 interface AutoPayIntent { studentId?: string; amount?: number; label?: string; }
 
 /** Student view: own ledger + pay own outstanding. */
-const StudentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: () => void }> = ({ autoPay, onAutoConsumed }) => {
+const StudentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: () => void; year?: string }> = ({ autoPay, onAutoConsumed, year }) => {
   const { data } = useQuery({
     queryKey: ['my-ledger'],
     queryFn: () => financeLedgerService.getMyLedger(),
@@ -51,13 +53,13 @@ const StudentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: (
           />
         </div>
       )}
-      <StudentLedgerView />
+      <StudentLedgerView academicYear={year || undefined} />
     </div>
   );
 };
 
 /** Parent view: child switcher + selected child's ledger + pay. */
-const ParentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: () => void }> = ({ autoPay, onAutoConsumed }) => {
+const ParentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: () => void; year?: string }> = ({ autoPay, onAutoConsumed, year }) => {
   const { data: dashResp, isLoading } = useQuery({
     queryKey: ['parent-dashboard'],
     queryFn: () => parentDashboardService.getDashboard(),
@@ -137,7 +139,7 @@ const ParentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: ()
           />
         </div>
       )}
-      {currentId && <StudentLedgerView studentId={currentId} />}
+      {currentId && <StudentLedgerView studentId={currentId} academicYear={year || undefined} />}
     </div>
   );
 };
@@ -158,13 +160,30 @@ export const MyFeesPage: React.FC = () => {
     }
   }, [location.state]);
   const clearAuto = () => setAutoPay(null);
+  // Opens on the CURRENT academic year ('' = current, follows a rollover).
+  // "All years" is still available ('all'). Other years' unpaid balances keep
+  // showing as "still payable" with a Pay button (StudentLedgerView).
+  const { activeYear } = useAcademicYears();
+  const [picked, setPicked] = useState('');
+  const showAll = picked === 'all';
+  const year = showAll ? '' : (picked || activeYear);
+  // YearFilter's "All years" option is the empty value.
+  const filterValue = showAll ? '' : year;
+  const onYearChange = (v: string) => setPicked(!v ? 'all' : v === activeYear ? '' : v);
 
   return (
     <MainLayout>
-      <PageShell title="Fees & Payments" subtitle={isParent ? "Your children's fees and online payment" : 'Your fees and online payment'}>
-        {isParent
-          ? <ParentFees autoPay={autoPay} onAutoConsumed={clearAuto} />
-          : <StudentFees autoPay={autoPay} onAutoConsumed={clearAuto} />}
+      <PageShell
+        title="Fees & Payments"
+        subtitle={isParent ? "Your children's fees and online payment" : 'Your fees and online payment'}
+        actions={<YearFilter value={filterValue} onChange={onYearChange} includeAllOption noAutoSelect />}
+      >
+        {/* Wait for the current year so the page never flashes "all years". */}
+        {!showAll && !activeYear
+          ? <div className="flex items-center justify-center py-16 text-gray-500"><Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading…</div>
+          : isParent
+            ? <ParentFees autoPay={autoPay} onAutoConsumed={clearAuto} year={year} />
+            : <StudentFees autoPay={autoPay} onAutoConsumed={clearAuto} year={year} />}
       </PageShell>
     </MainLayout>
   );

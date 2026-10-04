@@ -28,7 +28,6 @@ import {
 import { ExamSlotModal } from './components/ExamSlotModal';
 import { AddExamDayModal } from './components/AddExamDayModal';
 import { useAuth } from '@hooks/useAuth';
-import { studentDashboardService } from '@services/studentDashboardService';
 import { parentDashboardService } from '@services/parentDashboardService';
 
 const TYPE_LABELS: Record<string, string> = Object.fromEntries(EXAM_TYPES.map((t) => [t.value, t.label]));
@@ -57,10 +56,10 @@ export const ExamTimetablePage: React.FC = () => {
   // (auto-selects the active year on first load). No new Date() fabrication.
   const [pickedYear, setPickedYear] = useState('');
   const { activeYear } = useAcademicYears();
-  // Staff browse any year (picked, else active). Students/parents always see
-  // the current year — their class IS this year's class.
-  const academicYear = isViewerOnly ? activeYear : (pickedYear || activeYear);
-  const viewingPast = !isViewerOnly && !!academicYear && !!activeYear && academicYear !== activeYear;
+  // Everyone browses one year (picked, else active). Students/parents get the
+  // class(es) they were in THAT year, resolved server-side.
+  const academicYear = pickedYear || activeYear;
+  const viewingPast = !!academicYear && !!activeYear && academicYear !== activeYear;
   // Only managers edit, and only the current year (teachers view their classes).
   const canEdit = canManage && !viewingPast;
   // The current year is stored as '' so the page follows a rollover by itself.
@@ -85,14 +84,9 @@ export const ExamTimetablePage: React.FC = () => {
   const classes: ClassRecord[] = (classesData as any)?.data ?? [];
   const selectedClass = classes.find((c) => String(c.id) === selectedClassId);
 
-  // Student: resolve own class. Parent: resolve a child's class.
-  const { data: studentDash } = useQuery({
-    queryKey: ['exam-student-self'],
-    queryFn: () => studentDashboardService.getDashboard(),
-    enabled: isStudent,
-    staleTime: 60_000,
-  });
-  const { data: parentDash } = useQuery({
+  // Parent: which child (the server verifies the link). Students need nothing:
+  // the server resolves their own class(es) for the selected year.
+  const { data: parentDash, isFetched: parentDashFetched } = useQuery({
     queryKey: ['exam-parent-children'],
     queryFn: () => parentDashboardService.getDashboard(),
     enabled: isParent,
@@ -101,19 +95,12 @@ export const ExamTimetablePage: React.FC = () => {
   const parentChildren = ((parentDash as any)?.data ?? (parentDash as any))?.children ?? [];
   const [selectedChildId, setSelectedChildId] = useState('');
   const activeChildId = selectedChildId || parentChildren[0]?.id || '';
+  const childName = isParent ? (parentChildren.find((c: any) => c.id === activeChildId)?.name || 'your child') : '';
+  const who = isParent ? childName : 'you';
 
-  // Auto-select the class.
+  // Auto-select the class (staff only).
   useEffect(() => {
-    if (isStudent) {
-      const profile = ((studentDash as any)?.data ?? (studentDash as any))?.profile;
-      if (profile?.class_id) setSelectedClassId(String(profile.class_id));
-      return;
-    }
-    if (isParent) {
-      const child = parentChildren.find((c: any) => String(c.id) === String(activeChildId)) || parentChildren[0];
-      if (child?.class_id) setSelectedClassId(String(child.class_id));
-      return;
-    }
+    if (isViewerOnly) return;
     // Staff: default to the first class, and drop a selection that isn't in the
     // selected year's list (e.g. after a rollover or a year switch).
     if (!classesData) return;
@@ -124,23 +111,32 @@ export const ExamTimetablePage: React.FC = () => {
       setSelectedClassId('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classesData, selectedClassId, isStudent, isParent, studentDash, parentChildren, activeChildId]);
+  }, [classesData, selectedClassId, isViewerOnly]);
 
   // Manually-added empty date rows belong to one class + term only.
   useEffect(() => { setExtraDates([]); }, [selectedClassId, term]);
 
-  // Exams for this class + term + year
-  const canLoad = !!(selectedClassId && term && academicYear);
-  const { data: examsData, isLoading } = useQuery({
-    queryKey: ['exam-timetable', selectedClassId, term, academicYear],
-    queryFn: () => examinationsService.listExaminations({
-      class_id: selectedClassId, term, academic_year: academicYear, limit: 200,
-    }),
+  // Staff: one class. Students/parents: their own class(es) that year.
+  const hasTarget = isViewerOnly ? (!isParent || parentDashFetched) : !!selectedClassId;
+  const canLoad = !!(hasTarget && term && academicYear);
+  const { data: examsData, isLoading, error: examsError, refetch } = useQuery({
+    queryKey: ['exam-timetable', isViewerOnly ? `viewer:${isParent ? activeChildId : 'self'}` : selectedClassId, term, academicYear],
+    queryFn: () => examinationsService.listExaminations(isViewerOnly
+      ? { term, academic_year: academicYear, limit: 100, child_id: isParent ? (activeChildId || undefined) : undefined }
+      : { class_id: selectedClassId, term, academic_year: academicYear, limit: 100 }),
     enabled: canLoad,
     staleTime: 15_000,
   });
 
   const exams: ExaminationRecord[] = (examsData as any)?.data ?? [];
+  // apiClient never throws: a failed load must not read as "no exams".
+  const loadError: string | null = examsError
+    ? String(examsError)
+    : (examsData as any)?.success === false ? ((examsData as any)?.error || 'Could not load the exam timetable') : null;
+  const viewerMeta = isViewerOnly ? (examsData as any)?.meta : null;
+  const viewerClasses: string[] = Array.from(new Set<string>((viewerMeta?.classes ?? []).map((c: any) => c.name)));
+  // More than one class that year (promoted mid-year): label each exam's class.
+  const multiClass = isViewerOnly && viewerClasses.length > 1;
   const { dates: examDates, grid } = useMemo(() => buildExamGrid(exams), [exams]);
 
   // Combine real exam dates with manually-added empty rows, sorted & unique
@@ -202,12 +198,18 @@ export const ExamTimetablePage: React.FC = () => {
             onClick={canEdit ? () => openEdit(exam) : undefined}
             className={`group relative rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-2 transition-all min-w-[120px] ${canEdit ? 'cursor-pointer hover:ring-2 hover:ring-blue-400/50' : ''}`}
           >
-            <p className="text-xs font-bold text-gray-900 dark:text-white truncate leading-tight">
+            <p className={`text-xs font-bold text-gray-900 dark:text-white truncate leading-tight ${exam.status === 'cancelled' ? 'line-through opacity-60' : ''}`}>
               {exam.subject_name || exam.subject_code || exam.title}
             </p>
+            {exam.status === 'cancelled' && (
+              <p className="text-[10px] font-bold text-red-600 dark:text-red-400">Cancelled</p>
+            )}
             <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
               {exam.start_date?.substring(11, 16)}–{exam.end_date?.substring(11, 16) || ''}
             </p>
+            {multiClass && exam.class_name && (
+              <p className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 mt-0.5 truncate">{exam.class_name}</p>
+            )}
             <div className="flex items-center justify-between mt-1">
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
                 {TYPE_LABELS[exam.type]?.split(' ')[0] || exam.type}
@@ -249,7 +251,9 @@ export const ExamTimetablePage: React.FC = () => {
     <MainLayout>
       <PageShell
         title="Exam Timetable"
-        subtitle={isViewerOnly ? 'Your class examination schedule' : 'Build the examination schedule by date and session'}
+        subtitle={isViewerOnly
+          ? (viewerClasses.length ? `${viewerClasses.join(' & ')} · ${academicYear}` : isParent ? "Your child's examination schedule" : 'Your class examination schedule')
+          : 'Build the examination schedule by date and session'}
         breadcrumbs={[{ label: 'Exam Timetable' }]}
         actions={
           <EditGuard>
@@ -270,6 +274,8 @@ export const ExamTimetablePage: React.FC = () => {
             {parentChildren.map((c: any) => (
               <button
                 key={c.id}
+                type="button"
+                aria-pressed={activeChildId === c.id}
                 onClick={() => setSelectedChildId(c.id)}
                 className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
                   activeChildId === c.id
@@ -309,38 +315,51 @@ export const ExamTimetablePage: React.FC = () => {
               {EXAM_TERMS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </div>
-          {!isViewerOnly && (
-            <div className="sm:w-44">
-              <label className="text-sm font-medium text-gray-600 dark:text-gray-400 block mb-1">Academic Year</label>
-              <YearFilter value={academicYear} onChange={setAcademicYear} noAutoSelect className="w-full [&_select]:w-full" />
-            </div>
-          )}
+          <div className="sm:w-44">
+            <label className="text-sm font-medium text-gray-600 dark:text-gray-400 block mb-1">Academic Year</label>
+            <YearFilter value={academicYear} onChange={setAcademicYear} noAutoSelect className="w-full [&_select]:w-full" />
+          </div>
         </div>
 
         {viewingPast && (
           <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-            <span>Showing the <strong>{academicYear}</strong> exam timetable as history (read-only). The current year is {activeYear}.</span>
+            {isViewerOnly ? (
+              <span>
+                Showing the exams {who} had in <strong>{academicYear}</strong>
+                {viewerClasses.length ? <> ({[...viewerClasses].reverse().join(' → ')})</> : null}. This is history.
+              </span>
+            ) : (
+              <span>Showing the <strong>{academicYear}</strong> exam timetable as history (read-only). The current year is {activeYear}.</span>
+            )}
             <button type="button" onClick={() => setAcademicYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
               Back to {activeYear}
             </button>
           </div>
         )}
+        {isViewerOnly && !viewingPast && viewerMeta?.pending_transition && (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <strong>{activeYear} is being set up.</strong> {isParent ? `${childName} is` : "You're"} still listed in {viewerMeta.pending_transition.className} ({viewerMeta.pending_transition.fromYear}).
+            This year's exams will show here once the school moves {who} into this year's class.
+          </div>
+        )}
+        {loadError && (
+          <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+            <span>{loadError}</span>
+            <button type="button" onClick={() => refetch()} className="text-xs font-bold hover:underline">Try again</button>
+          </div>
+        )}
 
-        {/* Empty state */}
-        {!selectedClassId && (
+        {/* Empty state (staff: no class chosen) */}
+        {!hasTarget && !isViewerOnly && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <FileText size={56} className="text-gray-300 dark:text-gray-600 mb-4" />
             <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
-              {isViewerOnly
-                ? 'No exam timetable available yet'
-                : classesData && classes.length === 0
+              {classesData && classes.length === 0
                   ? (viewingPast ? `No classes in ${academicYear}` : 'No classes yet')
                   : canManage ? 'Select a class to build its exam timetable' : 'Select a class to see its exam timetable'}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {isViewerOnly
-                ? 'Your exam schedule will appear here once your class is enrolled and exams are scheduled.'
-                : classesData && classes.length === 0
+              {classesData && classes.length === 0
                   ? (canManage
                       ? (viewingPast ? `There were no classes in ${academicYear}.` : 'Create classes first, then schedule their exams.')
                       : (viewingPast ? `You didn't teach any classes in ${academicYear}.` : `You have no classes assigned for ${activeYear} yet.`))
@@ -349,7 +368,20 @@ export const ExamTimetablePage: React.FC = () => {
           </div>
         )}
 
-        {selectedClassId && (
+        {/* Student/parent not in any class that year */}
+        {isViewerOnly && !isLoading && !loadError && viewerMeta && viewerClasses.length === 0 && !viewerMeta.pending_transition && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <FileText size={56} className="text-gray-300 dark:text-gray-600 mb-4" />
+            <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
+              {viewerMeta.graduated && !viewingPast
+                ? `🎓 ${isParent ? childName : 'You'} graduated from ${viewerMeta.graduated.className}${viewerMeta.graduated.year ? ` in ${viewerMeta.graduated.year}` : ''}`
+                : `${isParent ? `${childName} wasn’t` : 'You weren’t'} in a class at this school in ${academicYear}`}
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Pick another year above.</p>
+          </div>
+        )}
+
+        {hasTarget && !loadError && !(isViewerOnly && viewerMeta && viewerClasses.length === 0) && (
           <>
             {/* KPIs */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
@@ -371,10 +403,14 @@ export const ExamTimetablePage: React.FC = () => {
                 <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-gray-300 dark:border-gray-700 rounded-xl">
                   <Calendar size={40} className="text-gray-300 dark:text-gray-600 mb-3" />
                   <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    {viewingPast ? `No exams were scheduled for this term in ${academicYear}` : 'No exams scheduled yet'}
+                    {viewingPast
+                      ? `No exams were scheduled for ${isViewerOnly && viewerClasses.length ? viewerClasses.join(' & ') : 'this class'} this term in ${academicYear}`
+                      : isViewerOnly && viewerClasses.length
+                        ? `No exams scheduled for ${viewerClasses.join(' & ')} this term yet`
+                        : 'No exams scheduled yet'}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-4">
-                    {canEdit ? 'Add an exam day or schedule the first exam.' : viewingPast ? 'Try another term.' : 'The exam schedule will appear here once it is published.'}
+                    {canEdit ? 'Add an exam day or schedule the first exam.' : viewingPast ? 'Try another term.' : 'The exam schedule will appear here once the school sets it.'}
                   </p>
                   <EditGuard>
                     <div className="flex gap-2">

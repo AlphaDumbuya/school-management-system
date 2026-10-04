@@ -7,6 +7,7 @@ import { db } from '@utils/database';
 import { sendExport } from '@utils/exportResponse';
 import teacherAttendanceRoutes from './teacherAttendanceRoutes';
 import { resolveYearScope, applyYearScope } from '../utils/academicYear.js';
+import { studentYearScope } from '../utils/studentScope.js';
 
 const router = Router();
 router.use('/teachers', teacherAttendanceRoutes);
@@ -582,21 +583,49 @@ router.get('/my', authenticate, attachUserContext, authorize(UserRole.STUDENT), 
       });
     }
 
-    const attendance = await db('attendance')
-      .select('id', 'class_id', 'attendance_date as date', 'status', 'session_type', 'check_in_time', 'check_out_time', 'marked_at', 'remarks')
-      .where('student_id', student.id)
-      .orderBy('attendance_date', 'desc')
-      .orderBy('session_type', 'asc');
+    // One academic year at a time (default = the active year): that year's
+    // classes, else class-less rows dated inside the year. Was lifetime, so a
+    // new year opened on last year's absences.
+    const scope = await studentYearScope(tenantId, student.id, (req.query.academic_year as string) || null);
+    const yearScope = scope.session ? await resolveYearScope(tenantId, scope.academicYear) : null;
+    const attendance: any[] = scope.session
+      ? await applyYearScope(db('attendance').where('student_id', student.id), yearScope, 'class_id', 'attendance_date')
+          .select('id', 'class_id', 'attendance_date as date', 'status', 'session_type', 'check_in_time', 'check_out_time', 'marked_at', 'remarks')
+          .orderBy('attendance_date', 'desc')
+          .orderBy('session_type', 'asc')
+      : [];
 
-    const total = attendance.length;
-    const present = attendance.filter((a: any) => a.status === 'present').length;
-    const late = attendance.filter((a: any) => a.status === 'late').length;
-    const absent = attendance.filter((a: any) => a.status === 'absent').length;
-    const excused = attendance.filter((a: any) => a.status === 'excused').length;
-    const attendancePercentage = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
+    // Count by DISTINCT DAY (several sessions = one day), using the best status
+    // that day, the same way as the dashboard and report card: present > excused
+    // > late > absent. Present, excused and late all count as attended.
+    const RANK: Record<string, number> = { present: 4, excused: 3, late: 2, absent: 1 };
+    const dayRank = new Map<string, number>();
+    for (const a of attendance) {
+      const d = a.date;
+      // DATE columns come back as local-midnight Dates: key by local parts.
+      const key = d instanceof Date
+        ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        : String(d).slice(0, 10);
+      dayRank.set(key, Math.max(dayRank.get(key) ?? 0, RANK[a.status] ?? 0));
+    }
+    const ranks = Array.from(dayRank.values());
+    const total = ranks.filter((r) => r > 0).length;
+    const present = ranks.filter((r) => r === 4).length;
+    const excused = ranks.filter((r) => r === 3).length;
+    const late = ranks.filter((r) => r === 2).length;
+    const absent = ranks.filter((r) => r === 1).length;
+    const attendancePercentage = total > 0 ? Math.round(((present + excused + late) / total) * 100) : 0;
 
     res.json({
       student_id: student.student_id,
+      meta: {
+        academic_year: scope.academicYear,
+        active_year: scope.activeYear,
+        viewing_past: scope.viewingPast,
+        classes: scope.classes.map((c) => ({ id: c.id, name: c.name })),
+        pending_transition: scope.pendingTransition ? { fromYear: scope.pendingTransition.fromYear, className: scope.pendingTransition.className } : null,
+        graduated: scope.graduated,
+      },
       summary: {
         total_days: total,
         present,

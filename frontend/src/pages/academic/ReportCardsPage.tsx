@@ -73,8 +73,12 @@ export const ReportCardsPage: React.FC = () => {
     const q = new URLSearchParams(window.location.search).get('year');
     return q && /^\d{4}\/\d{4}$/.test(q) ? q : '';
   });
+  // Students pick ANY of their years ('' = current, follows a rollover). The
+  // card itself is keyed by that year's class and its year string (selfYear).
+  const [studentPickedYear, setStudentPickedYear] = useState('');
+  const studentYear = studentPickedYear || activeYear;
   const [selfYear, setSelfYear] = useState('');
-  const academicYear = isStudent ? (selfYear || activeYear) : isParent ? activeYear : (pickedYear || activeYear);
+  const academicYear = isStudent ? (selfYear || studentYear) : isParent ? activeYear : (pickedYear || activeYear);
   const [classId, setClassId] = useState('');
   const [studentId, setStudentId] = useState('');
   // Staff switching year: that year has its own classes, so drop stale picks.
@@ -89,18 +93,38 @@ export const ReportCardsPage: React.FC = () => {
   // the dashboard endpoint so no selectors are needed (and they can only ever
   // load their own report card — the backend also enforces this).
   const { data: selfResp } = useQuery({
-    queryKey: ['report-card-self'],
-    queryFn: () => studentDashboardService.getDashboard(),
-    enabled: isStudent,
+    queryKey: ['report-card-self', studentYear],
+    queryFn: () => studentDashboardService.getDashboard(studentYear),
+    enabled: isStudent && !!studentYear,
     staleTime: 60_000,
   });
-  const selfProfile = ((selfResp as any)?.data ?? (selfResp as any))?.profile ?? null;
+  const selfDash: any = (selfResp as any)?.data ?? (selfResp as any) ?? null;
+  const selfProfile = selfDash?.profile ?? null;
+  const studentPast = isStudent && !!studentYear && !!activeYear && studentYear !== activeYear;
+  // A year can hold several classes (promoted mid-year). Each has its own card;
+  // default to the class that has released results, else the latest class.
+  const selfClasses: { id: string; name: string; year: string }[] = useMemo(() => {
+    if (!selfDash) return [];
+    const withResults = new Map<string, { id: string; name: string; year: string }>();
+    (selfDash.grades ?? []).forEach((g: any) => {
+      if (g.class_id && !withResults.has(g.class_id)) withResults.set(g.class_id, { id: g.class_id, name: g.class_name, year: g.class_year || studentYear });
+    });
+    const all = (selfDash.year_classes ?? []).map((c: any) => withResults.get(String(c.id)) ?? { id: String(c.id), name: c.name, year: selfProfile?.academic_year || studentYear });
+    // Classes with released results first.
+    return [...all.filter((c: any) => withResults.has(c.id)), ...all.filter((c: any) => !withResults.has(c.id))];
+  }, [selfDash, selfProfile, studentYear]);
+  const [selfClassPick, setSelfClassPick] = useState('');
+  const selfClass = selfClasses.find((c) => c.id === selfClassPick) || selfClasses[0] || null;
+  const changeStudentYear = (y: string) => {
+    setStudentPickedYear(!y || y === activeYear ? '' : y);
+    setSelfClassPick(''); setClassId(''); setSelfYear('');
+  };
   React.useEffect(() => {
-    if (!isStudent || !selfProfile) return;
-    if (selfProfile.id) setStudentId(String(selfProfile.id));
-    if (selfProfile.class_id) setClassId(String(selfProfile.class_id));
-    if (selfProfile.academic_year) setSelfYear(String(selfProfile.academic_year));
-  }, [isStudent, selfProfile]);
+    if (!isStudent || !selfDash) return;
+    if (selfProfile?.id) setStudentId(String(selfProfile.id));
+    setClassId(selfClass ? selfClass.id : '');
+    setSelfYear(selfClass?.year || '');
+  }, [isStudent, selfDash, selfProfile, selfClass]);
 
   // Parents: resolve their children (with class) and let them pick one.
   const { data: parentResp } = useQuery({
@@ -608,16 +632,42 @@ export const ReportCardsPage: React.FC = () => {
         <div className="p-4 mb-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 print:hidden">
           {isStudent ? (
             // Students: no class/student pickers — just choose the academic year.
+            <>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="sm:col-span-2 flex flex-col justify-center">
+              <div className="sm:col-span-2 flex flex-col justify-center gap-1.5">
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Report Card</span>
                 <span className="text-sm font-semibold text-gray-900 dark:text-white">
                   {selfProfile?.full_name || `${user?.first_name ?? ''} ${user?.last_name ?? ''}`.trim()}
-                  {selfProfile?.class_name ? ` — ${selfProfile.class_name}` : ''}
+                  {selfClass ? ` — ${selfClass.name}` : ''}
                 </span>
+                {selfClasses.length > 1 && (
+                  <div className="flex flex-wrap gap-1.5" role="group" aria-label="Choose a class">
+                    {selfClasses.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        aria-pressed={selfClass?.id === c.id}
+                        onClick={() => setSelfClassPick(c.id)}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold ${selfClass?.id === c.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <YearLabel year={academicYear} />
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Academic Year</span>
+                <YearFilter value={studentYear} onChange={changeStudentYear} noAutoSelect className="w-full [&_select]:w-full" />
+              </div>
             </div>
+            {studentPast && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+                <span>Showing your <strong>{studentYear}</strong> report card. Only terms the school released are shown.</span>
+                <button type="button" onClick={() => changeStudentYear('')} className="font-bold hover:underline">Back to {activeYear}</button>
+              </div>
+            )}
+            </>
           ) : isParent ? (
             // Parents: pick a child + academic year (no class/student staff pickers).
             <div className="space-y-3">
@@ -746,7 +796,13 @@ export const ReportCardsPage: React.FC = () => {
                 ? (viewingPast ? `No classes in ${academicYear}` : 'No classes yet')
                 : 'Select a student'}
             description={isStudent
-              ? 'Your report card will appear here once your results are published.'
+              ? (selfDash?.graduated && !studentPast
+                  ? `🎓 You graduated from ${selfDash.graduated.className}${selfDash.graduated.year ? ` in ${selfDash.graduated.year}` : ''}. Pick a past year to open your report cards.`
+                  : selfDash && selfClasses.length === 0
+                    ? `You weren’t in a class at this school in ${studentYear}. Pick another year.`
+                    : (selfResp as any)?.success === false
+                      ? ((selfResp as any)?.error || 'Could not load your report card. Please refresh.')
+                      : 'Your report card will appear here once your results are published.')
               : isParent
                 ? 'Select a child. The report card appears once results are published.'
                 : classesData && classes.length === 0

@@ -28,6 +28,8 @@ import { studentDashboardService, StudentDashboardData } from '@services/student
 import { PayFeesButton } from '@components/finance/PayFeesButton';
 import { StudentLedgerView } from '@components/finance/StudentLedgerView';
 import { AttendanceTimeDetails } from '@components/attendance/AttendanceTimeDetails';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -58,13 +60,35 @@ export const Phase13StudentDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['student-dashboard'],
-    queryFn: () => studentDashboardService.getDashboard(),
+  // One academic year drives the whole dashboard. '' = the CURRENT year, so it
+  // follows the school into a new year; a past year is read-only history (e.g.
+  // last year's class and published results after a promotion).
+  const { activeYear } = useAcademicYears();
+  const [pickedYear, setPickedYear] = useState('');
+  const year = pickedYear || activeYear;
+  const changeYear = (y: string) => setPickedYear(!y || y === activeYear ? '' : y);
+
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
+    queryKey: ['student-dashboard', year],
+    // apiClient never throws: surface {success:false} as a real error.
+    queryFn: async () => {
+      const res: any = await studentDashboardService.getDashboard(year || undefined);
+      if (res?.success === false) throw new Error(res.error || 'Could not load your dashboard');
+      return res;
+    },
+    enabled: !!year,
     staleTime: 60_000,
   });
 
   const dash: StudentDashboardData | undefined = (data as any)?.data ?? (data as any);
+  const viewingPast = !!dash?.viewing_past || (!!year && !!activeYear && year !== activeYear);
+  const notEnrolledInYear = !!dash && !!dash.profile && dash.enrolled_in_year === false;
+  // A year can span more than one class (promoted / moved mid-year).
+  const yearClassNames = (dash?.year_classes ?? []).map((c) => c.name);
+  const multiClassYear = new Set(yearClassNames).size > 1;
+  const timetableClassName = dash?.timetable_class?.name ?? dash?.profile?.class_name ?? null;
+  const TERM_LABEL: Record<string, string> = { first_term: 'First Term', second_term: 'Second Term', third_term: 'Third Term' };
+  const transition = !viewingPast ? dash?.pending_transition ?? null : null;
 
   const profile = dash?.profile ?? null;
   const stats = dash?.stats ?? { attendance_rate: 0, average_grade: 0, classes_today: 0, outstanding_fees: 0 };
@@ -125,7 +149,7 @@ export const Phase13StudentDashboard: React.FC = () => {
     [fees.paid, fees.outstanding]
   );
 
-  if (isLoading) {
+  if (isLoading || !year) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center py-24 text-gray-500">
@@ -141,7 +165,8 @@ export const Phase13StudentDashboard: React.FC = () => {
         <div className="py-16">
           <EmptyState
             message="Couldn't load dashboard"
-            description="There was a problem fetching your data. Please refresh and try again."
+            description={(error as Error)?.message || 'There was a problem fetching your data. Please refresh and try again.'}
+            action={{ label: 'Try again', onClick: () => refetch() }}
           />
         </div>
       </MainLayout>
@@ -154,7 +179,8 @@ export const Phase13StudentDashboard: React.FC = () => {
         title="Student Dashboard"
         subtitle="Your grades, attendance, schedule and fees"
         onRefresh={() => refetch()}
-        isRefreshing={isLoading}
+        isRefreshing={isFetching}
+        actions={<YearFilter value={year} onChange={changeYear} noAutoSelect />}
       >
         <WelcomeHero
           firstName={displayName.split(' ')[0]}
@@ -168,6 +194,59 @@ export const Phase13StudentDashboard: React.FC = () => {
               message="Student profile not linked"
               description="Your login isn't linked to a student record yet. Please contact the school office."
             />
+          </div>
+        )}
+
+        {viewingPast && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>
+              Showing <strong>{year}</strong>
+              {yearClassNames.length ? <> ({Array.from(new Set(yearClassNames)).reverse().join(' → ')})</> : null} as history.
+            </span>
+            <button type="button" onClick={() => changeYear(activeYear)} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              Back to {activeYear}
+            </button>
+          </div>
+        )}
+
+        {transition && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <strong>{activeYear} is being set up.</strong> You're still listed in {transition.className} ({transition.fromYear}).
+            Your new class, timetable and results will appear here once the school moves you into {activeYear}.
+          </div>
+        )}
+
+        {/* Unpaid fees from earlier years: say it plainly, on every tab. */}
+        {!viewingPast && Number(fees.other_years_outstanding) > 0 && (
+          <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <span className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+              <span>
+                You still owe <strong>{fmtMoney(fees.other_years_outstanding)}</strong> in school fees from{' '}
+                {(fees.other_years ?? []).map((o) => o.academic_year).join(', ') || 'an earlier year'}. This balance must still be paid.
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => navigate('/finance/my-fees')}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 px-3 py-1.5 text-xs font-bold text-white"
+            >
+              <CreditCard size={13} /> Pay now
+            </button>
+          </div>
+        )}
+
+        {notEnrolledInYear && !transition && dash?.graduated && (
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
+            🎓 <strong>You graduated</strong> from {dash.graduated.className}{dash.graduated.year ? <> in {dash.graduated.year}</> : null}. Congratulations!
+            Your results, report cards and fees from your years here stay available: pick a year above.
+          </div>
+        )}
+        {notEnrolledInYear && !transition && !dash?.graduated && (
+          <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300">
+            {viewingPast || dash?.year_exists === false
+              ? <>You weren't in a class at this school in <strong>{year}</strong>.</>
+              : <>You haven't been placed in a class for <strong>{year}</strong> yet. Please check with the school office.</>}
           </div>
         )}
 
@@ -185,17 +264,22 @@ export const Phase13StudentDashboard: React.FC = () => {
             icon={<TrendingUp className="w-5 h-5" />}
             color="blue"
           />
+          {/* "Today" only means something in the current year. */}
           <KPICard
-            title="Today's Classes"
-            value={String(stats.classes_today)}
+            title={viewingPast ? 'Subjects Taken' : "Today's Classes"}
+            value={viewingPast ? String(new Set(grades.map((g) => g.subject_name)).size || '—') : String(stats.classes_today)}
             icon={<BookOpen className="w-5 h-5" />}
             color="purple"
           />
+          {/* This year's balance; arrears from other years are noted, not mixed in. */}
           <KPICard
-            title="Outstanding Fees"
+            title={`Outstanding Fees · ${year}`}
             value={fmtMoney(stats.outstanding_fees)}
             icon={<DollarSign className="w-5 h-5" />}
             color={stats.outstanding_fees > 0 ? 'amber' : 'green'}
+            subtitle={Number(fees.other_years_outstanding) > 0
+              ? `You also owe ${fmtMoney(fees.other_years_outstanding)} from ${(fees.other_years ?? []).map((o) => o.academic_year).join(', ') || 'earlier years'}`
+              : undefined}
           />
         </div>
 
@@ -205,6 +289,9 @@ export const Phase13StudentDashboard: React.FC = () => {
             {tabs.map((tab) => (
               <button
                 key={tab}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
                 className={`px-3 sm:px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
                   activeTab === tab
@@ -222,10 +309,10 @@ export const Phase13StudentDashboard: React.FC = () => {
           {/* ── Overview ─────────────────────────────────────────────── */}
           {activeTab === 'overview' && (
             <div className="space-y-4">
-              {/* Announcements scoped to this student's classes + school-wide */}
-              <AnnouncementsWidget limit={4} />
+              {/* Live widgets (announcements, today's classes) — current year only. */}
+              {!viewingPast && <AnnouncementsWidget limit={4} />}
 
-              <Card>
+              {!viewingPast && <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Clock className="w-4 h-4" /> Today's Classes
@@ -233,7 +320,9 @@ export const Phase13StudentDashboard: React.FC = () => {
                 </CardHeader>
                 <CardContent>
                   {todaySchedule.length === 0 ? (
-                    <p className="text-sm text-gray-500 py-4 text-center">No classes scheduled for today.</p>
+                    <p className="text-sm text-gray-500 py-4 text-center">
+                      {profile?.class_id ? 'No classes scheduled for today.' : 'Your timetable will appear once you’re in a class for this year.'}
+                    </p>
                   ) : (
                     <div className="space-y-2">
                       {todaySchedule.map((cls) => (
@@ -253,11 +342,11 @@ export const Phase13StudentDashboard: React.FC = () => {
                     </div>
                   )}
                 </CardContent>
-              </Card>
+              </Card>}
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Attendance Summary</CardTitle>
+                  <CardTitle className="text-base">Attendance Summary · {year}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
@@ -292,7 +381,7 @@ export const Phase13StudentDashboard: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                     {attendanceChartData.length === 0 ? (
-                      <p className="text-sm text-gray-500 py-12 text-center">No attendance recorded yet.</p>
+                      <p className="text-sm text-gray-500 py-12 text-center">No attendance recorded in {year}{viewingPast ? '' : ' yet'}.</p>
                     ) : (
                       <ResponsiveContainer width="100%" height={260}>
                         <PieChart>
@@ -331,7 +420,7 @@ export const Phase13StudentDashboard: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                     {gradesChartData.length === 0 ? (
-                      <p className="text-sm text-gray-500 py-12 text-center">No results published yet.</p>
+                      <p className="text-sm text-gray-500 py-12 text-center">No results published for {year}{viewingPast ? '' : ' yet'}.</p>
                     ) : (
                       <ResponsiveContainer width="100%" height={260}>
                         <BarChart data={gradesChartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
@@ -438,29 +527,33 @@ export const Phase13StudentDashboard: React.FC = () => {
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <CardTitle className="flex items-center gap-2 text-base">
                       <GraduationCap className="w-4 h-4" /> My Results
-                      {profile?.academic_year && (
-                        <span className="ml-1 inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 text-[11px] font-bold">
-                          Current year: {profile.academic_year}
-                        </span>
-                      )}
+                      <span className="ml-1 inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 text-[11px] font-bold">
+                        {viewingPast ? year : `Current year: ${year}`}
+                      </span>
                     </CardTitle>
                     <button
+                      type="button"
                       onClick={() => navigate('/academic/report-cards')}
                       className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
                     >
-                      <Clock size={13} /> View previous years
+                      <Clock size={13} /> Open report cards
                     </button>
                   </div>
                 </CardHeader>
                 <CardContent>
                   {grades.length === 0 ? (
-                    <p className="text-sm text-gray-500 py-6 text-center">No results published for {profile?.academic_year || 'this year'} yet.</p>
+                    <p className="text-sm text-gray-500 py-6 text-center">
+                      {notEnrolledInYear
+                        ? `You had no class in ${year}.`
+                        : `No results published for ${year}${viewingPast ? '' : ' yet'}. Results appear once the school publishes them.`}
+                    </p>
                   ) : (
                     <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
                       <table className="w-full text-sm text-left">
                         <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
                           <tr className="text-white">
                             <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Subject</th>
+                            {multiClassYear && <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Class</th>}
                             <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Term</th>
                             <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Test 1</th>
                             <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Test 2</th>
@@ -477,7 +570,8 @@ export const Phase13StudentDashboard: React.FC = () => {
                               }`}
                             >
                               <td className="px-4 py-3.5 font-medium text-gray-900 dark:text-gray-100">{g.subject_name}</td>
-                              <td className="px-4 py-3.5 text-gray-500">{g.term}</td>
+                              {multiClassYear && <td className="px-4 py-3.5 text-gray-500">{g.class_name || '—'}</td>}
+                              <td className="px-4 py-3.5 text-gray-500">{TERM_LABEL[g.term] ?? g.term}</td>
                               <td className="px-4 py-3.5 text-center text-gray-700 dark:text-gray-300">{g.test1 ?? '—'}</td>
                               <td className="px-4 py-3.5 text-center text-gray-700 dark:text-gray-300">{g.test2 ?? '—'}</td>
                               <td className="px-4 py-3.5 text-center">
@@ -577,7 +671,7 @@ export const Phase13StudentDashboard: React.FC = () => {
                 </CardHeader>
                 <CardContent>
                   {attendance.records.length === 0 ? (
-                    <p className="text-sm text-gray-500 py-6 text-center">No attendance records yet.</p>
+                    <p className="text-sm text-gray-500 py-6 text-center">No attendance records in {year}{viewingPast ? '' : ' yet'}.</p>
                   ) : (
                     <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
                       <table className="w-full text-sm text-left">
@@ -633,11 +727,13 @@ export const Phase13StudentDashboard: React.FC = () => {
           {activeTab === 'schedule' && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Weekly Timetable</CardTitle>
+                <CardTitle className="text-base">Weekly Timetable · {year}{timetableClassName ? ` · ${timetableClassName}` : ''}</CardTitle>
               </CardHeader>
               <CardContent>
                 {scheduleByDay.length === 0 ? (
-                  <p className="text-sm text-gray-500 py-6 text-center">No timetable published for your class yet.</p>
+                  <p className="text-sm text-gray-500 py-6 text-center">
+                    {notEnrolledInYear ? `You had no class in ${year}.` : `No timetable published for your class${viewingPast ? ` in ${year}` : ' yet'}.`}
+                  </p>
                 ) : (
                   <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
                     <table className="w-full text-sm text-left">
@@ -698,17 +794,18 @@ export const Phase13StudentDashboard: React.FC = () => {
                   summary). Rendered without an extra Card wrapper so its cards sit
                   at the same width as the Overview KPI cards. */}
               <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-3 px-1">Fees by Term &amp; Year</h3>
-                <StudentLedgerView redirectToPay />
+                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-3 px-1">Fees for {year}</h3>
+                {/* Only the selected year; other years' unpaid balance shows as one line. */}
+                <StudentLedgerView academicYear={year} redirectToPay />
               </div>
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Invoices</CardTitle>
+                  <CardTitle className="text-base">Invoices · {year}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {fees.invoices.length === 0 ? (
-                    <p className="text-sm text-gray-500 py-6 text-center">No invoices on record.</p>
+                    <p className="text-sm text-gray-500 py-6 text-center">No invoices for {year}.</p>
                   ) : (
                     <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
                       <table className="w-full text-sm text-left">

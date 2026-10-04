@@ -76,6 +76,7 @@ router.get(
         new Date(start_date as string),
         new Date(end_date as string),
         req.user!.id,
+        req.user!.role,
       );
 
       res.json({ success: true, data: events });
@@ -100,6 +101,7 @@ router.get(
         req.user!.tenant_id,
         req.user!.id,
         limit,
+        req.user!.role,
       );
 
       res.json({ success: true, data: events });
@@ -246,11 +248,21 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
-      const events = await eventService.searchEvents(
+      const all = await eventService.searchEvents(
         req.user!.tenant_id,
         req.params.query,
         limit,
       );
+      // Same audience rules as the list: non-admins never see others' drafts
+      // or events not meant for them (search returned everything before).
+      const role = req.user!.role;
+      const isAdmin = role === 'principal' || role === 'super_admin';
+      const me = String(req.user!.id);
+      const events = [];
+      for (const ev of all as any[]) {
+        const mine = String(ev.organizer_id ?? '') === me || String(ev.created_by ?? '') === me;
+        if (isAdmin || mine || (ev.status !== 'draft' && (await eventService.viewerMaySee(ev, role, me)))) events.push(ev);
+      }
       res.json({ success: true, data: events });
     } catch (error) {
       logger.error('Error searching events:', error);
@@ -309,8 +321,13 @@ router.get(
         start_date:   start_date ? new Date(start_date as string) : undefined,
         end_date:     end_date   ? new Date(end_date as string)   : undefined,
         search:       (search && String(search).trim())       ? String(search).trim()       : undefined,
-        // Teachers see everyone's published events but only their OWN drafts.
-        drafts_only_by: req.user!.role === 'teacher' ? req.user!.id : undefined,
+        // Non-admins (teachers, students, parents, other staff) see published
+        // events but only their OWN drafts. It used to be teachers only, so
+        // students and parents saw every unannounced draft.
+        drafts_only_by: (req.user!.role === 'principal' || req.user!.role === 'super_admin') ? undefined : req.user!.id,
+        // Audience: non-admins only get events meant for them.
+        viewer_role: (req.user!.role === 'principal' || req.user!.role === 'super_admin') ? undefined : req.user!.role,
+        viewer_id: req.user!.id,
       } as any);
 
       // result shape: { data, total, page, limit, totalPages }
@@ -402,6 +419,11 @@ router.get(
       const isAdmin = role === 'principal' || role === 'super_admin';
       const ownsDraft = String(ev?.organizer_id ?? '') === String(req.user!.id) || String(ev?.created_by ?? '') === String(req.user!.id);
       if (!event || (ev.status === 'draft' && !isAdmin && !ownsDraft)) {
+        return res.status(404).json({ success: false, error: 'Event not found' });
+      }
+      // Audience: a role-specific event is only for the roles it names, and a
+      // private one only for people invited/registered (or its organiser).
+      if (!isAdmin && !ownsDraft && !(await eventService.viewerMaySee(ev, role, req.user!.id))) {
         return res.status(404).json({ success: false, error: 'Event not found' });
       }
 
@@ -550,6 +572,15 @@ router.post(
   assertEventTenant,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // Only published events meant for this viewer can be joined (a draft or a
+      // role-specific event for other roles isn't theirs to register for).
+      const role = req.user!.role;
+      if (role !== 'principal' && role !== 'super_admin') {
+        const ev = await db('events').where({ event_id: req.params.eventId, tenant_id: req.user!.tenant_id }).first();
+        if (!ev || ev.status !== 'published' || (ev.visibility === 'role_specific' && !(await eventService.viewerMaySee(ev, role, req.user!.id)))) {
+          return res.status(404).json({ success: false, error: 'Event not found' });
+        }
+      }
       const registration = await eventRegistrationService.registerForEvent(
         req.params.eventId,
         req.user!.id,

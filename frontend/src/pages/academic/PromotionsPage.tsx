@@ -43,6 +43,21 @@ const OUTCOME_LABELS: Record<PromotionOutcome, string> = {
   graduated: 'Graduated',
 };
 
+// Sierra Leone stages (mirrors backend promotionService.graduationKind):
+// Nursery 3 → Class 1, Class 6 → JSS 1 and JSS 3 → SSS 1 are stage
+// graduations inside the school. Only SSS 3 (or an unrecognised custom final
+// class) leaves the school.
+const normLevel = (l?: string | null) => String(l || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const STAGE_NEXT: Record<string, string> = { NURSERY3: 'CLASS1', CLASS6: 'JSS1', JSS3: 'SSS1' };
+const KNOWN_LEVELS = new Set(['NURSERY1', 'NURSERY2', 'NURSERY3', 'CLASS1', 'CLASS2', 'CLASS3', 'CLASS4', 'CLASS5', 'CLASS6', 'JSS1', 'JSS2', 'JSS3', 'SSS1', 'SSS2', 'SSS3']);
+function stageOf(level?: string | null): { leavesSchool: boolean; nextLevel: string | null } {
+  const l = normLevel(level);
+  if (!l) return { leavesSchool: true, nextLevel: null }; // no class picked / no level: keep the option
+  if (l === 'SSS3' || !KNOWN_LEVELS.has(l)) return { leavesSchool: true, nextLevel: null };
+  return { leavesSchool: false, nextLevel: STAGE_NEXT[l] ?? null };
+}
+const prettyLevel = (l: string) => l.replace(/^([A-Z]+)(\d)$/, (_, a, d) => `${a === 'CLASS' ? 'Class' : a === 'NURSERY' ? 'Nursery' : a} ${d}`);
+
 export const PromotionsPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('promote');
@@ -65,6 +80,8 @@ export const PromotionsPage: React.FC = () => {
     staleTime: 60_000,
   });
   const classes: any[] = (classesData as any)?.data ?? [];
+  // What graduating from the chosen class means (only SSS 3 leaves the school).
+  const fromStage = stageOf(classes.find((c) => String(c.id) === classId)?.level);
 
   // Promoting from a PAST year? Students move into the CURRENT year's classes,
   // so "To Class" lists the active year's classes instead of last year's.
@@ -131,9 +148,10 @@ export const PromotionsPage: React.FC = () => {
   const setOutcome = (studentId: string, outcome: PromotionOutcome) =>
     setOverrides((prev) => ({ ...prev, [studentId]: outcome }));
 
+  // Below SSS 3 a "graduate" also moves up into a class, so it needs a target.
   const needsTarget = !graduate && pending.some((c) => {
     const o = effectiveOutcome(c);
-    return o === 'promoted' || o === 'promoted_effort';
+    return o === 'promoted' || o === 'promoted_effort' || (o === 'graduated' && !fromStage.leavesSchool);
   });
 
   const handleExecute = async () => {
@@ -239,8 +257,15 @@ export const PromotionsPage: React.FC = () => {
                   // isn't just a mirror of the same list.
                   if (tab === 'promote') {
                     const src = classes.find((c) => String(c.id) === newFrom);
-                    if (src?.is_final_year) { setGraduate(true); setTargetClassId(''); }
+                    const kind = stageOf(src?.level);
+                    // Only SSS 3 leaves the school. Nursery 3 / Class 6 / JSS 3
+                    // move up a stage: suggest the next stage's class instead.
+                    const stageTarget = kind.nextLevel
+                      ? targetClasses.filter((c) => normLevel(c.level) === kind.nextLevel)
+                      : [];
+                    if (src?.is_final_year && kind.leavesSchool) { setGraduate(true); setTargetClassId(''); }
                     else if (src?.next_class_id) { setGraduate(false); setTargetClassId(toCurrentYear(src.next_class_id)); }
+                    else if (stageTarget.length === 1) { setGraduate(false); setTargetClassId(String(stageTarget[0].id)); }
                     else { setGraduate(false); setTargetClassId(''); }
                   }
                 }}
@@ -273,8 +298,14 @@ export const PromotionsPage: React.FC = () => {
                         {c.name}{c.level ? ` (${c.level})` : ''}{fromPastYear ? ` · ${activeYear}` : ''}
                       </option>
                     ))}
-                  <option value="__graduate__">🎓 Graduate (final year)</option>
+                  {/* Leaving the school is only for SSS 3 (final class). */}
+                  {fromStage.leavesSchool && <option value="__graduate__">🎓 Graduate (leaves the school)</option>}
                 </select>
+                {fromStage.nextLevel && (
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                    🎓 Stage graduation: pick the {prettyLevel(fromStage.nextLevel)} class they move up into.
+                  </p>
+                )}
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
               </div>
             </div>
@@ -351,7 +382,7 @@ export const PromotionsPage: React.FC = () => {
                                     <option value="promoted">Promote</option>
                                     <option value="promoted_effort">Promote (Effort)</option>
                                     <option value="repeated">Repeat</option>
-                                    <option value="graduated">Graduate</option>
+                                    <option value="graduated">{fromStage.leavesSchool ? 'Graduate (leaves school)' : fromStage.nextLevel ? `Graduate to ${prettyLevel(fromStage.nextLevel)}` : 'Graduate'}</option>
                                   </select>
                                   <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
                                 </div>

@@ -259,6 +259,22 @@ router.get('/weekly/:classId', authenticate, async (req: Request, res: Response,
       throw new AppError('Class not found', 404, 'NOT_FOUND');
     }
 
+    // Student / parent scoping: only a class the student is or was in (or,
+    // for a parent, one of their linked children). Any other id → 403.
+    const viewerRole = req.user?.role as string | undefined;
+    if (viewerRole === 'student' || viewerRole === 'parent' || viewerRole === 'guardian') {
+      const studentIds = viewerRole === 'student'
+        ? (await db('students').where({ user_id: req.user!.id, tenant_id: tenantId }).select('id')).map((r: any) => r.id)
+        : (await db('guardians as g').join('students as s', 'g.student_id', 's.id')
+            .where('g.user_id', req.user!.id).where('s.tenant_id', tenantId).select('s.id')).map((r: any) => r.id);
+      const inClass = studentIds.length
+        ? await db('enrollments').whereIn('student_id', studentIds).where('class_id', classId).first('id')
+        : null;
+      if (!inClass) {
+        throw new AppError(viewerRole === 'student' ? 'You can only view your own class timetable' : "You can only view your children's class timetables", 403, 'FORBIDDEN');
+      }
+    }
+
     // Teacher scoping: a teacher may only view the weekly grid of a class they
     // teach (teacher_assignments) or lead (class_teacher_id).
     if (req.user?.role === 'teacher') {

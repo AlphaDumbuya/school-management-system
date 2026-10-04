@@ -866,7 +866,9 @@ export class SLReportCardService {
         const stu = await db('students').where({ tenant_id: tenantId, user_id: viewerUserId }).first();
         const enrolled = stu && await db('enrollments').where({ student_id: stu.id, class_id: classId }).first();
         if (!enrolled) throw new Error('You can only view your own class ranking');
-      } else if (role === 'parent') {
+      } else if (role === 'parent' || role === 'guardian') {
+        // 'guardian' is the legacy alias for parent: it must get the same link
+        // check (it used to skip it and could rank any class once published).
         const linked = await db('guardians as g')
           .join('enrollments as e', 'g.student_id', 'e.student_id')
           .where('g.user_id', viewerUserId)

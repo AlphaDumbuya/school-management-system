@@ -1,6 +1,9 @@
 import { db } from '../utils/database.js';
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
+import { UserRole } from '../types/auth';
+
+const STAFF_READ = [UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER];
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 
@@ -104,7 +107,9 @@ router.post('/', authenticate, authorize('principal', 'teacher'), async (req: Re
  * GET /api/v1/grades
  * List grades with filtering
  */
-router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+// Staff only: unscoped, unpublished legacy grades (students/parents use the
+// publish-gated dashboards and report cards).
+router.get('/', authenticate, authorize(STAFF_READ), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
@@ -174,9 +179,16 @@ router.get('/student/:studentId', authenticate, async (req: Request, res: Respon
       throw new AppError('Student not found', 404, 'NOT_FOUND');
     }
 
-    // Check authorization
-    if (currentUser.role === 'student' && student.user_id !== currentUser.id && currentUser.role !== 'principal') {
-      throw new AppError('Insufficient permissions', 403, 'AUTHORIZATION_ERROR');
+    // Check authorization: staff; the student themself; or a linked parent.
+    // Every other role (and a parent of someone else) is refused.
+    const role = String(currentUser.role || '');
+    if (!['principal', 'super_admin', 'teacher'].includes(role)) {
+      let allowed = false;
+      if (role === 'student') allowed = student.user_id === currentUser.id;
+      else if (role === 'parent' || role === 'guardian') {
+        allowed = !!(await db('guardians').where({ user_id: currentUser.id, student_id: student.id }).first('id'));
+      }
+      if (!allowed) throw new AppError('Insufficient permissions', 403, 'AUTHORIZATION_ERROR');
     }
 
     const grades = await db('grades')
@@ -309,7 +321,7 @@ router.post('/:gradeId/finalize', authenticate, authorize('principal'), async (r
  * GET /api/v1/classes/:classId/grades
  * Get class grades summary
  */
-router.get('/class/:classId', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/class/:classId', authenticate, authorize(STAFF_READ), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { classId } = req.params;
     const tenantId = req.user?.tenant_id;

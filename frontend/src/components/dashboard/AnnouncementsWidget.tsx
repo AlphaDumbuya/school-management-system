@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Megaphone, AlertTriangle, ArrowRight } from 'lucide-react';
 import announcementService, { type Announcement } from '@services/announcementService';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 interface AnnouncementsWidgetProps {
   /** How many to show. */
@@ -19,6 +20,8 @@ interface AnnouncementsWidgetProps {
   /** Optional heading override. */
   title?: string;
   className?: string;
+  /** Year to show; defaults to the school's current academic year. */
+  academicYear?: string;
 }
 
 function relTime(iso?: string): string {
@@ -38,12 +41,18 @@ export const AnnouncementsWidget: React.FC<AnnouncementsWidgetProps> = ({
   limit = 5,
   title = 'Announcements',
   className = '',
+  academicYear,
 }) => {
   const navigate = useNavigate();
+  // A dashboard widget is "right now": only the current academic year's posts
+  // (last year's notices must not reappear after a rollover).
+  const { activeYear } = useAcademicYears();
+  const year = academicYear || activeYear;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['dashboard-announcements', limit],
-    queryFn: () => announcementService.list({ limit }),
+    queryKey: ['dashboard-announcements', limit, year],
+    queryFn: () => announcementService.list({ limit, academic_year: year || undefined }),
+    enabled: !!year,
     staleTime: 60_000,
   });
 
@@ -69,15 +78,19 @@ export const AnnouncementsWidget: React.FC<AnnouncementsWidgetProps> = ({
         </button>
       </div>
 
-      {isLoading ? (
+      {isLoading || !year ? (
         <div className="space-y-3">
           {Array.from({ length: 2 }).map((_, i) => (
             <div key={i} className="h-12 bg-gray-100 dark:bg-gray-700/40 rounded-lg animate-pulse" />
           ))}
         </div>
+      ) : (data as any)?.success === false ? (
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400 py-6 text-center">
+          Couldn't load announcements.
+        </p>
       ) : items.length === 0 ? (
         <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">
-          No announcements yet. Updates from your school will appear here.
+          No announcements in {year} yet. Updates from your school will appear here.
         </p>
       ) : (
         <div className="space-y-2.5">

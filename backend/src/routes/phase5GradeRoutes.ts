@@ -1,5 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, requirePermission, attachUserContext } from '@middleware/authMiddleware';
+import { authenticate, authorize, requirePermission, attachUserContext } from '@middleware/authMiddleware';
+import { UserRole } from '../types/auth';
+
+const STAFF_READ = [UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER];
 import { db } from '@utils/database';
 import { GradeService } from '@services/gradeService';
 import { AuditService } from '@services/auditService';
@@ -177,6 +180,8 @@ router.get(
 router.get(
   '/:gradeId',
   authenticate,
+  // Staff only: a raw grade row by id has no ownership or publication check.
+  authorize(STAFF_READ),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { gradeId } = req.params;
@@ -477,6 +482,8 @@ router.get(
 router.get(
   '/student/:studentId/gpa',
   authenticate,
+  // Staff only: any student's GPA by id, with no ownership check.
+  authorize(STAFF_READ),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { studentId } = req.params;
