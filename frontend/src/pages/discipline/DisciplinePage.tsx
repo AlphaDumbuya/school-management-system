@@ -106,10 +106,15 @@ export const DisciplinePage: React.FC = () => {
 
   // Academic year for the record lists (picked, else the school's active year).
   // Records match by their class's year, else by date within the year.
-  const [pickedYear, setYear] = useState('');
+  // '' = the CURRENT year, so the page follows a rollover; only a past year
+  // is stored. Each tab is keyed by year + filters, so its page resets too.
+  const [pickedYear, setPickedYear] = useState('');
   const { activeYear } = useAcademicYears();
   const year = pickedYear || activeYear;
   const viewingPast = !!year && !!activeYear && year !== activeYear;
+  const setYear = (y: string) => setPickedYear(!y || y === activeYear ? '' : y);
+  const { user } = useAuth();
+  const isTeacher = user?.role === 'teacher';
 
   // Search & filter state shared across tabs
   const [search, setSearch] = useState('');
@@ -527,7 +532,7 @@ export const DisciplinePage: React.FC = () => {
           <div className="flex items-center gap-2">
             {/* Year applies to the record lists; the dashboard is "right now". */}
             {['infractions', 'actions', 'appeals', 'notes'].includes(activeTab) && (
-              <YearFilter value={year} onChange={setYear} />
+              <YearFilter value={year} onChange={setYear} noAutoSelect />
             )}
             {!viewingPast && tabAction()}
           </div>
@@ -803,6 +808,10 @@ export const DisciplinePage: React.FC = () => {
         {/* ── INFRACTIONS TAB ──────────────────────────────────────────── */}
         {activeTab === 'infractions' && (
           <InfractionsTab
+            key={`${year}|${search}|${statusFilter}|${severityFilter}`}
+            emptyMessage={isTeacher
+              ? `You haven't recorded any infractions${year ? ` in ${year}` : ''}${search || statusFilter || severityFilter ? ' matching these filters' : ''}.`
+              : `No infractions${year ? ` in ${year}` : ''}${search || statusFilter || severityFilter ? ' match these filters' : ''}.`}
             year={year}
             search={search}
             statusFilter={statusFilter}
@@ -818,6 +827,7 @@ export const DisciplinePage: React.FC = () => {
         {/* ── ACTIONS TAB ─────────────────────────────────────────────── */}
         {activeTab === 'actions' && (
           <ActionsTab
+            key={`${year}|${search}|${statusFilter}`}
             readOnly={viewingPast}
             year={year}
             search={search}
@@ -829,6 +839,7 @@ export const DisciplinePage: React.FC = () => {
         {/* ── APPEALS TAB ─────────────────────────────────────────────── */}
         {activeTab === 'appeals' && (
           <AppealsTab
+            key={`${year}|${search}|${statusFilter}`}
             readOnly={viewingPast}
             year={year}
             search={search}
@@ -841,6 +852,10 @@ export const DisciplinePage: React.FC = () => {
         {/* ── NOTES TAB ───────────────────────────────────────────────── */}
         {activeTab === 'notes' && (
           <NotesTab
+            key={`${year}|${search}|${statusFilter}`}
+            emptyMessage={isTeacher
+              ? `You haven't recorded any behavioral notes${year ? ` in ${year}` : ''}${search || statusFilter ? ' matching these filters' : ''}.`
+              : `No behavioral notes${year ? ` in ${year}` : ''}${search || statusFilter ? ' match these filters' : ''}.`}
             readOnly={viewingPast}
             year={year}
             search={search}
@@ -933,10 +948,11 @@ interface InfractionsTabProps {
   onRecordInfraction: () => void;
   /** Past academic year: history only, no row actions. */
   readOnly?: boolean;
+  emptyMessage?: string;
 }
 
 const InfractionsTab: React.FC<InfractionsTabProps> = ({
-  year, search, statusFilter, severityFilter, infractionColumns, onAssignAction, readOnly,
+  year, search, statusFilter, severityFilter, infractionColumns, onAssignAction, readOnly, emptyMessage,
 }) => {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
@@ -985,7 +1001,8 @@ const InfractionsTab: React.FC<InfractionsTabProps> = ({
       ]}
       data={items}
       isLoading={isLoading}
-      error={error ? String(error) : null}
+      // apiClient never throws: a failed load comes back as success:false.
+      error={error ? String(error) : (res?.success === false ? (res.error || 'Could not load records') : null)}
       onRetry={refetch}
       paginationMode="server"
       page={page}
@@ -993,7 +1010,7 @@ const InfractionsTab: React.FC<InfractionsTabProps> = ({
       totalCount={pagination.total}
       onPageChange={setPage}
       pageSize={PAGE_SIZE}
-      emptyMessage="No infractions found"
+      emptyMessage={emptyMessage ?? 'No infractions found'}
     />
   );
 };
@@ -1064,7 +1081,8 @@ const ActionsTab: React.FC<ActionsTabProps> = ({ year, search, statusFilter, act
       ]}
       data={items}
       isLoading={isLoading}
-      error={error ? String(error) : null}
+      // apiClient never throws: a failed load comes back as success:false.
+      error={error ? String(error) : (res?.success === false ? (res.error || 'Could not load records') : null)}
       onRetry={refetch}
       paginationMode="server"
       page={page}
@@ -1136,7 +1154,8 @@ const AppealsTab: React.FC<AppealsTabProps> = ({
       ]}
       data={items}
       isLoading={isLoading}
-      error={error ? String(error) : null}
+      // apiClient never throws: a failed load comes back as success:false.
+      error={error ? String(error) : (res?.success === false ? (res.error || 'Could not load records') : null)}
       onRetry={refetch}
       paginationMode="server"
       page={page}
@@ -1160,10 +1179,11 @@ interface NotesTabProps {
   onEdit: (note: BehavioralNote) => void;
   onDelete: (noteId: string) => void;
   readOnly?: boolean;
+  emptyMessage?: string;
 }
 
 const NotesTab: React.FC<NotesTabProps> = ({
-  year, search, statusFilter, noteColumns, onEdit, onDelete, readOnly,
+  year, search, statusFilter, noteColumns, onEdit, onDelete, readOnly, emptyMessage,
 }) => {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
@@ -1213,7 +1233,8 @@ const NotesTab: React.FC<NotesTabProps> = ({
       ]}
       data={items}
       isLoading={isLoading}
-      error={error ? String(error) : null}
+      // apiClient never throws: a failed load comes back as success:false.
+      error={error ? String(error) : (res?.success === false ? (res.error || 'Could not load records') : null)}
       onRetry={refetch}
       paginationMode="server"
       page={page}
@@ -1221,7 +1242,7 @@ const NotesTab: React.FC<NotesTabProps> = ({
       totalCount={pagination.total}
       onPageChange={setPage}
       pageSize={PAGE_SIZE}
-      emptyMessage="No behavioral notes found"
+      emptyMessage={emptyMessage ?? 'No behavioral notes found'}
     />
   );
 };
@@ -1274,7 +1295,8 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ year, search, periodFilter, rep
       ]}
       data={items}
       isLoading={isLoading}
-      error={error ? String(error) : null}
+      // apiClient never throws: a failed load comes back as success:false.
+      error={error ? String(error) : (res?.success === false ? (res.error || 'Could not load records') : null)}
       onRetry={refetch}
       paginationMode="server"
       page={page}

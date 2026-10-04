@@ -79,7 +79,11 @@ export const EventsPage: React.FC = () => {
   const year = pickedYear ?? activeYear;
   const yearReady = pickedYear !== null || !!activeYear;
   const viewingPast = !!year && !!activeYear && year < activeYear;
-  const canManageEvents = !viewingPast && ['principal', 'super_admin', 'teacher'].includes(user?.role || '');
+  // Teachers may CREATE events (they start as drafts), but edit / publish /
+  // duplicate / cancel / delete are principal-only on the server, so they're
+  // only offered to admins (they'd 403 for a teacher).
+  const canCreateEvents = !viewingPast && ['principal', 'super_admin', 'teacher'].includes(user?.role || '');
+  const canManageEvents = !viewingPast && ['principal', 'super_admin'].includes(user?.role || '');
 
   // View & filter state
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
@@ -523,7 +527,7 @@ export const EventsPage: React.FC = () => {
             pageSize={pageSize}
             totalRows={pagination.total}
             onPageChange={setPage}            emptyMessage="No events found"
-            emptyAction={canManageEvents ? { label: 'Create your first event', onClick: () => { setEditingEvent(null); setFormOpen(true); } } : undefined}
+            emptyAction={canCreateEvents ? { label: 'Create your first event', onClick: () => { setEditingEvent(null); setFormOpen(true); } } : undefined}
             rowActions={(evt) => [
               {
                 label: 'View Details',

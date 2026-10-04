@@ -343,6 +343,17 @@ export class EventService {
         query = query.where('events.status', filters.status);
       }
 
+      // Drafts are private to their organiser until published (teachers must
+      // not see the principal's — or a colleague's — unannounced drafts).
+      const draftsOnlyBy = (filters as any).drafts_only_by as string | undefined;
+      if (draftsOnlyBy) {
+        query = query.where((q: any) => {
+          q.whereNot('events.status', 'draft')
+            .orWhere('events.organizer_id', draftsOnlyBy)
+            .orWhere('events.created_by', draftsOnlyBy);
+        });
+      }
+
       if ((filters as any).event_type) {
         query = query.where('events.event_type', (filters as any).event_type);
       }

@@ -35,13 +35,11 @@ class InfractionService {
     infractionData: InfractionCreateInput
   ): Promise<StudentInfraction> {
     try {
-      // Verify student exists by id or student_id
+      // The route resolves the student to their login account (users.id —
+      // the column's FK) and the type to a tenant infraction_type_id.
       const student = await db('users')
-        .where({ tenant_id: tenantId })
-        .where(function () {
-          this.where('id', infractionData.student_id).orWhere('student_id', infractionData.student_id);
-        })
-        .first();
+        .where({ tenant_id: tenantId, id: infractionData.student_id })
+        .first('id');
 
       if (!student) {
         throw new AppError('Student not found', 404);
@@ -56,9 +54,8 @@ class InfractionService {
         throw new AppError('Infraction type not found', 404);
       }
 
-      // Create infraction record
-      const infraction: StudentInfraction = {
-        infraction_id: '',
+      // Create infraction record (the DB generates infraction_id).
+      const infraction: Omit<StudentInfraction, 'infraction_id'> & { infraction_id?: string } = {
         tenant_id: tenantId,
         student_id: infractionData.student_id,
         infraction_type_id: infractionData.infraction_type_id,
@@ -78,26 +75,25 @@ class InfractionService {
         updated_at: new Date(),
       };
 
-      const [id] = await db('student_infractions').insert(infraction);
-      infraction.infraction_id = id;
+      const [inserted] = await db('student_infractions').insert(infraction).returning('*');
+      const id: string = inserted.infraction_id;
 
       // Log audit entry
-      await this.logInfractionAudit(tenantId, id, 'created', infractionData.recorded_by, infraction);
+      await this.logInfractionAudit(tenantId, id, 'created', infractionData.recorded_by, inserted);
 
-      // Check if automatic parent notification required
+      // Parent notification is best-effort: it must never fail the record.
       const rule = await db('conduct_rules')
-        .where({ rule_id: infractionType.rule_id })
+        .where({ rule_id: infractionType.rule_id, tenant_id: tenantId })
         .first();
-
-      if (rule?.requires_parent_notification) {
-        await this.notifyParents(tenantId, infractionData.student_id, infraction);
+      if (rule?.requires_parent_notification && !inserted.is_confidential) {
+        void this.notifyParents(tenantId, infractionData.student_id, inserted);
       }
 
       logger.info(
         `Infraction ${id} recorded for student ${infractionData.student_id} by ${infractionData.recorded_by}`
       );
 
-      return infraction;
+      return inserted as StudentInfraction;
     } catch (error) {
       logger.error('Error recording infraction:', error);
       throw error;
@@ -418,10 +414,9 @@ class InfractionService {
    */
   private async notifyParents(tenantId: string, studentId: string, infraction: StudentInfraction) {
     try {
-      // Get student's guardians
-      const guardians = await db('student_guardians')
-        .where({ student_id: studentId, status: 'active' })
-        .select('guardian_id');
+      // Guardian login accounts (guardians → students.user_id = this student).
+      const { guardianUserIds } = await import('../utils/disciplineScope.js');
+      const guardians = (await guardianUserIds(tenantId, studentId)).map((id) => ({ guardian_id: id }));
 
       for (const guardian of guardians) {
         try {

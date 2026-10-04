@@ -52,12 +52,36 @@ export class AnnouncementService {
     ]));
   }
 
+  /**
+   * The teacher's classes of the CURRENT academic year (active session, or a
+   * legacy class with no session). Last year's copies have no members any
+   * more, so posting to them would reach nobody — and after a rollover the
+   * dropdown would list "Class 6" twice.
+   */
+  async getTeacherCurrentClassIds(tenantId: string, userId: string): Promise<string[]> {
+    const ids = await this.getTeacherClassIds(tenantId, userId);
+    if (!ids.length) return [];
+    const rows = await db('classes')
+      .leftJoin('academic_sessions as s', 'classes.academic_session_id', 's.id')
+      .whereIn('classes.id', ids)
+      .where((q: any) => q.whereNull('classes.academic_session_id').orWhere('s.is_active', true))
+      .select('classes.id');
+    return rows.map((r: any) => String(r.id));
+  }
+
   /** Classes a teacher can announce to (id + name), for the compose dropdown. */
   async getTeacherClasses(tenantId: string, userId: string): Promise<{ id: string; name: string; level?: string }[]> {
-    const ids = await this.getTeacherClassIds(tenantId, userId);
+    const ids = await this.getTeacherCurrentClassIds(tenantId, userId);
     if (!ids.length) return [];
     const rows = await db('classes').whereIn('id', ids).select('id', 'name', 'level').orderBy('name');
     return rows as any;
+  }
+
+  /** Start of the active academic year (posts before it are past-year history). */
+  private async activeYearStart(tenantId: string): Promise<Date | null> {
+    const { resolveActiveYear, resolveYearScope } = await import('@utils/academicYear');
+    const { yearString } = await resolveActiveYear(tenantId);
+    return (await resolveYearScope(tenantId, yearString))?.from ?? null;
   }
 
   /** The class ids a viewer belongs to: student's enrolled classes, or a guardian's children's classes. */
@@ -107,9 +131,13 @@ export class AnnouncementService {
       if (!classId) {
         throw new AppError('Please select one of your classes to announce to', 400, 'CLASS_REQUIRED');
       }
-      const myClasses = await this.getTeacherClassIds(tenantId, authorId);
-      if (!myClasses.includes(classId)) {
+      const allMine = await this.getTeacherClassIds(tenantId, authorId);
+      if (!allMine.includes(String(classId))) {
         throw new AppError('You can only post to classes you teach', 403, 'FORBIDDEN');
+      }
+      const currentMine = await this.getTeacherCurrentClassIds(tenantId, authorId);
+      if (!currentMine.includes(String(classId))) {
+        throw new AppError('That class belongs to a past academic year. Post to this year\'s class instead.', 409, 'PAST_YEAR_READ_ONLY');
       }
       // Restrict audience to the class members (students and/or parents).
       if (!['all', 'student', 'parent'].includes(audience)) audience = 'all';
@@ -220,7 +248,9 @@ export class AnnouncementService {
     const total = Number(countRow?.count ?? 0);
 
     const q = db('announcements')
-      .leftJoin('users', 'announcements.author_id', 'users.id');
+      .leftJoin('users', 'announcements.author_id', 'users.id')
+      // Class-scoped posts show which class they went to.
+      .leftJoin('classes as ac', 'announcements.class_id', 'ac.id');
     this.applyAudienceFilter(q, tenantId, opts.viewerRole, ctx);
     applyYearScope(q, yearScope, null, 'announcements.created_at');
 
@@ -241,6 +271,7 @@ export class AnnouncementService {
       .offset(offset)
       .select(
         'announcements.*',
+        'ac.name as class_name',
         'users.role as author_role',
         db.raw("TRIM(CONCAT(users.first_name, ' ', users.last_name)) as author_name"),
         // Respectful, role-based display name (honorific prefix + full name).
@@ -259,7 +290,15 @@ export class AnnouncementService {
           : db.raw('true as is_read')
       );
 
-    return { items, total };
+    // Flag past-year posts so the UI never offers Edit/Delete on history
+    // (matters in the "All years" view, where both kinds are mixed).
+    const start = await this.activeYearStart(tenantId);
+    const flagged = items.map((it: any) => ({
+      ...it,
+      is_history: !!start && new Date(it.created_at) < start,
+    }));
+
+    return { items: flagged, total };
   }
 
   /** Count announcements the viewer hasn't read yet. */
@@ -283,7 +322,7 @@ export class AnnouncementService {
   async markRead(tenantId: string, viewerId: string, announcementId: string) {
     if (!tenantId || !viewerId) return;
     // Ensure the announcement belongs to the tenant before recording a read.
-    const exists = await db('announcements').where({ id: announcementId, tenant_id: tenantId }).first();
+    const exists = await db('announcements').where({ id: announcementId, tenant_id: tenantId }).first('id');
     if (!exists) throw new AppError('Announcement not found', 404, 'NOT_FOUND');
     await db('announcement_reads')
       .insert({ announcement_id: announcementId, user_id: viewerId, read_at: new Date() })
@@ -317,6 +356,11 @@ export class AnnouncementService {
       if (row.author_id !== editor.editorId) {
         throw new AppError('You can only manage announcements you created', 403, 'FORBIDDEN');
       }
+    }
+    // A past academic year's posts are read-only history.
+    const start = await this.activeYearStart(tenantId);
+    if (start && new Date(row.created_at) < start) {
+      throw new AppError('This announcement belongs to a past academic year and is read-only', 409, 'PAST_YEAR_READ_ONLY');
     }
     return row;
   }

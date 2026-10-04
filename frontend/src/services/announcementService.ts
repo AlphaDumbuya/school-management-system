@@ -21,6 +21,11 @@ export interface Announcement {
   priority: AnnouncementPriority;
   email_sent: boolean;
   is_read?: boolean;
+  /** Class-scoped post: which class it went to. */
+  class_id?: string | null;
+  class_name?: string | null;
+  /** Posted in a past academic year — read-only history. */
+  is_history?: boolean;
   created_at: string;
 }
 

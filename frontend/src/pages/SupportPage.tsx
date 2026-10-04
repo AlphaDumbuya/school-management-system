@@ -80,7 +80,12 @@ export const SupportPage: React.FC = () => {
 
   const { data: resp, isLoading, isError, refetch } = useQuery({
     queryKey: ['my-tickets'],
-    queryFn: () => supportService.listMyTickets(),
+    // apiClient never throws: surface a failed load as an error, not "no tickets".
+    queryFn: async () => {
+      const res: any = await supportService.listMyTickets();
+      if (res?.success === false) throw new Error(res.error || 'Could not load your tickets');
+      return res;
+    },
     staleTime: 30_000,
     retry: 1,
   });
@@ -769,7 +774,11 @@ const TicketThreadModal: React.FC<{ ticket: SupportTicket; onClose: () => void; 
 
   const { data: resp, isLoading, isError } = useQuery({
     queryKey: ['ticket-responses', ticket.id],
-    queryFn: () => supportService.getResponses(ticket.id),
+    queryFn: async () => {
+      const res: any = await supportService.getResponses(ticket.id);
+      if (res?.success === false) throw new Error(res.error || 'Could not load the conversation');
+      return res;
+    },
     staleTime: 10_000,
     retry: 1,
   });

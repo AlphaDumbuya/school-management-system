@@ -79,9 +79,11 @@ export const AnnouncementsPage: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Teachers can only post to classes they teach.
+  // Teachers can only post to classes they teach (this year's, server-side).
+  const { activeYear: classesYear } = useAcademicYears();
   const { data: myClassesResp } = useQuery({
-    queryKey: ['announcement-my-classes'],
+    // Keyed by the active year so a rollover refreshes the list.
+    queryKey: ['announcement-my-classes', classesYear],
     queryFn: () => announcementService.myClasses(),
     enabled: isTeacher,
     staleTime: 300_000,
@@ -123,7 +125,8 @@ export const AnnouncementsPage: React.FC = () => {
   const yearReady = pickedYear !== null || !!activeYear;
   const viewingPast = !!year && !!activeYear && year < activeYear;
   const viewingAll = pickedYear === '' && !!activeYear;
-  const setYear = (y: string) => { setPickedYear(y); setLimit(PAGE_SIZE); };
+  // The current year is stored as "not picked" so the page follows a rollover.
+  const setYear = (y: string) => { setPickedYear(y === activeYear ? null : y); setLimit(PAGE_SIZE); };
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['announcements', limit, year],
@@ -132,12 +135,15 @@ export const AnnouncementsPage: React.FC = () => {
     staleTime: 30_000,
   });
   const announcements: Announcement[] = useMemo(() => (data as any)?.data ?? [], [data]);
+  // apiClient never throws: a failed load comes back as success:false.
+  const loadError: string | null = error ? 'error' : (data as any)?.success === false ? ((data as any)?.error || 'error') : null;
   const total: number = (data as any)?.pagination?.total ?? announcements.length;
   const hasMore = announcements.length < total;
   const unreadOnPage = useMemo(() => announcements.filter((a) => !a.is_read).length, [announcements]);
 
   const markAllRead = async () => {
-    await announcementService.markAllRead();
+    const res: any = await announcementService.markAllRead();
+    if (res?.success === false) { showToast.error(res.error || 'Could not mark announcements as read'); return; }
     queryClient.invalidateQueries({ queryKey: ['announcements'] });
     queryClient.invalidateQueries({ queryKey: ['announcements-unread'] });
   };
@@ -218,7 +224,7 @@ export const AnnouncementsPage: React.FC = () => {
           </div>
         )}
         {/* List toolbar */}
-        {!isLoading && !error && announcements.length > 0 && (
+        {!isLoading && !loadError && announcements.length > 0 && (
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-gray-500">
               {total} announcement{total === 1 ? '' : 's'}
@@ -237,12 +243,16 @@ export const AnnouncementsPage: React.FC = () => {
           <div className="flex items-center justify-center py-24 text-gray-400">
             <Loader2 size={28} className="animate-spin" />
           </div>
-        ) : error ? (
-          <EmptyState message="Couldn't load announcements" description="Please refresh and try again." action={{ label: 'Retry', onClick: () => refetch() }} />
+        ) : loadError ? (
+          <EmptyState message="Couldn't load announcements" description={loadError !== 'error' ? loadError : 'Please refresh and try again.'} action={{ label: 'Retry', onClick: () => refetch() }} />
         ) : announcements.length === 0 ? (
           <EmptyState
-            message={viewingPast ? `No announcements in ${year}` : 'No announcements yet'}
-            description={viewingPast ? 'Nothing was posted during this academic year.' : canPost ? 'Create your first announcement to reach your school community.' : 'Check back later for updates.'}
+            message={viewingPast ? `No announcements in ${year}` : viewingAll ? 'No announcements yet' : `No announcements in ${year || 'this year'} yet`}
+            description={viewingPast
+              ? 'Nothing was posted during this academic year.'
+              : isTeacher
+                ? (myClasses.length ? 'Post to one of your classes to reach its students and parents.' : 'You have no classes this year yet. Once the principal assigns you, you can post to them here.')
+                : canPost ? 'Create your first announcement to reach your school community.' : 'Check back later for updates.'}
             action={canPost && !viewingPast ? { label: 'New Announcement', onClick: openCompose } : undefined}
           />
         ) : (
@@ -250,7 +260,8 @@ export const AnnouncementsPage: React.FC = () => {
             {announcements.map((a, idx) => {
               const mine = a.author_id === user?.id;
               // Past-year posts are history: no edit/delete.
-              const canManageThis = !viewingPast && (isAdmin || (canPost && mine));
+              // is_history also covers past posts mixed into the "All years" view.
+              const canManageThis = !viewingPast && !a.is_history && (isAdmin || (canPost && mine));
               const theme = a.priority === 'high'
                 ? { bar: 'bg-red-500', chip: 'bg-red-100 text-red-600', badge: 'bg-red-50 text-red-700 border-red-200' }
                 : themeFor(a.audience);
@@ -283,17 +294,19 @@ export const AnnouncementsPage: React.FC = () => {
                             </span>
                           )}
                           <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider border px-2 py-0.5 rounded-full ${theme.badge}`}>
-                            <Users size={10} /> {audienceLabel(a.audience)}
+                            <Users size={10} /> {a.class_name
+                              ? `${a.class_name}${a.audience === 'all' ? '' : ` · ${audienceLabel(a.audience)}`}`
+                              : audienceLabel(a.audience)}
                           </span>
                         </div>
                       </div>
                     </div>
                     {canManageThis && (
                       <div className="flex-shrink-0 flex items-center gap-1">
-                        <button onClick={() => startEdit(a)} className="p-2 rounded-lg text-gray-400 hover:text-[#1d4ed8] hover:bg-blue-50 transition-colors" title="Edit">
+                        <button type="button" onClick={() => startEdit(a)} className="p-2 rounded-lg text-gray-400 hover:text-[#1d4ed8] hover:bg-blue-50 transition-colors" title="Edit" aria-label={`Edit "${a.title}"`}>
                           <Pencil size={15} />
                         </button>
-                        <button onClick={() => setDeleteTarget(a)} className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete">
+                        <button type="button" onClick={() => setDeleteTarget(a)} className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete" aria-label={`Delete "${a.title}"`}>
                           <Trash2 size={15} />
                         </button>
                       </div>
@@ -314,7 +327,7 @@ export const AnnouncementsPage: React.FC = () => {
           </div>
         )}
 
-        {hasMore && !isLoading && !error && (
+        {hasMore && !isLoading && !loadError && (
           <div className="pt-6 text-center">
             <button
               onClick={() => setLimit((l) => l + PAGE_SIZE)}
@@ -402,7 +415,7 @@ export const AnnouncementsPage: React.FC = () => {
                     ))}
                   </select>
                   {myClasses.length === 0 && (
-                    <p className="mt-1 text-[11px] text-amber-600">You have no assigned classes yet. Ask your principal to assign you.</p>
+                    <p className="mt-1 text-[11px] text-amber-600">You have no classes in {activeYear || 'this year'} yet. Ask your principal to assign you.</p>
                   )}
                 </div>
               )}

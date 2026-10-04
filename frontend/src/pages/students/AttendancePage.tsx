@@ -94,6 +94,13 @@ function getDotColor(status: string): string {
 
 type ActiveTab = 'logs' | 'register' | 'analytics' | 'teachers';
 
+/** apiClient never throws: turn a `{ success: false }` response into an error. */
+function assertOk<T>(res: T): T {
+  const r = res as any;
+  if (r && r.success === false) throw new Error(r.error || 'Request failed');
+  return res;
+}
+
 // ── Session Options ───────────────────────────────────────────────────────────
 
 const SESSION_OPTIONS: { value: SessionType; label: string; description: string; color: string }[] = [
@@ -139,10 +146,10 @@ export const AttendancePage: React.FC = () => {
     setActiveTab(location.pathname === '/staff/attendance' || requestedTab === 'teachers' ? 'teachers' : 'logs');
   }, [location.pathname, requestedTab]);
 
-  // Academic-year scope for the class pickers (register + logs). Classes are
-  // session-scoped, so this shows the right year's classes. Auto-selects the
-  // active year via <YearFilter>. Empty only until sessions load.
-  const [pickedYear, setYear] = useState('');
+  // Academic-year scope for every tab (logs, register, analytics, export, class
+  // pickers). '' = the school's CURRENT year, so the page follows a rollover;
+  // only a past year is stored explicitly.
+  const [pickedYear, setPickedYear] = useState('');
   const { activeYear } = useAcademicYears();
   // One year at a time (picked, else the school's active year). Logs,
   // analytics, export and class pickers are all scoped to it.
@@ -175,6 +182,15 @@ export const AttendancePage: React.FC = () => {
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
   const [isAllStudentsMode, setIsAllStudentsMode] = useState(false);
 
+  // A year switch is like loading a different page: drop every selection.
+  const changeYear = (y: string) => {
+    setPickedYear(!y || y === activeYear ? '' : y);
+    setClassFilter(''); setRegClassId(''); setIsAllStudentsMode(false);
+    setLoadedKey(''); setPage(1); setEditRecord(null);
+    // The register is for the current year only.
+    if (y && y !== activeYear && activeTab === 'register') setActiveTab('logs');
+  };
+
   // ── Queries ───────────────────────────────────────────────────────────────
 
   // 1. Attendance log
@@ -195,6 +211,7 @@ export const AttendancePage: React.FC = () => {
   });
 
   const logs = (logsData as any)?.data ?? [];
+  const logsError: string | null = (logsData as any)?.success === false ? ((logsData as any)?.error || 'Could not load attendance') : null;
   const pagination = (logsData as any)?.pagination ?? { total: 0, total_pages: 1 };
 
   // 2. Classes list
@@ -205,6 +222,11 @@ export const AttendancePage: React.FC = () => {
     staleTime: 120_000,
   });
   const classes = (classesData as any)?.data ?? [];
+  // Year transition in progress (current year only): students still sit in
+  // last year's classes, so this year's registers look short until moved.
+  const pendingTransition = !viewingPast
+    ? ((classesData as any)?.pending_transition ?? null) as { fromYear: string; students: number } | null
+    : null;
 
   // 3. Register: students in class OR all students
   const { data: classStudentsData, isLoading: studentsLoading } = useQuery({
@@ -305,7 +327,19 @@ export const AttendancePage: React.FC = () => {
   }, [classStudents, allStudents, existingRecords, studentsLoading, allStudentsLoading, existingLoading, regClassId, regDate, regSession, loadedKey, isAllStudentsMode]);
 
   // ── Stats (logs tab KPIs) ─────────────────────────────────────────────────
+  // Server stats cover the WHOLE filtered set; the page fallback is only for
+  // an older API that doesn't send them.
+  const serverStats = (logsData as any)?.stats;
   const stats = useMemo(() => {
+    if (serverStats) {
+      return {
+        rate: Number(serverStats.rate) || 0,
+        present: Number(serverStats.present) || 0,
+        late: Number(serverStats.late) || 0,
+        absent: Number(serverStats.absent) || 0,
+        excused: Number(serverStats.excused) || 0,
+      };
+    }
     if (!logs.length) return { rate: 0, present: 0, late: 0, absent: 0, excused: 0 };
     const p = logs.filter((l: any) => l.status === 'present').length;
     const la = logs.filter((l: any) => l.status === 'late').length;
@@ -318,7 +352,7 @@ export const AttendancePage: React.FC = () => {
       absent: ab,
       excused: ex,
     };
-  }, [logs]);
+  }, [logs, serverStats]);
 
   // ── Analytics (server-computed) ───────────────────────────────────────────
   const analyticsStats = useMemo(() => {
@@ -367,22 +401,13 @@ export const AttendancePage: React.FC = () => {
         remarks,
       };
       
-      // For all students mode, we need to use general attendance API
-      if (isAllStudentsMode) {
-        return attendanceService.submitBulkAttendance({
-          date: regDate,
-          session_type: regSession,
-          records: [record],
-        });
-      } else {
-        // For specific class
-        return attendanceService.submitBulkAttendance({
-          class_id: regClassId,
-          date: regDate,
-          session_type: regSession,
-          records: [record],
-        });
-      }
+      // All-students mode has no class; otherwise mark within the class.
+      return attendanceService.submitBulkAttendance({
+        ...(isAllStudentsMode ? {} : { class_id: regClassId }),
+        date: regDate,
+        session_type: regSession,
+        records: [record],
+      }).then(assertOk);
     },
     onSuccess: async (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['att-logs'] });
@@ -390,9 +415,11 @@ export const AttendancePage: React.FC = () => {
       setLoadedKey('');
       setSavingIds((p) => { const n = { ...p }; delete n[vars.studentId]; return n; });
     },
-    onError: (_error, vars) => {
-      showToast.error('Failed to save attendance');
+    onError: (error, vars) => {
+      showToast.error((error as Error)?.message || 'Failed to save attendance');
       setSavingIds((p) => { const n = { ...p }; delete n[vars.studentId]; return n; });
+      // Undo the optimistic mark: reload the sheet from what the server has.
+      setLoadedKey('');
     },
   });
 
@@ -446,20 +473,12 @@ export const AttendancePage: React.FC = () => {
         };
       });
 
-      if (isAllStudentsMode) {
-        return attendanceService.submitBulkAttendance({
-          date: regDate,
-          session_type: regSession,
-          records,
-        });
-      } else {
-        return attendanceService.submitBulkAttendance({
-          class_id: regClassId,
-          date: regDate,
-          session_type: regSession,
-          records,
-        });
-      }
+      return attendanceService.submitBulkAttendance({
+        ...(isAllStudentsMode ? {} : { class_id: regClassId }),
+        date: regDate,
+        session_type: regSession,
+        records,
+      }).then(assertOk);
     },
     onSuccess: async () => {
       const currentStudents = isAllStudentsMode ? allStudents : classStudents;
@@ -491,19 +510,23 @@ export const AttendancePage: React.FC = () => {
       setLoadedKey('');
       showToast.success('All students marked present!');
     },
-    onError: () => showToast.error('Failed to mark all present'),
+    onError: (error) => {
+      showToast.error((error as Error)?.message || 'Failed to mark all present');
+      setLoadedKey('');
+    },
   });
 
   // ── Edit mutation ─────────────────────────────────────────────────────────
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) =>
-      attendanceService.updateAttendance(id, data),
+      attendanceService.updateAttendance(id, data).then(assertOk),
     onSuccess: () => {
       showToast.success('Record updated');
       queryClient.invalidateQueries({ queryKey: ['att-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['att-analytics'] });
       setEditRecord(null);
     },
-    onError: () => showToast.error('Failed to update record'),
+    onError: (error) => showToast.error((error as Error)?.message || 'Failed to update record'),
   });
 
   // ── Register progress bar ─────────────────────────────────────────────────
@@ -556,14 +579,7 @@ export const AttendancePage: React.FC = () => {
         actions={
           activeTab !== 'teachers' && (
             <div className="flex items-center gap-2 sm:gap-3">
-              <YearFilter
-                value={year}
-                onChange={(y) => {
-                  setYear(y); setClassFilter(''); setRegClassId(''); setLoadedKey(''); setPage(1);
-                  // The register is for today's (current-year) attendance only.
-                  if (y !== activeYear && activeTab === 'register') setActiveTab('logs');
-                }}
-              />
+              <YearFilter value={year} onChange={changeYear} noAutoSelect />
               <ExportButton
                 endpoint="/api/v1/attendance/export"
                 filename="attendance"
@@ -599,9 +615,18 @@ export const AttendancePage: React.FC = () => {
           {viewingPast && activeTab !== 'teachers' && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
               <span>Showing <strong>{year}</strong> attendance as history. Take today's register in {activeYear}.</span>
-              <button type="button" onClick={() => { setYear(activeYear); setClassFilter(''); setRegClassId(''); setLoadedKey(''); }} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+              <button type="button" onClick={() => changeYear(activeYear)} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
                 Back to {activeYear}
               </button>
+            </div>
+          )}
+
+          {pendingTransition && activeTab !== 'teachers' && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+              <strong>{activeYear} is being set up.</strong>{' '}
+              {pendingTransition.students} student{pendingTransition.students === 1 ? ' is' : 's are'} still in{' '}
+              {pendingTransition.fromYear} classes and won't appear on {activeYear} registers yet.
+              {canMarkAllStudents ? ' Finish the move from the Overview page.' : ' They will appear once the principal moves them into this year.'}
             </div>
           )}
 
@@ -620,7 +645,7 @@ export const AttendancePage: React.FC = () => {
                   value={logsLoading ? '…' : `${stats.rate}%`}
                   icon={<RefreshCw size={20} />}
                   color={stats.rate >= 85 ? 'green' : stats.rate >= 75 ? 'amber' : 'red'}
-                  subtitle="(current filters)"
+                  subtitle={`${year || 'All years'} · current filters`}
                 />
                 <KPICard
                   title="Present"
@@ -725,12 +750,25 @@ export const AttendancePage: React.FC = () => {
                     <Loader2 size={36} className="animate-spin mx-auto mb-3 text-blue-500" />
                     <p className="text-sm text-gray-400">Loading attendance logs…</p>
                   </div>
+                ) : logsError ? (
+                  <div className="p-20 text-center" role="alert">
+                    <AlertTriangle size={44} className="mx-auto mb-4 text-red-400" />
+                    <h3 className="text-lg font-bold text-gray-700 dark:text-white mb-1">Attendance unavailable</h3>
+                    <p className="text-sm text-gray-400 max-w-xs mx-auto">{logsError}</p>
+                    <button type="button" onClick={() => refetchLogs()} className="mt-4 text-sm font-semibold text-blue-600 hover:underline">Try again</button>
+                  </div>
                 ) : logs.length === 0 ? (
                   <div className="p-20 text-center">
                     <Calendar size={52} className="mx-auto mb-4 text-gray-300 dark:text-gray-600" />
-                    <h3 className="text-lg font-bold text-gray-700 dark:text-white mb-1">No Records Found</h3>
+                    <h3 className="text-lg font-bold text-gray-700 dark:text-white mb-1">
+                      {viewingPast ? `No attendance in ${year}` : 'No Records Found'}
+                    </h3>
                     <p className="text-sm text-gray-400 max-w-xs mx-auto">
-                      No attendance records match your filters. Try adjusting the date, class or status, or switch to the Class Register tab to mark attendance.
+                      {viewingPast
+                        ? `No attendance records from ${year} match your filters.`
+                        : classes.length === 0 && user?.role === 'teacher'
+                          ? `You aren't assigned to any class in ${year} yet. Your classes' attendance will show here once the principal assigns you.`
+                          : 'No attendance records match your filters. Try adjusting the date, class or status, or switch to the Class Register tab to mark attendance.'}
                     </p>
                   </div>
                 ) : (
@@ -744,7 +782,8 @@ export const AttendancePage: React.FC = () => {
                           <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Status</th>
                           <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Times</th>
                           <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white">Remarks</th>
-                          <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white text-right">Edit</th>
+                          {/* Past years are read-only history: no edit column. */}
+                          {!viewingPast && <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-white text-right">Edit</th>}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -800,8 +839,10 @@ export const AttendancePage: React.FC = () => {
                             <td className="px-5 py-3.5 text-xs text-gray-500 dark:text-gray-400 max-w-[180px] truncate">
                               {log.remarks || <span className="text-gray-300 dark:text-gray-600">—</span>}
                             </td>
-                            <td className="px-5 py-3.5 text-right">
+                            {!viewingPast && <td className="px-5 py-3.5 text-right">
                               <button
+                                type="button"
+                                aria-label={`Edit attendance for ${log.student_name || 'student'}`}
                                 onClick={() => {
                                   setEditRecord(log);
                                   setEditStatus(log.status);
@@ -814,7 +855,7 @@ export const AttendancePage: React.FC = () => {
                               >
                                 <Edit3 size={14} />
                               </button>
-                            </td>
+                            </td>}
                           </tr>
                         ))}
                       </tbody>
@@ -893,6 +934,8 @@ export const AttendancePage: React.FC = () => {
                     <input
                       type="date"
                       value={regDate}
+                      max={localDateKey(new Date())}
+                      aria-label="Register date"
                       onChange={(e) => { setRegDate(e.target.value); setLoadedKey(''); }}
                       className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
@@ -1160,6 +1203,8 @@ export const AttendancePage: React.FC = () => {
                                       key={opt.value}
                                       type="button"
                                       onClick={() => handleStatusToggle(st.id, opt.value)}
+                                      aria-label={`Mark ${st.first_name ?? ''} ${st.last_name ?? ''} ${opt.label}`.replace(/\s+/g, ' ')}
+                                      aria-pressed={rec.status === opt.value}
                                       className={`w-7 h-7 text-xs font-bold rounded-md transition-all duration-100 flex items-center justify-center ${
                                         rec.status === opt.value
                                           ? STATUS_ACTIVE[opt.value]
@@ -1176,6 +1221,7 @@ export const AttendancePage: React.FC = () => {
                                 <input
                                   type="text"
                                   placeholder="Note..."
+                                  aria-label={`Note for ${st.first_name ?? ''} ${st.last_name ?? ''}`.replace(/\s+/g, ' ')}
                                   value={rec.remarks}
                                   onChange={(e) =>
                                     setMarkRecords((prev) => ({
@@ -1246,8 +1292,18 @@ export const AttendancePage: React.FC = () => {
               {!regClassId && !isAllStudentsMode && (
                 <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-20 text-center">
                   <BookOpen size={48} className="mx-auto mb-4 text-gray-300 dark:text-gray-600" />
-                  <h3 className="text-lg font-bold text-gray-700 dark:text-white mb-1">Select a Class or View All Students</h3>
-                  <p className="text-sm text-gray-400">Choose a class from the dropdown above to load the roll call sheet, or select "All Enrolled Students" to mark attendance across all classes.</p>
+                  <h3 className="text-lg font-bold text-gray-700 dark:text-white mb-1">
+                    {classes.length === 0 && !canMarkAllStudents
+                      ? `No classes in ${year}`
+                      : canMarkAllStudents ? 'Select a Class or View All Students' : 'Select a Class'}
+                  </h3>
+                  <p className="text-sm text-gray-400">
+                    {classes.length === 0 && !canMarkAllStudents
+                      ? `You aren't assigned to any class in ${year} yet. Ask the principal to assign you, then take the register here.`
+                      : canMarkAllStudents
+                        ? 'Choose a class from the dropdown above to load the roll call sheet, or select "All Enrolled Students" to mark attendance across all classes.'
+                        : 'Choose one of your classes above to load the roll call sheet.'}
+                  </p>
                 </div>
               )}
             </div>
@@ -1282,8 +1338,14 @@ export const AttendancePage: React.FC = () => {
               ) : !analyticsStats ? (
                 <div className="p-20 text-center bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
                   <BarChart2 size={48} className="mx-auto mb-4 text-gray-300 dark:text-gray-600" />
-                  <h3 className="font-bold text-gray-700 dark:text-white mb-1">No Data Available</h3>
-                  <p className="text-sm text-gray-400">Record some attendance first to see analytics here.</p>
+                  <h3 className="font-bold text-gray-700 dark:text-white mb-1">
+                    {viewingPast ? `No attendance in ${year}` : 'No Data Available'}
+                  </h3>
+                  <p className="text-sm text-gray-400">
+                    {viewingPast
+                      ? `No attendance was recorded in ${year}${classFilter ? ' for this class' : ''}.`
+                      : 'Record some attendance first to see analytics here.'}
+                  </p>
                 </div>
               ) : (
                 <>

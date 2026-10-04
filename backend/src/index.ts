@@ -47,6 +47,7 @@ import phase18AuditComplianceRoutes from '@routes/phase18AuditComplianceRoutes';
 import phase19IntegrationRoutes from '@routes/phase19IntegrationRoutes';
 import phase20PerformanceRoutes from '@routes/phase20PerformanceRoutes';
 import phase21HelpSupportRoutes from '@routes/phase21HelpSupportRoutes';
+import { asyncSafeApp } from '@utils/asyncRoutes';
 import phase22SerializationRoutes from '@routes/phase22SerializationRoutes';
 import phase25ExternalServicesRoutes from '@routes/phase25ExternalServicesRoutes';
 import platformRoutes from '@routes/platformRoutes';
@@ -304,20 +305,25 @@ app.use('/api/v1', phase10DashboardRoutes);
 // Export Routes (Phase 12)
 app.use('/api/v1', phase12ExportRoutes);
 
+// Phases 18-22 register async handlers directly on `app` and rethrow errors.
+// Express 4 doesn't catch those (the request would hang with no response), so
+// register them through a proxy that forwards rejections to the errorHandler.
+const legacyApp = asyncSafeApp(app);
+
 // Audit & Compliance Routes (Phase 18)
-phase18AuditComplianceRoutes(app, db);
+phase18AuditComplianceRoutes(legacyApp, db);
 
 // Integration Routes (Phase 19)
-phase19IntegrationRoutes(app, db);
+phase19IntegrationRoutes(legacyApp, db);
 
 // Performance & Mobile Routes (Phase 20)
-phase20PerformanceRoutes(app, db);
+phase20PerformanceRoutes(legacyApp, db);
 
 // Help & Support Routes (Phase 21)
-phase21HelpSupportRoutes(app, db);
+phase21HelpSupportRoutes(legacyApp, db);
 
 // Data Serialization & Parsing Routes (Phase 22)
-phase22SerializationRoutes(app, db);
+phase22SerializationRoutes(legacyApp, db);
 
 // External Services Integration Routes (Phase 25)
 app.use('/api/v1', phase25ExternalServicesRoutes);

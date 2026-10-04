@@ -9,18 +9,21 @@ import { useNavigate } from 'react-router-dom';
 import {
   Settings, Users, GraduationCap, ClipboardCheck, Wallet, CreditCard,
   BookOpen, ClipboardList, FileText, Building, ArrowRight, PlayCircle, LifeBuoy, Mail,
-  CalendarDays, Megaphone, ShieldCheck,
+  CalendarDays, Megaphone, ShieldCheck, BarChart2, UserCheck, Calendar, Lightbulb, ChevronDown,
+  type LucideIcon,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import useAuthStore from '@store/authStore';
-import { getRoleGuide, resetOnboarding, type GuideSection, type SetupPhase } from '@lib/onboarding';
+import { getRoleGuide, resetOnboarding, REPLAY_WALKTHROUGH_FLAG, type GuideSection, type SetupPhase } from '@lib/onboarding';
+import { getDashboardPath } from '@hooks/useAuth';
 import { AlertTriangle, ArrowRight as ArrowRightIcon } from 'lucide-react';
 
 // Resolve the lucide icon name stored in the guide content to a component.
-const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+const ICONS: Record<string, LucideIcon> = {
   Settings, Users, GraduationCap, ClipboardCheck, Wallet, CreditCard,
   BookOpen, ClipboardList, FileText, Building, CalendarDays, Megaphone, ShieldCheck,
+  BarChart2, UserCheck, Calendar,
 };
 
 // A gentle rotating palette so the section cards feel colourful and distinct.
@@ -38,6 +41,10 @@ export const GuidePage: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   const guide = getRoleGuide(user?.role);
   const [replayed, setReplayed] = useState(false);
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+  // The principal's roadmap is a one-time setup with "Required" steps; other
+  // roles (e.g. teachers) use the same block for their routine.
+  const isSetupRoadmap = !guide.setupTitle;
 
   const replayWalkthrough = () => {
     // Clear the stored "done" flag so a future first-login still shows it…
@@ -47,7 +54,10 @@ export const GuidePage: React.FC = () => {
     // walkthrough. The event is dispatched after navigation so the destination
     // layout's listener is already mounted (the server-side hasOnboarded flag
     // would otherwise suppress it).
-    navigate('/dashboard');
+    // A one-shot flag the destination layout picks up when it mounts, so a
+    // slow page load (lazy chunk on a phone) can't miss the event.
+    try { sessionStorage.setItem(REPLAY_WALKTHROUGH_FLAG, '1'); } catch { /* ignore */ }
+    navigate(getDashboardPath(user?.role as any));
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent('wiskul:replay-walkthrough'));
     }, 400);
@@ -128,13 +138,17 @@ export const GuidePage: React.FC = () => {
         {guide.setupOrder && guide.setupOrder.length > 0 && (
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-lg font-black text-slate-900 dark:text-white">Your setup roadmap</h2>
+              <h2 className="text-lg font-black text-slate-900 dark:text-white">{guide.setupTitle ?? 'Your setup roadmap'}</h2>
             </div>
-            <p className="text-sm text-slate-600 dark:text-gray-300 mb-4">
-              Complete these phases <strong>in order</strong>. Steps marked{' '}
-              <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400 font-semibold"><AlertTriangle size={13} /> Required</span>{' '}
-              must be done before enrolling people or running the school.
-            </p>
+            {isSetupRoadmap ? (
+              <p className="text-sm text-slate-600 dark:text-gray-300 mb-4">
+                Complete these phases <strong>in order</strong>. Steps marked{' '}
+                <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400 font-semibold"><AlertTriangle size={13} /> Required</span>{' '}
+                must be done before enrolling people or running the school.
+              </p>
+            ) : (
+              <p className="text-sm text-slate-600 dark:text-gray-300 mb-4">{guide.setupIntro}</p>
+            )}
 
             <div className="relative space-y-4">
               {/* Vertical connector line */}
@@ -207,15 +221,66 @@ export const GuidePage: React.FC = () => {
           </ol>
         </div>
 
+        {/* Good to know — the rules that explain "why can't I…" */}
+        {guide.keyRules && guide.keyRules.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-lg font-black text-slate-900 dark:text-white mb-3">Good to know</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {guide.keyRules.map((r, i) => (
+                <div key={i} className="flex items-start gap-3 rounded-xl bg-amber-50/60 dark:bg-amber-900/10 ring-1 ring-amber-200/70 dark:ring-amber-900/40 p-4">
+                  <span className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 flex items-center justify-center flex-shrink-0">
+                    <Lightbulb size={16} />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">{r.title}</h3>
+                    <p className="text-sm text-slate-600 dark:text-gray-300 mt-0.5">{r.body}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Feature sections */}
         <div className="mb-8">
-          <h2 className="text-lg font-black text-slate-900 dark:text-white mb-3">Explore the platform</h2>
+          <h2 className="text-lg font-black text-slate-900 dark:text-white mb-3">
+            {guide.keyRules ? 'Every page, explained' : 'Explore the platform'}
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {guide.sections.map((s, i) => (
               <SectionCard key={s.id} section={s} i={i} />
             ))}
           </div>
         </div>
+
+        {/* Common questions */}
+        {guide.faqs && guide.faqs.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-lg font-black text-slate-900 dark:text-white mb-3">Common questions</h2>
+            <div className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200/70 dark:ring-gray-700 shadow-sm divide-y divide-gray-100 dark:divide-gray-700">
+              {guide.faqs.map((f, i) => {
+                const open = openFaq === i;
+                return (
+                  <div key={i}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenFaq(open ? null : i)}
+                      aria-expanded={open}
+                      aria-controls={`guide-faq-${i}`}
+                      className="w-full flex items-center justify-between gap-3 text-left px-5 py-4 text-sm font-semibold text-slate-900 dark:text-white hover:bg-slate-50 dark:hover:bg-gray-700/40"
+                    >
+                      {f.q}
+                      <ChevronDown size={16} className={`flex-shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+                    </button>
+                    {open && (
+                      <p id={`guide-faq-${i}`} className="px-5 pb-4 -mt-1 text-sm text-slate-600 dark:text-gray-300">{f.a}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Help footer */}
         <div className="rounded-2xl bg-slate-50 dark:bg-gray-800 ring-1 ring-gray-200/70 dark:ring-gray-700 p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

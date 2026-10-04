@@ -34,14 +34,60 @@ import conductReportService from '../services/conductReportService.js';
 import behavioralNoteService from '../services/behavioralNoteService.js';
 import disciplineAnalyticsService from '../services/disciplineAnalyticsService.js';
 import { resolveYearScope } from '../utils/academicYear.js';
+import { AppError } from '../middleware/errorHandler.js';
+import {
+  resolveDisciplineStudent, teacherTeachesOrTaught, resolveForWrite,
+  assertWritableDate, assertRecordWritable, resolveInfractionType,
+} from '../utils/disciplineScope.js';
 
 const router = Router();
+
+/**
+ * Discipline is staff-only. Students, parents and finance staff have no
+ * discipline screens; without this, any logged-in account could list the
+ * whole school's infractions and notes. Admissions officers may READ (the
+ * Student Profiles conduct tab) but never write.
+ */
+const staffOnly = (req: Request, _res: Response, next: NextFunction) => {
+  const role = req.user?.role;
+  if (role === 'principal' || role === 'teacher' || role === 'super_admin') return next();
+  if (role === 'admissions_officer' && req.method === 'GET') return next();
+  return next(new AppError('Discipline records are available to school staff only', 403, 'FORBIDDEN'));
+};
+
+/**
+ * For /…/:studentId routes: accept students.id, users.id or an admission
+ * number, rewrite the param to users.id (what discipline tables store), and
+ * keep teachers to students who are or were in their classes.
+ */
+const studentParam = async (req: Request, _res: Response, next: NextFunction) => {
+  // '/notes/:studentId' is declared before '/notes/summary/:studentId', so
+  // "summary" lands here: hand it on to the summary route.
+  if (req.params.studentId === 'summary') return next('route');
+  try {
+    const tenantId = req.user!.tenant_id;
+    const student = await resolveDisciplineStudent(tenantId, req.params.studentId);
+    if (!student) throw new AppError('Student not found', 404, 'NOT_FOUND');
+    if (req.user!.role === 'teacher' && !(await teacherTeachesOrTaught(req.user!.id, tenantId, student.studentId))) {
+      throw new AppError('You can only view conduct for students in your classes', 403, 'FORBIDDEN');
+    }
+    req.params.studentId = student.userId;
+    next();
+  } catch (error) { next(error); }
+};
+
+/** Teachers don't see colleagues' confidential records. */
+const hideConfidential = (req: Request, rows: any[]) =>
+  req.user?.role === 'teacher'
+    ? rows.filter((r) => !r?.is_confidential || String(r.recorded_by) === String(req.user!.id))
+    : rows;
 
 // Apply authentication + tenant context to all routes, then gate the whole
 // module behind the 'discipline' plan feature (paid plans only).
 router.use(authenticate);
 router.use(attachUserContext);
 router.use(requirePlanFeature('discipline'));
+router.use(staffOnly);
 
 // ==================== INFRACTION MANAGEMENT ====================
 
@@ -55,10 +101,28 @@ router.post(
   validate(recordInfractionSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const infraction = await infractionService.recordInfraction(req.user.tenant_id, {
-        ...req.body,
-        recorded_by: req.user.id,
-      });
+      const tenantId = req.user!.tenant_id;
+      // Who it's about (stored by users.id), the class it's filed under
+      // (teachers: only their own current students), a real tenant type, and a
+      // date that's not in the future or in a past academic year.
+      const { student, classId } = await resolveForWrite(req, req.body.student_id);
+      await assertWritableDate(tenantId, req.body.incident_date, 'incident date');
+      const infractionTypeId = await resolveInfractionType(tenantId, String(req.body.infraction_type_id), req.user!.id);
+      const infraction = await infractionService.recordInfraction(tenantId, {
+        student_id: student.userId,
+        infraction_type_id: infractionTypeId,
+        incident_date: req.body.incident_date,
+        incident_description: req.body.incident_description,
+        incident_location: req.body.incident_location,
+        notes: req.body.notes,
+        is_confidential: !!req.body.is_confidential,
+        evidence_type: req.body.evidence_type,
+        evidence_urls: req.body.evidence_urls,
+        // Severity overrides are a principal decision.
+        severity_override: req.user!.role === 'teacher' ? undefined : req.body.severity_override,
+        class_id: classId ?? undefined,
+        recorded_by: req.user!.id,
+      } as any);
 
       res.status(201).json({ infraction });
     } catch (error) {
@@ -104,9 +168,10 @@ router.get(
  */
 router.get(
   '/infractions/:studentId',
+  studentParam,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await infractionService.getStudentInfractions(
+      const result: any = await infractionService.getStudentInfractions(
         req.params.studentId,
         req.user.tenant_id,
         {
@@ -120,6 +185,7 @@ router.get(
         } as any
       );
 
+      if (Array.isArray(result?.data)) result.data = hideConfidential(req, result.data);
       res.json(result);
     } catch (error) {
       logger.error('Error getting infractions:', error);
@@ -134,12 +200,18 @@ router.get(
  */
 router.get(
   '/infractions/:studentId/:infractionId',
+  studentParam,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const infraction = await infractionService.getInfraction(
+      const infraction: any = await infractionService.getInfraction(
         req.params.infractionId,
-        req.user.tenant_id
+        req.user!.tenant_id
       );
+      // The id must belong to THIS student, and teachers don't see a
+      // colleague's confidential record.
+      if (String(infraction?.student_id) !== String(req.params.studentId) || hideConfidential(req, [infraction]).length === 0) {
+        throw new AppError('Infraction not found', 404, 'NOT_FOUND');
+      }
 
       res.json({ infraction });
     } catch (error) {
@@ -159,11 +231,16 @@ router.put(
   validate(updateInfractionSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const existing: any = await infractionService.getInfraction(req.params.infractionId, req.user!.tenant_id);
+      await assertRecordWritable(req.user!.tenant_id, existing?.class_id, existing?.incident_date);
+      // Only the incident's own fields may change (body is passthrough).
+      const allowed = ['incident_description', 'incident_location', 'severity_override', 'notes', 'is_confidential', 'status'];
+      const body = Object.fromEntries(Object.entries(req.body ?? {}).filter(([k]) => allowed.includes(k)));
       const infraction = await infractionService.updateInfraction(
         req.params.infractionId,
-        req.user.tenant_id,
-        req.body,
-        req.user.id
+        req.user!.tenant_id,
+        body,
+        req.user!.id
       );
 
       res.json({ infraction });
@@ -182,6 +259,8 @@ router.post(
   '/infractions/:infractionId/acknowledge',
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const existing: any = await infractionService.getInfraction(req.params.infractionId, req.user!.tenant_id);
+      await assertRecordWritable(req.user!.tenant_id, existing?.class_id, existing?.incident_date);
       const infraction = await infractionService.acknowledgeInfraction(
         req.params.infractionId,
         req.user.tenant_id,
@@ -206,6 +285,8 @@ router.post(
   validate(resolveInfractionSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const existing: any = await infractionService.getInfraction(req.params.infractionId, req.user!.tenant_id);
+      await assertRecordWritable(req.user!.tenant_id, existing?.class_id, existing?.incident_date);
       const infraction = await infractionService.resolveInfraction(
         req.params.infractionId,
         req.user.tenant_id,
@@ -331,6 +412,7 @@ router.get(
  */
 router.get(
   '/actions/:studentId',
+  studentParam,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await disciplineService.getStudentActions(
@@ -434,6 +516,7 @@ router.post(
  */
 router.get(
   '/detentions/:studentId',
+  studentParam,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await detentionService.getStudentDetentions(
@@ -636,6 +719,7 @@ router.get(
  */
 router.get(
   '/appeals/:studentId',
+  studentParam,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await appealService.getStudentAppeals(
@@ -769,10 +853,24 @@ router.post(
   validate(createNoteSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const note = await behavioralNoteService.createNote(req.user.tenant_id, {
-        ...req.body,
-        recorded_by: req.user.id,
-      });
+      const tenantId = req.user!.tenant_id;
+      // Same rules as infractions: stored by users.id, filed under the
+      // student's current class, teachers only for their own students.
+      const { student, classId } = await resolveForWrite(req, req.body.student_id);
+      await assertWritableDate(tenantId, req.body.note_date, 'note date');
+      const note = await behavioralNoteService.createNote(tenantId, {
+        student_id: student.userId,
+        note_type: req.body.note_type,
+        content: req.body.content,
+        category: req.body.category,
+        rating: req.body.rating,
+        note_date: req.body.note_date,
+        is_confidential: !!req.body.is_confidential,
+        // A confidential note is never shared with the student.
+        is_shared_with_student: !req.body.is_confidential && !!req.body.is_shared_with_student,
+        class_id: classId ?? undefined,
+        recorded_by: req.user!.id,
+      } as any);
 
       res.status(201).json({ note });
     } catch (error) {
@@ -817,6 +915,7 @@ router.get(
  */
 router.get(
   '/notes/:studentId',
+  studentParam,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await behavioralNoteService.getStudentNotes(
@@ -845,6 +944,7 @@ router.get(
  */
 router.get(
   '/notes/summary/:studentId',
+  studentParam,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const summary = await behavioralNoteService.getStudentNoteSummary(
@@ -870,11 +970,19 @@ router.put(
   validate(updateNoteSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const tenantId = req.user!.tenant_id;
+      const existing: any = await behavioralNoteService.getNote(req.params.noteId, tenantId);
+      // Teachers may only edit notes they wrote (the list only shows theirs,
+      // but the id is guessable).
+      if (req.user!.role === 'teacher' && String(existing.recorded_by) !== String(req.user!.id)) {
+        throw new AppError('You can only edit notes you recorded', 403, 'FORBIDDEN');
+      }
+      await assertRecordWritable(tenantId, existing.class_id, existing.note_date);
       const note = await behavioralNoteService.updateNote(
         req.params.noteId,
-        req.user.tenant_id,
+        tenantId,
         req.body,
-        req.user.id
+        req.user!.id
       );
 
       res.json({ note });
@@ -894,7 +1002,9 @@ router.delete(
   authorize(['principal', 'super_admin']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await behavioralNoteService.deleteNote(req.params.noteId, req.user.tenant_id, req.user.id);
+      const existing: any = await behavioralNoteService.getNote(req.params.noteId, req.user!.tenant_id);
+      await assertRecordWritable(req.user!.tenant_id, existing.class_id, existing.note_date);
+      await behavioralNoteService.deleteNote(req.params.noteId, req.user!.tenant_id, req.user!.id);
 
       res.status(204).send();
     } catch (error) {
@@ -913,10 +1023,15 @@ router.post(
   authorize(['principal', 'teacher']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const existing: any = await behavioralNoteService.getNote(req.params.noteId, req.user!.tenant_id);
+      if (req.user!.role === 'teacher' && String(existing.recorded_by) !== String(req.user!.id)) {
+        throw new AppError('You can only share notes you recorded', 403, 'FORBIDDEN');
+      }
+      await assertRecordWritable(req.user!.tenant_id, existing.class_id, existing.note_date);
       const note = await behavioralNoteService.shareWithStudent(
         req.params.noteId,
-        req.user.tenant_id,
-        req.user.id
+        req.user!.tenant_id,
+        req.user!.id
       );
 
       res.json({ note });
@@ -988,6 +1103,7 @@ router.get(
  */
 router.get(
   '/reports/:studentId',
+  studentParam,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const reports = await conductReportService.getStudentReports(
@@ -1138,6 +1254,7 @@ router.get(
  */
 router.get(
   '/statistics/student/:studentId',
+  studentParam,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const stats = await disciplineService.getStudentStats(

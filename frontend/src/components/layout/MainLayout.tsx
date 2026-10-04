@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import useAuthStore from '@store/authStore';
-import { isOnboardingComplete } from '@lib/onboarding';
+import { isOnboardingComplete, REPLAY_WALKTHROUGH_FLAG } from '@lib/onboarding';
 import OnboardingGuide from '@components/onboarding/OnboardingGuide';
 import ImpersonationBanner from './ImpersonationBanner';
 import PromotionWelcomeBanner from './PromotionWelcomeBanner';
@@ -45,9 +45,21 @@ const OnboardingController: React.FC = () => {
   // server-side hasOnboarded) would otherwise suppress a repeat showing, so the
   // Guide fires this event to force the walkthrough open regardless.
   useEffect(() => {
-    const onReplay = () => setShow(true);
+    const consumeFlag = () => {
+      try { sessionStorage.removeItem(REPLAY_WALKTHROUGH_FLAG); } catch { /* ignore */ }
+    };
+    const onReplay = () => { consumeFlag(); setShow(true); };
+    // The Guide also leaves a one-shot flag: if this layout mounted AFTER the
+    // event fired (slow lazy load / dashboard redirect), open from the flag.
+    let pending = false;
+    try { pending = sessionStorage.getItem(REPLAY_WALKTHROUGH_FLAG) === '1'; } catch { /* ignore */ }
+    let t: ReturnType<typeof setTimeout> | undefined;
+    if (pending) t = setTimeout(onReplay, 300);
     window.addEventListener('wiskul:replay-walkthrough', onReplay);
-    return () => window.removeEventListener('wiskul:replay-walkthrough', onReplay);
+    return () => {
+      if (t) clearTimeout(t);
+      window.removeEventListener('wiskul:replay-walkthrough', onReplay);
+    };
   }, []);
 
   if (!show) return null;

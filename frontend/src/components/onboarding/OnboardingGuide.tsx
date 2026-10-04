@@ -37,6 +37,18 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ onClose }) => 
     onClose();
   };
 
+  // Keyboard: Esc skips, arrows move between steps.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') finish();
+      else if (e.key === 'ArrowRight') setIndex((i) => Math.min(i + 1, steps.length - 1));
+      else if (e.key === 'ArrowLeft') setIndex((i) => Math.max(i - 1, 0));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [steps.length]);
+
   const goTo = (route?: string) => {
     if (!route) return;
     finish();
@@ -49,7 +61,12 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ onClose }) => 
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={finish} />
 
       {/* Card */}
-      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-fade-in">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="onboarding-step-title"
+        className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-fade-in max-h-[92dvh] overflow-y-auto"
+      >
         {/* Header */}
         <div className="relative bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] text-white p-6">
           <div className="pointer-events-none absolute -top-8 -right-8 w-40 h-40 rounded-full bg-white/10 blur-2xl" />
@@ -79,7 +96,7 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ onClose }) => 
               {index + 1}
             </span>
             <div className="min-w-0">
-              <h3 className="text-base font-bold text-slate-900">{step.title}</h3>
+              <h3 id="onboarding-step-title" className="text-base font-bold text-slate-900">{step.title}</h3>
               <p className="mt-1 text-sm text-slate-600 leading-relaxed">{step.body}</p>
               {step.route && (
                 <button

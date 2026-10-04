@@ -38,13 +38,19 @@ const fieldCls = 'w-full rounded-lg border border-gray-300 dark:border-gray-600 
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 const errorCls = 'text-xs text-red-600 mt-0.5';
 
+/** Local calendar date (not UTC), so "today" matches the school's clock. */
+const localToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export const InfractionFormModal: React.FC<Props> = ({
   isOpen, onClose, onSuccess, prefilledStudentId = '', prefilledStudentName = '',
 }) => {
   const [loading, setLoading] = useState(false);
   const [studentId, setStudentId] = useState(prefilledStudentId);
   const [infractionType, setInfractionType] = useState('');
-  const [incidentDate, setIncidentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [incidentDate, setIncidentDate] = useState(localToday());
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
@@ -72,7 +78,7 @@ export const InfractionFormModal: React.FC<Props> = ({
     if (isOpen) {
       setStudentId(prefilledStudentId);
       setInfractionType('');
-      setIncidentDate(new Date().toISOString().slice(0, 10));
+      setIncidentDate(localToday());
       setLocation('');
       setDescription('');
       setNotes('');
@@ -86,6 +92,7 @@ export const InfractionFormModal: React.FC<Props> = ({
     if (!studentId.trim()) e.student_id = 'Please select a student';
     if (!infractionType) e.infraction_type = 'Infraction type is required';
     if (!incidentDate) e.incident_date = 'Date is required';
+    else if (incidentDate > localToday()) e.incident_date = "The incident date can't be in the future";
     if (!description.trim()) e.description = 'Description is required';
     return e;
   };
@@ -96,7 +103,8 @@ export const InfractionFormModal: React.FC<Props> = ({
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true);
     try {
-      await disciplineService.recordInfraction({
+      // apiClient never throws: a rejected save comes back as success:false.
+      const res: any = await disciplineService.recordInfraction({
         student_id: studentId,
         infraction_type_id: infractionType,
         incident_date: incidentDate,
@@ -105,11 +113,12 @@ export const InfractionFormModal: React.FC<Props> = ({
         notes: notes || undefined,
         is_confidential: isConfidential,
       });
+      if (res?.success === false) throw new Error(res.error || 'Failed to record infraction');
       showToast.success('Infraction recorded successfully');
       onSuccess();
       onClose();
-    } catch {
-      showToast.apiError('Failed to record infraction');
+    } catch (err) {
+      showToast.error((err as Error)?.message || 'Failed to record infraction');
     } finally {
       setLoading(false);
     }
@@ -147,7 +156,7 @@ export const InfractionFormModal: React.FC<Props> = ({
         {/* Infraction Type */}
         <div>
           <label className={labelCls}>Infraction Type <span className="text-red-500">*</span></label>
-          <select value={infractionType} onChange={e => setInfractionType(e.target.value)} className={fieldCls}>
+          <select aria-label="Infraction type" value={infractionType} onChange={e => setInfractionType(e.target.value)} className={fieldCls}>
             <option value="">— Select type —</option>
             {INFRACTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
@@ -157,7 +166,7 @@ export const InfractionFormModal: React.FC<Props> = ({
         {/* Date */}
         <div>
           <label className={labelCls}>Incident Date <span className="text-red-500">*</span></label>
-          <input type="date" value={incidentDate} onChange={e => setIncidentDate(e.target.value)} className={fieldCls} />
+          <input type="date" aria-label="Incident date" value={incidentDate} max={localToday()} onChange={e => setIncidentDate(e.target.value)} className={fieldCls} />
           {errors.incident_date && <p className={errorCls}>{errors.incident_date}</p>}
         </div>
 

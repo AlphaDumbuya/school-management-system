@@ -36,13 +36,25 @@ export interface SetupPhase {
   required?: boolean;
 }
 
+export interface GuideFaq {
+  q: string;
+  a: string;
+}
+
 export interface RoleGuide {
   headline: string;
   intro: string;
   steps: OnboardingStep[];
   sections: GuideSection[];
-  /** Optional ordered setup roadmap (mainly for principal / super admin). */
+  /** Optional ordered roadmap (principal: setup; teacher: your term rhythm). */
   setupOrder?: SetupPhase[];
+  /** Heading + intro for the roadmap block (defaults to the setup wording). */
+  setupTitle?: string;
+  setupIntro?: string;
+  /** Short "good to know" rules shown as callouts (e.g. how years work). */
+  keyRules?: { title: string; body: string }[];
+  /** Common questions for this role. */
+  faqs?: GuideFaq[];
 }
 
 // ── Persistence (per user + tenant) ─────────────────────────────────────────
@@ -65,6 +77,9 @@ export function markOnboardingComplete(userId?: string, tenantId?: string): void
     /* ignore */
   }
 }
+
+/** sessionStorage flag: "open the walkthrough on the next layout mount". */
+export const REPLAY_WALKTHROUGH_FLAG = 'wiskul.replay-walkthrough';
 
 export function resetOnboarding(userId?: string, tenantId?: string): void {
   try {
@@ -285,19 +300,313 @@ const PRINCIPAL: RoleGuide = {
 };
 
 const TEACHER: RoleGuide = {
-  headline: 'Welcome — here’s how to run your classes',
-  intro: 'Everything you need for your classes is a click away.',
+  headline: 'Welcome — here’s how to run your classes on WiSkul',
+  intro:
+    'WiSkul only shows you the classes you teach or lead, and the students in them. Your principal sets up the school, the classes and your assignments; you take registers, set work, enter results and keep parents informed. This guide walks through every part of your workspace.',
+
+  // ── First-login walkthrough (also "Replay walkthrough") ──
   steps: [
-    { title: 'Check your classes & schedule', body: 'Your dashboard shows the classes assigned to you and today’s timetable.', route: '/teacher/dashboard', routeLabel: 'My Dashboard' },
-    { title: 'Mark attendance', body: 'Open the class register, mark students present/late/absent, and it saves instantly.', route: '/students/attendance', routeLabel: 'Attendance' },
-    { title: 'Enter scores & ratings', body: 'Record Test 1 and Test 2 scores, plus affective and psychomotor ratings per student.', route: '/academic/results', routeLabel: 'Results & Grades' },
-    { title: 'Publish report cards', body: 'Once grades are in, generate report cards for your class.', route: '/academic/report-cards', routeLabel: 'Report Cards' },
-    { title: 'Secure your account', body: 'Enable two-factor authentication in Settings.', route: '/settings?tab=security', routeLabel: 'Security' },
+    {
+      title: 'Start on your Overview',
+      body: 'Your dashboard shows the classes you teach or lead this year, today’s timetable, your students and what needs attention. If a class is missing, ask your principal to assign you to it.',
+      route: '/teacher/dashboard',
+      routeLabel: 'Open my Overview',
+    },
+    {
+      title: 'Sign in when you arrive',
+      body: 'Each school day, open Teacher Attendance and tap “Sign in as present” (or “late”), then sign out when you leave. Your principal sees the register; if they marked you before you arrived, you can still sign in.',
+      route: '/staff/attendance',
+      routeLabel: 'Teacher Attendance',
+    },
+    {
+      title: 'Take the class register',
+      body: 'In Attendance → Class Register, pick your class, date and session, then tap P / L / A / E for each student, or “Mark All Present”. Every tap saves straight away, with no Submit button. No signal? Marks are kept on your phone and sync when you reconnect.',
+      route: '/students/attendance',
+      routeLabel: 'Take a register',
+    },
+    {
+      title: 'Set assignments',
+      body: 'Create homework and classwork for your classes with a due date and instructions, then keep an eye on how many students have submitted.',
+      route: '/academic/assignments',
+      routeLabel: 'Assignments',
+    },
+    {
+      title: 'Enter Test 1 & Test 2 scores',
+      body: 'In Results & Grades, choose your class, subject and term, then type each student’s scores. The mean, grade and position are worked out for you. Add affective and psychomotor ratings and a comment for each student, too.',
+      route: '/academic/results',
+      routeLabel: 'Results & Grades',
+    },
+    {
+      title: 'Check report cards',
+      body: 'Preview each student’s report card to check scores and comments. Cards stay a draft until your principal publishes them to students and parents.',
+      route: '/academic/report-cards',
+      routeLabel: 'Report Cards',
+    },
+    {
+      title: 'Record conduct',
+      body: 'Log an infraction or a behavioural note (positive or a concern) for a student in your classes. Your principal decides any actions; confidential records are only seen by you and the principal.',
+      route: '/discipline',
+      routeLabel: 'Discipline & Conduct',
+    },
+    {
+      title: 'Talk to your class',
+      body: 'Post an announcement to one of your classes, for its students, parents or both. You can also email it. Only that class sees it.',
+      route: '/communication/announcements',
+      routeLabel: 'Announcements',
+    },
+    {
+      title: 'Last year is history',
+      body: 'Most pages have a year picker that opens on the current year. Choose a past year to look back at your old classes, results and attendance. Past years are read-only history, so new work always goes into this year.',
+    },
+    {
+      title: 'Secure your account',
+      body: 'Set a strong password, turn on two-factor authentication and add a passkey for quick sign-in. On a phone, check Offline & Storage to see what’s saved on the device.',
+      route: '/settings?tab=security',
+      routeLabel: 'Open Security',
+    },
   ],
+
+  // ── Your term rhythm (rendered like the principal's roadmap) ──
+  setupTitle: 'Your teaching rhythm',
+  setupIntro: 'What a typical day, week and term looks like in WiSkul.',
+  setupOrder: [
+    {
+      order: 1,
+      title: 'Every school day',
+      why: 'Attendance is time-sensitive: parents are notified when their child is checked in or out.',
+      tasks: [
+        { label: 'Sign in (and out) in Teacher Attendance', route: '/staff/attendance', routeLabel: 'Teacher Attendance' },
+        { label: 'Take each class register', route: '/students/attendance', routeLabel: 'Attendance' },
+        { label: 'Check today’s timetable on your Overview', route: '/teacher/dashboard', routeLabel: 'Overview' },
+      ],
+    },
+    {
+      order: 2,
+      title: 'Every week',
+      why: 'Keep work flowing and parents in the loop.',
+      tasks: [
+        { label: 'Set assignments and follow up on submissions', route: '/academic/assignments', routeLabel: 'Assignments' },
+        { label: 'Record conduct notes as things happen', route: '/discipline', routeLabel: 'Discipline' },
+        { label: 'Post class announcements', route: '/communication/announcements', routeLabel: 'Announcements' },
+      ],
+    },
+    {
+      order: 3,
+      title: 'Each term',
+      why: 'Results feed the report cards your principal publishes.',
+      tasks: [
+        { label: 'Check the exam timetable', route: '/academic/exam-timetable', routeLabel: 'Exam Timetable' },
+        { label: 'Enter Test 1 & Test 2 scores and ratings', route: '/academic/results', routeLabel: 'Results & Grades' },
+        { label: 'Preview report cards and comments', route: '/academic/report-cards', routeLabel: 'Report Cards' },
+      ],
+    },
+  ],
+
+  keyRules: [
+    {
+      title: 'You see your own classes',
+      body: 'Classes, students, attendance, results and conduct are limited to the classes you teach (a subject) or lead (class teacher). Ask your principal if an assignment is missing.',
+    },
+    {
+      title: 'One year at a time',
+      body: 'Pages open on the current academic year and follow the school when it moves to a new one. Pick a past year to view history; it is read-only. The one exception is Results, which stays editable for late corrections and shows an amber warning while you’re in a past year.',
+    },
+    {
+      title: 'Your principal publishes',
+      body: 'Report cards and events you create stay drafts until the principal publishes them. Timetables, exam timetables, classes and subjects are set by the principal; you can view them.',
+    },
+    {
+      title: 'Works on a weak connection',
+      body: 'On the app, your class lists stay available offline. Registers and new assignments made offline are kept on the device and sync automatically when you’re back online.',
+    },
+  ],
+
   sections: [
-    { id: 'classes', title: 'Classes & Timetable', icon: 'BookOpen', intro: 'See your assigned classes and weekly schedule.', points: ['View classes and student lists.', 'Check your daily and weekly timetable.'], route: '/academic/timetables', routeLabel: 'Timetables' },
-    { id: 'attendance', title: 'Attendance', icon: 'ClipboardCheck', intro: 'Mark and review attendance for your classes.', points: ['Quick class register.', 'Review past attendance.'], route: '/students/attendance', routeLabel: 'Attendance' },
-    { id: 'results', title: 'Results & Ratings', icon: 'ClipboardList', intro: 'Enter and manage grades.', points: ['Cognitive scores (Test 1 + Test 2).', 'Affective & psychomotor ratings.', 'Report cards.'], route: '/academic/results', routeLabel: 'Results' },
+    {
+      id: 'overview',
+      title: 'Overview',
+      icon: 'BarChart2',
+      intro: 'Your classes, timetable and students at a glance.',
+      points: [
+        'Classes you teach or lead this year, with student counts.',
+        'Today’s timetable and quick links to take a register or enter scores.',
+        'A notice while your school is moving students into a new year.',
+      ],
+      route: '/teacher/dashboard',
+      routeLabel: 'Overview',
+    },
+    {
+      id: 'classes',
+      title: 'Classes, Subjects & Timetables',
+      icon: 'BookOpen',
+      intro: 'Where you teach, what you teach and when.',
+      points: [
+        'Classes & Streams: your classes with their students and capacity.',
+        'Subjects: the school’s subject list (read-only).',
+        'Timetables: your class timetables for the week (set by the principal).',
+      ],
+      route: '/academic/timetables',
+      routeLabel: 'Timetables',
+    },
+    {
+      id: 'assignments',
+      title: 'Assignments',
+      icon: 'FileText',
+      intro: 'Set work and follow it up.',
+      points: [
+        'Create an assignment for one of your classes with a due date.',
+        'See how many students have submitted and how many are graded, plus what’s overdue.',
+        'You can create assignments offline on the app. They sync when you reconnect.',
+      ],
+      route: '/academic/assignments',
+      routeLabel: 'Assignments',
+    },
+    {
+      id: 'exams',
+      title: 'Exam Timetable',
+      icon: 'CalendarDays',
+      intro: 'When and where each exam happens.',
+      points: [
+        'See the exam schedule for your classes, by term.',
+        'The principal schedules exams; you can view them.',
+      ],
+      route: '/academic/exam-timetable',
+      routeLabel: 'Exam Timetable',
+    },
+    {
+      id: 'results',
+      title: 'Results & Report Cards',
+      icon: 'ClipboardList',
+      intro: 'Enter scores and prepare report cards.',
+      points: [
+        'Enter Test 1 and Test 2 per subject. Mean, grade and position are automatic.',
+        'Add affective and psychomotor ratings, conduct and a teacher’s comment.',
+        'Preview report cards. Students and parents see them once the principal publishes.',
+      ],
+      route: '/academic/results',
+      routeLabel: 'Results & Grades',
+    },
+    {
+      id: 'students',
+      title: 'Student Directory & Profiles',
+      icon: 'Users',
+      intro: 'Everything about the students you teach.',
+      points: [
+        'Directory: your students, with their class, for the year you pick.',
+        'Profiles: one student’s details, results, attendance and conduct, filtered by year.',
+        'You can see students you teach now, or taught in a past year.',
+      ],
+      route: '/students/profiles',
+      routeLabel: 'Student Profiles',
+    },
+    {
+      id: 'attendance',
+      title: 'Attendance',
+      icon: 'ClipboardCheck',
+      intro: 'Registers, logs and at-risk students.',
+      points: [
+        'Class Register: pick class, date and session (morning, afternoon or full day), then tap P / L / A / E for each student.',
+        'Attendance Logs: search, filter and correct a record for the current year.',
+        'Analytics: attendance rates by class, and students below 75%.',
+        'Parents are notified when their child is checked in or out.',
+      ],
+      route: '/students/attendance',
+      routeLabel: 'Attendance',
+    },
+    {
+      id: 'teacher-attendance',
+      title: 'Teacher Attendance',
+      icon: 'UserCheck',
+      intro: 'Your own daily sign-in and sign-out.',
+      points: [
+        'Sign in as present or late when you arrive, and sign out when you leave.',
+        'Add a comment for the principal (e.g. “Arrived late — clinic visit”).',
+        'See your attendance rate and history for any year.',
+      ],
+      route: '/staff/attendance',
+      routeLabel: 'Teacher Attendance',
+    },
+    {
+      id: 'discipline',
+      title: 'Discipline & Conduct',
+      icon: 'ShieldCheck',
+      intro: 'Record behaviour fairly and consistently.',
+      points: [
+        'Infractions: choose the type (e.g. tardiness, fighting); severity is set automatically.',
+        'Behavioural notes: positive notes, concerns, observations and commendations.',
+        'You can record for students currently in your classes. You see your own records.',
+        'Mark a record confidential so only you and the principal see it.',
+      ],
+      route: '/discipline',
+      routeLabel: 'Discipline & Conduct',
+    },
+    {
+      id: 'announcements',
+      title: 'Announcements',
+      icon: 'Megaphone',
+      intro: 'Reach your class quickly.',
+      points: [
+        'Post to one of this year’s classes, for students, parents or both.',
+        'Mark it high priority, and optionally email it too.',
+        'Edit or delete your own posts. Past years’ posts are read-only.',
+      ],
+      route: '/communication/announcements',
+      routeLabel: 'Announcements',
+    },
+    {
+      id: 'events',
+      title: 'School Events & Calendar',
+      icon: 'Calendar',
+      intro: 'What’s happening at school.',
+      points: [
+        'School Events: browse published events, or create one (it’s a draft until the principal publishes).',
+        'Calendar: month and agenda views of every published event.',
+        'My Events: events you’ve registered for.',
+      ],
+      route: '/events/calendar',
+      routeLabel: 'Calendar',
+    },
+    {
+      id: 'account',
+      title: 'Settings, Help & Support',
+      icon: 'Settings',
+      intro: 'Your account, your device and getting help.',
+      points: [
+        'My Profile: your name, email and password.',
+        'Security: two-factor authentication and passkeys.',
+        'Offline & Storage: see and clear what’s saved on this device. Un-synced work is always kept.',
+        'Support: help articles, and a ticket to the WiSkul team if you’re stuck.',
+      ],
+      route: '/settings',
+      routeLabel: 'Settings',
+    },
+  ],
+
+  faqs: [
+    {
+      q: 'A class or student is missing from my pages.',
+      a: 'You only see classes you’re assigned to teach or lead, for the year selected. Check the year picker shows the current year, then ask your principal to add the assignment.',
+    },
+    {
+      q: 'Why can’t I edit last year’s attendance or conduct?',
+      a: 'Past academic years are kept as read-only history so records can’t change after the year closes. New records always go into the current year.',
+    },
+    {
+      q: 'My class looks empty right after the new year started.',
+      a: 'Your principal is still moving students into this year’s classes. You’ll see a notice until it’s done, and the students appear as soon as they’re moved.',
+    },
+    {
+      q: 'Do I need internet to take the register?',
+      a: 'Not on the app. Marks taken offline are saved on your device and sync automatically. Keep the app open for a moment once you’re back online.',
+    },
+    {
+      q: 'When do parents see results?',
+      a: 'When the principal publishes report cards for the term. Until then your scores and comments are a draft that only staff can see.',
+    },
+    {
+      q: 'I forgot my password.',
+      a: 'Use “Forgot password” on the sign-in page, or ask your principal to reset it. Once you’re in, you can change it any time in Settings → My Profile.',
+    },
   ],
 };
 

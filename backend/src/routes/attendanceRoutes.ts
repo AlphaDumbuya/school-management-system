@@ -6,29 +6,33 @@ import { logger } from '@utils/logger';
 import { db } from '@utils/database';
 import { sendExport } from '@utils/exportResponse';
 import teacherAttendanceRoutes from './teacherAttendanceRoutes';
-import { resolveYearScope } from '../utils/academicYear.js';
+import { resolveYearScope, applyYearScope } from '../utils/academicYear.js';
 
 const router = Router();
 router.use('/teachers', teacherAttendanceRoutes);
 
 /**
- * Class ids for one academic year of a school (attendance rows belong to a
- * class, and classes belong to a year). Active year also includes legacy
- * classes with no session. null = no year filter requested.
+ * Scope an attendance query to one academic year: rows of that year's classes,
+ * plus class-less rows (all-students register) dated inside the year. Year
+ * names are matched normalised; an unknown year matches nothing.
+ *
+ * NB: resolve the scope first, then apply it synchronously. A knex builder is
+ * thenable, so returning it from an async function would EXECUTE the query.
  */
-async function yearClassIds(tenantId: string, academicYear: unknown): Promise<string[] | null> {
-  const y = typeof academicYear === 'string' ? academicYear.trim() : '';
-  if (!y || y === 'undefined' || y === 'null' || y === 'all') return null;
-  const session = await db('academic_sessions').where({ tenant_id: tenantId, name: y }).first('id', 'is_active');
-  if (!session) return [];
-  const rows = await db('classes')
-    .leftJoin('users as cc', 'classes.created_by', 'cc.id')
-    .where((q) => {
-      q.where('classes.academic_session_id', session.id);
-      if (session.is_active) q.orWhere((q2) => q2.whereNull('classes.academic_session_id').where('cc.tenant_id', tenantId));
-    })
-    .select('classes.id');
-  return rows.map((r: any) => r.id);
+function scopeAttendanceToYear(q: any, scope: Awaited<ReturnType<typeof resolveYearScope>>) {
+  return applyYearScope(q, scope, 'attendance.class_id', 'attendance.attendance_date');
+}
+
+/** A past academic year's attendance is read-only history (409). */
+async function assertClassCurrentYear(classId?: string | null) {
+  if (!classId) return;
+  const row = await db('classes')
+    .leftJoin('academic_sessions as s', 'classes.academic_session_id', 's.id')
+    .where('classes.id', classId)
+    .first('s.id as session_id', 's.is_active');
+  if (row?.session_id && row.is_active === false) {
+    throw new AppError('This class belongs to a past academic year; its attendance is read-only.', 409, 'PAST_YEAR_READ_ONLY');
+  }
 }
 
 async function teacherClassIds(userId: string, tenantId: string): Promise<string[]> {
@@ -178,8 +182,7 @@ router.get('/export', authenticate, attachUserContext, authorize(UserRole.SUPER_
       query = query.whereIn('attendance.class_id', classIds);
     }
 
-    const yClasses = await yearClassIds(tenantId, req.query.academic_year);
-    if (yClasses) query = query.whereIn('attendance.class_id', yClasses.length ? yClasses : ['00000000-0000-0000-0000-000000000000']);
+    query = scopeAttendanceToYear(query, await resolveYearScope(tenantId, req.query.academic_year));
     if (date) query = query.where('attendance.attendance_date', date);
     if (classId) query = query.where('attendance.class_id', classId);
 
@@ -278,6 +281,7 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
         })
         .first();
       if (!classCheck) throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
+      await assertClassCurrentYear(class_id);
     }
 
     // Idempotency must be checked only within this tenant and permitted class.
@@ -389,12 +393,8 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN,
       query = query.whereIn('attendance.class_id', classIds);
     }
 
-    // Academic-year scope (that year's classes only).
-    const yClasses = await yearClassIds(tenantId, req.query.academic_year);
-    if (yClasses) {
-      if (yClasses.length === 0) return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
-      query = query.whereIn('attendance.class_id', yClasses);
-    }
+    // Academic-year scope (that year's classes, else that year's dates).
+    query = scopeAttendanceToYear(query, await resolveYearScope(tenantId, req.query.academic_year));
 
     if (studentId) {
       query = query.where('attendance.student_id', studentId);
@@ -423,6 +423,16 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN,
     const totalResult = await query.clone().count('attendance.id as count').first();
     const total = Number(totalResult?.count ?? 0);
 
+    // KPI counts over the WHOLE filtered set (not just this page).
+    const statusRows = await query.clone().groupBy('attendance.status').select('attendance.status').count('attendance.id as count');
+    const counts: Record<string, number> = { present: 0, late: 0, absent: 0, excused: 0 };
+    statusRows.forEach((r: any) => { if (r.status in counts) counts[r.status] = Number(r.count) || 0; });
+    const stats = {
+      total,
+      ...counts,
+      rate: total > 0 ? Math.round(((counts.present + counts.late) / total) * 100) : 0,
+    };
+
     const records = await query
       .select(
         'attendance.id',
@@ -449,6 +459,7 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN,
 
     res.json({
       data: records,
+      stats,
       pagination: {
         page,
         limit,
@@ -473,11 +484,8 @@ router.get('/analytics', authenticate, attachUserContext, authorize(UserRole.SUP
     const tenantId = req.user?.tenant_id;
     if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     const classId = req.query.classId as string | undefined;
-    // Academic-year scope (that year's classes only).
-    const yClasses = await yearClassIds(tenantId, req.query.academic_year);
-    if (yClasses && yClasses.length === 0) {
-      return res.json({ success: true, data: { total: 0, present: 0, late: 0, absent: 0, excused: 0, rate: 0, atRisk: [], classRates: [] } });
-    }
+    // Academic-year scope (that year's classes, else that year's dates).
+    const yearScope = await resolveYearScope(tenantId, req.query.academic_year);
 
     // Base scope shared by every aggregate.
     const scoped = () => {
@@ -485,7 +493,7 @@ router.get('/analytics', authenticate, attachUserContext, authorize(UserRole.SUP
         .join('students', 'attendance.student_id', 'students.id')
         .leftJoin('classes', 'attendance.class_id', 'classes.id')
         .where('students.tenant_id', tenantId);
-      if (yClasses) q = q.whereIn('attendance.class_id', yClasses);
+      q = applyYearScope(q, yearScope, 'attendance.class_id', 'attendance.attendance_date');
       if (classId) q = q.where('attendance.class_id', classId);
       return q;
     };
@@ -724,6 +732,7 @@ router.put('/:attendanceId', authenticate, attachUserContext, authorize(UserRole
     if (req.user?.role === 'teacher' && !(await teacherClassIds(req.user.id, tenantId)).includes(attendance.class_id)) {
       throw new AppError('You are not assigned to this class', 403, 'FORBIDDEN');
     }
+    await assertClassCurrentYear(attendance.class_id);
 
     const updateData: any = {};
     
@@ -914,6 +923,7 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
       if (!classCheck) {
         throw new AppError('Class not found or access denied', 404, 'NOT_FOUND');
       }
+      await assertClassCurrentYear(class_id);
     }
 
     // Collect NEW check-in / check-out transitions to notify parents after commit.

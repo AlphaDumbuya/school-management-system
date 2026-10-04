@@ -444,6 +444,12 @@ export default function registerPhase21Routes(
       const { status, resolution } = req.body;
       if (!status) throw new AppError('status required', 400);
       await assertTicketAccess(db, req, ticketId); // tenant + ownership guard
+      // A requester may only close their own ticket; triage states
+      // (in progress, resolved, …) are for support staff.
+      const role = (req.user as any)?.role;
+      if (role !== 'principal' && role !== 'super_admin' && status !== 'closed') {
+        throw new AppError('You can only close your own ticket', 403, 'FORBIDDEN');
+      }
       const updated = await ticketService.updateTicketStatus(ticketId, status, resolution);
       void notifyRequester(ticketService, ticketId, 'status', { status });
       res.status(200).json({ success: true, data: updated });
@@ -459,10 +465,15 @@ export default function registerPhase21Routes(
   app.post('/api/v1/support/tickets/:ticketId/responses', authenticate, attachUserContext, async (req: Request, res: Response) => {
     try {
       const { ticketId } = req.params;
-      const { message, attachments, isPublic = true } = req.body;
+      const { message, attachments } = req.body;
       const responderId = getUserId(req);
-      if (!message) throw new AppError('message required', 400);
+      if (!message || !String(message).trim()) throw new AppError('message required', 400);
+      if (String(message).length > 10000) throw new AppError('Message is too long (max 10,000 characters)', 400, 'VALIDATION_ERROR');
       await assertTicketAccess(db, req, ticketId); // tenant + ownership guard
+      // Only admins can leave internal (hidden) notes; a requester's reply is
+      // always visible on the thread.
+      const role = (req.user as any)?.role;
+      const isPublic = role === 'principal' || role === 'super_admin' ? req.body.isPublic !== false : true;
 
       const response = await ticketService.addResponse(ticketId, responderId, message, attachments || [], isPublic);
       if (isPublic) void notifyRequester(ticketService, ticketId, 'replied', { message });

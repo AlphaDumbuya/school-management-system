@@ -34,6 +34,12 @@ const fieldCls = 'w-full rounded-lg border border-gray-300 dark:border-gray-600 
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 const errorCls = 'text-xs text-red-600 mt-0.5';
 
+/** Local calendar date (not UTC), so "today" matches the school's clock. */
+const localToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export const BehavioralNoteModal: React.FC<Props> = ({
   isOpen, onClose, onSuccess, studentId = '', studentName = '', editingNote,
 }) => {
@@ -43,7 +49,7 @@ export const BehavioralNoteModal: React.FC<Props> = ({
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('');
   const [rating, setRating] = useState('');
-  const [noteDate, setNoteDate] = useState(new Date().toISOString().slice(0, 10));
+  const [noteDate, setNoteDate] = useState(localToday());
   const [isConfidential, setIsConfidential] = useState(false);
   const [isShared, setIsShared] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -82,7 +88,7 @@ export const BehavioralNoteModal: React.FC<Props> = ({
       setContent('');
       setCategory('');
       setRating('');
-      setNoteDate(new Date().toISOString().slice(0, 10));
+      setNoteDate(localToday());
       setIsConfidential(false);
       setIsShared(false);
     }
@@ -96,6 +102,7 @@ export const BehavioralNoteModal: React.FC<Props> = ({
     if (!content.trim()) e.content = 'Content is required';
     if (rating && (isNaN(Number(rating)) || Number(rating) < 1 || Number(rating) > 5))
       e.rating = 'Rating must be between 1 and 5';
+    if (!editingNote && noteDate > localToday()) e.note_date = "The note date can't be in the future";
     return e;
   };
 
@@ -115,17 +122,17 @@ export const BehavioralNoteModal: React.FC<Props> = ({
         is_confidential: isConfidential,
         is_shared_with_student: isShared,
       };
-      if (editingNote) {
-        await disciplineService.updateNote(editingNote.note_id, payload);
-        showToast.saved('Note');
-      } else {
-        await disciplineService.createNote(payload);
-        showToast.success('Behavioral note added');
-      }
+      // apiClient never throws: a rejected save comes back as success:false.
+      const res: any = editingNote
+        ? await disciplineService.updateNote(editingNote.note_id, payload)
+        : await disciplineService.createNote(payload);
+      if (res?.success === false) throw new Error(res.error || 'Failed to save note');
+      if (editingNote) showToast.saved('Note');
+      else showToast.success('Behavioral note added');
       onSuccess();
       onClose();
-    } catch {
-      showToast.apiError('Failed to save note');
+    } catch (err) {
+      showToast.error((err as Error)?.message || 'Failed to save note');
     } finally {
       setLoading(false);
     }
@@ -190,19 +197,27 @@ export const BehavioralNoteModal: React.FC<Props> = ({
         {/* Date */}
         <div>
           <label className={labelCls}>Date</label>
-          <input type="date" value={noteDate} onChange={e => setNoteDate(e.target.value)} className={fieldCls} />
+          {/* A note's date is fixed once recorded (it decides its academic year). */}
+          <input type="date" aria-label="Note date" value={noteDate} max={localToday()} disabled={!!editingNote}
+            onChange={e => setNoteDate(e.target.value)} className={`${fieldCls} disabled:opacity-60`} />
+          {errors.note_date && <p className={errorCls}>{errors.note_date}</p>}
         </div>
 
         {/* Flags */}
         <div className="space-y-2">
           <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input type="checkbox" checked={isConfidential} onChange={e => setIsConfidential(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-            <span className="text-sm text-gray-700 dark:text-gray-300">Confidential (visible to admin only)</span>
+            <input type="checkbox" checked={isConfidential}
+              onChange={e => { setIsConfidential(e.target.checked); if (e.target.checked) setIsShared(false); }}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            <span className="text-sm text-gray-700 dark:text-gray-300">Confidential (only you and the principal see it)</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input type="checkbox" checked={isShared} onChange={e => setIsShared(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-            <span className="text-sm text-gray-700 dark:text-gray-300">Share with student</span>
-          </label>
+          {/* A confidential note can't be shared with the student. */}
+          {!isConfidential && (
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={isShared} onChange={e => setIsShared(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              <span className="text-sm text-gray-700 dark:text-gray-300">Share with student</span>
+            </label>
+          )}
         </div>
 
         <div className="flex justify-end gap-3 pt-2">
