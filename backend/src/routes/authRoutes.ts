@@ -880,7 +880,16 @@ router.get('/users/:id', authenticate, async (req: Request, res: Response, next:
 router.put('/users/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { first_name, last_name, email, role, status } = req.body;
+    const { first_name, last_name, role, status } = req.body;
+    // Emails are the login: compare and store them trimmed + lower-cased, so
+    // "Ibrahim@x.com" can't slip past the uniqueness check as a second account.
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : req.body.email;
+    if (email !== undefined && (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+      throw new AppError('Please enter a valid email address', 400, 'VALIDATION_ERROR');
+    }
+    if ((first_name !== undefined && !String(first_name).trim()) || (last_name !== undefined && !String(last_name).trim())) {
+      throw new AppError('First and last name are required', 400, 'VALIDATION_ERROR');
+    }
     const currentUserId = (req as any).auth.userId;
     const currentUserRole = (req as any).auth.role;
 
@@ -900,8 +909,8 @@ router.put('/users/:id', authenticate, async (req: Request, res: Response, next:
     }
 
     const updatePayload: any = {};
-    if (first_name !== undefined) updatePayload.first_name = first_name;
-    if (last_name !== undefined) updatePayload.last_name = last_name;
+    if (first_name !== undefined) updatePayload.first_name = String(first_name).trim().slice(0, 100);
+    if (last_name !== undefined) updatePayload.last_name = String(last_name).trim().slice(0, 100);
     if (email !== undefined) updatePayload.email = email;
     if (role !== undefined) updatePayload.role = role;
     if (status !== undefined) updatePayload.status = status;

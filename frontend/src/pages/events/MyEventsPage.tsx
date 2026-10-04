@@ -367,7 +367,8 @@ export const MyEventsPage: React.FC = () => {
             columns={columns}
             data={filtered}
             isLoading={isLoading}
-            error={error ? String(error) : null}
+            // apiClient never throws: a failed load comes back as success:false.
+            error={error ? String(error) : ((data as any)?.success === false ? ((data as any).error || 'Could not load your events') : null)}
             onRetry={refetch}
             emptyMessage={tab === 'upcoming' ? 'No upcoming registrations' : 'No registrations found'}
             rowActions={(reg) => [

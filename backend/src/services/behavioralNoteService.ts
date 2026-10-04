@@ -24,20 +24,18 @@ class BehavioralNoteService {
     noteData: BehavioralNoteCreateInput
   ): Promise<BehavioralNote> {
     try {
-      // Verify student exists by id or student_id
+      // The route resolves the student to their login account (users.id —
+      // the column's FK).
       const student = await db('users')
-        .where({ tenant_id: tenantId })
-        .where(function () {
-          this.where('id', noteData.student_id).orWhere('student_id', noteData.student_id);
-        })
-        .first();
+        .where({ tenant_id: tenantId, id: noteData.student_id })
+        .first('id');
 
       if (!student) {
         throw new AppError('Student not found', 404);
       }
 
-      const note: BehavioralNote = {
-        note_id: '',
+      // The DB generates note_id.
+      const note: Omit<BehavioralNote, 'note_id'> & { note_id?: string } = {
         tenant_id: tenantId,
         student_id: noteData.student_id,
         recorded_by: noteData.recorded_by,
@@ -54,19 +52,19 @@ class BehavioralNoteService {
         updated_at: new Date(),
       };
 
-      const [id] = await db('behavioral_notes').insert(note);
-      note.note_id = id;
+      const [inserted] = await db('behavioral_notes').insert(note).returning('*');
+      const id: string = inserted.note_id;
 
-      // Notify if required
-      if (note.note_type === 'concern' && !note.is_confidential) {
-        await this.notifyParent(tenantId, note);
+      // Parent notification is best-effort: it must never fail the note.
+      if (inserted.note_type === 'concern' && !inserted.is_confidential) {
+        void this.notifyParent(tenantId, inserted);
       }
 
       // Log audit entry
-      await this.logNoteAudit(tenantId, id, 'created', noteData.recorded_by, note);
+      await this.logNoteAudit(tenantId, id, 'created', noteData.recorded_by, inserted);
 
       logger.info(`Behavioral note ${id} created for student ${noteData.student_id}`);
-      return note;
+      return inserted as BehavioralNote;
     } catch (error) {
       logger.error('Error creating behavioral note:', error);
       throw error;
@@ -111,15 +109,17 @@ class BehavioralNoteService {
         .limit(limit)
         .offset(offset);
 
-      const total = await query.clone().count('* as count').first();
+      // Count without ORDER BY (Postgres rejects it alongside an aggregate).
+      const total = await query.clone().clearOrder().count('* as count').first();
+      const totalCount = Number(total?.count || 0);
 
       return {
         data: notes,
         pagination: {
           page,
           limit,
-          total: total?.count || 0,
-          total_pages: Math.ceil((total?.count || 0) / limit),
+          total: totalCount,
+          total_pages: Math.ceil(totalCount / limit),
         },
       };
     } catch (error) {
@@ -158,15 +158,20 @@ class BehavioralNoteService {
     userId: string
   ): Promise<BehavioralNote> {
     try {
-      const note = await this.getNote(noteId, tenantId);
+      await this.getNote(noteId, tenantId);
 
-      const updates = {
-        ...updateData,
-        updated_at: new Date(),
-      };
+      // Only the note's own content may change — never who it's about, who
+      // wrote it, its school, class or date (the body is passthrough-validated).
+      const EDITABLE = ['note_type', 'content', 'category', 'rating', 'is_confidential', 'is_shared_with_student'] as const;
+      const updates: Record<string, unknown> = { updated_at: new Date() };
+      for (const k of EDITABLE) {
+        if ((updateData as any)[k] !== undefined) updates[k] = (updateData as any)[k];
+      }
+      // A confidential note can never be shared with the student.
+      if (updates.is_confidential === true) updates.is_shared_with_student = false;
 
       await db('behavioral_notes')
-        .where({ note_id: noteId })
+        .where({ note_id: noteId, tenant_id: tenantId })
         .update(updates);
 
       await this.logNoteAudit(tenantId, noteId, 'updated', userId, updates);
@@ -271,15 +276,17 @@ class BehavioralNoteService {
         .limit(limit)
         .offset(offset);
 
-      const total = await query.clone().count('* as count').first();
+      // Count without ORDER BY (Postgres rejects it alongside an aggregate).
+      const total = await query.clone().clearOrder().count('* as count').first();
+      const totalCount = Number(total?.count || 0);
 
       return {
         data: notes,
         pagination: {
           page,
           limit,
-          total: total?.count || 0,
-          total_pages: Math.ceil((total?.count || 0) / limit),
+          total: totalCount,
+          total_pages: Math.ceil(totalCount / limit),
         },
       };
     } catch (error) {
@@ -347,15 +354,17 @@ class BehavioralNoteService {
         .limit(limit)
         .offset(offset);
 
-      const total = await query.clone().count('* as count').first();
+      // Count without ORDER BY (Postgres rejects it alongside an aggregate).
+      const total = await query.clone().clearOrder().count('* as count').first();
+      const totalCount = Number(total?.count || 0);
 
       return {
         data: notes,
         pagination: {
           page,
           limit,
-          total: total?.count || 0,
-          total_pages: Math.ceil((total?.count || 0) / limit),
+          total: totalCount,
+          total_pages: Math.ceil(totalCount / limit),
         },
       };
     } catch (error) {
@@ -409,9 +418,9 @@ class BehavioralNoteService {
    */
   private async notifyParent(tenantId: string, note: BehavioralNote) {
     try {
-      const guardians = await db('student_guardians')
-        .where({ student_id: note.student_id, status: 'active' })
-        .select('guardian_id');
+      // Guardian login accounts (guardians → students.user_id = this student).
+      const { guardianUserIds } = await import('../utils/disciplineScope.js');
+      const guardians = (await guardianUserIds(tenantId, note.student_id)).map((id) => ({ guardian_id: id }));
 
       for (const guardian of guardians) {
         try {

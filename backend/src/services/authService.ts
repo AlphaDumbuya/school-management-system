@@ -936,8 +936,12 @@ export class AuthService {
       const user = await this.getUserById(userId);
 
       // Check if email is being changed to an existing email
-      if (payload.email && payload.email !== user.email) {
-        const existingUser = await this.db('users').where({ email: payload.email }).first();
+      if (payload.email && payload.email.toLowerCase() !== String(user.email ?? '').toLowerCase()) {
+        // Case-insensitive: emails are the login identifier.
+        const existingUser = await this.db('users')
+          .whereRaw('LOWER(email) = ?', [payload.email.toLowerCase()])
+          .whereNot({ id: userId })
+          .first();
         if (existingUser) {
           throw new AppError('Email is already in use', 409, 'EMAIL_IN_USE');
         }

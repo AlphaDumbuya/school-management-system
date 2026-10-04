@@ -128,6 +128,8 @@ export const CalendarPage: React.FC = () => {
     staleTime: 60_000,
   });
 
+  // apiClient never throws: a failed load comes back as success:false.
+  const loadError: string | null = (data as any)?.success === false ? ((data as any).error || 'Could not load events') : null;
   const events: Event[] = useMemo(() => {
     const list = Array.isArray((data as any)?.data) ? (data as any).data : Array.isArray(data) ? (data as Event[]) : [];
     return [...list].sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
@@ -247,6 +249,14 @@ export const CalendarPage: React.FC = () => {
             ))}
           </div>
         </div>
+
+        {/* A failed load must not read as "No events this month". */}
+        {loadError && (
+          <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+            <span>{loadError}</span>
+            <button type="button" onClick={() => refetch()} className="text-xs font-bold hover:underline">Try again</button>
+          </div>
+        )}
 
         {view === 'month' ? (
           <div className="flex flex-col xl:flex-row gap-5">

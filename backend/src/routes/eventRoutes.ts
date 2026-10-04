@@ -309,7 +309,9 @@ router.get(
         start_date:   start_date ? new Date(start_date as string) : undefined,
         end_date:     end_date   ? new Date(end_date as string)   : undefined,
         search:       (search && String(search).trim())       ? String(search).trim()       : undefined,
-      });
+        // Teachers see everyone's published events but only their OWN drafts.
+        drafts_only_by: req.user!.role === 'teacher' ? req.user!.id : undefined,
+      } as any);
 
       // result shape: { data, total, page, limit, totalPages }
       res.json({
@@ -393,7 +395,13 @@ router.get(
         req.user!.id,
       );
 
-      if (!event) {
+      // Drafts are private to their organiser (and admins) until published —
+      // the id must not open someone else's draft.
+      const ev: any = event;
+      const role = req.user!.role;
+      const isAdmin = role === 'principal' || role === 'super_admin';
+      const ownsDraft = String(ev?.organizer_id ?? '') === String(req.user!.id) || String(ev?.created_by ?? '') === String(req.user!.id);
+      if (!event || (ev.status === 'draft' && !isAdmin && !ownsDraft)) {
         return res.status(404).json({ success: false, error: 'Event not found' });
       }
 

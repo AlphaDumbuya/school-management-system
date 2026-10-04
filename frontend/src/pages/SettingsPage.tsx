@@ -58,6 +58,15 @@ import {
 } from '@lib/reportCardBorders';
 import { showToast } from '@utils/toast';
 
+/** Keep in sync with backend PasswordService.validatePasswordPolicy. */
+const PASSWORD_RULES: { label: string; test: (p: string) => boolean }[] = [
+  { label: 'At least 8 characters', test: (p) => p.length >= 8 },
+  { label: 'An uppercase letter', test: (p) => /[A-Z]/.test(p) },
+  { label: 'A lowercase letter', test: (p) => /[a-z]/.test(p) },
+  { label: 'A number', test: (p) => /\d/.test(p) },
+  { label: 'A symbol (e.g. ! @ # $)', test: (p) => /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(p) },
+];
+
 export const SettingsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -567,8 +576,10 @@ export const SettingsPage: React.FC = () => {
       showToast.error('New password and confirm password do not match.');
       return;
     }
-    if (passwordForm.newPassword.length < 8) {
-      showToast.error('New password must be at least 8 characters long.');
+    // Same rules the server enforces, so the user isn't told only after saving.
+    const unmet = PASSWORD_RULES.filter((r) => !r.test(passwordForm.newPassword));
+    if (unmet.length) {
+      showToast.error(`New password needs ${unmet.map((r) => r.label.toLowerCase()).join(', ')}.`);
       return;
     }
     if (passwordForm.currentPassword === passwordForm.newPassword) {
@@ -825,7 +836,11 @@ export const SettingsPage: React.FC = () => {
         title="Settings & Configuration"
         subtitle={isSuperAdmin
           ? 'Manage your platform account profile and security.'
-          : 'Configure your personal preferences and school-wide administrative variables.'}
+          : isPrincipalOrSuper
+            ? 'Configure your personal preferences and school-wide administrative variables.'
+            : isTeacher
+              ? 'Manage your profile, password, sign-in security and offline storage on this device.'
+              : 'Manage your profile, password and sign-in security.'}
       >
 
         <div className="flex flex-col lg:flex-row gap-8 items-start">
@@ -1004,6 +1019,7 @@ export const SettingsPage: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                  aria-label={showCurrentPassword ? 'Hide current password' : 'Show current password'}
                                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
                                 >
                                   {showCurrentPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -1024,6 +1040,7 @@ export const SettingsPage: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => setShowNewPassword(!showNewPassword)}
+                                  aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
                                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
                                 >
                                   {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -1044,6 +1061,7 @@ export const SettingsPage: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                  aria-label={showConfirmPassword ? 'Hide password confirmation' : 'Show password confirmation'}
                                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
                                 >
                                   {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -1051,6 +1069,25 @@ export const SettingsPage: React.FC = () => {
                               </div>
                             </div>
                           </div>
+                          {/* Live checklist of the server's password rules. */}
+                          {passwordForm.newPassword && (
+                            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs" aria-label="Password requirements">
+                              {PASSWORD_RULES.map((r) => {
+                                const ok = r.test(passwordForm.newPassword);
+                                return (
+                                  <li key={r.label} className={ok ? 'text-emerald-600' : 'text-gray-500'}>
+                                    {ok ? '✓' : '•'} {r.label}
+                                  </li>
+                                );
+                              })}
+                              {passwordForm.confirmPassword && (
+                                <li className={passwordForm.confirmPassword === passwordForm.newPassword ? 'text-emerald-600' : 'text-rose-600'}>
+                                  {passwordForm.confirmPassword === passwordForm.newPassword ? '✓ Passwords match' : '• Passwords don\'t match'}
+                                </li>
+                              )}
+                            </ul>
+                          )}
+                          <p className="text-xs text-gray-400">You'll be signed out after changing your password, then sign in with the new one.</p>
                           <div className="flex justify-end pt-2">
                             <Button type="submit" disabled={savingPassword}>
                               {savingPassword ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
@@ -1061,8 +1098,11 @@ export const SettingsPage: React.FC = () => {
                       </CardContent>
                     </Card>
 
-                    {/* Display preferences (language & date format) */}
-                    <Card>
+                    {/* Display preferences (language & date format) — school-wide,
+                        admin only. Other roles never load the school's settings,
+                        so this card would show placeholder defaults, not the
+                        school's real values. */}
+                    {isPrincipalOrSuper && <Card>
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2.5">
                           <span className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center"><SettingsIcon size={18} /></span>
@@ -1098,20 +1138,14 @@ export const SettingsPage: React.FC = () => {
                           </div>
                         </div>
 
-                        {isPrincipalOrSuper ? (
-                          <div className="flex justify-end mt-4">
-                            <Button onClick={handleSaveSettings} disabled={saving}>
-                              {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                              Save Global Preferences
-                            </Button>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-gray-400 mt-2 italic">
-                            Only school administrators can update these display settings.
-                          </p>
-                        )}
+                        <div className="flex justify-end mt-4">
+                          <Button onClick={handleSaveSettings} disabled={saving}>
+                            {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                            Save Global Preferences
+                          </Button>
+                        </div>
                       </CardContent>
-                    </Card>
+                    </Card>}
                   </div>
                 )}
 
