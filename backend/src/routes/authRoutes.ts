@@ -6,6 +6,7 @@ import { AppError } from '@middleware/errorHandler';
 import { authenticate, authorize, attachUserContext, rateLimitLogin, clearLoginAttempts } from '@middleware/authMiddleware';
 import { loginLimiter, otpLimiter, passkeyLimiter } from '@middleware/rateLimit';
 import { logger } from '@utils/logger';
+import { parseDuties } from '@utils/staffDuties';
 import { UserRole, UserStatus } from '@types/auth';
 import emailService from '@services/emailService';
 
@@ -652,6 +653,11 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
       .select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'tenant_id', 'last_login', 'created_at', 'profile_photo_url', 'photo_url', 'verification_status', 'onboarded_at', 'promotion_welcome')
       .where('id', userId)
       .first();
+    // staff_duties is read separately so /me keeps working before migration 162.
+    if (user) {
+      const d = await db('users').where('id', userId).first('staff_duties').catch(() => null);
+      (user as any).staff_duties = d?.staff_duties ?? [];
+    }
 
     if (!user) {
       throw new AppError('User not found', 404, 'NOT_FOUND');
@@ -742,6 +748,8 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
       lastLogin: user.last_login,
       createdAt: user.created_at,
       promotionWelcome,
+      // Extra portals for a teacher who is also Bursar / Admissions Officer.
+      staffDuties: user.role === 'teacher' ? parseDuties((user as any).staff_duties) : [],
     });
   } catch (error) {
     next(error);

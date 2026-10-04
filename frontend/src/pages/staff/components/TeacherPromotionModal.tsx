@@ -17,7 +17,8 @@ import { teachersService, TeacherRecord } from '@services/teachersService';
 import { classesService } from '@services/classesService';
 import { subjectsService } from '@services/subjectsService';
 import { schoolConfigService } from '@services/schoolConfigService';
-import { designationOptions, classAssignmentLabel } from '@lib/staffDesignations';
+import { teachingDesignationOptions, classAssignmentLabel } from '@lib/staffDesignations';
+import { StaffJobPicker, jobFieldsSchema, refineJobs, jobsFromRecord, jobsToPayload, describeJobs } from './StaffJobPicker';
 
 const schema = z.object({
   designation: z.string().default('subject_teacher'),
@@ -26,7 +27,13 @@ const schema = z.object({
   form_class_id: z.string().optional().or(z.literal('')),
   assigned_classes: z.array(z.string()).default([]),
   assigned_subjects: z.array(z.string()).default([]),
-});
+  // Teaching / Bursar / Admissions (same rules as Add Staff Member).
+  ...jobFieldsSchema,
+}).superRefine(refineJobs);
+
+// Titles that move the person to the principal (leadership) portal, which
+// already covers finance and admissions, so extra duties don't apply.
+const LEADERSHIP_TITLES = new Set(['principal', 'vice_principal', 'head_teacher', 'vice_head_teacher']);
 
 type FormValues = z.infer<typeof schema>;
 
@@ -66,11 +73,23 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
       form_class_id: '',
       assigned_classes: [],
       assigned_subjects: [],
+      teaches: true,
+      duty_accountant: false,
+      duty_admissions: false,
     },
   });
 
   const watchedClasses = watch('assigned_classes') || [];
   const watchedSubjects = watch('assigned_subjects') || [];
+  const jobs = {
+    teaches: !!watch('teaches'),
+    duty_accountant: !!watch('duty_accountant'),
+    duty_admissions: !!watch('duty_admissions'),
+  };
+  const watchedDesignation = watch('designation');
+  const isLeadership = jobs.teaches && LEADERSHIP_TITLES.has(String(watchedDesignation));
+  // What they do today, to word the toast and the "moving off teaching" notice.
+  const [initialJobs, setInitialJobs] = useState<ReturnType<typeof jobsFromRecord> | null>(null);
 
   // Query all active classes and subjects for assignment lists
   const { data: classesData } = useQuery({
@@ -96,7 +115,7 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
     enabled: isOpen,
   });
   const schoolType = ((schoolInfoResp as any)?.data?.school_type ?? (schoolInfoResp as any)?.data?.data?.school_type) as string | undefined;
-  const designationOpts = useMemo(() => designationOptions(schoolType), [schoolType]);
+  const designationOpts = useMemo(() => teachingDesignationOptions(schoolType), [schoolType]);
 
   const classesList = (classesData as any)?.data ?? [];
   const subjectsList = (subjectsData as any)?.data ?? [];
@@ -137,13 +156,19 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
       setServerError(null);
       setClassSearch('');
       setSubjectSearch('');
+      setInitialJobs(null);
       setLoadingDetails(true);
       teachersService.getTeacher(teacher.id)
         .then((res: any) => {
           const details = (res && res.success && res.data) ? res.data : res;
           if (details && (details.designation || details.email)) {
+            const current = jobsFromRecord(details);
+            setInitialJobs(current);
+            const title = String(details.designation ?? 'subject_teacher');
             reset({
-              designation: details.designation ?? 'subject_teacher',
+              ...current,
+              // Bursar / Administrator are jobs now, not teaching titles.
+              designation: title === 'bursar' || title === 'administrator' ? 'subject_teacher' : title,
               department: details.department ?? 'none',
               employment_type: details.employment_type ?? 'full_time',
               form_class_id: details.form_class_id ?? '',
@@ -167,19 +192,29 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
     setServerError(null);
     setIsSubmitting(true);
     try {
+      const teaches = values.teaches;
       const payload = {
-        designation: values.designation,
-        department: values.department,
+        // Without teaching, the server sets the title (Bursar / Administrator).
+        ...(teaches ? { designation: values.designation, department: values.department } : {}),
         employment_type: values.employment_type,
-        form_class_id: values.form_class_id || null,
-        assigned_classes: values.assigned_classes,
-        assigned_subjects: values.assigned_subjects,
+        // A person who no longer teaches leaves their form class and lessons.
+        form_class_id: teaches ? values.form_class_id || null : null,
+        assigned_classes: teaches ? values.assigned_classes : [],
+        assigned_subjects: teaches ? values.assigned_subjects : [],
+        ...jobsToPayload(values),
       };
 
       const res = await teachersService.updateTeacher(teacher.id, payload as any);
       if (res.success === false) throw new Error(res.error ?? 'Promotion update failed');
-      
-      showToast.success(`Role & Assignments updated for ${teacher.first_name} ${teacher.last_name}`);
+
+      const name = `${teacher.first_name} ${teacher.last_name}`;
+      const before = initialJobs ? describeJobs(initialJobs) : '';
+      const after = describeJobs(values);
+      showToast.success(
+        before && before !== after
+          ? `${name} now works as ${after}. Their portal updates on their next page load.`
+          : `Role & assignments updated for ${name}`,
+      );
       onSuccess();
       onClose();
     } catch (err) {
@@ -246,34 +281,61 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
             </div>
           </div>
 
+          {/* ── Section 0: Jobs (Teaching / Bursar / Admissions) ── */}
+          <StaffJobPicker
+            register={register}
+            values={jobs}
+            title="Jobs at the School"
+            description="Promote a teacher to also keep the fees (Bursar) or run admissions; they keep their classes and get that portal too. Untick Teaching to make it their full-time job."
+            error={errors.teaches?.message || errors.duty_admissions?.message}
+          />
+          {initialJobs?.teaches && !jobs.teaches && (
+            <div role="status" className="p-3 rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-300">
+              {teacher.first_name} will stop teaching: their form class and this year's class and subject assignments are removed. Past years' records stay in history.
+            </div>
+          )}
+          {isLeadership && (jobs.duty_accountant || jobs.duty_admissions) && (
+            <div role="status" className="p-3 rounded-lg border border-blue-200 dark:border-blue-900/40 bg-blue-50 dark:bg-blue-950/20 text-xs text-blue-800 dark:text-blue-300">
+              A leadership title already gives access to finance and admissions, so the extra duties aren't needed.
+            </div>
+          )}
+
           {/* ── Section 1: Role Configuration ── */}
           <div className="space-y-4">
             <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider border-b pb-1">
               Role & Title Settings
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField
-                label="Designation / Title"
-                type="select"
-                options={designationOpts}
-                helperText="Leadership, Bursar and Administrator roles move the staff member to their matching portal."
-                error={errors.designation?.message}
-                {...register('designation')}
-              />
+              {jobs.teaches ? (
+                <>
+                  <FormField
+                    label="Teaching Title"
+                    type="select"
+                    options={designationOpts}
+                    helperText="Leadership titles (Principal, Head Teacher and deputies) give principal-level access."
+                    error={errors.designation?.message}
+                    {...register('designation')}
+                  />
 
-              <FormField
-                label="Department"
-                type="select"
-                options={[
-                  { label: 'None', value: 'none' },
-                  { label: 'Mathematics & Sciences', value: 'mathematics_sciences' },
-                  { label: 'Languages & Linguistics', value: 'languages' },
-                  { label: 'Humanities & Social Sciences', value: 'social_sciences_humanities' },
-                  { label: 'Commercial & Technical Studies', value: 'commercial_technical' },
-                ]}
-                error={errors.department?.message}
-                {...register('department')}
-              />
+                  <FormField
+                    label="Department"
+                    type="select"
+                    options={[
+                      { label: 'None', value: 'none' },
+                      { label: 'Mathematics & Sciences', value: 'mathematics_sciences' },
+                      { label: 'Languages & Linguistics', value: 'languages' },
+                      { label: 'Humanities & Social Sciences', value: 'social_sciences_humanities' },
+                      { label: 'Commercial & Technical Studies', value: 'commercial_technical' },
+                    ]}
+                    error={errors.department?.message}
+                    {...register('department')}
+                  />
+                </>
+              ) : (
+                <div className="sm:col-span-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-3 py-2 text-xs text-gray-600 dark:text-gray-300">
+                  Title: <strong>{jobs.duty_accountant ? 'Bursar (Accountant)' : 'Administrator (Admissions Officer)'}</strong>. Tick Teaching above if they also teach.
+                </div>
+              )}
 
               <FormField
                 label="Employment Type"
@@ -288,18 +350,20 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
                 {...register('employment_type')}
               />
 
-              <FormField
-                label={classAssignmentLabel(schoolType)}
-                type="select"
-                options={classOptions}
-                error={errors.form_class_id?.message}
-                {...register('form_class_id')}
-              />
+              <div className={jobs.teaches ? '' : 'hidden'}>
+                <FormField
+                  label={classAssignmentLabel(schoolType)}
+                  type="select"
+                  options={classOptions}
+                  error={errors.form_class_id?.message}
+                  {...register('form_class_id')}
+                />
+              </div>
             </div>
           </div>
 
-          {/* ── Section 2: Class & Subject Assignment Load ── */}
-          <div className="space-y-4 pt-2">
+          {/* ── Section 2: Class & Subject Assignment Load (teaching only) ── */}
+          <div className={`space-y-4 pt-2 ${jobs.teaches ? '' : 'hidden'}`} aria-hidden={!jobs.teaches}>
             <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider border-b pb-1">
               Class & Subject Assignments
             </h3>

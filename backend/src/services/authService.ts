@@ -6,6 +6,7 @@ import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import { AuthResponse, UserResponse, UserRole, UserStatus } from '../types/auth';
 import { sendSchoolWelcomeEmail } from './emailService';
+import { parseDuties } from '../utils/staffDuties';
 
 /**
  * Hash a refresh token for at-rest storage. Refresh tokens are high-entropy
@@ -827,6 +828,8 @@ export class AuthService {
       hasOnboarded: !!user.onboarded_at,
       two_factor_enabled: !!user.two_factor_enabled,
       createdAt: user.created_at,
+      // Extra portals for a teacher who is also Bursar / Admissions Officer.
+      staffDuties: user.role === 'teacher' ? parseDuties((user as any).staff_duties) : [],
     } as UserResponse;
   }
 

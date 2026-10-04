@@ -27,6 +27,8 @@ export interface UserResponse {
   role: UserRole;
   status: UserStatus;
   tenantId?: string;
+  /** Extra duties for a teacher who is also Bursar / Admissions Officer. */
+  staffDuties?: string[];
   schoolLogoUrl?: string | null;
   schoolName?: string | null;
   profilePhotoUrl?: string | null;

@@ -5,8 +5,9 @@
  */
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Upload, X, FileText, Image as ImageIcon, Loader2, Camera, RotateCcw } from 'lucide-react';
+import { Upload, X, FileText, Image as ImageIcon, Loader2, Camera } from 'lucide-react';
 import apiClient from '@lib/apiClient';
+import { CameraCapture, type CameraFacing, type CameraGuide } from './CameraCapture';
 
 /** Convert a data URL to a Blob for multipart upload. */
 function dataUrlToBlob(dataUrl: string): Blob {
@@ -32,10 +33,26 @@ async function uploadToServer(blob: Blob, filename: string, fallbackDataUrl: str
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     const url = res?.data?.url ?? res?.data?.data?.url;
-    return typeof url === 'string' && url.length > 0 ? url : fallbackDataUrl;
+    if (typeof url !== 'string' || url.length === 0) return fallbackDataUrl;
+    // A stored URL this device can't display (blocked cross-origin, a
+    // "localhost" URL opened on a phone, storage down) would save a broken
+    // photo. Keep the image inline instead so it shows everywhere.
+    if (url.startsWith('data:')) return url;
+    return (await imageLoads(url)) ? url : fallbackDataUrl;
   } catch {
     return fallbackDataUrl;
   }
+}
+
+/** True when the browser can actually display the image at `url`. */
+function imageLoads(url: string, timeoutMs = 8000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const timer = setTimeout(() => { img.src = ''; resolve(false); }, timeoutMs);
+    img.onload = () => { clearTimeout(timer); resolve(img.naturalWidth > 0); };
+    img.onerror = () => { clearTimeout(timer); resolve(false); };
+    img.src = url;
+  });
 }
 
 /** Compress image to fit within maxSize pixels and quality */
@@ -114,6 +131,12 @@ interface FileUploaderProps {
   error?: string;
   previewType?: 'image' | 'file'; // how to show preview
   enableCamera?: boolean; // show camera capture option
+  /** Camera to open first. Default: back camera (falls back to the webcam on laptops). */
+  cameraFacing?: CameraFacing;
+  /** Crop for camera shots, width / height. Default 3/4 (passport photo). Use 1 for logos. */
+  cameraAspect?: number;
+  /** Camera overlay: face oval (default), frame (documents/logos) or none. */
+  cameraGuide?: CameraGuide;
   className?: string;
   /**
    * For small images (signatures, stamps, logos), store the compressed image
@@ -141,18 +164,18 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
   error,
   previewType = 'image',
   enableCamera = false,
+  cameraFacing = 'environment',
+  cameraAspect = 3 / 4,
+  cameraGuide = 'face',
   className = '',
   inlineImage = false,
   removeBackground = false,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [cameraActive, setCameraActive] = useState(false);
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   // When an image preview fails to load (e.g. a non-renderable file was uploaded
   // under previewType='image'), fall back to a filename chip instead of a blank box.
   const [imgFailed, setImgFailed] = useState(false);
@@ -214,49 +237,10 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     if (inputRef.current) inputRef.current.value = '';
   };
 
-  // ── Camera Functions ──
-  const startCamera = async () => {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-      });
-      setStream(mediaStream);
-      setCameraActive(true);
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
-          videoRef.current.play();
-        }
-      }, 100);
-    } catch (err) {
-      setUploadError('Camera access denied. Please allow camera permission.');
-    }
-  };
-
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
-    }
-    setCameraActive(false);
-  };
-
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
-        stopCamera();
-        handleUpload(file);
-      }
-    }, 'image/jpeg', 0.85);
+  // ── Camera (shared full-screen CameraCapture) ──
+  const onCameraCapture = (file: File) => {
+    setCameraOpen(false);
+    void handleUpload(file);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -300,49 +284,53 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
               />
             </div>
           ) : (
-            <div className="px-4 py-3 flex items-center gap-3">
+            // Right padding keeps the text clear of the Retake / Remove buttons.
+            <div className="pl-4 pr-24 py-3 flex items-center gap-3 min-h-[56px]">
               <FileText size={20} className="text-blue-500 flex-shrink-0" />
-              <span className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">
-                {value.startsWith('data:') ? 'Uploaded file' : value.split('/').pop()}
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm text-gray-700 dark:text-gray-300 truncate">
+                  {value.startsWith('data:') ? 'Uploaded file' : value.split('/').pop()}
+                </span>
+                {previewType === 'image' && imgFailed && (
+                  <span className="block text-[11px] text-amber-600 dark:text-amber-400">
+                    This image can't be shown. Retake it or upload it again.
+                  </span>
+                )}
               </span>
-              {previewType === 'image' && imgFailed && (
-                <span className="text-[10px] text-amber-600 dark:text-amber-400 flex-shrink-0">Preview unavailable — use a PNG/JPG image</span>
-              )}
             </div>
           )}
-          {/* Remove button */}
-          <button
-            type="button"
-            onClick={handleRemove}
-            className="absolute top-2 right-2 p-1 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/60 transition-colors"
-            title="Remove"
-          >
-            <X size={14} />
-          </button>
+          {/* Retake (camera) + Remove */}
+          <div className="absolute top-2 right-2 flex items-center gap-1.5">
+            {enableCamera && previewType === 'image' && (
+              <button
+                type="button"
+                onClick={() => { setUploadError(null); setCameraOpen(true); }}
+                className="p-2 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/60 transition-colors"
+                title="Retake with camera"
+                aria-label="Retake with camera"
+              >
+                <Camera size={14} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleRemove}
+              className="p-2 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/60 transition-colors"
+              title="Remove"
+              aria-label="Remove file"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
       ) : (
         // Upload zone
         <>
-          {/* Camera view */}
-          {cameraActive ? (
-            <div className="rounded-lg border-2 border-blue-500 overflow-hidden bg-black">
-              <div className="relative aspect-[3/4] max-h-[160px] mx-auto">
-                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                {/* Frame guide overlay */}
-                <div className="absolute inset-2 border border-white/50 rounded pointer-events-none" />
-              </div>
-              <div className="flex items-center justify-center gap-1.5 px-2 py-1.5 bg-gray-900">
-                <button type="button" onClick={capturePhoto} className="flex-1 px-2 py-1 bg-blue-600 text-white text-[10px] font-bold rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-1 min-w-0">
-                  <Camera size={11} /> Capture
-                </button>
-                <button type="button" onClick={stopCamera} className="flex-1 px-2 py-1 bg-gray-700 text-gray-300 text-[10px] font-bold rounded hover:bg-gray-600 transition-colors min-w-0">
-                  Cancel
-                </button>
-              </div>
-              <canvas ref={canvasRef} className="hidden" />
-            </div>
-          ) : (
             <div
+              role="button"
+              tabIndex={0}
+              aria-label={label ? `${label}: ${placeholder}` : placeholder}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click(); } }}
               onClick={() => inputRef.current?.click()}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
@@ -380,19 +368,30 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
                 className="hidden"
               />
             </div>
-          )}
 
           {/* Camera button — below the upload zone */}
-          {enableCamera && !cameraActive && !isUploading && (
+          {enableCamera && !isUploading && (
             <button
               type="button"
-              onClick={startCamera}
-              className="mt-1.5 w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] font-semibold text-gray-600 dark:text-gray-400 hover:border-blue-400 dark:hover:border-blue-600 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              onClick={() => { setUploadError(null); setCameraOpen(true); }}
+              className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:border-blue-400 dark:hover:border-blue-600 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
             >
-              <Camera size={11} /> Use Camera
+              <Camera size={14} /> Take Photo
             </button>
           )}
         </>
+      )}
+
+      {enableCamera && (
+        <CameraCapture
+          open={cameraOpen}
+          onClose={() => setCameraOpen(false)}
+          onCapture={onCameraCapture}
+          facing={cameraFacing}
+          aspect={cameraAspect}
+          guide={cameraGuide}
+          title={label ? `${label}: take a photo` : 'Take a photo'}
+        />
       )}
 
       {displayError && <p className="text-xs text-red-600 dark:text-red-400">{displayError}</p>}

@@ -302,12 +302,16 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   // Helper: Check if user can access resource (has any of required roles)
-  // super_admin always has access to everything
+  // super_admin always has access to everything. A teacher who is also the
+  // Bursar / Admissions Officer (staffDuties) can open those pages too; the
+  // server applies the matching role on those modules.
   canAccess: (requiredRoles) => {
     const { user } = get();
     if (!user) return false;
     if (user.role === 'super_admin') return true;
-    return requiredRoles.includes(user.role);
+    if (requiredRoles.includes(user.role)) return true;
+    const duties = (user as any).staffDuties as UserRole[] | undefined;
+    return Array.isArray(duties) && duties.some((d) => requiredRoles.includes(d));
   },
 }));
 

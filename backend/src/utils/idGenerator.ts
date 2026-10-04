@@ -112,14 +112,28 @@ export async function generateNextId(
       .where(idColumn, 'like', searchPattern)
       .select(idColumn);
 
+    // Only the part AFTER "prefix + year + separator" is the sequence number.
+    // Reading "trailing digits" instead swallowed the year when there is no
+    // separator (TCH + 26 + 0005 → 260005), so every new ID stacked another
+    // year on (TCH26260006, TCH2626260007…).
+    const head = patternBase ? `${patternBase}${separator}` : '';
     for (const rec of records) {
       const val = String(rec[idColumn]);
-      // Extract the trailing digits regardless of separator style
-      const match = val.match(/(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (!isNaN(num) && num > dbMax) dbMax = num;
+      const rest = head && val.startsWith(head) ? val.slice(head.length) : val;
+      const match = rest.match(/^(\d+)$/) || (!head ? rest.match(/(\d+)$/) : null);
+      if (!match) continue;
+      let digits = match[1];
+      // IDs already written by that bug carry the year again in front of the
+      // number (2626 0006). Strip the repeats so they don't inflate the
+      // sequence. A genuine number that long would need 10^(padding+year)
+      // records, so a real sequence is never mistaken for one.
+      if (yearPart && !separator) {
+        while (digits.length >= padding + yearPart.length && digits.startsWith(yearPart)) {
+          digits = digits.slice(yearPart.length);
+        }
       }
+      const num = parseInt(digits, 10);
+      if (!isNaN(num) && num > dbMax) dbMax = num;
     }
   } catch {
     dbMax = 0;

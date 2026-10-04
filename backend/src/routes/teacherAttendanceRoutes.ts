@@ -27,11 +27,15 @@ const requireCurrentRole = (req: Request, ...roles: UserRole[]) => {
   if (!roles.includes(req.user?.role as UserRole)) throw new AppError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS');
 };
 const adminRoles = [UserRole.PRINCIPAL, UserRole.SUPER_ADMIN] as const;
+// Every professional staff member signs in / out here, not only teachers:
+// accountants (Bursar) and admissions officers are employed the same way.
+const STAFF_ROLES = [UserRole.TEACHER, UserRole.ACCOUNTANT, UserRole.ADMISSIONS_OFFICER];
+const STAFF_ROLE_VALUES = STAFF_ROLES.map(String);
 const validComment = (value: unknown) => value == null || (typeof value === 'string' && value.length <= 500);
 const ownTeacher = async (req: Request, tenantId: string) => {
   return db('teachers as t')
     .join('users as u', 'u.id', 't.user_id')
-    .where({ 't.user_id': req.user?.id, 'u.tenant_id': tenantId, 'u.role': 'teacher' })
+    .where({ 't.user_id': req.user?.id, 'u.tenant_id': tenantId }).whereIn('u.role', STAFF_ROLE_VALUES)
     .select('t.id', 'u.status as user_status', 't.status as teacher_status')
     .first();
 };
@@ -48,7 +52,7 @@ router.get('/roster', authorize(...adminRoles), async (req: Request, res: Respon
     // has since left must still appear in that day's history).
     const teachers = await db('teachers as t')
       .join('users as u', 'u.id', 't.user_id')
-      .where({ 'u.tenant_id': tenantId, 'u.role': 'teacher' })
+      .where({ 'u.tenant_id': tenantId }).whereIn('u.role', STAFF_ROLE_VALUES)
       .where((q) => {
         q.where({ 'u.status': 'active', 't.status': 'active' })
           .orWhereExists(
@@ -77,9 +81,9 @@ router.get('/roster', authorize(...adminRoles), async (req: Request, res: Respon
 });
 
 /** A teacher can see only their own attendance history. */
-router.get('/my', authorize(UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/my', authorize(...STAFF_ROLES), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    requireCurrentRole(req, UserRole.TEACHER);
+    requireCurrentRole(req, ...STAFF_ROLES);
     const tenantId = tenantFor(req);
     const teacher = await ownTeacher(req, tenantId);
     if (!teacher) throw new AppError('Teacher profile not found', 404, 'NOT_FOUND');
@@ -105,9 +109,9 @@ router.get('/my', authorize(UserRole.TEACHER), async (req: Request, res: Respons
 });
 
 /** Self check-in can be made once, for the current day, while active. */
-router.post('/check-in', authorize(UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/check-in', authorize(...STAFF_ROLES), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    requireCurrentRole(req, UserRole.TEACHER);
+    requireCurrentRole(req, ...STAFF_ROLES);
     const tenantId = tenantFor(req);
     const teacher = await ownTeacher(req, tenantId);
     if (!teacher || teacher.user_status !== 'active' || teacher.teacher_status !== 'active') {
@@ -147,9 +151,9 @@ router.post('/check-in', authorize(UserRole.TEACHER), async (req: Request, res: 
 });
 
 /** Departure is recorded once against the teacher's own sign-in for today. */
-router.post('/sign-out', authorize(UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/sign-out', authorize(...STAFF_ROLES), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    requireCurrentRole(req, UserRole.TEACHER);
+    requireCurrentRole(req, ...STAFF_ROLES);
     const tenantId = tenantFor(req);
     const teacher = await ownTeacher(req, tenantId);
     if (!teacher || teacher.user_status !== 'active' || teacher.teacher_status !== 'active') {
@@ -187,7 +191,7 @@ router.put('/:teacherId/:date', authorize(...adminRoles), async (req: Request, r
     }
     const teacher = await db('teachers as t')
       .join('users as u', 'u.id', 't.user_id')
-      .where({ 't.id': teacherId, 'u.tenant_id': tenantId, 'u.role': 'teacher' })
+      .where({ 't.id': teacherId, 'u.tenant_id': tenantId }).whereIn('u.role', STAFF_ROLE_VALUES)
       .select('t.id').first();
     if (!teacher) throw new AppError('Teacher not found', 404, 'NOT_FOUND');
     if (await isPastYearDate(tenantId, date)) {

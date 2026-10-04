@@ -43,6 +43,7 @@ const STRUCTURAL_PREFIXES = [
   '/api/v1/enrollments',
   '/api/v1/admissions',
   '/api/v1/teachers',
+  '/api/v1/staff',
   '/api/v1/subjects',
   '/api/v1/timetable',
   '/api/v1/fee-structures',

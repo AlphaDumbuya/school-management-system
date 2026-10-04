@@ -67,6 +67,7 @@ import PaymentsPage from '@pages/finance/PaymentsPage';
 import ExpensesPage from '@pages/finance/ExpensesPage';
 import MyFeesPage from '@pages/finance/MyFeesPage';
 import TeachersPage from '@pages/staff/TeachersPage';
+import NonTeachingStaffPage from '@pages/staff/NonTeachingStaffPage';
 // SMS & WhatsApp module removed — in-app communication (Announcements + Support)
 // replaces this feature in V1.
 
@@ -310,8 +311,9 @@ const router = createBrowserRouter(
           element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'parent', 'student']}><AttendancePage /></P>,
         },
         {
+          // Staff sign-in / sign-out: every professional staff member.
           path: 'staff/attendance',
-          element: <P requiredRoles={['principal', 'super_admin', 'teacher']}><AttendancePage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'teacher', 'accountant', 'admissions_officer']}><AttendancePage /></P>,
         },
         {
           path: 'discipline',
@@ -324,8 +326,9 @@ const router = createBrowserRouter(
           element: <P requiredRoles={['principal', 'super_admin']}><TeachersPage /></P>,
         },
         {
+          // Non-teaching staff: accountants and admissions officers.
           path: 'staff/members',
-          element: <P requiredRoles={['principal', 'super_admin']}><V2Route><CS /></V2Route></P>,
+          element: <P requiredRoles={['principal', 'super_admin']}><G feature="Non-Teaching Staff"><NonTeachingStaffPage /></G></P>,
         },
         {
           path: 'staff/leave',

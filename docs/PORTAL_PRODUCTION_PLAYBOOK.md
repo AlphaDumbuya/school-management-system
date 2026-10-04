@@ -85,6 +85,7 @@ other classes, every affected portal updates by itself. No re-login, no manual f
 - [ ] Teacher given a new class: it shows up on the next load, with no re-login needed.
 - [ ] Offline teacher app: after a sync, reassigned classes are added or removed from the local cache, and queued writes for a class they no longer teach are rejected with a clear message.
 - [ ] **Staff role changes** (teacher → principal/accountant/admissions, designation such as HOD or Form Master, demotion): the portal switches within one live-sync tick (`useLiveSync` → `refreshUser` → cache cleared → `ProtectedRoute` sends them to their new dashboard). The **server** authorises on the live DB role, never the token's: a demoted user loses access on their next request, not when the 30-minute token expires.
+- [x] **Teacher + duty** (a form or subject teacher who is also the Bursar or Admissions Officer): `users.staff_duties` (`['accountant']`, `['admissions_officer']` or both). The main role stays `teacher`, so their classes, registers and teacher scoping never change. On the duty's own API modules (`dutyForPath` in `utils/staffDuties.ts`: finance prefixes, `/students/:id/fees…`, admissions, enrollments, their dashboards) the request **acts as that role**, and `authorize()` also lets a duty through when the main role isn't allowed. Anywhere else the main role applies. `/auth/me` returns `staffDuties`, `canAccess` honours them, and the sidebar adds "Finance Overview" / "Admissions Overview". Adding or removing a duty is live on the next request (it's read from the DB, like the role). A new finance or admissions API module must be added to `dutyForPath`'s prefixes, or duty holders get 403 there.
 - [ ] Every write that changes membership or roles is under a `STRUCTURAL_PREFIXES` route (`utils/liveSync.ts`), so open apps refetch. A new route that moves people must be added there.
 - [ ] Verify once per portal with a real promotion: promote a test student on Promotions, then reload each student, parent and teacher page without logging out.
 
@@ -161,6 +162,7 @@ other classes, every affected portal updates by itself. No re-login, no manual f
 | Drafts visible to everyone | School events | `drafts_only_by` + 404 on detail |
 | Case-sensitive email uniqueness | Profile update | Lower-case + `LOWER(email)` check |
 | Settings card showing defaults to non-admins | Display Settings | Render admin-only |
+| "Trailing digits" read the year as part of the number | `generateNextId` with no separator: TCH260005 → TCH26260006 → TCH2626260007 (students/admissions too) | Parse only after `prefix + year + separator`; strip repeated years from already-bad IDs |
 
 ---
 
@@ -437,7 +439,8 @@ Student-specific things to probe:
 | Order | Portal | Status |
 |---|---|---|
 | 1 | Student | ✅ done (pushed `f89a75d`) |
-| 2 | Parent | ✅ done (uncommitted) |
+| 2 | Parent | ✅ done (pushed `036435a`) |
+| — | Staff onboarding (prerequisite for 3 and 4) | ✅ done (see below) |
 | 3 | Accountant (finance) | next |
 | 4 | Admissions | last |
 
@@ -471,6 +474,24 @@ Parent-specific things to probe:
 - **Fees:** each child's invoices and balances are kept apart; Pay goes to the right invoice and the school's Monime account; receipts; a failed or cancelled payment is shown clearly.
 - Only published results, report cards and events. Announcements addressed to parents or the child's class only.
 - `guardian` is a legacy alias of `parent`: both must behave the same.
+
+### Staff onboarding — ✅ done & verified (before Accountant and Admissions)
+
+Before this, a school had no way to hire an accountant or admissions officer,
+other than giving a teacher the Bursar/Administrator designation.
+
+- **Professional staff share one hiring flow.** Teachers, accountants (Bursar) and admissions officers all go through **Add Staff Member** (`TeacherFormModal`) and live in one directory, **Teaching & Admin Staff** (`/staff/teachers`). They have the same `users` + `teachers` record, staff ID, full profile (qualifications, experience, hire date, employment type, photo) and temporary password. The form's **Job** checkboxes are Teaching / Accountant (Bursar) / Admissions Officer:
+  - Teaching ticked → `primary_role:'teacher'`, plus `staff_duties` for any other job ticked (teacher + duty, §2.3a). Class, subject and form-class fields show only when Teaching is ticked.
+  - Teaching not ticked → exactly one job, which becomes the role (`accountant` → designation `bursar`; `admissions_officer` → `administrator`). No classes are linked, even if the client sends them.
+  - Editing can switch jobs (accountant ↔ teacher) or add/remove duties; the person is notified and their portal switches live.
+- The directory has a **staff type** filter (`?staff_type=teaching|accountant|admissions_officer|leadership`; accountant and admissions include teachers holding that duty) and a Job badge per row.
+- **Support staff** (security, cleaners, cooks, drivers, gardeners, maintenance): easy onboarding with no login, in the `support_staff` table (migration 163), page **Support Staff** (`/staff/members`, `/api/v1/staff`, principal only). Staff IDs are `SUP-0001`…; each record has a job type, phone, emergency contact, photo and status.
+- **Staff Attendance** covers every professional staff role (`STAFF_ROLES` in `teacherAttendanceRoutes.ts`). Accountants and admissions officers get only the self sign-in tab.
+- **Promote & Assign** uses the same job checkboxes (shared `StaffJobPicker.tsx`): add Bursar/Admissions on top of teaching, or untick Teaching to make it their full-time job (their form class and current-year lessons are dropped, with a warning). Bursar/Administrator are no longer offered as teaching titles. Verified: teacher → teacher + `['accountant']` keeps the lesson; → full-time admissions officer gets `administrator` and 0 lessons.
+- **Shared camera** (`components/admin/forms/CameraCapture.tsx`, used by every `FileUploader enableCamera`): full screen, opens on the back camera with a Flip button (falls back to cycling lenses), a lens picker, flash and zoom where supported, a self-timer, a passport-crop face oval (logo: square frame), a rule-of-thirds grid, and a live level from the motion sensor. The capture is auto-straightened by the phone's tilt, with a Straighten slider in the review; the saved photo matches the review exactly (including front-camera mirroring). Clear permission/no-camera errors with a "Camera app" fallback. Android manifest now declares `CAMERA` (optional feature). `/storage` sends `Cross-Origin-Resource-Policy: cross-origin` (helmet blocked uploaded photos from showing), and the uploader keeps the photo inline if the stored URL can't be displayed.
+- Migrations: `162_users_staff_duties` (`users.staff_duties jsonb default []`), `163_support_staff`.
+- **Fixed on the way:** `generateNextId` read the year as part of the number when there was no separator, so every new staff/student/admission ID repeated the year (`TCH26260006`, `TCH2626260007`). It now parses only the sequence after the prefix and year, and reads already-bad IDs correctly.
+- **Verified** (scratch HTTP on real data, rows deleted afterwards): a full-time accountant → role accountant, designation bursar, 0 classes, ID `TCH260006`; an admissions officer → `administrator`; a teacher with `['accountant','bogus']` → `['accountant']`. Directory filters return the right people. Access: the accountant and the teacher + Bursar get fee structures and the accountant dashboard → 200; the admissions officer, and the teacher once the duty is switched to admissions, → 403 on finance and 200 on admissions; a plain teacher → 403 on both. `/auth/me` returns `staffDuties`. An accountant can sign in on Staff Attendance (201). Support staff: create `SUP-0001`, edit, list with per-job stats, 400 on a missing name, a teacher → 403.
 
 ### Accountant (finance) — after Parent (work order)
 
