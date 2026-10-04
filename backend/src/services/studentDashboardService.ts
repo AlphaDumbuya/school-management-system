@@ -48,7 +48,18 @@ class StudentDashboardService {
     return row ?? null;
   }
 
-  async getDashboard(userId: string, tenantId: string, requestedYear?: string | null): Promise<any> {
+  /**
+   * One year of a student's portal data. Normally resolved from the student's
+   * own login (`userId`). The parent portal passes `opts.studentId` (already
+   * verified as their child) to get exactly the same year-, multi-class-,
+   * promotion- and graduation-aware view for each child.
+   */
+  async getDashboard(
+    userId: string,
+    tenantId: string,
+    requestedYear?: string | null,
+    opts: { studentId?: string; fullAttendance?: boolean } = {},
+  ): Promise<any> {
     try {
       const { yearString: activeYear } = await resolveActiveYear(tenantId);
       const wanted = normalizeAcademicYear(requestedYear || '') || activeYear;
@@ -57,7 +68,9 @@ class StudentDashboardService {
       const viewingPast = !!session && !session.is_active;
       const yearMeta = { academic_year: wanted, active_year: activeYear, viewing_past: viewingPast, year_exists: !!session };
 
-      const student = await this.getStudent(userId, tenantId);
+      const student = opts.studentId
+        ? await db('students').where({ id: opts.studentId, tenant_id: tenantId }).first()
+        : await this.getStudent(userId, tenantId);
       if (!student) {
         return {
           ...yearMeta,
@@ -166,7 +179,8 @@ class StudentDashboardService {
       const totalAtt = present + excused + late + absent;
       const attendanceRate = totalAtt > 0 ? Math.round(((present + excused + late) / totalAtt) * 100) : 0;
 
-      const recentAttendance = (attendanceRows as any[]).slice(0, 10).map((a) => ({
+      // The dashboard shows the latest 10; the parent's attendance page wants the year's full list.
+      const recentAttendance = (opts.fullAttendance ? (attendanceRows as any[]) : (attendanceRows as any[]).slice(0, 10)).map((a) => ({
         id: a.id,
         date: a.attendance_date,
         status: (a.status || '').toLowerCase(),

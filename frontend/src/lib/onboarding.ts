@@ -768,14 +768,128 @@ const STUDENT: RoleGuide = {
 
 const PARENT: RoleGuide = {
   headline: 'Welcome — follow your children’s progress',
-  intro: 'Monitor attendance, grades and fees for each of your children.',
+  intro:
+    'Follow each of your children at school: their class and timetable, homework, exams, results, report cards, attendance and fees. You see only your own children, and everything is read-only. Teachers and the school office keep it up to date.',
+
+  // ── First-login walkthrough (also "Replay walkthrough") ──
   steps: [
-    { title: 'Select a child', body: 'Switch between your children to see their individual progress.', route: '/parent/dashboard', routeLabel: 'My Dashboard' },
-    { title: 'Review grades & attendance', body: 'See published results and attendance trends per child.', route: '/parent/dashboard', routeLabel: 'Overview' },
-    { title: 'Pay fees', body: 'View outstanding balances and pay securely online.', route: '/parent/dashboard', routeLabel: 'Fees' },
+    {
+      title: 'Start on your Overview',
+      body: 'Your dashboard shows every child you’re linked to, with their class, attendance, average score and fees for the year. Tap a child to see their details. Use the year picker at the top to look back at an earlier year.',
+      route: '/parent/dashboard',
+      routeLabel: 'Open my Overview',
+    },
+    {
+      title: 'One child at a time',
+      body: 'If you have more than one child at the school, every page has a child switcher. Each child is shown in their own class, so siblings in different classes are never mixed.',
+      route: '/parent/dashboard',
+      routeLabel: 'Overview',
+    },
+    {
+      title: 'Timetable, homework and exams',
+      body: 'Timetables shows your child’s week, Assignments lists the homework their teachers set (with due dates and whether it was handed in), and Exam Timetable shows when each exam is.',
+      route: '/academic/assignments',
+      routeLabel: 'Assignments',
+    },
+    {
+      title: 'Results and report cards',
+      body: 'Results & Grades shows Test 1, Test 2 and the mean per subject, and where your child ranks in their class. Report Cards shows the full booklet to view or print. Both appear only after the school releases them for the term.',
+      route: '/academic/results',
+      routeLabel: 'Results & Grades',
+    },
+    {
+      title: 'Attendance',
+      body: 'Attendance shows when your child arrived and left school today, and their full record for the year: present, late, excused or absent.',
+      route: '/students/attendance',
+      routeLabel: 'Attendance',
+    },
+    {
+      title: 'Fees and paying online',
+      body: 'Fees & Payments shows what was billed, what’s paid and what’s still owed for each child, per year and term. Money owed from an earlier year still has to be paid. Pay online with the Pay button when your school has it switched on.',
+      route: '/finance/my-fees',
+      routeLabel: 'Fees & Payments',
+    },
+    {
+      title: 'Secure your account',
+      body: 'Change your password, turn on two-factor authentication and add a passkey for quick sign-in.',
+      route: '/settings?tab=security',
+      routeLabel: 'Open Security',
+    },
   ],
+
+  setupTitle: 'Staying involved',
+  setupIntro: 'What to check, and when.',
+  setupOrder: [
+    {
+      order: 1,
+      title: 'Every school day',
+      why: 'Know your child got to school, and what’s due.',
+      tasks: [
+        { label: 'See today’s arrival and departure', route: '/students/attendance', routeLabel: 'Attendance' },
+        { label: 'Check homework due', route: '/academic/assignments', routeLabel: 'Assignments' },
+        { label: 'Read new announcements', route: '/communication/announcements', routeLabel: 'Announcements' },
+      ],
+    },
+    {
+      order: 2,
+      title: 'Around exams',
+      why: 'Help them prepare, then see how they did.',
+      tasks: [
+        { label: 'Check the exam timetable', route: '/academic/exam-timetable', routeLabel: 'Exam Timetable' },
+        { label: 'View released results and class position', route: '/academic/results', routeLabel: 'Results & Grades' },
+        { label: 'Open or print the report card', route: '/academic/report-cards', routeLabel: 'Report Cards' },
+      ],
+    },
+    {
+      order: 3,
+      title: 'Each term',
+      why: 'Keep fees clear and know what’s coming up.',
+      tasks: [
+        { label: 'Check and pay fees for each child', route: '/finance/my-fees', routeLabel: 'Fees & Payments' },
+        { label: 'See upcoming school events', route: '/events/calendar', routeLabel: 'Calendar' },
+      ],
+    },
+  ],
+
+  keyRules: [
+    {
+      title: 'Only your own children',
+      body: 'You only ever see the children linked to your account, and only their own records. If a child is missing, ask the school office to link them.',
+    },
+    {
+      title: 'Each child in their own class',
+      body: 'Every page is for one child at a time. Brothers and sisters in different classes, or at different stages, each show their own timetable, homework, results and fees.',
+    },
+    {
+      title: 'One year at a time',
+      body: 'Pages open on the current academic year. Pick an earlier year to look back. When a child is promoted, their pages move to the new class by themselves, and last year stays available as history.',
+    },
+    {
+      title: 'Moving up a stage',
+      body: 'Finishing Nursery 3, Class 6 or JSS 3 moves a child up to Class 1, JSS 1 or SSS 1 at the same school. Finishing SSS 3 means they’ve graduated; their past years stay available.',
+    },
+    {
+      title: 'Results appear when released',
+      body: 'Teachers enter scores during the term, but you only see them after the school releases that term’s results.',
+    },
+  ],
+
   sections: [
-    { id: 'overview', title: 'Children Overview', icon: 'Users', intro: 'Aggregate and per-child insights.', points: ['Attendance and grades per child.', 'Outstanding fees and online payment.'], route: '/parent/dashboard', routeLabel: 'Dashboard' },
+    { id: 'overview', title: 'Overview', icon: 'Users', intro: 'All your children at a glance.', points: ['Each child’s class this year (both, if they moved up mid-year).', 'Attendance, average score and fees per child.', 'A clear notice for any fees still owed from earlier years.'], route: '/parent/dashboard', routeLabel: 'Overview' },
+    { id: 'academics', title: 'Subjects, Timetable & Assignments', icon: 'BookOpen', intro: 'What your child studies and what’s due.', points: ['Subjects and the weekly timetable for their class.', 'Homework with due dates, whether it was handed in, and the mark.'], route: '/academic/assignments', routeLabel: 'Assignments' },
+    { id: 'results', title: 'Exams, Results & Report Cards', icon: 'BarChart2', intro: 'How your child is doing.', points: ['Exam dates per term.', 'Released results, subject rank and class position.', 'The full report-card booklet, printable.'], route: '/academic/results', routeLabel: 'Results & Grades' },
+    { id: 'attendance', title: 'Attendance', icon: 'ClipboardCheck', intro: 'Arrival, departure and the full record.', points: ['Today’s check-in and check-out times.', 'Present, late, excused and absent days for the year.'], route: '/students/attendance', routeLabel: 'Attendance' },
+    { id: 'fees', title: 'Fees & Payments', icon: 'Wallet', intro: 'Billed, paid and owed, per child.', points: ['Per year and term, in Leones (Le).', 'Total owed across all your children.', 'Pay online when your school has it switched on.'], route: '/finance/my-fees', routeLabel: 'Fees & Payments' },
+    { id: 'news', title: 'Announcements & Events', icon: 'Calendar', intro: 'What’s happening at school.', points: ['Announcements for parents and for your child’s class.', 'Published school events and the calendar.'], route: '/communication/announcements', routeLabel: 'Announcements' },
+    { id: 'account', title: 'Settings & Help', icon: 'Settings', intro: 'Your account and getting help.', points: ['Change your password; turn on two-factor sign-in or a passkey.', 'Support: help articles, or contact the school office.'], route: '/settings', routeLabel: 'Settings' },
+  ],
+
+  faqs: [
+    { q: 'One of my children is missing.', a: 'Each child has to be linked to your account by the school. Ask the school office to link them; they appear on your next visit.' },
+    { q: 'My child moved up a class. Where is last year?', a: 'Their pages move to the new class automatically. Pick last year in the year picker to see the old class, results, attendance and fees.' },
+    { q: 'Why can’t I see this term’s results yet?', a: 'Results appear only after the school releases them for the term. Until then they’re a draft that only teachers and the principal can see.' },
+    { q: 'Why does it say I still owe fees from last year?', a: 'Unpaid fees from an earlier year don’t disappear in a new year. They’re shown separately, named by child and year, and you can pay them with the Pay button.' },
+    { q: 'I forgot my password.', a: 'Use “Forgot password” on the sign-in page, or ask the school office to reset it. You can change it any time in Settings.' },
   ],
 };
 

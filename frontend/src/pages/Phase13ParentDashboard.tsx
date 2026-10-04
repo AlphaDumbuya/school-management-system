@@ -24,7 +24,9 @@ import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 import useAuthStore from '@store/authStore';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
-import { parentDashboardService } from '@services/parentDashboardService';
+import { parentDashboardService, type ParentChildSummary } from '@services/parentDashboardService';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import { PayFeesButton } from '@components/finance/PayFeesButton';
 import { StudentLedgerView } from '@components/finance/StudentLedgerView';
 import { AttendanceTimeDetails } from '@components/attendance/AttendanceTimeDetails';
@@ -46,6 +48,16 @@ function fmtMoney(n: number | string | undefined): string {
   return `Le ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const TERM_LABEL: Record<string, string> = { first_term: 'First Term', second_term: 'Second Term', third_term: 'Third Term' };
+
+/** A DATE value as its calendar day (no timezone shift). */
+function fmtDay(d?: string): string {
+  if (!d) return '—';
+  const ymd = String(d).slice(0, 10);
+  const dt = /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? new Date(`${ymd}T00:00:00`) : new Date(d);
+  return Number.isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 function cap(s?: string): string {
   if (!s) return '';
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -59,25 +71,46 @@ export const Phase13ParentDashboard: React.FC = () => {
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
-  const { data: dashResp, isLoading, error, refetch } = useQuery({
-    queryKey: ['parent-dashboard'],
-    queryFn: () => parentDashboardService.getDashboard(),
+  // One academic year at a time ('' = current, follows a rollover). Every
+  // child is resolved on its own for that year: siblings can be in different
+  // classes, promoted mid-year, graduated, or not yet moved into the new year.
+  const { activeYear } = useAcademicYears();
+  const [pickedYear, setPickedYear] = useState('');
+  const year = pickedYear || activeYear;
+  const viewingPast = !!year && !!activeYear && year !== activeYear;
+  const changeYear = (y: string) => setPickedYear(!y || y === activeYear ? '' : y);
+
+  const { data: dashResp, isLoading, isFetching, error, refetch } = useQuery({
+    queryKey: ['parent-dashboard', year],
+    queryFn: () => parentDashboardService.getDashboard(year),
+    enabled: !!year,
     staleTime: 60_000,
   });
 
+  // apiClient never throws: a failed load comes back as success:false.
+  const loadError: string | null = error
+    ? String((error as Error)?.message || error)
+    : (dashResp as any)?.success === false ? ((dashResp as any)?.error || 'Could not load your dashboard') : null;
   const dash = (dashResp as any)?.data ?? (dashResp as any);
-  const children = dash?.children ?? [];
+  const children: ParentChildSummary[] = loadError ? [] : (dash?.children ?? []);
   const stats = dash?.stats ?? { total_children: 0, total_outstanding: 0, average_attendance: 0, average_grade: 0 };
 
-  const currentChildId = selectedChildId || children[0]?.id || '';
+  // Keep the selected child across year switches; fall back to the first.
+  const currentChildId = (selectedChildId && children.some((c) => c.id === selectedChildId)) ? selectedChildId : (children[0]?.id || '');
+  const currentChild = children.find((c) => c.id === currentChildId) ?? null;
 
   const { data: childResp, isLoading: childLoading } = useQuery({
-    queryKey: ['parent-child-detail', currentChildId],
-    queryFn: () => parentDashboardService.getChildDetail(currentChildId),
-    enabled: !!currentChildId,
+    queryKey: ['parent-child-detail', currentChildId, year],
+    queryFn: () => parentDashboardService.getChildDetail(currentChildId, year),
+    enabled: !!currentChildId && !!year,
     staleTime: 60_000,
   });
-  const detail = (childResp as any)?.data ?? (childResp as any);
+  const childError: string | null = (childResp as any)?.success === false ? ((childResp as any)?.error || "Couldn't load this child's details") : null;
+  const detail = childError ? null : ((childResp as any)?.data ?? (childResp as any));
+  const childFirst = (currentChild?.name || '').split(' ')[0] || 'Your child';
+  // Every class this child had in the selected year (newest first).
+  const childYearClasses: string[] = Array.from(new Set<string>((detail?.year_classes ?? []).map((c: any) => c.name)));
+  const multiClass = new Set((detail?.grades ?? []).map((g: any) => g.class_id || g.class_name)).size > 1;
 
   const profile = detail?.profile ?? null;
   const grades = detail?.grades ?? [];
@@ -100,9 +133,11 @@ export const Phase13ParentDashboard: React.FC = () => {
 
   // ── Chart data ─────────────────────────────────────────────────────────
   // Per-child comparison across all the parent's children.
+  // Only children who were at school in this year (a graduated child or one
+  // not enrolled that year would show as a misleading 0%).
   const childCompareData = useMemo(
     () =>
-      (children as any[]).map((c) => ({
+      (children as any[]).filter((c) => c.enrolled_in_year !== false).map((c) => ({
         name: (c.name || '').split(' ')[0] || c.name,
         fullName: c.name,
         attendance: Number(c.attendance_rate) || 0,
@@ -146,7 +181,7 @@ export const Phase13ParentDashboard: React.FC = () => {
     }));
   }, [grades]);
 
-  if (isLoading) {
+  if (isLoading || !year) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center py-24 text-gray-500">
@@ -156,19 +191,38 @@ export const Phase13ParentDashboard: React.FC = () => {
     );
   }
 
-  if (error) {
+  if (loadError) {
     return (
       <MainLayout>
         <div className="py-16">
-          <EmptyState message="Couldn't load dashboard" description="There was a problem fetching your data. Please refresh and try again." />
+          <EmptyState
+            message="Couldn't load dashboard"
+            description={loadError !== 'error' ? loadError : 'There was a problem fetching your data. Please refresh and try again.'}
+            action={{ label: 'Try again', onClick: () => refetch() }}
+          />
         </div>
       </MainLayout>
     );
   }
 
+  /** One child's place in the selected year, for the switcher chip. */
+  const childStatus = (c: ParentChildSummary): string => {
+    if (c.year_classes && c.year_classes.length > 1) return [...c.year_classes].reverse().map((x) => x.name).join(' → ');
+    if (c.class_name) return c.class_name;
+    if (c.pending_transition) return `${c.pending_transition.className} (moving up)`;
+    if (c.graduated) return '🎓 Graduated';
+    return `Not enrolled in ${year}`;
+  };
+
   return (
     <MainLayout>
-      <PageShell title="Parent Portal" subtitle="Monitor your children's progress" onRefresh={() => refetch()} isRefreshing={isLoading}>
+      <PageShell
+        title="Parent Portal"
+        subtitle={`Your children's progress · ${year}`}
+        onRefresh={() => refetch()}
+        isRefreshing={isFetching}
+        actions={<YearFilter value={year} onChange={changeYear} noAutoSelect />}
+      >
         <WelcomeHero
           firstName={user?.firstName ?? (user as any)?.first_name}
           role="parent"
@@ -182,12 +236,48 @@ export const Phase13ParentDashboard: React.FC = () => {
           />
         ) : (
           <>
-            {/* Aggregate KPIs */}
+            {viewingPast && (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+                <span>Showing <strong>{year}</strong> as history: each child's class, results, attendance and fees for that year.</span>
+                <button type="button" onClick={() => changeYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">Back to {activeYear}</button>
+              </div>
+            )}
+            {/* Unpaid fees from earlier years, named per child. */}
+            {!viewingPast && Number(stats.other_years_outstanding) > 0 && (
+              <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                <span className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                  <span>
+                    You still owe <strong>{fmtMoney(stats.other_years_outstanding)}</strong> in fees from earlier years:{' '}
+                    {children.filter((c) => Number(c.other_years_outstanding) > 0).map((c) =>
+                      `${c.name.split(' ')[0]} ${fmtMoney(c.other_years_outstanding)} (${(c.other_years ?? []).map((o) => o.academic_year).join(', ')})`,
+                    ).join('; ')}. These balances must still be paid.
+                  </span>
+                </span>
+                <button type="button" onClick={() => navigate('/finance/my-fees')} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 px-3 py-1.5 text-xs font-bold text-white">
+                  <CreditCard size={13} /> Pay now
+                </button>
+              </div>
+            )}
+
+            {/* Aggregate KPIs (selected year; averages over children at school that year) */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <KPICard title="Children" value={String(stats.total_children)} icon={<Users className="w-5 h-5" />} color="blue" />
+              <KPICard
+                title="Children"
+                value={String(stats.total_children)}
+                icon={<Users className="w-5 h-5" />}
+                color="blue"
+                subtitle={stats.children_in_year != null && stats.children_in_year !== stats.total_children ? `${stats.children_in_year} at school in ${year}` : undefined}
+              />
               <KPICard title="Avg Attendance" value={`${stats.average_attendance}%`} icon={<Calendar className="w-5 h-5" />} color={stats.average_attendance >= 85 ? 'green' : 'amber'} />
               <KPICard title="Avg Score" value={stats.average_grade ? `${stats.average_grade}%` : '—'} icon={<TrendingUp className="w-5 h-5" />} color="purple" />
-              <KPICard title="Total Outstanding" value={fmtMoney(stats.total_outstanding)} icon={<DollarSign className="w-5 h-5" />} color={stats.total_outstanding > 0 ? 'amber' : 'green'} />
+              <KPICard
+                title={`Outstanding · ${year}`}
+                value={fmtMoney(stats.total_outstanding)}
+                icon={<DollarSign className="w-5 h-5" />}
+                color={stats.total_outstanding > 0 ? 'amber' : 'green'}
+                subtitle={Number(stats.other_years_outstanding) > 0 ? `Plus ${fmtMoney(stats.other_years_outstanding)} from earlier years` : undefined}
+              />
             </div>
 
             {/* Multi-child comparison — only meaningful with 2+ children */}
@@ -220,14 +310,16 @@ export const Phase13ParentDashboard: React.FC = () => {
 
             {/* School & class announcements (scoped to this parent's children) */}
             <div className="mt-6">
-              <AnnouncementsWidget limit={4} title="School & Class Announcements" />
+              <AnnouncementsWidget limit={4} title={viewingPast ? `Announcements · ${year}` : 'School & Class Announcements'} academicYear={year} />
             </div>
 
-            {/* Child selector */}
-            <div className="flex gap-2 overflow-x-auto mt-6 pb-1">
-              {children.map((c: any) => (
+            {/* Child selector: each child's own place in the selected year */}
+            <div className="flex gap-2 overflow-x-auto mt-6 pb-1" role="group" aria-label="Choose a child">
+              {children.map((c) => (
                 <button
                   key={c.id}
+                  type="button"
+                  aria-pressed={currentChildId === c.id}
                   onClick={() => { setSelectedChildId(c.id); setActiveTab('overview'); }}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
                     currentChildId === c.id
@@ -239,7 +331,7 @@ export const Phase13ParentDashboard: React.FC = () => {
                     ? <img src={c.photo_url} alt="" className="w-6 h-6 rounded-full object-cover" />
                     : <UserCircle2 className="w-6 h-6" />}
                   <span className="font-medium">{c.name}</span>
-                  {c.class_name && <span className="text-xs text-gray-400">· {c.class_name}</span>}
+                  <span className="text-xs text-gray-400">· {childStatus(c)}</span>
                 </button>
               ))}
             </div>
@@ -248,10 +340,30 @@ export const Phase13ParentDashboard: React.FC = () => {
               <div className="flex items-center justify-center py-16 text-gray-500">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
               </div>
+            ) : childError ? (
+              <div className="py-12"><EmptyState message="Couldn't load this child" description={childError} /></div>
             ) : !profile ? (
               <div className="py-12"><EmptyState message="Select a child to view details" /></div>
             ) : (
               <>
+                {/* This child's place in the selected year */}
+                {detail?.graduated && !detail?.enrolled_in_year && !viewingPast ? (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
+                    🎓 <strong>{childFirst} graduated</strong> from {detail.graduated.className}{detail.graduated.year ? ` in ${detail.graduated.year}` : ''}. Pick an earlier year above to see their results, attendance and fees.
+                  </div>
+                ) : detail?.pending_transition && !viewingPast ? (
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                    <strong>{activeYear} is being set up.</strong> {childFirst} is still listed in {detail.pending_transition.className} ({detail.pending_transition.fromYear}). Their new class, timetable and results appear once the school moves them into {activeYear}.
+                  </div>
+                ) : detail && !detail.enrolled_in_year ? (
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300">
+                    {viewingPast ? `${childFirst} wasn’t in a class at this school in ${year}.` : `${childFirst} hasn’t been placed in a class for ${year} yet. Please check with the school office.`}
+                  </div>
+                ) : childYearClasses.length > 1 ? (
+                  <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+                    {childFirst} moved up during {year}: {[...childYearClasses].reverse().join(' → ')}. Results show the class each was recorded in.
+                  </div>
+                ) : null}
                 {/* Per-child header + tabs */}
                 <div className="border-b border-gray-200 dark:border-gray-800 mt-6">
                   <div className="flex gap-2 sm:gap-4 overflow-x-auto">
@@ -294,9 +406,9 @@ export const Phase13ParentDashboard: React.FC = () => {
                         </div>
                       </div>
 
-                      {!detail?.results_published && (
+                      {detail?.enrolled_in_year && !detail?.results_published && (
                         <div className="flex items-center gap-2 p-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 text-sm text-amber-700 dark:text-amber-400">
-                          <AlertTriangle size={16} /> Results for {profile.name} have not been published yet.
+                          <AlertTriangle size={16} /> No results have been released for {profile.name} in {year} yet.
                         </div>
                       )}
 
@@ -425,23 +537,24 @@ export const Phase13ParentDashboard: React.FC = () => {
                           <div className="flex items-center justify-between gap-3 flex-wrap">
                             <CardTitle className="text-base flex items-center gap-2">
                               <GraduationCap className="w-4 h-4" /> Results
-                              {profile?.academic_year && (
-                                <span className="ml-1 inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 text-[11px] font-bold">
-                                  Current year: {profile.academic_year}
-                                </span>
-                              )}
+                              <span className="ml-1 inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 text-[11px] font-bold">
+                                {year}{viewingPast ? '' : ' (current)'}
+                              </span>
                             </CardTitle>
                             <button
+                              type="button"
                               onClick={() => navigate('/academic/report-cards')}
                               className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
                             >
-                              <Clock size={13} /> View previous years
+                              <Clock size={13} /> Open report cards
                             </button>
                           </div>
                         </CardHeader>
                         <CardContent>
-                          {!detail?.results_published ? (
-                            <p className="text-sm text-gray-500 py-6 text-center">Results for {profile?.academic_year || 'this year'} have not been published yet.</p>
+                          {!detail?.enrolled_in_year ? (
+                            <p className="text-sm text-gray-500 py-6 text-center">{childFirst} had no class in {year}. Pick another year above.</p>
+                          ) : !detail?.results_published ? (
+                            <p className="text-sm text-gray-500 py-6 text-center">No results have been released for {childFirst} in {year} yet. Only results the school releases are shown.</p>
                           ) : grades.length === 0 ? (
                             <p className="text-sm text-gray-500 py-6 text-center">No results recorded.</p>
                           ) : (
@@ -450,6 +563,7 @@ export const Phase13ParentDashboard: React.FC = () => {
                                 <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
                                   <tr className="text-white">
                                     <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Subject</th>
+                                    {multiClass && <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Class</th>}
                                     <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Term</th>
                                     <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Test 1</th>
                                     <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Test 2</th>
@@ -470,7 +584,8 @@ export const Phase13ParentDashboard: React.FC = () => {
                                         }`}
                                       >
                                         <td className="px-4 py-3.5 font-medium text-gray-900 dark:text-gray-100">{g.subject_name}</td>
-                                        <td className="px-4 py-3.5 text-gray-500">{g.term}</td>
+                                        {multiClass && <td className="px-4 py-3.5 text-xs text-gray-600 dark:text-gray-300">{g.class_name || '—'}</td>}
+                                        <td className="px-4 py-3.5 text-gray-500">{TERM_LABEL[g.term] || g.term}</td>
                                         <td className="px-4 py-3.5 text-center text-gray-700 dark:text-gray-300">{g.test1 ?? '—'}</td>
                                         <td className="px-4 py-3.5 text-center text-gray-700 dark:text-gray-300">{g.test2 ?? '—'}</td>
                                         <td className="px-4 py-3.5 text-center">
@@ -555,10 +670,12 @@ export const Phase13ParentDashboard: React.FC = () => {
                       )}
 
                       <Card>
-                        <CardHeader><CardTitle className="text-base">Recent Attendance</CardTitle></CardHeader>
+                        <CardHeader><CardTitle className="text-base">Attendance · {year}</CardTitle></CardHeader>
                         <CardContent>
                           {attendance.records.length === 0 ? (
-                            <p className="text-sm text-gray-500 py-6 text-center">No attendance records yet.</p>
+                            <p className="text-sm text-gray-500 py-6 text-center">
+                              {!detail?.enrolled_in_year ? `${childFirst} had no class in ${year}.` : `No attendance recorded for ${childFirst} in ${year} yet.`}
+                            </p>
                           ) : (
                             <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
                               <table className="w-full text-sm text-left">
@@ -587,7 +704,7 @@ export const Phase13ParentDashboard: React.FC = () => {
                                           i % 2 === 1 ? 'bg-sky-50 dark:bg-gray-800/20' : 'bg-white dark:bg-transparent'
                                         }`}
                                       >
-                                        <td className="px-4 py-3.5 font-medium text-gray-700 dark:text-gray-200 whitespace-nowrap">{new Date(r.date).toLocaleDateString()}</td>
+                                        <td className="px-4 py-3.5 font-medium text-gray-700 dark:text-gray-200 whitespace-nowrap">{fmtDay(r.date)}</td>
                                         <td className="px-4 py-3.5"><AttendanceTimeDetails record={r} /></td>
                                         <td className="px-4 py-3.5 text-right">
                                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge}`}>
@@ -661,8 +778,9 @@ export const Phase13ParentDashboard: React.FC = () => {
                           (includes its own billed/paid/outstanding summary) */}
                       {currentChildId && (
                         <div>
-                          <h3 className="text-base font-bold text-gray-900 dark:text-white mb-3 px-1">Fees by Term &amp; Year</h3>
-                          <StudentLedgerView studentId={currentChildId} redirectToPay />
+                          <h3 className="text-base font-bold text-gray-900 dark:text-white mb-3 px-1">{childFirst}'s fees · {year}</h3>
+                          {/* That year only; other years' unpaid balances stay listed as still payable. */}
+                          <StudentLedgerView studentId={currentChildId} academicYear={year} redirectToPay />
                         </div>
                       )}
 

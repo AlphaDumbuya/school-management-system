@@ -1742,7 +1742,9 @@ const TodayAttendanceBanner: React.FC<{
   records: Array<{ date: string; status: string; check_in_time?: string | null; check_out_time?: string | null }>;
   childName: string;
 }> = ({ records, childName }) => {
-  const todayKey = new Date().toISOString().slice(0, 10);
+  // The device's calendar day (toISOString is UTC and can be the wrong day).
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const todays = records.filter((r) => String(r.date).slice(0, 10) === todayKey);
   if (todays.length === 0) {
     return (
@@ -1794,34 +1796,57 @@ const TodayAttendanceBanner: React.FC<{
 const ParentAttendanceView: React.FC = () => {
   const [childId, setChildId] = useState('');
   const queryClient = useQueryClient();
+  // One academic year at a time ('' = current, follows a rollover). Each
+  // child is resolved for that year on its own (their class(es) that year).
+  const { activeYear } = useAcademicYears();
+  const [pickedYear, setPickedYear] = useState('');
+  const year = pickedYear || activeYear;
+  const viewingPast = !!year && !!activeYear && year !== activeYear;
+  const changeYear = (y: string) => setPickedYear(!y || y === activeYear ? '' : y);
 
   const { data: dashResp } = useQuery({
-    queryKey: ['parent-dashboard'],
-    queryFn: () => parentDashboardService.getDashboard(),
+    queryKey: ['parent-dashboard', year],
+    queryFn: () => parentDashboardService.getDashboard(year),
+    enabled: !!year,
     staleTime: 60_000,
   });
   const children = ((dashResp as any)?.data ?? (dashResp as any))?.children ?? [];
-  const currentId = childId || children[0]?.id || '';
+  const currentId = (childId && children.some((c: any) => c.id === childId)) ? childId : (children[0]?.id || '');
+  const childFirst = String(children.find((c: any) => String(c.id) === String(currentId))?.name || 'Your child').split(' ')[0];
 
   const { data: childResp, isLoading, isFetching } = useQuery({
-    queryKey: ['parent-child-detail', currentId],
-    queryFn: () => parentDashboardService.getChildDetail(currentId),
-    enabled: !!currentId,
+    queryKey: ['parent-child-detail', currentId, year],
+    queryFn: () => parentDashboardService.getChildDetail(currentId, year),
+    enabled: !!currentId && !!year,
     // Keep the today banner reasonably live so a check-in/out reflects quickly.
     staleTime: 30_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
-  const detail = (childResp as any)?.data ?? (childResp as any);
+  // apiClient never throws: a refused/failed load is success:false.
+  const childError: string | null = (childResp as any)?.success === false ? ((childResp as any)?.error || "Couldn't load attendance") : null;
+  const detail = childError ? null : ((childResp as any)?.data ?? (childResp as any));
+  const yearClasses: string[] = Array.from(new Set<string>((detail?.year_classes ?? []).map((c: any) => c.name)));
+  const emptyText = detail?.graduated && !detail?.enrolled_in_year && !viewingPast
+    ? `🎓 ${childFirst} graduated from ${detail.graduated.className}. Pick an earlier year to see their attendance.`
+    : detail && !detail.enrolled_in_year && !detail.pending_transition
+      ? `${childFirst} wasn’t in a class at this school in ${year}.`
+      : `No attendance recorded for ${childFirst} in ${year} yet.`;
   const summary = detail?.attendance ?? { total: 0, present: 0, late: 0, absent: 0, excused: 0, percentage: 0 };
   const records: Array<TimedAttendanceRecord & { id: string; date: string; status: string; remarks?: string }> = detail?.attendance?.records ?? [];
 
   return (
     <MainLayout>
-      <PageShell title="Children's Attendance" subtitle="View your children's attendance records" onRefresh={() => Promise.all([
-        queryClient.refetchQueries({ queryKey: ['parent-dashboard'], type: 'active' }, { throwOnError: true }),
-        queryClient.refetchQueries({ queryKey: ['parent-child-detail', currentId], type: 'active' }, { throwOnError: true }),
-      ])} isRefreshing={isFetching}>
+      <PageShell
+        title="Children's Attendance"
+        subtitle={yearClasses.length ? `${childFirst} · ${[...yearClasses].reverse().join(' → ')} · ${year}` : `Your children's attendance · ${year}`}
+        actions={<YearFilter value={year} onChange={changeYear} noAutoSelect />}
+        onRefresh={() => Promise.all([
+          queryClient.refetchQueries({ queryKey: ['parent-dashboard', year], type: 'active' }, { throwOnError: true }),
+          queryClient.refetchQueries({ queryKey: ['parent-child-detail', currentId, year], type: 'active' }, { throwOnError: true }),
+        ])}
+        isRefreshing={isFetching}
+      >
         {children.length === 0 ? (
           <div className="py-16 text-center text-gray-500">No children linked to your account.</div>
         ) : (
@@ -1831,6 +1856,8 @@ const ParentAttendanceView: React.FC = () => {
               {children.map((c: any) => (
                 <button
                   key={c.id}
+                  type="button"
+                  aria-pressed={currentId === c.id}
                   onClick={() => setChildId(c.id)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
                     currentId === c.id
@@ -1844,15 +1871,30 @@ const ParentAttendanceView: React.FC = () => {
               ))}
             </div>
 
+            {viewingPast && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+                <span>Showing {childFirst}'s <strong>{year}</strong> attendance as history.</span>
+                <button type="button" onClick={() => changeYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">Back to {activeYear}</button>
+              </div>
+            )}
+            {!viewingPast && detail?.pending_transition && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                <strong>{activeYear} is being set up.</strong> {childFirst} is still listed in {detail.pending_transition.className} ({detail.pending_transition.fromYear}). Last year's attendance is under {detail.pending_transition.fromYear} in the year picker.
+              </div>
+            )}
             {isLoading ? (
               <div className="flex items-center justify-center py-16 text-gray-500"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>
+            ) : childError ? (
+              <div role="alert" className="py-12 text-center text-sm text-gray-500">{childError}</div>
             ) : (
               <>
-                {/* Today's live status — arrival / departure at a glance */}
-                <TodayAttendanceBanner
-                  records={records}
-                  childName={children.find((c: any) => String(c.id) === String(currentId))?.name || 'Your child'}
-                />
+                {/* Today's live status: arrival / departure (current year only) */}
+                {!viewingPast && detail?.enrolled_in_year && (
+                  <TodayAttendanceBanner
+                    records={records}
+                    childName={children.find((c: any) => String(c.id) === String(currentId))?.name || 'Your child'}
+                  />
+                )}
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   <KPICard title="Attendance Rate" value={`${summary.percentage}%`} icon={<UserCheck className="w-5 h-5" />} color={summary.percentage >= 85 ? 'green' : summary.percentage >= 75 ? 'amber' : 'red'} />
@@ -1863,10 +1905,10 @@ const ParentAttendanceView: React.FC = () => {
 
                 <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
                   <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-                    <h3 className="font-bold text-gray-900 dark:text-white">Attendance History</h3>
+                    <h3 className="font-bold text-gray-900 dark:text-white">Attendance · {year}</h3>
                   </div>
                   {records.length === 0 ? (
-                    <div className="p-12 text-center text-gray-400">No attendance records yet.</div>
+                    <div className="p-12 text-center text-gray-400">{emptyText}</div>
                   ) : (
                     <div className="overflow-x-auto max-h-[28rem] overflow-y-auto">
                       <table className="w-full text-sm text-left">
