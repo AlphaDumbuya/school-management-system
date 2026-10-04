@@ -43,6 +43,9 @@ interface NavItem {
   group?: string;
   module?: string;
   version?: 'v1' | 'v2';
+  /** Shown only to someone who holds the role as an extra duty (their main
+   *  Dashboard button already covers people whose main job it is). */
+  dutyOnly?: boolean;
 }
 
 interface SidebarProps {
@@ -176,9 +179,33 @@ const navItems: NavItem[] = [
     version: 'v1',
   },
 
+  // ── EXTRA DUTIES (a teacher who is also Bursar / Admissions Officer) ──
+  {
+    label: 'Finance Overview',
+    icon: <FaMoneyBill className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/accountant/dashboard',
+    roles: ['accountant'],
+    module: 'Financial Management',
+    group: 'Finance',
+    version: 'v1',
+    dutyOnly: true,
+  },
+  {
+    label: 'Admissions Overview',
+    icon: <FaClipboardList className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/admissions/dashboard',
+    roles: ['admissions_officer'],
+    module: 'Student Management',
+    group: 'Students',
+    version: 'v1',
+    dutyOnly: true,
+  },
+
   // ── STAFF MANAGEMENT ────────────────────────────────────────────────
   {
-    label: 'Teachers',
+    // Professional staff: teachers, accountants (Bursar), admissions officers,
+    // all onboarded the same way.
+    label: 'Teaching & Admin Staff',
     icon: <FaUserTie className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/staff/teachers',
     roles: ['super_admin', 'principal'],
@@ -187,22 +214,23 @@ const navItems: NavItem[] = [
     version: 'v1',
   },
   {
-    label: 'Teacher Attendance',
+    label: 'Staff Attendance',
     icon: <FaCalendar className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/staff/attendance',
-    roles: ['principal', 'teacher'],
+    roles: ['principal', 'teacher', 'accountant', 'admissions_officer'],
     module: 'Staff Management',
     group: 'Staff',
     version: 'v1',
   },
   {
-    label: 'Non-Teaching Staff',
+    // Security, cleaners, cooks, drivers: easy onboarding, no login.
+    label: 'Support Staff',
     icon: <FaUsers className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/staff/members',
     roles: ['super_admin', 'principal'],
     module: 'Staff Management',
     group: 'Staff',
-    version: 'v2',
+    version: 'v1',
   },
   {
     label: 'Leave Management',
@@ -534,6 +562,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
   const filteredNavItems = React.useMemo(() => navItems.filter((item) => {
     if (!ENABLE_V2_FEATURES && item.version === 'v2') return false;
     if (isSuperAdmin) return item.group === 'Platform';
+    if (item.dutyOnly) {
+      // Only for a teacher holding this as an extra duty.
+      const duties = ((user as any)?.staffDuties ?? []) as string[];
+      return !item.roles.includes(String(user?.role)) && duties.some((d) => item.roles.includes(d));
+    }
     return canAccess(item.roles as any[]);
     // canAccess is derived from user.role which is stable after login
     // eslint-disable-next-line react-hooks/exhaustive-deps

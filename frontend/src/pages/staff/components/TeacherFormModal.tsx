@@ -15,7 +15,8 @@ import { teachersService, TeacherRecord } from '@services/teachersService';
 import { classesService } from '@services/classesService';
 import { subjectsService } from '@services/subjectsService';
 import { schoolConfigService } from '@services/schoolConfigService';
-import { designationOptions, classAssignmentLabel } from '@lib/staffDesignations';
+import { teachingDesignationOptions, classAssignmentLabel } from '@lib/staffDesignations';
+import { StaffJobPicker, jobFieldsSchema, refineJobs, jobsFromRecord, jobsToPayload, type StaffJob } from './StaffJobPicker';
 import { Clipboard, ClipboardCheck, KeyRound, Loader2, BookOpen, GraduationCap } from 'lucide-react';
 import { FileUploader } from '@components/admin/forms/FileUploader';
 import { RichTextarea } from '@components/admin/forms/RichTextarea';
@@ -41,15 +42,21 @@ const schema = z.object({
   form_class_id: z.string().optional().or(z.literal('')),
   assigned_classes: z.array(z.string()).default([]),
   assigned_subjects: z.array(z.string()).default([]),
-});
+  // Jobs at the school. Any mix: a form teacher can also keep the fees.
+  ...jobFieldsSchema,
+}).superRefine(refineJobs);
 
 type FormValues = z.infer<typeof schema>;
+
+export type { StaffJob };
 
 interface TeacherFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   editingTeacher?: TeacherRecord | null;
+  /** Preselected job when adding (e.g. from an "Add Accountant" button). */
+  defaultJob?: StaffJob;
 }
 
 export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
@@ -57,6 +64,7 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
   onClose,
   onSuccess,
   editingTeacher,
+  defaultJob = 'teacher',
 }) => {
   const isEditing = !!editingTeacher;
   const [serverError, setServerError] = useState<string | null>(null);
@@ -98,9 +106,15 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
       form_class_id: '',
       assigned_classes: [],
       assigned_subjects: [],
+      teaches: true,
+      duty_accountant: false,
+      duty_admissions: false,
     },
   });
 
+  const watchTeaches = watch('teaches');
+  const watchAccountant = watch('duty_accountant');
+  const watchAdmissions = watch('duty_admissions');
   const watchedClasses = watch('assigned_classes') || [];
   const watchedSubjects = watch('assigned_subjects') || [];
 
@@ -128,7 +142,9 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
     enabled: isOpen,
   });
   const schoolType = ((schoolInfoResp as any)?.data?.school_type ?? (schoolInfoResp as any)?.data?.data?.school_type) as string | undefined;
-  const designationOpts = useMemo(() => designationOptions(schoolType), [schoolType]);
+  // Teaching and leadership titles only. Bursar / Admissions are jobs (the
+  // checkboxes above), not teaching titles.
+  const designationOpts = useMemo(() => teachingDesignationOptions(schoolType), [schoolType]);
 
   const classesList = (classesData as any)?.data ?? [];
   const subjectsList = (subjectsData as any)?.data ?? [];
@@ -196,6 +212,7 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
                 form_class_id: details.form_class_id ?? '',
                 assigned_classes: details.assignments?.map((a: any) => a.class_id) ?? [],
                 assigned_subjects: details.assignments?.map((a: any) => a.subject_id) ?? [],
+                ...jobsFromRecord(details),
               });
             }
           })
@@ -225,10 +242,11 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
           form_class_id: '',
           assigned_classes: [],
           assigned_subjects: [],
+          ...jobsFromRecord(null, defaultJob),
         });
       }
     }
-  }, [isOpen, editingTeacher, reset]);
+  }, [isOpen, editingTeacher, reset, defaultJob]);
 
   const onSubmit = async (values: FormValues) => {
     setServerError(null);
@@ -246,11 +264,14 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
         qualifications: values.qualifications || undefined,
         hire_date: values.hire_date || undefined,
         designation: values.designation,
-        department: values.department,
+        department: values.teaches ? values.department : 'none',
         employment_type: values.employment_type,
-        form_class_id: values.form_class_id || null,
-        assigned_classes: values.assigned_classes,
-        assigned_subjects: values.assigned_subjects,
+        // Classes and subjects only for someone who teaches.
+        form_class_id: values.teaches ? (values.form_class_id || null) : null,
+        assigned_classes: values.teaches ? values.assigned_classes : [],
+        assigned_subjects: values.teaches ? values.assigned_subjects : [],
+        // Main job + extra duties (see jobsToPayload).
+        ...jobsToPayload(values),
       };
       // Status is only set at CREATE (defaults to active). On edit it is never
       // sent from this form — status changes go through the dedicated
@@ -266,7 +287,7 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
       } else {
         const res = await teachersService.createTeacher(payload as any);
         if (res.success === false) throw new Error(res.error ?? 'Create failed');
-        showToast.success('Teacher account added');
+        showToast.success('Staff account added');
         onSuccess();
 
         if (res.data?.temporary_password) {
@@ -297,7 +318,7 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
       <Modal
         isOpen={isOpen}
         onClose={onClose}
-        title="Teacher Account Created"
+        title="Staff Account Created"
         size="md"
         footer={
           <div className="flex justify-end w-full">
@@ -343,7 +364,7 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={isEditing ? 'Edit Teacher Details' : 'Add New Teacher'}
+      title={isEditing ? 'Edit Staff Member' : 'Add Staff Member'}
       size="lg"
       footer={
         <div className="flex items-center gap-3 ml-auto">
@@ -351,7 +372,7 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
             Cancel
           </Button>
           <Button variant="default" onClick={handleSubmit(onSubmit)} disabled={isSubmitting || loadingDetails}>
-            {isSubmitting ? 'Saving...' : (isEditing ? 'Save Changes' : 'Create Teacher')}
+            {isSubmitting ? 'Saving...' : (isEditing ? 'Save Changes' : 'Create Staff Account')}
           </Button>
         </div>
       }
@@ -468,6 +489,13 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
             </div>
           </div>
 
+          {/* ── Jobs at the school (any mix) ── */}
+          <StaffJobPicker
+            register={register}
+            values={{ teaches: !!watchTeaches, duty_accountant: !!watchAccountant, duty_admissions: !!watchAdmissions }}
+            error={errors.teaches?.message || errors.duty_admissions?.message}
+          />
+
           {/* ── Section 2: Professional Details ── */}
           <div className="space-y-4">
             <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider border-b pb-1">
@@ -515,28 +543,36 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
 
             {/* Sierra Leone School Roles & Status */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4 dark:border-gray-800">
-              <FormField
-                label="Designation / Title"
-                type="select"
-                options={designationOpts}
-                helperText="Leadership, Bursar and Administrator titles give the staff member the matching portal access."
-                error={errors.designation?.message}
-                {...register('designation')}
-              />
+              {watchTeaches ? (
+                <>
+                  <FormField
+                    label="Teaching Title"
+                    type="select"
+                    options={designationOpts}
+                    helperText="Leadership titles give principal-level access."
+                    error={errors.designation?.message}
+                    {...register('designation')}
+                  />
 
-              <FormField
-                label="Department"
-                type="select"
-                options={[
-                  { label: 'None', value: 'none' },
-                  { label: 'Mathematics & Sciences', value: 'mathematics_sciences' },
-                  { label: 'Languages & Linguistics', value: 'languages' },
-                  { label: 'Humanities & Social Sciences', value: 'social_sciences_humanities' },
-                  { label: 'Commercial & Technical Studies', value: 'commercial_technical' },
-                ]}
-                error={errors.department?.message}
-                {...register('department')}
-              />
+                  <FormField
+                    label="Department"
+                    type="select"
+                    options={[
+                      { label: 'None', value: 'none' },
+                      { label: 'Mathematics & Sciences', value: 'mathematics_sciences' },
+                      { label: 'Languages & Linguistics', value: 'languages' },
+                      { label: 'Humanities & Social Sciences', value: 'social_sciences_humanities' },
+                      { label: 'Commercial & Technical Studies', value: 'commercial_technical' },
+                    ]}
+                    error={errors.department?.message}
+                    {...register('department')}
+                  />
+                </>
+              ) : (
+                <div className="sm:col-span-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-3 py-2 text-xs text-gray-600 dark:text-gray-300">
+                  Title: <strong>{watchAccountant ? 'Bursar (Accountant)' : 'Administrator (Admissions Officer)'}</strong>. Tick Teaching above if they also teach.
+                </div>
+              )}
 
               <FormField
                 label="Employment Type"
@@ -551,18 +587,20 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
                 {...register('employment_type')}
               />
 
-              <FormField
-                label={classAssignmentLabel(schoolType)}
-                type="select"
-                options={classOptions}
-                error={errors.form_class_id?.message}
-                {...register('form_class_id')}
-              />
+              <div className={watchTeaches ? '' : 'hidden'}>
+                <FormField
+                  label={classAssignmentLabel(schoolType)}
+                  type="select"
+                  options={classOptions}
+                  error={errors.form_class_id?.message}
+                  {...register('form_class_id')}
+                />
+              </div>
             </div>
           </div>
 
-          {/* ── Section 3: Class & Subject Assignments ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
+          {/* ── Section 3: Class & Subject Assignments (teaching only) ── */}
+          <div className={`grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2 ${watchTeaches ? '' : 'hidden'}`} aria-hidden={!watchTeaches}>
             {/* Class Selection list */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">

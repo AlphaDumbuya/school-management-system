@@ -8,8 +8,26 @@ import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { generateNextId } from '@utils/idGenerator';
 import { sendExport } from '@utils/exportResponse';
+import { parseDuties, sanitizeDuties } from '@utils/staffDuties';
 
 const router = Router();
+
+/**
+ * Professional staff (teachers, accountants / bursars, admissions officers)
+ * share ONE onboarding, profile and directory here. `staff_type` filters it:
+ * teaching = role teacher (incl. teachers with extra duties); accountant /
+ * admissions_officer = that job, full-time or as a teacher's duty.
+ */
+function applyStaffType(q: any, staffType: unknown) {
+  const t = String(staffType || '');
+  if (t === 'teaching') return q.where('users.role', 'teacher');
+  if (t === 'accountant' || t === 'admissions_officer') {
+    return q.where((w: any) => w.where('users.role', t)
+      .orWhere((x: any) => x.where('users.role', 'teacher').whereRaw("COALESCE(users.staff_duties, '[]'::jsonb) \\? ?", [t])));
+  }
+  if (t === 'leadership') return q.where('users.role', 'principal');
+  return q;
+}
 
 // A teacher's form class / assignments shown and edited here are the CURRENT
 // year's. Past-year classes keep their form teacher + assignments as history
@@ -214,6 +232,8 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, U
         'users.email',
         'users.photo_url',
         'users.status as user_status',
+        // The system role (teacher / principal / accountant / admissions_officer).
+        'users.role as user_role',
         // NOTE: temp_password is intentionally NOT selected in the bulk list —
         // returning every teacher's plaintext credential is a security risk.
         // It's exposed only on the single GET /:id detail view (principal
@@ -230,6 +250,8 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, U
         'teachers.department',
         'teachers.employment_type',
         'teachers.created_at',
+        // Extra duties (Bursar / Admissions) for a teacher who does both.
+        'users.staff_duties',
         db.raw(`(SELECT c.name FROM classes c LEFT JOIN academic_sessions s ON s.id = c.academic_session_id WHERE c.class_teacher_id = teachers.id AND ${CURRENT_CLASS_SQL} LIMIT 1) as form_class_name`),
         db.raw(`(SELECT c.id FROM classes c LEFT JOIN academic_sessions s ON s.id = c.academic_session_id WHERE c.class_teacher_id = teachers.id AND ${CURRENT_CLASS_SQL} LIMIT 1) as form_class_id`)
       );
@@ -237,6 +259,8 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, U
     if (status) {
       query = query.where('users.status', status as string);
     }
+    // ?staff_type=teaching | accountant | admissions_officer | leadership
+    query = applyStaffType(query, req.query.staff_type);
 
     if (specialization) {
       query = query.where('teachers.specialization', specialization as string);
@@ -265,6 +289,7 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, U
     let statsQuery = db('teachers')
       .join('users', 'teachers.user_id', 'users.id')
       .where('users.tenant_id', tenantId);
+    statsQuery = applyStaffType(statsQuery, req.query.staff_type);
     if (specialization) statsQuery = statsQuery.where('teachers.specialization', specialization as string);
     if (search) {
       const term = `%${(search as string).trim()}%`;
@@ -343,6 +368,7 @@ router.get('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
         'users.email',
         'users.photo_url',
         'users.status as user_status',
+        'users.role as user_role',
         'users.temp_password',
         'users.last_login',
         'teachers.phone',
@@ -356,6 +382,7 @@ router.get('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
         'teachers.employment_type',
         'teachers.created_at',
         'teachers.updated_at',
+        'users.staff_duties',
         db.raw(`(SELECT c.name FROM classes c LEFT JOIN academic_sessions s ON s.id = c.academic_session_id WHERE c.class_teacher_id = teachers.id AND ${CURRENT_CLASS_SQL} LIMIT 1) as form_class_name`),
         db.raw(`(SELECT c.id FROM classes c LEFT JOIN academic_sessions s ON s.id = c.academic_session_id WHERE c.class_teacher_id = teachers.id AND ${CURRENT_CLASS_SQL} LIMIT 1) as form_class_id`)
       )
@@ -431,6 +458,8 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       form_class_id,
       assigned_classes = [],
       assigned_subjects = [],
+      staff_duties,
+      primary_role,
     } = req.body;
 
     logger.info('POST /api/v1/teachers request body received:', {
@@ -468,7 +497,20 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
 
     // The system role follows the designation so a staff member created as a
     // bursar/administrator/head lands in the correct portal from day one.
-    const initialRole = DESIGNATION_TO_ROLE[String(designation)] || 'teacher';
+    // Professional staff share one onboarding. `primary_role` is their main
+    // job: teacher (the designation then decides teacher vs leadership), or a
+    // full-time accountant (Bursar) / admissions officer, who gets the same
+    // profile, staff ID and credentials but no classes.
+    const primary = ['teacher', 'accountant', 'admissions_officer'].includes(String(primary_role)) ? String(primary_role) : null;
+    const effDesignation = primary === 'accountant' ? 'bursar'
+      : primary === 'admissions_officer' ? 'administrator'
+      : designation;
+    const initialRole = primary && primary !== 'teacher'
+      ? primary
+      : (DESIGNATION_TO_ROLE[String(effDesignation)] || 'teacher');
+    const teaches = initialRole === 'teacher' || initialRole === 'principal';
+    // A teacher can also hold Bursar / Admissions duties (extra portals).
+    const duties = initialRole === 'teacher' ? sanitizeDuties(staff_duties) : [];
 
     const [insertedUser] = await trx('users').insert({
       tenant_id: tenantId,
@@ -480,17 +522,22 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       role: initialRole,
       status: status || 'active',
       photo_url: photo_url || null,
+      ...(duties.length ? { staff_duties: JSON.stringify(duties) } : {}),
       created_at: new Date(),
       updated_at: new Date(),
     }).returning('*');
 
     // Validate that any class/subject IDs the client sent actually belong to
     // THIS tenant, so a teacher can never be linked to another school's data.
+    // Classes / subjects only for someone who teaches.
+    const formClassId = teaches ? (form_class_id || null) : null;
+    const classList: string[] = teaches ? assigned_classes : [];
+    const subjectList: string[] = teaches ? assigned_subjects : [];
     await assertClassesInTenant(trx, tenantId, [
-      ...(form_class_id ? [form_class_id] : []),
-      ...assigned_classes,
+      ...(formClassId ? [formClassId] : []),
+      ...classList,
     ]);
-    await assertSubjectsInTenant(trx, tenantId, assigned_subjects);
+    await assertSubjectsInTenant(trx, tenantId, subjectList);
 
     // Generate unique teacher ID according to tenant settings
     const teacherIdStr = await generateNextId(db, tenantId, 'teacher');
@@ -506,7 +553,7 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       office_location: office_location || null,
       status: status || 'active',
       hire_date: hire_date || new Date().toISOString().split('T')[0],
-      designation: designation || 'subject_teacher',
+      designation: effDesignation || 'subject_teacher',
       department: department || 'none',
       employment_type: employment_type || 'full_time',
       created_at: new Date(),
@@ -514,16 +561,16 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
     }).returning('*');
 
     // Assign Form Class if provided
-    if (form_class_id) {
-      await trx('classes').where('id', form_class_id).update({ class_teacher_id: insertedTeacher.id });
+    if (formClassId) {
+      await trx('classes').where('id', formClassId).update({ class_teacher_id: insertedTeacher.id });
     }
 
     // Create assignments
-    if (assigned_classes.length > 0 && assigned_subjects.length > 0) {
+    if (classList.length > 0 && subjectList.length > 0) {
       const start_date = new Date().toISOString().split('T')[0];
       const assignments = [];
-      for (const classId of assigned_classes) {
-        for (const subjectId of assigned_subjects) {
+      for (const classId of classList) {
+        for (const subjectId of subjectList) {
           assignments.push({
             teacher_id: insertedTeacher.id,
             class_id: classId,
@@ -577,6 +624,7 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
     }
 
     const teacherId = req.params.id;
+    let designation: string | undefined = req.body?.designation;
     const {
       first_name,
       last_name,
@@ -588,14 +636,24 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
       hire_date,
       status,
       photo_url,
-      designation,
       department,
       employment_type,
       form_class_id,
       assigned_classes = [],
       assigned_subjects = [],
       status_reason,
+      staff_duties,
+      primary_role,
     } = req.body;
+    // Main job change (teacher ↔ full-time accountant / admissions officer)
+    // maps onto the designation the rest of this handler already understands.
+    const primaryJob = ['teacher', 'accountant', 'admissions_officer'].includes(String(primary_role)) ? String(primary_role) : null;
+    if (primaryJob === 'accountant') designation = 'bursar';
+    else if (primaryJob === 'admissions_officer') designation = 'administrator';
+    else if (primaryJob === 'teacher' && (designation === 'bursar' || designation === 'administrator')) {
+      // Back to teaching needs a teaching title.
+      designation = 'subject_teacher';
+    }
 
     // Validate the status transition against a server-side whitelist so a bad
     // client value can never be persisted.
@@ -611,12 +669,18 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
       .select(
         'teachers.*',
         'users.role as user_role',
+        'users.staff_duties',
         'users.email as user_email',
         db.raw("TRIM(CONCAT_WS(' ', users.first_name, users.last_name)) as user_name"),
       )
       .first();
     if (!teacher) {
       throw new AppError('Teacher not found', 404, 'NOT_FOUND');
+    }
+    // A full-time accountant / admissions officer moving to teaching with no
+    // title chosen starts as Subject Teacher.
+    if (primaryJob === 'teacher' && designation === undefined && (teacher.user_role === 'accountant' || teacher.user_role === 'admissions_officer')) {
+      designation = 'subject_teacher';
     }
 
     // Remember the teacher's current form class BEFORE we change it, so the
@@ -660,6 +724,16 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
         userUpdate.role = targetRole;
       }
     }
+
+    // Extra duties (Bursar / Admissions) only exist on the teacher role. Moving
+    // to another role (principal, full-time accountant…) drops them.
+    const effectiveRole = userUpdate.role ?? teacher.user_role;
+    const prevDuties = parseDuties(teacher.staff_duties);
+    let nextDuties = prevDuties;
+    if (effectiveRole !== 'teacher') nextDuties = [];
+    else if (staff_duties !== undefined) nextDuties = sanitizeDuties(staff_duties);
+    const dutiesChanged = JSON.stringify([...nextDuties].sort()) !== JSON.stringify([...prevDuties].sort());
+    if (dutiesChanged) userUpdate.staff_duties = JSON.stringify(nextDuties);
 
     userUpdate.updated_at = new Date();
 
@@ -801,7 +875,27 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
     const designationChanged = designation !== undefined && designation !== teacher.designation;
     const roleLabel = DESIGNATION_LABEL[String(designation)] || 'a new role';
     const prevRoleLabel = DESIGNATION_LABEL[String(teacher.designation)] || undefined;
-    const portalChanged = !!(userUpdate.role && userUpdate.role !== teacher.user_role);
+    const portalChanged = !!(userUpdate.role && userUpdate.role !== teacher.user_role) || dutiesChanged;
+
+    // New duty (Bursar / Admissions) on top of teaching: tell them their portal grew.
+    const addedDuties = nextDuties.filter((d) => !prevDuties.includes(d));
+    if (addedDuties.length) {
+      const DUTY_LABEL: Record<string, string> = { accountant: 'Accountant (Bursar)', admissions_officer: 'Admissions Officer' };
+      const label = addedDuties.map((d) => DUTY_LABEL[d] || d).join(' and ');
+      try {
+        const { default: notificationService } = await import('@services/notificationService');
+        await notificationService.createNotification({
+          notificationType: 'promotion',
+          recipientId: teacher.user_id,
+          subject: `You're now also ${label}`,
+          message: `Alongside your classes, you now have ${label} access. The new pages appear in your menu.`,
+          channels: ['in_app'],
+          sourceType: 'staff_duty',
+          sourceId: teacherId,
+          createdBy: (req as any).user?.id,
+        }).catch(() => { /* non-fatal */ });
+      } catch { /* non-fatal */ }
+    }
 
     // Did the form-class assignment change?
     const prevFormId = prevFormClass?.id || null;
@@ -921,8 +1015,11 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
     }
 
     // Audit the effective system-role change so a promotion is traceable.
-    if (portalChanged) {
+    if (userUpdate.role && userUpdate.role !== teacher.user_role) {
       logger.info(`Teacher ${teacher.teacher_id} system role changed: ${teacher.user_role} → ${userUpdate.role} (designation: ${designation})`);
+    }
+    if (dutiesChanged) {
+      logger.info(`Staff ${teacher.teacher_id} duties changed: [${prevDuties.join(', ')}] → [${nextDuties.join(', ')}]`);
     }
 
     logger.info(`Teacher profile updated: (Staff ID: ${teacher.teacher_id})`);

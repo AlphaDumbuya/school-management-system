@@ -20,7 +20,7 @@ import { Button } from '@components/ui/button';
 import { Modal } from '@components/admin/feedback/Modal';
 import { showToast } from '@utils/toast';
 import { cardTint } from '@lib/cardTint';
-import { teachersService, TeacherRecord } from '@services/teachersService';
+import { teachersService, TeacherRecord, staffJobs } from '@services/teachersService';
 import { TeacherFormModal } from './components/TeacherFormModal';
 import { TeacherDetailModal } from './components/TeacherDetailModal';
 import { TeacherPromotionModal } from './components/TeacherPromotionModal';
@@ -171,6 +171,8 @@ export const TeachersPage: React.FC = () => {
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  // teaching | accountant | admissions_officer | leadership ('' = everyone).
+  const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -186,12 +188,13 @@ export const TeachersPage: React.FC = () => {
 
   // Fetch teachers list (server-side paginated/filtered)
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['teachers', { search, statusFilter, page, pageSize }],
+    queryKey: ['teachers', { search, statusFilter, typeFilter, page, pageSize }],
     queryFn: () =>
       teachersService.listTeachers({
         page,
         limit: pageSize,
         status: statusFilter || undefined,
+        staff_type: typeFilter || undefined,
         search: search || undefined,
       }),
     staleTime: 30_000,
@@ -305,6 +308,22 @@ export const TeachersPage: React.FC = () => {
           <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 block">
             {row.original.email}
           </span>
+        </div>
+      ),
+    },
+    {
+      id: 'jobs',
+      header: 'Job',
+      cell: ({ row }) => (
+        <div className="flex flex-wrap gap-1">
+          {staffJobs(row.original).map((j) => (
+            <span key={j} className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+              j === 'Accountant' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
+              : j === 'Admissions' ? 'bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300'
+              : j === 'Leadership' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300'
+              : 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+            }`}>{j}</span>
+          ))}
         </div>
       ),
     },
@@ -447,9 +466,9 @@ export const TeachersPage: React.FC = () => {
   return (
     <MainLayout>
       <PageShell
-        title="Teachers Directory"
-        subtitle="Manage school teachers, class assignments, and qualifications"
-        breadcrumbs={[{ label: 'Teachers' }]}
+        title="Teaching & Admin Staff"
+        subtitle="Teachers, accountants (bursars) and admissions officers: one onboarding, profile and staff record for all"
+        breadcrumbs={[{ label: 'Staff' }]}
         onRefresh={() => refetch()}
         isRefreshing={isLoading}
         actions={
@@ -488,7 +507,7 @@ export const TeachersPage: React.FC = () => {
                 }}
                 className="whitespace-nowrap shadow-sm"
               >
-                + Add Teacher
+                + Add Staff Member
               </Button>
             </RoleGuard>
           </div>
@@ -505,7 +524,7 @@ export const TeachersPage: React.FC = () => {
           ) : (
             <>
               <KPICard
-                title="Total Teachers"
+                title={typeFilter ? 'Total (filtered)' : 'Total Staff'}
                 value={stats.total}
                 icon={
                   <div className="p-2 rounded-xl bg-blue-500 text-white shadow-sm flex items-center justify-center">
@@ -575,8 +594,25 @@ export const TeachersPage: React.FC = () => {
                   className="w-full lg:max-w-md"
                 />
 
+                <div className="relative w-full md:w-48">
+                  <select
+                    aria-label="Filter by job"
+                    value={typeFilter}
+                    onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
+                    className="w-full appearance-none pl-3 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="">All Jobs</option>
+                    <option value="teaching">Teaching</option>
+                    <option value="leadership">Leadership</option>
+                    <option value="accountant">Accountants (Bursar)</option>
+                    <option value="admissions_officer">Admissions Officers</option>
+                  </select>
+                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+                </div>
+
                 <div className="relative w-full md:w-40">
                   <select
+                    aria-label="Filter by status"
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                     className="w-full appearance-none pl-3 pr-8 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
@@ -594,7 +630,7 @@ export const TeachersPage: React.FC = () => {
                 </div>
               </div>
 
-              {(search || statusFilter) && (
+              {(search || statusFilter || typeFilter) && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-gray-450 dark:text-gray-500 flex items-center gap-1 mr-1">
                     <SlidersHorizontal size={10} /> Filters:
@@ -619,6 +655,7 @@ export const TeachersPage: React.FC = () => {
                     onClick={() => {
                       setSearch('');
                       setStatusFilter('');
+                      setTypeFilter('');
                     }}
                     className="text-xs text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 font-bold ml-auto"
                   >

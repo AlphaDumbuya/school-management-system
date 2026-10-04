@@ -75,6 +75,13 @@ export function designationOptions(schoolType?: string | null): DesignationOptio
   return opts;
 }
 
+/**
+ * Teaching and leadership titles only. Bursar (accountant) and Administrator
+ * (admissions) are jobs picked with the Staff Job checkboxes, not titles.
+ */
+export function teachingDesignationOptions(schoolType?: string | null): DesignationOption[] {
+  return designationOptions(schoolType).filter((o) => o.value !== 'bursar' && o.value !== 'administrator');
+}
 /** The class-leadership assignment field label for a school's level. */
 export function classAssignmentLabel(schoolType?: string | null): string {
   const { primary, secondary } = schoolLevels(schoolType);

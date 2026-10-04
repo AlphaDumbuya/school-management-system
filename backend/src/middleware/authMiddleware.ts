@@ -4,6 +4,7 @@ import { AppError } from './errorHandler';
 import { logger } from '../utils/logger';
 import { AuthContext, UserRole } from '../types/auth';
 import { db } from '../utils/database';
+import { parseDuties, dutyForPath } from '../utils/staffDuties';
 
 // Extend Express Request to include auth context
 declare global {
@@ -15,7 +16,12 @@ declare global {
         tenant_id: string;
         tenantId: string;
         email: string;
+        /** The role this request acts as (main role, or a staff duty on its own module). */
         role: string;
+        /** The user's main role (users.role). */
+        primary_role?: string;
+        /** Extra duties a teacher holds (accountant / admissions_officer). */
+        staff_duties?: string[];
       };
     }
   }
@@ -72,7 +78,9 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
     if (!req.auth) {
       return next();
     }
-    const user = await db('users').select('id', 'tenant_id', 'email', 'role', 'status').where('id', req.auth.userId).first();
+    // select('*') so staff_duties is read when the column exists, without
+    // breaking before migration 162 runs.
+    const user = await db('users').select('*').where('id', req.auth.userId).first();
     if (user) {
       // Enforce the user's OWN account status on every request. Deactivating,
       // suspending or dismissing a user must cut them off immediately — not
@@ -101,20 +109,27 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
         }
       }
 
+      // Staff duties (teacher + Bursar / Admissions): on the duty's own module
+      // the request acts as that role; everywhere else the main role applies.
+      const duties = user.role === 'teacher' ? parseDuties(user.staff_duties) : [];
+      const actingRole = dutyForPath(req.originalUrl || req.url, duties) || user.role;
+
       req.user = {
         id: user.id,
         tenant_id: user.tenant_id,
         tenantId: user.tenant_id,
         email: user.email,
-        role: user.role,
+        role: actingRole,
+        primary_role: user.role,
+        staff_duties: duties,
       };
       req.auth.tenantId = user.tenant_id;
       // Trust the LIVE role from the DB over whatever the (possibly stale) JWT
       // carried. This makes role changes — e.g. promoting a teacher to
       // principal — take effect on the very next request, without waiting for
       // the access token to be reissued. authorize() reads req.auth.role.
-      if (user.role) {
-        req.auth.role = user.role;
+      if (actingRole) {
+        req.auth.role = actingRole as any;
       }
     }
     next();
@@ -151,13 +166,28 @@ export const authorize = (...allowedRoles: Array<UserRole | UserRole[]>) => {
       // the token's role, which can be up to 30 minutes stale after a role
       // change (promotion, demotion, portal move), so read it from the DB.
       let role = req.auth.role;
+      let duties: string[] = req.user?.staff_duties ?? [];
       if (!req.user || String(req.user.id) !== String(req.auth.userId)) {
-        const row = await db('users').where('id', req.auth.userId).first('role', 'status').catch(() => null);
+        const row = await db('users').where('id', req.auth.userId).first('*').catch(() => null);
         if (row && row.status && String(row.status).trim().toLowerCase() !== 'active') {
           throw new AppError(`Your account is ${row.status}. Please contact your school administrator.`, 403, 'ACCOUNT_INACTIVE');
         }
-        if (row?.role) role = row.role;
+        if (row?.role) {
+          duties = row.role === 'teacher' ? parseDuties(row.staff_duties) : [];
+          role = (dutyForPath(req.originalUrl || req.url, duties as any) || row.role) as any;
+        }
         req.auth.role = role;
+      }
+
+      // A teacher with a staff duty (Bursar / Admissions) may use a route the
+      // duty allows; the request then acts as that duty from here on.
+      if (!flatRoles.includes(role)) {
+        const duty = duties.find((d) => flatRoles.includes(d as UserRole));
+        if (duty) {
+          role = duty as UserRole;
+          req.auth.role = role;
+          if (req.user) req.user.role = duty;
+        }
       }
 
       if (!flatRoles.includes(role)) {

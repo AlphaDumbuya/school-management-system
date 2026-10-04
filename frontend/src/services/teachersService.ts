@@ -39,6 +39,23 @@ export interface TeacherRecord {
   created_at: string;
   updated_at?: string;
   assignments?: TeacherAssignment[];
+  /** System role: teacher | principal | accountant | admissions_officer. */
+  user_role?: string;
+  /** A teacher's extra jobs: accountant and/or admissions_officer. */
+  staff_duties?: string[] | string | null;
+}
+
+/** Display badges for a staff member's jobs (main role + duties). */
+export function staffJobs(t: Pick<TeacherRecord, 'user_role' | 'staff_duties'>): string[] {
+  let duties: string[] = [];
+  const raw = t.staff_duties;
+  try { duties = Array.isArray(raw) ? raw : raw ? JSON.parse(raw) : []; } catch { duties = []; }
+  const jobs: string[] = [];
+  if (t.user_role === 'principal') jobs.push('Leadership');
+  if (!t.user_role || t.user_role === 'teacher' || t.user_role === 'principal') jobs.push('Teaching');
+  if (t.user_role === 'accountant' || duties.includes('accountant')) jobs.push('Accountant');
+  if (t.user_role === 'admissions_officer' || duties.includes('admissions_officer')) jobs.push('Admissions');
+  return jobs;
 }
 
 export interface TeacherFormData {
@@ -61,6 +78,10 @@ export interface TeacherFormData {
   assigned_subjects?: string[];
   /** Reason for a status change (suspend/dismiss) — shown to the staff member. */
   status_reason?: string;
+  /** Main job: teacher | accountant | admissions_officer. */
+  primary_role?: string;
+  /** A teacher's extra jobs (accountant / admissions_officer). */
+  staff_duties?: string[];
 }
 
 export interface ListTeachersParams {
@@ -68,6 +89,8 @@ export interface ListTeachersParams {
   limit?: number;
   status?: string;
   search?: string;
+  /** teaching | accountant | admissions_officer | leadership */
+  staff_type?: string;
 }
 
 export const teachersService = {

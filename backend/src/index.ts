@@ -64,6 +64,7 @@ import disciplineRoutes from '@routes/disciplineRoutes';
 import smsWhatsAppRoutes from '@routes/smsWhatsAppRoutes';
 import smsWhatsAppWebhooks from '@routes/smsWhatsAppWebhooks';
 import teacherRoutes from '@routes/teacherRoutes';
+import staffRoutes from '@routes/staffRoutes';
 import contactRoutes from '@routes/contactRoutes';
 import newsletterRoutes from '@routes/newsletterRoutes';
 import schoolConfigRoutes from '@routes/schoolConfigRoutes';
@@ -185,7 +186,13 @@ if (NODE_ENV !== 'production') {
 // Serve static files from storage directory (local storage only)
 if (process.env.STORAGE_PROVIDER === 'local' || !process.env.STORAGE_PROVIDER) {
   const storagePath = process.env.LOCAL_STORAGE_PATH || './storage';
-  app.use('/storage', express.static(storagePath));
+  // helmet() sends Cross-Origin-Resource-Policy: same-origin, which stops the
+  // frontend (another origin: Vite, Vercel, the Android app) from showing
+  // uploaded photos. These files are meant to be embedded, so allow it here.
+  app.use('/storage', (_req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  }, express.static(storagePath));
   logger.info(`Serving static files from ${storagePath}`);
 }
 
@@ -369,6 +376,8 @@ app.use('/api/v1/sms-whatsapp', smsWhatsAppRoutes);
 
 // Teachers Management Routes
 app.use('/api/v1/teachers', teacherRoutes);
+// Support staff (security, cleaners, cooks…): records only, no login.
+app.use('/api/v1/staff', staffRoutes);
 
 // Contact Form Routes (Public)
 app.use('/api/contact', contactRoutes);

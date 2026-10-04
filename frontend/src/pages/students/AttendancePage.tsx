@@ -136,15 +136,18 @@ export const AttendancePage: React.FC = () => {
   const canMarkAllStudents = canAccess(['principal', 'super_admin']);
   const isStudent = user?.role === 'student';
   const isParent = user?.role === 'parent' || (user?.role as string | undefined) === 'guardian';
+  // Accountants / admissions officers only use their own staff sign-in here
+  // (they don't take student registers).
+  const staffSelfOnly = user?.role === 'accountant' || user?.role === 'admissions_officer';
 
   // ── Tabs ──────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<ActiveTab>(
-    location.pathname === '/staff/attendance' || searchParams.get('tab') === 'teachers' ? 'teachers' : 'logs'
+    staffSelfOnly || location.pathname === '/staff/attendance' || searchParams.get('tab') === 'teachers' ? 'teachers' : 'logs'
   );
   const requestedTab = searchParams.get('tab');
   React.useEffect(() => {
-    setActiveTab(location.pathname === '/staff/attendance' || requestedTab === 'teachers' ? 'teachers' : 'logs');
-  }, [location.pathname, requestedTab]);
+    setActiveTab(staffSelfOnly || location.pathname === '/staff/attendance' || requestedTab === 'teachers' ? 'teachers' : 'logs');
+  }, [location.pathname, requestedTab, staffSelfOnly]);
 
   // Academic-year scope for every tab (logs, register, analytics, export, class
   // pickers). '' = the school's CURRENT year, so the page follows a rollover;
@@ -562,7 +565,7 @@ export const AttendancePage: React.FC = () => {
   return (
     <MainLayout>
       <PageShell
-        title={activeTab === 'teachers' ? 'Teacher Attendance' : 'Attendance'}
+        title={activeTab === 'teachers' ? 'Staff Attendance' : 'Attendance'}
         subtitle={activeTab === 'teachers' ? 'Daily staff sign-in and sign-out' : 'Track student and teacher attendance'}
         breadcrumbs={[{ label: activeTab === 'teachers' ? 'Staff' : 'Students' }, { label: 'Attendance' }]}
         onRefresh={() => {
@@ -593,7 +596,7 @@ export const AttendancePage: React.FC = () => {
 
           {/* ── Tab bar ─────────────────────────────────────────────────── */}
           <div className="flex items-center gap-2 bg-slate-100 dark:bg-gray-800 p-1.5 rounded-2xl w-full overflow-x-auto scrollbar-none whitespace-nowrap sm:w-fit">
-            {TABS.filter((tab) => !(viewingPast && tab.id === 'register')).map((tab) => (
+            {TABS.filter((tab) => !(viewingPast && tab.id === 'register')).filter((tab) => !staffSelfOnly || tab.id === 'teachers').map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as ActiveTab)}

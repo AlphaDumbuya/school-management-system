@@ -1327,6 +1327,8 @@ export const SettingsPage: React.FC = () => {
                                 placeholder="Click or drag to upload school logo"
                                 previewType="image"
                                 enableCamera={true}
+                                cameraAspect={1}
+                                cameraGuide="frame"
                                 maxSizeMB={2}
                               />
                             </div>
