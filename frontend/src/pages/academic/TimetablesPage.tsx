@@ -71,7 +71,8 @@ export const TimetablesPage: React.FC = () => {
   const { activeYear } = useAcademicYears();
   // One year at a time: the picked one, else the school's active year.
   const year = pickedYear || activeYear;
-  const viewingPast = !isViewerOnly && !!year && !!activeYear && year !== activeYear;
+  // Students also pick a year (their class that year); past = history.
+  const viewingPast = (!isViewerOnly || isStudent) && !!year && !!activeYear && year !== activeYear;
   // Only managers edit, and only the current year (teachers view their classes).
   const canEdit = canManage && !viewingPast;
   // The current year is stored as '' so the page follows a rollover by itself.
@@ -98,13 +99,15 @@ export const TimetablesPage: React.FC = () => {
   });
   const classes: ClassRecord[] = (classesData as any)?.data ?? [];
 
-  // Student: resolve their own class from the dashboard.
-  const { data: studentDash } = useQuery({
-    queryKey: ['timetable-student-self'],
-    queryFn: () => studentDashboardService.getDashboard(),
-    enabled: isStudent,
+  // Student: resolve their class FOR THE SELECTED YEAR from the dashboard (the
+  // class that year that has a timetable — a year can hold more than one).
+  const { data: studentDash, isLoading: studentDashLoading } = useQuery({
+    queryKey: ['timetable-student-self', year],
+    queryFn: () => studentDashboardService.getDashboard(year),
+    enabled: isStudent && !!year,
     staleTime: 60_000,
   });
+  const studentDashData = ((studentDash as any)?.data ?? (studentDash as any)) as any;
   // Parent: resolve their (first) child's class.
   const { data: parentDash } = useQuery({
     queryKey: ['timetable-parent-children'],
@@ -119,8 +122,9 @@ export const TimetablesPage: React.FC = () => {
   // Auto-select the class.
   useEffect(() => {
     if (isStudent) {
-      const profile = ((studentDash as any)?.data ?? (studentDash as any))?.profile;
-      if (profile?.class_id) setSelectedClassId(String(profile.class_id));
+      if (!studentDashData) return;
+      const cid = studentDashData.timetable_class?.id ?? studentDashData.profile?.class_id ?? '';
+      if (String(cid) !== selectedClassId) setSelectedClassId(cid ? String(cid) : '');
       return;
     }
     if (isParent) {
@@ -138,7 +142,7 @@ export const TimetablesPage: React.FC = () => {
       setSelectedClassId('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classes, selectedClassId, isStudent, isParent, studentDash, parentChildren, activeChildId]);
+  }, [classes, selectedClassId, isStudent, isParent, studentDashData, parentChildren, activeChildId]);
 
   // Fetch weekly timetable for selected class
   const { data: weeklyData, isLoading } = useQuery({
@@ -153,7 +157,13 @@ export const TimetablesPage: React.FC = () => {
 
   // Determine period structure dynamically based on class level & custom settings
   const selectedClass = classes.find((c) => String(c.id) === selectedClassId);
-  const schoolLevel: SchoolLevel = selectedClass ? getSchoolLevel(selectedClass.level) : 'sss';
+  // Students/parents have no class list: take the level from the timetable
+  // response, so e.g. a Class 6 pupil gets primary periods, not SSS ones.
+  const classLevel: string | undefined = selectedClass?.level ?? (weeklyData as any)?.class_level ?? undefined;
+  const schoolLevel: SchoolLevel = classLevel ? getSchoolLevel(classLevel) : 'sss';
+  const viewerClassName: string | null = (weeklyData as any)?.class_name ?? studentDashData?.timetable_class?.name ?? null;
+  // apiClient never throws: a denied/failed load comes back as success:false.
+  const weeklyError: string | null = (weeklyData as any)?.success === false ? ((weeklyData as any)?.error || 'Could not load the timetable') : null;
 
   // Fetch custom periods from API (tenant-scoped) with localStorage fallback
   const [configPeriods, setPeriods] = useState<PeriodDefinition[]>(PERIOD_STRUCTURES.sss);
@@ -322,11 +332,13 @@ export const TimetablesPage: React.FC = () => {
     <MainLayout>
       <PageShell
         title={isViewerOnly ? 'Class Timetable' : 'Timetables'}
-        subtitle={isViewerOnly ? 'Your weekly class schedule' : 'Manage weekly class schedules'}
+        subtitle={isViewerOnly
+          ? (viewerClassName ? `${viewerClassName} · weekly schedule${isStudent ? ` · ${year}` : ''}` : 'Your weekly class schedule')
+          : 'Manage weekly class schedules'}
         breadcrumbs={[{ label: 'Timetables' }]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
-            {!isViewerOnly && (
+            {(!isViewerOnly || isStudent) && (
               <YearFilter value={year} onChange={changeYear} noAutoSelect />
             )}
             <EditGuard>
@@ -354,7 +366,10 @@ export const TimetablesPage: React.FC = () => {
       >
         {viewingPast && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-            <span>Showing the <strong>{year}</strong> timetable as history (read-only). The current year is {activeYear}.</span>
+            <span>
+              Showing the <strong>{year}</strong>{isStudent && viewerClassName ? <> {viewerClassName}</> : null} timetable as history
+              {isStudent ? '' : ' (read-only)'}. The current year is {activeYear}.
+            </span>
             <button type="button" onClick={() => changeYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
               Back to {activeYear}
             </button>
@@ -399,20 +414,33 @@ export const TimetablesPage: React.FC = () => {
             ))}
           </div>
         ) : null}
+        {/* Rollover not finished: still last year's class. */}
+        {isStudent && !viewingPast && studentDashData?.pending_transition && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <strong>{activeYear} is being set up.</strong> Your new class timetable will appear once the school moves you into {activeYear}.
+          </div>
+        )}
+        {weeklyError && (
+          <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{weeklyError}</div>
+        )}
         {/* No class resolved state */}
-        {!selectedClassId && (
+        {!selectedClassId && !(isStudent && studentDashLoading) && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Calendar size={56} className="text-gray-300 dark:text-gray-600 mb-4" />
             <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
               {isViewerOnly
-                ? 'No class timetable available yet'
+                ? (isStudent && studentDashData?.enrolled_in_year === false && !studentDashData?.pending_transition
+                    ? ((studentDashData as any)?.graduated ? `🎓 You graduated from ${(studentDashData as any).graduated.className}` : `You weren’t in a class in ${year}`)
+                    : `No class timetable${isStudent ? ` for ${year}` : ''} yet`)
                 : classesData && classes.length === 0
                   ? (viewingPast ? `No classes in ${year}` : 'No classes yet')
                   : 'Select a class to view its timetable'}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {isViewerOnly
-                ? 'Your timetable will appear here once you are enrolled in a class with a schedule.'
+                ? (viewingPast
+                    ? `No timetable was set for your class in ${year}.`
+                    : 'Your timetable will appear here once the school publishes a schedule for your class.')
                 : classesData && classes.length === 0
                   ? (canManage
                       ? (viewingPast ? `There were no classes in ${year}.` : 'Create classes first, then build their weekly schedule.')

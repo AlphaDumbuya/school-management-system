@@ -83,13 +83,39 @@ export const rosterRepo = {
     if (!res.success || !res.data) return 0;
     const d = res.data;
 
+    // A class the teacher was just given isn't in an incremental delta (its row
+    // didn't change), so re-pull everything once when the scope gains a class.
+    if (since && d.scope) {
+      const cached = new Set((await db.classes.toCollection().primaryKeys()).map(String));
+      if (d.scope.class_ids.some((id) => !cached.has(String(id)))) {
+        return this.refresh(userId, { full: true });
+      }
+    }
+
     let written = 0;
-    await db.transaction('rw', db.classes, db.students, db.subjects, db.timetable, db.enrollments, db.sync_meta, async () => {
+    await db.transaction('rw', [db.classes, db.students, db.subjects, db.timetable, db.enrollments, db.sync_meta], async () => {
       if (d.classes?.length) { await db.classes.bulkPut(toCached(d.classes)); written += d.classes.length; }
       if (d.students?.length) { await db.students.bulkPut(toCached(d.students)); written += d.students.length; }
       if (d.subjects?.length) { await db.subjects.bulkPut(toCached(d.subjects)); written += d.subjects.length; }
       if (d.timetable?.length) { await db.timetable.bulkPut(toCached(d.timetable)); written += d.timetable.length; }
-      if ((d as any).enrollments?.length) { await db.enrollments.bulkPut(toCached((d as any).enrollments)); written += (d as any).enrollments.length; }
+      // Enrollments come as the FULL current set: replace, so a promoted or
+      // moved student leaves the old class register offline too.
+      if (d.scope || (d as any).enrollments?.length) {
+        await db.enrollments.clear();
+        if ((d as any).enrollments?.length) { await db.enrollments.bulkPut(toCached((d as any).enrollments)); written += (d as any).enrollments.length; }
+      }
+      // Promotions/reassignments: drop classes (and their timetable) the
+      // teacher no longer has, and students no longer in any of their classes.
+      if (d.scope) {
+        const keepClasses = new Set(d.scope.class_ids.map(String));
+        const keepStudents = new Set(d.scope.student_ids.map(String));
+        const goneClasses = (await db.classes.toCollection().primaryKeys()).filter((id) => !keepClasses.has(String(id)));
+        if (goneClasses.length) await db.classes.bulkDelete(goneClasses);
+        const goneSlots = (await db.timetable.toArray()).filter((r) => !keepClasses.has(String(r.data?.class_id))).map((r) => r.id);
+        if (goneSlots.length) await db.timetable.bulkDelete(goneSlots);
+        const goneStudents = (await db.students.toCollection().primaryKeys()).filter((id) => !keepStudents.has(String(id)));
+        if (goneStudents.length) await db.students.bulkDelete(goneStudents);
+      }
       await db.sync_meta.put({ key: SYNC_KEY, lastPulledAt: d.serverTime, lastPushedAt: meta?.lastPushedAt });
     });
 

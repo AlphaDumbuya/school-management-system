@@ -14,6 +14,11 @@ export interface StudentGrade {
   test2: number | null;
   mean: number | null;
   subject_rank: number | null;
+  /** The class the result was recorded in (a year can have more than one). */
+  class_id?: string;
+  class_name?: string;
+  /** That class's academic-year string (for the class ranking lookup). */
+  class_year?: string;
 }
 
 export interface StudentAttendanceRecord {
@@ -49,6 +54,22 @@ export interface StudentInvoice {
 
 export interface StudentDashboardData {
   student_profile_missing?: boolean;
+  /** The year this payload is for, and the school's current year. */
+  academic_year?: string;
+  active_year?: string;
+  viewing_past?: boolean;
+  year_exists?: boolean;
+  /** False when the student had no class in the selected year. */
+  enrolled_in_year?: boolean;
+  /** Set right after a rollover while the student is still in last year's class. */
+  pending_transition?: { fromYear: string; className: string } | null;
+  /** Finished SSS 3 and left the school: last class + year. */
+  graduated?: { year: string; className: string } | null;
+  results_published?: boolean;
+  /** Every class the student was in that year (newest first). */
+  year_classes?: { id: string; name: string; status: string }[];
+  /** The class the weekly timetable belongs to. */
+  timetable_class?: { id: string; name: string } | null;
   profile: {
     id: string;
     admission_no: string;
@@ -80,17 +101,24 @@ export interface StudentDashboardData {
   };
   today_schedule: StudentScheduleSlot[];
   weekly_schedule: StudentScheduleSlot[];
+  /** The selected year's fees; `other_years_outstanding` = arrears from other years. */
   fees: {
     total: number;
     paid: number;
     outstanding: number;
+    other_years_outstanding?: number;
+    /** Which other years still owe, oldest first. */
+    other_years?: { academic_year: string; outstanding: number }[];
     invoices: StudentInvoice[];
   };
 }
 
 export const studentDashboardService = {
-  getDashboard: () =>
-    apiClient.get<StudentDashboardData>('/api/v1/dashboards/student'),
+  /** The student's dashboard for one academic year (default = the active year). */
+  getDashboard: (academicYear?: string) =>
+    apiClient.get<StudentDashboardData>('/api/v1/dashboards/student', {
+      params: { academic_year: academicYear || undefined },
+    }),
 };
 
 export default studentDashboardService;

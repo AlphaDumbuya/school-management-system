@@ -23,6 +23,8 @@ import { subjectsService, SubjectRecord } from '@services/subjectsService';
 import { SubjectFormModal } from './components/SubjectFormModal';
 import { useAuth } from '@hooks/useAuth';
 import { parentDashboardService } from '@services/parentDashboardService';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -197,14 +199,22 @@ export const SubjectsPage: React.FC = () => {
   const [statusToggleTarget, setStatusToggleTarget] = useState<SubjectRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SubjectRecord | null>(null);
 
+  // Students/parents: their class subjects for ONE academic year ('' = the
+  // current year, follows a rollover; a past year is history). Staff see the
+  // tenant-global catalogue, which has no year.
+  const { activeYear } = useAcademicYears();
+  const [pickedYear, setPickedYear] = useState('');
+  const viewerYear = pickedYear || activeYear;
+  const changeYear = (y: string) => setPickedYear(!y || y === activeYear ? '' : y);
+
   // Fetch subjects. Students/parents get ONLY their own class's subjects; staff
   // get the full tenant list.
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: isViewerOnly
-      ? ['my-subjects', isParent ? activeChildId : 'self']
+      ? ['my-subjects', isParent ? activeChildId : 'self', viewerYear]
       : ['subjects', { search, categoryFilter, statusFilter, page, pageSize }],
     queryFn: () => isViewerOnly
-      ? subjectsService.listMySubjects(isParent ? activeChildId : undefined)
+      ? subjectsService.listMySubjects(isParent ? activeChildId : undefined, viewerYear)
       : subjectsService.listSubjects({
           page,
           limit: pageSize,
@@ -212,9 +222,22 @@ export const SubjectsPage: React.FC = () => {
           status: statusFilter.length === 1 ? statusFilter[0] : undefined,
           search: search || undefined,
         }),
-    enabled: !isParent || !!activeChildId || parentChildren.length === 0,
+    enabled: (!isParent || !!activeChildId || parentChildren.length === 0) && (!isViewerOnly || !!viewerYear),
     staleTime: 30_000,
   });
+  const viewerMeta = isViewerOnly ? (data as any)?.meta : null;
+  const viewerPast = isViewerOnly && !!viewerYear && !!activeYear && viewerYear !== activeYear;
+  const viewerClasses: string[] = (viewerMeta?.classes ?? []).map((c: any) => c.name);
+  // apiClient never throws: surface {success:false} instead of "no subjects".
+  const loadError: string | null = error
+    ? String(error)
+    : (data as any)?.success === false ? ((data as any)?.error || 'Could not load subjects') : null;
+  // Student/parent empty state that names the year.
+  const viewerEmptyText: string | null = !isViewerOnly || search
+    ? null
+    : viewerClasses.length === 0
+      ? `${isParent ? 'Your child wasn’t' : 'You weren’t'} in a class at this school in ${viewerYear}.`
+      : `No subjects have been set up for ${Array.from(new Set(viewerClasses)).join(' & ')} in ${viewerYear} yet.`;
 
   const allSubjects: SubjectRecord[] = (data as any)?.data ?? [];
   // Client-side search filter for the viewer-only list (no server pagination).
@@ -354,10 +377,16 @@ export const SubjectsPage: React.FC = () => {
     <MainLayout>
       <PageShell
         title={isViewerOnly ? 'My Subjects' : 'Subjects'}
-        subtitle={canManage ? 'Manage school subjects and curriculum' : isViewerOnly ? 'Subjects offered in your class' : 'School subjects and curriculum'}
+        subtitle={canManage
+          ? 'Manage school subjects and curriculum'
+          : isViewerOnly
+            ? (viewerClasses.length ? `Subjects in ${Array.from(new Set(viewerClasses)).join(' & ')} · ${viewerYear}` : `Subjects offered in ${isParent ? "your child's" : 'your'} class`)
+            : 'School subjects and curriculum'}
         breadcrumbs={[{ label: 'Subjects' }]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Viewers see their class's subjects for one year; the staff catalogue has no year. */}
+            {isViewerOnly && <YearFilter value={viewerYear} onChange={changeYear} noAutoSelect />}
             {/* View Mode Toggle */}
             <div className="flex items-center border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg p-0.5 shadow-sm">
               <button
@@ -403,6 +432,25 @@ export const SubjectsPage: React.FC = () => {
                 {c.class_name && <span className="text-xs text-gray-400">· {c.class_name}</span>}
               </button>
             ))}
+          </div>
+        )}
+
+        {viewerPast && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>Showing the subjects {isParent ? 'your child' : 'you'} took in <strong>{viewerYear}</strong>{viewerClasses.length ? <> ({Array.from(new Set(viewerClasses)).reverse().join(' → ')})</> : null}.</span>
+            <button type="button" onClick={() => changeYear(activeYear)} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">Back to {activeYear}</button>
+          </div>
+        )}
+        {isViewerOnly && !viewerPast && viewerMeta?.pending_transition && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <strong>{activeYear} is being set up.</strong> These are the subjects for {viewerMeta.pending_transition.className} ({viewerMeta.pending_transition.fromYear});
+            they'll update once the school moves {isParent ? 'your child' : 'you'} into this year's class.
+          </div>
+        )}
+        {loadError && (
+          <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <span>{loadError}</span>
+            <button type="button" onClick={() => refetch()} className="text-xs font-bold hover:underline">Try again</button>
           </div>
         )}
 
@@ -522,8 +570,9 @@ export const SubjectsPage: React.FC = () => {
             <div className="flex flex-col items-center justify-center p-12 bg-transparent dark:bg-transparent text-center">
               <BookOpen size={48} className="text-gray-400 dark:text-gray-500 mb-4" />
               <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">No subjects found</p>
-              <p className="text-sm text-gray-500 mt-1 mb-4">Try adjusting your filters or search query.</p>
-              <Button onClick={() => { setEditingSubject(null); setFormOpen(true); }}>Add your first subject</Button>
+              <p className="text-sm text-gray-500 mt-1 mb-4">{viewerEmptyText ?? 'Try adjusting your filters or search query.'}</p>
+              {/* Only principals can create subjects. */}
+              {canManage && <Button onClick={() => { setEditingSubject(null); setFormOpen(true); }}>Add your first subject</Button>}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -640,14 +689,14 @@ export const SubjectsPage: React.FC = () => {
             columns={columns}
             data={subjects}
             isLoading={isLoading}
-            error={error ? String(error) : null}
+            error={loadError}
             onRetry={refetch}
             paginationMode="server"
             pageIndex={page}
             pageSize={pageSize}
             totalRows={Number(pagination.total)}
             onPageChange={setPage}
-            emptyMessage="No subjects found"
+            emptyMessage={viewerEmptyText ?? 'No subjects found'}
             emptyAction={canManage ? { label: 'Add your first subject', onClick: () => { setEditingSubject(null); setFormOpen(true); } } : undefined}
             rowActions={canManage ? ((subj) => [
               {

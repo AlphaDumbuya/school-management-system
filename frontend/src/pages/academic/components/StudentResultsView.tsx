@@ -4,7 +4,9 @@
  * enforced server-side) and groups them by term. Students cannot enter or edit.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import { useQuery } from '@tanstack/react-query';
 import { GraduationCap, Loader2, BarChart3 } from 'lucide-react';
 import {
@@ -27,15 +29,44 @@ function termName(term: string): string {
 }
 
 export const StudentResultsView: React.FC = () => {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['student-results-self'],
-    queryFn: () => studentDashboardService.getDashboard(),
+  // One academic year at a time ('' = the current year, so the page follows a
+  // rollover; a past year is history). Results are publish-gated server-side,
+  // per class, for every class the student had that year.
+  const { activeYear } = useAcademicYears();
+  const [pickedYear, setPickedYear] = useState('');
+  const year = pickedYear || activeYear;
+  const changeYear = (y: string) => { setPickedYear(!y || y === activeYear ? '' : y); setRankClassId(''); };
+  const [rankClassId, setRankClassId] = useState('');
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['student-results-self', year],
+    queryFn: () => studentDashboardService.getDashboard(year),
+    enabled: !!year,
     staleTime: 60_000,
   });
 
+  // apiClient never throws: a failed load comes back as success:false.
+  const loadError: string | null = error
+    ? String(error)
+    : (data as any)?.success === false ? ((data as any)?.error || 'Could not load your results') : null;
   const dash = (data as any)?.data ?? (data as any);
   const profile = dash?.profile ?? null;
-  const grades: StudentGrade[] = dash?.grades ?? [];
+  const grades: StudentGrade[] = loadError ? [] : (dash?.grades ?? []);
+  const viewingPast = !!year && !!activeYear && year !== activeYear;
+  const yearClasses: string[] = Array.from(new Set<string>((dash?.year_classes ?? []).map((c: any) => c.name)));
+  const notEnrolled = !!dash && !loadError && dash.enrolled_in_year === false && !dash.pending_transition;
+  // A year with more than one class (promoted mid-year): show which class each result is from.
+  const multiClass = new Set(grades.map((g) => g.class_id || g.class_name)).size > 1;
+
+  // Ranking: within the class the results were recorded in (latest first).
+  const rankClasses = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string; year: string }>();
+    for (const g of grades) {
+      if (g.class_id && !seen.has(g.class_id)) seen.set(g.class_id, { id: g.class_id, name: g.class_name || 'Class', year: g.class_year || year });
+    }
+    return Array.from(seen.values());
+  }, [grades, year]);
+  const rankClass = rankClasses.find((c) => c.id === rankClassId) || rankClasses[0] || null;
 
   // Group grades by term
   const byTerm = useMemo(() => {
@@ -68,19 +99,38 @@ export const StudentResultsView: React.FC = () => {
   // instead of an unreleased "Full Year" tab.
   const rankingTerms = useMemo(() => {
     const order = ['first_term', 'second_term', 'third_term'] as const;
-    const present = new Set(grades.map((g) => g.term));
+    const present = new Set(grades.filter((g) => !rankClass || g.class_id === rankClass.id).map((g) => g.term));
     const terms = order.filter((t) => present.has(t)) as Array<'first_term' | 'second_term' | 'third_term' | 'full'>;
     // When all three terms are released, the whole-year ranking is meaningful too.
     if (terms.length === 3) terms.push('full');
     return terms;
-  }, [grades]);
+  }, [grades, rankClass]);
 
   return (
     <MainLayout>
       <PageShell
         title="My Results"
-        subtitle={profile?.class_name ? `${profile.class_name}${profile.academic_year ? ` • ${profile.academic_year}` : ''}` : 'Your published results'}
+        subtitle={yearClasses.length ? `${[...yearClasses].reverse().join(' → ')} • ${year}` : profile?.class_name ? `${profile.class_name} • ${year}` : 'Your published results'}
+        breadcrumbs={[{ label: 'Results & Grades' }]}
+        onRefresh={() => refetch()}
+        isRefreshing={isLoading}
+        actions={<YearFilter value={year} onChange={changeYear} noAutoSelect />}
       >
+        {viewingPast && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>
+              Showing your <strong>{year}</strong> results
+              {yearClasses.length ? <> ({[...yearClasses].reverse().join(' → ')})</> : null}. Only results the school released are shown.
+            </span>
+            <button type="button" onClick={() => changeYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">Back to {activeYear}</button>
+          </div>
+        )}
+        {!viewingPast && dash?.pending_transition && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <strong>{activeYear} is being set up.</strong> You're still listed in {dash.pending_transition.className} ({dash.pending_transition.fromYear}).
+            Last year's results are under {dash.pending_transition.fromYear} in the year picker.
+          </div>
+        )}
         {/* Grading legend */}
         <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
           <p className="text-[11px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Grading Method (below 50% is a fail)</p>
@@ -101,12 +151,22 @@ export const StudentResultsView: React.FC = () => {
           <div className="flex items-center justify-center py-20 text-gray-500">
             <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading your results…
           </div>
-        ) : error ? (
-          <EmptyState message="Couldn't load results" description="Please refresh and try again." />
+        ) : loadError ? (
+          <EmptyState
+            message="Couldn't load results"
+            description={loadError !== 'error' ? loadError : 'Please refresh and try again.'}
+            action={{ label: 'Retry', onClick: () => refetch() }}
+          />
+        ) : notEnrolled ? (
+          dash?.graduated && !viewingPast
+            ? <EmptyState message={`🎓 You graduated from ${dash.graduated.className}${dash.graduated.year ? ` in ${dash.graduated.year}` : ''}`} description="Your results from your years here are still available: pick a year above." />
+            : <EmptyState message={`You weren’t in a class at this school in ${year}`} description="Pick another year above." />
         ) : grades.length === 0 ? (
           <EmptyState
-            message="No results yet"
-            description="Your results will appear here once your teachers enter and the school publishes them."
+            message={`No results released for ${year} yet`}
+            description={viewingPast
+              ? 'The school did not release any results to you for this year.'
+              : 'Your results will appear here once your teachers enter them and the school releases them.'}
           />
         ) : (
           <div className="space-y-6">
@@ -150,6 +210,7 @@ export const StudentResultsView: React.FC = () => {
                     <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
                       <tr className="text-white">
                         <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Subject</th>
+                        {multiClass && <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Class</th>}
                         <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Test 1</th>
                         <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Test 2</th>
                         <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-center">Mean</th>
@@ -169,6 +230,7 @@ export const StudentResultsView: React.FC = () => {
                             }`}
                           >
                             <td className="px-4 py-3.5 font-medium text-gray-900 dark:text-gray-100">{g.subject_name}</td>
+                            {multiClass && <td className="px-4 py-3.5 text-xs text-gray-600 dark:text-gray-300">{g.class_name || '—'}</td>}
                             <td className="px-4 py-3.5 text-center text-gray-700 dark:text-gray-300">{g.test1 ?? '—'}</td>
                             <td className="px-4 py-3.5 text-center text-gray-700 dark:text-gray-300">{g.test2 ?? '—'}</td>
                             <td className="px-4 py-3.5 text-center">
@@ -201,12 +263,32 @@ export const StudentResultsView: React.FC = () => {
         )}
 
         {/* Class ranking — where you stand + who leads the class (published only) */}
-        {profile?.class_id && grades.length > 0 && (
+        {rankClass && grades.length > 0 && (
           <div className="mt-8">
-            <h2 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider mb-3">Class Ranking</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h2 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider">
+                Class Ranking{rankClasses.length === 1 ? ` · ${rankClass.name}` : ''}
+              </h2>
+              {rankClasses.length > 1 && (
+                <div className="flex gap-1.5" role="group" aria-label="Choose a class">
+                  {rankClasses.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      aria-pressed={rankClass.id === c.id}
+                      onClick={() => setRankClassId(c.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold ${rankClass.id === c.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <ClassRankingView
-              classId={String(profile.class_id)}
-              academicYear={String(profile.academic_year || '')}
+              key={rankClass.id}
+              classId={rankClass.id}
+              academicYear={rankClass.year}
               availableTerms={rankingTerms}
             />
           </div>

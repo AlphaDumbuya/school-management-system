@@ -34,6 +34,12 @@ export interface AssignmentRecord {
   teacher_name?: string;
   total_submissions?: number;
   graded_count?: number;
+  // Student (or a parent's selected child): their own submission, if any.
+  my_submission_status?: string | null;
+  my_submitted_at?: string | null;
+  my_marks?: number | null;
+  my_feedback?: string | null;
+  my_graded_at?: string | null;
   created_at: string;
 }
 
@@ -61,6 +67,8 @@ export interface ListAssignmentsParams {
   type?: string;
   academic_year?: string;
   search?: string;
+  /** Parent: which linked child (verified server-side). */
+  child_id?: string;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────

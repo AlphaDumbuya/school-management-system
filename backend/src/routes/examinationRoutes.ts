@@ -5,6 +5,7 @@ import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
 import { normalizeAcademicYear, resolveActiveYear } from '../utils/academicYear.js';
+import { isStudentOrParent, viewerStudentIds, viewerYearClasses, viewerInClass } from '../utils/studentScope.js';
 
 const router = Router();
 router.use(authenticate);
@@ -172,56 +173,37 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       query = query.whereIn('examinations.class_id', teacherClassIds);
     }
 
-    // Student scoping: only see exams for classes they're enrolled in
-    let studentClassIds: string[] | null = null;
-    if (req.user?.role === 'student') {
-      const student = await db('students')
-        .where('user_id', req.user.id)
-        .select('id')
-        .first();
-      if (!student) {
-        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
+    // Student / parent scoping: the class(es) the student (or the parent's
+    // child) was in during the requested year (default = the active year), and
+    // only that year's exams. Every class that year counts (promoted mid-year →
+    // both). Last year's class is NOT used during an unfinished rollover: its
+    // exams are over, so the year shows empty with the rollover notice.
+    let viewerClassIds: string[] | null = null;
+    let viewerMeta: any = null;
+    let viewerYear: string | null = null;
+    const viewer = isStudentOrParent(req.user?.role as string | undefined);
+    if (viewer) {
+      const scope = await viewerYearClasses(req.user?.role as string, req.user!.id, tenantId, {
+        academicYear: (academic_year as string | undefined) || null,
+        childId: (req.query.child_id as string | undefined) || null,
+        useTransitionClass: false,
+      });
+      viewerMeta = scope.meta;
+      viewerYear = scope.meta.academic_year;
+      viewerClassIds = scope.classIds;
+      // A class outside their own year scope → nothing (never another class's exams).
+      if (class_id && !viewerClassIds.includes(String(class_id))) viewerClassIds = [];
+      if (viewerClassIds.length === 0 || !viewerYear) {
+        return res.json({ data: [], meta: viewerMeta, pagination: { page, limit, total: 0, total_pages: 0 } });
       }
-      const enrolled = await db('enrollments')
-        .where('student_id', student.id)
-        .whereIn('status', ['enrolled', 'active'])
-        .distinct('class_id');
-      studentClassIds = enrolled.map((r: any) => r.class_id);
-      if (studentClassIds.length === 0) {
-        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
-      }
-      query = query.whereIn('examinations.class_id', studentClassIds);
+      query = query.whereIn('examinations.class_id', viewerClassIds);
     }
-
-    // Parent/guardian scoping: only see exams for their children's classes.
-    // Uses the guardians link table (student_id + user_id), consistent with the
-    // rest of the app — the old students.guardian_id join was wrong and matched
-    // nothing.
-    let parentClassIds: string[] | null = null;
-    if (req.user?.role === 'parent' || req.user?.role === 'guardian') {
-      const children = await db('guardians as g')
-        .join('students as s', 'g.student_id', 's.id')
-        .where('g.user_id', req.user.id)
-        .where('s.tenant_id', tenantId)
-        .distinct('s.id as id');
-      if (children.length === 0) {
-        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
-      }
-      const childIds = children.map((c: any) => c.id);
-      const enrolled = await db('enrollments')
-        .whereIn('student_id', childIds)
-        .whereIn('status', ['enrolled', 'active'])
-        .distinct('class_id');
-      parentClassIds = enrolled.map((r: any) => r.class_id);
-      if (parentClassIds.length === 0) {
-        return res.json({ data: [], pagination: { page, limit, total: 0, total_pages: 0 } });
-      }
-      query = query.whereIn('examinations.class_id', parentClassIds);
-    }
+    // Exams store "YYYY/YYYY"; match the canonical form of the requested year.
+    const yearFilter = viewer ? viewerYear : (academic_year ? (normalizeAcademicYear(academic_year as string) || (academic_year as string)) : null);
 
     if (type) query = query.where('examinations.type', type as string);
     if (term) query = query.where('examinations.term', term as string);
-    if (academic_year) query = query.where('examinations.academic_year', academic_year as string);
+    if (yearFilter) query = query.where('examinations.academic_year', yearFilter);
     if (class_id) query = query.where('examinations.class_id', class_id as string);
     if (status) query = query.where('examinations.status', status as string);
     if (search) {
@@ -238,11 +220,10 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       .where('users.tenant_id', tenantId)
       .count('examinations.id as count');
     if (teacherClassIds) countQuery = countQuery.whereIn('examinations.class_id', teacherClassIds);
-    if (studentClassIds) countQuery = countQuery.whereIn('examinations.class_id', studentClassIds);
-    if (parentClassIds) countQuery = countQuery.whereIn('examinations.class_id', parentClassIds);
+    if (viewerClassIds) countQuery = countQuery.whereIn('examinations.class_id', viewerClassIds);
     if (type) countQuery = countQuery.where('examinations.type', type as string);
     if (term) countQuery = countQuery.where('examinations.term', term as string);
-    if (academic_year) countQuery = countQuery.where('examinations.academic_year', academic_year as string);
+    if (yearFilter) countQuery = countQuery.where('examinations.academic_year', yearFilter);
     if (class_id) countQuery = countQuery.where('examinations.class_id', class_id as string);
     if (status) countQuery = countQuery.where('examinations.status', status as string);
 
@@ -252,6 +233,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 
     res.json({
       data: examinations,
+      ...(viewer ? { meta: viewerMeta } : {}),
       pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
     });
   } catch (error) {
@@ -279,6 +261,15 @@ router.get('/:examId', authenticate, async (req: Request, res: Response, next: N
       .first();
 
     if (!exam) throw new AppError('Examination not found', 404, 'NOT_FOUND');
+    // Students / parents: only exams for a class the student (or one of the
+    // parent's children) is or was in. School-wide exams (no class) are fine.
+    const role = req.user?.role as string | undefined;
+    if (isStudentOrParent(role) && exam.class_id) {
+      const ids = await viewerStudentIds(role, req.user!.id, tenantId, (req.query.child_id as string | undefined) || null);
+      if (!(await viewerInClass(ids, exam.class_id))) {
+        throw new AppError(role === 'student' ? 'You can only view exams for your own classes' : "You can only view your children's exams", 403, 'FORBIDDEN');
+      }
+    }
     res.json(exam);
   } catch (error) {
     next(error);

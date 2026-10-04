@@ -30,13 +30,19 @@ const isTuition = (type?: string | null) => (type || '').toLowerCase().includes(
 
 interface Props {
   studentId?: string;
+  /**
+   * Limit the ledger to ONE academic year (dashboards follow their year
+   * picker). Other years' unpaid balance is shown as a single "from earlier
+   * years" line instead of their full breakdown. Omit for every year.
+   */
+  academicYear?: string;
   canPay?: boolean;
   /** When true, the Pay button navigates to /finance/my-fees instead of paying
    *  inline (used on dashboards to centralise payment). */
   redirectToPay?: boolean;
 }
 
-export const StudentLedgerView: React.FC<Props> = ({ studentId, canPay = true, redirectToPay = false }) => {
+export const StudentLedgerView: React.FC<Props> = ({ studentId, academicYear, canPay = true, redirectToPay = false }) => {
   const navigate = useNavigate();
   const { data, isLoading, error } = useQuery({
     queryKey: ['student-ledger', studentId ?? 'me'],
@@ -44,7 +50,29 @@ export const StudentLedgerView: React.FC<Props> = ({ studentId, canPay = true, r
     staleTime: 60_000,
   });
 
-  const ledger: StudentLedger | undefined = (data as any)?.data?.data ?? (data as any)?.data;
+  const fullLedger: StudentLedger | undefined = (data as any)?.data?.data ?? (data as any)?.data;
+
+  // Year-limited view: keep only that year, and recompute the summary from it.
+  // Balances from other years are still owed, so they're kept as one figure.
+  const sameYear = (a?: string | null, b?: string | null) =>
+    String(a ?? '').replace(/[^0-9]/g, '') === String(b ?? '').replace(/[^0-9]/g, '');
+  const ledger: StudentLedger | undefined = React.useMemo(() => {
+    if (!fullLedger || !academicYear) return fullLedger;
+    const years = fullLedger.years.filter((y) => sameYear(y.academic_year, academicYear));
+    const sum = (k: 'billed' | 'paid' | 'outstanding') =>
+      Math.round(years.reduce((s, y: any) => s + Number(y[k] || 0), 0) * 100) / 100;
+    return { ...fullLedger, years, totals: { ...fullLedger.totals, billed: sum('billed'), paid: sum('paid'), outstanding: sum('outstanding') } };
+  }, [fullLedger, academicYear]);
+  // Unpaid balances from OTHER years, per year (oldest first), so the student
+  // is told exactly which year's fees are still owed.
+  const arrears = React.useMemo(() => {
+    if (!fullLedger || !academicYear) return [] as { year: string; amount: number }[];
+    return fullLedger.years
+      .filter((y) => !sameYear(y.academic_year, academicYear) && Number(y.outstanding || 0) > 0)
+      .map((y: any) => ({ year: String(y.academic_year), amount: Math.round(Number(y.outstanding) * 100) / 100 }))
+      .sort((a, b) => a.year.localeCompare(b.year));
+  }, [fullLedger, academicYear]);
+  const otherYearsOutstanding = Math.round(arrears.reduce((s, a) => s + a.amount, 0) * 100) / 100;
 
   // Payment policy (drives the "charges compulsory in first term" note).
   const { data: policyResp } = useQuery({
@@ -59,13 +87,60 @@ export const StudentLedgerView: React.FC<Props> = ({ studentId, canPay = true, r
     return <div className="flex items-center justify-center py-10 text-gray-500"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading ledger…</div>;
   }
   if (error || !ledger) {
-    return <p className="text-sm text-gray-500 py-6 text-center">Couldn't load the financial ledger.</p>;
+    // apiClient never throws: show the server's reason (e.g. "not your child").
+    return <p role="alert" className="text-sm text-gray-500 py-6 text-center">{(data as any)?.error || "Couldn't load the financial ledger."}</p>;
   }
+  // "2026/2027" is LAST year when it's the year just before the one shown.
+  const yearStart = (y: string) => Number(String(y).slice(0, 4)) || 0;
+  const describe = (y: string) =>
+    academicYear && yearStart(y) === yearStart(academicYear) - 1 ? `${y} (last year)` : y;
+
+  const ArrearsNote = () => otherYearsOutstanding > 0 ? (
+    <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+      <div className="flex items-start gap-2.5">
+        <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+        <div className="min-w-0 flex-1">
+          {arrears.length === 1 ? (
+            <p className="font-semibold">
+              You still owe {fmtLe(arrears[0].amount)} in school fees from {describe(arrears[0].year)}.
+            </p>
+          ) : (
+            <>
+              <p className="font-semibold">You still owe {fmtLe(otherYearsOutstanding)} in school fees from earlier years:</p>
+              <ul className="mt-1 space-y-0.5">
+                {arrears.map((a) => (
+                  <li key={a.year}>• {describe(a.year)}: <strong>{fmtLe(a.amount)}</strong></li>
+                ))}
+              </ul>
+            </>
+          )}
+          <p className="mt-1 text-amber-800 dark:text-amber-300">
+            This balance has not been cleared and must still be paid. Please pay it, or speak to the school office if you think it is wrong.
+          </p>
+        </div>
+      </div>
+      {canPay && (
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={() => navigate('/finance/my-fees')}
+            className="inline-flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 px-4 py-2 text-sm font-bold text-white shadow-sm"
+          >
+            <CreditCard size={15} /> Pay {fmtLe(otherYearsOutstanding)} now
+          </button>
+        </div>
+      )}
+    </div>
+  ) : null;
+
   if (ledger.years.length === 0) {
     return (
-      <div className="py-10 text-center">
-        <Receipt className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-        <p className="text-sm text-gray-500">No charges on record yet.</p>
+      <div className="space-y-3">
+        <ArrearsNote />
+        <div className="py-10 text-center">
+          <Receipt className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+          <p className="text-sm text-gray-500">{academicYear ? `No fees billed for ${academicYear} yet.` : 'No charges on record yet.'}</p>
+        </div>
       </div>
     );
   }
@@ -132,6 +207,7 @@ export const StudentLedgerView: React.FC<Props> = ({ studentId, canPay = true, r
 
   return (
     <div className="space-y-4">
+      <ArrearsNote />
       {/* Summary */}
       <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-900/60 p-4 sm:p-5">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

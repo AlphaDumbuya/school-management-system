@@ -432,7 +432,9 @@ router.get('/dashboards/student', authenticate, async (req: Request, res: Respon
       return res.status(400).json({ error: 'Tenant context is required' });
     }
 
-    const data = await studentDashboardService.getDashboard(req.user!.id, tenantId);
+    // ?academic_year= → that year (default = the school's active year).
+    const year = typeof req.query.academic_year === 'string' ? req.query.academic_year : undefined;
+    const data = await studentDashboardService.getDashboard(req.user!.id, tenantId, year);
     res.json({ success: true, data });
   } catch (error) {
     logger.error(`Error fetching student dashboard: ${error}`);

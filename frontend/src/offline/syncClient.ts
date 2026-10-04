@@ -7,6 +7,8 @@ import apiClient from '../lib/apiClient';
 
 export interface SyncPullData {
   serverTime: string;
+  /** The teacher's FULL current scope (not a delta) — used to prune the cache. */
+  scope?: { class_ids: string[]; student_ids: string[] };
   classes: any[];
   students: any[];
   subjects: any[];
@@ -33,7 +35,8 @@ export interface PushResult {
 
 export const syncClient = {
   async pull(since?: string) {
-    return apiClient.get<{ success: boolean; data: SyncPullData }>('/api/v1/sync/pull', {
+    // apiClient returns the response body, so `.data` is the SyncPullData itself.
+    return apiClient.get<SyncPullData>('/api/v1/sync/pull', {
       params: since ? { since } : undefined,
     });
   },

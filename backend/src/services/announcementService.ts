@@ -89,7 +89,9 @@ export class AnnouncementService {
     if (role === 'student') {
       const student = await db('students').where({ user_id: userId, tenant_id: tenantId }).select('id').first();
       if (!student) return [];
-      const rows = await db('enrollments').where('student_id', student.id).whereIn('status', ['enrolled', 'active']).distinct('class_id');
+      // Every class they are or WERE in: lists are year-scoped by date, so a
+      // promoted student still sees last year's class posts under last year.
+      const rows = await db('enrollments').where('student_id', student.id).distinct('class_id');
       return rows.map((r: any) => r.class_id).filter(Boolean);
     }
     if (role === 'parent' || role === 'guardian') {
@@ -102,7 +104,8 @@ export class AnnouncementService {
         .distinct('g.student_id');
       const studentIds = guardianRows.map((r: any) => r.student_id).filter(Boolean);
       if (!studentIds.length) return [];
-      const rows = await db('enrollments').whereIn('student_id', studentIds).whereIn('status', ['enrolled', 'active']).distinct('class_id');
+      // Any class the children are or were in (lists are year-scoped by date).
+      const rows = await db('enrollments').whereIn('student_id', studentIds).distinct('class_id');
       return rows.map((r: any) => r.class_id).filter(Boolean);
     }
     if (role === 'teacher') {

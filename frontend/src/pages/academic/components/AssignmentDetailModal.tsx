@@ -25,9 +25,17 @@ import {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/** A DATE column arrives as "YYYY-MM-DD" or a midnight ISO string: read the calendar day, never shift it by timezone. */
+function dayOf(dateStr: string): Date {
+  const ymd = String(dateStr).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? new Date(`${ymd}T00:00:00`) : new Date(dateStr);
+}
+
 function formatDate(dateStr: string | undefined): string {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-GB', {
+  const d = dayOf(dateStr);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-GB', {
     weekday: 'short',
     day: 'numeric',
     month: 'long',
@@ -36,10 +44,15 @@ function formatDate(dateStr: string | undefined): string {
 }
 
 function isOverdue(dueDate: string): boolean {
-  return (
-    new Date(dueDate) < new Date() &&
-    new Date(dueDate).toDateString() !== new Date().toDateString()
-  );
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return dayOf(dueDate) < today;
+}
+
+function formatStamp(ts: string | null | undefined): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 const TYPE_LABELS: Record<string, string> = Object.fromEntries(
@@ -95,6 +108,10 @@ interface AssignmentDetailModalProps {
   onClose: () => void;
   assignment: AssignmentRecord | null;
   onEdit?: (assignment: AssignmentRecord) => void;
+  /** A past year viewed by a student/parent: history, so never "Overdue". */
+  historyMode?: boolean;
+  /** Student/parent view: whose submission this is ("you" or the child's name). */
+  viewerLabel?: string;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -104,11 +121,19 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
   onClose,
   assignment,
   onEdit,
+  historyMode = false,
+  viewerLabel,
 }) => {
   if (!assignment) return null;
 
+  // The student's own submission (present on student / single-child rows).
+  const hasOwn = !!viewerLabel && 'my_submission_status' in assignment;
+  const ownStatus = String(assignment.my_submission_status || '');
+  const ownHandedIn = !!assignment.my_submitted_at || ['submitted', 'graded', 'late'].includes(ownStatus);
+  const ownGraded = ownStatus === 'graded' || !!assignment.my_graded_at || (assignment.my_marks !== null && assignment.my_marks !== undefined);
+
   const overdue =
-    assignment.status === 'active' && isOverdue(assignment.due_date);
+    assignment.status === 'active' && isOverdue(assignment.due_date) && !historyMode && !(hasOwn && ownHandedIn);
 
   const submissionPct =
     assignment.total_submissions && assignment.total_submissions > 0
@@ -230,8 +255,43 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
           />
         </div>
 
-        {/* ── Submission Stats ── */}
-        {(assignment.total_submissions !== undefined) && (
+        {/* ── Own submission (student / parent) ── */}
+        {hasOwn && (
+          <div className="border-t border-gray-100 dark:border-gray-800 pt-5">
+            <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest mb-3 flex items-center gap-2">
+              <ClipboardList size={13} /> {viewerLabel === 'you' ? 'Your submission' : `${viewerLabel}'s submission`}
+            </h3>
+            {ownGraded ? (
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-800/30 dark:bg-emerald-900/20">
+                <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                  Graded{assignment.my_marks !== null && assignment.my_marks !== undefined ? `: ${assignment.my_marks} / ${assignment.max_marks}` : ''}
+                  {formatStamp(assignment.my_graded_at) ? <span className="font-normal"> · {formatStamp(assignment.my_graded_at)}</span> : null}
+                </p>
+                {assignment.my_feedback && (
+                  <p className="mt-2 text-sm text-emerald-900/80 dark:text-emerald-200/80 whitespace-pre-line">
+                    <span className="font-semibold">Teacher's feedback: </span>{assignment.my_feedback}
+                  </p>
+                )}
+              </div>
+            ) : ownHandedIn ? (
+              <p className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/30 dark:bg-blue-900/20 dark:text-blue-300">
+                {ownStatus === 'late' ? 'Handed in late' : 'Handed in'}
+                {formatStamp(assignment.my_submitted_at) ? ` on ${formatStamp(assignment.my_submitted_at)}` : ''}. Waiting for the teacher to mark it.
+              </p>
+            ) : (
+              <p className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-700 dark:border-gray-700/50 dark:bg-gray-800/60 dark:text-gray-300">
+                {historyMode
+                  ? 'No submission was recorded for this assignment.'
+                  : viewerLabel === 'you'
+                    ? 'Not handed in yet. Give your work to your teacher by the due date; it shows here once they record it.'
+                    : 'Not handed in yet. It shows here once the teacher records it.'}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── Submission Stats (staff) ── */}
+        {!viewerLabel && (assignment.total_submissions !== undefined) && (
           <div className="border-t border-gray-100 dark:border-gray-800 pt-5">
             <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest mb-4 flex items-center gap-2">
               <ClipboardList size={13} /> Submissions

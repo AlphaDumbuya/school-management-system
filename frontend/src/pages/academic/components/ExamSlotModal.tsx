@@ -66,7 +66,8 @@ export const ExamSlotModal: React.FC<Props> = ({
       setType(editingExam.type);
       setDate(editingExam.start_date?.substring(0, 10) ?? '');
       const d = editingExam.start_date ? new Date(editingExam.start_date) : null;
-      const sess = d && d.getHours() >= 12 ? 'afternoon' : 'morning';
+      // Stored as UTC wall-clock (composeExamDateTime): read in UTC, like the grid.
+      const sess = d && d.getUTCHours() >= 12 ? 'afternoon' : 'morning';
       setSession(sess);
       setStartTime(editingExam.start_date ? editingExam.start_date.substring(11, 16) : '09:00');
       setEndTime(editingExam.end_date ? editingExam.end_date.substring(11, 16) : '11:00');

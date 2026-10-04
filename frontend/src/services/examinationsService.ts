@@ -70,6 +70,8 @@ export interface ListExamsParams {
   class_id?: string;
   status?: string;
   search?: string;
+  /** Parent: which linked child (verified server-side). */
+  child_id?: string;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -122,7 +124,9 @@ export function sessionForTime(startDateIso?: string): string {
   if (!startDateIso) return 'morning';
   const d = new Date(startDateIso);
   if (isNaN(d.getTime())) return 'morning';
-  return d.getHours() < 12 ? 'morning' : 'afternoon';
+  // Times are composed and stored as UTC wall-clock (composeExamDateTime), so
+  // read them back in UTC too; local hours would shift the session by timezone.
+  return d.getUTCHours() < 12 ? 'morning' : 'afternoon';
 }
 
 /** Compose an ISO datetime from a YYYY-MM-DD date + HH:MM time. */

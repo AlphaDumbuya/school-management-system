@@ -22,6 +22,29 @@ function round1(n: number): number {
 
 export type PromotionOutcome = 'promoted' | 'promoted_effort' | 'repeated' | 'graduated';
 
+/** "JSS 3", "jss3", "JSS-3" → "JSS3". */
+export const normLevel = (level?: string | null) => String(level || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/** Stage-end classes and the first class of the next stage (Sierra Leone). */
+const STAGE_NEXT: Record<string, string> = { NURSERY3: 'CLASS1', CLASS6: 'JSS1', JSS3: 'SSS1' };
+const KNOWN_LEVELS = new Set([
+  'NURSERY1', 'NURSERY2', 'NURSERY3',
+  'CLASS1', 'CLASS2', 'CLASS3', 'CLASS4', 'CLASS5', 'CLASS6',
+  'JSS1', 'JSS2', 'JSS3', 'SSS1', 'SSS2', 'SSS3',
+]);
+
+/**
+ * What "graduating" from a class means. SSS 3 (or an unrecognised custom
+ * level) leaves the school. Nursery 3, Class 6 and JSS 3 move up a stage, and
+ * any other known level just promotes.
+ */
+export function graduationKind(level?: string | null): { leavesSchool: boolean; nextLevel: string | null } {
+  const l = normLevel(level);
+  // No level set: trust the school's own "final year" choice.
+  if (l === 'SSS3' || !KNOWN_LEVELS.has(l)) return { leavesSchool: true, nextLevel: null };
+  return { leavesSchool: false, nextLevel: STAGE_NEXT[l] ?? null };
+}
+
 export interface PromotionCandidate {
   student_id: string;
   student_name: string;
@@ -201,8 +224,32 @@ class PromotionService {
   ): Promise<{ promoted: number; repeated: number; graduated: number; skipped: number }> {
     await this.assertClassInTenant(payload.from_class_id, tenantId);
 
+    // Sierra Leone stages: Nursery 3 → Class 1, Class 6 → JSS 1 and JSS 3 →
+    // SSS 1 are STAGE graduations. The child stays in the school and moves up
+    // into the next stage, so they're promotions with a target class. Only
+    // SSS 3 (or a custom school's final class with an unrecognised level)
+    // takes the child out of the school.
+    const fromClass = await db('classes').where({ id: payload.from_class_id }).first('level', 'next_class_id', 'academic_session_id');
+    const stage = graduationKind(fromClass?.level);
+    const leavesSchool = stage.leavesSchool;
+    if (!leavesSchool && payload.graduate) {
+      // Treat "graduate the class" as "move them into the next stage".
+      payload = {
+        ...payload,
+        graduate: false,
+        to_class_id: payload.to_class_id
+          ?? fromClass?.next_class_id
+          ?? (stage.nextLevel ? await this.findStageClass(tenantId, stage.nextLevel) : null),
+      };
+    }
+    // A per-student "graduated" below SSS 3 also becomes a stage move.
+    const stageMove = !leavesSchool;
+
     const defaultTarget = payload.graduate ? null : payload.to_class_id ?? null;
     if (!payload.graduate) {
+      if (stageMove && payload.decisions.some((d) => d.outcome === 'graduated' && !d.to_class_id) && !defaultTarget) {
+        throw new Error(`Choose the ${stage.nextLevel ? stage.nextLevel.replace(/(\D+)(\d)/, '$1 $2') : 'next'} class these students move into. Graduating from ${String(fromClass?.level || 'this class')} moves them up a stage; only SSS 3 leaves the school.`);
+      }
       // Validate default target class belongs to tenant (if any promotions need it).
       const needsTarget = payload.decisions.some(
         (d) => (d.outcome === 'promoted' || d.outcome === 'promoted_effort') && !d.to_class_id,
@@ -250,7 +297,8 @@ class PromotionService {
 
         if (!enrollment) { counters.skipped++; continue; }
 
-        const isPromotion = d.outcome === 'promoted' || d.outcome === 'promoted_effort';
+        // Below SSS 3, "graduated" means moving up into the next stage.
+        const isPromotion = d.outcome === 'promoted' || d.outcome === 'promoted_effort' || (d.outcome === 'graduated' && stageMove);
         let target = d.to_class_id ?? defaultTarget;
         // Target picked from last year (e.g. the old next-class link) but the
         // student is already in the new year → use the target's new-year copy.
@@ -264,7 +312,7 @@ class PromotionService {
           }
         }
 
-        if (d.outcome === 'graduated' || (isPromotion && payload.graduate)) {
+        if ((d.outcome === 'graduated' && leavesSchool) || (isPromotion && payload.graduate)) {
           // Graduating: close enrollment, mark student graduated, no new class.
           await trx('enrollments')
             .where({ id: enrollment.enrollment_id })
@@ -356,6 +404,22 @@ class PromotionService {
   }
 
   /**
+   * The single current-year class at a level (e.g. "JSS1") for a stage move,
+   * or null when there is none or several (e.g. SSS 1 streams), in which case
+   * the principal must choose.
+   */
+  async findStageClass(tenantId: string, level: string): Promise<string | null> {
+    const rows = await db('classes as c')
+      .join('academic_sessions as s', 'c.academic_session_id', 's.id')
+      .where('s.tenant_id', tenantId)
+      .where('s.is_active', true)
+      .whereNot('c.status', 'inactive')
+      .select('c.id', 'c.level');
+    const matches = rows.filter((r: any) => normLevel(r.level) === level);
+    return matches.length === 1 ? String(matches[0].id) : null;
+  }
+
+  /**
    * AUTOMATIC promotion for a class based on yearly average.
    * Uses the class's `next_class_id` / `is_final_year` mapping so no manual
    * target selection is needed. Passing students (>=50%) are promoted (or
@@ -381,7 +445,14 @@ class PromotionService {
     await this.assertClassInTenant(classId, tenantId);
 
     const cls = await db('classes').where({ id: classId }).first('next_class_id', 'is_final_year');
-    const isFinal = !!cls?.is_final_year;
+    // "Final year" only leaves the school at SSS 3. A stage end (Nursery 3,
+    // Class 6, JSS 3) flagged final is treated as moving up a stage.
+    const clsLevel = await db('classes').where({ id: classId }).first('level');
+    const kind = graduationKind(clsLevel?.level);
+    const isFinal = !!cls?.is_final_year && kind.leavesSchool;
+    if (cls && !cls.next_class_id && !kind.leavesSchool && kind.nextLevel) {
+      cls.next_class_id = await this.findStageClass(tenantId, kind.nextLevel);
+    }
     const nextClassId: string | null = cls?.next_class_id ?? null;
 
     // If not final year and no next class configured, we can't auto-move.

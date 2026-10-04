@@ -82,8 +82,10 @@ export const attendanceService = {
   },
 
   /** Attendance for the currently logged-in student (own records only). */
-  async getMyAttendance() {
-    return apiClient.get<MyAttendanceResponse>('/api/v1/attendance/my');
+  async getMyAttendance(academicYear?: string) {
+    return apiClient.get<MyAttendanceResponse>('/api/v1/attendance/my', {
+      params: { academic_year: academicYear || undefined },
+    });
   },
 
   async submitBulkAttendance(payload: BulkAttendancePayload) {

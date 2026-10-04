@@ -176,7 +176,10 @@ router.post('/bulk', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_
  * GET /api/v1/results
  * List results with filters
  */
-router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+// Staff only: this legacy table has no publication gate and no per-student
+// scoping, so students/parents read their published results via the
+// dashboards / report cards instead.
+router.get('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
@@ -245,7 +248,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
  * GET /api/v1/results/summary
  * Get summary stats for a class + subject + term
  */
-router.get('/summary', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/summary', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { class_id, subject_id, term, academic_year } = req.query;
     const tenantId = req.user?.tenant_id;

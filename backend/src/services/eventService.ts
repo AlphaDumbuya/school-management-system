@@ -16,6 +16,37 @@ import { logger } from '../utils/logger.js';
 import eventCategoryService from './eventCategoryService.js';
 import eventRecurrenceService from './eventRecurrenceService.js';
 
+const isAdminRole = (role?: string) => role === 'principal' || role === 'super_admin';
+
+/**
+ * Who an event is for (non-admin viewers): public events, role-specific events
+ * that name their role (parent ≡ guardian), and anything they organise or
+ * registered for (covers private/invite-only events). Shared by the list,
+ * calendar and upcoming views so they all agree.
+ */
+function audienceWhere(role: string, userId?: string) {
+  const roles = role === 'parent' || role === 'guardian' ? ['parent', 'guardian'] : [role];
+  return (q: any) => {
+    q.where('events.visibility', 'public')
+      .orWhereNull('events.visibility')
+      .orWhere((r: any) => {
+        r.where('events.visibility', 'role_specific').where((w: any) => {
+          w.whereNull('events.visible_to_roles');
+          roles.forEach((ro) => w.orWhereRaw('events.visible_to_roles::text ILIKE ?', [`%"${ro}"%`]));
+        });
+      });
+    if (userId) {
+      q.orWhere('events.organizer_id', userId)
+        .orWhere('events.created_by', userId)
+        .orWhereExists(
+          db('event_registrations')
+            .whereRaw('event_registrations.event_id = events.event_id')
+            .where('event_registrations.user_id', userId),
+        );
+    }
+  };
+}
+
 export class EventService {
   /**
    * Create a new event
@@ -325,6 +356,25 @@ export class EventService {
   }
 
   /**
+   * May a non-admin viewer see this event? Public: yes. Role-specific: only the
+   * named roles (parent ≡ guardian). Private: only if registered/invited.
+   */
+  async viewerMaySee(event: any, role: string | undefined, userId: string): Promise<boolean> {
+    const vis = event?.visibility || 'public';
+    if (vis === 'public') return true;
+    if (String(event.organizer_id ?? '') === String(userId) || String(event.created_by ?? '') === String(userId)) return true;
+    if (vis === 'role_specific') {
+      let roles: any = event.visible_to_roles;
+      if (typeof roles === 'string') { try { roles = JSON.parse(roles); } catch { roles = null; } }
+      if (!Array.isArray(roles) || roles.length === 0) return true;
+      const mine = role === 'parent' || role === 'guardian' ? ['parent', 'guardian'] : [String(role)];
+      return roles.some((r: any) => mine.includes(String(r)));
+    }
+    const reg = await db('event_registrations').where({ event_id: event.event_id, user_id: userId }).first().catch(() => null);
+    return !!reg;
+  }
+
+  /**
    * List events with filters and pagination
    */
   async listEvents(
@@ -365,6 +415,12 @@ export class EventService {
       if (filters.visibility) {
         query = query.where('events.visibility', filters.visibility);
       }
+
+      // Audience (non-admin viewers): public events, role-specific events that
+      // name their role, and private ones they're registered for or organise.
+      const viewerRole = (filters as any).viewer_role as string | undefined;
+      const viewerId = (filters as any).viewer_id as string | undefined;
+      if (viewerRole) query = query.where(audienceWhere(viewerRole, viewerId));
 
       if (filters.start_date) {
         query = query.where('events.start_date', '>=', filters.start_date);
@@ -681,29 +737,22 @@ export class EventService {
   async getUpcomingEvents(
     tenantId: string,
     userId: string,
-    limit = 10
+    limit = 10,
+    role?: string,
   ): Promise<Event[]> {
     try {
       const now = new Date();
 
-      const events = await db('events')
-        .leftJoin('event_registrations', function () {
-          this.on('events.event_id', '=', 'event_registrations.event_id').andOn(
-            'event_registrations.user_id',
-            '=',
-            db.raw('?', [userId])
-          );
-        })
+      let query = db('events')
         .where('events.tenant_id', tenantId)
         .where('events.status', 'published')
-        .where('events.start_date', '>', now)
-        .where((builder) => {
-          builder
-            .where('events.visibility', 'public')
-            .orWhereNotNull('event_registrations.registration_id');
-        })
+        .where('events.start_date', '>', now);
+      // Admins see every published event; everyone else gets the events meant
+      // for them, including role-specific ones that name their role.
+      if (!isAdminRole(role)) query = query.where(audienceWhere(role || '', userId));
+
+      const events = await query
         .select('events.*')
-        .distinct()
         .orderBy('events.start_date', 'asc')
         .limit(limit);
 
@@ -721,7 +770,8 @@ export class EventService {
     tenantId: string,
     startDate: Date,
     endDate: Date,
-    userId?: string
+    userId?: string,
+    role?: string,
   ): Promise<Event[]> {
     try {
       let query = db('events')
@@ -738,25 +788,18 @@ export class EventService {
             });
         });
 
-      if (userId) {
-        query = query
-          .leftJoin('event_registrations', function () {
-            this.on('events.event_id', '=', 'event_registrations.event_id').andOn(
-              'event_registrations.user_id',
-              '=',
-              db.raw('?', [userId])
-            );
-          })
-          .where((builder) => {
-            builder
-              .where('events.visibility', 'public')
-              .orWhereNotNull('event_registrations.registration_id');
-          });
+      // Admins see every published event. Everyone else sees public events,
+      // role-specific ones naming their role (these used to be missing from
+      // students' and parents' calendars), and ones they organise or joined.
+      if (isAdminRole(role)) {
+        // no audience filter
+      } else if (userId || role) {
+        query = query.where(audienceWhere(role || '', userId));
       } else {
         query = query.where('events.visibility', 'public');
       }
 
-      const events = await query.select('events.*').distinct().orderBy('events.start_date', 'asc');
+      const events = await query.select('events.*').orderBy('events.start_date', 'asc');
 
       return events;
     } catch (error) {

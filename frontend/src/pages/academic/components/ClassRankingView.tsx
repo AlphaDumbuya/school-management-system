@@ -128,8 +128,9 @@ export const ClassRankingView: React.FC<Props> = ({ classId, academicYear, avail
 
       {isLoading ? (
         <div className="flex items-center justify-center py-16 text-gray-500"><Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading ranking…</div>
-      ) : error ? (
-        <EmptyState message="Couldn't load ranking" description="Please refresh and try again." />
+      ) : error || (data as any)?.success === false ? (
+        // apiClient never throws: a refused/failed load is success:false.
+        <EmptyState message="Couldn't load ranking" description={(data as any)?.error || 'Please refresh and try again.'} />
       ) : ranking && !ranking.published ? (
         <EmptyState message="Not released yet" description="The ranking will appear once results for this term are released." />
       ) : ranked.length === 0 ? (

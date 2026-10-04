@@ -38,20 +38,49 @@ import {
   AssignmentRecord,
   ASSIGNMENT_TYPES,
 } from '@services/assignmentsService';
+import { parentDashboardService } from '@services/parentDashboardService';
 import { AssignmentFormModal } from './components/AssignmentFormModal';
 import { AssignmentDetailModal } from './components/AssignmentDetailModal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/** A DATE column arrives as "YYYY-MM-DD" or a midnight ISO string: read the calendar day, never shift it by timezone. */
+function dayOf(dateStr: string): Date {
+  const ymd = String(dateStr).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? new Date(`${ymd}T00:00:00`) : new Date(dateStr);
+}
+
 function formatDate(dateStr: string | undefined): string {
   if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const d = dayOf(dateStr);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function isOverdue(dueDate: string): boolean {
-  return new Date(dueDate) < new Date() && new Date(dueDate).toDateString() !== new Date().toDateString();
+  const due = dayOf(dueDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return due < today;
 }
+
+/** The student's own submission, from the list row. */
+function handedIn(a: AssignmentRecord): boolean {
+  return !!a.my_submitted_at || ['submitted', 'graded', 'late'].includes(String(a.my_submission_status || ''));
+}
+
+/** Own-submission status chip: Graded (marks) / Handed in / Late / Not handed in. */
+const SubmissionPill: React.FC<{ a: AssignmentRecord }> = ({ a }) => {
+  const status = String(a.my_submission_status || '');
+  const graded = status === 'graded' || !!a.my_graded_at || (a.my_marks !== null && a.my_marks !== undefined);
+  const [label, cls] = graded
+    ? [`Graded${a.my_marks !== null && a.my_marks !== undefined ? ` · ${a.my_marks}/${a.max_marks}` : ''}`, 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/50']
+    : status === 'late'
+      ? ['Handed in late', 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/50']
+      : handedIn(a)
+        ? ['Handed in', 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900/50']
+        : ['Not handed in', 'bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'];
+  return <span className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold ${cls}`}>{label}</span>;
+};
 
 const TYPE_LABELS: Record<string, string> = {
   homework: 'Homework',
@@ -247,17 +276,30 @@ export const AssignmentsPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
-  // Academic-year filter for staff (assignments belong to session-scoped classes).
+  const isViewerOnly = !canManage && (isStudentRole || isParentRole);
+
+  // Parent multi-child switcher (the server verifies the child is linked).
+  const { data: parentDash, isFetched: parentDashFetched } = useQuery({
+    queryKey: ['assignments-parent-children'],
+    queryFn: () => parentDashboardService.getDashboard(),
+    enabled: isParentRole,
+    staleTime: 60_000,
+  });
+  const parentChildren: any[] = ((parentDash as any)?.data ?? (parentDash as any))?.children ?? [];
+  const [selectedChildId, setSelectedChildId] = useState('');
+  const activeChildId = selectedChildId || parentChildren[0]?.id || '';
+
+  // One academic year at a time for everyone (assignments belong to
+  // session-scoped classes). Students/parents get the classes they were in
+  // that year, resolved server-side.
   const [pickedYear, setYear] = useState('');
   const { activeYear } = useAcademicYears();
-  // Staff see one year at a time (picked, else active). Students/parents are
-  // scoped server-side to their own current class, so no year is sent.
-  const year = canManage ? (pickedYear || activeYear) : '';
-  const viewingPast = canManage && !!year && !!activeYear && year !== activeYear;
+  const year = pickedYear || activeYear;
+  const viewingPast = !!year && !!activeYear && year !== activeYear;
   // Create / edit / delete: staff only, and only in the current year.
   const canEditHere = canManage && !viewingPast;
   // The current year is stored as '' so the page follows a rollover by itself.
-  const changeYear = (y: string) => { setYear(y === activeYear ? '' : y); setPage(1); };
+  const changeYear = (y: string) => { setYear(!y || y === activeYear ? '' : y); setPage(1); };
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -269,7 +311,7 @@ export const AssignmentsPage: React.FC = () => {
 
   // Fetch assignments
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['assignments', { search, statusFilter, typeFilter, year, page, pageSize }],
+    queryKey: ['assignments', { search, statusFilter, typeFilter, year, page, pageSize, child: isParentRole ? activeChildId : '' }],
     queryFn: () => assignmentsService.listAssignments({
       page,
       limit: pageSize,
@@ -277,13 +319,26 @@ export const AssignmentsPage: React.FC = () => {
       type: typeFilter || undefined,
       search: search || undefined,
       academic_year: year || undefined,
+      child_id: isParentRole ? (activeChildId || undefined) : undefined,
     }),
-    enabled: !canManage || !!year,
+    enabled: !!year && (!isParentRole || parentDashFetched),
     staleTime: 30_000,
   });
 
   const assignments: AssignmentRecord[] = (data as any)?.data ?? [];
   const pagination = (data as any)?.pagination ?? { total: 0, total_pages: 1 };
+  // apiClient never throws: a failed load comes back as success:false and
+  // must not read as "no assignments".
+  const loadError: string | null = error
+    ? String(error)
+    : (data as any)?.success === false ? ((data as any)?.error || 'Could not load assignments') : null;
+  // Student/parent: the classes behind this year's list (newest first).
+  const viewerMeta = isViewerOnly ? (data as any)?.meta : null;
+  const viewerClasses: string[] = Array.from(new Set<string>((viewerMeta?.classes ?? []).map((c: any) => c.name)));
+  // Whose submission column to show: a student, or a parent's single selected child.
+  const showOwnSubmission = isViewerOnly && assignments.some((a) => 'my_submission_status' in a);
+  const childName = isParentRole ? (parentChildren.find((c: any) => c.id === activeChildId)?.name || 'your child') : '';
+  const who = isParentRole ? childName : 'you';
 
   // KPIs: the server's whole-set totals; computed from the page only as a fallback.
   const serverStats = (data as any)?.stats;
@@ -303,9 +358,23 @@ export const AssignmentsPage: React.FC = () => {
     return { total, active, overdue, totalSubmissions };
   }, [assignments, pagination, serverStats]);
 
-  const emptyText = viewingPast
-    ? `No assignments in ${year}.`
-    : canManage ? 'No assignments found' : 'No assignments for your class yet.';
+  const filtered = !!(search || statusFilter || typeFilter);
+  const emptyText = filtered
+    ? 'No assignments match your filters.'
+    : isViewerOnly
+      ? (viewerMeta && viewerClasses.length === 0
+          ? (viewerMeta.graduated && !viewingPast
+              ? `🎓 ${isParentRole ? childName : 'You'} graduated from ${viewerMeta.graduated.className}${viewerMeta.graduated.year ? ` in ${viewerMeta.graduated.year}` : ''}. Pick a past year to see old assignments.`
+              : `${isParentRole ? `${childName} wasn’t` : 'You weren’t'} in a class at this school in ${year}.`)
+          : viewingPast
+            ? `No assignments were set for ${viewerClasses.join(' & ') || (isParentRole ? 'their class' : 'your class')} in ${year}.`
+            : `No assignments for ${viewerClasses.join(' & ') || (isParentRole ? 'their class' : 'your class')} yet this year.`)
+      : viewingPast ? `No assignments in ${year}.` : 'No assignments found';
+
+  // Overdue = still open and past due. For a student/parent, work already
+  // handed in isn't overdue, and a past year is closed history.
+  const rowOverdue = (a: AssignmentRecord) =>
+    a.status === 'active' && isOverdue(a.due_date) && !(isViewerOnly && (viewingPast || handedIn(a)));
 
   // Delete handler
   const handleDelete = async () => {
@@ -360,11 +429,11 @@ export const AssignmentsPage: React.FC = () => {
       accessorKey: 'due_date',
       header: 'Due Date',
       cell: ({ row }) => {
-        const overdue = row.original.status === 'active' && isOverdue(row.original.due_date);
+        const overdue = rowOverdue(row.original);
         return (
           <span className={`text-xs font-semibold ${overdue ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
             {formatDate(row.original.due_date)}
-            {overdue && <span className="ml-1 text-[10px]">⚠️</span>}
+            {overdue && <span className="ml-1 text-[10px]" aria-label="Overdue">⚠️</span>}
           </span>
         );
       },
@@ -375,15 +444,22 @@ export const AssignmentsPage: React.FC = () => {
       header: 'Teacher',
       cell: ({ row }) => <span className="text-sm text-gray-600 dark:text-gray-400 truncate">{row.original.teacher_name}</span>,
     },
-    {
-      id: 'submissions',
-      header: 'Submissions',
-      cell: ({ row }) => (
-        <span className="text-xs font-mono text-gray-600 dark:text-gray-400">
-          {Number(row.original.total_submissions ?? 0)} / {Number(row.original.graded_count ?? 0)} graded
-        </span>
-      ),
-    },
+    // Staff: class-wide progress. Student (or a parent's child): their own work.
+    ...(isViewerOnly
+      ? (showOwnSubmission ? [{
+          id: 'my_submission',
+          header: isParentRole ? 'Submission' : 'My Submission',
+          cell: ({ row }: any) => <SubmissionPill a={row.original} />,
+        } as ColumnDef<AssignmentRecord, any>] : [])
+      : [{
+          id: 'submissions',
+          header: 'Submissions',
+          cell: ({ row }: any) => (
+            <span className="text-xs font-mono text-gray-600 dark:text-gray-400">
+              {Number(row.original.total_submissions ?? 0)} / {Number(row.original.graded_count ?? 0)} graded
+            </span>
+          ),
+        } as ColumnDef<AssignmentRecord, any>]),
     {
       id: 'status',
       accessorKey: 'status',
@@ -396,15 +472,17 @@ export const AssignmentsPage: React.FC = () => {
     <MainLayout>
       <PageShell
         title="Assignments"
-        subtitle={canManage ? 'Create and manage student assignments' : 'Your class assignments'}
+        subtitle={canManage
+          ? 'Create and manage student assignments'
+          : isViewerOnly && viewerClasses.length
+            ? `${viewerClasses.join(' & ')} · ${year}`
+            : isParentRole ? "Your child's class assignments" : 'Your class assignments'}
         breadcrumbs={[{ label: 'Assignments' }]}
         onRefresh={() => refetch()}
         isRefreshing={isLoading}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
-            {canManage && (
-              <YearFilter value={year} onChange={changeYear} noAutoSelect />
-            )}
+            <YearFilter value={year} onChange={changeYear} noAutoSelect />
             {!viewingPast && (
               <RoleGuard roles={['principal', 'super_admin', 'teacher']}>
                 <Button variant="default" size="sm" onClick={() => { setEditingAssignment(null); setFormOpen(true); }} className="whitespace-nowrap shadow-sm">
@@ -415,14 +493,49 @@ export const AssignmentsPage: React.FC = () => {
           </div>
         }
       >
+        {/* Parent multi-child switcher */}
+        {isParentRole && parentChildren.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-1 mb-4" role="group" aria-label="Choose a child">
+            {parentChildren.map((c: any) => (
+              <button
+                key={c.id}
+                type="button"
+                aria-pressed={activeChildId === c.id}
+                onClick={() => { setSelectedChildId(c.id); setPage(1); }}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
+                  activeChildId === c.id
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300'
+                }`}
+              >
+                <span className="font-medium">{c.name}</span>
+                {c.class_name && <span className="text-xs text-gray-400">· {c.class_name}</span>}
+              </button>
+            ))}
+          </div>
+        )}
         {viewingPast && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-            <span>Showing <strong>{year}</strong> assignments as history. New assignments go into {activeYear}.</span>
+            {isViewerOnly ? (
+              <span>
+                Showing the assignments {who} had in <strong>{year}</strong>
+                {viewerClasses.length ? <> ({[...viewerClasses].reverse().join(' → ')})</> : null}. This is history; nothing here is due any more.
+              </span>
+            ) : (
+              <span>Showing <strong>{year}</strong> assignments as history. New assignments go into {activeYear}.</span>
+            )}
             <button type="button" onClick={() => changeYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
               Back to {activeYear}
             </button>
           </div>
         )}
+        {isViewerOnly && !viewingPast && viewerMeta?.pending_transition && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <strong>{activeYear} is being set up.</strong> These are the assignments for {viewerMeta.pending_transition.className} ({viewerMeta.pending_transition.fromYear});
+            they'll update once the school moves {who} into this year's class.
+          </div>
+        )}
+
         {/* Scope info banner — explains what this role can do here */}
         <div className={`mb-6 rounded-2xl border p-4 flex items-start gap-3 ${
           isTeacherRole
@@ -453,14 +566,14 @@ export const AssignmentsPage: React.FC = () => {
               <>
                 <p className="font-bold text-emerald-900 dark:text-emerald-300">Your class assignments</p>
                 <p className="text-emerald-800/80 dark:text-emerald-300/70 mt-0.5">
-                  This shows the assignments for the classes you're enrolled in. Open one to see full instructions and the due date.
+                  These are the assignments your teachers set for your class in the year you pick (top right). Open one for the full instructions and due date. Hand your work in to your teacher; once they record it, its status and mark show here.
                 </p>
               </>
             ) : isParentRole ? (
               <>
                 <p className="font-bold text-violet-900 dark:text-violet-300">Your children's assignments</p>
                 <p className="text-violet-800/80 dark:text-violet-300/70 mt-0.5">
-                  This shows the assignments for the classes your children are enrolled in, so you can follow their homework and due dates. This view is read-only.
+                  These are the assignments set for your child's class in the year you pick, so you can follow their homework, due dates and marks. This view is read-only.
                 </p>
               </>
             ) : (
@@ -483,7 +596,7 @@ export const AssignmentsPage: React.FC = () => {
               <KPICard title="Total Assignments" value={stats.total} icon={<div className="p-2 rounded-xl bg-blue-500 text-white shadow-sm flex items-center justify-center"><ClipboardList size={20} /></div>} color="blue" />
               <KPICard title="Active" value={stats.active} icon={<div className="p-2 rounded-xl bg-green-500 text-white shadow-sm flex items-center justify-center"><CheckCircle size={20} /></div>} color="green" />
               <KPICard title="Overdue" value={stats.overdue} icon={<div className="p-2 rounded-xl bg-red-500 text-white shadow-sm flex items-center justify-center"><AlertTriangle size={20} /></div>} color="red" />
-              <KPICard title="Submissions" value={stats.totalSubmissions} icon={<div className="p-2 rounded-xl bg-purple-500 text-white shadow-sm flex items-center justify-center"><Clock size={20} /></div>} color="purple" />
+              <KPICard title={isViewerOnly ? 'Handed In' : 'Submissions'} value={stats.totalSubmissions} icon={<div className="p-2 rounded-xl bg-purple-500 text-white shadow-sm flex items-center justify-center"><Clock size={20} /></div>} color="purple" />
             </>
           )}
         </div>
@@ -516,7 +629,7 @@ export const AssignmentsPage: React.FC = () => {
               <SearchableFilterPopover
                 title="Filter by Status"
                 placeholder="Search status..."
-                options={STATUS_OPTIONS}
+                options={isViewerOnly ? STATUS_OPTIONS.filter((o) => o.value !== 'draft') : STATUS_OPTIONS}
                 value={statusFilter}
                 onChange={setStatusFilter}
                 allLabel="All Statuses"
@@ -557,7 +670,7 @@ export const AssignmentsPage: React.FC = () => {
           columns={columns}
           data={assignments}
           isLoading={isLoading}
-          error={error ? String(error) : null}
+          error={loadError}
           onRetry={refetch}
           paginationMode="server"
           pageIndex={page}
@@ -585,6 +698,9 @@ export const AssignmentsPage: React.FC = () => {
         isOpen={!!viewingAssignment}
         onClose={() => setViewingAssignment(null)}
         assignment={viewingAssignment}
+        // Past years are history: no "Overdue" alarms for students/parents.
+        historyMode={isViewerOnly && viewingPast}
+        viewerLabel={isViewerOnly ? (isParentRole ? childName : 'you') : undefined}
         // Students / parents must never see Edit; staff only in the current year.
         onEdit={canEditHere ? (a) => { setEditingAssignment(a); setFormOpen(true); } : undefined}
       />

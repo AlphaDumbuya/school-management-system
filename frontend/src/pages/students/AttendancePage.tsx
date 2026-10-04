@@ -1596,25 +1596,64 @@ export const AttendancePage: React.FC = () => {
 // ── Student read-only "My Attendance" view ──────────────────────────────────
 
 const StudentAttendanceView: React.FC = () => {
+  // One academic year at a time ('' = current, follows a rollover).
+  const { activeYear } = useAcademicYears();
+  const [pickedYear, setPickedYear] = useState('');
+  const year = pickedYear || activeYear;
+  const changeYear = (y: string) => setPickedYear(!y || y === activeYear ? '' : y);
+  const viewingPast = !!year && !!activeYear && year !== activeYear;
+
   const { data, isLoading, isFetching, error, refetch } = useQuery({
-    queryKey: ['my-attendance'],
-    queryFn: () => attendanceService.getMyAttendance(),
+    queryKey: ['my-attendance', year],
+    queryFn: () => attendanceService.getMyAttendance(year),
+    enabled: !!year,
     staleTime: 60_000,
   });
 
+  // apiClient never throws: a failed load must not read as "no records".
+  const loadError: string | null = error
+    ? String(error)
+    : (data as any)?.success === false ? ((data as any)?.error || "Couldn't load your attendance") : null;
   const resp = (data as any)?.data ?? (data as any);
+  const meta = resp?.meta ?? null;
+  const yearClasses: string[] = (meta?.classes ?? []).map((c: any) => c.name);
   const summary = resp?.summary ?? { total_days: 0, present: 0, late: 0, absent: 0, excused: 0, attendance_percentage: 0, at_risk: false };
   const records: Array<TimedAttendanceRecord & { id: string; date: string; status: string; remarks?: string }> = resp?.records ?? [];
+  const emptyText = meta?.graduated && !viewingPast
+    ? `🎓 You graduated from ${meta.graduated.className}${meta.graduated.year ? ` in ${meta.graduated.year}` : ''}. Pick a past year to see your attendance.`
+    : meta && yearClasses.length === 0 && !meta.pending_transition
+      ? `You weren’t in a class at this school in ${year}.`
+      : viewingPast ? `No attendance was recorded for you in ${year}.` : 'No attendance recorded for you this year yet.';
 
   return (
     <MainLayout>
-      <PageShell title="My Attendance" subtitle="Your daily attendance record" onRefresh={() => refetch()} isRefreshing={isFetching}>
+      <PageShell
+        title="My Attendance"
+        subtitle={yearClasses.length ? `${[...yearClasses].reverse().join(' → ')} · ${year}` : 'Your daily attendance record'}
+        onRefresh={() => refetch()}
+        isRefreshing={isFetching}
+        actions={<YearFilter value={year} onChange={changeYear} noAutoSelect />}
+      >
+        {viewingPast && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <span>Showing your <strong>{year}</strong> attendance as history.</span>
+            <button type="button" onClick={() => changeYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">Back to {activeYear}</button>
+          </div>
+        )}
+        {!viewingPast && meta?.pending_transition && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <strong>{activeYear} is being set up.</strong> You're still listed in {meta.pending_transition.className} ({meta.pending_transition.fromYear}). Last year's attendance is under {meta.pending_transition.fromYear} in the year picker.
+          </div>
+        )}
         {isLoading ? (
           <div className="flex items-center justify-center py-20 text-gray-500">
             <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading…
           </div>
-        ) : error ? (
-          <div className="py-16 text-center text-gray-500">Couldn't load your attendance. Please refresh.</div>
+        ) : loadError ? (
+          <div role="alert" className="py-16 text-center text-gray-500">
+            <p>{loadError}</p>
+            <button type="button" onClick={() => refetch()} className="mt-2 text-sm font-bold text-blue-600 hover:underline">Try again</button>
+          </div>
         ) : (
           <div className="space-y-6">
             {/* KPIs */}
@@ -1630,7 +1669,8 @@ const StudentAttendanceView: React.FC = () => {
               <KPICard title="Absent" value={String(summary.absent)} icon={<XCircle className="w-5 h-5" />} color="red" />
             </div>
 
-            {summary.at_risk && (
+            {/* A live warning only makes sense for the current year. */}
+            {summary.at_risk && !viewingPast && (
               <div className="flex items-center gap-2 p-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20 text-sm text-red-700 dark:text-red-400">
                 <AlertTriangle size={16} /> Your attendance is below 75%. Please speak with your class teacher.
               </div>
@@ -1642,7 +1682,7 @@ const StudentAttendanceView: React.FC = () => {
                 <h3 className="font-bold text-gray-900 dark:text-white">Attendance History</h3>
               </div>
               {records.length === 0 ? (
-                <div className="p-12 text-center text-gray-400">No attendance records yet.</div>
+                <div className="p-12 text-center text-gray-400">{emptyText}</div>
               ) : (
                 <div className="overflow-x-auto max-h-[28rem] overflow-y-auto">
                   <table className="w-full text-sm text-left">

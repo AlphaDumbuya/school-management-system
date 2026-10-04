@@ -638,14 +638,131 @@ const ADMISSIONS: RoleGuide = {
 
 const STUDENT: RoleGuide = {
   headline: 'Welcome to your student portal',
-  intro: 'See your grades, attendance, schedule and fees in one place.',
+  intro:
+    'Everything about your school year in one place: your classes and timetable, homework, exams, results, report cards, attendance and fees. Everything here is yours only, and it’s read-only. Your teachers and school office keep it up to date.',
+
+  // ── First-login walkthrough (also "Replay walkthrough") ──
   steps: [
-    { title: 'Your overview', body: 'Your dashboard shows attendance, average grade, today’s classes and any fees due.', route: '/student/dashboard', routeLabel: 'My Dashboard' },
-    { title: 'Check results', body: 'View your published results per term.', route: '/student/dashboard', routeLabel: 'Results' },
-    { title: 'Secure your account', body: 'Enable two-factor authentication in Settings.', route: '/settings?tab=security', routeLabel: 'Security' },
+    {
+      title: 'Start on your Overview',
+      body: 'Your dashboard shows this year’s class, attendance, average grade, today’s classes and any fees due. Use the year picker at the top to look back at an earlier year.',
+      route: '/student/dashboard',
+      routeLabel: 'Open my Overview',
+    },
+    {
+      title: 'Your timetable and subjects',
+      body: 'Timetables shows your class’s week. Subjects lists what you study this year. Both change automatically when you move up a class.',
+      route: '/academic/timetables',
+      routeLabel: 'Timetables',
+    },
+    {
+      title: 'Homework and assignments',
+      body: 'Assignments lists the work your teachers set for your class, with instructions and due dates. Hand your work to your teacher; once they record it you’ll see “Handed in” or your mark here.',
+      route: '/academic/assignments',
+      routeLabel: 'Assignments',
+    },
+    {
+      title: 'Exams',
+      body: 'Exam Timetable shows when and where each subject’s exam is, per term.',
+      route: '/academic/exam-timetable',
+      routeLabel: 'Exam Timetable',
+    },
+    {
+      title: 'Results and report cards',
+      body: 'Results & Grades shows your Test 1, Test 2 and mean per subject, and where you rank in your class. Report Cards shows your full booklet. Both appear only after the school releases them for the term.',
+      route: '/academic/results',
+      routeLabel: 'Results & Grades',
+    },
+    {
+      title: 'Attendance',
+      body: 'Attendance shows every day you were marked present, late, excused or absent, and your attendance rate for the year.',
+      route: '/students/attendance',
+      routeLabel: 'Attendance',
+    },
+    {
+      title: 'Fees and paying online',
+      body: 'Fees & Payments shows what was billed, what’s paid and what’s still owed, per year and term. Money owed from an earlier year still has to be paid. You can pay online with the Pay button when your school has it switched on.',
+      route: '/finance/my-fees',
+      routeLabel: 'Fees & Payments',
+    },
+    {
+      title: 'Secure your account',
+      body: 'Change your password, turn on two-factor authentication and add a passkey for quick sign-in.',
+      route: '/settings?tab=security',
+      routeLabel: 'Open Security',
+    },
   ],
+
+  setupTitle: 'Your school year',
+  setupIntro: 'What to check, and when.',
+  setupOrder: [
+    {
+      order: 1,
+      title: 'Every school day',
+      why: 'Know where you need to be and what’s due.',
+      tasks: [
+        { label: 'Check today’s classes on your Overview', route: '/student/dashboard', routeLabel: 'Overview' },
+        { label: 'See what homework is due', route: '/academic/assignments', routeLabel: 'Assignments' },
+        { label: 'Read new announcements', route: '/communication/announcements', routeLabel: 'Announcements' },
+      ],
+    },
+    {
+      order: 2,
+      title: 'Before and after exams',
+      why: 'Plan your revision, then see how you did.',
+      tasks: [
+        { label: 'Check the exam timetable', route: '/academic/exam-timetable', routeLabel: 'Exam Timetable' },
+        { label: 'View released results and your class position', route: '/academic/results', routeLabel: 'Results & Grades' },
+        { label: 'Open or print your report card', route: '/academic/report-cards', routeLabel: 'Report Cards' },
+      ],
+    },
+    {
+      order: 3,
+      title: 'Each term',
+      why: 'Stay clear on fees and attendance.',
+      tasks: [
+        { label: 'Check and pay your fees', route: '/finance/my-fees', routeLabel: 'Fees & Payments' },
+        { label: 'Check your attendance rate', route: '/students/attendance', routeLabel: 'Attendance' },
+        { label: 'See upcoming school events', route: '/events/calendar', routeLabel: 'Calendar' },
+      ],
+    },
+  ],
+
+  keyRules: [
+    {
+      title: 'Only your own records',
+      body: 'You only ever see your own results, attendance and fees, and your own class’s timetable, homework and exams.',
+    },
+    {
+      title: 'One year at a time',
+      body: 'Pages open on the current academic year. Pick an earlier year to see your old classes, results, attendance and report cards. When you’re promoted, your portal moves to your new class by itself.',
+    },
+    {
+      title: 'Results appear when released',
+      body: 'Teachers enter scores during the term, but you only see them after the school releases that term’s results. Unreleased scores are never shown.',
+    },
+    {
+      title: 'Moving up a stage',
+      body: 'Finishing Nursery 3, Class 6 or JSS 3 moves you up into Class 1, JSS 1 or SSS 1 at the same school. Finishing SSS 3 means you’ve graduated: your past years stay available to look back on.',
+    },
+  ],
+
   sections: [
-    { id: 'overview', title: 'Your Dashboard', icon: 'GraduationCap', intro: 'Everything about your studies at a glance.', points: ['Attendance rate and average grade.', 'Today’s schedule.', 'Outstanding fees.'], route: '/student/dashboard', routeLabel: 'Dashboard' },
+    { id: 'overview', title: 'Overview', icon: 'GraduationCap', intro: 'Your year at a glance.', points: ['Your class (or classes, if you moved up mid-year).', 'Attendance rate, average grade and today’s classes.', 'Fees for the year, plus anything still owed from earlier years.'], route: '/student/dashboard', routeLabel: 'Overview' },
+    { id: 'academics', title: 'Subjects, Timetable & Assignments', icon: 'BookOpen', intro: 'What you study and what’s due.', points: ['Subjects and the weekly timetable for your class.', 'Assignments with instructions, due dates and your own status or mark.', 'Overdue work is flagged; past years are history and never “overdue”.'], route: '/academic/assignments', routeLabel: 'Assignments' },
+    { id: 'results', title: 'Exams, Results & Report Cards', icon: 'BarChart2', intro: 'How you’re doing.', points: ['Exam dates per term.', 'Test 1, Test 2, mean and subject rank once released.', 'Class ranking and your full report-card booklet, printable.'], route: '/academic/results', routeLabel: 'Results & Grades' },
+    { id: 'attendance', title: 'Attendance', icon: 'ClipboardCheck', intro: 'Your record, day by day.', points: ['Present, late, excused and absent days for the year.', 'A warning if your attendance drops below 75%.'], route: '/students/attendance', routeLabel: 'Attendance' },
+    { id: 'fees', title: 'Fees & Payments', icon: 'Wallet', intro: 'What’s billed, paid and owed.', points: ['Per year and per term, all in Leones (Le).', 'Pay online when your school has it switched on.'], route: '/finance/my-fees', routeLabel: 'Fees & Payments' },
+    { id: 'news', title: 'Announcements & Events', icon: 'Calendar', intro: 'What’s happening at school.', points: ['Announcements for students and for your class.', 'Published school events, the calendar, and events you’ve registered for.'], route: '/communication/announcements', routeLabel: 'Announcements' },
+    { id: 'account', title: 'Settings & Help', icon: 'Settings', intro: 'Your account and getting help.', points: ['Change your password; turn on two-factor sign-in or a passkey.', 'Support: help articles, or ask the school office.'], route: '/settings', routeLabel: 'Settings' },
+  ],
+
+  faqs: [
+    { q: 'My results aren’t showing.', a: 'Results appear only after the school releases them for the term. If a term was released and you still see nothing, check the year picker shows the right year, then ask your class teacher.' },
+    { q: 'My class or timetable looks wrong after the new year started.', a: 'The school may still be moving students into this year’s classes. You’ll see a notice until it’s done. Last year’s class is under last year in the year picker.' },
+    { q: 'How do I hand in an assignment?', a: 'Give your work to your teacher as they ask. When they record it, the assignment shows “Handed in” and later your mark and feedback.' },
+    { q: 'Why does it say I still owe fees from last year?', a: 'Unpaid fees from an earlier year don’t disappear in a new year. They’re shown separately so you know exactly which year they’re from, and you can pay them with the Pay button.' },
+    { q: 'I forgot my password.', a: 'Use “Forgot password” on the sign-in page, or ask the school office to reset it. You can change it any time in Settings.' },
   ],
 };
 
