@@ -78,7 +78,8 @@ export const ReportCardsPage: React.FC = () => {
   const [studentPickedYear, setStudentPickedYear] = useState('');
   const studentYear = studentPickedYear || activeYear;
   const [selfYear, setSelfYear] = useState('');
-  const academicYear = isStudent ? (selfYear || studentYear) : isParent ? activeYear : (pickedYear || activeYear);
+  // Parents use the same year flow as students, for the selected child.
+  const academicYear = (isStudent || isParent) ? (selfYear || studentYear) : (pickedYear || activeYear);
   const [classId, setClassId] = useState('');
   const [studentId, setStudentId] = useState('');
   // Staff switching year: that year has its own classes, so drop stale picks.
@@ -92,15 +93,35 @@ export const ReportCardsPage: React.FC = () => {
   // Students: auto-resolve their OWN student id, class and academic year from
   // the dashboard endpoint so no selectors are needed (and they can only ever
   // load their own report card — the backend also enforces this).
-  const { data: selfResp } = useQuery({
+  const { data: ownResp } = useQuery({
     queryKey: ['report-card-self', studentYear],
     queryFn: () => studentDashboardService.getDashboard(studentYear),
     enabled: isStudent && !!studentYear,
     staleTime: 60_000,
   });
-  const selfDash: any = (selfResp as any)?.data ?? (selfResp as any) ?? null;
+  // Parents: the children list, then the SELECTED child's year view (same
+  // payload as the student portal), so each child gets their own classes
+  // that year, e.g. a sibling promoted mid-year or graduated.
+  const { data: parentResp } = useQuery({
+    queryKey: ['report-card-parent-children'],
+    queryFn: () => parentDashboardService.getDashboard(),
+    enabled: isParent,
+    staleTime: 60_000,
+  });
+  const parentChildren = ((parentResp as any)?.data ?? (parentResp as any))?.children ?? [];
+  const [selectedChildId, setSelectedChildId] = useState('');
+  const activeChildId = selectedChildId || parentChildren[0]?.id || '';
+  const { data: childResp } = useQuery({
+    queryKey: ['report-card-parent-child', activeChildId, studentYear],
+    queryFn: () => parentDashboardService.getChildDetail(activeChildId, studentYear),
+    enabled: isParent && !!activeChildId && !!studentYear,
+    staleTime: 60_000,
+  });
+  const selfResp = isStudent ? ownResp : isParent ? childResp : undefined;
+  const selfDash: any = (selfResp as any)?.success === false ? null : ((selfResp as any)?.data ?? (selfResp as any) ?? null);
   const selfProfile = selfDash?.profile ?? null;
-  const studentPast = isStudent && !!studentYear && !!activeYear && studentYear !== activeYear;
+  const studentPast = (isStudent || isParent) && !!studentYear && !!activeYear && studentYear !== activeYear;
+  const childFirst = isParent ? String(parentChildren.find((c: any) => c.id === activeChildId)?.name || 'Your child').split(' ')[0] : '';
   // A year can hold several classes (promoted mid-year). Each has its own card;
   // default to the class that has released results, else the latest class.
   const selfClasses: { id: string; name: string; year: string }[] = useMemo(() => {
@@ -120,30 +141,11 @@ export const ReportCardsPage: React.FC = () => {
     setSelfClassPick(''); setClassId(''); setSelfYear('');
   };
   React.useEffect(() => {
-    if (!isStudent || !selfDash) return;
+    if (!(isStudent || isParent) || !selfDash) return;
     if (selfProfile?.id) setStudentId(String(selfProfile.id));
     setClassId(selfClass ? selfClass.id : '');
     setSelfYear(selfClass?.year || '');
-  }, [isStudent, selfDash, selfProfile, selfClass]);
-
-  // Parents: resolve their children (with class) and let them pick one.
-  const { data: parentResp } = useQuery({
-    queryKey: ['report-card-parent-children'],
-    queryFn: () => parentDashboardService.getDashboard(),
-    enabled: isParent,
-    staleTime: 60_000,
-  });
-  const parentChildren = ((parentResp as any)?.data ?? (parentResp as any))?.children ?? [];
-  const [selectedChildId, setSelectedChildId] = useState('');
-  const activeChildId = selectedChildId || parentChildren[0]?.id || '';
-  React.useEffect(() => {
-    if (!isParent || parentChildren.length === 0) return;
-    const child = parentChildren.find((c: any) => String(c.id) === String(activeChildId)) || parentChildren[0];
-    if (!child) return;
-    if (child.id) setStudentId(String(child.id));
-    if (child.class_id) setClassId(String(child.class_id));
-    // parent summary doesn't carry academic_year; keep the currently selected year.
-  }, [isParent, parentChildren, activeChildId]);
+  }, [isStudent, isParent, selfDash, selfProfile, selfClass]);
 
   // Staff pick the year with the shared <YearFilter> (the school's real
   // sessions). Students/parents don't need the picker (their year is auto-resolved).
@@ -675,7 +677,9 @@ export const ReportCardsPage: React.FC = () => {
                 {parentChildren.map((c: any) => (
                   <button
                     key={c.id}
-                    onClick={() => setSelectedChildId(c.id)}
+                    type="button"
+                    aria-pressed={activeChildId === c.id}
+                    onClick={() => { setSelectedChildId(c.id); setSelfClassPick(''); setClassId(''); setSelfYear(''); }}
                     className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
                       activeChildId === c.id
                         ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
@@ -690,9 +694,34 @@ export const ReportCardsPage: React.FC = () => {
                   <span className="text-sm text-gray-500">No children linked to your account.</span>
                 )}
               </div>
-              <div className="sm:max-w-xs">
-                <YearLabel year={academicYear} />
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                {/* The selected child's classes that year (promoted mid-year → both). */}
+                {selfClasses.length > 1 ? (
+                  <div className="flex flex-wrap gap-1.5" role="group" aria-label="Choose a class">
+                    {selfClasses.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        aria-pressed={selfClass?.id === c.id}
+                        onClick={() => setSelfClassPick(c.id)}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold ${selfClass?.id === c.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : <span className="text-sm text-gray-600 dark:text-gray-300">{selfClass ? `${childFirst} — ${selfClass.name}` : ''}</span>}
+                <div className="sm:w-48 flex flex-col gap-1">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Academic Year</span>
+                  <YearFilter value={studentYear} onChange={changeStudentYear} noAutoSelect className="w-full [&_select]:w-full" />
+                </div>
               </div>
+              {studentPast && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+                  <span>Showing {childFirst}'s <strong>{studentYear}</strong> report card. Only released terms are shown.</span>
+                  <button type="button" onClick={() => changeStudentYear('')} className="font-bold hover:underline">Back to {activeYear}</button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -804,7 +833,13 @@ export const ReportCardsPage: React.FC = () => {
                       ? ((selfResp as any)?.error || 'Could not load your report card. Please refresh.')
                       : 'Your report card will appear here once your results are published.')
               : isParent
-                ? 'Select a child. The report card appears once results are published.'
+                ? (selfDash?.graduated && !studentPast
+                    ? `🎓 ${childFirst} graduated from ${selfDash.graduated.className}${selfDash.graduated.year ? ` in ${selfDash.graduated.year}` : ''}. Pick a past year to open their report cards.`
+                    : selfDash && selfClasses.length === 0
+                      ? `${childFirst} wasn’t in a class at this school in ${studentYear}. Pick another year.`
+                      : (selfResp as any)?.success === false
+                        ? ((selfResp as any)?.error || 'Could not load the report card. Please refresh.')
+                        : 'Select a child. The report card appears once results are released.')
                 : classesData && classes.length === 0
                   ? (user?.role === 'teacher'
                       ? (viewingPast ? `You didn't teach any classes in ${academicYear}.` : `You have no classes assigned for ${activeYear} yet.`)

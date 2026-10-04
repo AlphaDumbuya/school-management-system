@@ -80,8 +80,10 @@ const ParentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: ()
   const ledger = (ledgerResp as any)?.data?.data ?? (ledgerResp as any)?.data;
   const outstanding = Number(ledger?.totals?.outstanding) || 0;
 
+  // Everything still owed across children and ALL years (this year's fees
+  // plus earlier years' unpaid balances), so the headline never hides arrears.
   const aggregate = useMemo(
-    () => (children as any[]).reduce((s, c) => s + (Number(c.outstanding_fees) || 0), 0),
+    () => (children as any[]).reduce((s, c) => s + (Number(c.total_owed ?? c.outstanding_fees) || 0), 0),
     [children],
   );
 

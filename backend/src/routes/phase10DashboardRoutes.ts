@@ -464,7 +464,8 @@ router.get('/dashboards/parent', authenticate, async (req: Request, res: Respons
       return res.status(400).json({ error: 'Tenant context is required' });
     }
 
-    const data = await parentDashboardService.getDashboard(req.user!.id, tenantId);
+    // ?academic_year (default = the school's active year).
+    const data = await parentDashboardService.getDashboard(req.user!.id, tenantId, (req.query.academic_year as string) || null);
     res.json({ success: true, data });
   } catch (error) {
     logger.error(`Error fetching parent dashboard: ${error}`);
@@ -490,7 +491,7 @@ router.get('/dashboards/parent/child/:studentId', authenticate, async (req: Requ
       return res.status(400).json({ error: 'Tenant context is required' });
     }
 
-    const data = await parentDashboardService.getChildDetail(req.user!.id, tenantId, req.params.studentId);
+    const data = await parentDashboardService.getChildDetail(req.user!.id, tenantId, req.params.studentId, (req.query.academic_year as string) || null);
     res.json({ success: true, data });
   } catch (error: any) {
     const msg = error?.message || 'Failed to fetch child details';

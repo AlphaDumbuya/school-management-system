@@ -72,7 +72,7 @@ export const TimetablesPage: React.FC = () => {
   // One year at a time: the picked one, else the school's active year.
   const year = pickedYear || activeYear;
   // Students also pick a year (their class that year); past = history.
-  const viewingPast = (!isViewerOnly || isStudent) && !!year && !!activeYear && year !== activeYear;
+  const viewingPast = !!year && !!activeYear && year !== activeYear;
   // Only managers edit, and only the current year (teachers view their classes).
   const canEdit = canManage && !viewingPast;
   // The current year is stored as '' so the page follows a rollover by itself.
@@ -118,18 +118,27 @@ export const TimetablesPage: React.FC = () => {
   const parentChildren = ((parentDash as any)?.data ?? (parentDash as any))?.children ?? [];
   const [selectedChildId, setSelectedChildId] = useState('');
   const activeChildId = selectedChildId || parentChildren[0]?.id || '';
+  // Parent: the SELECTED child's year view (same payload as the student
+  // portal), so each child's class that year is used, including a child
+  // promoted mid-year (the class that has a timetable) or one moving up.
+  const { data: parentChildResp, isLoading: parentChildLoading } = useQuery({
+    queryKey: ['timetable-parent-child', activeChildId, year],
+    queryFn: () => parentDashboardService.getChildDetail(activeChildId, year),
+    enabled: isParent && !!activeChildId && !!year,
+    staleTime: 60_000,
+  });
+  const parentChildData = ((parentChildResp as any)?.data ?? (parentChildResp as any)) as any;
+  // The viewer's year data: the student's own, or the selected child's.
+  const viewerDash: any = isStudent ? studentDashData : isParent ? parentChildData : null;
+  const viewerDashLoading = isStudent ? studentDashLoading : isParent ? parentChildLoading : false;
+  const childFirst = isParent ? (String(parentChildren.find((c: any) => c.id === activeChildId)?.name || 'Your child').split(' ')[0]) : '';
 
   // Auto-select the class.
   useEffect(() => {
-    if (isStudent) {
-      if (!studentDashData) return;
-      const cid = studentDashData.timetable_class?.id ?? studentDashData.profile?.class_id ?? '';
+    if (isViewerOnly) {
+      if (!viewerDash) return;
+      const cid = viewerDash.timetable_class?.id ?? viewerDash.profile?.class_id ?? '';
       if (String(cid) !== selectedClassId) setSelectedClassId(cid ? String(cid) : '');
-      return;
-    }
-    if (isParent) {
-      const child = parentChildren.find((c: any) => String(c.id) === String(activeChildId)) || parentChildren[0];
-      if (child?.class_id) setSelectedClassId(String(child.class_id));
       return;
     }
     // Staff: default to the first class, and drop a selection that isn't in the
@@ -142,7 +151,7 @@ export const TimetablesPage: React.FC = () => {
       setSelectedClassId('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classes, selectedClassId, isStudent, isParent, studentDashData, parentChildren, activeChildId]);
+  }, [classes, selectedClassId, isViewerOnly, viewerDash]);
 
   // Fetch weekly timetable for selected class
   const { data: weeklyData, isLoading } = useQuery({
@@ -161,7 +170,7 @@ export const TimetablesPage: React.FC = () => {
   // response, so e.g. a Class 6 pupil gets primary periods, not SSS ones.
   const classLevel: string | undefined = selectedClass?.level ?? (weeklyData as any)?.class_level ?? undefined;
   const schoolLevel: SchoolLevel = classLevel ? getSchoolLevel(classLevel) : 'sss';
-  const viewerClassName: string | null = (weeklyData as any)?.class_name ?? studentDashData?.timetable_class?.name ?? null;
+  const viewerClassName: string | null = (weeklyData as any)?.class_name ?? viewerDash?.timetable_class?.name ?? null;
   // apiClient never throws: a denied/failed load comes back as success:false.
   const weeklyError: string | null = (weeklyData as any)?.success === false ? ((weeklyData as any)?.error || 'Could not load the timetable') : null;
 
@@ -333,14 +342,12 @@ export const TimetablesPage: React.FC = () => {
       <PageShell
         title={isViewerOnly ? 'Class Timetable' : 'Timetables'}
         subtitle={isViewerOnly
-          ? (viewerClassName ? `${viewerClassName} · weekly schedule${isStudent ? ` · ${year}` : ''}` : 'Your weekly class schedule')
+          ? (viewerClassName ? `${isParent ? `${childFirst} · ` : ''}${viewerClassName} · weekly schedule · ${year}` : isParent ? "Your child's weekly class schedule" : 'Your weekly class schedule')
           : 'Manage weekly class schedules'}
         breadcrumbs={[{ label: 'Timetables' }]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
-            {(!isViewerOnly || isStudent) && (
-              <YearFilter value={year} onChange={changeYear} noAutoSelect />
-            )}
+            <YearFilter value={year} onChange={changeYear} noAutoSelect />
             <EditGuard>
               <Button
                 variant="outline"
@@ -367,8 +374,8 @@ export const TimetablesPage: React.FC = () => {
         {viewingPast && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
             <span>
-              Showing the <strong>{year}</strong>{isStudent && viewerClassName ? <> {viewerClassName}</> : null} timetable as history
-              {isStudent ? '' : ' (read-only)'}. The current year is {activeYear}.
+              Showing the <strong>{year}</strong>{isViewerOnly && viewerClassName ? <> {viewerClassName}</> : null} timetable as history
+              {isViewerOnly ? '' : ' (read-only)'}. The current year is {activeYear}.
             </span>
             <button type="button" onClick={() => changeYear('')} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
               Back to {activeYear}
@@ -401,7 +408,9 @@ export const TimetablesPage: React.FC = () => {
             {parentChildren.map((c: any) => (
               <button
                 key={c.id}
-                onClick={() => setSelectedChildId(c.id)}
+                type="button"
+                aria-pressed={activeChildId === c.id}
+                onClick={() => { setSelectedChildId(c.id); setSelectedClassId(''); }}
                 className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
                   activeChildId === c.id
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
@@ -415,23 +424,25 @@ export const TimetablesPage: React.FC = () => {
           </div>
         ) : null}
         {/* Rollover not finished: still last year's class. */}
-        {isStudent && !viewingPast && studentDashData?.pending_transition && (
+        {isViewerOnly && !viewingPast && viewerDash?.pending_transition && (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-            <strong>{activeYear} is being set up.</strong> Your new class timetable will appear once the school moves you into {activeYear}.
+            <strong>{activeYear} is being set up.</strong> {isParent ? `${childFirst}'s` : 'Your'} new class timetable will appear once the school moves {isParent ? 'them' : 'you'} into {activeYear}.
           </div>
         )}
         {weeklyError && (
           <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{weeklyError}</div>
         )}
         {/* No class resolved state */}
-        {!selectedClassId && !(isStudent && studentDashLoading) && (
+        {!selectedClassId && !(isViewerOnly && viewerDashLoading) && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Calendar size={56} className="text-gray-300 dark:text-gray-600 mb-4" />
             <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
               {isViewerOnly
-                ? (isStudent && studentDashData?.enrolled_in_year === false && !studentDashData?.pending_transition
-                    ? ((studentDashData as any)?.graduated ? `🎓 You graduated from ${(studentDashData as any).graduated.className}` : `You weren’t in a class in ${year}`)
-                    : `No class timetable${isStudent ? ` for ${year}` : ''} yet`)
+                ? (viewerDash?.enrolled_in_year === false && !viewerDash?.pending_transition
+                    ? (viewerDash?.graduated && !viewingPast
+                        ? `🎓 ${isParent ? `${childFirst} graduated` : 'You graduated'} from ${viewerDash.graduated.className}`
+                        : `${isParent ? `${childFirst} wasn’t` : 'You weren’t'} in a class in ${year}`)
+                    : `No class timetable for ${year} yet`)
                 : classesData && classes.length === 0
                   ? (viewingPast ? `No classes in ${year}` : 'No classes yet')
                   : 'Select a class to view its timetable'}
@@ -439,8 +450,8 @@ export const TimetablesPage: React.FC = () => {
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {isViewerOnly
                 ? (viewingPast
-                    ? `No timetable was set for your class in ${year}.`
-                    : 'Your timetable will appear here once the school publishes a schedule for your class.')
+                    ? `No timetable was set for ${isParent ? `${childFirst}'s` : 'your'} class in ${year}.`
+                    : `The timetable will appear here once the school publishes a schedule for ${isParent ? `${childFirst}'s` : 'your'} class.`)
                 : classesData && classes.length === 0
                   ? (canManage
                       ? (viewingPast ? `There were no classes in ${year}.` : 'Create classes first, then build their weekly schedule.')

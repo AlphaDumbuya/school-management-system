@@ -80,6 +80,7 @@ other classes, every affected portal updates by itself. No re-login, no manual f
   - *Stage graduation* (Nursery 3 → Class 1, Class 6 → JSS 1, JSS 3 → SSS 1): the child stays in the school. It's a promotion into the next stage's class: `next_class_id`, else the single active-year class at that level, else the principal must pick one (several SSS 1 streams). Even if the class is flagged `is_final_year`, the child is never marked graduated.
   - *Leaving the school* (SSS 3, or a custom final class with no recognised level): the enrolment closes and `students.status = 'graduated'`. Only these classes offer "🎓 Graduate (leaves the school)" on Promotions.
 - [x] **Graduated (left)** student: Overview, Results, Timetable, Assignments and Exam Timetable say "🎓 You graduated from SSS 3 in {year}", not "You weren't in a class" (`studentYearScope().graduated` → `meta.graduated` / dashboard `graduated`). History stays readable by picking a past year. Parents see the same with the child's name. The login stays active (read-only history) until the school decides otherwise.
+- [x] **Parents with several children:** every parent page resolves **each child on its own** for the selected year (never "the family's class"). Siblings can be in different classes, one promoted mid-year, one graduated, one not yet moved into the new year. The child switcher shows each child's status that year. Data endpoints take a verified `child_id`; with none, the parent's first child is used, never a merge that mixes children. Promotions show for each child on the next load.
 - [ ] Teacher moved off a class: it leaves their current-year pickers and lists right away. The years they taught it stay readable as history.
 - [ ] Teacher given a new class: it shows up on the next load, with no re-login needed.
 - [ ] Offline teacher app: after a sync, reassigned classes are added or removed from the local cache, and queued writes for a class they no longer teach are rejected with a clear message.
@@ -435,9 +436,9 @@ Student-specific things to probe:
 
 | Order | Portal | Status |
 |---|---|---|
-| 1 | Student | ✅ done (uncommitted) |
-| 2 | Parent | next |
-| 3 | Accountant (finance) | after Parent |
+| 1 | Student | ✅ done (pushed `f89a75d`) |
+| 2 | Parent | ✅ done (uncommitted) |
+| 3 | Accountant (finance) | next |
 | 4 | Admissions | last |
 
 ### Parent — after Student (work order)
@@ -448,20 +449,20 @@ parent sees the same shared pages as a student, but for **each linked child**
 
 | # | Sidebar item (parent order) | Route | Status |
 |---|---|---|---|
-| 0 | Overview / Dashboard (child switcher) | `/parent/dashboard` | 🔎 |
-| 1 | Subjects | `/academic/subjects` | 🔎 |
-| 2 | Timetables | `/academic/timetables` | 🔎 |
-| 3 | Assignments | `/academic/assignments` | 🔎 (backend scope, IDOR, `child_id` and the switcher were done in Student #3; verify as a parent of 2+ children) |
-| 4 | Exam Timetable | `/academic/exam-timetable` | 🔎 |
-| 5 | Results & Grades | `/academic/results` | 🔎 |
-| 6 | Report Cards | `/academic/report-cards` | 🔎 |
-| 7 | Attendance | `/students/attendance` | 🔎 |
-| 8 | Fees & Payments | `/finance/my-fees` | 🔎 |
-| 9 | Announcements | `/communication/announcements` | 🔎 |
-| 10 | School Events | `/events/school` | 🔎 |
-| 11 | Calendar | `/events/calendar` | 🔎 |
-| 12 | My Events | `/events/my-events` | 🔎 |
-| — | Settings, Guide & Replay walkthrough | `/settings`, `/guide` | 🔎 (§2.11) |
+| 0 | Overview / Dashboard (child switcher) | `/parent/dashboard` | ✅ **Done & verified** — **Multi-child, multi-year, promotion-aware.** The service was not year-aware at all: "the most recent active enrolment" per child, lifetime attendance, invoice-sum fees, and grades from one class only. Now **each child is resolved independently for the selected year by the student portal's own code** (`studentDashboardService.getDashboard(…, { studentId })`). So siblings in different classes, a child promoted mid-year (`year_classes`, grades per class with publish gating), a graduated child (`graduated`), and a child not yet moved into the new year (`pending_transition`) are each right, and a promotion shows on the next load. `GET /dashboards/parent?academic_year` returns per-child `year_classes`, `enrolled_in_year`, `pending_transition`, `graduated`, this year's `outstanding_fees` plus `other_years_outstanding` / `other_years` / `total_owed`. Aggregate stats average only over children at school that year (`children_in_year`). `/dashboards/parent/child/:id?academic_year` returns the full student-portal payload plus `schedule`, with the guardian link verified (another parent's child is 403). The legacy non-year code was removed. **Frontend:** `YearFilter` (`''` = current); history banner; arrears banner naming each child, amount and year, with Pay. Child chips show each child's status that year ("JSS 3 → SSS 3 Commercial", "🎓 Graduated", "moving up", "Not enrolled in {year}"), and the selection is kept across year switches. Per-child notices cover graduated, rollover, not enrolled and moved up mid-year. Results have a Class column for multi-class years and released-only wording; attendance is the year's full list with calendar-day dates; the fees tab is the year's ledger (other years still payable); announcements are per year; the comparison chart covers only children at school that year; load errors have Retry. `MyFeesPage` "Total Outstanding (all children)" now uses `total_owed` (every year). Real data: Alpha 2026/27 JSS 3 → SSS 3 Commercial, 9 grades, 15 days at 80%, fees Le 1,819 / 1,812 owed; 2027/28 SSS 3 Commercial, 0, with Le 1,812 from earlier years. James 2026/27 Class 6, 11 days at 91%, 6-slot timetable. **Two children** (temporary guardian link, removed afterwards): both resolved independently; average attendance 86%; 2027/28 total owed Le 1,812 from Alpha's arrears. |
+| 1 | Subjects | `/academic/subjects` | ✅ **Done & verified** (built in Student #1) — child switcher plus a verified `child_id`, per child per year. Alpha's parent: 2026/27 11 subjects, 2027/28 2; another child's id → 0 (not linked). |
+| 2 | Timetables | `/academic/timetables` | ✅ **Done** — the parent view took `child.class_id` from the year-blind summary and had **no year picker**. It now loads the **selected child's year view** (`getChildDetail(child, year)`) and uses that year's class with a timetable (`timetable_class`), so a sibling promoted mid-year or moving up gets the right one. `YearFilter`, history banner, rollover / graduated / not-in-a-class wording with the child's name, and switching child resets the class. Backend check confirmed: the parent of Alpha gets JSS 3 → 200, Class 6 → 403. |
+| 3 | Assignments | `/academic/assignments` | ✅ **Done & verified** (built in Student #3) — the switcher always sends the selected child's verified `child_id`, so siblings are never merged. Own-child submission status, per year. |
+| 4 | Exam Timetable | `/academic/exam-timetable` | ✅ **Done & verified** (built in Student #4) — per child (`child_id`) per year; another child's exam by id → 403. |
+| 5 | Results & Grades | `/academic/results` | ✅ **Done** — `ParentResultsView` rewritten in line with the student view: `YearFilter`; a child chip showing each child's status that year; a Class column for multi-class years; ranking in the class the results were recorded in (with a picker); graduated, rollover, not-in-a-class and not-yet-released states; load error with Retry. Verified: the parent's own child's JSS 3 ranking → 200, Class 6 ranking → 403. |
+| 6 | Report Cards | `/academic/report-cards` | ✅ **Done & verified** — the parent view was pinned to the active year and the child's "current" class. It now uses the same year flow as students, for the **selected child** (`getChildDetail`): a year picker, the child's classes that year (preferring the one with released results), a class picker, a history banner, graduated / not-in-a-class / error states, and switching child resets the picks. Own child's JSS 3 card is 200 with `[first_term]`; another child's card is 403. |
+| 7 | Attendance | `/students/attendance` | ✅ **Done** — `ParentAttendanceView` was lifetime. It's now per year and per child: `YearFilter`; subtitle with the child's classes; the "today" arrival / departure banner only in the current year when the child has a class, using the device's calendar day instead of UTC; history and rollover notices; graduated / not-in-a-class / error empty states. Counts come from the shared builder (by day, excused counts as attended). |
+| 8 | Fees & Payments | `/finance/my-fees` | ✅ **Done** — current year by default with All years; child switcher; "Total Outstanding (all children)" = `total_owed` across every year (before, it was a year-blind invoice sum). Parents can only pay for a linked child (verified in the student pass). |
+| 9 | Announcements | `/communication/announcements` | ✅ **Done** (Student #9) — parent audience plus every class their children are or were in, year-scoped. The dashboard widget follows the selected year. |
+| 10 | School Events | `/events/school` | ✅ **Done & verified** (Student #10) — no drafts; role-specific events only when they name `parent` (≡ guardian). |
+| 11 | Calendar | `/events/calendar` | ✅ **Done & verified** (Student #11) — the shared audience rule; a "students only" event is hidden from parents. |
+| 12 | My Events | `/events/my-events` | ✅ **Done** — personal, all-time. |
+| — | Settings, Guide & Replay walkthrough | `/settings`, `/guide` | ✅ **Guide rewritten** (`lib/onboarding.ts` PARENT, was 3 lines): a 7-step walkthrough (Overview, one child at a time, timetable/homework/exams, results & report cards, attendance with today's arrival, fees with arrears and Pay, security), "Staying involved" rhythm, five key rules (own children only, each child in their own class, one year at a time with auto-move on promotion, moving up a stage vs graduating, results when released), seven sections, five FAQs. Replay uses the same steps. |
 
 Parent-specific things to probe:
 - **Child scope:** only linked children. Another family's child id on any endpoint → 403/404. An unlinked guardian sees an empty state, not an error.
