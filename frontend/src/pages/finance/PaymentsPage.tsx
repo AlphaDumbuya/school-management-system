@@ -26,6 +26,7 @@ import { showToast } from '@utils/toast';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
+import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { financeService } from '@services/financeService';
 import { studentsService } from '@services/studentsService';
 import { classesService } from '@services/classesService';
@@ -81,12 +82,27 @@ export const PaymentsPage: React.FC = () => {
   const yearReady = pickedYear !== null || !!activeYear;
   const viewingPast = !!year && !!activeYear && year < activeYear;
 
-  const { data: analyticsResp, isLoading: anLoading, refetch: refetchAn } = useQuery({
-    queryKey: ['finance-analytics', year], queryFn: () => financeService.getAnalytics(year || undefined), enabled: yearReady, staleTime: 30_000,
+  // apiClient never throws: a {success:false} must show as an error, not as
+  // "no payments" with Le 0 KPIs.
+  const okOrThrow = async (p: Promise<any>) => { const r = await p; if (r?.success === false) throw new Error(r.error || 'Could not load payments.'); return r; };
+  const { data: analyticsResp, isLoading: anLoading, refetch: refetchAn, error: anError } = useQuery({
+    queryKey: ['finance-analytics', year], queryFn: () => okOrThrow(financeService.getAnalytics(year || undefined)), enabled: yearReady, staleTime: 30_000,
   });
-  const { data: payResp, isLoading, refetch } = useQuery({
-    queryKey: ['finance-payments', year], queryFn: () => financeService.listPayments(year || undefined), enabled: yearReady, staleTime: 15_000,
+  const { data: payResp, isLoading, refetch, error: payError } = useQuery({
+    queryKey: ['finance-payments', year], queryFn: () => okOrThrow(financeService.listPayments(year || undefined)), enabled: yearReady, staleTime: 15_000,
   });
+  const loadError = (payError || anError) as Error | null;
+
+  // Refund (staff): needs a reason; restores the fee balance.
+  const [refundTarget, setRefundTarget] = useState<any | null>(null);
+  const [refundReason, setRefundReason] = useState('');
+  const doRefund = async () => {
+    const res: any = await financeService.refundPayment(refundTarget.id, refundReason.trim());
+    if (res?.success === false) { showToast.error(res.error || 'Refund failed'); throw new Error('refund failed'); }
+    showToast.success(`Refunded ${fmtMoney(refundTarget.amount)} to ${refundTarget.student_name}'s account. The fee is owed again.`);
+    setRefundTarget(null); setRefundReason('');
+    refetch(); refetchAn();
+  };
   const { data: schoolResp } = useQuery({
     queryKey: ['school-info'], queryFn: () => schoolConfigService.getSchoolInfo(), staleTime: 60_000,
   });
@@ -442,7 +458,12 @@ export const PaymentsPage: React.FC = () => {
           </div>
         </div>
 
-        {filtered.length === 0 ? (
+        {loadError ? (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+            <span>{loadError.message}</span>
+            <button type="button" onClick={() => { refetch(); refetchAn(); }} className="text-xs font-bold hover:underline">Retry</button>
+          </div>
+        ) : filtered.length === 0 ? (
           <EmptyState message="No payments found" description="Manual and online (Monime) payments will appear here." />
         ) : (
           <>
@@ -479,7 +500,12 @@ export const PaymentsPage: React.FC = () => {
                       <td className="px-4 py-3 whitespace-nowrap"><span className="inline-flex items-center gap-1.5 text-xs font-medium">{meta.icon}{meta.label}</span></td>
                       <td className="px-4 py-3 whitespace-nowrap">{statusPill(p.status)}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <button onClick={() => setReceipt(p)} className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"><Receipt size={13} /> View</button>
+                        <span className="inline-flex items-center gap-3">
+                          <button onClick={() => setReceipt(p)} aria-label={`View receipt for ${p.student_name}`} className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"><Receipt size={13} /> View</button>
+                          {p.status === 'completed' && p.fee_id && (
+                            <button onClick={() => { setRefundReason(''); setRefundTarget(p); }} aria-label={`Refund payment from ${p.student_name}`} className="text-xs font-semibold text-red-600 dark:text-red-400 hover:underline">Refund</button>
+                          )}
+                        </span>
                       </td>
                     </tr>
                   );
@@ -493,6 +519,20 @@ export const PaymentsPage: React.FC = () => {
         {recordOpen && <RecordPaymentModal onClose={() => setRecordOpen(false)} onSaved={() => { setRecordOpen(false); refetchAll(); }} />}
         {remindOpen && <SendRemindersModal onClose={() => setRemindOpen(false)} defaulterCount={a?.topDefaulters?.length ?? 0} />}
         {receipt && <ReceiptModal payment={receipt} school={school} onClose={() => setReceipt(null)} />}
+        <ConfirmationDialog
+          isOpen={!!refundTarget}
+          onClose={() => setRefundTarget(null)}
+          onConfirm={doRefund}
+          title="Refund payment"
+          message={refundTarget ? `Refund ${fmtMoney(refundTarget.amount)} paid by ${refundTarget.student_name}? The amount goes back onto their fee balance. Hand the money back separately.` : ''}
+          confirmLabel="Refund"
+          confirmDisabled={refundReason.trim().length < 5}
+        >
+          <label htmlFor="refund-reason" className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mt-2">Reason (required)</label>
+          <textarea id="refund-reason" value={refundReason} onChange={(e) => setRefundReason(e.target.value)} rows={2} maxLength={500}
+            placeholder="e.g. Recorded against the wrong student"
+            className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" />
+        </ConfirmationDialog>
       </PageShell>
     </MainLayout>
   );
@@ -507,6 +547,8 @@ const HubStat: React.FC<{ label: string; value: string; sub?: string; color: str
   </div>
 );
 
+const newKey = () => (globalThis.crypto as any)?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 // ── Record manual payment ─────────────────────────────────────────────────────
 const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }> = ({ onClose, onSaved }) => {
   const [studentQuery, setStudentQuery] = useState('');
@@ -516,6 +558,14 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
   const [method, setMethod] = useState('cash');
   const [reference, setReference] = useState('');
   const [saving, setSaving] = useState(false);
+  const todayLocal = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+  const [paymentDate, setPaymentDate] = useState(todayLocal);
+  // One key per payment being entered: a retry or double click returns the
+  // same payment instead of recording it twice. Renewed after each success.
+  const idemKey = React.useRef<string>(newKey());
 
   const { data: studentsResp } = useQuery({
     queryKey: ['pay-students', studentQuery],
@@ -620,52 +670,26 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
     const amt = Number(amount);
     if (!(amt > 0)) { showToast.error('Enter a valid amount'); return; }
     if (amt > selectedScope.amount) { showToast.error(`Amount exceeds the total for this selection (${fmtMoney(selectedScope.amount)})`); return; }
+    if (saving) return;
     setSaving(true);
     try {
-      // Apply the amount across the scope's fees oldest-first (the ledger orders
-      // charges chronologically) — one recordPayment call per fee until the
-      // amount is exhausted. Mirrors the online settle-across-fees logic.
-      const feeOutstanding = new Map<string, number>();
-      ledger.years?.forEach((y: any) => y.terms?.forEach((t: any) => t.charges?.forEach((c: any) => {
-        feeOutstanding.set(c.id, Number(c.outstanding || 0));
-      })));
-      let remaining = Math.round(amt * 100) / 100;
-      let recorded = 0;
-      let failure: string | null = null;
-      for (const fid of selectedScope.feeIds) {
-        if (remaining <= 0.005) break;
-        const bal = Math.round((feeOutstanding.get(fid) || 0) * 100) / 100;
-        if (bal <= 0) continue;
-        const pay = Math.round(Math.min(bal, remaining) * 100) / 100;
-        try {
-          const res: any = await financeService.recordPayment({ feeId: fid, amount: pay, method, transactionReference: reference || undefined });
-          const body = res?.data ?? res;
-          if (res?.success === false || body?.success === false) {
-            failure = body?.error || body?.message || res?.error || 'Failed to record payment';
-            break;
-          }
-        } catch (e: any) {
-          failure = e?.response?.data?.error || e?.response?.data?.message || 'Failed to record payment';
-          break;
-        }
-        remaining = Math.round((remaining - pay) * 100) / 100;
-        recorded = Math.round((recorded + pay) * 100) / 100;
-      }
-      if (failure) {
-        // Some fees may already be settled; say exactly what went through and
-        // refresh so the ledger shows the true state before any retry.
-        if (recorded > 0) {
-          showToast.error(`Only ${fmtMoney(recorded)} of ${fmtMoney(amt)} was recorded. ${failure}`);
-          onSaved();
-        } else {
-          showToast.error(failure);
-        }
-        return;
-      }
-      showToast.success(`Recorded ${fmtMoney(recorded)} for ${selectedScope.label}`);
+      // One server call: the amount is spread across the scope's fees oldest
+      // first in a single transaction (all of it is recorded, or none).
+      const res: any = await financeService.recordPaymentAcross({
+        feeIds: selectedScope.feeIds,
+        amount: Math.round(amt * 100) / 100,
+        method,
+        transactionReference: reference || undefined,
+        paymentDate: paymentDate || undefined,
+        idempotencyKey: idemKey.current,
+      });
+      if (res?.success === false) { showToast.error(res.error || 'Failed to record payment'); return; }
+      idemKey.current = newKey();
+      const recorded = Number(res?.data?.recorded ?? amt);
+      showToast.success(res?.data?.duplicate
+        ? `Already recorded: ${fmtMoney(recorded)} for ${selectedScope.label}`
+        : `Recorded ${fmtMoney(recorded)} for ${selectedScope.label}`);
       onSaved();
-    } catch (err: any) {
-      showToast.error(err?.response?.data?.message || 'Failed to record payment');
     } finally { setSaving(false); }
   };
 
@@ -753,6 +777,10 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
                 {['cash', 'bank_transfer', 'cheque', 'card'].map((m) => <option key={m} value={m}>{m.replace('_', ' ')}</option>)}
               </select>
             </div>
+          </div>
+          <div>
+            <label htmlFor="pay-date" className="text-xs font-semibold text-gray-500 uppercase">Date received</label>
+            <input id="pay-date" type="date" value={paymentDate} max={todayLocal} onChange={(e) => setPaymentDate(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase">Reference (optional)</label>

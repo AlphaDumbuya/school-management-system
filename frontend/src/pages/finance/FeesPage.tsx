@@ -47,8 +47,10 @@ const levelCls = (l?: string) => LEVEL_COLORS[l || ''] ?? 'bg-gray-100 text-gray
 export const FeesPage: React.FC = () => {
   const queryClient = useQueryClient();
   // Opens on the school's ACTIVE year; past years are read-only history.
-  const [pickedYear, setYear] = useState('');
+  const [pickedYear, setPickedYear] = useState('');
   const { activeYear } = useAcademicYears();
+  // '' = the current year, so the page follows a rollover.
+  const setYear = (y: string) => setPickedYear(!y || y === activeYear ? '' : y);
   const year = pickedYear || activeYear;
   const viewingPast = !!year && !!activeYear && year < activeYear;
   const [search, setSearch] = useState('');
@@ -59,23 +61,24 @@ export const FeesPage: React.FC = () => {
 
   // The classes that exist in the selected year (each year has its own class
   // rows after a rollover, and fee structures point at that year's classes).
-  const { data: classResp, isLoading: classLoading } = useQuery({
+  const { data: classResp, isLoading: classLoading, error: classError } = useQuery({
     queryKey: ['classes-all', year],
-    queryFn: () => classesService.listClasses({ limit: 200, academic_year: year } as any),
+    queryFn: () => okOrThrow(classesService.listClasses({ limit: 200, academic_year: year } as any)),
     enabled: !!year,
     staleTime: 60_000,
   });
   const classes: any[] = ((classResp as any)?.data?.data ?? (classResp as any)?.data ?? []);
 
   // Configured structures for the year
-  const { data: structResp, isLoading: structLoading, refetch } = useQuery({
-    queryKey: ['fee-structures', year], queryFn: () => feeStructureService.list(year), enabled: !!year, staleTime: 15_000,
+  const { data: structResp, isLoading: structLoading, refetch, error: structError } = useQuery({
+    queryKey: ['fee-structures', year], queryFn: () => okOrThrow(feeStructureService.list(year)), enabled: !!year, staleTime: 15_000,
   });
+  const loadError = (structError || classError) as Error | null;
   const structures: FeeStructure[] = ((structResp as any)?.data?.data ?? (structResp as any)?.data ?? []);
 
   // Finance overview KPIs
-  const { data: ovResp } = useQuery({
-    queryKey: ['finance-overview', year], queryFn: () => financeService.getOverview(year), enabled: !!year, staleTime: 30_000,
+  const { data: ovResp, isError: ovError } = useQuery({
+    queryKey: ['finance-overview', year], queryFn: () => okOrThrow(financeService.getOverview(year)), enabled: !!year, staleTime: 30_000,
   });
   const ov = (ovResp as any)?.data?.data ?? (ovResp as any)?.data;
 
@@ -88,7 +91,6 @@ export const FeesPage: React.FC = () => {
 
   const toggleExpand = (id: string) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  const totalExpected = useMemo(() => structures.reduce((s, x) => s + (Number((x as any).fullYearTotal) || 0), 0), [structures]);
 
   return (
     <MainLayout>
@@ -98,7 +100,7 @@ export const FeesPage: React.FC = () => {
         onRefresh={() => refetch()}
         isRefreshing={structLoading}
         actions={
-          <YearFilter value={year} onChange={setYear} />
+          <YearFilter value={year} onChange={setYear} noAutoSelect />
         }
       >
         {viewingPast && (
@@ -113,10 +115,19 @@ export const FeesPage: React.FC = () => {
         {/* KPI row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <KPITile label="Configured Classes" value={structures.length} sub={`of ${classes.length} total`} color="blue" />
-          <KPITile label="Total Expected Fees" value={fmtLe(totalExpected)} sub="All structures · this year" color="indigo" />
-          <KPITile label="Total Collected" value={fmtLe(ov?.totalPaid)} sub="Received via payments" color="emerald" />
-          <KPITile label="Outstanding Balances" value={fmtLe(ov?.totalOutstanding)} sub="Uncollected balances" color="rose" />
+          {/* Billed comes from the ledger: the old "Total Expected" summed one
+              student's full-year fee per class, not per enrolled student. */}
+          <KPITile label="Total Billed" value={ovError ? '—' : fmtLe(ov?.totalBilled)} sub={`Charged to students · ${year || ''}`} color="indigo" />
+          <KPITile label="Total Collected" value={ovError ? '—' : fmtLe(ov?.totalPaid)} sub="Billed minus still owed" color="emerald" />
+          <KPITile label="Outstanding Balances" value={ovError ? '—' : fmtLe(ov?.totalOutstanding)} sub="Still owed this year" color="rose" />
         </div>
+
+        {loadError && (
+          <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+            <span>{loadError.message}</span>
+            <button type="button" onClick={() => refetch()} className="text-xs font-bold hover:underline">Retry</button>
+          </div>
+        )}
 
         {/* Search */}
         <div className="mb-4">
@@ -247,10 +258,10 @@ export const FeesPage: React.FC = () => {
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400" title="Not billed yet">NOT BILLED</span>
                       )}
                       {!viewingPast && <>
-                      <button onClick={(e) => { e.stopPropagation(); setConfigClass(classes.find((c) => c.id === (s.classId || s.class_id)) ?? { id: s.classId || s.class_id, name: s.class_name, level: s.class_level }); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-600" title="Edit"><Settings2 size={15} /></button>
-                      <button onClick={(e) => { e.stopPropagation(); setBillTarget(s); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-emerald-600" title="Bill a term or the full year"><Layers size={15} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setConfigClass(classes.find((c) => c.id === (s.classId || s.class_id)) ?? { id: s.classId || s.class_id, name: s.class_name, level: s.class_level }); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-600" title="Edit" aria-label={`Edit ${s.class_name} fee structure`}><Settings2 size={15} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setBillTarget(s); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-emerald-600" title="Bill a term or the full year" aria-label={`Bill ${s.class_name}`}><Layers size={15} /></button>
                       {s.billed && (
-                        <button onClick={(e) => { e.stopPropagation(); setUnbillTarget(s); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-600" title="Unbill (remove unpaid charges)"><Undo2 size={15} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); setUnbillTarget(s); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-600" title="Unbill (remove unpaid charges)" aria-label={`Unbill ${s.class_name}`}><Undo2 size={15} /></button>
                       )}
                       </>}
                     </div>
@@ -356,6 +367,13 @@ export const FeesPage: React.FC = () => {
 };
 
 /* ── KPI tile ────────────────────────────────────────────────────────────── */
+/** apiClient never throws: turn {success:false} into a query error. */
+async function okOrThrow<T>(p: Promise<T>): Promise<T> {
+  const r: any = await p;
+  if (r?.success === false) throw new Error(r.error || 'Could not load fee data.');
+  return r;
+}
+
 const KCOLORS: Record<string, string> = {
   blue:    'text-blue-600   bg-blue-500/10',
   indigo:  'text-indigo-600 bg-indigo-500/10',
@@ -427,9 +445,10 @@ const FeeStructureModal: React.FC<{
   });
 
   // Load existing structure
-  const { data: existingResp } = useQuery({
+  const { data: existingResp, isLoading: existingLoading, error: existingError } = useQuery({
     queryKey: ['fee-struct', cls.id, year],
-    queryFn: () => feeStructureService.get(cls.id, year),
+    queryFn: () => okOrThrow(feeStructureService.get(cls.id, year)),
+    enabled: !!year && !!cls.id,
     staleTime: 0,
   });
 
@@ -487,9 +506,8 @@ const FeeStructureModal: React.FC<{
         policyNotes: data.policyNotes || null,
         expenses: data.expenses.filter((e) => e.label),
       });
-      const body = res?.data ?? res;
-      if (body?.success === false) {
-        showToast.error(body?.error || 'Failed to save fee structure');
+      if (res?.success === false) {
+        showToast.error(res?.error || 'Failed to save fee structure');
         return;
       }
       showToast.success('Fee structure saved');
@@ -508,7 +526,7 @@ const FeeStructureModal: React.FC<{
             <h3 className="font-bold text-gray-900 dark:text-white">Configure Academic Year Fees</h3>
             <p className="text-xs text-gray-500 mt-0.5">{cls.name} · {year}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
         </div>
 
         <form onSubmit={handleSubmit(submit)} className="p-5 space-y-6 overflow-y-auto max-h-[75vh]">
@@ -667,7 +685,8 @@ const FeeStructureModal: React.FC<{
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700 sticky bottom-0 bg-white dark:bg-gray-800 rounded-b-2xl">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="default" size="sm" onClick={handleSubmit(submit)} disabled={saving}>{saving ? 'Saving…' : 'Save Academic Year Fees'}</Button>
+          {existingError && <span role="alert" className="mr-auto text-xs text-red-600">{(existingError as Error).message} Close and try again.</span>}
+          <Button variant="default" size="sm" onClick={handleSubmit(submit)} disabled={saving || existingLoading || !!existingError}>{saving ? 'Saving…' : existingLoading ? 'Loading…' : 'Save Academic Year Fees'}</Button>
         </div>
       </div>
     </div>
@@ -693,9 +712,10 @@ const BillTermModal: React.FC<{ structure: any; onClose: () => void; onDone: () 
     setSaving(true);
     try {
       const res: any = await feeStructureService.billTerm(structure.id, term, dueDate);
-      const body = res?.data ?? res;
-      if (body?.success === false) { showToast.error(body?.error || 'Billing failed'); return; }
-      const billed = body?.data?.billed ?? 0;
+      if (res?.success === false) { showToast.error(res?.error || 'Billing failed'); return; }
+      // apiClient returns the body; reading res.data.data made this always 0,
+      // so every billing said "No new charges added".
+      const billed = Number(res?.data?.billed ?? 0);
       if (billed === 0) {
         showToast.info('No new charges added — students may already be billed, or the class has no active students.');
       } else {
@@ -712,7 +732,7 @@ const BillTermModal: React.FC<{ structure: any; onClose: () => void; onDone: () 
       <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
           <h3 className="font-bold text-gray-900 dark:text-white">Bill Fees — {structure.class_name}</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4">
           <div>
@@ -758,10 +778,9 @@ const UnbillModal: React.FC<{ structure: any; onClose: () => void; onDone: () =>
     setSaving(true);
     try {
       const res: any = await feeStructureService.unbill(structure.id, scope === 'all' ? undefined : scope);
-      const body = res?.data ?? res;
-      if (body?.success === false) { showToast.error(body?.error || 'Unbill failed'); return; }
-      const removed = body?.data?.removed ?? 0;
-      showToast.success(removed > 0 ? `Removed ${removed} unpaid charge${removed === 1 ? '' : 's'}` : 'No unpaid charges to remove');
+      if (res?.success === false) { showToast.error(res?.error || 'Unbill failed'); return; }
+      const removed = Number(res?.data?.removed ?? 0);
+      showToast.success(removed > 0 ? `Removed ${removed} unpaid charge${removed === 1 ? '' : 's'}` : 'Nothing to remove: charges with a payment or on an invoice are kept.');
       onDone();
     } catch (err: any) {
       showToast.error(err?.response?.data?.error || 'Unbill failed');
@@ -773,12 +792,12 @@ const UnbillModal: React.FC<{ structure: any; onClose: () => void; onDone: () =>
       <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
           <h3 className="font-bold text-gray-900 dark:text-white">Unbill — {structure.class_name}</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4">
           <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
             <Info size={14} className="flex-shrink-0 mt-0.5" />
-            <span>Only <strong>unpaid</strong> charges are removed. Charges with any payment applied are kept so payment history is never lost.</span>
+            <span>Only this structure's <strong>unpaid</strong> charges are removed. Charges with a payment, or already on an invoice, are kept so history is never lost.</span>
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase">Scope</label>

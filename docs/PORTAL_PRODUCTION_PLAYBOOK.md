@@ -475,6 +475,19 @@ Parent-specific things to probe:
 - Only published results, report cards and events. Announcements addressed to parents or the child's class only.
 - `guardian` is a legacy alias of `parent`: both must behave the same.
 
+### Accountant pass, part 1: finance integrity (✅ done & verified)
+
+- **Overview** (`/accountant/dashboard`): `YearFilter` (current year by default), history banner, arrears from other years with Collect, recent payments for the year with status (only completed ones count), the class each student was in THAT year (`joinClass` in `/finance/analytics`), load error with Retry. Verified: 2026/27 Le 1,819 / 7 / 1,812; 2027/28 0 with Le 1,812 arrears; teacher and student 403.
+- **Security:** students and parents could record manual (cash) payments for themselves through `POST /payments`. It's now staff-only (portal users pay through Monime). `/payments/:id/receipt` is staff-only. Teachers no longer read invoices. `/payments/bulk` checks every fee is in the tenant.
+- **Recording:** `POST /finance/payments/record`: one payment spread across fees (oldest first) in ONE transaction, with an idempotency key (`payments.idempotency_key`, unique per tenant). Two parallel identical submits → one payment. Future dates and unknown methods → 400. `tenant_id` is set (manual payments were missing from tenant stats).
+- **Refund:** locked transaction, numeric maths (pg strings were concatenated: "500" + "200"), payment → `refunded`, twice → 409, online payments → 409 (refund at the provider). `paymentInTenant` joined text to uuid, so every refund was a 404.
+- **Invoices:** bulk-invoice runs one locked transaction per student and no longer swallows insert errors (that's how `INV-2026-617050`, Le 3,619 with 0 line items, was made; it is now voided). New invoices go to the active year only (past year → 409). `POST /finance/invoices/:id/void {reason}`: blocked once paid; the fees are released for re-invoicing. The legacy generate path now looks students up in `students`, sets tenant/year, and skips paid, deleted or already-invoiced fees.
+- **Fee structures:** amounts are validated (0…10bn, cents), percentages must be whole numbers 0–100, the year is canonical "YYYY/YYYY" (else 400), a due date is required, and the upsert runs in one transaction. Billing takes an advisory lock (two parallel bills → one set of fees) and dedupe ignores deleted rows. Unbill touches only this structure's unpaid, uninvoiced charges and soft-deletes them. A billed structure can't be deleted. **UI:** the bill/unbill toast always said "No new charges" (read `res.data.data`). Fixed. KPI is now "Total Billed" from the ledger.
+- **Audit trail:** finance code passed camelCase (`entityType`) to `logAudit`, which read snake_case, so every finance audit insert failed (NOT NULL). `logAudit` now accepts both. Payments, refunds and voids are audited. BE errors 500 → 479.
+- Shared `ConfirmationDialog` takes optional `children` (a required-reason field) and `confirmDisabled`. Migration `164_finance_integrity`.
+
+The comprehensive bursar build (discounts, late fees, aging, receipts, credit, instalments, expenses, petty cash, budgets, payroll, general ledger, statements, reconciliation) follows as specs: `.kiro/specs/bursar-finance-phase-a|b|c`.
+
 ### Staff onboarding — ✅ done & verified (before Accountant and Admissions)
 
 Before this, a school had no way to hire an accountant or admissions officer,

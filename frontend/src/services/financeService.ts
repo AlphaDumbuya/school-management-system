@@ -56,6 +56,10 @@ export interface FinanceAnalytics {
   topDefaulters: { studentName: string; admissionNo: string; className: string; outstanding: number }[];
   recent: { id: string; studentName: string; amount: number; method: string; status: string; date: string }[];
   thisMonth: { total: number; count: number };
+  /** The year the figures cover (null = all years). */
+  academicYear?: string | null;
+  /** With a year: balances still owed from other years. */
+  otherYears?: { year: string; outstanding: number; students: number }[];
 }
 
 export const financeService = {
@@ -110,6 +114,13 @@ export const financeService = {
   // ── Payments ──────────────────────────────────────────────────────────────
   recordPayment: (data: { feeId: string; amount: number; method: string; transactionReference?: string; notes?: string; paymentDate?: string }) =>
     apiClient.post('/api/v1/payments', data),
+  /** One manual payment across several fees (oldest first), all-or-nothing, idempotent. */
+  recordPaymentAcross: (data: { feeIds: string[]; amount: number; method: string; transactionReference?: string; paymentDate?: string; idempotencyKey: string }) =>
+    apiClient.post<{ success: boolean; data: { recorded: number; duplicate: boolean; payments: any[] }; error?: string }>('/api/v1/finance/payments/record', data),
+  refundPayment: (paymentId: string, reason: string) =>
+    apiClient.post<{ success: boolean; error?: string }>(`/api/v1/payments/${paymentId}/refund`, { reason }),
+  voidInvoice: (invoiceId: string, reason: string) =>
+    apiClient.post<{ success: boolean; error?: string }>(`/api/v1/finance/invoices/${invoiceId}/void`, { reason }),
   getRecentPayments: () => apiClient.get<{ success: boolean; data: Payment[] }>('/api/v1/payments-recent'),
   getStudentPayments: (studentId: string) =>
     apiClient.get<{ success: boolean; data: Payment[] }>(`/api/v1/students/${studentId}/payments`),

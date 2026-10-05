@@ -34,26 +34,34 @@ export class InvoiceService {
       logger.info(`Generating invoice for student ${data.studentId}`);
 
       // Validate student exists
-      const student = await this.db('users')
-        .where('id', data.studentId)
-        .where('role', 'student')
-        .first();
+      // studentId is a students.id (the route checks it against the tenant);
+      // looking it up in users made every real call fail with "not found".
+      const student = await this.db('students').where('id', data.studentId).first();
 
       if (!student) {
         throw new Error(`Student ${data.studentId} not found`);
       }
 
       // Get all fees and calculate totals
+      // Only open fees not already on a live invoice (no double counting).
       let fees = await this.db('fees')
         .whereIn('id', data.feeIds)
-        .where('student_id', data.studentId);
+        .where('student_id', data.studentId)
+        .whereNotIn('status', ['deleted', 'paid'])
+        .whereNotExists(function (this: any) {
+          this.select('*').from('invoice_items as ii')
+            .join('invoices as iv', 'iv.id', 'ii.invoice_id')
+            .whereRaw('ii.fee_id::text = fees.id::text')
+            .whereNot('iv.status', 'cancelled');
+        });
 
       if (fees.length === 0) {
         throw new Error('No fees found for invoice');
       }
 
-      const totalAmount = fees.reduce((sum: number, fee: any) => sum + fee.amount, 0);
-      const totalBalance = fees.reduce((sum: number, fee: any) => sum + fee.balance, 0);
+      const r2 = (n: number) => Math.round(n * 100) / 100;
+      const totalAmount = r2(fees.reduce((sum: number, fee: any) => sum + (Number(fee.amount) || 0), 0));
+      const totalBalance = r2(fees.reduce((sum: number, fee: any) => sum + (Number(fee.balance) || 0), 0));
       const totalPaid = totalAmount - totalBalance;
 
       // invoices.id is a UUID column; invoice_number is the human-readable ref.
@@ -62,6 +70,8 @@ export class InvoiceService {
 
       const invoice = {
         id: invoiceId,
+        tenant_id: student.tenant_id,
+        academic_year: fees[0]?.academic_year || null,
         student_id: data.studentId,
         invoice_number: invoiceNumber,
         total_amount: totalAmount,
@@ -78,7 +88,7 @@ export class InvoiceService {
       await this.db('invoices').insert(invoice);
 
       // Link invoice to fees (invoice_items.id + invoice_id reference the UUID).
-      for (const feeId of data.feeIds) {
+      for (const feeId of fees.map((f: any) => f.id)) {
         await this.db('invoice_items').insert({
           id: crypto.randomUUID(),
           invoice_id: invoiceId,
@@ -284,7 +294,7 @@ export class InvoiceService {
     try {
       logger.info(`Sending reminder for invoice ${invoiceId}`);
 
-      const invoice = await this.getInvoiceById(invoiceId);
+      const invoice = await this.getInvoiceById(invoiceId, tenantId);
 
       // Tenant isolation: reject sending a reminder for an invoice that doesn't
       // belong to the caller's school (prevents cross-tenant data/email leakage).
@@ -414,7 +424,8 @@ export class InvoiceService {
       // Get all students in class
       const enrollments = await this.db('enrollments')
         .where('class_id', classId)
-        .select('student_id');
+        .where('status', 'active')
+        .distinct('student_id');
 
       const results = {
         created: 0,
@@ -429,7 +440,13 @@ export class InvoiceService {
           const fees = await this.db('fees')
             .where('student_id', enrollment.student_id)
             .where('type', feeType)
-            .where('status', '!=', 'paid')
+            .whereNotIn('status', ['paid', 'deleted'])
+            .whereNotExists(function (this: any) {
+              this.select('*').from('invoice_items as ii')
+                .join('invoices as iv', 'iv.id', 'ii.invoice_id')
+                .whereRaw('ii.fee_id::text = fees.id::text')
+                .whereNot('iv.status', 'cancelled');
+            })
             .select('id');
 
           if (fees.length > 0) {

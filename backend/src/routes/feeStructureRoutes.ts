@@ -63,11 +63,27 @@ async function rejectPastYear(res: Response, tenantId: string, year: unknown): P
   return false;
 }
 
+/** A money amount: finite, 0…10bn, rounded to cents. null = invalid. */
+function money(v: unknown): number | null {
+  if (v === undefined || v === null || v === '') return 0;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 1e10) return null;
+  return Math.round(n * 100) / 100;
+}
+/** A whole percentage 0…100, or null when not set. undefined = invalid. */
+function percent(v: unknown): number | null | undefined {
+  if (v === undefined || v === null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0 || n > 100) return undefined;
+  return n;
+}
+
 // ── List configured structures + summary ──────────────────────────────────────
 router.get('/', authenticate, requireStaff, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = (req as any).user.tenant_id;
-    const academicYear = (req.query.academic_year as string) || undefined;
+    const rawYear = normalizeAcademicYear((req.query.academic_year as string) || null);
+    const academicYear = rawYear && rawYear !== 'all' ? rawYear : undefined;
 
     let q = db('fee_structures')
       .join('classes', 'fee_structures.class_id', 'classes.id')
@@ -128,8 +144,8 @@ router.get('/', authenticate, requireStaff, async (req: Request, res: Response, 
 router.get('/:classId', authenticate, requireStaff, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = (req as any).user.tenant_id;
-    const academicYear = (req.query.academic_year as string);
-    if (!academicYear) return res.status(400).json({ success: false, error: 'academic_year is required' });
+    const academicYear = normalizeAcademicYear((req.query.academic_year as string) || null);
+    if (!academicYear || academicYear === 'all') return res.status(400).json({ success: false, error: 'academic_year is required' });
 
     const s = await db('fee_structures')
       .where({ tenant_id: tenantId, class_id: req.params.classId, academic_year: academicYear })
@@ -155,58 +171,80 @@ router.post('/', authenticate, requireStaff, async (req: Request, res: Response,
     } = req.body || {};
 
     if (!classId || !academicYear) return res.status(400).json({ success: false, error: 'classId and academicYear are required' });
+    // Store the canonical "YYYY/YYYY" so lookups and the past-year rule match.
+    const year = normalizeAcademicYear(String(academicYear));
+    if (!year || !/^\d{4}\/\d{4}$/.test(year)) return res.status(400).json({ success: false, error: 'academicYear must look like 2026/2027' });
     if (!(await assertClassInTenant(classId, tenantId))) return res.status(403).json({ success: false, error: 'Class not in your school' });
-    if (await rejectPastYear(res, tenantId, academicYear)) return;
+    if (await rejectPastYear(res, tenantId, year)) return;
+
+    const t1 = money(term1Tuition), t2 = money(term2Tuition), t3 = money(term3Tuition);
+    if (t1 === null || t2 === null || t3 === null) {
+      return res.status(400).json({ success: false, error: 'Tuition amounts must be numbers between 0 and 10,000,000,000.' });
+    }
+    const pNew = percent(minPercentNew), pCont = percent(minPercentContinuing), pTerm = percent(minPercentTerm), pLate = percent(lateFeePercent);
+    if ([pNew, pCont, pTerm, pLate].some((x) => x === undefined)) {
+      return res.status(400).json({ success: false, error: 'Percentages must be whole numbers from 0 to 100.' });
+    }
+    const cleanExpenses: Array<{ label: string; amount: number; required: boolean }> = [];
+    for (const e of (Array.isArray(expenses) ? expenses : []) as any[]) {
+      const label = String(e?.label || '').trim().slice(0, 150);
+      if (!label) continue;
+      if (label.toLowerCase() === 'tuition') return res.status(400).json({ success: false, error: '"Tuition" is reserved. Name the expense something else.' });
+      const amt = money(e?.amount);
+      if (amt === null) return res.status(400).json({ success: false, error: `"${label}" must be an amount between 0 and 10,000,000,000.` });
+      if (cleanExpenses.some((x) => x.label.toLowerCase() === label.toLowerCase())) {
+        return res.status(400).json({ success: false, error: `"${label}" is listed twice.` });
+      }
+      cleanExpenses.push({ label, amount: amt, required: e?.required !== false });
+    }
 
     const now = new Date();
     const payload: any = {
-      tenant_id: tenantId, class_id: classId, academic_year: academicYear,
-      term1_tuition: Number(term1Tuition) || 0,
-      term2_tuition: Number(term2Tuition) || 0,
-      term3_tuition: Number(term3Tuition) || 0,
-      min_percent_new: minPercentNew ?? null,
-      min_percent_continuing: minPercentContinuing ?? null,
-      min_percent_term: minPercentTerm ?? null,
+      tenant_id: tenantId, class_id: classId, academic_year: year,
+      term1_tuition: t1,
+      term2_tuition: t2,
+      term3_tuition: t3,
+      min_percent_new: pNew,
+      min_percent_continuing: pCont,
+      min_percent_term: pTerm,
       allow_installments: allowInstallments !== false,
       charges_compulsory_first_term: chargesCompulsoryFirstTerm === true,
-      late_fee_percent: lateFeePercent ?? null,
+      late_fee_percent: pLate,
       policy_notes: policyNotes ?? null,
       updated_at: now,
     };
 
-    const existing = await db('fee_structures').where({ tenant_id: tenantId, class_id: classId, academic_year: academicYear }).first();
-    let structureId: string;
-    if (existing) {
-      // A structure already exists for this (class, year). Only allow an
-      // explicit EDIT of that same structure; block an accidental duplicate
-      // create unless the caller signals intent to update.
-      // (financial-management spec Req 3.3)
-      const isEdit = req.body?.structureId === existing.id || req.body?.mode === 'edit' || req.body?.allowOverwrite === true;
-      if (!isEdit) {
-        return res.status(409).json({
-          success: false,
-          error: 'A fee structure already exists for this class and academic year. Open it to edit, or remove it first.',
-          code: 'FEE_STRUCTURE_EXISTS',
-          data: { id: existing.id },
-        });
-      }
-      await db('fee_structures').where({ id: existing.id }).update(payload);
-      structureId = existing.id;
-    } else {
-      const [row] = await db('fee_structures').insert({ ...payload, created_by: userId, created_at: now }).returning('*');
-      structureId = row.id;
+    // Upsert + expense replacement in ONE transaction (a failure mid-way used
+    // to leave half the expenses; a race on create hit the unique key → 500).
+    let structureId = '';
+    let conflict: any = null;
+    try {
+      await db.transaction(async (trx) => {
+        const existing = await trx('fee_structures').where({ tenant_id: tenantId, class_id: classId, academic_year: year }).forUpdate().first();
+        if (existing) {
+          const isEdit = req.body?.structureId === existing.id || req.body?.mode === 'edit' || req.body?.allowOverwrite === true;
+          if (!isEdit) { conflict = { id: existing.id }; return; }
+          await trx('fee_structures').where({ id: existing.id }).update(payload);
+          structureId = existing.id;
+        } else {
+          const [row] = await trx('fee_structures').insert({ ...payload, created_by: userId, created_at: now }).returning('*');
+          structureId = row.id;
+        }
+        await trx('fee_structure_expenses').where({ structure_id: structureId }).del();
+        if (cleanExpenses.length) {
+          await trx('fee_structure_expenses').insert(cleanExpenses.map((e) => ({ structure_id: structureId, ...e, created_at: now })));
+        }
+      });
+    } catch (e: any) {
+      if (e?.code === '23505') conflict = { id: null };
+      else throw e;
     }
-
-    // Replace expenses.
-    await db('fee_structure_expenses').where({ structure_id: structureId }).del();
-    for (const e of expenses as any[]) {
-      if (!e?.label) continue;
-      await db('fee_structure_expenses').insert({
-        structure_id: structureId,
-        label: String(e.label).slice(0, 150),
-        amount: Number(e.amount) || 0,
-        required: e.required !== false, // default required unless explicitly optional
-        created_at: now,
+    if (conflict) {
+      return res.status(409).json({
+        success: false,
+        error: 'A fee structure already exists for this class and academic year. Open it to edit, or remove it first.',
+        code: 'FEE_STRUCTURE_EXISTS',
+        data: conflict,
       });
     }
 
@@ -221,6 +259,8 @@ router.delete('/:id', authenticate, requireStaff, async (req: Request, res: Resp
     const s = await db('fee_structures').where({ id: req.params.id, tenant_id: tenantId }).first();
     if (!s) return res.status(404).json({ success: false, error: 'Fee structure not found' });
     if (await rejectPastYear(res, tenantId, s.academic_year)) return;
+    const billedFee = await db('fees').where({ tenant_id: tenantId, class_id: s.class_id, academic_year: s.academic_year }).whereNot('status', 'deleted').first();
+    if (billedFee) return res.status(409).json({ success: false, error: 'Students have been billed from this structure. Unbill first.' });
     await db('fee_structures').where({ id: s.id, tenant_id: tenantId }).del();
     res.json({ success: true });
   } catch (error) { next(error); }
@@ -234,19 +274,20 @@ async function billOneTerm(
   term: 1 | 2 | 3,
   dueDate: Date,
   students: Array<{ id: string }>,
-): Promise<number> {
+): Promise<Set<string>> {
   const tuition = Number(term === 1 ? s.term1_tuition : term === 2 ? s.term2_tuition : s.term3_tuition) || 0;
   // Itemised academic-year expenses are billed ONCE, with Term 1.
   const expenses = term === 1 ? await trx('fee_structure_expenses').where({ structure_id: s.id }) : [];
   const termLabel = TERM_LABELS[term];
   const now = new Date();
-  let billed = 0;
+  const billedIds = new Set<string>();
 
   for (const stu of students) {
     let added = false;
     if (tuition > 0) {
       const dup = await trx('fees')
-        .where({ student_id: stu.id, term: termLabel, academic_year: s.academic_year, type: 'Tuition' })
+        .where({ tenant_id: tenantId, student_id: stu.id, term: termLabel, academic_year: s.academic_year, type: 'Tuition' })
+        .whereNot('status', 'deleted')
         .first();
       if (!dup) {
         await trx('fees').insert({
@@ -263,7 +304,8 @@ async function billOneTerm(
       const amt = Number(e.amount) || 0;
       if (amt <= 0) continue;
       const dup = await trx('fees')
-        .where({ student_id: stu.id, academic_year: s.academic_year, type: e.label })
+        .where({ tenant_id: tenantId, student_id: stu.id, academic_year: s.academic_year, type: e.label })
+        .whereNot('status', 'deleted')
         .first();
       if (dup) continue;
       await trx('fees').insert({
@@ -276,9 +318,9 @@ async function billOneTerm(
       });
       added = true;
     }
-    if (added) billed++;
+    if (added) billedIds.add(stu.id);
   }
-  return billed;
+  return billedIds;
 }
 
 // ── Bill a term OR the full year from a structure ─────────────────────────────
@@ -293,7 +335,10 @@ router.post('/:id/bill', authenticate, requireStaff, async (req: Request, res: R
     if (!isYear && ![1, 2, 3].includes(term)) {
       return res.status(400).json({ success: false, error: "term must be 1, 2, 3 or 'year'" });
     }
-    const dueDate = req.body?.dueDate ? new Date(req.body.dueDate) : new Date();
+    const dueDate = req.body?.dueDate ? new Date(req.body.dueDate) : null;
+    if (!dueDate || Number.isNaN(dueDate.getTime())) {
+      return res.status(400).json({ success: false, error: 'Set a valid due date.' });
+    }
 
     const s = await db('fee_structures').where({ id: req.params.id, tenant_id: tenantId }).first();
     if (!s) return res.status(404).json({ success: false, error: 'Fee structure not found' });
@@ -311,19 +356,15 @@ router.post('/:id/bill', authenticate, requireStaff, async (req: Request, res: R
 
     let billed = 0;
     await db.transaction(async (trx) => {
-      if (isYear) {
-        // Bill all three terms; billed counts DISTINCT students touched.
-        const touched = new Set<string>();
-        for (const t of [1, 2, 3] as const) {
-          const before = await trx('fees').where({ class_id: s.class_id, academic_year: s.academic_year, term: TERM_LABELS[t] }).count('* as n').first();
-          await billOneTerm(trx, tenantId, s, t, dueDate, students);
-          const after = await trx('fees').where({ class_id: s.class_id, academic_year: s.academic_year, term: TERM_LABELS[t] }).count('* as n').first();
-          if (Number(after?.n) > Number(before?.n)) students.forEach((st: any) => touched.add(st.id));
-        }
-        billed = touched.size;
-      } else {
-        billed = await billOneTerm(trx, tenantId, s, term as 1 | 2 | 3, dueDate, students);
+      // Serialise billing per structure: two clicks / two tabs used to both
+      // pass the duplicate check and charge students twice.
+      await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [`fee-bill:${s.id}`]);
+      const touched = new Set<string>();
+      for (const t of (isYear ? [1, 2, 3] : [term]) as Array<1 | 2 | 3>) {
+        const ids = await billOneTerm(trx, tenantId, s, t, dueDate, students);
+        ids.forEach((id) => touched.add(id));
       }
+      billed = touched.size;
     });
 
     res.json({ success: true, data: { billed, term: isYear ? 'Full Year' : TERM_LABELS[term] } });
@@ -344,14 +385,25 @@ router.post('/:id/unbill', authenticate, requireStaff, async (req: Request, res:
     const term = Number(rawTerm);
     const scopeTerm = [1, 2, 3].includes(term) ? TERM_LABELS[term] : null; // null = all terms
 
+    // Only charges THIS structure creates (tuition + its expense items), with
+    // no payment and not on a live invoice. They are soft-deleted, so the
+    // audit trail stays; manual / ad-hoc fees are never touched.
+    const expenseLabels = (await db('fee_structure_expenses').where({ structure_id: s.id }).select('label')).map((e: any) => e.label);
     let q = db('fees')
       .where({ tenant_id: tenantId, class_id: s.class_id, academic_year: s.academic_year })
-      // Only untouched charges (no payment applied) so history is preserved.
+      .whereIn('type', ['Tuition', ...expenseLabels])
       .whereRaw('COALESCE(balance, amount) = amount')
-      .whereIn('status', ['pending', 'overdue']);
+      .whereIn('status', ['pending', 'overdue'])
+      .whereNotExists(function (this: any) {
+        this.select(db.raw('1')).from('payments as p').whereRaw('p.fee_id::text = fees.id::text').whereNot('p.status', 'failed');
+      })
+      .whereNotExists(function (this: any) {
+        this.select(db.raw('1')).from('invoice_items as ii').join('invoices as iv', 'iv.id', 'ii.invoice_id')
+          .whereRaw('ii.fee_id::text = fees.id::text').whereNot('iv.status', 'cancelled');
+      });
     if (scopeTerm) q = q.where({ term: scopeTerm });
 
-    const removed = await q.del();
+    const removed = await q.update({ status: 'deleted', balance: 0, updated_at: new Date() });
     res.json({ success: true, data: { removed, term: scopeTerm || 'Full Year' } });
   } catch (error) { next(error); }
 });
