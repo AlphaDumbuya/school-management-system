@@ -20,6 +20,7 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import { financeService } from '@services/financeService';
+import { bursarService } from '@services/bursarService';
 
 const fmtLe = (v: number | string | null | undefined) =>
   `Le ${(Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -60,6 +61,20 @@ export const Phase13AccountantDashboard: React.FC = () => {
     staleTime: 60_000,
   });
 
+  const cashQ = useQuery({
+    queryKey: ['acct-cash', year],
+    queryFn: () => ok<any>(bursarService.cashPosition(year)),
+    enabled: !!year && !viewingPast,
+    staleTime: 60_000,
+  });
+  const pendingQ = useQuery({
+    queryKey: ['acct-pending-discounts', year],
+    queryFn: () => ok<any[]>(bursarService.listGrants({ academic_year: year, status: 'pending' })),
+    enabled: !!year,
+    staleTime: 60_000,
+  });
+  const cash = cashQ.data;
+  const pendingDiscounts = (pendingQ.data || []).length;
   const overview = overviewQ.data;
   const analytics = analyticsQ.data;
   const totals = analytics?.totals;
@@ -127,6 +142,34 @@ export const Phase13AccountantDashboard: React.FC = () => {
             </div>
           ))}
         </div>
+
+        {/* Cash position, overdue, discounts */}
+        {!loadError && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            {!viewingPast && (
+              <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+                <div className="text-xs font-semibold text-gray-500">Cash received</div>
+                <div className="mt-1 text-sm"><span className="text-gray-500">Today </span><strong>{fmtLe(cash?.today)}</strong></div>
+                <div className="text-sm"><span className="text-gray-500">This month </span><strong>{fmtLe(cash?.month)}</strong></div>
+              </div>
+            )}
+            <Link to="/finance/aging" className="rounded-2xl border border-red-200 bg-red-50 dark:bg-red-950/20 p-4 hover:ring-2 hover:ring-red-300">
+              <div className="text-xs font-semibold text-red-700">Overdue now</div>
+              <div className="text-xl font-black text-red-700">{fmtLe(overview?.overdueAmount)}</div>
+              <div className="text-[11px] text-red-700/80">{overview?.overdueInvoices ?? 0} overdue charge{overview?.overdueInvoices === 1 ? '' : 's'} · see aging</div>
+            </Link>
+            <Link to="/finance/discounts" className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:ring-2 hover:ring-blue-200">
+              <div className="text-xs font-semibold text-gray-500">Discounts & waivers</div>
+              <div className="text-xl font-black">{fmtLe(overview?.totalDiscounts)}</div>
+              <div className="text-[11px] text-gray-500">Taken off fees · not counted as collected</div>
+            </Link>
+            <Link to="/finance/discounts" className={`rounded-2xl border p-4 ${pendingDiscounts ? 'border-amber-200 bg-amber-50 dark:bg-amber-950/20' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'}`}>
+              <div className="text-xs font-semibold text-gray-500">Discounts awaiting approval</div>
+              <div className={`text-xl font-black ${pendingDiscounts ? 'text-amber-700' : ''}`}>{pendingDiscounts}</div>
+              <div className="text-[11px] text-gray-500">The principal approves them</div>
+            </Link>
+          </div>
+        )}
 
         {/* Arrears from other years */}
         {!loading && !loadError && arrears > 0 && (

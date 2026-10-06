@@ -486,7 +486,44 @@ Parent-specific things to probe:
 - **Audit trail:** finance code passed camelCase (`entityType`) to `logAudit`, which read snake_case, so every finance audit insert failed (NOT NULL). `logAudit` now accepts both. Payments, refunds and voids are audited. BE errors 500 → 479.
 - Shared `ConfirmationDialog` takes optional `children` (a required-reason field) and `confirmDisabled`. Migration `164_finance_integrity`.
 
-The comprehensive bursar build (discounts, late fees, aging, receipts, credit, instalments, expenses, petty cash, budgets, payroll, general ledger, statements, reconciliation) follows as specs: `.kiro/specs/bursar-finance-phase-a|b|c`.
+The comprehensive bursar build is split into specs: `.kiro/specs/bursar-finance-phase-a|b|c`.
+
+### Accountant pass, part 2: Bursar Phase A, fee side (✅ done & verified)
+
+Spec `.kiro/specs/bursar-finance-phase-a`. Migration `165_bursar_finance_a`, services in `backend/src/services/finance/`, routes in `bursarFinanceRoutes.ts`. Those routes are mounted at `/api/v1/finance` **before** `schoolExpenseRoutes`, whose `router.use` guard is staff-only and would otherwise block the family reads.
+
+- **Balance identity:** `fee.balance = amount − payments + refunds − active adjustments`. Discounts, waivers, applied credit and late-fee waivers are `fee_adjustments` rows (each auditable and reversible) and are never counted as collected. KPIs: `totalDiscounts`, `totalCreditApplied`, `overdueAmount`; collected = billed − discounts − credit − outstanding.
+- **Discounts & Scholarships** (`/finance/discounts`):
+  - Discount types: sibling (from the Nth child, families matched by parent account), staff child, scholarship/bursary, custom; percent or fixed; tuition or all charges.
+  - Grants per year or term. The principal's grants approve themselves; the bursar's need approval above `fin_discount_approval_threshold`.
+  - Revoke puts the amounts back on the fees. Grants are re-applied after billing.
+- **Late fees:**
+  - The daily job marks fees overdue (school's today) and, if `fin_late_fee_enabled`, adds ONE late fee per fee, fixed or %, after the grace days, with an optional cap.
+  - A partial unique index means it can never charge twice. Students keeping to an instalment plan are skipped.
+  - Runs via Vercel Cron `/api/v1/cron/finance-daily` (needs **`CRON_SECRET`**), node-cron on long-running servers, or "Run overdue check". Late fees can be waived with a reason.
+- **Arrears & Aging** (`/finance/aging`): Not yet due / 1–30 / 31–60 / 61–90 / 90+ per student and class, filters, export, and reminders (one student or everyone listed). Dashboard: cash received today and this month, overdue now, discounts, and approvals waiting.
+- **Receipts:**
+  - `RCP-YYYY-NNNNNN`, sequential per school, stored, shared by every row of one submission, and back-filled.
+  - `balance_after` means a reprint shows the balance at the time. The PDF lists what the payment covered and is stamped REFUNDED when refunded.
+  - Manual payments are emailed automatically (`fin_email_manual_receipts`). Re-send and bulk email are available. Families can view payment history and download PDFs.
+- **Credit:** an overpayment needs "Keep the extra as account credit". Credit notes, apply credit to fees, and refund credit are available. Applied credit isn't new cash.
+- **Instalment plans:**
+  - Even split or custom rows that add up to what's owed. Status is derived (payments applied to the oldest instalment first).
+  - The minimum-payment policy accepts the next instalment. Families see the schedule.
+- **Statement of account:** brought forward from earlier years, every charge, discount, late fee, payment and refund with a running balance, and the closing balance. Available as JSON and PDF, to staff and to a linked parent or the student. `reconciles` checks it against the live balances.
+- **Promotions** warn (without blocking) about students in the class who still owe fees.
+- **Verified:**
+  - 10% scholarship applied on billing (Tuition 1000 → 900 ×3).
+  - Le 150 bursar waiver pending, bursar approve → 403, principal approve → Le 150 applied.
+  - Overview billed 3,200, discounts 450, collected 0.
+  - Overpayment without the flag → 400; with it → receipt `RCP-2026-000002` and Le 50 credit.
+  - PDF receipt: student and their parent 200, another parent 403.
+  - Statement reconciles (before and after revoke and credit apply).
+  - Plan of 2 instalments.
+  - Late fee run twice → 3 charged, then 0.
+  - Aging buckets correct.
+  - Cron without the secret → 401.
+  - All test rows removed and Alpha's fees unchanged.
 
 ### Staff onboarding — ✅ done & verified (before Accountant and Admissions)
 

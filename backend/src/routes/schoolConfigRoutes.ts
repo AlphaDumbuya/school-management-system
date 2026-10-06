@@ -113,6 +113,15 @@ router.post('/settings', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
         }
       }
     }
+    // Bursar finance amounts (Le) and day counts must be non-negative numbers.
+    for (const k of ['fin_late_fee_fixed', 'fin_late_fee_cap', 'fin_late_fee_grace_days', 'fin_discount_approval_threshold']) {
+      if (k in updates && updates[k] != null && updates[k] !== '') {
+        const n = Number(updates[k]);
+        if (!Number.isFinite(n) || n < 0 || n > 1e10 || (k === 'fin_late_fee_grace_days' && !Number.isInteger(n))) {
+          throw new AppError(`${k} must be a non-negative ${k === 'fin_late_fee_grace_days' ? 'whole number of days' : 'amount'}`, 400, 'VALIDATION_ERROR');
+        }
+      }
+    }
     if ('min_attendance_warning' in updates && 'min_attendance_critical' in updates) {
       if (Number(updates.min_attendance_critical) > Number(updates.min_attendance_warning)) {
         throw new AppError('Critical attendance threshold cannot exceed the warning threshold', 400, 'VALIDATION_ERROR');

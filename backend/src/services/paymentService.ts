@@ -2,6 +2,7 @@ import { Knex } from 'knex';
 import crypto from 'crypto';
 import { logger } from '@utils/logger';
 import { AuditService } from './auditService';
+import { nextReceiptNumber, studentOutstanding } from './finance/core';
 
 export interface PaymentData {
   feeId: string;
@@ -52,7 +53,9 @@ export class PaymentService {
     notes?: string | null;
     paymentDate?: string | null;
     idempotencyKey?: string | null;
-  }, userId: string): Promise<{ payments: any[]; recorded: number; duplicate: boolean }> {
+    /** Accept more than is owed: the excess becomes account credit. */
+    allowCredit?: boolean;
+  }, userId: string): Promise<{ payments: any[]; recorded: number; duplicate: boolean; receipt_number?: string | null; credit?: number; balance_after?: number }> {
     const round2 = (n: number) => Math.round(n * 100) / 100;
     const amount = round2(Number(input.amount));
     if (!Number.isFinite(amount) || amount <= 0) throw new PaymentRuleError('Payment amount must be greater than zero');
@@ -63,11 +66,14 @@ export class PaymentService {
     if (key) {
       const prior = await this.db('payments').where({ tenant_id: input.tenantId, idempotency_key: key });
       if (prior.length) {
-        return { payments: prior, recorded: round2(prior.reduce((s: number, p: any) => s + Number(p.amount || 0), 0)), duplicate: true };
+        return { payments: prior, recorded: round2(prior.reduce((s: number, p: any) => s + Number(p.amount || 0), 0)), duplicate: true, receipt_number: prior[0].receipt_number };
       }
     }
 
     const created: any[] = [];
+    let receiptNumber: string | null = null;
+    let credit = 0;
+    let balanceAfter = 0;
     try {
     await this.db.transaction(async (trx) => {
       const fees = await trx('fees')
@@ -82,9 +88,11 @@ export class PaymentService {
       fees.sort((a: any, b: any) => (order.get(String(a.id)) ?? 0) - (order.get(String(b.id)) ?? 0));
 
       const outstanding = round2(fees.reduce((s: number, f: any) => s + Math.max(0, Number(f.balance) || 0), 0));
-      if (amount > outstanding + 0.005) {
-        throw new PaymentRuleError(`Payment amount exceeds outstanding balance (Le ${outstanding.toLocaleString(undefined, { minimumFractionDigits: 2 })})`);
+      if (amount > outstanding + 0.005 && !input.allowCredit) {
+        throw new PaymentRuleError(`Payment amount exceeds outstanding balance (Le ${outstanding.toLocaleString(undefined, { minimumFractionDigits: 2 })}). Tick "Keep the extra as account credit" to accept it.`);
       }
+      // One stored, sequential receipt number for the whole submission.
+      receiptNumber = await nextReceiptNumber(trx, input.tenantId, paymentDate);
 
       let remaining = amount;
       for (const fee of fees) {
@@ -107,6 +115,7 @@ export class PaymentService {
           created_by: userId,
           recorded_by: userId,
           idempotency_key: key,
+          receipt_number: receiptNumber,
           created_at: new Date(),
           updated_at: new Date(),
         };
@@ -117,13 +126,31 @@ export class PaymentService {
         created.push(row);
         remaining = round2(remaining - pay);
       }
+      // Cash above what was owed: keep it as account credit (its own payment row).
+      if (remaining > 0.005) {
+        const studentId = fees[0].student_id;
+        const extra = {
+          id: crypto.randomUUID(), tenant_id: input.tenantId, fee_id: null, student_id: studentId, amount: remaining,
+          method: input.method, payment_method: input.method, transaction_reference: input.transactionReference || null,
+          notes: 'Overpayment held as account credit', payment_date: paymentDate, status: 'completed',
+          created_by: userId, recorded_by: userId, idempotency_key: key, receipt_number: receiptNumber,
+          created_at: new Date(), updated_at: new Date(),
+        };
+        await trx('payments').insert(extra);
+        await trx('student_credits').insert({ tenant_id: input.tenantId, student_id: studentId, kind: 'overpayment', amount: remaining, payment_id: extra.id, reason: `Overpayment on receipt ${receiptNumber}`, created_by: userId });
+        created.push(extra);
+        credit = remaining;
+      }
+      // The student's total balance right after this payment (for the receipt).
+      balanceAfter = await studentOutstanding(trx, input.tenantId, fees[0].student_id);
+      await trx('payments').whereIn('id', created.map((p) => p.id)).update({ balance_after: balanceAfter });
     });
     } catch (e: any) {
       // Two submits with the same key at the same moment: the unique index
       // stops the second one. Return the first one's payments.
       if (e?.code === '23505' && key) {
         const prior = await this.db('payments').where({ tenant_id: input.tenantId, idempotency_key: key });
-        return { payments: prior, recorded: round2(prior.reduce((s: number, p: any) => s + Number(p.amount || 0), 0)), duplicate: true };
+        return { payments: prior, recorded: round2(prior.reduce((s: number, p: any) => s + Number(p.amount || 0), 0)), duplicate: true, receipt_number: prior[0]?.receipt_number };
       }
       throw e;
     }
@@ -137,7 +164,7 @@ export class PaymentService {
       timestamp: new Date(),
     } as any).catch((e: any) => logger.warn(`Payment audit failed: ${e?.message || e}`));
 
-    return { payments: created, recorded: amount, duplicate: false };
+    return { payments: created, recorded: amount, duplicate: false, receipt_number: receiptNumber, credit, balance_after: balanceAfter };
   }
 
   constructor(private db: Knex) {

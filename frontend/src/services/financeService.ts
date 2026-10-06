@@ -115,8 +115,8 @@ export const financeService = {
   recordPayment: (data: { feeId: string; amount: number; method: string; transactionReference?: string; notes?: string; paymentDate?: string }) =>
     apiClient.post('/api/v1/payments', data),
   /** One manual payment across several fees (oldest first), all-or-nothing, idempotent. */
-  recordPaymentAcross: (data: { feeIds: string[]; amount: number; method: string; transactionReference?: string; paymentDate?: string; idempotencyKey: string }) =>
-    apiClient.post<{ success: boolean; data: { recorded: number; duplicate: boolean; payments: any[] }; error?: string }>('/api/v1/finance/payments/record', data),
+  recordPaymentAcross: (data: { feeIds: string[]; amount: number; method: string; transactionReference?: string; paymentDate?: string; idempotencyKey: string; allowCredit?: boolean }) =>
+    apiClient.post<{ success: boolean; data: { recorded: number; duplicate: boolean; payments: any[]; receipt_number?: string; credit?: number; balance_after?: number }; error?: string }>('/api/v1/finance/payments/record', data),
   refundPayment: (paymentId: string, reason: string) =>
     apiClient.post<{ success: boolean; error?: string }>(`/api/v1/payments/${paymentId}/refund`, { reason }),
   voidInvoice: (invoiceId: string, reason: string) =>

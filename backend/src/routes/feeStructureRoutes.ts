@@ -293,7 +293,7 @@ async function billOneTerm(
         await trx('fees').insert({
           id: crypto.randomUUID(),
           tenant_id: tenantId, student_id: stu.id, class_id: s.class_id,
-          type: 'Tuition', amount: tuition, balance: tuition,
+          type: 'Tuition', amount: tuition, balance: tuition, source: 'structure',
           term: termLabel, academic_year: s.academic_year,
           due_date: dueDate, status: 'pending', created_at: now, updated_at: now,
         });
@@ -311,7 +311,7 @@ async function billOneTerm(
       await trx('fees').insert({
         id: crypto.randomUUID(),
         tenant_id: tenantId, student_id: stu.id, class_id: s.class_id,
-        type: e.label, description: 'Academic year expense', amount: amt, balance: amt,
+        type: e.label, description: 'Academic year expense', amount: amt, balance: amt, source: 'structure',
         term: termLabel, academic_year: s.academic_year,
         required: e.required !== false,
         due_date: dueDate, status: 'pending', created_at: now, updated_at: now,
@@ -365,6 +365,9 @@ router.post('/:id/bill', authenticate, requireStaff, async (req: Request, res: R
         ids.forEach((id) => touched.add(id));
       }
       billed = touched.size;
+      // Approved discounts / scholarships cover newly billed fees too.
+      const { discountService } = await import('../services/finance/discountService.js');
+      for (const st of students) await discountService.applyApprovedGrantsForStudent(trx, tenantId, st.id, s.academic_year);
     });
 
     res.json({ success: true, data: { billed, term: isYear ? 'Full Year' : TERM_LABELS[term] } });

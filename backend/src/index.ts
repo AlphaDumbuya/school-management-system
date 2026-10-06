@@ -39,6 +39,8 @@ import monimeRoutes from '@routes/monimeRoutes';
 import feeStructureRoutes from '@routes/feeStructureRoutes';
 import financeLedgerRoutes from '@routes/financeLedgerRoutes';
 import schoolExpenseRoutes from '@routes/schoolExpenseRoutes';
+import bursarFinanceRoutes, { financeCronRouter } from '@routes/bursarFinanceRoutes';
+import { startFinanceJobs } from './jobs/financeJobs';
 
 import phase9NotificationRoutes from '@routes/phase9NotificationRoutes';
 import phase10DashboardRoutes from '@routes/phase10DashboardRoutes';
@@ -300,6 +302,13 @@ app.use('/api/v1/fee-structures', feeStructureRoutes);
 // Finance ledger reads (per-student ledger + tenant summary/breakdown)
 app.use('/api/v1/finance/ledger', financeLedgerRoutes);
 
+// Bursar Phase A: discounts, late fees, aging, receipts, credit, plans,
+// statements. BEFORE schoolExpenseRoutes: its router-level guard is
+// finance-staff only, and the family-facing reads here must stay reachable.
+app.use('/api/v1/finance', bursarFinanceRoutes);
+// Daily finance job (Vercel Cron, CRON_SECRET-guarded).
+app.use('/api/v1/cron', financeCronRouter);
+
 // School operating expenses + fees-vs-expenses summary (staff-only)
 app.use('/api/v1/finance', schoolExpenseRoutes);
 
@@ -426,6 +435,12 @@ try {
   startSubscriptionJobs();
 } catch (e) {
   logger.warn('Could not start subscription jobs at startup', { error: e });
+}
+
+try {
+  startFinanceJobs();
+} catch (e) {
+  logger.warn('Could not start finance jobs at startup', { error: e });
 }
 
 try {

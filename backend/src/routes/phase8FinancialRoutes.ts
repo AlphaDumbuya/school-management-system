@@ -1559,7 +1559,7 @@ router.get('/finance/overview', authenticate, requireStaff, async (req: Request,
     // Omitted = all years, preserving the existing dashboard behaviour.
     const ovNorm = normalizeAcademicYear(req.query.academic_year ? String(req.query.academic_year) : null);
     const overviewYear = ovNorm && ovNorm !== 'all' ? ovNorm : '';
-    const aggQ = db('fees')
+    const aggQ = joinAdj(db('fees'))
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted');
     if (overviewYear) aggQ.where('fees.academic_year', overviewYear);
@@ -1567,19 +1567,29 @@ router.get('/finance/overview', authenticate, requireStaff, async (req: Request,
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
         db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
+        db.raw('COALESCE(SUM(COALESCE(adj.disc,0)),0) as discounts'),
+        db.raw('COALESCE(SUM(COALESCE(adj.cred,0)),0) as credit_applied'),
         db.raw("COUNT(CASE WHEN fees.status = 'overdue' THEN 1 END) as overdue_count"),
+        db.raw("COALESCE(SUM(CASE WHEN fees.status = 'overdue' THEN fees.balance ELSE 0 END),0) as overdue_amount"),
       )
       .first();
+    const r2 = (n: number) => Math.round(n * 100) / 100;
     const billed = Number(agg?.billed) || 0;
     const outstanding = Number(agg?.outstanding) || 0;
-    const paidTotal = Math.max(0, billed - outstanding);
+    const discounts = Number(agg?.discounts) || 0;
+    const creditApplied = Number(agg?.credit_applied) || 0;
+    // Cash applied to fees: discounts and applied credit are NOT collected.
+    const paidTotal = r2(Math.max(0, billed - outstanding - discounts - creditApplied));
     res.json({
       success: true,
       data: {
         totalBilled: billed,
         totalPaid: paidTotal,
         totalOutstanding: outstanding,
+        totalDiscounts: r2(discounts),
+        totalCreditApplied: r2(creditApplied),
         overdueInvoices: Number(agg?.overdue_count) || 0,
+        overdueAmount: r2(Number(agg?.overdue_amount) || 0),
       },
     });
   } catch (error) {
@@ -1587,6 +1597,18 @@ router.get('/finance/overview', authenticate, requireStaff, async (req: Request,
     res.status(500).json({ success: false, error: (error as Error).message });
   }
 });
+
+/**
+ * Non-cash reductions per fee (bursar Phase A): discounts/waivers vs applied
+ * credit. Join onto a `fees` query so "collected" = billed − discounts −
+ * credit − outstanding is CASH applied to fees, never a discount.
+ */
+const ADJ_SUB = () => db('fee_adjustments').whereNull('reversed_at').groupBy('fee_id')
+  .select('fee_id',
+    db.raw("SUM(CASE WHEN kind IN ('discount','waiver','late_fee_waiver') THEN amount ELSE 0 END) as disc"),
+    db.raw("SUM(CASE WHEN kind = 'credit_applied' THEN amount ELSE 0 END) as cred"));
+const joinAdj = (q: any) => q.leftJoin(ADJ_SUB().as('adj'), 'adj.fee_id', 'fees.id');
+const COLLECTED_SQL = 'COALESCE(SUM(fees.amount) - SUM(fees.balance) - SUM(COALESCE(adj.disc,0)) - SUM(COALESCE(adj.cred,0)),0)';
 
 /**
  * Scope an invoices query (already joined to `students`) to one academic year
@@ -1981,12 +2003,14 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
 
     // ── Totals from the FEES ledger (authoritative billed/owed, invoice-free) ──
     // collected = billed − outstanding = SUM(amount) − SUM(balance).
-    const totals = await feeYear(db('fees')
+    const totals = await feeYear(joinAdj(db('fees'))
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted'))
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
         db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
+        db.raw('COALESCE(SUM(COALESCE(adj.disc,0)),0) as discounts'),
+        db.raw('COALESCE(SUM(COALESCE(adj.cred,0)),0) as credit_applied'),
         db.raw('COUNT(fees.id) as invoice_count'),
         db.raw("COUNT(CASE WHEN fees.status = 'overdue' THEN 1 END) as overdue_count"),
         db.raw("COUNT(CASE WHEN fees.status = 'paid' THEN 1 END) as paid_count"),
@@ -1994,8 +2018,12 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .first();
     const billed = Number(totals?.billed) || 0;
     const outstanding = Number(totals?.outstanding) || 0;
-    const paid = Math.max(0, billed - outstanding);
-    const collectionRate = billed > 0 ? Math.round((paid / billed) * 1000) / 10 : 0;
+    const discounts = Number(totals?.discounts) || 0;
+    const creditApplied = Number(totals?.credit_applied) || 0;
+    const paid = Math.round(Math.max(0, billed - outstanding - discounts - creditApplied) * 100) / 100;
+    // Rate over what is actually chargeable (billed less discounts).
+    const chargeable = billed - discounts;
+    const collectionRate = chargeable > 0 ? Math.round(((chargeable - outstanding) / chargeable) * 1000) / 10 : 0;
 
     // ── Payment method breakdown (scoped to selected year when specified) ──
     // Same rule as the payments ledger: a payment belongs to the year of the
@@ -2059,21 +2087,21 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
 
     // ── Collection + outstanding by class LEVEL (from fees) ──
     // collected = SUM(amount) − SUM(balance).
-    const byLevel = await feeYear(joinClass(db('fees')
+    const byLevel = await feeYear(joinClass(joinAdj(db('fees'))
       .join('students', 'fees.student_id', 'students.id'))
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted'))
       .select(db.raw("COALESCE(classes.level, 'Unassigned') as level"))
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
-        db.raw('COALESCE(SUM(fees.amount) - SUM(fees.balance),0) as collected'),
+        db.raw(`${COLLECTED_SQL} as collected`),
         db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
       )
       .groupByRaw("COALESCE(classes.level, 'Unassigned')")
       .orderByRaw("COALESCE(classes.level, 'Unassigned')");
 
     // ── Collection by CLASS (name) from fees ──
-    const byClass = await feeYear(joinClass(db('fees')
+    const byClass = await feeYear(joinClass(joinAdj(db('fees'))
       .join('students', 'fees.student_id', 'students.id'))
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted')
@@ -2081,7 +2109,7 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .select('classes.name as class_name')
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
-        db.raw('COALESCE(SUM(fees.amount) - SUM(fees.balance),0) as collected'),
+        db.raw(`${COLLECTED_SQL} as collected`),
         db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
       )
       .groupBy('classes.name')
@@ -2089,13 +2117,13 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .limit(20);
 
     // ── Collection by TERM (from fees) ──
-    const byTerm = await feeYear(db('fees')
+    const byTerm = await feeYear(joinAdj(db('fees'))
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted'))
       .select(db.raw("COALESCE(fees.term, 'Unspecified') as term"))
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
-        db.raw('COALESCE(SUM(fees.amount) - SUM(fees.balance),0) as collected'),
+        db.raw(`${COLLECTED_SQL} as collected`),
         db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
       )
       .groupByRaw("COALESCE(fees.term, 'Unspecified')")
@@ -2170,6 +2198,7 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       data: {
         totals: {
           billed, paid, outstanding, collectionRate,
+          discounts: Math.round(discounts * 100) / 100, creditApplied: Math.round(creditApplied * 100) / 100,
           invoiceCount: Number(totals?.invoice_count) || 0,
           overdueCount: Number(totals?.overdue_count) || 0,
           paidCount: Number(totals?.paid_count) || 0,
@@ -2405,14 +2434,31 @@ router.post('/finance/payments/record', authenticate, requireStaff, async (req: 
   try {
     const tenantId = (req as any).user.tenant_id;
     const userId = (req as any).user.id;
-    const { feeIds, amount, method, transactionReference, notes, paymentDate, idempotencyKey } = req.body || {};
+    const { feeIds, amount, method, transactionReference, notes, paymentDate, idempotencyKey, allowCredit } = req.body || {};
     const METHODS = ['cash', 'bank_transfer', 'cheque', 'card', 'mobile_money'];
     if (!METHODS.includes(String(method))) {
       return res.status(400).json({ success: false, error: `Method must be one of: ${METHODS.join(', ')}` });
     }
+    // Same minimum-payment policy as online payments (an instalment-plan
+    // payment of the next instalment is always allowed).
+    const firstFee = Array.isArray(feeIds) && feeIds.length
+      ? await db('fees').where({ id: feeIds[0], tenant_id: tenantId }).first().catch(() => null) : null;
+    if (firstFee) {
+      const { financeLedgerService } = await import('@services/financeLedgerService');
+      const minErr = await financeLedgerService.enforceMinimumPayment(tenantId, firstFee.student_id, Number(amount)).catch(() => null);
+      if (minErr) return res.status(422).json({ success: false, error: minErr });
+    }
     const result = await paymentService.recordAcrossFees({
-      tenantId, feeIds, amount, method, transactionReference, notes, paymentDate, idempotencyKey,
+      tenantId, feeIds, amount, method, transactionReference, notes, paymentDate, idempotencyKey, allowCredit: allowCredit === true,
     }, userId);
+    // E-receipt to the family (best-effort, after the money is committed).
+    if (!result.duplicate && result.receipt_number) {
+      const { financeSettings } = await import('@services/finance/core');
+      if ((await financeSettings(tenantId)).emailManualReceipts) {
+        const { receiptService } = await import('@services/finance/receiptService');
+        void receiptService.emailQuietly(tenantId, result.receipt_number);
+      }
+    }
     res.status(result.duplicate ? 200 : 201).json({ success: true, data: result });
   } catch (error: any) {
     if (error?.status && error.status < 500) return res.status(error.status).json({ success: false, error: error.message });

@@ -64,6 +64,8 @@ import PaymentReturnPage from '@pages/finance/PaymentReturnPage';
 import FeesPage from '@pages/finance/FeesPage';
 import InvoicesPage from '@pages/finance/InvoicesPage';
 import PaymentsPage from '@pages/finance/PaymentsPage';
+import DiscountsPage from '@pages/finance/DiscountsPage';
+import AgingPage from '@pages/finance/AgingPage';
 import ExpensesPage from '@pages/finance/ExpensesPage';
 import MyFeesPage from '@pages/finance/MyFeesPage';
 import TeachersPage from '@pages/staff/TeachersPage';
@@ -356,6 +358,14 @@ const router = createBrowserRouter(
         {
           path: 'finance/expenses',
           element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><ExpensesPage /></P>,
+        },
+        {
+          path: 'finance/discounts',
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Discounts"><DiscountsPage /></G></P>,
+        },
+        {
+          path: 'finance/aging',
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Arrears"><AgingPage /></G></P>,
         },
         {
           path: 'finance/my-fees',
