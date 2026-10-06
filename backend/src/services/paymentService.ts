@@ -2,6 +2,7 @@ import { Knex } from 'knex';
 import crypto from 'crypto';
 import { logger } from '@utils/logger';
 import { AuditService } from './auditService';
+import { nextReceiptNumber, studentOutstanding } from './finance/core';
 
 export interface PaymentData {
   feeId: string;
@@ -20,8 +21,151 @@ export interface PaymentFilter {
   status?: string;
 }
 
+/** A business-rule failure the route maps to a 4xx (not a 500). */
+export class PaymentRuleError extends Error {
+  constructor(message: string, public status = 400) { super(message); }
+}
+
+/** A valid payment date that isn't in the future (default: now). */
+export function parsePaymentDate(raw?: string | Date | null): Date {
+  if (!raw) return new Date();
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) throw new PaymentRuleError('Payment date is not a valid date.');
+  // Allow a day of slack for time zones (the school's "today" may be ahead of UTC).
+  if (d.getTime() > Date.now() + 24 * 60 * 60 * 1000) throw new PaymentRuleError('Payment date cannot be in the future.');
+  return d;
+}
+
 export class PaymentService {
   private auditService: AuditService;
+
+  /**
+   * Record ONE manual payment across several fees, oldest first, in a single
+   * transaction (all of it lands or none of it does). `idempotencyKey` makes a
+   * retried submit return the original payments instead of paying twice.
+   */
+  async recordAcrossFees(input: {
+    tenantId: string;
+    feeIds: string[];
+    amount: number;
+    method: string;
+    transactionReference?: string | null;
+    notes?: string | null;
+    paymentDate?: string | null;
+    idempotencyKey?: string | null;
+    /** Accept more than is owed: the excess becomes account credit. */
+    allowCredit?: boolean;
+  }, userId: string): Promise<{ payments: any[]; recorded: number; duplicate: boolean; receipt_number?: string | null; credit?: number; balance_after?: number }> {
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const amount = round2(Number(input.amount));
+    if (!Number.isFinite(amount) || amount <= 0) throw new PaymentRuleError('Payment amount must be greater than zero');
+    if (!Array.isArray(input.feeIds) || input.feeIds.length === 0) throw new PaymentRuleError('Choose what the payment is for');
+    const paymentDate = parsePaymentDate(input.paymentDate);
+    const key = input.idempotencyKey ? String(input.idempotencyKey).slice(0, 80) : null;
+
+    if (key) {
+      const prior = await this.db('payments').where({ tenant_id: input.tenantId, idempotency_key: key });
+      if (prior.length) {
+        return { payments: prior, recorded: round2(prior.reduce((s: number, p: any) => s + Number(p.amount || 0), 0)), duplicate: true, receipt_number: prior[0].receipt_number };
+      }
+    }
+
+    const created: any[] = [];
+    let receiptNumber: string | null = null;
+    let credit = 0;
+    let balanceAfter = 0;
+    try {
+    await this.db.transaction(async (trx) => {
+      const fees = await trx('fees')
+        .whereIn('id', input.feeIds)
+        .where('tenant_id', input.tenantId)
+        .whereNot('status', 'deleted')
+        .forUpdate();
+      if (fees.length !== new Set(input.feeIds).size) throw new PaymentRuleError('One or more fees were not found in this school.', 404);
+      if (new Set(fees.map((f: any) => f.student_id)).size > 1) throw new PaymentRuleError('A payment can only cover one student’s fees.');
+      // Settle in the order the caller listed (the ledger's oldest-first order).
+      const order = new Map(input.feeIds.map((id, i) => [String(id), i]));
+      fees.sort((a: any, b: any) => (order.get(String(a.id)) ?? 0) - (order.get(String(b.id)) ?? 0));
+
+      const outstanding = round2(fees.reduce((s: number, f: any) => s + Math.max(0, Number(f.balance) || 0), 0));
+      if (amount > outstanding + 0.005 && !input.allowCredit) {
+        throw new PaymentRuleError(`Payment amount exceeds outstanding balance (Le ${outstanding.toLocaleString(undefined, { minimumFractionDigits: 2 })}). Tick "Keep the extra as account credit" to accept it.`);
+      }
+      // One stored, sequential receipt number for the whole submission.
+      receiptNumber = await nextReceiptNumber(trx, input.tenantId, paymentDate);
+
+      let remaining = amount;
+      for (const fee of fees) {
+        if (remaining <= 0.005) break;
+        const bal = round2(Math.max(0, Number(fee.balance) || 0));
+        if (bal <= 0) continue;
+        const pay = round2(Math.min(bal, remaining));
+        const row = {
+          id: crypto.randomUUID(),
+          tenant_id: input.tenantId,
+          fee_id: fee.id,
+          student_id: fee.student_id,
+          amount: pay,
+          method: input.method,
+          payment_method: input.method,
+          transaction_reference: input.transactionReference || null,
+          notes: input.notes || null,
+          payment_date: paymentDate,
+          status: 'completed',
+          created_by: userId,
+          recorded_by: userId,
+          idempotency_key: key,
+          receipt_number: receiptNumber,
+          created_at: new Date(),
+          updated_at: new Date(),
+        };
+        await trx('payments').insert(row);
+        let newBalance = round2(bal - pay);
+        if (newBalance <= 0.005) newBalance = 0;
+        await trx('fees').where('id', fee.id).update({ balance: newBalance, status: newBalance === 0 ? 'paid' : 'partial', updated_at: new Date() });
+        created.push(row);
+        remaining = round2(remaining - pay);
+      }
+      // Cash above what was owed: keep it as account credit (its own payment row).
+      if (remaining > 0.005) {
+        const studentId = fees[0].student_id;
+        const extra = {
+          id: crypto.randomUUID(), tenant_id: input.tenantId, fee_id: null, student_id: studentId, amount: remaining,
+          method: input.method, payment_method: input.method, transaction_reference: input.transactionReference || null,
+          notes: 'Overpayment held as account credit', payment_date: paymentDate, status: 'completed',
+          created_by: userId, recorded_by: userId, idempotency_key: key, receipt_number: receiptNumber,
+          created_at: new Date(), updated_at: new Date(),
+        };
+        await trx('payments').insert(extra);
+        await trx('student_credits').insert({ tenant_id: input.tenantId, student_id: studentId, kind: 'overpayment', amount: remaining, payment_id: extra.id, reason: `Overpayment on receipt ${receiptNumber}`, created_by: userId });
+        created.push(extra);
+        credit = remaining;
+      }
+      // The student's total balance right after this payment (for the receipt).
+      balanceAfter = await studentOutstanding(trx, input.tenantId, fees[0].student_id);
+      await trx('payments').whereIn('id', created.map((p) => p.id)).update({ balance_after: balanceAfter });
+    });
+    } catch (e: any) {
+      // Two submits with the same key at the same moment: the unique index
+      // stops the second one. Return the first one's payments.
+      if (e?.code === '23505' && key) {
+        const prior = await this.db('payments').where({ tenant_id: input.tenantId, idempotency_key: key });
+        return { payments: prior, recorded: round2(prior.reduce((s: number, p: any) => s + Number(p.amount || 0), 0)), duplicate: true, receipt_number: prior[0]?.receipt_number };
+      }
+      throw e;
+    }
+
+    await this.auditService.logAudit({
+      entityType: 'payment',
+      entityId: created[0]?.id || 'none',
+      action: 'create',
+      performedBy: userId,
+      details: { amount, method: input.method, feeIds: created.map((p) => p.fee_id), studentId: created[0]?.student_id },
+      timestamp: new Date(),
+    } as any).catch((e: any) => logger.warn(`Payment audit failed: ${e?.message || e}`));
+
+    return { payments: created, recorded: amount, duplicate: false, receipt_number: receiptNumber, credit, balance_after: balanceAfter };
+  }
 
   constructor(private db: Knex) {
     this.auditService = new AuditService(db);
@@ -48,8 +192,10 @@ export class PaymentService {
 
       // Lock the fee row so two simultaneous payments can't both read the same
       // balance and over-pay it; insert + balance update commit together.
+      const paymentDate = parsePaymentDate(data.paymentDate);
+
       await this.db.transaction(async (trx) => {
-        fee = await trx('fees').where('id', data.feeId).forUpdate().first();
+        fee = await trx('fees').where('id', data.feeId).whereNot('status', 'deleted').forUpdate().first();
 
         if (!fee) {
           throw new Error(`Fee ${data.feeId} not found`);
@@ -63,13 +209,15 @@ export class PaymentService {
 
         payment = {
           id: paymentId,
+          // tenant_id was missing, so tenant-scoped stats skipped manual payments.
+          tenant_id: fee.tenant_id || null,
           fee_id: data.feeId,
           student_id: fee.student_id,
           amount,
           method: data.method,
           transaction_reference: data.transactionReference || null,
           notes: data.notes || null,
-          payment_date: new Date(data.paymentDate || new Date()),
+          payment_date: paymentDate,
           status: 'completed',
           created_by: userId,
           created_at: new Date(),
@@ -91,7 +239,8 @@ export class PaymentService {
           });
       });
 
-      // Log to audit
+      // Audit is best-effort: the payment is already committed, so a failed
+      // audit write must not return a 500 (the client would retry and pay twice).
       await this.auditService.logAudit({
         entityType: 'payment',
         entityId: paymentId,
@@ -104,7 +253,7 @@ export class PaymentService {
           studentId: fee.student_id,
         },
         timestamp: new Date(),
-      });
+      } as any).catch((e: any) => logger.warn(`Payment audit failed: ${e?.message || e}`));
 
       logger.info(`Payment ${paymentId} recorded successfully`);
       return payment;
@@ -306,41 +455,46 @@ export class PaymentService {
   async refundPayment(paymentId: string, reason: string, userId: string): Promise<any> {
     try {
       logger.info(`Refunding payment ${paymentId}`);
-
-      const payment = await this.getPaymentById(paymentId);
-
-      // Get the original fee
-      const fee = await this.db('fees')
-        .where('id', payment.fee_id)
-        .first();
-
-      // Create refund transaction — refunds.id is a UUID column.
+      const round2 = (n: number) => Math.round(n * 100) / 100;
       const refundId = crypto.randomUUID();
+      let refund: any;
+      let payment: any;
 
-      const refund = {
-        id: refundId,
-        original_payment_id: paymentId,
-        amount: payment.amount,
-        reason,
-        refund_date: new Date(),
-        status: 'completed',
-        processed_by: userId,
-        created_at: new Date(),
-      };
+      // One transaction with the payment and fee locked: a double click can't
+      // refund twice, and the balance can't be restored twice.
+      await this.db.transaction(async (trx) => {
+        payment = await trx('payments').where('id', paymentId).forUpdate().first();
+        if (!payment) throw new PaymentRuleError('Payment not found', 404);
+        if (payment.status !== 'completed') {
+          throw new PaymentRuleError(`This payment is ${payment.status || 'not completed'} and can't be refunded.`, 409);
+        }
+        if (!payment.fee_id) {
+          // Online (Monime) payments are spread across several fees at reconcile
+          // time; reversing them needs the provider's refund, not a ledger edit.
+          throw new PaymentRuleError('Online payments are refunded through the payment provider, not here.', 409);
+        }
+        const fee = await trx('fees').where('id', payment.fee_id).forUpdate().first();
+        if (!fee) throw new PaymentRuleError('The fee this payment settled no longer exists.', 409);
 
-      await this.db('refunds').insert(refund);
+        refund = {
+          id: refundId,
+          original_payment_id: paymentId,
+          amount: payment.amount,
+          reason,
+          refund_date: new Date(),
+          status: 'completed',
+          processed_by: userId,
+          created_at: new Date(),
+        };
+        await trx('refunds').insert(refund);
 
-      // Update fee balance
-      const newBalance = fee.balance + payment.amount;
-      const newStatus = newBalance > 0 ? 'pending' : 'paid';
-
-      await this.db('fees')
-        .where('id', payment.fee_id)
-        .update({
-          balance: newBalance,
-          status: newStatus,
-          updated_at: new Date(),
-        });
+        // pg returns numerics as strings: "500" + "200" was "500200".
+        const amount = round2(Number(fee.amount) || 0);
+        const newBalance = Math.min(amount, round2((Number(fee.balance) || 0) + (Number(payment.amount) || 0)));
+        const newStatus = newBalance <= 0.005 ? 'paid' : newBalance < amount - 0.005 ? 'partial' : 'pending';
+        await trx('fees').where('id', fee.id).update({ balance: newBalance, status: newStatus, updated_at: new Date() });
+        await trx('payments').where('id', paymentId).update({ status: 'refunded', updated_at: new Date() });
+      });
 
       // Log to audit
       await this.auditService.logAudit({
@@ -354,7 +508,7 @@ export class PaymentService {
           reason,
         },
         timestamp: new Date(),
-      });
+      } as any).catch((e: any) => logger.warn(`Refund audit failed: ${e?.message || e}`));
 
       logger.info(`Payment refund ${refundId} processed`);
       return refund;

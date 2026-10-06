@@ -60,8 +60,10 @@ async function feeInTenant(feeId: string, tenantId: string): Promise<boolean> {
 
 /** True if the payment belongs to this tenant (via its fee → tenant/student). */
 async function paymentInTenant(paymentId: string, tenantId: string): Promise<boolean> {
+  // payments.fee_id is text and fees.id is uuid: a plain join errored (caught
+  // as "not found"), so every refund and GET /payments/:id returned 404.
   const row = await db('payments')
-    .leftJoin('fees', 'payments.fee_id', 'fees.id')
+    .leftJoin('fees', db.raw('fees.id::text') as any, 'payments.fee_id')
     .leftJoin('students', 'fees.student_id', 'students.id')
     .where('payments.id', paymentId)
     .where(function (this: any) {
@@ -433,6 +435,10 @@ router.get(
 router.post(
   '/payments',
   authenticate,
+  // Manual payments (cash/bank/cheque) are recorded by the bursar only.
+  // Students and parents could mark their own fees paid with no money moving;
+  // they pay online through Monime (/payments/monime/*).
+  requireStaff,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { feeId, amount, method, transactionReference, notes, paymentDate } = req.body;
@@ -513,6 +519,9 @@ router.post(
       logger.error(`Error recording payment: ${error}`);
       const msg = (error as Error).message || '';
       // Validation failures from the service are the caller's fault, not a 500.
+      if ((error as any)?.status && (error as any).status < 500) {
+        return res.status((error as any).status).json({ success: false, error: msg, message: msg });
+      }
       if (/exceeds outstanding balance|greater than zero|not found/i.test(msg)) {
         return res.status(400).json({ success: false, error: msg, message: msg });
       }
@@ -599,6 +608,7 @@ router.get(
 router.get(
   '/payments/:paymentId/receipt',
   authenticate,
+  requireStaff,
   assertInTenant('paymentId', paymentInTenant),
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
@@ -637,11 +647,12 @@ router.post(
       const { reason } = req.body;
       const userId = (req as any).user.id;
 
-      if (!reason) {
-        return res.status(400).json({ error: 'Reason is required for refund' });
+      const why = String(reason || '').trim();
+      if (why.length < 5) {
+        return res.status(400).json({ success: false, error: 'Give a reason for the refund (at least 5 characters).' });
       }
 
-      const refund = await paymentService.refundPayment(paymentId, reason, userId);
+      const refund = await paymentService.refundPayment(paymentId, why.slice(0, 500), userId);
 
       res.status(201).json({
         success: true,
@@ -650,6 +661,8 @@ router.post(
       });
     } catch (error) {
       logger.error(`Error refunding payment: ${error}`);
+      const st = (error as any)?.status;
+      if (st && st < 500) return res.status(st).json({ success: false, error: (error as Error).message });
       res.status(500).json({
         error: 'Internal server error',
         message: (error as Error).message,
@@ -750,7 +763,7 @@ router.get(
 
       // Non-staff (student/parent/guardian) may only view an invoice for a
       // student they own / are linked to.
-      const STAFF = ['principal', 'super_admin', 'accountant', 'admissions_officer', 'teacher'];
+      const STAFF = ['principal', 'super_admin', 'accountant', 'admissions_officer'];
       if (!STAFF.includes(role || '')) {
         let allowed = false;
         if (role === 'student') {
@@ -801,7 +814,7 @@ router.get(
       }
 
       // Non-staff may only read invoices for a student they own / are linked to.
-      const STAFF = ['principal', 'super_admin', 'accountant', 'admissions_officer', 'teacher'];
+      const STAFF = ['principal', 'super_admin', 'accountant', 'admissions_officer'];
       if (!STAFF.includes(role || '')) {
         let allowed = false;
         if (role === 'student') {
@@ -1068,6 +1081,15 @@ router.post(
         });
       }
 
+      // Every fee must belong to this school (recordPayment looks fees up by id).
+      const bulkTenant = getTenantId(req);
+      if (!bulkTenant) return res.status(400).json({ success: false, error: 'Tenant context is required' });
+      for (const p of payments) {
+        if (!p?.feeId || !(await feeInTenant(String(p.feeId), bulkTenant))) {
+          return res.status(400).json({ success: false, error: 'One or more fees do not belong to this school' });
+        }
+      }
+
       const results = await paymentService.bulkRecordPayments(payments, userId);
 
       res.status(201).json({
@@ -1328,7 +1350,7 @@ router.get(
       const summary = await invoiceService.getInvoiceSummary(invoiceId, tenantId);
 
       // Non-staff may only view a summary for their own / linked student.
-      const STAFF = ['principal', 'super_admin', 'accountant', 'admissions_officer', 'teacher'];
+      const STAFF = ['principal', 'super_admin', 'accountant', 'admissions_officer'];
       if (!STAFF.includes(role || '')) {
         const sid = summary?.student?.id;
         let allowed = false;
@@ -1535,8 +1557,9 @@ router.get('/finance/overview', authenticate, requireStaff, async (req: Request,
     const tenantId = (req as any).user.tenant_id;
     // Optional ?academic_year= scope (fees are keyed by academic_year).
     // Omitted = all years, preserving the existing dashboard behaviour.
-    const overviewYear = req.query.academic_year ? String(req.query.academic_year) : '';
-    const aggQ = db('fees')
+    const ovNorm = normalizeAcademicYear(req.query.academic_year ? String(req.query.academic_year) : null);
+    const overviewYear = ovNorm && ovNorm !== 'all' ? ovNorm : '';
+    const aggQ = joinAdj(db('fees'))
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted');
     if (overviewYear) aggQ.where('fees.academic_year', overviewYear);
@@ -1544,19 +1567,29 @@ router.get('/finance/overview', authenticate, requireStaff, async (req: Request,
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
         db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
+        db.raw('COALESCE(SUM(COALESCE(adj.disc,0)),0) as discounts'),
+        db.raw('COALESCE(SUM(COALESCE(adj.cred,0)),0) as credit_applied'),
         db.raw("COUNT(CASE WHEN fees.status = 'overdue' THEN 1 END) as overdue_count"),
+        db.raw("COALESCE(SUM(CASE WHEN fees.status = 'overdue' THEN fees.balance ELSE 0 END),0) as overdue_amount"),
       )
       .first();
+    const r2 = (n: number) => Math.round(n * 100) / 100;
     const billed = Number(agg?.billed) || 0;
     const outstanding = Number(agg?.outstanding) || 0;
-    const paidTotal = Math.max(0, billed - outstanding);
+    const discounts = Number(agg?.discounts) || 0;
+    const creditApplied = Number(agg?.credit_applied) || 0;
+    // Cash applied to fees: discounts and applied credit are NOT collected.
+    const paidTotal = r2(Math.max(0, billed - outstanding - discounts - creditApplied));
     res.json({
       success: true,
       data: {
         totalBilled: billed,
         totalPaid: paidTotal,
         totalOutstanding: outstanding,
+        totalDiscounts: r2(discounts),
+        totalCreditApplied: r2(creditApplied),
         overdueInvoices: Number(agg?.overdue_count) || 0,
+        overdueAmount: r2(Number(agg?.overdue_amount) || 0),
       },
     });
   } catch (error) {
@@ -1564,6 +1597,18 @@ router.get('/finance/overview', authenticate, requireStaff, async (req: Request,
     res.status(500).json({ success: false, error: (error as Error).message });
   }
 });
+
+/**
+ * Non-cash reductions per fee (bursar Phase A): discounts/waivers vs applied
+ * credit. Join onto a `fees` query so "collected" = billed − discounts −
+ * credit − outstanding is CASH applied to fees, never a discount.
+ */
+const ADJ_SUB = () => db('fee_adjustments').whereNull('reversed_at').groupBy('fee_id')
+  .select('fee_id',
+    db.raw("SUM(CASE WHEN kind IN ('discount','waiver','late_fee_waiver') THEN amount ELSE 0 END) as disc"),
+    db.raw("SUM(CASE WHEN kind = 'credit_applied' THEN amount ELSE 0 END) as cred"));
+const joinAdj = (q: any) => q.leftJoin(ADJ_SUB().as('adj'), 'adj.fee_id', 'fees.id');
+const COLLECTED_SQL = 'COALESCE(SUM(fees.amount) - SUM(fees.balance) - SUM(COALESCE(adj.disc,0)) - SUM(COALESCE(adj.cred,0)),0)';
 
 /**
  * Scope an invoices query (already joined to `students`) to one academic year
@@ -1732,10 +1777,14 @@ router.get('/finance/payments', authenticate, requireStaff, async (req: Request,
         )
         .leftJoin('classes', 'classes.id', 'ye.class_id');
     } else {
-      q.leftJoin('enrollments', function () {
-        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
-      })
-        .leftJoin('classes', 'classes.id', 'enrollments.class_id');
+      // One current class per student (several active rows mid-rollover
+      // duplicated every payment in the ledger).
+      q.leftJoin(
+        db('enrollments').distinctOn('student_id').select('student_id', 'class_id')
+          .where('status', 'active').orderBy('student_id').orderBy('created_at', 'desc').as('ye'),
+        'ye.student_id', 'students.id',
+      )
+        .leftJoin('classes', 'classes.id', 'ye.class_id');
     }
 
     const feeYearSql = scope ? ' AND f.academic_year = ?' : '';
@@ -1927,17 +1976,41 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
     // outstanding + by-term/level/class + defaulters). Omitted = all years.
     // Payment method mix / 6-month trend / this-month stay transaction-time
     // based (cashflow views), not partitioned by school year.
-    const analyticsYear = req.query.academic_year ? String(req.query.academic_year) : '';
+    const normYear = normalizeAcademicYear(req.query.academic_year ? String(req.query.academic_year) : null);
+    const analyticsYear = normYear && normYear !== 'all' ? normYear : '';
     const feeYear = (qb: any) => (analyticsYear ? qb.where('fees.academic_year', analyticsYear) : qb);
+    const yearScope = analyticsYear ? await resolveYearScope(tenantId, analyticsYear) : null;
+    // The class each student was in THAT year (by level/class/defaulters).
+    // Before, it was "any active enrolment", so a past year showed today's
+    // class and a student mid-rollover was counted twice.
+    const joinClass = (qb: any) => {
+      if (!yearScope) {
+        return qb.leftJoin(
+          db('enrollments').distinctOn('student_id').select('student_id', 'class_id')
+            .where('status', 'active').orderBy('student_id').orderBy('created_at', 'desc').as('ye'),
+          'ye.student_id', 'students.id',
+        ).leftJoin('classes', 'classes.id', 'ye.class_id');
+      }
+      const ids = yearScope.classIds.length ? yearScope.classIds : ['00000000-0000-0000-0000-000000000000'];
+      return qb.leftJoin(
+        db('enrollments').distinctOn('student_id').select('student_id', 'class_id')
+          .whereIn('class_id', ids)
+          .whereIn('status', ['enrolled', 'active', 'completed', 'promoted', 'repeated', 'graduated'])
+          .orderBy('student_id').orderBy('created_at', 'desc').as('ye'),
+        'ye.student_id', 'students.id',
+      ).leftJoin('classes', 'classes.id', 'ye.class_id');
+    };
 
     // ── Totals from the FEES ledger (authoritative billed/owed, invoice-free) ──
     // collected = billed − outstanding = SUM(amount) − SUM(balance).
-    const totals = await feeYear(db('fees')
+    const totals = await feeYear(joinAdj(db('fees'))
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted'))
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
         db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
+        db.raw('COALESCE(SUM(COALESCE(adj.disc,0)),0) as discounts'),
+        db.raw('COALESCE(SUM(COALESCE(adj.cred,0)),0) as credit_applied'),
         db.raw('COUNT(fees.id) as invoice_count'),
         db.raw("COUNT(CASE WHEN fees.status = 'overdue' THEN 1 END) as overdue_count"),
         db.raw("COUNT(CASE WHEN fees.status = 'paid' THEN 1 END) as paid_count"),
@@ -1945,8 +2018,12 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .first();
     const billed = Number(totals?.billed) || 0;
     const outstanding = Number(totals?.outstanding) || 0;
-    const paid = Math.max(0, billed - outstanding);
-    const collectionRate = billed > 0 ? Math.round((paid / billed) * 1000) / 10 : 0;
+    const discounts = Number(totals?.discounts) || 0;
+    const creditApplied = Number(totals?.credit_applied) || 0;
+    const paid = Math.round(Math.max(0, billed - outstanding - discounts - creditApplied) * 100) / 100;
+    // Rate over what is actually chargeable (billed less discounts).
+    const chargeable = billed - discounts;
+    const collectionRate = chargeable > 0 ? Math.round(((chargeable - outstanding) / chargeable) * 1000) / 10 : 0;
 
     // ── Payment method breakdown (scoped to selected year when specified) ──
     // Same rule as the payments ledger: a payment belongs to the year of the
@@ -2010,37 +2087,29 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
 
     // ── Collection + outstanding by class LEVEL (from fees) ──
     // collected = SUM(amount) − SUM(balance).
-    const byLevel = await feeYear(db('fees')
-      .join('students', 'fees.student_id', 'students.id')
-      .leftJoin('enrollments', function () {
-        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
-      })
-      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+    const byLevel = await feeYear(joinClass(joinAdj(db('fees'))
+      .join('students', 'fees.student_id', 'students.id'))
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted'))
       .select(db.raw("COALESCE(classes.level, 'Unassigned') as level"))
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
-        db.raw('COALESCE(SUM(fees.amount) - SUM(fees.balance),0) as collected'),
+        db.raw(`${COLLECTED_SQL} as collected`),
         db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
       )
       .groupByRaw("COALESCE(classes.level, 'Unassigned')")
       .orderByRaw("COALESCE(classes.level, 'Unassigned')");
 
     // ── Collection by CLASS (name) from fees ──
-    const byClass = await feeYear(db('fees')
-      .join('students', 'fees.student_id', 'students.id')
-      .leftJoin('enrollments', function () {
-        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
-      })
-      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
+    const byClass = await feeYear(joinClass(joinAdj(db('fees'))
+      .join('students', 'fees.student_id', 'students.id'))
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted')
       .whereNotNull('classes.name'))
       .select('classes.name as class_name')
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
-        db.raw('COALESCE(SUM(fees.amount) - SUM(fees.balance),0) as collected'),
+        db.raw(`${COLLECTED_SQL} as collected`),
         db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
       )
       .groupBy('classes.name')
@@ -2048,26 +2117,22 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .limit(20);
 
     // ── Collection by TERM (from fees) ──
-    const byTerm = await feeYear(db('fees')
+    const byTerm = await feeYear(joinAdj(db('fees'))
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted'))
       .select(db.raw("COALESCE(fees.term, 'Unspecified') as term"))
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
-        db.raw('COALESCE(SUM(fees.amount) - SUM(fees.balance),0) as collected'),
+        db.raw(`${COLLECTED_SQL} as collected`),
         db.raw('COALESCE(SUM(fees.balance),0) as outstanding'),
       )
       .groupByRaw("COALESCE(fees.term, 'Unspecified')")
       .orderByRaw("COALESCE(fees.term, 'Unspecified')");
 
     // ── Top defaulters (highest outstanding, from fees) ──
-    const topDefaulters = await feeYear(db('fees')
-      .join('students', 'fees.student_id', 'students.id')
+    const topDefaulters = await feeYear(joinClass(db('fees')
+      .join('students', 'fees.student_id', 'students.id'))
       .leftJoin('users', 'students.user_id', 'users.id')
-      .leftJoin('enrollments', function () {
-        this.on('enrollments.student_id', '=', 'students.id').andOn('enrollments.status', '=', db.raw('?', ['active']));
-      })
-      .leftJoin('classes', 'classes.id', 'enrollments.class_id')
       .where('fees.tenant_id', tenantId)
       .whereNot('fees.status', 'deleted')
       .where('fees.balance', '>', 0))
@@ -2082,11 +2147,34 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .orderByRaw('SUM(fees.balance) DESC')
       .limit(10);
 
-    // ── Recent payments ──
-    const recent = await db('payments')
+    // ── Recent payments (in the selected year, same rule as the method mix) ──
+    const recentQ = db('payments')
       .join('students', 'payments.student_id', 'students.id')
       .leftJoin('users', 'students.user_id', 'users.id')
-      .where('students.tenant_id', tenantId)
+      .where('students.tenant_id', tenantId);
+    if (methodScope) {
+      recentQ
+        .leftJoin('fees as rf', db.raw('rf.id::text') as any, 'payments.fee_id')
+        .where((w) => {
+          w.where('rf.academic_year', methodYear).orWhere((w2) => {
+            w2.whereNull('rf.id');
+            if (methodScope.from) w2.where('payments.payment_date', '>=', methodScope.from);
+            if (methodScope.to) w2.where('payments.payment_date', '<', methodScope.to);
+          });
+        });
+    }
+    // Balances still owed from OTHER years (arrears stay collectable).
+    const otherYears = analyticsYear
+      ? await db('fees')
+        .where('fees.tenant_id', tenantId)
+        .whereNot('fees.status', 'deleted')
+        .where('fees.balance', '>', 0)
+        .where((w) => w.whereNot('fees.academic_year', analyticsYear).orWhereNull('fees.academic_year'))
+        .select(db.raw("COALESCE(fees.academic_year, 'Unassigned') as year"), db.raw('SUM(fees.balance) as outstanding'), db.raw('COUNT(DISTINCT fees.student_id) as students'))
+        .groupByRaw("COALESCE(fees.academic_year, 'Unassigned')")
+        .orderByRaw("COALESCE(fees.academic_year, 'Unassigned') DESC")
+      : [];
+    const recent = await recentQ
       .select(
         'payments.id', 'payments.amount', 'payments.payment_date', 'payments.status',
         db.raw('COALESCE(payments.method, payments.payment_method) as method'),
@@ -2110,6 +2198,7 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       data: {
         totals: {
           billed, paid, outstanding, collectionRate,
+          discounts: Math.round(discounts * 100) / 100, creditApplied: Math.round(creditApplied * 100) / 100,
           invoiceCount: Number(totals?.invoice_count) || 0,
           overdueCount: Number(totals?.overdue_count) || 0,
           paidCount: Number(totals?.paid_count) || 0,
@@ -2122,6 +2211,8 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
         topDefaulters: topDefaulters.map((r: any) => ({ studentId: r.student_id, studentName: r.student_name, admissionNo: r.admission_no, className: r.class_name, outstanding: Number(r.outstanding) || 0 })),
         recent: recent.map((r: any) => ({ id: r.id, studentName: r.student_name, amount: Number(r.amount) || 0, method: r.method, status: r.status, date: r.payment_date })),
         thisMonth: { total: Number(thisMonth?.total) || 0, count: Number(thisMonth?.count) || 0 },
+        academicYear: analyticsYear || null,
+        otherYears: (otherYears as any[]).map((r) => ({ year: r.year, outstanding: Number(r.outstanding) || 0, students: Number(r.students) || 0 })),
       },
     });
   } catch (error) {
@@ -2206,6 +2297,14 @@ router.post('/finance/bulk-invoice', authenticate, requireStaff, async (req: Req
     // school's ACTIVE year (never null, so year filters can find them).
     const academicYear = normalizeAcademicYear(req.body?.academicYear || null)
       || (await resolveActiveYear(tenantId)).yearString;
+    const activeForInvoice = (await resolveActiveYear(tenantId)).yearString;
+    if (academicYear && activeForInvoice && academicYear < activeForInvoice) {
+      return res.status(409).json({
+        success: false,
+        code: 'PAST_YEAR_READ_ONLY',
+        error: `${academicYear} is a past academic year. Its unpaid balances can still be collected, but new invoices are issued in ${activeForInvoice}.`,
+      });
+    }
 
     // Students in scope.
     let sq = db('students')
@@ -2221,46 +2320,60 @@ router.post('/finance/bulk-invoice', authenticate, requireStaff, async (req: Req
 
     const now = new Date();
     let generated = 0;
+    let failed = 0;
     for (const s of students) {
-      // Fees for this student not yet linked to an invoice, with a balance.
-      let fq = db('fees')
-        .leftJoin('invoice_items', 'invoice_items.fee_id', 'fees.id')
-        .whereNull('invoice_items.id')
-        .where('fees.student_id', s.id)
-        .whereIn('fees.status', ['pending', 'partial', 'overdue']);
-      if (term) fq = fq.where('fees.term', term);
-      if (academicYear) fq = fq.where('fees.academic_year', academicYear);
-      const fees = await fq.select('fees.id', 'fees.amount', 'fees.balance');
-      if (fees.length === 0) continue;
+      // One transaction per student with the fees locked: a double click, a
+      // second tab or a retry can't bundle the same fees into two invoices,
+      // and a failed insert can't leave an empty invoice (the old code
+      // swallowed insert errors, leaving e.g. a Le 3,619 invoice with no items).
+      try {
+        const made = await db.transaction(async (trx) => {
+          let fq = trx('fees')
+            .where('fees.student_id', s.id)
+            .where('fees.tenant_id', tenantId)
+            .whereIn('fees.status', ['pending', 'partial', 'overdue'])
+            .whereNotExists(function (this: any) {
+              this.select(db.raw('1')).from('invoice_items as ii')
+                .join('invoices as iv', 'iv.id', 'ii.invoice_id')
+                .whereRaw('ii.fee_id::text = fees.id::text')
+                .whereNot('iv.status', 'cancelled');
+            });
+          if (term) fq = fq.where('fees.term', term);
+          if (academicYear) fq = fq.where('fees.academic_year', academicYear);
+          const fees = await fq.forUpdate().select('fees.id', 'fees.amount', 'fees.balance');
+          if (fees.length === 0) return false;
+          const total = Math.round(fees.reduce((sum: number, f: any) => sum + (Number(f.balance ?? f.amount) || 0), 0) * 100) / 100;
+          if (total <= 0) return false;
 
-      const total = fees.reduce((sum: number, f: any) => sum + (Number(f.balance ?? f.amount) || 0), 0);
-      if (total <= 0) continue;
-
-      const invoiceId = crypto.randomUUID(); // invoices.id is a UUID column
-      const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 900000 + 100000)}`;
-      await db('invoices').insert({
-        id: invoiceId,
-        tenant_id: tenantId,
-        invoice_number: invoiceNumber,
-        student_id: s.id,
-        total_amount: total,
-        total_paid: 0,
-        balance: total,
-        due_date: dueDate ? new Date(dueDate) : now,
-        term: term || null,
-        academic_year: academicYear || null,
-        status: 'pending',
-        generated_at: now,
-        created_at: now,
-        updated_at: now,
-      }).catch(() => {});
-      for (const f of fees) {
-        await db('invoice_items').insert({
-          id: crypto.randomUUID(),
-          invoice_id: invoiceId, fee_id: f.id, created_at: now,
-        }).catch(() => {});
+          const invoiceId = crypto.randomUUID();
+          const invoiceNumber = `INV-${String(academicYear || now.getFullYear()).slice(0, 4)}-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+          await trx('invoices').insert({
+            id: invoiceId,
+            tenant_id: tenantId,
+            invoice_number: invoiceNumber,
+            student_id: s.id,
+            total_amount: total,
+            total_paid: 0,
+            balance: total,
+            due_date: dueDate ? new Date(dueDate) : now,
+            term: term || null,
+            academic_year: academicYear || null,
+            status: 'pending',
+            generated_by: userId,
+            generated_at: now,
+            created_at: now,
+            updated_at: now,
+          });
+          await trx('invoice_items').insert(fees.map((f: any) => ({
+            id: crypto.randomUUID(), invoice_id: invoiceId, fee_id: f.id, created_at: now,
+          })));
+          return true;
+        });
+        if (made) generated++;
+      } catch (e) {
+        failed++;
+        logger.error(`bulk-invoice: student ${s.id} failed: ${(e as Error).message}`);
       }
-      generated++;
     }
 
     await auditService.logAudit({
@@ -2268,10 +2381,88 @@ router.post('/finance/bulk-invoice', authenticate, requireStaff, async (req: Req
       performedBy: userId, details: { scope, classId, level, term, generated }, timestamp: now,
     }).catch(() => {});
 
-    res.json({ success: true, data: { generated } });
+    res.json({ success: true, data: { generated, failed } });
   } catch (error) {
     logger.error(`finance/bulk-invoice error: ${error}`);
     res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// POST /api/v1/finance/invoices/:id/void {reason} — cancel an invoice (fees
+// stay on the ledger and are released for re-invoicing). Needs a reason;
+// who/when is recorded. Invoices with payments against them can't be voided.
+router.post('/finance/invoices/:id/void', authenticate, requireStaff, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const userId = (req as any).user.id;
+    const reason = String(req.body?.reason || '').trim();
+    if (reason.length < 5) return res.status(400).json({ success: false, error: 'Give a reason for voiding (at least 5 characters).' });
+    let voided: any = null;
+    await db.transaction(async (trx) => {
+      const inv = await trx('invoices')
+        .join('students', 'invoices.student_id', 'students.id')
+        .where('invoices.id', req.params.id)
+        .where('students.tenant_id', tenantId)
+        .select('invoices.*')
+        .forUpdate()
+        .first();
+      if (!inv) throw Object.assign(new Error('Invoice not found'), { status: 404 });
+      if (inv.status === 'cancelled') throw Object.assign(new Error('This invoice is already void.'), { status: 409 });
+      const paid = await trx('payments').where({ invoice_id: inv.id, status: 'completed' }).first();
+      if (paid || Number(inv.total_paid) > 0) {
+        throw Object.assign(new Error('Payments were made against this invoice, so it can\'t be voided. Refund the payment first.'), { status: 409 });
+      }
+      await trx('invoices').where({ id: inv.id }).update({
+        status: 'cancelled', voided_at: new Date(), voided_by: userId, void_reason: reason.slice(0, 500), updated_at: new Date(),
+      });
+      voided = { id: inv.id, invoice_number: inv.invoice_number };
+    });
+    await auditService.logAudit({
+      entityType: 'invoice', entityId: voided.id, action: 'void', performedBy: userId, details: { reason }, timestamp: new Date(),
+    } as any).catch(() => {});
+    res.json({ success: true, data: voided });
+  } catch (error: any) {
+    if (error?.status) return res.status(error.status).json({ success: false, error: error.message });
+    next(error);
+  }
+});
+
+// POST /api/v1/finance/payments/record — one manual payment spread across a
+// student's fees (oldest first) in ONE transaction, with an idempotency key so
+// a double submit or retry can't record it twice. Replaces N separate calls.
+router.post('/finance/payments/record', authenticate, requireStaff, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = (req as any).user.tenant_id;
+    const userId = (req as any).user.id;
+    const { feeIds, amount, method, transactionReference, notes, paymentDate, idempotencyKey, allowCredit } = req.body || {};
+    const METHODS = ['cash', 'bank_transfer', 'cheque', 'card', 'mobile_money'];
+    if (!METHODS.includes(String(method))) {
+      return res.status(400).json({ success: false, error: `Method must be one of: ${METHODS.join(', ')}` });
+    }
+    // Same minimum-payment policy as online payments (an instalment-plan
+    // payment of the next instalment is always allowed).
+    const firstFee = Array.isArray(feeIds) && feeIds.length
+      ? await db('fees').where({ id: feeIds[0], tenant_id: tenantId }).first().catch(() => null) : null;
+    if (firstFee) {
+      const { financeLedgerService } = await import('@services/financeLedgerService');
+      const minErr = await financeLedgerService.enforceMinimumPayment(tenantId, firstFee.student_id, Number(amount)).catch(() => null);
+      if (minErr) return res.status(422).json({ success: false, error: minErr });
+    }
+    const result = await paymentService.recordAcrossFees({
+      tenantId, feeIds, amount, method, transactionReference, notes, paymentDate, idempotencyKey, allowCredit: allowCredit === true,
+    }, userId);
+    // E-receipt to the family (best-effort, after the money is committed).
+    if (!result.duplicate && result.receipt_number) {
+      const { financeSettings } = await import('@services/finance/core');
+      if ((await financeSettings(tenantId)).emailManualReceipts) {
+        const { receiptService } = await import('@services/finance/receiptService');
+        void receiptService.emailQuietly(tenantId, result.receipt_number);
+      }
+    }
+    res.status(result.duplicate ? 200 : 201).json({ success: true, data: result });
+  } catch (error: any) {
+    if (error?.status && error.status < 500) return res.status(error.status).json({ success: false, error: error.message });
+    next(error);
   }
 });
 

@@ -24,6 +24,10 @@ export interface ReceiptData {
   reference?: string;
   date?: Date;
   balanceRemaining?: number;
+  /** 'refunded' / 'part_refunded' stamps the receipt instead of PAID. */
+  status?: 'paid' | 'refunded' | 'part_refunded';
+  /** What the payment covered (charge labels), shown under the details. */
+  items?: Array<{ label: string; amount: number }>;
 }
 
 function money(amount: number, currency = 'Le'): string {
@@ -155,10 +159,24 @@ export async function generateReceiptPdfBase64(
         doc.moveTo(left, y - 6).lineTo(right, y - 6).strokeColor('#f1f5f9').lineWidth(1).stroke();
       });
 
-      // Paid stamp
+      // What it paid for
+      if (data.items && data.items.length) {
+        y += 6;
+        doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED).text('APPLIED TO', left, y);
+        y += 16;
+        for (const it of data.items.slice(0, 12)) {
+          doc.font('Helvetica').fontSize(10).fillColor('#111827').text(it.label, left, y, { width: contentW * 0.7 });
+          doc.text(money(it.amount, currency), left + contentW * 0.7, y, { width: contentW * 0.3, align: 'right' });
+          y += 18;
+        }
+      }
+
+      // Status stamp
       y += 16;
-      doc.roundedRect(left, y, 120, 30, 6).fill('#ecfdf5');
-      doc.font('Helvetica-Bold').fontSize(12).fillColor('#059669').text('✓ PAID', left + 16, y + 8);
+      const refunded = data.status === 'refunded' || data.status === 'part_refunded';
+      doc.roundedRect(left, y, refunded ? 170 : 120, 30, 6).fill(refunded ? '#fef2f2' : '#ecfdf5');
+      doc.font('Helvetica-Bold').fontSize(12).fillColor(refunded ? '#b91c1c' : '#059669')
+        .text(data.status === 'refunded' ? 'REFUNDED' : data.status === 'part_refunded' ? 'PART REFUNDED' : '✓ PAID', left + 16, y + 8);
 
       // ── Footer ───────────────────────────────────────────────────
       const footerY = doc.page.height - 110;

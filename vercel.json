@@ -33,6 +33,11 @@
     "NODE_ENV": "production",
     "VERCEL": "1",
     "VERCEL_FORCE_NO_BUILD_CACHE": "1"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/v1/cron/finance-daily",
+      "schedule": "30 1 * * *"
+    }
+  ]
 }
-

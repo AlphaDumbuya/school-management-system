@@ -338,6 +338,16 @@ class FinanceLedgerService {
     // Paying the full (or more) is always allowed.
     if (amount >= outstanding - 0.001) return null;
 
+    // On an instalment plan, paying the next instalment due is always enough.
+    try {
+      const { planService } = await import('./finance/planService.js');
+      const nextDue = await planService.nextInstalmentAmount(tenantId, studentId);
+      if (nextDue !== null) {
+        if (amount >= nextDue - 0.001) return null;
+        return `This student is on an instalment plan. Please pay at least the next instalment (Le ${nextDue.toLocaleString(undefined, { minimumFractionDigits: 2 })}).`;
+      }
+    } catch { /* plan lookup best-effort */ }
+
     const policy = await this.getPaymentPolicy(tenantId, studentId).catch(() => null);
     if (!policy) return null;
 

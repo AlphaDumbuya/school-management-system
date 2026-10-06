@@ -3,9 +3,17 @@ import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 
 export interface AuditLogEntry {
-  entity_type: string;
-  entity_id: string;
+  entity_type?: string;
+  entity_id?: string;
   action: string;
+  // camelCase aliases used by the finance services (payments, invoices). They
+  // were silently dropped, so entity_type was NULL and every finance audit
+  // insert failed: payments, refunds and invoices had no audit trail.
+  entityType?: string;
+  entityId?: string;
+  performedBy?: string;
+  details?: any;
+  timestamp?: Date;
   performed_by?: string;
   performed_by_role?: string;
   old_values?: any;
@@ -24,20 +32,27 @@ export class AuditService {
    * Log an audit entry
    */
   async logAudit(entry: AuditLogEntry): Promise<string> {
+    const isUuid = (v?: string) => !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+    const entityId = entry.entity_id ?? entry.entityId;
+    const performedBy = entry.performed_by ?? entry.performedBy;
+    const newValues = entry.new_values ?? entry.details;
     const [auditId] = await this.db('audit_logs').insert({
-      entity_type: entry.entity_type,
-      entity_id: entry.entity_id,
+      entity_type: entry.entity_type ?? entry.entityType ?? 'unknown',
+      // Synthetic ids like "bulk-invoice-123" aren't UUIDs; keep them in the values.
+      entity_id: isUuid(entityId) ? entityId : null,
       action: entry.action,
-      performed_by: entry.performed_by,
+      performed_by: isUuid(performedBy) ? performedBy : null,
       performed_by_role: entry.performed_by_role,
       old_values: entry.old_values ? JSON.stringify(entry.old_values) : null,
-      new_values: entry.new_values ? JSON.stringify(entry.new_values) : null,
+      new_values: newValues || (!isUuid(entityId) && entityId)
+        ? JSON.stringify({ ...(newValues || {}), ...(!isUuid(entityId) && entityId ? { ref: entityId } : {}) })
+        : null,
       changes: entry.changes ? JSON.stringify(entry.changes) : null,
       reason: entry.reason,
       source: entry.source || 'api',
       ip_address: entry.ip_address,
       user_agent: entry.user_agent,
-      created_at: new Date(),
+      created_at: entry.timestamp || new Date(),
     });
 
     return auditId;

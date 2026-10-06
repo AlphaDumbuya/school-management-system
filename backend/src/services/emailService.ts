@@ -1247,6 +1247,7 @@ class EmailService {
       receiptNumber?: string;
       date?: Date | string;
       balanceRemaining?: number | string;
+      items?: Array<{ label: string; amount: number }>;
     }
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
@@ -1288,6 +1289,7 @@ class EmailService {
         reference: data.reference,
         date: data.date ? new Date(data.date) : new Date(),
         balanceRemaining: data.balanceRemaining != null ? Number(data.balanceRemaining) : undefined,
+        items: data.items,
       });
       attachments = [{ name: `Receipt-${receiptNumber}.pdf`, content: base64 }];
     } catch (err) {

@@ -23,6 +23,8 @@ import { showToast } from '@utils/toast';
 import { classesService } from '@services/classesService';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
+import { bursarService } from '@services/bursarService';
+import useAuthStore from '@store/authStore';
 import {
   promotionService, PromotionCandidate, PromotionOutcome, PromotionDecision,
 } from '@services/promotionService';
@@ -114,6 +116,17 @@ export const PromotionsPage: React.FC = () => {
   });
 
   const candidates: PromotionCandidate[] = (candData as any)?.data?.candidates ?? (candData as any)?.candidates ?? [];
+  // Unpaid fees in this class: a warning, not a block. The balances stay owed
+  // on their own year and show as "brought forward" after the move.
+  const role = useAuthStore((st: any) => st.user?.role);
+  const { data: unpaidResp } = useQuery({
+    queryKey: ['promotion-unpaid', classId],
+    queryFn: () => bursarService.unpaidInClass(classId),
+    enabled: canLoad && tab === 'promote' && (role === 'principal' || role === 'super_admin'),
+    staleTime: 30_000,
+  });
+  const unpaid = ((unpaidResp as any)?.success === false ? [] : (unpaidResp as any)?.data ?? []) as Array<{ student_name: string; outstanding: number }>;
+  const unpaidTotal = unpaid.reduce((sum, u) => sum + Number(u.outstanding || 0), 0);
 
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: ['promotion-history', classId, academicYear],
@@ -324,6 +337,11 @@ export const PromotionsPage: React.FC = () => {
             <EmptyState message="No students found" description="This class has no active students for the selected year." />
           ) : (
             <>
+              {unpaid.length > 0 && (
+                <div role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                  <strong>{unpaid.length} student{unpaid.length === 1 ? '' : 's'}</strong> in this class still owe fees (Le {unpaidTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}): {unpaid.slice(0, 5).map((u) => u.student_name).join(', ')}{unpaid.length > 5 ? '…' : ''}. Promotion is not blocked; the balances stay owed and show as brought forward in the new year.
+                </div>
+              )}
               {/* KPIs */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
                 <KPICard title="Total Students" value={stats.total} icon={<div className="p-2 rounded-xl bg-blue-500 text-white"><Users size={18} /></div>} color="blue" />
@@ -470,6 +488,7 @@ export const PromotionsPage: React.FC = () => {
             if (stats.promoted > 0) lines.push(`Promote ${stats.promoted} student(s)${targetName ? ` to ${targetName}` : ''} (a new enrolment is created there).`);
             if (stats.repeat > 0) lines.push(`Keep ${stats.repeat} student(s) in this class (repeat — nothing moves).`);
           }
+          if (unpaid.length > 0) lines.push(`Note: ${unpaid.length} student(s) still owe fees (Le ${unpaidTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} in total). Their balances stay owed and show as brought forward in the new class.`);
           lines.push('Prior enrolments and all results/fees are preserved as history. This cannot be easily undone.');
           return lines.join('\n\n');
         })()}

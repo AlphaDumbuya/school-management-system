@@ -475,6 +475,56 @@ Parent-specific things to probe:
 - Only published results, report cards and events. Announcements addressed to parents or the child's class only.
 - `guardian` is a legacy alias of `parent`: both must behave the same.
 
+### Accountant pass, part 1: finance integrity (✅ done & verified)
+
+- **Overview** (`/accountant/dashboard`): `YearFilter` (current year by default), history banner, arrears from other years with Collect, recent payments for the year with status (only completed ones count), the class each student was in THAT year (`joinClass` in `/finance/analytics`), load error with Retry. Verified: 2026/27 Le 1,819 / 7 / 1,812; 2027/28 0 with Le 1,812 arrears; teacher and student 403.
+- **Security:** students and parents could record manual (cash) payments for themselves through `POST /payments`. It's now staff-only (portal users pay through Monime). `/payments/:id/receipt` is staff-only. Teachers no longer read invoices. `/payments/bulk` checks every fee is in the tenant.
+- **Recording:** `POST /finance/payments/record`: one payment spread across fees (oldest first) in ONE transaction, with an idempotency key (`payments.idempotency_key`, unique per tenant). Two parallel identical submits → one payment. Future dates and unknown methods → 400. `tenant_id` is set (manual payments were missing from tenant stats).
+- **Refund:** locked transaction, numeric maths (pg strings were concatenated: "500" + "200"), payment → `refunded`, twice → 409, online payments → 409 (refund at the provider). `paymentInTenant` joined text to uuid, so every refund was a 404.
+- **Invoices:** bulk-invoice runs one locked transaction per student and no longer swallows insert errors (that's how `INV-2026-617050`, Le 3,619 with 0 line items, was made; it is now voided). New invoices go to the active year only (past year → 409). `POST /finance/invoices/:id/void {reason}`: blocked once paid; the fees are released for re-invoicing. The legacy generate path now looks students up in `students`, sets tenant/year, and skips paid, deleted or already-invoiced fees.
+- **Fee structures:** amounts are validated (0…10bn, cents), percentages must be whole numbers 0–100, the year is canonical "YYYY/YYYY" (else 400), a due date is required, and the upsert runs in one transaction. Billing takes an advisory lock (two parallel bills → one set of fees) and dedupe ignores deleted rows. Unbill touches only this structure's unpaid, uninvoiced charges and soft-deletes them. A billed structure can't be deleted. **UI:** the bill/unbill toast always said "No new charges" (read `res.data.data`). Fixed. KPI is now "Total Billed" from the ledger.
+- **Audit trail:** finance code passed camelCase (`entityType`) to `logAudit`, which read snake_case, so every finance audit insert failed (NOT NULL). `logAudit` now accepts both. Payments, refunds and voids are audited. BE errors 500 → 479.
+- Shared `ConfirmationDialog` takes optional `children` (a required-reason field) and `confirmDisabled`. Migration `164_finance_integrity`.
+
+The comprehensive bursar build is split into specs: `.kiro/specs/bursar-finance-phase-a|b|c`.
+
+### Accountant pass, part 2: Bursar Phase A, fee side (✅ done & verified)
+
+Spec `.kiro/specs/bursar-finance-phase-a`. Migration `165_bursar_finance_a`, services in `backend/src/services/finance/`, routes in `bursarFinanceRoutes.ts`. Those routes are mounted at `/api/v1/finance` **before** `schoolExpenseRoutes`, whose `router.use` guard is staff-only and would otherwise block the family reads.
+
+- **Balance identity:** `fee.balance = amount − payments + refunds − active adjustments`. Discounts, waivers, applied credit and late-fee waivers are `fee_adjustments` rows (each auditable and reversible) and are never counted as collected. KPIs: `totalDiscounts`, `totalCreditApplied`, `overdueAmount`; collected = billed − discounts − credit − outstanding.
+- **Discounts & Scholarships** (`/finance/discounts`):
+  - Discount types: sibling (from the Nth child, families matched by parent account), staff child, scholarship/bursary, custom; percent or fixed; tuition or all charges.
+  - Grants per year or term. The principal's grants approve themselves; the bursar's need approval above `fin_discount_approval_threshold`.
+  - Revoke puts the amounts back on the fees. Grants are re-applied after billing.
+- **Late fees:**
+  - The daily job marks fees overdue (school's today) and, if `fin_late_fee_enabled`, adds ONE late fee per fee, fixed or %, after the grace days, with an optional cap.
+  - A partial unique index means it can never charge twice. Students keeping to an instalment plan are skipped.
+  - Runs via Vercel Cron `/api/v1/cron/finance-daily` (needs **`CRON_SECRET`**), node-cron on long-running servers, or "Run overdue check". Late fees can be waived with a reason.
+- **Arrears & Aging** (`/finance/aging`): Not yet due / 1–30 / 31–60 / 61–90 / 90+ per student and class, filters, export, and reminders (one student or everyone listed). Dashboard: cash received today and this month, overdue now, discounts, and approvals waiting.
+- **Receipts:**
+  - `RCP-YYYY-NNNNNN`, sequential per school, stored, shared by every row of one submission, and back-filled.
+  - `balance_after` means a reprint shows the balance at the time. The PDF lists what the payment covered and is stamped REFUNDED when refunded.
+  - Manual payments are emailed automatically (`fin_email_manual_receipts`). Re-send and bulk email are available. Families can view payment history and download PDFs.
+- **Credit:** an overpayment needs "Keep the extra as account credit". Credit notes, apply credit to fees, and refund credit are available. Applied credit isn't new cash.
+- **Instalment plans:**
+  - Even split or custom rows that add up to what's owed. Status is derived (payments applied to the oldest instalment first).
+  - The minimum-payment policy accepts the next instalment. Families see the schedule.
+- **Statement of account:** brought forward from earlier years, every charge, discount, late fee, payment and refund with a running balance, and the closing balance. Available as JSON and PDF, to staff and to a linked parent or the student. `reconciles` checks it against the live balances.
+- **Promotions** warn (without blocking) about students in the class who still owe fees.
+- **Verified:**
+  - 10% scholarship applied on billing (Tuition 1000 → 900 ×3).
+  - Le 150 bursar waiver pending, bursar approve → 403, principal approve → Le 150 applied.
+  - Overview billed 3,200, discounts 450, collected 0.
+  - Overpayment without the flag → 400; with it → receipt `RCP-2026-000002` and Le 50 credit.
+  - PDF receipt: student and their parent 200, another parent 403.
+  - Statement reconciles (before and after revoke and credit apply).
+  - Plan of 2 instalments.
+  - Late fee run twice → 3 charged, then 0.
+  - Aging buckets correct.
+  - Cron without the secret → 401.
+  - All test rows removed and Alpha's fees unchanged.
+
 ### Staff onboarding — ✅ done & verified (before Accountant and Admissions)
 
 Before this, a school had no way to hire an accountant or admissions officer,

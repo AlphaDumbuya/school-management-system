@@ -139,8 +139,11 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
     if (error instanceof AppError) {
       return next(error);
     }
+    // The database didn't answer. Carrying on without req.user made handlers
+    // crash ("reading 'tenant_id'") or answer a misleading "Tenant context is
+    // required". Say what actually happened, so the app can retry.
     logger.warn('Failed to fetch user context from DB', error);
-    next(); // Continue without tenant info
+    return next(new AppError('The server is busy reconnecting to the database. Please try again in a moment.', 503, 'DB_UNAVAILABLE'));
   }
 };
 

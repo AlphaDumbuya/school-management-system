@@ -215,6 +215,13 @@ export const SettingsPage: React.FC = () => {
     fin_min_percent_term: 0,
     fin_charges_compulsory_first_term: false,
     fin_late_fee_percent: 0,
+    // Bursar Phase A: automatic late fees, discount approval, e-receipts.
+    fin_late_fee_enabled: false,
+    fin_late_fee_fixed: 0,
+    fin_late_fee_grace_days: 0,
+    fin_late_fee_cap: 0,
+    fin_discount_approval_threshold: 0,
+    fin_email_manual_receipts: true,
     language: 'en',
     date_format: 'YYYY-MM-DD',
     time_format: '12h',
@@ -381,6 +388,14 @@ export const SettingsPage: React.FC = () => {
       for (const [val, label] of checks) {
         if (!isPct(val)) return `${label} must be between 0 and 100.`;
       }
+      const nonNeg: Array<[any, string]> = [
+        [settings.fin_late_fee_fixed, 'Fixed late fee'], [settings.fin_late_fee_cap, 'Late fee cap'],
+        [settings.fin_late_fee_grace_days, 'Grace days'], [settings.fin_discount_approval_threshold, 'Discount approval limit'],
+      ];
+      for (const [val, label] of nonNeg) {
+        if (val !== '' && val != null && (!Number.isFinite(Number(val)) || Number(val) < 0)) return `${label} can't be negative.`;
+      }
+      if (!Number.isInteger(Number(settings.fin_late_fee_grace_days || 0))) return 'Grace days must be a whole number.';
       return null;
     }
     return null;
@@ -2007,7 +2022,57 @@ export const SettingsPage: React.FC = () => {
                               onChange={(e) => setSettings({ ...settings, fin_late_fee_percent: Number(e.target.value) })}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
                             />
-                            <p className="text-[10px] text-gray-400 mt-1">Applied to overdue balances (informational).</p>
+                            <p className="text-[10px] text-gray-400 mt-1">% of the unpaid balance, charged once per overdue fee (when late fees are on).</p>
+                          </div>
+                        </div>
+
+                        {/* Late fees, discount approval and e-receipts (bursar) */}
+                        <div className="mt-5 rounded-xl border border-gray-200 p-4 space-y-3">
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" checked={settings.fin_late_fee_enabled === true || settings.fin_late_fee_enabled === 'true'}
+                              onChange={(e) => setSettings({ ...settings, fin_late_fee_enabled: e.target.checked })}
+                              className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 border-gray-300" />
+                            <span className="text-sm text-gray-700"><span className="font-semibold">Charge late fees automatically.</span>{' '}
+                              <span className="text-gray-500">Every night, each fee still unpaid after its due date (plus the grace days) gets one late fee. Families keeping to an instalment plan are skipped. The bursar can waive any late fee.</span></span>
+                          </label>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                              <label htmlFor="fin-late-fixed" className="text-xs font-semibold text-gray-500 block mb-1">Fixed late fee (Le)</label>
+                              <input id="fin-late-fixed" type="number" min={0} value={settings.fin_late_fee_fixed ?? 0}
+                                onChange={(e) => setSettings({ ...settings, fin_late_fee_fixed: Number(e.target.value) })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white" />
+                              <p className="text-[10px] text-gray-400 mt-1">When above 0, used instead of the %.</p>
+                            </div>
+                            <div>
+                              <label htmlFor="fin-late-grace" className="text-xs font-semibold text-gray-500 block mb-1">Grace days</label>
+                              <input id="fin-late-grace" type="number" min={0} step={1} value={settings.fin_late_fee_grace_days ?? 0}
+                                onChange={(e) => setSettings({ ...settings, fin_late_fee_grace_days: Number(e.target.value) })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white" />
+                              <p className="text-[10px] text-gray-400 mt-1">Days after the due date before a late fee.</p>
+                            </div>
+                            <div>
+                              <label htmlFor="fin-late-cap" className="text-xs font-semibold text-gray-500 block mb-1">Late fee cap (Le)</label>
+                              <input id="fin-late-cap" type="number" min={0} value={settings.fin_late_fee_cap ?? 0}
+                                onChange={(e) => setSettings({ ...settings, fin_late_fee_cap: Number(e.target.value) })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white" />
+                              <p className="text-[10px] text-gray-400 mt-1">0 = no cap.</p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+                            <div>
+                              <label htmlFor="fin-disc-limit" className="text-xs font-semibold text-gray-500 block mb-1">Discounts the bursar can approve alone, up to (Le)</label>
+                              <input id="fin-disc-limit" type="number" min={0} value={settings.fin_discount_approval_threshold ?? 0}
+                                onChange={(e) => setSettings({ ...settings, fin_discount_approval_threshold: Number(e.target.value) })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white" />
+                              <p className="text-[10px] text-gray-400 mt-1">0 = every discount the bursar gives waits for your approval.</p>
+                            </div>
+                            <label className="flex items-start gap-3 cursor-pointer mt-5">
+                              <input type="checkbox" checked={settings.fin_email_manual_receipts !== false && settings.fin_email_manual_receipts !== 'false'}
+                                onChange={(e) => setSettings({ ...settings, fin_email_manual_receipts: e.target.checked })}
+                                className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 border-gray-300 mt-0.5" />
+                              <span className="text-sm text-gray-700"><span className="font-semibold">Email a receipt for every payment.</span>{' '}
+                                <span className="text-gray-500">Cash and bank payments recorded by the bursar get an emailed PDF receipt, like online payments.</span></span>
+                            </label>
                           </div>
                         </div>
 

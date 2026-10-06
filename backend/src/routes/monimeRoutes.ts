@@ -437,6 +437,7 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
   }
 
   let applied = false;
+  let receiptNumber: string | null = null;
   await db.transaction(async (trx) => {
     // Lock the session row and re-check inside the transaction so a retried or
     // duplicated webhook arriving at the same moment can't record twice.
@@ -444,9 +445,13 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
     if (!locked || locked.status === 'completed') return;
     applied = true;
 
-    // Record the payment (payments.id is a uuid PK).
+    // Record the payment (payments.id is a uuid PK) with the school's next
+    // sequential receipt number (stored, so reprints and emails match).
     const paymentId = crypto.randomUUID();
+    const { nextReceiptNumber } = await import('../services/finance/core.js');
+    receiptNumber = await nextReceiptNumber(trx, session.tenant_id, new Date());
     await trx('payments').insert({
+      receipt_number: receiptNumber,
       id: paymentId,
       tenant_id: session.tenant_id,
       student_id: session.student_id,
@@ -486,11 +491,16 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
     } else {
       // Ad-hoc payment (no invoice) → apply to the student's oldest outstanding fees.
       const openFees = await trx('fees')
-        .where({ student_id: session.student_id })
+        .where({ student_id: session.student_id, tenant_id: session.tenant_id })
         .whereIn('status', ['pending', 'partial', 'overdue'])
-        .orderBy('due_date', 'asc');
+        .orderBy('due_date', 'asc')
+        .forUpdate();
       await applyAmountToFees(trx, openFees, Number(session.amount));
     }
+
+    // Balance right after this payment, for the receipt.
+    const { studentOutstanding } = await import('../services/finance/core.js');
+    await trx('payments').where({ id: paymentId }).update({ balance_after: await studentOutstanding(trx, session.tenant_id, session.student_id) });
 
     await trx('payment_sessions').where({ id: sessionId }).update({
       status: 'completed',
@@ -505,7 +515,13 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
   // Send a payment receipt email to the payer (best-effort — never block/fail
   // the webhook because email delivery hiccuped).
   try {
-    await sendPaymentReceipt(session);
+    if (receiptNumber) {
+      // The stored receipt (same number, items and balance as a reprint).
+      const { receiptService } = await import('../services/finance/receiptService.js');
+      await receiptService.email(session.tenant_id, receiptNumber, null);
+    } else {
+      await sendPaymentReceipt(session);
+    }
   } catch (mailErr: any) {
     logger.warn(`Could not send payment receipt for session ${sessionId}: ${mailErr?.message || mailErr}`);
   }

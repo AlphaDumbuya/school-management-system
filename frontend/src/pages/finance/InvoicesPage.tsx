@@ -6,7 +6,8 @@
  */
 import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, FileStack, Eye, Bell, X, Loader2 } from 'lucide-react';
+import { ChevronDown, FileStack, Eye, Bell, X, Loader2, Ban } from 'lucide-react';
+import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { Button } from '@components/ui/button';
@@ -43,8 +44,14 @@ export const InvoicesPage: React.FC = () => {
   const { data: overviewResp, isLoading: ovLoading, refetch: refetchOv } = useQuery({
     queryKey: ['finance-overview', year], queryFn: () => financeService.getOverview(year || undefined), enabled: yearReady, staleTime: 30_000,
   });
-  const { data: invResp, isLoading, refetch } = useQuery({
-    queryKey: ['finance-invoices', statusFilter, year], queryFn: () => financeService.listInvoices(statusFilter || undefined, year || undefined), enabled: yearReady, staleTime: 15_000,
+  const { data: invResp, isLoading, refetch, error: listError } = useQuery({
+    queryKey: ['finance-invoices', statusFilter, year],
+    queryFn: async () => {
+      const r: any = await financeService.listInvoices(statusFilter || undefined, year || undefined);
+      if (r?.success === false) throw new Error(r.error || 'Could not load invoices.');
+      return r;
+    },
+    enabled: yearReady, staleTime: 15_000,
   });
 
   const overview = (overviewResp as any)?.data?.data ?? (overviewResp as any)?.data;
@@ -61,6 +68,17 @@ export const InvoicesPage: React.FC = () => {
     await Promise.all([refetch(), refetchOv()]);
   };
 
+  // Void (needs a reason; invoices with payments can't be voided).
+  const [voidTarget, setVoidTarget] = useState<any | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  const doVoid = async () => {
+    const res: any = await financeService.voidInvoice(voidTarget.id, voidReason.trim());
+    if (res?.success === false) { showToast.error(res.error || 'Could not void the invoice'); throw new Error('void failed'); }
+    showToast.success(`${voidTarget.invoice_number} voided. Its fees can be invoiced again.`);
+    setVoidTarget(null); setVoidReason('');
+    queryClient.invalidateQueries({ queryKey: ['finance-invoices'] });
+  };
+
   // Per-invoice sending state so a double-tap can't send two reminders.
   const [remindingId, setRemindingId] = useState<string | null>(null);
   const remind = async (id: string) => {
@@ -68,8 +86,9 @@ export const InvoicesPage: React.FC = () => {
     setRemindingId(id);
     try {
       const res: any = await financeService.sendInvoiceReminder(id);
-      if (res?.success === false) showToast.error(res?.error || 'Failed to send reminder');
-      else showToast.success('Reminder sent');
+      if (res?.success === false) showToast.error(res?.error || res?.message || 'Failed to send reminder');
+      else if (res?.data?.emailSent === false) showToast.error(res?.data?.message || 'No email on file for this student or their parent, so no reminder was sent.');
+      else showToast.success(res?.data?.message || 'Reminder sent');
     } catch {
       showToast.error('Failed to send reminder');
     } finally {
@@ -126,13 +145,19 @@ export const InvoicesPage: React.FC = () => {
                 <option value="partial">Partial</option>
                 <option value="paid">Paid</option>
                 <option value="overdue">Overdue</option>
+                <option value="cancelled">Void</option>
               </select>
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
             </div>
           </div>
         </div>
 
-        {filtered.length === 0 ? (
+        {listError ? (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+            <span>{(listError as Error).message}</span>
+            <button type="button" onClick={() => refetch()} className="text-xs font-bold hover:underline">Retry</button>
+          </div>
+        ) : filtered.length === 0 ? (
           viewingPast || viewingAll
             ? <EmptyState message="No invoices found" description={viewingPast ? `No invoices were issued in ${year}.` : 'No invoices have been issued yet.'} />
             : <EmptyState message="No invoices found" description="Generate invoices from students' outstanding fees." action={{ label: 'Generate Invoices', onClick: () => setGenOpen(true) }} />
@@ -168,8 +193,11 @@ export const InvoicesPage: React.FC = () => {
                       <td className="px-4 py-3 whitespace-nowrap">{statusPill(inv.status)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button onClick={() => setDetailId(inv.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" title="View"><Eye size={15} /></button>
-                          {bal > 0 && inv.status !== 'paid' && (
+                          <button onClick={() => setDetailId(inv.id)} aria-label={`View invoice ${inv.invoice_number}`} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" title="View"><Eye size={15} /></button>
+                          {inv.status !== 'cancelled' && Number(inv.total_paid || 0) <= 0 && (
+                            <button onClick={() => { setVoidReason(''); setVoidTarget(inv); }} aria-label={`Void invoice ${inv.invoice_number}`} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" title="Void invoice"><Ban size={15} /></button>
+                          )}
+                          {bal > 0 && inv.status !== 'paid' && inv.status !== 'cancelled' && (
                             <>
                               <button onClick={() => remind(inv.id)} disabled={remindingId === inv.id} aria-label="Send reminder" className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50" title="Send reminder">{remindingId === inv.id ? <Loader2 size={15} className="animate-spin" /> : <Bell size={15} />}</button>
                               <PayFeesButton invoiceId={inv.id} size="sm">Pay</PayFeesButton>
@@ -190,6 +218,20 @@ export const InvoicesPage: React.FC = () => {
           <GenerateInvoicesModal academicYear={activeYear} onClose={() => setGenOpen(false)} onDone={() => { setGenOpen(false); queryClient.invalidateQueries({ queryKey: ['finance-invoices'] }); refetchOv(); }} />
         )}
         {detailId && <InvoiceDetailModal invoiceId={detailId} onClose={() => setDetailId(null)} />}
+        <ConfirmationDialog
+          isOpen={!!voidTarget}
+          onClose={() => setVoidTarget(null)}
+          onConfirm={doVoid}
+          title="Void invoice"
+          message={voidTarget ? `Void ${voidTarget.invoice_number} for ${voidTarget.student_name}? The fees stay on the student's account and can be invoiced again.` : ''}
+          confirmLabel="Void invoice"
+          confirmDisabled={voidReason.trim().length < 5}
+        >
+          <label htmlFor="void-reason" className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mt-2">Reason (required)</label>
+          <textarea id="void-reason" value={voidReason} onChange={(e) => setVoidReason(e.target.value)} rows={2} maxLength={500}
+            placeholder="e.g. Issued twice by mistake"
+            className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" />
+        </ConfirmationDialog>
       </PageShell>
     </MainLayout>
   );
@@ -222,8 +264,11 @@ const GenerateInvoicesModal: React.FC<{ academicYear: string; onClose: () => voi
     setSaving(true);
     try {
       const res: any = await financeService.bulkInvoice({ scope, classId: scope === 'class' ? classId : undefined, level: scope === 'level' ? level : undefined, term: term || undefined, academicYear, dueDate: dueDate || undefined });
-      const gen = res?.data?.data?.generated ?? res?.data?.generated ?? 0;
-      showToast.success(gen > 0 ? `Generated ${gen} invoice${gen === 1 ? '' : 's'}` : 'No unbilled fees to invoice');
+      if (res?.success === false) { showToast.error(res.error || 'Failed to generate invoices'); return; }
+      const gen = Number(res?.data?.generated ?? 0);
+      const failed = Number(res?.data?.failed ?? 0);
+      if (failed > 0) showToast.error(`Generated ${gen}; ${failed} student${failed === 1 ? '' : 's'} failed. Try again for them.`);
+      else showToast.success(gen > 0 ? `Generated ${gen} invoice${gen === 1 ? '' : 's'}` : 'No uninvoiced fees to bundle.');
       onDone();
     } catch (err: any) {
       showToast.error(err?.response?.data?.error || 'Failed to generate invoices');
@@ -235,7 +280,7 @@ const GenerateInvoicesModal: React.FC<{ academicYear: string; onClose: () => voi
       <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
           <h3 className="font-bold text-gray-900 dark:text-white">Generate Invoices</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4">
           <p className="text-xs text-gray-500">Bundles each student's outstanding (unbilled) <strong>{academicYear}</strong> fees into a single invoice.</p>
@@ -291,6 +336,7 @@ const GenerateInvoicesModal: React.FC<{ academicYear: string; onClose: () => voi
 // ── Invoice detail (line items + payments) ────────────────────────────────────
 const InvoiceDetailModal: React.FC<{ invoiceId: string; onClose: () => void }> = ({ invoiceId, onClose }) => {
   const { data, isLoading } = useQuery({ queryKey: ['invoice-detail', invoiceId], queryFn: () => financeService.getInvoiceDetail(invoiceId) });
+  const detailError = (data as any)?.success === false ? ((data as any).error || 'Could not load this invoice.') : null;
   const detail = (data as any)?.data?.data ?? (data as any)?.data;
   const invoice = detail?.invoice;
   const items = detail?.items ?? [];
@@ -301,9 +347,11 @@ const InvoiceDetailModal: React.FC<{ invoiceId: string; onClose: () => void }> =
       <div className="w-full max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
           <h3 className="font-bold text-gray-900 dark:text-white">{invoice?.invoice_number || 'Invoice'}</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
         </div>
-        {isLoading || !invoice ? (
+        {detailError ? (
+          <p role="alert" className="p-5 text-sm text-red-600">{detailError}</p>
+        ) : isLoading || !invoice ? (
           <div className="flex items-center justify-center py-12"><Loader2 size={28} className="animate-spin text-blue-500" /></div>
         ) : (
           <div className="p-5 space-y-5">
@@ -320,7 +368,7 @@ const InvoiceDetailModal: React.FC<{ invoiceId: string; onClose: () => void }> =
                 {items.length === 0 ? <p className="text-sm text-gray-400 p-3">No line items.</p> : items.map((it: any) => (
                   <div key={it.id} className="flex items-center justify-between px-3 py-2 text-sm border-b border-gray-50 dark:border-gray-700/50 last:border-0">
                     <span className="capitalize">{it.type || 'Fee'}</span>
-                    <span className="font-medium">{fmtMoney(it.amount)}</span>
+                    <span className="font-medium">{fmtMoney(it.balance ?? it.amount)}{Number(it.balance) !== Number(it.amount) && <span className="ml-1 text-[11px] text-gray-400">of {fmtMoney(it.amount)}</span>}</span>
                   </div>
                 ))}
               </div>
@@ -338,7 +386,10 @@ const InvoiceDetailModal: React.FC<{ invoiceId: string; onClose: () => void }> =
               </div>
             </div>
 
-            {Number(invoice.balance) > 0 && invoice.status !== 'paid' && (
+            {invoice.status === 'cancelled' && (
+              <p className="text-xs text-gray-500">Voided{invoice.void_reason ? `: ${invoice.void_reason}` : ''}.</p>
+            )}
+            {Number(invoice.balance) > 0 && invoice.status !== 'paid' && invoice.status !== 'cancelled' && (
               <div className="flex justify-end"><PayFeesButton invoiceId={invoice.id}>Pay {fmtMoney(invoice.balance)}</PayFeesButton></div>
             )}
           </div>

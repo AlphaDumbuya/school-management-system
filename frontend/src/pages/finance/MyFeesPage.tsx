@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import useAuthStore from '@store/authStore';
 import { StudentLedgerView } from '@components/finance/StudentLedgerView';
+import { FamilyAccountExtras } from '@components/finance/FamilyAccountExtras';
 import { PayFeesButton } from '@components/finance/PayFeesButton';
 import { parentDashboardService } from '@services/parentDashboardService';
 import { financeLedgerService } from '@services/financeLedgerService';
@@ -54,6 +55,7 @@ const StudentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: (
         </div>
       )}
       <StudentLedgerView academicYear={year || undefined} />
+      {ledger?.student_id && <FamilyAccountExtras studentId={ledger.student_id} label="my-account" year={year || undefined} />}
     </div>
   );
 };
@@ -142,6 +144,7 @@ const ParentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: ()
         </div>
       )}
       {currentId && <StudentLedgerView studentId={currentId} academicYear={year || undefined} />}
+      {currentId && <FamilyAccountExtras studentId={currentId} label={(children.find((c: any) => c.id === currentId)?.name || 'child').replace(/\s+/g, '-')} year={year || undefined} />}
     </div>
   );
 };

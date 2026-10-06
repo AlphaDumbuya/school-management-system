@@ -11,6 +11,10 @@ export interface ConfirmationDialogProps {
   message: string;
   confirmLabel?: string;
   isDestructive?: boolean;
+  /** Extra content under the message (e.g. a required reason field). */
+  children?: React.ReactNode;
+  /** Disable Confirm until the extra content is valid. */
+  confirmDisabled?: boolean;
 }
 
 export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
@@ -21,6 +25,8 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   message,
   confirmLabel = 'Confirm',
   isDestructive = true,
+  children,
+  confirmDisabled = false,
 }) => {
   const [isPending, setIsPending] = useState(false);
 
@@ -29,6 +35,8 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     try {
       await onConfirm();
       onClose();
+    } catch {
+      // onConfirm reports its own error (toast); keep the dialog open.
     } finally {
       setIsPending(false);
     }
@@ -47,7 +55,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           </Button>
           <Button
             variant={isDestructive ? 'destructive' : 'default'}
-            disabled={isPending}
+            disabled={isPending || confirmDisabled}
             onClick={handleConfirm}
           >
             {isPending && <Loader2 size={14} className="animate-spin" />}
@@ -58,8 +66,9 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     >
       <div className="flex flex-col items-center text-center py-2">
         <AlertTriangle size={40} className="text-red-500 mb-3" />
-        <p className="text-sm text-gray-600">{message}</p>
+        <p className="text-sm text-gray-600 dark:text-gray-300">{message}</p>
       </div>
+      {children}
     </Modal>
   );
 };
