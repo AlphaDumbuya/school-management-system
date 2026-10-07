@@ -395,8 +395,13 @@ router.post('/:id/unbill', authenticate, requireStaff, async (req: Request, res:
     let q = db('fees')
       .where({ tenant_id: tenantId, class_id: s.class_id, academic_year: s.academic_year })
       .whereIn('type', ['Tuition', ...expenseLabels])
-      .whereRaw('COALESCE(balance, amount) = amount')
-      .whereIn('status', ['pending', 'overdue'])
+      // Unpaid: no payment (checked below) and no non-cash change other than a
+      // discount / scholarship, which is taken back here and re-applied on rebill.
+      .whereNotExists(function (this: any) {
+        this.select(db.raw('1')).from('fee_adjustments as fa').whereRaw('fa.fee_id = fees.id')
+          .whereNull('fa.reversed_at').whereNull('fa.discount_grant_id');
+      })
+      .whereIn('status', ['pending', 'overdue', 'partial'])
       .whereNotExists(function (this: any) {
         this.select(db.raw('1')).from('payments as p').whereRaw('p.fee_id::text = fees.id::text').whereNot('p.status', 'failed');
       })
@@ -405,8 +410,14 @@ router.post('/:id/unbill', authenticate, requireStaff, async (req: Request, res:
           .whereRaw('ii.fee_id::text = fees.id::text').whereNot('iv.status', 'cancelled');
       });
     if (scopeTerm) q = q.where({ term: scopeTerm });
-
-    const removed = await q.update({ status: 'deleted', balance: 0, updated_at: new Date() });
+    let removed = 0;
+    await db.transaction(async (trx) => {
+      const ids = (await q.clone().transacting(trx).forUpdate().select('fees.id')).map((r: any) => r.id);
+      if (!ids.length) return;
+      await trx('fee_adjustments').whereIn('fee_id', ids).whereNull('reversed_at').whereNotNull('discount_grant_id')
+        .update({ reversed_at: new Date(), reversed_by: (req as any).user.id });
+      removed = await trx('fees').whereIn('id', ids).update({ status: 'deleted', balance: 0, updated_at: new Date() });
+    });
     res.json({ success: true, data: { removed, term: scopeTerm || 'Full Year' } });
   } catch (error) { next(error); }
 });

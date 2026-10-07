@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import { MainLayout } from '@components/layout/MainLayout';
-import { AlertTriangle, TrendingUp, Banknote, Wallet, Loader2, RefreshCw, ArrowRight } from 'lucide-react';
+import { AlertTriangle, TrendingUp, Banknote, Wallet, Loader2, RefreshCw, ArrowRight, Receipt, PiggyBank, Users, Scale, BookOpen, Landmark, History, Coins, FileText, Percent, Timer, ListTree } from 'lucide-react';
 import useAuthStore from '@store/authStore';
 import { WelcomeHero } from '@components/dashboard/WelcomeHero';
 import { HeroRefreshButton } from '@components/dashboard/HeroRefreshButton';
@@ -20,7 +20,7 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import { financeService } from '@services/financeService';
-import { bursarService } from '@services/bursarService';
+import { bursarService, bursarB } from '@services/bursarService';
 
 const fmtLe = (v: number | string | null | undefined) =>
   `Le ${(Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -46,6 +46,10 @@ export const Phase13AccountantDashboard: React.FC = () => {
   const [pickedYear, setPickedYear] = useState(''); // '' = current year
   const year = pickedYear || activeYear;
   const viewingPast = !!year && !!activeYear && year < activeYear;
+  // Pay runs waiting on someone: drafts for the principal, approved ones to pay.
+  const runsQ = useQuery({ queryKey: ['fin-runs'], queryFn: async () => { const r: any = await bursarB.runs(); return r?.success === false ? [] : (r?.data || []); }, staleTime: 60_000 });
+  const runsDraft = (runsQ.data || []).filter((x: any) => x.status === 'draft').length;
+  const runsToPay = (runsQ.data || []).filter((x: any) => x.status === 'approved').length;
   const changeYear = (y: string) => setPickedYear(!y || y === activeYear ? '' : y);
 
   const overviewQ = useQuery({
@@ -185,6 +189,34 @@ export const Phase13AccountantDashboard: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Every finance area, one tap away */}
+        <div>
+          <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">Finance work areas</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            {[
+              { to: '/finance/fees', label: 'Fee Structures', icon: <Coins size={16} /> },
+              { to: '/finance/invoices', label: 'Invoices', icon: <FileText size={16} /> },
+              { to: '/finance/payments', label: 'Payments', icon: <Receipt size={16} /> },
+              { to: '/finance/aging', label: 'Arrears & Aging', icon: <Timer size={16} /> },
+              { to: '/finance/discounts', label: 'Discounts', icon: <Percent size={16} /> },
+              { to: '/finance/expenses', label: 'Expenses', icon: <Wallet size={16} /> },
+              { to: '/finance/petty-cash', label: 'Petty Cash', icon: <PiggyBank size={16} /> },
+              { to: '/finance/budgets', label: 'Budget', icon: <TrendingUp size={16} /> },
+              { to: '/finance/payroll', label: 'Payroll', icon: <Users size={16} />, note: runsDraft ? `${runsDraft} awaiting approval` : runsToPay ? `${runsToPay} to pay` : '' },
+              { to: '/finance/reports', label: 'Statements', icon: <Scale size={16} /> },
+              { to: '/finance/journal', label: 'Journal', icon: <BookOpen size={16} /> },
+              { to: '/finance/bank-reconciliation', label: 'Bank Reconciliation', icon: <Landmark size={16} /> },
+              { to: '/finance/accounts', label: 'Chart of Accounts', icon: <ListTree size={16} /> },
+              { to: '/finance/audit-log', label: 'Audit Log', icon: <History size={16} /> },
+            ].map((l) => (
+              <Link key={l.to} to={l.to} className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:border-blue-300 hover:text-blue-700">
+                <span className="text-blue-600 dark:text-blue-400">{l.icon}</span>
+                <span className="min-w-0"><span className="block truncate">{l.label}</span>{l.note && <span className="block text-[11px] font-medium text-amber-700">{l.note}</span>}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent payments */}

@@ -10,6 +10,7 @@ import {
   Settings, Users, GraduationCap, ClipboardCheck, Wallet, CreditCard,
   BookOpen, ClipboardList, FileText, Building, ArrowRight, PlayCircle, LifeBuoy, Mail,
   CalendarDays, Megaphone, ShieldCheck, BarChart2, UserCheck, Calendar, Lightbulb, ChevronDown,
+  Coins, Receipt, Timer, Percent, Scale, Landmark, History,
   type LucideIcon,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
@@ -24,6 +25,7 @@ const ICONS: Record<string, LucideIcon> = {
   Settings, Users, GraduationCap, ClipboardCheck, Wallet, CreditCard,
   BookOpen, ClipboardList, FileText, Building, CalendarDays, Megaphone, ShieldCheck,
   BarChart2, UserCheck, Calendar,
+  Coins, Receipt, Timer, Percent, Scale, Landmark, History,
 };
 
 // A gentle rotating palette so the section cards feel colourful and distinct.

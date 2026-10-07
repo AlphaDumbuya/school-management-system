@@ -39,6 +39,7 @@ export interface TicketResponse {
 
 export const TICKET_CATEGORIES = [
   'Technical Issue',
+  'School fees & finance',
   'Billing',
   'Account',
   'Feature Request',

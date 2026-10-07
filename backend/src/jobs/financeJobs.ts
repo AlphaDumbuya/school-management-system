@@ -7,6 +7,7 @@
 import cron from 'node-cron';
 import { logger } from '@utils/logger';
 import { lateFeeService } from '@services/finance/lateFeeService';
+import { glService } from '@services/finance/glService';
 
 type ScheduledTask = ReturnType<typeof cron.schedule>;
 let job: ScheduledTask | null = null;
@@ -16,6 +17,7 @@ export function startFinanceJobs(): void {
   job = cron.schedule('30 1 * * *', () => {
     lateFeeService.runDaily()
       .then((r) => logger.info(`[financeJobs] daily run: ${JSON.stringify(r.map((x: any) => ({ t: x.tenantId, o: x.markedOverdue, l: x.lateFeesCharged })))}`))
+      .then(() => glService.syncAll())
       .catch((err) => logger.warn('[financeJobs] daily run failed', { error: String(err) }));
   });
   logger.info('[financeJobs] overdue + late-fee run scheduled (daily 01:30)');

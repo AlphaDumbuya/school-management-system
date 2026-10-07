@@ -441,7 +441,7 @@ Student-specific things to probe:
 | 1 | Student | ✅ done (pushed `f89a75d`) |
 | 2 | Parent | ✅ done (pushed `036435a`) |
 | — | Staff onboarding (prerequisite for 3 and 4) | ✅ done (see below) |
-| 3 | Accountant (finance) | next |
+| 3 | Accountant (finance) | ✅ done (this branch) |
 | 4 | Admissions | last |
 
 ### Parent — after Student (work order)
@@ -551,6 +551,18 @@ Spec `.kiro/specs/bursar-finance-phase-b`. Migration `166_bursar_finance_b`, ser
   - Budget Utilities 251/200 over; petty cash overdraw refused.
   - All test rows removed.
 
+### Accountant pass, part 4: Bursar Phase C, accounting (✅ done & verified)
+
+Spec `.kiro/specs/bursar-finance-phase-c`. Migration `167_bursar_finance_c` (gl_accounts, gl_entries, gl_lines, bank_statement_lines, bank_matches). Services `finance/{glService,glReportService,bankRecService,financeAuditService}.ts`, routes `bursarFinanceCRoutes.ts`.
+
+- **Posting by reconciliation** (`glService.sync`): every fee, payment, refund, discount/waiver, credit note, credit refund, expense, petty-cash top-up/return and paid payroll run has an *expected* set of lines; the sync posts only the difference. Idempotent, and edits / voids / refunds / cancellations post a correcting entry. Runs before accounting reads (15 s throttle), under a per-school advisory lock, and in the daily finance cron after late fees. Fees billed before their academic year starts are dated on the year's first day.
+- **Chart of Accounts** (`/finance/accounts`): standard chart created on first open; custom expense categories get their own account (5200+); add accounts (an asset can be marked "holds money" to reconcile it); Fees receivable, Student credit and Petty cash are control accounts (no manual posting).
+- **Journal** (`/finance/journal`): server-paged, by source; manual journals with templates (opening balance, cash banked, PAYE/NASSIT remittance, bank charges, donation); balanced or refused; reverse once with a reason (never edit or delete). The principal closes the books up to a date; later changes to old records post on the first open day.
+- **Financial Statements** (`/finance/reports`): trial balance, income statement, balance sheet, cash flow (direct), general ledger, by academic year or dates, CSV/Excel/PDF; books check (balanced; Fees receivable = students' balances; Student credit = credit balances; Petty cash = fund balances).
+- **Bank Reconciliation** (`/finance/bank-reconciliation`): CSV import with column mapping (duplicates skipped), auto-match (equal amount within 7 days, reference preferred), manual one-to-many matching, ignore, add a missing item to the books, undo an import, difference against the statement balance.
+- **Finance Audit Log** (`/finance/audit-log`): school-scoped (through the acting user), by area, person, dates, text; server-paged.
+- **Verified** (44 HTTP checks on real data, migration rolled back afterwards so Vercel runs it on deploy): chart 28 accounts; second sync posts 0; integrity checks agree (Fees receivable 1,812); expense + void → correction, Utilities back to 0; custom category → account 5200; petty cash 800 after top-up 1,000 / spend 200; unbalanced, control-account and future-dated journals → 400; second reversal and reversing an automatic entry → 409; trial balance 11,819 = 11,819; balance sheet assets = liabilities + equity; cash flow opening + change = closing; CSV and PDF exports; bank import 3, re-import skipped 3, auto-match 2, bank charge booked and matched, reconciled; undo blocked while matched; closed period → 409; teacher → 403.
+
 ### Staff onboarding — ✅ done & verified (before Accountant and Admissions)
 
 Before this, a school had no way to hire an accountant or admissions officer,
@@ -571,18 +583,49 @@ other than giving a teacher the Bursar/Administrator designation.
 
 ### Accountant (finance) — after Parent (work order)
 
-Accountant sidebar, top to bottom. Expenses, Payroll, Scholarships, Email
-Notifications and Financial Reports are v2 (hidden) and skipped.
+Accountant sidebar, top to bottom (v1). Scholarships (duplicate of Discounts),
+Email Notifications and the old Reports → Financial Reports are v2 (hidden).
 
 | # | Sidebar item (accountant order) | Route | Status |
 |---|---|---|---|
-| 0 | Overview / Dashboard | `/accountant/dashboard` | 🔎 |
-| 1 | Fee Structures | `/finance/fees` | 🔎 |
-| 2 | Invoices | `/finance/invoices` | 🔎 |
-| 3 | Payments & Receipts | `/finance/payments` | 🔎 |
-| 4 | Announcements | `/communication/announcements` | 🔎 |
-| 5 | Support | `/support` | 🔎 |
-| — | Settings, Guide & Replay walkthrough | `/settings`, `/guide` | 🔎 (§2.11) |
+| 0 | Overview / Dashboard | `/accountant/dashboard` | ✅ year-aware (part 1); now also a "Finance work areas" grid linking every finance page, with pay runs awaiting approval / to pay |
+| 1 | Staff Attendance | `/staff/attendance` | ✅ self sign-in (staff onboarding pass) |
+| 2 | Fee Structures | `/finance/fees` | ✅ part 1 |
+| 3 | Invoices | `/finance/invoices` | ✅ part 1 |
+| 4 | Payments & Receipts | `/finance/payments` | ✅ parts 1–2 |
+| 5 | Arrears & Aging | `/finance/aging` | ✅ Phase A |
+| 6 | Discounts & Scholarships | `/finance/discounts` | ✅ Phase A |
+| 7 | Expenses | `/finance/expenses` | ✅ Phase B |
+| 8 | Petty Cash | `/finance/petty-cash` | ✅ Phase B |
+| 9 | Budget | `/finance/budgets` | ✅ Phase B |
+| 10 | Payroll | `/finance/payroll` | ✅ Phase B |
+| 11 | Financial Statements | `/finance/reports` | ✅ Phase C |
+| 12 | Journal | `/finance/journal` | ✅ Phase C |
+| 13 | Chart of Accounts | `/finance/accounts` | ✅ Phase C |
+| 14 | Bank Reconciliation | `/finance/bank-reconciliation` | ✅ Phase C |
+| 15 | Finance Audit Log | `/finance/audit-log` | ✅ Phase C |
+| 16 | My Payslips | `/finance/my-payslips` | ✅ Phase B |
+| 17 | Announcements | `/communication/announcements` | ✅ posts to all / parents / students (school-wide); a teacher-bursar now also receives "Accountants" posts |
+| 18 | Support | `/support` | ✅ own tickets |
+| — | Settings, Guide & Replay walkthrough | `/settings`, `/guide` | ✅ see below |
+
+**Connections fixed in the final accountant pass:**
+- `GET /students` rejected `accountant` (403), so the student search in Record Payment and Give a discount never worked for a pure accountant. Now allowed (tenant-scoped, read-only list).
+- A teacher with the Bursar duty stays `teacher` on `/students` and `/classes` (not duty modules), so finance pickers showed only their own classes. Finance pages now send `?scope=finance`; `utils/financeLookup.isFinanceLookup` widens the list only for accountant/principal or a teacher whose live `staff_duties` include `accountant`. Teacher pages stay class-scoped, and a plain teacher sending `scope=finance` is not widened.
+- Announcements addressed to "Accountants" now reach a teacher-bursar (`announcementService.viewerDuties`).
+- Finance notifications (bell, `core.notifyFinanceStaff`, best-effort): discount waiting for approval → principal; pay run drafted → principal; pay run approved → bursar; online (Monime) payment received → bursar. "Bursar" includes teachers with the duty.
+- Sidebar re-filters when the role or duties change (memo deps).
+- **Settings:** Profile, Security and a read-only **Payment Policy** tab (also for a teacher-bursar) loaded through `GET /school-config/settings`; saving stays principal-only (403). Accountant subtitle.
+- **Guide** (`lib/onboarding.ts` ACCOUNTANT, was 3 steps): 10-step walkthrough, "Your finance rhythm" (day / week / month / new year), five key rules (money is never deleted, the principal decides the big things, one year at a time, the books post themselves, online payments record themselves), 13 sections covering every v1 page, six FAQs. New Guide icons: Coins, Receipt, Timer, Percent, Scale, Landmark, History.
+- **Verified** (18 HTTP checks, temporary accountant + temporary Bursar duty, all removed): accountant lists 5/5 students; teacher-bursar finance lists 5 students / 4 classes vs 1 / 2 on teacher pages; plain teacher not widened; "Accountants" post reaches accountant and teacher-bursar, not a plain teacher; waiver → principal notified with a Discounts link; policy readable, not writable; dashboard and Phase B/C endpoints 200.
+- **Final accountant fixes (user review):**
+  - **Staff attendance:** self sign-in is today only and closes at the school's `staff_signin_closes_at` (default 18:00, school time; principal sets it in Attendance Rules, validated HH:MM) → 409 `SIGN_IN_CLOSED`. A day the principal marked absent/excused can't be overridden by a self sign-in (409 `MARKED_BY_PRINCIPAL`). `/my` returns `sign_in {open, closes_at}`; the panel shows today's date, refreshes every minute (an overnight tab moves to the new day) and explains when sign-in is closed. Past days stay principal-only (403).
+  - **Smart student search** (`GET /finance/students/search?q=`, `studentLookupService.search`): every word must match a name, admission no., email, class, or a guardian's name / email / phone digits; exact admission no. first, then names starting with the word, current students before leavers, then who owes most. Shared `StudentPicker` (debounced, arrow keys / Enter / Esc, highlighted matches, class, guardian, owed) used by Record Payment and Give a discount.
+  - **Bursar student profile** (`GET /finance/students/:id/profile`): name, admission no., photo, class, status, contacts, guardians (tap to call / email, parent login yes/no), billed / owed this year, owed in total, credit, last payment. No credentials, medical, address, results, attendance or discipline. New default **Profile** tab in the Student Account window, with "Send a fee reminder".
+  - **Discounts:** a percentage on fees not billed yet always waits for the principal (was auto-approved at "Le 0"); term and Tuition matching tolerate old `first_term` / `tuition` rows; `/finance/bulk-bill` normalises year, term and type and applies approved discounts; unbill now removes discounted (unpaid) charges and takes their discount lines back; `applied_amount` ignores deleted fees; per-student lock + duplicate check inside the transaction (two parallel identical grants → one); one-off waivers can repeat except the same one within 5 minutes; leavers can't get new discounts; sibling candidates = children enrolled that year, grouped by parent account or guardian phone, oldest by real date of birth; revoke: bursar withdraws pending or revokes their own within-limit discount, only the principal revokes what they approved (403), past years read-only (409); the requester is notified of approve / reject; the response reports `unbilled` and `shortfall` (already-paid fees) for clear toasts. UI: Withdraw / Revoke on the list and the student's Discounts tab (year-aware), busy "Give" for siblings, distinct-student KPI, client checks (custom reason, % ≤ 100).
+  - **Help Center:** accountant quick actions and six bursar FAQs; new "School fees & finance" ticket category (Billing now says it's the WiSkul subscription); articles: Start here (bursar), Fee structures and billing, Invoices and reminders, Record payments & receipts (rewritten: smart search, methods, credit, refunds), A student's account, Discounts, Arrears & late fees, Expenses / petty cash / budget, Payroll, The books, Bank reconciliation, Staff sign-in. Guide updated to match.
+  - **Verified** (28 HTTP checks, temporary accountant, fee and grants, all removed): search by 3 letters / admission no. / full name / parent phone digits, teacher 403; profile without sensitive fields, teacher 403; within-limit waiver Le 50 on an old-style `first_term`/`tuition` fee (500 → 450); repeat → 409; parallel → 201 + 409; unbilled % → waits; withdraw; own revoke; Le 200 above limit → principal approves, bursar notified, bursar revoke 403, principal 200; principal-marked absent → sign-in 409; after closing time → 409; staff past day 403; bad closing time 400.
+- **Known limits:** `GET /students/:id` (full profile) stays closed to accountants on purpose; finance uses the Student Account modal. A teacher-bursar gets the TEACHER guide (their main role). Monime refunds are done at the provider. `CRON_SECRET` must be set in Vercel for the daily late-fee + books job.
 
 Accountant-specific things to probe:
 - **Money integrity:** amounts in Leones with consistent rounding. A balance never goes negative from double-recorded payments. Recording is idempotent (double submit), and webhooks are idempotent and verified. Totals and KPIs come from the server over the whole year.

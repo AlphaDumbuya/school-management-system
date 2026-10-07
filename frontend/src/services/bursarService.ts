@@ -71,8 +71,21 @@ export async function downloadFile(endpoint: string, filename: string): Promise<
   await saveBlob(await res.blob(), filename);
 }
 
+export type StudentHit = {
+  id: string; admission_no: string; name: string; status: string | null; photo_url: string | null;
+  class_name: string | null; class_level: string | null; outstanding: number; guardian_name: string | null; guardian_phone: string | null; left_school: boolean;
+};
+export type FinanceStudentProfile = {
+  id: string; admission_no: string; name: string; status: string | null; photo_url: string | null; gender: string | null; enrollment_date: string | null;
+  email: string | null; phone: string | null; class_name: string | null; class_level: string | null; enrolment_status: string | null; left_school: boolean;
+  guardians: Array<{ name: string | null; relationship: string | null; phone: string | null; email: string | null; is_primary: boolean; has_account: boolean }>;
+  money: { academic_year: string | null; billed_this_year: number; owed_this_year: number; owed_total: number; credit: number; last_payment: { date: string; amount: number; receipt_number: string | null } | null };
+};
+
 export const bursarService = {
   // Discounts
+  searchStudents: (q: string) => apiClient.get<{ success: boolean; data: StudentHit[] }>(`${F}/students/search${qs({ q })}`),
+  studentProfile: (id: string) => apiClient.get<{ success: boolean; data: FinanceStudentProfile }>(`${F}/students/${id}/profile`),
   listRules: () => apiClient.get<{ success: boolean; data: DiscountRule[] }>(`${F}/discounts/rules`),
   createRule: (b: Partial<DiscountRule>) => apiClient.post<{ success: boolean; data: DiscountRule }>(`${F}/discounts/rules`, b),
   updateRule: (id: string, b: Partial<DiscountRule>) => apiClient.put<{ success: boolean; data: DiscountRule }>(`${F}/discounts/rules/${id}`, b),
@@ -177,4 +190,51 @@ export const bursarB = {
   removeSlip: (id: string) => apiClient.delete(`${F}/payroll/payslips/${id}`),
   mySlips: () => apiClient.get<{ success: boolean; data: any[] }>(`${F}/payroll/my-payslips`),
   downloadSlip: (id: string, label: string) => downloadFile(`${F}/payroll/payslips/${id}/pdf`, `Payslip-${label}.pdf`),
+};
+
+// ── Phase C: accounting (chart of accounts, journal, statements, bank rec, audit) ──
+export type GLAccount = {
+  id: string; code: string; name: string; type: 'asset' | 'liability' | 'equity' | 'income' | 'expense';
+  subtype: string | null; system_key: string | null; is_active: boolean; is_system: boolean; control: boolean; balance: number; has_activity: boolean;
+  /** Income / expense: the academic year the balance covers (balance-sheet accounts: null = balance now). */
+  period: string | null;
+};
+export type GLLine = { id: string; entry_id: string; account_id: string; code: string; name: string; debit: number; credit: number; memo: string | null };
+export type GLEntry = {
+  id: string; entry_no: string; entry_date: string; academic_year: string | null; memo: string | null; kind: 'auto' | 'manual';
+  source_type: string; source_id: string | null; reverses_id: string | null; reversed_by_id: string | null; reverse_reason: string | null;
+  created_by_name: string | null; lines: GLLine[]; total: number;
+};
+export type Paged<T> = { total: number; page: number; size: number; rows: T[] };
+export type RangeQuery = { academic_year?: string; from?: string; to?: string };
+
+export const ACCOUNT_TYPE_LABEL: Record<string, string> = { asset: 'Assets', liability: 'Liabilities', equity: 'Equity', income: 'Income', expense: 'Expenses' };
+export const SOURCE_TYPE_LABEL: Record<string, string> = {
+  fee: 'Fee billed', payment: 'Payment', refund: 'Refund', adjustment: 'Discount / waiver', credit: 'Student credit',
+  expense: 'Expense', petty_cash: 'Petty cash', payroll: 'Payroll', manual: 'Manual journal',
+};
+
+export const bursarC = {
+  accounts: () => apiClient.get<{ success: boolean; data: GLAccount[] }>(`${F}/gl/accounts`),
+  saveAccount: (b: Partial<GLAccount> & { description?: string }, id?: string) => (id ? apiClient.put(`${F}/gl/accounts/${id}`, b) : apiClient.post(`${F}/gl/accounts`, b)),
+  sync: () => apiClient.post<{ success: boolean; data: { posted: number; documents: number } }>(`${F}/gl/sync`, {}),
+  journal: (p: Record<string, string | number | undefined>) => apiClient.get<{ success: boolean; data: Paged<GLEntry> }>(`${F}/gl/journal${qs(p)}`),
+  postJournal: (b: { entry_date: string; memo: string; lines: Array<{ account_id: string; debit?: number; credit?: number; memo?: string }> }) => apiClient.post<{ success: boolean; data: GLEntry }>(`${F}/gl/journal`, b),
+  reverse: (id: string, reason: string) => apiClient.post<{ success: boolean; data: GLEntry }>(`${F}/gl/journal/${id}/reverse`, { reason }),
+  lock: () => apiClient.get<{ success: boolean; data: { locked_until: string | null } }>(`${F}/gl/lock`),
+  setLock: (locked_until: string | null) => apiClient.put<{ success: boolean; data: { locked_until: string | null } }>(`${F}/gl/lock`, { locked_until }),
+  report: (kind: 'trial-balance' | 'income-statement' | 'balance-sheet' | 'cash-flow', p: RangeQuery) => apiClient.get<{ success: boolean; data: any }>(`${F}/gl/reports/${kind}${qs(p)}`),
+  ledger: (accountId: string, p: RangeQuery) => apiClient.get<{ success: boolean; data: any }>(`${F}/gl/reports/ledger/${accountId}${qs(p)}`),
+  integrity: () => apiClient.get<{ success: boolean; data: { as_at: string; balanced: boolean; checks: Array<{ label: string; books: number; records: number; difference: number; ok: boolean; hint: string }> } }>(`${F}/gl/integrity`),
+  bankAccounts: () => apiClient.get<{ success: boolean; data: Array<{ id: string; code: string; name: string; system_key: string | null; book_balance: number; statement_lines: number; unmatched: number; last_statement_date: string | null }> }>(`${F}/bank/accounts`),
+  bankView: (accountId: string, p: { to?: string; statement_balance?: string }) => apiClient.get<{ success: boolean; data: any }>(`${F}/bank/${accountId}${qs(p)}`),
+  bankImport: (accountId: string, rows: Array<{ date: string; description?: string; reference?: string; amount: number; balance?: number | null }>) =>
+    apiClient.post<{ success: boolean; data: { batch: string; inserted: number; skipped: number } }>(`${F}/bank/${accountId}/import`, { rows }),
+  bankUndoImport: (batch: string) => apiClient.delete<{ success: boolean; data: { removed: number } }>(`${F}/bank/imports/${batch}`),
+  bankAutoMatch: (accountId: string) => apiClient.post<{ success: boolean; data: { matched: number; remaining: number } }>(`${F}/bank/${accountId}/auto-match`, {}),
+  bankMatch: (statement_line_id: string, gl_line_ids: string[]) => apiClient.post(`${F}/bank/match`, { statement_line_id, gl_line_ids }),
+  bankUnmatch: (statement_line_id: string) => apiClient.post(`${F}/bank/unmatch`, { statement_line_id }),
+  bankIgnore: (id: string, ignored: boolean) => apiClient.post(`${F}/bank/lines/${id}/ignore`, { ignored }),
+  bankBook: (id: string, account_id: string, memo?: string) => apiClient.post<{ success: boolean; data: { entry_no: string } }>(`${F}/bank/lines/${id}/book`, { account_id, memo }),
+  audit: (p: Record<string, string | number | undefined>) => apiClient.get<{ success: boolean; data: Paged<any> & { areas: string[]; people: Array<{ id: string; name: string; role: string }> } }>(`${F}/audit${qs(p)}`),
 };

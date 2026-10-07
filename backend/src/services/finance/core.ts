@@ -156,3 +156,48 @@ export async function familyContact(studentId: string): Promise<{ email: string 
   if (parent) return { email: parent.email, name: [parent.first_name, parent.last_name].filter(Boolean).join(' ') || 'Parent', userIds };
   return { email: stu?.uemail || stu?.email || null, name: (await studentLabel(studentId)).name, userIds };
 }
+
+/** In-app notification (bell) to specific users. Best-effort. */
+export async function notifyUsers(ids: string[], n: { subject: string; message: string; url: string; sourceType?: string; sourceId?: string }): Promise<void> {
+  try {
+    const { default: notificationService } = await import('@services/notificationService');
+    for (const id of Array.from(new Set(ids.filter(Boolean)))) {
+      await notificationService.createNotification({
+        recipientId: id, notificationType: 'payment', subject: n.subject, message: n.message,
+        data: { url: n.url }, channels: ['in_app'], sourceType: n.sourceType, sourceId: n.sourceId,
+      }).catch(() => null);
+    }
+  } catch { /* never fail the money action */ }
+}
+
+/**
+ * In-app notification (bell) to a school's finance people. 'accountant' also
+ * reaches teachers holding the Bursar duty. Best-effort: never fails the
+ * money action that triggered it.
+ */
+export async function notifyFinanceStaff(
+  tenantId: string,
+  to: Array<'principal' | 'accountant'>,
+  n: { subject: string; message: string; url: string; sourceType?: string; sourceId?: string; exceptUserId?: string | null },
+): Promise<number> {
+  try {
+    const rows = await db('users').where({ tenant_id: tenantId }).where('status', 'active')
+      .where((q) => {
+        q.whereIn('role', to);
+        if (to.includes('accountant')) q.orWhere((q2) => q2.where('role', 'teacher').whereRaw("staff_duties::jsonb @> '[\"accountant\"]'::jsonb"));
+      })
+      .select('id');
+    const ids = rows.map((r: any) => r.id).filter((id: string) => id !== n.exceptUserId);
+    if (!ids.length) return 0;
+    const { default: notificationService } = await import('@services/notificationService');
+    for (const id of ids) {
+      await notificationService.createNotification({
+        recipientId: id, notificationType: 'payment', subject: n.subject, message: n.message,
+        data: { url: n.url }, channels: ['in_app'], sourceType: n.sourceType, sourceId: n.sourceId,
+      }).catch(() => null);
+    }
+    return ids.length;
+  } catch {
+    return 0;
+  }
+}

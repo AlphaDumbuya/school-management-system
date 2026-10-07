@@ -11,6 +11,7 @@ import { linkGuardianForStudent } from '@utils/guardianLinking';
 import { provisionStudentAccounts } from '@utils/studentAccounts';
 import { sendExport } from '@utils/exportResponse';
 import { importStudents } from '@services/studentImportService';
+import { isFinanceLookup } from '@utils/financeLookup';
 import multer from 'multer';
 import { normalizeAcademicYear } from '../utils/academicYear.js';
 
@@ -348,7 +349,9 @@ router.get('/parent/children', authenticate, async (req: Request, res: Response,
  * List all students with pagination and filtering
  * @requires admin, principal, teacher
  */
-router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'teacher', 'admissions_officer'), async (req: Request, res: Response, next: NextFunction) => {
+// The bursar (accountant, or a teacher with the Bursar duty via ?scope=finance)
+// searches the whole school to record payments and give discounts.
+router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'teacher', 'admissions_officer', 'accountant'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
@@ -400,7 +403,7 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     // (historic statuses); with no year, who is enrolled in their classes now.
     let teacherStudentIds: string[] | null = null;
     let teacherYearClassIds: string[] | null = null;
-    if (userRole === 'teacher') {
+    if (userRole === 'teacher' && !(await isFinanceLookup(req))) {
       const teacher = await db('teachers')
         .join('users as u', 'teachers.user_id', 'u.id')
         .where('teachers.user_id', req.user!.id)

@@ -41,6 +41,7 @@ import financeLedgerRoutes from '@routes/financeLedgerRoutes';
 import schoolExpenseRoutes from '@routes/schoolExpenseRoutes';
 import bursarFinanceRoutes, { financeCronRouter } from '@routes/bursarFinanceRoutes';
 import bursarFinanceBRoutes from '@routes/bursarFinanceBRoutes';
+import bursarFinanceCRoutes from '@routes/bursarFinanceCRoutes';
 import { startFinanceJobs } from './jobs/financeJobs';
 
 import phase9NotificationRoutes from '@routes/phase9NotificationRoutes';
@@ -309,6 +310,8 @@ app.use('/api/v1/finance/ledger', financeLedgerRoutes);
 app.use('/api/v1/finance', bursarFinanceRoutes);
 // Bursar Phase B: expenses, petty cash, budgets, payroll (+ My Payslips).
 app.use('/api/v1/finance', bursarFinanceBRoutes);
+// Bursar Phase C: chart of accounts, journal, statements, bank rec, audit log.
+app.use('/api/v1/finance', bursarFinanceCRoutes);
 // Daily finance job (Vercel Cron, CRON_SECRET-guarded).
 app.use('/api/v1/cron', financeCronRouter);
 

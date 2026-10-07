@@ -31,6 +31,15 @@ export async function tenantToday(tenantId: string): Promise<string> {
   }
 }
 
+/** The school's current time of day, "HH:MM" (24h), in its timezone. */
+export async function tenantTimeOfDay(tenantId: string): Promise<string> {
+  const tz = await tenantTimezone(tenantId);
+  try {
+    return new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(11, 16);
+  }
+}
 /**
  * True when a date (YYYY-MM-DD or ISO) is before the ACTIVE academic year's
  * start, i.e. it belongs to a past year and is read-only history.

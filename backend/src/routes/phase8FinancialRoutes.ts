@@ -2251,6 +2251,13 @@ router.post('/finance/bulk-bill', authenticate, requireStaff, async (req: Reques
 
     const now = new Date();
     let created = 0;
+    // Same shape as fee-structure billing, so discounts and term filters match.
+    const { normalizeAcademicYear, resolveActiveYear } = await import('../utils/academicYear.js');
+    const year = normalizeAcademicYear(academicYear || null) || (await resolveActiveYear(tenantId)).yearString || null;
+    const t = String(term || '').trim().toLowerCase().replace(/_/g, ' ');
+    const termLabel = !t ? null : /^(1|first|first term|term 1)$/.test(t) ? 'First Term' : /^(2|second|second term|term 2)$/.test(t) ? 'Second Term' : /^(3|third|third term|term 3)$/.test(t) ? 'Third Term' : String(term);
+    const feeType = String(type).trim().toLowerCase() === 'tuition' ? 'Tuition' : type;
+    const { discountService } = await import('../services/finance/discountService.js');
     for (const s of students) {
       const feeId = crypto.randomUUID(); // fees.id is a UUID column
       try {
@@ -2258,12 +2265,12 @@ router.post('/finance/bulk-bill', authenticate, requireStaff, async (req: Reques
           id: feeId,
           tenant_id: tenantId,
           student_id: s.id,
-          type,
+          type: feeType,
           amount: amt,
           balance: amt,
           due_date: new Date(dueDate),
-          term: term || null,
-          academic_year: academicYear || null,
+          term: termLabel,
+          academic_year: year,
           description: description || null,
           class_id: scope === 'class' ? classId : null,
           status: 'pending',
@@ -2271,6 +2278,8 @@ router.post('/finance/bulk-bill', authenticate, requireStaff, async (req: Reques
           updated_at: now,
         });
         created++;
+        // Approved discounts / scholarships cover this new charge too.
+        if (year) await db.transaction((trx) => discountService.applyApprovedGrantsForStudent(trx, tenantId, s.id, year)).catch(() => 0);
       } catch (e) { /* skip individual failures */ }
     }
 

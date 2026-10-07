@@ -75,6 +75,9 @@ export const SettingsPage: React.FC = () => {
   const logout = useAuthStore((s) => s.logout);
   const isSuperAdmin = user?.role === 'super_admin';
   const isTeacher = user?.role === 'teacher';
+  // The bursar: an accountant, or a teacher holding the Bursar duty. They work
+  // under the school's payment policy, so they get a read-only view of it.
+  const isBursar = user?.role === 'accountant' || (isTeacher && ((user as any)?.staffDuties ?? []).includes('accountant'));
   // A tenant/school admin (principal) manages the school-config tabs. The super
   // admin is the PLATFORM operator and has no school to configure — they only
   // get Profile + Security (2FA). `isPrincipalOrSuper` gates school-config data
@@ -206,6 +209,7 @@ export const SettingsPage: React.FC = () => {
     min_attendance_warning: 75,
     min_attendance_critical: 60,
     late_cutoff_time: '08:30',
+    staff_signin_closes_at: '18:00',
     currency: 'SLE',
     // School-wide (general) payment policy. Each fee structure may override any
     // of these per class; when a structure leaves a field blank, this applies.
@@ -267,6 +271,17 @@ export const SettingsPage: React.FC = () => {
       // Basic Profile - Any logged in user
       if (activeTab === 'profile') {
         // Handled locally from authStore for now
+      }
+
+      // The bursar reads (never saves) the payment policy.
+      if (isBursar && !isPrincipalOrSuper) {
+        const res = await schoolConfigService.getSettings().catch(() => ({ success: false, data: {} }));
+        if (res.success && res.data) {
+          setSettings((prev) => ({ ...prev, ...res.data }));
+          setSettingsLoadFailed(false);
+        } else {
+          setSettingsLoadFailed(true);
+        }
       }
 
       // School Info & Global Settings - Only if authorized
@@ -518,7 +533,7 @@ export const SettingsPage: React.FC = () => {
     profile: (k) => ['language', 'date_format'].includes(k),
     academic: (k) => k === 'term_count' || /^term_\d_(start|end)$/.test(k),
     'id-format': (k) => k.startsWith('id_'),
-    attendance: (k) => ['min_attendance_warning', 'min_attendance_critical', 'late_cutoff_time'].includes(k),
+    attendance: (k) => ['min_attendance_warning', 'min_attendance_critical', 'late_cutoff_time', 'staff_signin_closes_at'].includes(k),
     financial: (k) => k.startsWith('fin_'),
   };
 
@@ -817,6 +832,7 @@ export const SettingsPage: React.FC = () => {
     { id: 'profile', label: 'My Profile', icon: <User size={18} />, adminOnly: false },
     { id: 'security', label: 'Security', icon: <ShieldCheck size={18} />, adminOnly: false },
     { id: 'offline', label: 'Offline & Storage', icon: <HardDrive size={18} />, adminOnly: false, teacherOnly: true },
+    { id: 'policy', label: 'Payment Policy', icon: <DollarSign size={18} />, adminOnly: false, bursarOnly: true },
     // ── School identity (admin) ──
     { id: 'school', label: 'School Info', icon: <Building size={18} />, adminOnly: true },
     { id: 'academic', label: 'Academic Config', icon: <Calendar size={18} />, adminOnly: true },
@@ -836,6 +852,7 @@ export const SettingsPage: React.FC = () => {
     if (!t) return false;
     if (t.adminOnly && !isPrincipalOrSuper) return false;
     if ((t as any).teacherOnly && !isTeacher) return false;
+    if ((t as any).bursarOnly && !isBursar) return false;
     return true;
   };
   // Unknown (?tab=typo) or not-permitted tabs fall back to My Profile instead
@@ -843,7 +860,7 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     if (!tabAllowed(activeTab)) setActiveTab('profile');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, isPrincipalOrSuper, isTeacher]);
+  }, [activeTab, isPrincipalOrSuper, isTeacher, isBursar]);
 
   return (
     <MainLayout>
@@ -853,9 +870,11 @@ export const SettingsPage: React.FC = () => {
           ? 'Manage your platform account profile and security.'
           : isPrincipalOrSuper
             ? 'Configure your personal preferences and school-wide administrative variables.'
-            : isTeacher
-              ? 'Manage your profile, password, sign-in security and offline storage on this device.'
-              : 'Manage your profile, password and sign-in security.'}
+            : user?.role === 'accountant'
+              ? 'Manage your profile, password and sign-in security, and see the payment policy you work under.'
+              : isTeacher
+                ? 'Manage your profile, password, sign-in security and offline storage on this device.'
+                : 'Manage your profile, password and sign-in security.'}
       >
 
         <div className="flex flex-col lg:flex-row gap-8 items-start">
@@ -866,6 +885,7 @@ export const SettingsPage: React.FC = () => {
                 {tabs.map((tab) => {
                   if (tab.adminOnly && !isPrincipalOrSuper) return null;
                   if ((tab as any).teacherOnly && !isTeacher) return null;
+                  if ((tab as any).bursarOnly && !isBursar) return null;
                   const active = activeTab === tab.id;
                   return (
                     <button
@@ -893,6 +913,7 @@ export const SettingsPage: React.FC = () => {
                 {tabs.map((tab) => {
                   if (tab.adminOnly && !isPrincipalOrSuper) return null;
                   if ((tab as any).teacherOnly && !isTeacher) return null;
+                  if ((tab as any).bursarOnly && !isBursar) return null;
                   const active = activeTab === tab.id;
                   return (
                     <button
@@ -935,6 +956,53 @@ export const SettingsPage: React.FC = () => {
                     </CardContent>
                   </Card>
                 )}
+
+                {/* ── PAYMENT POLICY (bursar, read-only) ── */}
+                {activeTab === 'policy' && (() => {
+                  const on = (v: any) => v === true || v === 'true';
+                  const num = (v: any) => Number(v) || 0;
+                  const le = (v: any) => `Le ${num(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                  const lateOn = on(settings.fin_late_fee_enabled);
+                  const rows: Array<[string, string, string?]> = [
+                    ['Currency', 'Le (Sierra Leonean Leones), fixed'],
+                    ['Instalments (part payments)', settings.fin_allow_installments !== false && settings.fin_allow_installments !== 'false' ? 'Allowed' : 'Not allowed: families pay the full balance at once'],
+                    ['Minimum payment, new students', `${num(settings.fin_min_percent_new)}% of their balance`],
+                    ['Minimum payment, continuing students', `${num(settings.fin_min_percent_continuing)}% of their balance`],
+                    ['Minimum cleared per term', `${num(settings.fin_min_percent_term)}%`],
+                    ['Charges before tuition', on(settings.fin_charges_compulsory_first_term) ? 'Yes: a part payment clears other charges first' : 'No'],
+                    ['Late fees', lateOn
+                      ? `On: ${num(settings.fin_late_fee_fixed) > 0 ? le(settings.fin_late_fee_fixed) : `${num(settings.fin_late_fee_percent)}% of the unpaid balance`}, once per overdue fee, after ${num(settings.fin_late_fee_grace_days)} grace day${num(settings.fin_late_fee_grace_days) === 1 ? '' : 's'}${num(settings.fin_late_fee_cap) > 0 ? `, capped at ${le(settings.fin_late_fee_cap)}` : ''}`
+                      : 'Off'],
+                    ['Discounts you can give without approval', num(settings.fin_discount_approval_threshold) > 0 ? `Up to ${le(settings.fin_discount_approval_threshold)}; larger ones wait for the principal` : 'None: every discount you give waits for the principal'],
+                    ['Receipt email for cash and bank payments', settings.fin_email_manual_receipts === false || settings.fin_email_manual_receipts === 'false' ? 'Off' : 'On: every payment you record is emailed to the family'],
+                  ];
+                  return (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2.5">
+                          <span className="w-9 h-9 rounded-xl bg-green-50 text-green-600 flex items-center justify-center"><DollarSign size={18} /></span>
+                          School Payment Policy
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <p className="text-sm text-gray-600">The rules every payment and discount follows. The principal sets them in Settings → Financial Info; ask them if something needs to change. A class can override the payment rules on its fee structure.</p>
+                        {settingsLoadFailed
+                          ? <p role="alert" className="text-sm text-red-600">Couldn't load the policy. Refresh the page to try again.</p>
+                          : (
+                            <dl className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                              {rows.map(([k, v]) => (
+                                <div key={k} className="grid grid-cols-1 sm:grid-cols-3 gap-1 px-4 py-2.5 text-sm">
+                                  <dt className="text-gray-500">{k}</dt>
+                                  <dd className="sm:col-span-2 font-medium text-gray-800">{v}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          )}
+                        <a href="/finance/fees" className="inline-block text-xs font-semibold text-blue-700 underline hover:text-blue-900">See class overrides in Fee Structures →</a>
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
 
                 {/* ── OFFLINE & STORAGE TAB (teachers) ── */}
                 {activeTab === 'offline' && (
@@ -1938,6 +2006,17 @@ export const SettingsPage: React.FC = () => {
                             onChange={(e) => setSettings({ ...settings, late_cutoff_time: e.target.value })}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
                           />
+                        </div>
+                        <div>
+                          <label htmlFor="staff-signin-closes" className="text-xs font-semibold text-gray-500 block mb-1">Staff sign-in closes at</label>
+                          <input
+                            id="staff-signin-closes"
+                            type="time"
+                            value={settings.staff_signin_closes_at || '18:00'}
+                            onChange={(e) => setSettings({ ...settings, staff_signin_closes_at: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                          />
+                          <p className="text-[10px] text-gray-400 mt-1">Staff sign themselves in for today only, until this time. After it, you record their attendance.</p>
                         </div>
                       </div>
 

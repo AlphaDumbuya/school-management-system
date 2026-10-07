@@ -19,6 +19,8 @@ import { planService } from '@services/finance/planService';
 import { statementService } from '@services/finance/statementService';
 import { assertCanViewStudent, isFinanceStaff, round2 } from '@services/finance/core';
 import { sendExport } from '@utils/exportResponse';
+import { glService } from '@services/finance/glService';
+import { studentLookupService } from '@services/finance/studentLookupService';
 
 const router = Router();
 router.use(authenticate, attachUserContext);
@@ -37,6 +39,10 @@ const U = (req: Request) => String(req.user!.id);
 const wrap = (fn: (req: Request, res: Response) => Promise<any>) => (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
 const reasonOf = (req: Request) => String(req.body?.reason || '').trim();
 
+// ── Student lookup (bursar pickers) and the bursar's student profile ────────
+router.get('/students/search', staff, wrap(async (req, res) => res.json({ success: true, data: await studentLookupService.search(T(req), String(req.query.q || ''), Number(req.query.limit) || 12) })));
+router.get('/students/:id/profile', staff, wrap(async (req, res) => res.json({ success: true, data: await studentLookupService.profile(T(req), req.params.id) })));
+
 // ── Discounts & scholarships ────────────────────────────────────────────────
 router.get('/discounts/rules', staff, wrap(async (req, res) => res.json({ success: true, data: await discountService.listRules(T(req)) })));
 router.post('/discounts/rules', staff, wrap(async (req, res) => res.status(201).json({ success: true, data: await discountService.createRule(T(req), U(req), req.body) })));
@@ -52,7 +58,7 @@ router.get('/discounts/grants', staff, wrap(async (req, res) => res.json({
 router.post('/discounts/grants', staff, wrap(async (req, res) => res.status(201).json({ success: true, data: await discountService.grant(T(req), { id: U(req), role: String(req.user!.role) }, req.body) })));
 router.post('/discounts/grants/:id/approve', principal, wrap(async (req, res) => res.json({ success: true, data: await discountService.decide(T(req), U(req), req.params.id, 'approve', reasonOf(req)) })));
 router.post('/discounts/grants/:id/reject', principal, wrap(async (req, res) => res.json({ success: true, data: await discountService.decide(T(req), U(req), req.params.id, 'reject', reasonOf(req)) })));
-router.post('/discounts/grants/:id/revoke', staff, wrap(async (req, res) => res.json({ success: true, data: await discountService.revoke(T(req), U(req), req.params.id, reasonOf(req)) })));
+router.post('/discounts/grants/:id/revoke', staff, wrap(async (req, res) => res.json({ success: true, data: await discountService.revoke(T(req), U(req), req.params.id, reasonOf(req), String(req.user!.role)) })));
 
 // ── Overdue + late fees ─────────────────────────────────────────────────────
 router.post('/late-fees/run', staff, wrap(async (req, res) => {
@@ -178,6 +184,8 @@ financeCronRouter.all('/finance-daily', async (req: Request, res: Response, next
     const auth = String(req.headers.authorization || '');
     if (!secret || auth !== `Bearer ${secret}`) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const results = await lateFeeService.runDaily();
-    res.json({ success: true, data: results });
+    // Then post the day's money events to the books (schools using accounting).
+    const books = await glService.syncAll().catch((e) => [{ error: String(e?.message || e) }]);
+    res.json({ success: true, data: results, books });
   } catch (e) { next(e); }
 });

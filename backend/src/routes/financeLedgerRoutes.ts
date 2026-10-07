@@ -79,7 +79,8 @@ router.get('/policy/student/:studentId', authenticate, async (req: Request, res:
     }
 
     const policy = await financeLedgerService.getPaymentPolicy(tenantId, studentId);
-    res.json({ success: true, data: policy });
+    const minimum = await financeLedgerService.minimumPayment(tenantId, studentId).catch(() => null);
+    res.json({ success: true, data: { ...policy, minimum } });
   } catch (error) { next(error); }
 });
 

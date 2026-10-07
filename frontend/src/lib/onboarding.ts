@@ -611,16 +611,345 @@ const TEACHER: RoleGuide = {
 };
 
 const ACCOUNTANT: RoleGuide = {
-  headline: 'Welcome — manage your school’s finances',
-  intro: 'Track revenue, invoices and outstanding balances.',
+  headline: 'Welcome — here’s how to run your school’s money on WiSkul',
+  intro:
+    'As bursar you bill fees, collect and receipt payments, follow up arrears, record what the school spends, run payroll and keep the books. Every money record posts to the accounts automatically, so the statements are always up to date. The principal sets the payment policy and approves the big decisions.',
+
+  // ── First-login walkthrough (also "Replay walkthrough") ──
   steps: [
-    { title: 'Review the finance overview', body: 'Your dashboard summarises revenue, collections and outstanding fees.', route: '/accountant/dashboard', routeLabel: 'My Dashboard' },
-    { title: 'Manage invoices', body: 'Issue invoices, record payments and track balances per student.', route: '/finance/invoices', routeLabel: 'Invoices' },
-    { title: 'Reconcile payments', body: 'View all payments across methods and generate receipts.', route: '/finance/payments', routeLabel: 'Payments' },
+    {
+      title: 'Start on your Overview',
+      body: 'Billed, collected and outstanding for the year, cash received today and this month, what’s overdue, discounts waiting for approval, and money still owed from earlier years. Every finance page is one tap away from here.',
+      route: '/accountant/dashboard',
+      routeLabel: 'Open my Overview',
+    },
+    {
+      title: 'Set up and bill the fees',
+      body: 'In Fee Structures, set each class’s term tuition and one-off charges for the year, then Bill it. Saving a structure alone charges nobody; billing creates each student’s fees.',
+      route: '/finance/fees',
+      routeLabel: 'Fee Structures',
+    },
+    {
+      title: 'Record payments and give receipts',
+      body: 'In Record Payment, start typing a name, admission number, class or a parent’s phone and pick the student from the list. It takes cash, bank transfer, cheque or card and settles the oldest fees first. Every payment gets a numbered receipt (PDF, and emailed if the school turned that on). Online payments come in by themselves.',
+      route: '/finance/payments',
+      routeLabel: 'Payments & Receipts',
+    },
+    {
+      title: 'Invoices and reminders',
+      body: 'Generate invoices for a class, level or term with a due date, and send balance reminders to families who owe.',
+      route: '/finance/invoices',
+      routeLabel: 'Invoices',
+    },
+    {
+      title: 'Follow up arrears and discounts',
+      body: 'Arrears & Aging shows who owes and for how long. Discounts & Scholarships handles sibling, staff-child and scholarship discounts and one-off waivers. Big ones wait for the principal.',
+      route: '/finance/aging',
+      routeLabel: 'Arrears & Aging',
+    },
+    {
+      title: 'Record what the school spends',
+      body: 'Expenses for bills, supplies and repairs (with a photo of the receipt), Petty Cash for the small cash float, and a Budget per category that warns when spending goes over.',
+      route: '/finance/expenses',
+      routeLabel: 'Expenses',
+    },
+    {
+      title: 'Run the monthly payroll',
+      body: 'Set each staff member’s pay once. Each month start a pay run: PAYE and NASSIT are worked out, the principal approves it, you pay and mark it paid, and staff get their payslips.',
+      route: '/finance/payroll',
+      routeLabel: 'Payroll',
+    },
+    {
+      title: 'The books keep themselves',
+      body: 'Financial Statements gives the trial balance, income statement, balance sheet and cash flow for any year. Use the Journal only for what the system can’t know, like opening balances, bank charges or paying PAYE to the NRA.',
+      route: '/finance/reports',
+      routeLabel: 'Financial Statements',
+    },
+    {
+      title: 'Check the bank statement',
+      body: 'In Bank Reconciliation, import the bank or mobile-money statement (CSV), let Auto-match pair it with the books, and deal with whatever is left.',
+      route: '/finance/bank-reconciliation',
+      routeLabel: 'Bank Reconciliation',
+    },
+    {
+      title: 'Secure your account',
+      body: 'You handle the school’s money: use a strong password, turn on two-factor authentication and add a passkey. Settings also shows the school’s payment policy.',
+      route: '/settings?tab=security',
+      routeLabel: 'Open Security',
+    },
   ],
+
+  // ── Your finance rhythm ──
+  setupTitle: 'Your finance rhythm',
+  setupIntro: 'What a typical day, week, month and year looks like for the bursar.',
+  setupOrder: [
+    {
+      order: 1,
+      title: 'Every day',
+      why: 'Families expect a receipt the same day, and cash on hand should match the books.',
+      tasks: [
+        { label: 'Record cash, bank and cheque payments', route: '/finance/payments', routeLabel: 'Payments' },
+        { label: 'Record expenses and petty cash spends', route: '/finance/expenses', routeLabel: 'Expenses' },
+        { label: 'Sign in on Staff Attendance (today only, before the cut-off)', route: '/staff/attendance', routeLabel: 'Staff Attendance' },
+      ],
+    },
+    {
+      order: 2,
+      title: 'Every week',
+      why: 'Arrears are easier to collect while they are young.',
+      tasks: [
+        { label: 'Check Arrears & Aging and send reminders', route: '/finance/aging', routeLabel: 'Arrears & Aging' },
+        { label: 'Reconcile the bank and mobile-money statements', route: '/finance/bank-reconciliation', routeLabel: 'Bank Reconciliation' },
+        { label: 'Top up petty cash if it’s low', route: '/finance/petty-cash', routeLabel: 'Petty Cash' },
+      ],
+    },
+    {
+      order: 3,
+      title: 'Every month',
+      why: 'Staff are paid on time and PAYE / NASSIT reach the NRA and NASSIT.',
+      tasks: [
+        { label: 'Start the pay run and send it for approval', route: '/finance/payroll', routeLabel: 'Payroll' },
+        { label: 'Record PAYE / NASSIT paid over (journal template)', route: '/finance/journal', routeLabel: 'Journal' },
+        { label: 'Review the income statement and budget', route: '/finance/reports', routeLabel: 'Statements' },
+      ],
+    },
+    {
+      order: 4,
+      title: 'Each new year and term',
+      why: 'Fees, invoices and the budget start fresh every academic year.',
+      tasks: [
+        { label: 'Set and bill the fee structures', route: '/finance/fees', routeLabel: 'Fee Structures' },
+        { label: 'Generate invoices with due dates', route: '/finance/invoices', routeLabel: 'Invoices' },
+        { label: 'Prepare the budget for the principal to approve', route: '/finance/budgets', routeLabel: 'Budget' },
+      ],
+    },
+  ],
+
+  keyRules: [
+    {
+      title: 'Money is never deleted',
+      body: 'A wrong payment is refunded, an expense or petty cash entry is voided, an invoice is voided and a manual journal is reversed, always with a reason. The original stays on record and the Finance Audit Log shows who did what.',
+    },
+    {
+      title: 'The principal decides the big things',
+      body: 'The principal sets the payment policy (Settings shows it to you), approves discounts above your limit, budgets and pay runs, and closes the books for a finished period.',
+    },
+    {
+      title: 'One year at a time',
+      body: 'Pages open on the current academic year. Past years are read-only: no new fees, invoices or expenses go into a closed year. Money still owed from earlier years stays visible and can be collected.',
+    },
+    {
+      title: 'The books post themselves',
+      body: 'Every fee, payment, refund, discount, expense, petty cash movement and paid pay run is posted to the accounts automatically. Fees receivable, Student credit and Petty cash can only change through their own pages.',
+    },
+    {
+      title: 'Online payments record themselves',
+      body: 'When a family pays online (Monime), the payment, receipt and balance update on their own and you get a notification. Online payments are refunded through the payment provider, not here.',
+    },
+  ],
+
   sections: [
-    { id: 'invoices', title: 'Invoices', icon: 'FileText', intro: 'Issue and track invoices.', points: ['Create invoices per student or class.', 'Record part-payments and balances.'], route: '/finance/invoices', routeLabel: 'Invoices' },
-    { id: 'payments', title: 'Payments', icon: 'Wallet', intro: 'Reconcile incoming payments.', points: ['View payments by method.', 'Generate and share receipts.'], route: '/finance/payments', routeLabel: 'Payments' },
+    {
+      id: 'overview',
+      title: 'Overview',
+      icon: 'BarChart2',
+      intro: 'The year’s money at a glance.',
+      points: [
+        'Billed, collected and outstanding for the selected year, from the fee records.',
+        'Cash received today and this month, overdue charges, discounts and approvals waiting.',
+        'Money still owed from earlier years, recent payments and links to every finance page.',
+      ],
+      route: '/accountant/dashboard',
+      routeLabel: 'Overview',
+    },
+    {
+      id: 'fees',
+      title: 'Fee Structures',
+      icon: 'Coins',
+      intro: 'What each class pays this year.',
+      points: [
+        'Term tuition plus one-off year charges (uniform, exam levy…), billed in Term 1.',
+        'A class can override the school’s payment policy (minimum payment, instalments, late fee).',
+        'Bill to create the charges; unbill removes only unpaid, uninvoiced charges. A billed structure can’t be deleted.',
+      ],
+      route: '/finance/fees',
+      routeLabel: 'Fee Structures',
+    },
+    {
+      id: 'invoices',
+      title: 'Invoices',
+      icon: 'FileText',
+      intro: 'Bills sent to families.',
+      points: [
+        'Generate invoices from outstanding fees for a class, level or term, with a due date.',
+        'Open an invoice for its lines and payments; send reminders to defaulters.',
+        'Void an unpaid invoice with a reason; its fees can be invoiced again.',
+      ],
+      route: '/finance/invoices',
+      routeLabel: 'Invoices',
+    },
+    {
+      id: 'payments',
+      title: 'Payments & Receipts',
+      icon: 'Receipt',
+      intro: 'Every payment, online or recorded by you.',
+      points: [
+        'Record a payment (cash, bank transfer, cheque, card). It settles the oldest fees first, and a double click never records it twice.',
+        'Paying more than is owed? Tick “keep the extra as account credit”.',
+        'Numbered receipts (RCP-…), PDF and email; refund a recorded payment with a reason.',
+        'Find a student by typing part of the name, admission number, class or a parent’s phone.',
+        'Click a student’s name for their profile (class, parents’ phones and emails), statement, discounts, credit, instalment plan and receipts.',
+      ],
+      route: '/finance/payments',
+      routeLabel: 'Payments & Receipts',
+    },
+    {
+      id: 'aging',
+      title: 'Arrears & Aging',
+      icon: 'Timer',
+      intro: 'Who owes, and for how long.',
+      points: [
+        'Not yet due, 1–30, 31–60, 61–90 and over 90 days, per student and class.',
+        'Remind one family or everyone listed; export the list.',
+        'Run the overdue check: marks fees overdue and adds late fees if the school turned them on.',
+      ],
+      route: '/finance/aging',
+      routeLabel: 'Arrears & Aging',
+    },
+    {
+      id: 'discounts',
+      title: 'Discounts & Scholarships',
+      icon: 'Percent',
+      intro: 'Money taken off fees, never counted as collected.',
+      points: [
+        'Discount types: sibling, staff child, scholarship/bursary or custom; percent or fixed.',
+        'Discounts above your limit wait for the principal (they are notified).',
+        'Withdraw a waiting request, or revoke a discount you gave within your limit (the amount is owed again); only the principal revokes what they approved.',
+      ],
+      route: '/finance/discounts',
+      routeLabel: 'Discounts',
+    },
+    {
+      id: 'expenses',
+      title: 'Expenses, Petty Cash & Budget',
+      icon: 'Wallet',
+      intro: 'What the school spends.',
+      points: [
+        'Expenses by category (pick “Other” to type your own), with vendor, method and a receipt photo.',
+        'Petty cash funds: top up, record spends (they become expenses), return what’s left to the bank.',
+        'A budget per category for the year; the principal approves it, and spending shows against it.',
+      ],
+      route: '/finance/expenses',
+      routeLabel: 'Expenses',
+    },
+    {
+      id: 'payroll',
+      title: 'Payroll & Payslips',
+      icon: 'Users',
+      intro: 'Monthly salaries with PAYE and NASSIT.',
+      points: [
+        'Staff pay: basic salary, allowances, regular deductions and bank details for every staff member.',
+        'Pay run: draft (add bonuses or one-off deductions) → the principal approves → you mark it paid.',
+        'Payslip PDFs and emails; every staff member sees their own under My Payslips.',
+      ],
+      route: '/finance/payroll',
+      routeLabel: 'Payroll',
+    },
+    {
+      id: 'statements',
+      title: 'Financial Statements',
+      icon: 'Scale',
+      intro: 'The reports a board or auditor asks for.',
+      points: [
+        'Trial balance, income statement, balance sheet, cash flow and general ledger.',
+        'By academic year or by dates; export to CSV, Excel or PDF.',
+        'A books check shows that everything balances and agrees with the fee and petty cash records.',
+      ],
+      route: '/finance/reports',
+      routeLabel: 'Financial Statements',
+    },
+    {
+      id: 'journal',
+      title: 'Journal & Chart of Accounts',
+      icon: 'BookOpen',
+      intro: 'Every entry in the books.',
+      points: [
+        'Automatic entries from fees, payments, expenses and payroll, plus your manual journals.',
+        'Templates for opening balances, cash banked, PAYE / NASSIT paid, bank charges and donations.',
+        'The Chart of Accounts lists every account; add your own (a second bank account, equipment, a loan).',
+      ],
+      route: '/finance/journal',
+      routeLabel: 'Journal',
+    },
+    {
+      id: 'bank',
+      title: 'Bank Reconciliation',
+      icon: 'Landmark',
+      intro: 'Make the bank statement and the books agree.',
+      points: [
+        'Import a CSV statement; lines already imported are skipped.',
+        'Auto-match, match the rest by hand, or add a missing item (bank charges, interest) to the books.',
+        'Enter the statement balance to see the difference reach zero.',
+      ],
+      route: '/finance/bank-reconciliation',
+      routeLabel: 'Bank Reconciliation',
+    },
+    {
+      id: 'audit',
+      title: 'Finance Audit Log',
+      icon: 'History',
+      intro: 'Who changed what, and when.',
+      points: [
+        'Every change to fees, payments, discounts, expenses, payroll and the books.',
+        'Filter by area, person, dates or text; expand a row to see what changed.',
+      ],
+      route: '/finance/audit-log',
+      routeLabel: 'Audit Log',
+    },
+    {
+      id: 'account',
+      title: 'Announcements, Settings & Support',
+      icon: 'Settings',
+      intro: 'Talk to families and manage your account.',
+      points: [
+        'Post announcements to all, parents or students (school-wide), for example fee deadlines.',
+        'Settings: your profile, password, two-factor and passkeys, and the school’s payment policy (read-only).',
+        'Support: raise a ticket with the WiSkul team. My Payslips and Staff Attendance are here for you too.',
+      ],
+      route: '/settings',
+      routeLabel: 'Settings',
+    },
+  ],
+
+  faqs: [
+    {
+      q: 'A parent paid cash at the office. How do I record it?',
+      a: 'Payments & Receipts → Record Payment. Find the student, choose what the payment is for, enter the amount and method. It settles the oldest fees first and gives a numbered receipt you can print or email.',
+    },
+    {
+      q: 'I recorded a payment against the wrong student. What now?',
+      a: 'Refund that payment with a reason (it puts the balance back on the fees), then record it again for the right student. Payments are never deleted, so the audit log shows both.',
+    },
+    {
+      q: 'Why does my discount say “waiting for approval”?',
+      a: 'It’s above the amount you can give alone (see Settings → Payment Policy). The principal is notified and approves or rejects it under Discounts & Scholarships.',
+    },
+    {
+      q: 'Why can’t I change last year’s fee structure or add an expense to it?',
+      a: 'Past academic years are read-only so the year’s figures can’t change after the fact. Money still owed from that year stays on the student and can still be collected.',
+    },
+    {
+      q: 'How do I record PAYE and NASSIT paid to the NRA and NASSIT?',
+      a: 'When a pay run is marked paid, what you owe them is recorded. When you pay it over, open the Journal → New journal → “PAYE / NASSIT paid over”, enter the amounts and post it.',
+    },
+    {
+      q: 'I forgot to sign in yesterday. Can I do it now?',
+      a: 'No. Staff Attendance lets you sign in for today only, until the school’s closing time. Ask the principal to record any other day.',
+    },
+    {
+      q: 'The new year’s trial balance already shows money. Is that right?',
+      a: 'Yes. Cash, bank and money still owed carry forward from earlier years; income and expenses start at zero each year. Last year’s result shows as “Accumulated surplus from earlier years”.',
+    },
   ],
 };
 

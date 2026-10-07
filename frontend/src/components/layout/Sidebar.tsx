@@ -29,6 +29,10 @@ import {
   FaChevronUp,
   FaChevronDown,
   FaLifeRing,
+  FaBalanceScale,
+  FaUniversity,
+  FaListAlt,
+  FaHistory,
 } from 'react-icons/fa';
 import { FaRightFromBracket, FaAnglesLeft, FaAnglesRight, FaCircleCheck } from 'react-icons/fa6';
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
@@ -343,6 +347,51 @@ const navItems: NavItem[] = [
     version: 'v1',
   },
   {
+    label: 'Financial Statements',
+    icon: <FaBalanceScale className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/reports',
+    roles: ['super_admin', 'principal', 'accountant'],
+    module: 'Financial Management',
+    group: 'Finance',
+    version: 'v1',
+  },
+  {
+    label: 'Journal',
+    icon: <FaBook className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/journal',
+    roles: ['super_admin', 'principal', 'accountant'],
+    module: 'Financial Management',
+    group: 'Finance',
+    version: 'v1',
+  },
+  {
+    label: 'Chart of Accounts',
+    icon: <FaListAlt className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/accounts',
+    roles: ['super_admin', 'principal', 'accountant'],
+    module: 'Financial Management',
+    group: 'Finance',
+    version: 'v1',
+  },
+  {
+    label: 'Bank Reconciliation',
+    icon: <FaUniversity className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/bank-reconciliation',
+    roles: ['super_admin', 'principal', 'accountant'],
+    module: 'Financial Management',
+    group: 'Finance',
+    version: 'v1',
+  },
+  {
+    label: 'Finance Audit Log',
+    icon: <FaHistory className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/finance/audit-log',
+    roles: ['super_admin', 'principal', 'accountant'],
+    module: 'Financial Management',
+    group: 'Finance',
+    version: 'v1',
+  },
+  {
     label: 'My Payslips',
     icon: <FaFileImport className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/finance/my-payslips',
@@ -613,9 +662,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
       return !item.roles.includes(String(user?.role)) && duties.some((d) => item.roles.includes(d));
     }
     return canAccess(item.roles as any[]);
-    // canAccess is derived from user.role which is stable after login
+    // Re-filter when the role or duties change (live role sync after a promotion
+    // or a new Bursar duty), not only on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [isSuperAdmin]);
+  }), [isSuperAdmin, user?.role, JSON.stringify((user as any)?.staffDuties ?? [])]);
 
   // Group the filtered items.
   const groupedNav = React.useMemo(() => {

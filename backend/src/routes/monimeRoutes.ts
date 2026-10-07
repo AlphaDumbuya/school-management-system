@@ -512,6 +512,17 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
 
   logger.info(`Monime payment reconciled for session ${sessionId}`);
 
+  // Tell the bursar (best-effort).
+  try {
+    const { notifyFinanceStaff } = await import('../services/finance/core.js');
+    const st = await db('students').where({ id: session.student_id }).first('first_name', 'last_name');
+    await notifyFinanceStaff(session.tenant_id, ['accountant'], {
+      subject: 'Online payment received',
+      message: `Le ${Number(session.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} paid online for ${[st?.first_name, st?.last_name].filter(Boolean).join(' ') || 'a student'}${receiptNumber ? ` (receipt ${receiptNumber})` : ''}.`,
+      url: '/finance/payments', sourceType: 'payment', sourceId: sessionId,
+    });
+  } catch { /* never block the webhook */ }
+
   // Send a payment receipt email to the payer (best-effort — never block/fail
   // the webhook because email delivery hiccuped).
   try {

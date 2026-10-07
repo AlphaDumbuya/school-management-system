@@ -15,7 +15,7 @@ import { tenantToday } from '@utils/schoolDate';
 import { logger } from '@utils/logger';
 import { resolveTenantBranding } from '@services/email/emailBranding';
 import { renderEmail } from '@services/email/emailLayout';
-import { round2, audit } from './core';
+import { round2, audit, notifyFinanceStaff } from './core';
 import { expenseService, yearForDate, assertOpenYear } from './expenseService';
 
 export type Band = { upto: number | null; rate: number };
@@ -214,6 +214,11 @@ export const payrollService = {
       throw e;
     }
     await audit('payroll_run', run.id, 'generate', userId, { period });
+    await notifyFinanceStaff(tenantId, ['principal'], {
+      subject: `Pay run ${period} ready for approval`,
+      message: `The ${period} payroll draft is ready. Check it and approve it so it can be paid.`,
+      url: '/finance/payroll', sourceType: 'payroll_run', sourceId: run.id, exceptUserId: userId,
+    });
     return this.run(tenantId, run.id);
   },
 
@@ -271,6 +276,12 @@ export const payrollService = {
       await trx('payroll_runs').where({ id: runId }).update({ status: 'approved', approved_by: userId, approved_at: new Date(), updated_at: new Date() });
     });
     await audit('payroll_run', runId, 'approve', userId, {});
+    const ar = await db('payroll_runs').where({ id: runId }).first('period');
+    await notifyFinanceStaff(tenantId, ['accountant'], {
+      subject: `Pay run ${ar?.period || ''} approved`.trim(),
+      message: 'The principal approved the payroll. Pay the staff, then mark the run as paid.',
+      url: '/finance/payroll', sourceType: 'payroll_run', sourceId: runId, exceptUserId: userId,
+    });
     return this.run(tenantId, runId);
   },
 

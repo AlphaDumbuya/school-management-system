@@ -49,6 +49,8 @@ export interface PaymentPolicy {
   min_percent_term: number;
   charges_compulsory_first_term: boolean;
   policy_notes: string | null;
+  /** What the policy accepts right now, over everything the student owes. */
+  minimum?: { outstanding: number; allow_part: boolean; minimum: number; reason: string | null; next_instalment: number | null } | null;
 }
 
 export const financeLedgerService = {
