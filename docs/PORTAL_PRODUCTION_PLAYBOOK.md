@@ -551,6 +551,18 @@ Spec `.kiro/specs/bursar-finance-phase-b`. Migration `166_bursar_finance_b`, ser
   - Budget Utilities 251/200 over; petty cash overdraw refused.
   - All test rows removed.
 
+### Accountant pass, part 4: Bursar Phase C, accounting (✅ done & verified)
+
+Spec `.kiro/specs/bursar-finance-phase-c`. Migration `167_bursar_finance_c` (gl_accounts, gl_entries, gl_lines, bank_statement_lines, bank_matches). Services `finance/{glService,glReportService,bankRecService,financeAuditService}.ts`, routes `bursarFinanceCRoutes.ts`.
+
+- **Posting by reconciliation** (`glService.sync`): every fee, payment, refund, discount/waiver, credit note, credit refund, expense, petty-cash top-up/return and paid payroll run has an *expected* set of lines; the sync posts only the difference. Idempotent, and edits / voids / refunds / cancellations post a correcting entry. Runs before accounting reads (15 s throttle), under a per-school advisory lock, and in the daily finance cron after late fees. Fees billed before their academic year starts are dated on the year's first day.
+- **Chart of Accounts** (`/finance/accounts`): standard chart created on first open; custom expense categories get their own account (5200+); add accounts (an asset can be marked "holds money" to reconcile it); Fees receivable, Student credit and Petty cash are control accounts (no manual posting).
+- **Journal** (`/finance/journal`): server-paged, by source; manual journals with templates (opening balance, cash banked, PAYE/NASSIT remittance, bank charges, donation); balanced or refused; reverse once with a reason (never edit or delete). The principal closes the books up to a date; later changes to old records post on the first open day.
+- **Financial Statements** (`/finance/reports`): trial balance, income statement, balance sheet, cash flow (direct), general ledger, by academic year or dates, CSV/Excel/PDF; books check (balanced; Fees receivable = students' balances; Student credit = credit balances; Petty cash = fund balances).
+- **Bank Reconciliation** (`/finance/bank-reconciliation`): CSV import with column mapping (duplicates skipped), auto-match (equal amount within 7 days, reference preferred), manual one-to-many matching, ignore, add a missing item to the books, undo an import, difference against the statement balance.
+- **Finance Audit Log** (`/finance/audit-log`): school-scoped (through the acting user), by area, person, dates, text; server-paged.
+- **Verified** (44 HTTP checks on real data, migration rolled back afterwards so Vercel runs it on deploy): chart 28 accounts; second sync posts 0; integrity checks agree (Fees receivable 1,812); expense + void → correction, Utilities back to 0; custom category → account 5200; petty cash 800 after top-up 1,000 / spend 200; unbalanced, control-account and future-dated journals → 400; second reversal and reversing an automatic entry → 409; trial balance 11,819 = 11,819; balance sheet assets = liabilities + equity; cash flow opening + change = closing; CSV and PDF exports; bank import 3, re-import skipped 3, auto-match 2, bank charge booked and matched, reconciled; undo blocked while matched; closed period → 409; teacher → 403.
+
 ### Staff onboarding — ✅ done & verified (before Accountant and Admissions)
 
 Before this, a school had no way to hire an accountant or admissions officer,

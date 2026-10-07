@@ -19,6 +19,7 @@ import { planService } from '@services/finance/planService';
 import { statementService } from '@services/finance/statementService';
 import { assertCanViewStudent, isFinanceStaff, round2 } from '@services/finance/core';
 import { sendExport } from '@utils/exportResponse';
+import { glService } from '@services/finance/glService';
 
 const router = Router();
 router.use(authenticate, attachUserContext);
@@ -178,6 +179,8 @@ financeCronRouter.all('/finance-daily', async (req: Request, res: Response, next
     const auth = String(req.headers.authorization || '');
     if (!secret || auth !== `Bearer ${secret}`) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const results = await lateFeeService.runDaily();
-    res.json({ success: true, data: results });
+    // Then post the day's money events to the books (schools using accounting).
+    const books = await glService.syncAll().catch((e) => [{ error: String(e?.message || e) }]);
+    res.json({ success: true, data: results, books });
   } catch (e) { next(e); }
 });

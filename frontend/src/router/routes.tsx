@@ -70,6 +70,11 @@ import PettyCashPage from '@pages/finance/PettyCashPage';
 import BudgetsPage from '@pages/finance/BudgetsPage';
 import PayrollPage from '@pages/finance/PayrollPage';
 import MyPayslipsPage from '@pages/finance/MyPayslipsPage';
+import ChartOfAccountsPage from '@pages/finance/ChartOfAccountsPage';
+import JournalPage from '@pages/finance/JournalPage';
+import FinancialReportsPage from '@pages/finance/FinancialReportsPage';
+import BankReconciliationPage from '@pages/finance/BankReconciliationPage';
+import FinanceAuditPage from '@pages/finance/FinanceAuditPage';
 import ExpensesPage from '@pages/finance/ExpensesPage';
 import MyFeesPage from '@pages/finance/MyFeesPage';
 import TeachersPage from '@pages/staff/TeachersPage';
@@ -374,6 +379,26 @@ const router = createBrowserRouter(
         {
           path: 'finance/payroll',
           element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Payroll"><PayrollPage /></G></P>,
+        },
+        {
+          path: 'finance/accounts',
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Chart of accounts"><ChartOfAccountsPage /></G></P>,
+        },
+        {
+          path: 'finance/journal',
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Journal"><JournalPage /></G></P>,
+        },
+        {
+          path: 'finance/reports',
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Financial reports"><FinancialReportsPage /></G></P>,
+        },
+        {
+          path: 'finance/bank-reconciliation',
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Bank reconciliation"><BankReconciliationPage /></G></P>,
+        },
+        {
+          path: 'finance/audit-log',
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Finance audit log"><FinanceAuditPage /></G></P>,
         },
         {
           path: 'finance/my-payslips',
