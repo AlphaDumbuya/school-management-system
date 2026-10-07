@@ -66,6 +66,10 @@ import InvoicesPage from '@pages/finance/InvoicesPage';
 import PaymentsPage from '@pages/finance/PaymentsPage';
 import DiscountsPage from '@pages/finance/DiscountsPage';
 import AgingPage from '@pages/finance/AgingPage';
+import PettyCashPage from '@pages/finance/PettyCashPage';
+import BudgetsPage from '@pages/finance/BudgetsPage';
+import PayrollPage from '@pages/finance/PayrollPage';
+import MyPayslipsPage from '@pages/finance/MyPayslipsPage';
 import ExpensesPage from '@pages/finance/ExpensesPage';
 import MyFeesPage from '@pages/finance/MyFeesPage';
 import TeachersPage from '@pages/staff/TeachersPage';
@@ -357,7 +361,23 @@ const router = createBrowserRouter(
         },
         {
           path: 'finance/expenses',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><ExpensesPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Expenses"><ExpensesPage /></G></P>,
+        },
+        {
+          path: 'finance/petty-cash',
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Petty cash"><PettyCashPage /></G></P>,
+        },
+        {
+          path: 'finance/budgets',
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Budgets"><BudgetsPage /></G></P>,
+        },
+        {
+          path: 'finance/payroll',
+          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><G feature="Payroll"><PayrollPage /></G></P>,
+        },
+        {
+          path: 'finance/my-payslips',
+          element: <P requiredRoles={['principal', 'teacher', 'accountant', 'admissions_officer']}><MyPayslipsPage /></P>,
         },
         {
           path: 'finance/discounts',
@@ -370,14 +390,6 @@ const router = createBrowserRouter(
         {
           path: 'finance/my-fees',
           element: <P requiredRoles={['student', 'parent', 'guardian']}><MyFeesPage /></P>,
-        },
-        {
-          path: 'finance/expenses',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><V2Route><CS /></V2Route></P>,
-        },
-        {
-          path: 'finance/payroll',
-          element: <P requiredRoles={['principal', 'super_admin', 'accountant']}><V2Route><CS /></V2Route></P>,
         },
         {
           path: 'finance/scholarships',

@@ -122,3 +122,59 @@ export const bursarService = {
 };
 
 export default bursarService;
+
+// ── Phase B: expenses, petty cash, budgets, payroll ─────────────────────────
+export const EXPENSE_CATEGORIES = [
+  'Salaries', 'Statutory (PAYE/NASSIT)', 'Utilities', 'Supplies', 'Maintenance', 'Transport',
+  'Food & Catering', 'Rent', 'Events', 'Administration', 'Other',
+];
+export const EXPENSE_METHODS = [
+  { value: 'cash', label: 'Cash' }, { value: 'bank_transfer', label: 'Bank transfer' }, { value: 'cheque', label: 'Cheque' }, { value: 'mobile_money', label: 'Mobile money' },
+];
+export interface Expense {
+  id: string; category: string; amount: number; expense_date: string; academic_year: string; term: string | null; description: string | null;
+  vendor: string | null; payment_method: string | null; reference: string | null; receipt_url: string | null; department: string | null;
+  source: 'manual' | 'petty_cash' | 'payroll'; voided_at: string | null; void_reason: string | null; recorded_by_name?: string;
+}
+export interface PayLine { name: string; amount: number; taxable?: boolean }
+export interface PayStaff {
+  kind: 'staff' | 'support'; ref: string; name: string; staff_number: string | null; designation: string | null; user_id: string | null; email: string | null; active: boolean;
+  profile: null | { basic_salary: number | string; allowances: PayLine[]; deductions: PayLine[]; paye_applies: boolean; nassit_applies: boolean; payment_method: string; bank_name: string | null; account_number: string | null; active: boolean };
+  preview: null | { gross: number; paye: number; nassit_employee: number; net: number };
+}
+export interface PayRun {
+  id: string; period: string; status: 'draft' | 'approved' | 'paid' | 'cancelled'; gross: number | string; paye: number | string; nassit_employee: number | string;
+  nassit_employer: number | string; other_deductions: number | string; net: number | string; staff_count: number; payment_date: string | null;
+  approved_by_name?: string; paid_by_name?: string; cancelled_reason?: string | null; payslips?: any[];
+}
+
+export const bursarB = {
+  expenses: (p: Record<string, string | undefined>) => apiClient.get<{ success: boolean; data: { academic_year: string; rows: Expense[]; total: number; by_category: Array<{ category: string; total: number }> } }>(`${F}/expenses-v2${qs(p)}`),
+  createExpense: (b: any) => apiClient.post<{ success: boolean; data: Expense & { budget_warning?: string | null } }>(`${F}/expenses-v2`, b),
+  updateExpense: (id: string, b: any) => apiClient.put<{ success: boolean; data: Expense }>(`${F}/expenses-v2/${id}`, b),
+  voidExpense: (id: string, reason: string) => apiClient.post(`${F}/expenses-v2/${id}/void`, { reason }),
+  feesVsExpenses: (year: string) => apiClient.get<{ success: boolean; data: any }>(`${F}/summary/fees-vs-expenses${qs({ academic_year: year })}`),
+
+  funds: () => apiClient.get<{ success: boolean; data: any[] }>(`${F}/petty-cash`),
+  saveFund: (b: any, id?: string) => (id ? apiClient.put(`${F}/petty-cash/${id}`, b) : apiClient.post(`${F}/petty-cash`, b)),
+  fundEntries: (id: string, year?: string) => apiClient.get<{ success: boolean; data: { fund: any; balance: number; entries: any[] } }>(`${F}/petty-cash/${id}/entries${qs({ academic_year: year })}`),
+  addEntry: (id: string, b: any) => apiClient.post<{ success: boolean; data: any }>(`${F}/petty-cash/${id}/entries`, b),
+  voidEntry: (entryId: string, reason: string) => apiClient.post(`${F}/petty-cash/entries/${entryId}/void`, { reason }),
+
+  budget: (year: string) => apiClient.get<{ success: boolean; data: any }>(`${F}/budgets${qs({ academic_year: year })}`),
+  saveBudget: (year: string, lines: any[], notes?: string) => apiClient.put<{ success: boolean; data: any }>(`${F}/budgets`, { academic_year: year, lines, notes }),
+  approveBudget: (year: string) => apiClient.post<{ success: boolean; data: any }>(`${F}/budgets/approve`, { academic_year: year }),
+
+  paySettings: () => apiClient.get<{ success: boolean; data: { bands: Array<{ upto: number | null; rate: number }>; nassitEmployeePct: number; nassitEmployerPct: number; payeAfterNassit: boolean } }>(`${F}/payroll/settings`),
+  savePaySettings: (b: any) => apiClient.put(`${F}/payroll/settings`, b),
+  payStaff: () => apiClient.get<{ success: boolean; data: PayStaff[] }>(`${F}/payroll/staff`),
+  saveProfile: (b: any) => apiClient.put(`${F}/payroll/staff`, b),
+  runs: () => apiClient.get<{ success: boolean; data: PayRun[] }>(`${F}/payroll/runs`),
+  run: (id: string) => apiClient.get<{ success: boolean; data: PayRun }>(`${F}/payroll/runs/${id}`),
+  generateRun: (period: string) => apiClient.post<{ success: boolean; data: PayRun }>(`${F}/payroll/runs`, { period }),
+  runAction: (id: string, action: 'regenerate' | 'approve' | 'pay' | 'cancel' | 'email', body?: any) => apiClient.post<{ success: boolean; data: any }>(`${F}/payroll/runs/${id}/${action}`, body || {}),
+  editSlip: (id: string, b: any) => apiClient.put(`${F}/payroll/payslips/${id}`, b),
+  removeSlip: (id: string) => apiClient.delete(`${F}/payroll/payslips/${id}`),
+  mySlips: () => apiClient.get<{ success: boolean; data: any[] }>(`${F}/payroll/my-payslips`),
+  downloadSlip: (id: string, label: string) => downloadFile(`${F}/payroll/payslips/${id}/pdf`, `Payslip-${label}.pdf`),
+};

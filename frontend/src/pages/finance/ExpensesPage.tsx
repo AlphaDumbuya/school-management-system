@@ -1,237 +1,191 @@
 /**
- * ExpensesPage — /finance/expenses
- * School operating-expense tracking + fees-vs-expenses summary for a year.
- * Staff-only (enforced server-side). Distinct from student charges.
+ * School Expenses (bursar Phase B, R1): what the school spends, per year.
+ * Categories, vendor, method, receipt photo; void (never delete) with a reason;
+ * petty-cash and payroll expenses are linked and managed from their source;
+ * fees-vs-expenses and budget usage per category.
  */
 import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Wallet, TrendingUp, TrendingDown, Loader2, X } from 'lucide-react';
+import { Plus, Ban, Pencil, TrendingUp, TrendingDown, Wallet, Loader2 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { Button } from '@components/ui/button';
+import { Modal } from '@components/admin/feedback/Modal';
+import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
-import { showToast } from '@utils/toast';
-import { financeService, SchoolExpense } from '@services/financeService';
+import { SearchBar } from '@components/admin/table/SearchBar';
+import { ExportButton } from '@components/admin/common/ExportButton';
+import { FileUploader } from '@components/admin/forms/FileUploader';
+import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
+import { showToast } from '@utils/toast';
+import { bursarB, EXPENSE_CATEGORIES, EXPENSE_METHODS, type Expense } from '@services/bursarService';
+import { le, Pill } from '@components/finance/StudentAccount';
+import { CategorySelect } from '@components/finance/CategorySelect';
+import { usePaged, TablePager } from '@components/admin/table/TablePager';
 
-const fmtLe = (v: number | string | null | undefined) =>
-  `Le ${(Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const TERMS = [{ value: '', label: 'Whole year' }, { value: 'first_term', label: 'First Term' }, { value: 'second_term', label: 'Second Term' }, { value: 'third_term', label: 'Third Term' }];
+const SOURCE_LABEL: Record<string, string> = { manual: 'Recorded', petty_cash: 'Petty cash', payroll: 'Payroll' };
+const todayLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const d10 = (v: any) => String(v || '').slice(0, 10);
+const input = 'w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm';
 
-const TERMS = [
-  { value: '', label: 'Whole year' },
-  { value: 'first_term', label: 'First Term' },
-  { value: 'second_term', label: 'Second Term' },
-  { value: 'third_term', label: 'Third Term' },
-];
-const CATEGORIES = ['Salaries', 'Utilities', 'Supplies', 'Maintenance', 'Transport', 'Rent', 'Events', 'Other'];
-
-export const ExpensesPage: React.FC = () => {
-  const queryClient = useQueryClient();
-  // Real academic years only; open on the school's active year.
-  const { years, activeYear } = useAcademicYears();
-  const [pickedYear, setYear] = useState('');
-  const year = pickedYear || activeYear;
-  const [showAdd, setShowAdd] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<SchoolExpense | null>(null);
-
-  const { data: expResp, isLoading, refetch } = useQuery({
-    queryKey: ['school-expenses', year],
-    queryFn: () => financeService.listExpenses({ academicYear: year }),
-    enabled: !!year,
-    staleTime: 15_000,
-  });
-  const expenses: SchoolExpense[] = ((expResp as any)?.data?.data ?? (expResp as any)?.data ?? []);
-
-  const { data: summaryResp } = useQuery({
-    queryKey: ['fees-vs-expenses', year],
-    queryFn: () => financeService.getFeesVsExpenses(year),
-    enabled: !!year,
-    staleTime: 15_000,
-  });
-  const summary = (summaryResp as any)?.data?.data ?? (summaryResp as any)?.data;
-
-  const total = useMemo(() => expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0), [expenses]);
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const res: any = await financeService.deleteExpense(deleteTarget.id);
-    const body = res?.data ?? res;
-    if (body?.success === false) { showToast.error(body?.error || 'Failed to delete'); return; }
-    showToast.success('Expense deleted');
-    setDeleteTarget(null);
-    queryClient.invalidateQueries({ queryKey: ['school-expenses'] });
-    queryClient.invalidateQueries({ queryKey: ['fees-vs-expenses'] });
-  };
-
-  return (
-    <MainLayout>
-      <PageShell
-        title="School Expenses"
-        subtitle="Track operating costs and compare against fee collection"
-        onRefresh={() => refetch()}
-        isRefreshing={isLoading}
-        actions={
-          <div className="flex items-center gap-2">
-            <select value={year} onChange={(e) => setYear(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm">
-              {years.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
-            <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5"><Plus size={15} /> Add Expense</Button>
-          </div>
-        }
-      >
-        {/* Fees vs expenses summary */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          <SummaryTile label="Fees Collected" value={fmtLe(summary?.collected)} icon={<TrendingUp size={18} />} tone="emerald" />
-          <SummaryTile label="Outstanding" value={fmtLe(summary?.outstanding)} icon={<Wallet size={18} />} tone="amber" />
-          <SummaryTile label="Expenses" value={fmtLe(summary?.expenses ?? total)} icon={<TrendingDown size={18} />} tone="rose" />
-          <SummaryTile label="Net (Collected − Expenses)" value={fmtLe(summary?.net)} icon={<Wallet size={18} />} tone={(summary?.net ?? 0) >= 0 ? 'emerald' : 'rose'} />
-        </div>
-
-        {/* Expense list */}
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16 text-gray-500"><Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading…</div>
-        ) : expenses.length === 0 ? (
-          <EmptyState message="No expenses recorded" description={`Add your school's operating costs for ${year}.`} />
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-gradient-to-r from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] border-b border-blue-700">
-                <tr className="text-white">
-                  <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Date</th>
-                  <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Category</th>
-                  <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Description</th>
-                  <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider">Term</th>
-                  <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-right">Amount</th>
-                  <th className="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {expenses.map((e, i) => (
-                  <tr key={e.id} className={`transition-colors hover:bg-sky-100 dark:hover:bg-blue-950/20 ${i % 2 === 1 ? 'bg-sky-50 dark:bg-gray-800/20' : 'bg-white dark:bg-transparent'}`}>
-                    <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{new Date(e.expense_date).toLocaleDateString()}</td>
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{e.category}</td>
-                    <td className="px-4 py-3 text-gray-500">{e.description || '—'}</td>
-                    <td className="px-4 py-3 text-gray-500">{TERMS.find((t) => t.value === (e.term || ''))?.label || '—'}</td>
-                    <td className="px-4 py-3 text-right font-semibold">{fmtLe(e.amount)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button onClick={() => setDeleteTarget(e)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20" title="Delete"><Trash2 size={15} /></button>
-                    </td>
-                  </tr>
-                ))}
-                <tr className="bg-gray-50 dark:bg-gray-800/40 font-bold">
-                  <td className="px-4 py-3" colSpan={4}>Total</td>
-                  <td className="px-4 py-3 text-right">{fmtLe(total)}</td>
-                  <td />
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
-      </PageShell>
-
-      {showAdd && (
-        <AddExpenseModal
-          year={year}
-          onClose={() => setShowAdd(false)}
-          onSaved={() => { setShowAdd(false); queryClient.invalidateQueries({ queryKey: ['school-expenses'] }); queryClient.invalidateQueries({ queryKey: ['fees-vs-expenses'] }); }}
-        />
-      )}
-
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-800 shadow-xl p-5">
-            <h4 className="font-bold text-gray-900 dark:text-white mb-2">Delete expense?</h4>
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{deleteTarget.category} · {fmtLe(deleteTarget.amount)} on {new Date(deleteTarget.expense_date).toLocaleDateString()}.</p>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-              <Button onClick={handleDelete} className="bg-red-600 hover:bg-red-700">Delete</Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </MainLayout>
-  );
-};
-
-const SummaryTile: React.FC<{ label: string; value: string; icon: React.ReactNode; tone: 'emerald' | 'amber' | 'rose' }> = ({ label, value, icon, tone }) => {
-  const tones = {
-    emerald: 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400',
-    amber: 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400',
-    rose: 'bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400',
-  }[tone];
-  return (
-    <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-      <div className={`inline-flex items-center justify-center w-9 h-9 rounded-xl mb-2 ${tones}`}>{icon}</div>
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="text-lg font-bold text-gray-900 dark:text-white">{value}</p>
-    </div>
-  );
-};
-
-const AddExpenseModal: React.FC<{ year: string; onClose: () => void; onSaved: () => void }> = ({ year, onClose, onSaved }) => {
-  const [category, setCategory] = useState('Salaries');
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [term, setTerm] = useState('');
+const ExpenseModal: React.FC<{ expense: Partial<Expense> | null; onClose: () => void; onSaved: () => void }> = ({ expense, onClose, onSaved }) => {
+  const [f, setF] = useState<any>(expense ? { ...expense, expense_date: d10(expense.expense_date) || todayLocal() } : {});
   const [saving, setSaving] = useState(false);
-
-  const submit = async () => {
-    if (!(Number(amount) > 0)) { showToast.error('Enter a valid amount'); return; }
+  if (!expense) return null;
+  const set = (k: string, v: any) => setF((x: any) => ({ ...x, [k]: v }));
+  const save = async () => {
     setSaving(true);
     try {
-      const res: any = await financeService.createExpense({
-        category, description: description || undefined, amount: Number(amount),
-        expense_date: date, academic_year: year, term: term || null,
-      });
-      const body = res?.data ?? res;
-      if (body?.success === false) { showToast.error(body?.error || 'Failed to add expense'); return; }
-      showToast.success('Expense added');
+      const body = { category: f.category, amount: Number(f.amount), expense_date: f.expense_date, term: f.term || null, description: f.description, vendor: f.vendor, payment_method: f.payment_method || null, reference: f.reference, receipt_url: f.receipt_url || null, department: f.department };
+      const r: any = f.id ? await bursarB.updateExpense(f.id, body) : await bursarB.createExpense(body);
+      if (r?.success === false) return showToast.error(r.error || 'Could not save');
+      showToast.success('Expense saved');
+      if (r.data?.budget_warning) showToast.error(r.data.budget_warning);
       onSaved();
     } finally { setSaving(false); }
   };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-800 shadow-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-          <h4 className="font-bold text-gray-900 dark:text-white">Add Expense · {year}</h4>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
-        </div>
-        <div className="p-5 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-300 block mb-1">Category</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm">
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-300 block mb-1">Amount (Le)</label>
-              <input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-300 block mb-1">Date</label>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-300 block mb-1">Term</label>
-              <select value={term} onChange={(e) => setTerm(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm">
-                {TERMS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-300 block mb-1">Description (optional)</label>
-            <input value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm" placeholder="e.g. September electricity bill" />
-          </div>
-        </div>
-        <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={submit} disabled={saving} className="gap-1.5">{saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Add</Button>
+    <Modal isOpen onClose={onClose} title={f.id ? 'Edit expense' : 'Record an expense'} size="lg"
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="create" onClick={save} disabled={saving || !f.category?.trim() || !(Number(f.amount) > 0) || !f.expense_date}>{saving ? 'Saving…' : 'Save'}</Button></>}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label htmlFor="x-cat" className="text-xs font-semibold text-gray-500">Category</label>
+          <CategorySelect id="x-cat" value={f.category || ''} onChange={(v) => set('category', v)} /></div>
+        <div><label htmlFor="x-amt" className="text-xs font-semibold text-gray-500">Amount (Le)</label><input id="x-amt" type="number" min={0} placeholder="e.g. 1500" className={input} value={f.amount ?? ''} onChange={(e) => set('amount', e.target.value)} /></div>
+        <div><label htmlFor="x-date" className="text-xs font-semibold text-gray-500">Date</label><input id="x-date" type="date" max={todayLocal()} className={input} value={f.expense_date || ''} onChange={(e) => set('expense_date', e.target.value)} /></div>
+        <div><label htmlFor="x-term" className="text-xs font-semibold text-gray-500">Term</label>
+          <select id="x-term" className={input} value={f.term || ''} onChange={(e) => set('term', e.target.value)}>{TERMS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}</select></div>
+        <div><label htmlFor="x-vendor" className="text-xs font-semibold text-gray-500">Paid to (vendor / payee)</label><input id="x-vendor" className={input} value={f.vendor || ''} onChange={(e) => set('vendor', e.target.value)} placeholder="e.g. EDSA" /></div>
+        <div><label htmlFor="x-method" className="text-xs font-semibold text-gray-500">Paid by</label>
+          <select id="x-method" className={input} value={f.payment_method || ''} onChange={(e) => set('payment_method', e.target.value)}><option value="">—</option>{EXPENSE_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></div>
+        <div><label htmlFor="x-ref" className="text-xs font-semibold text-gray-500">Reference / cheque no.</label><input id="x-ref" placeholder="e.g. Cheque 004512 or bank ref" className={input} value={f.reference || ''} onChange={(e) => set('reference', e.target.value)} /></div>
+        <div><label htmlFor="x-dept" className="text-xs font-semibold text-gray-500">Department (optional)</label><input id="x-dept" placeholder="e.g. Science, Kitchen" className={input} value={f.department || ''} onChange={(e) => set('department', e.target.value)} /></div>
+        <div className="sm:col-span-2"><label htmlFor="x-desc" className="text-xs font-semibold text-gray-500">Description</label><input id="x-desc" className={input} value={f.description || ''} onChange={(e) => set('description', e.target.value)} placeholder="e.g. September electricity bill" /></div>
+        <div className="sm:col-span-2">
+          <FileUploader label="Receipt (photo or PDF, optional)" value={f.receipt_url || ''} onChange={(v) => set('receipt_url', v)} accept="image/*,.pdf" previewType="file" enableCamera cameraGuide="frame" cameraAspect={3 / 4} maxSizeMB={5} />
         </div>
       </div>
-    </div>
+    </Modal>
+  );
+};
+
+export const ExpensesPage: React.FC = () => {
+  const qc = useQueryClient();
+  const { activeYear } = useAcademicYears();
+  const [picked, setPicked] = useState('');
+  const year = picked || activeYear;
+  const viewingPast = !!year && !!activeYear && year < activeYear;
+  const [category, setCategory] = useState('');
+  const [source, setSource] = useState('');
+  const [term, setTerm] = useState('');
+  const [showVoided, setShowVoided] = useState(false);
+  const [search, setSearch] = useState('');
+  const [edit, setEdit] = useState<Partial<Expense> | null>(null);
+  const [voidTarget, setVoidTarget] = useState<Expense | null>(null);
+  const [reason, setReason] = useState('');
+
+  const params = { academic_year: year, category: category || undefined, source: source || undefined, term: term || undefined, include_voided: showVoided ? 'true' : undefined };
+  const q = useQuery({
+    queryKey: ['fin-expenses', params],
+    queryFn: async () => { const r: any = await bursarB.expenses(params); if (r?.success === false) throw new Error(r.error || 'Could not load expenses.'); return r.data; },
+    enabled: !!year,
+  });
+  const fve = useQuery({ queryKey: ['fin-fve', year], queryFn: async () => { const r: any = await bursarB.feesVsExpenses(year); if (r?.success === false) throw new Error(r.error); return r.data; }, enabled: !!year });
+  const budget = useQuery({ queryKey: ['fin-budget', year], queryFn: async () => { const r: any = await bursarB.budget(year); if (r?.success === false) throw new Error(r.error); return r.data; }, enabled: !!year });
+  const refresh = () => qc.invalidateQueries({ predicate: (x) => String(x.queryKey[0]).startsWith('fin-') });
+  const rows: Expense[] = useMemo(() => (q.data?.rows || []).filter((e: Expense) => !search || `${e.category} ${e.description || ''} ${e.vendor || ''} ${e.reference || ''}`.toLowerCase().includes(search.toLowerCase())), [q.data, search]);
+  const pg = usePaged(rows, [year, search, category, source, term, showVoided]);
+  const budgetFor = (cat: string) => (budget.data?.lines || []).filter((l: any) => l.category === cat).reduce((s: number, l: any) => s + l.amount, 0);
+
+  return (
+    <MainLayout>
+      <PageShell title="School Expenses" subtitle="What the school spends: salaries, utilities, supplies, maintenance and more" onRefresh={() => q.refetch()} isRefreshing={q.isFetching}
+        actions={<div className="flex items-center gap-2">
+          <YearFilter value={year} onChange={(y) => setPicked(!y || y === activeYear ? '' : y)} noAutoSelect />
+          <ExportButton endpoint="/api/v1/finance/expenses-v2/export" filename="expenses" params={{ academic_year: year, category: category || undefined, source: source || undefined, term: term || undefined }} />
+          {!viewingPast && <Button size="sm" variant="create" onClick={() => setEdit({ expense_date: todayLocal() })}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Record expense</span></Button>}
+        </div>}>
+        {viewingPast && <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">Showing {year} as history (closed). Record new expenses in {activeYear}.</div>}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          {[
+            { l: 'Fees collected', v: fve.data?.collected, i: <TrendingUp size={18} />, t: 'text-emerald-700' },
+            { l: 'Spent', v: q.data?.total, i: <TrendingDown size={18} />, t: 'text-rose-700' },
+            { l: 'Net (collected − spent)', v: fve.data ? Number(fve.data.collected) - Number(q.data?.total || 0) : undefined, i: <Wallet size={18} />, t: 'text-gray-900 dark:text-white' },
+            { l: `Budget ${budget.data?.budget?.status === 'approved' ? '(approved)' : budget.data?.budget ? '(draft)' : '(none)'}`, v: budget.data?.total_budget, i: <Wallet size={18} />, t: 'text-blue-700' },
+          ].map((k) => (
+            <div key={k.l} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+              <div className="text-gray-400 mb-1">{k.i}</div><div className={`text-lg font-black ${k.t}`}>{k.v === undefined ? '—' : le(k.v)}</div><div className="text-xs text-gray-500">{k.l}</div>
+            </div>
+          ))}
+        </div>
+
+        {(q.data?.by_category || []).length > 0 && (
+          <div className="mb-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+            <h3 className="text-sm font-bold mb-3">By category · {year}</h3>
+            <div className="space-y-2">
+              {q.data.by_category.map((c: any) => {
+                const b = budgetFor(c.category);
+                const pct = b > 0 ? Math.min(100, (c.total / b) * 100) : 0;
+                return (
+                  <button key={c.category} type="button" onClick={() => setCategory(category === c.category ? '' : c.category)} aria-pressed={category === c.category} className="w-full text-left">
+                    <div className="flex justify-between text-xs"><span className="font-semibold">{c.category}</span><span>{le(c.total)}{b > 0 ? ` of ${le(b)}` : ''}</span></div>
+                    {b > 0 && <div className="mt-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden"><div className={`h-full ${c.total > b ? 'bg-red-500' : c.total >= b * 0.9 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} /></div>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col lg:flex-row gap-2 mb-3 lg:items-center">
+          <SearchBar placeholder="Search description, vendor, reference…" onSearch={setSearch} className="w-full lg:max-w-sm" />
+          <select aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"><option value="">All categories</option>{Array.from(new Set([...EXPENSE_CATEGORIES, ...((q.data?.by_category || []) as any[]).map((c) => c.category)])).map((c) => <option key={c}>{c}</option>)}</select>
+          <select aria-label="Term" value={term} onChange={(e) => setTerm(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"><option value="">All terms</option>{TERMS.slice(1).map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}</select>
+          <select aria-label="Source" value={source} onChange={(e) => setSource(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"><option value="">All sources</option><option value="manual">Recorded here</option><option value="petty_cash">Petty cash</option><option value="payroll">Payroll</option></select>
+          <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={showVoided} onChange={(e) => setShowVoided(e.target.checked)} /> Show voided</label>
+        </div>
+
+        {q.error ? <p role="alert" className="text-sm text-red-600">{(q.error as Error).message} <button type="button" className="font-bold underline" onClick={() => q.refetch()}>Retry</button></p>
+          : q.isLoading ? <div className="py-12 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div>
+          : rows.length === 0 ? <EmptyState message={`No expenses in ${year}`} description="Record salaries, utilities, supplies and repairs as they are paid." />
+          : (
+            <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-900/40 text-xs text-gray-500"><tr><th className="px-3 py-3 text-left">Date</th><th className="px-3 py-3 text-left">Category</th><th className="px-3 py-3 text-left">Details</th><th className="px-3 py-3 text-left">Source</th><th className="px-3 py-3 text-right">Amount</th><th className="px-3 py-3" /></tr></thead>
+                <tbody>
+                  {pg.pageRows.map((e) => (
+                    <tr key={e.id} className={`border-t border-gray-100 dark:border-gray-800 ${e.voided_at ? 'opacity-60' : ''}`}>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-gray-600">{d10(e.expense_date)}</td>
+                      <td className="px-3 py-2.5">{e.category}</td>
+                      <td className="px-3 py-2.5"><div>{e.description || '—'}</div><div className="text-[11px] text-gray-400">{[e.vendor, e.payment_method?.replace(/_/g, ' '), e.reference, e.department].filter(Boolean).join(' · ')}{e.receipt_url && <> · <a href={e.receipt_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">receipt</a></>}{e.voided_at && <span className="text-red-600"> · Void: {e.void_reason}</span>}</div></td>
+                      <td className="px-3 py-2.5 text-xs">{e.voided_at ? <Pill s="revoked" label="Void" /> : SOURCE_LABEL[e.source]}</td>
+                      <td className={`px-3 py-2.5 text-right font-semibold whitespace-nowrap ${e.voided_at ? 'line-through' : ''}`}>{le(e.amount)}</td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        {!e.voided_at && e.source === 'manual' && !viewingPast && <>
+                          <button type="button" aria-label="Edit expense" onClick={() => setEdit(e)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600"><Pencil size={14} /></button>
+                          <button type="button" aria-label="Void expense" onClick={() => { setReason(''); setVoidTarget(e); }} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600"><Ban size={14} /></button>
+                        </>}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-gray-200 dark:border-gray-700 font-bold"><td className="px-3 py-3" colSpan={4}>Total (excluding void)</td><td className="px-3 py-3 text-right">{le(q.data?.total)}</td><td /></tr>
+                </tbody>
+              </table>
+              <TablePager {...pg.pager} label="expenses" />
+            </div>
+          )}
+
+        <ExpenseModal key={edit?.id || 'new'} expense={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); refresh(); }} />
+        <ConfirmationDialog isOpen={!!voidTarget} onClose={() => setVoidTarget(null)} title="Void expense" confirmLabel="Void"
+          message={voidTarget ? `Void ${voidTarget.category} · ${le(voidTarget.amount)} on ${d10(voidTarget.expense_date)}? It stays on record but no longer counts.` : ''}
+          confirmDisabled={reason.trim().length < 5}
+          onConfirm={async () => { const r: any = await bursarB.voidExpense(voidTarget!.id, reason.trim()); if (r?.success === false) { showToast.error(r.error || 'Failed'); throw new Error('x'); } showToast.success('Expense voided'); refresh(); }}>
+          <label htmlFor="xv-reason" className="block text-xs font-semibold text-gray-600 mt-2">Reason (required)</label>
+          <textarea id="xv-reason" rows={2} placeholder="e.g. Recorded twice by mistake" value={reason} onChange={(e) => setReason(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" />
+        </ConfirmationDialog>
+      </PageShell>
+    </MainLayout>
   );
 };
 

@@ -20,6 +20,7 @@ import { FinanceOverviewCards, fmtMoney, statusPill, SwipeHint } from './Finance
 import { PayFeesButton } from '@components/finance/PayFeesButton';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { YearFilter } from '@components/common/YearFilter';
+import { usePaged, TablePager } from '@components/admin/table/TablePager';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 
 const TERMS = ['First Term', 'Second Term', 'Third Term'];
@@ -63,6 +64,7 @@ export const InvoicesPage: React.FC = () => {
     const matchSearch = !t || i.invoice_number?.toLowerCase().includes(t) || i.student_name?.toLowerCase().includes(t) || (i.admission_no || '').toLowerCase().includes(t);
     return matchSearch && (!levelFilter || i.class_level === levelFilter);
   });
+  const pg = usePaged(filtered, [year, search, statusFilter, levelFilter]);
 
   const refetchAll = async () => {
     await Promise.all([refetch(), refetchOv()]);
@@ -108,7 +110,7 @@ export const InvoicesPage: React.FC = () => {
             <YearFilter value={year} onChange={setYear} includeAllOption />
             <ExportButton endpoint="/api/v1/finance/invoices/export" filename="invoices" params={{ status: statusFilter || undefined, academic_year: year || undefined }} />
             {!viewingPast && !viewingAll && (
-              <Button variant="default" size="sm" onClick={() => setGenOpen(true)}><FileStack size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Generate Invoices</span></Button>
+              <Button variant="create" size="sm" onClick={() => setGenOpen(true)}><FileStack size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Generate Invoices</span></Button>
             )}
           </div>
         }
@@ -178,7 +180,7 @@ export const InvoicesPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
-                {filtered.map((inv, rowIndex) => {
+                {pg.pageRows.map((inv, rowIndex) => {
                   const bal = Number(inv.balance) || 0;
                   return (
                     <tr key={inv.id} className={`transition-colors hover:bg-sky-100 dark:hover:bg-gray-700/30 ${rowIndex % 2 === 1 ? 'bg-sky-50 dark:bg-gray-900/30' : 'bg-white dark:bg-transparent'}`}>
@@ -210,6 +212,7 @@ export const InvoicesPage: React.FC = () => {
                 })}
               </tbody>
             </table>
+            <TablePager {...pg.pager} label="invoices" />
           </div>
           </>
         )}
@@ -326,7 +329,7 @@ const GenerateInvoicesModal: React.FC<{ academicYear: string; onClose: () => voi
         </div>
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="default" size="sm" onClick={submit} disabled={saving}>{saving ? 'Generating…' : 'Generate'}</Button>
+          <Button variant="create" size="sm" onClick={submit} disabled={saving}>{saving ? 'Generating…' : 'Generate'}</Button>
         </div>
       </div>
     </div>

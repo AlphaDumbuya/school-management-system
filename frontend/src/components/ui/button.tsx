@@ -1,6 +1,6 @@
 import React from 'react';
 
-type Variant = 'default' | 'outline' | 'ghost' | 'destructive' | 'secondary' | 'link';
+type Variant = 'default' | 'outline' | 'ghost' | 'destructive' | 'secondary' | 'link' | 'create';
 type Size = 'default' | 'sm' | 'lg' | 'icon';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -15,6 +15,8 @@ const variantClasses: Record<Variant, string> = {
   ghost:       'bg-transparent text-gray-700 border-transparent hover:bg-gray-100',
   destructive: 'bg-red-600 text-white hover:bg-red-700 border-transparent',
   link:        'bg-transparent text-blue-600 border-transparent hover:underline p-0',
+  // Create / add actions: a strong green so they stand out from other buttons.
+  create:      'bg-emerald-600 text-white hover:bg-emerald-700 border-transparent shadow-sm font-semibold',
 };
 
 const sizeClasses: Record<Size, string> = {

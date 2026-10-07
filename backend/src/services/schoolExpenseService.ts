@@ -65,7 +65,7 @@ class SchoolExpenseService {
     tenantId: string,
     filters: { academic_year?: string; term?: string; category?: string } = {},
   ): Promise<any[]> {
-    let q = db('school_expenses').where({ tenant_id: tenantId });
+    let q = db('school_expenses').where({ tenant_id: tenantId }).whereNull('voided_at');
     if (filters.academic_year) q = q.where({ academic_year: filters.academic_year });
     if (filters.term) q = q.where({ term: filters.term });
     if (filters.category) q = q.where({ category: filters.category });
@@ -99,15 +99,19 @@ class SchoolExpenseService {
     return row;
   }
 
+  /** Legacy delete: expenses are now VOIDED (kept for the audit trail). */
   async delete(tenantId: string, id: string): Promise<void> {
-    const deleted = await db('school_expenses').where({ id, tenant_id: tenantId }).del();
-    if (!deleted) throw new AppError('Expense not found or access denied', 404, 'NOT_FOUND');
+    const row = await db('school_expenses').where({ id, tenant_id: tenantId }).whereNull('voided_at').first();
+    if (!row) throw new AppError('Expense not found or access denied', 404, 'NOT_FOUND');
+    if (row.source && row.source !== 'manual') throw new AppError('This expense comes from petty cash or payroll. Void it there.', 409, 'LINKED_EXPENSE');
+    await db('school_expenses').where({ id }).update({ voided_at: new Date(), void_reason: 'Deleted', updated_at: new Date() });
   }
 
   /** Total expenses for a year. */
   async summaryByYear(tenantId: string, academicYear: string): Promise<{ academic_year: string; total: number }> {
     const row = await db('school_expenses')
       .where({ tenant_id: tenantId, academic_year: academicYear })
+      .whereNull('voided_at')
       .sum('amount as total')
       .first();
     return { academic_year: academicYear, total: num(row?.total) };
@@ -120,6 +124,7 @@ class SchoolExpenseService {
   ): Promise<Array<{ term: string; total: number }>> {
     const rows = await db('school_expenses')
       .where({ tenant_id: tenantId, academic_year: academicYear })
+      .whereNull('voided_at')
       .groupBy('term')
       .select('term', db.raw('COALESCE(SUM(amount),0) as total'));
     return rows.map((r: any) => ({ term: r.term || 'year', total: num(r.total) }));

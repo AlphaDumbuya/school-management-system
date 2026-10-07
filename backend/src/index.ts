@@ -40,6 +40,7 @@ import feeStructureRoutes from '@routes/feeStructureRoutes';
 import financeLedgerRoutes from '@routes/financeLedgerRoutes';
 import schoolExpenseRoutes from '@routes/schoolExpenseRoutes';
 import bursarFinanceRoutes, { financeCronRouter } from '@routes/bursarFinanceRoutes';
+import bursarFinanceBRoutes from '@routes/bursarFinanceBRoutes';
 import { startFinanceJobs } from './jobs/financeJobs';
 
 import phase9NotificationRoutes from '@routes/phase9NotificationRoutes';
@@ -306,6 +307,8 @@ app.use('/api/v1/finance/ledger', financeLedgerRoutes);
 // statements. BEFORE schoolExpenseRoutes: its router-level guard is
 // finance-staff only, and the family-facing reads here must stay reachable.
 app.use('/api/v1/finance', bursarFinanceRoutes);
+// Bursar Phase B: expenses, petty cash, budgets, payroll (+ My Payslips).
+app.use('/api/v1/finance', bursarFinanceBRoutes);
 // Daily finance job (Vercel Cron, CRON_SECRET-guarded).
 app.use('/api/v1/cron', financeCronRouter);
 

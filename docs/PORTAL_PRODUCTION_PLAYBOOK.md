@@ -525,6 +525,32 @@ Spec `.kiro/specs/bursar-finance-phase-a`. Migration `165_bursar_finance_a`, ser
   - Cron without the secret → 401.
   - All test rows removed and Alpha's fees unchanged.
 
+### Accountant pass, part 3: Bursar Phase B, school-side money (✅ done & verified)
+
+Spec `.kiro/specs/bursar-finance-phase-b`. Migration `166_bursar_finance_b`, services `finance/{expenseService,pettyCashService,budgetService,payrollService}.ts`, routes `bursarFinanceBRoutes.ts` (mounted before `schoolExpenseRoutes`).
+
+- **Expenses** (`/finance/expenses`, now v1):
+  - fixed categories; vendor, method, reference, department and receipt (photo or PDF via the shared camera);
+  - the year comes from the date; past year → 409; future dates → 400;
+  - **void with a reason, never delete**;
+  - petty-cash and payroll expenses are linked and can only be voided from their source;
+  - by-category totals with budget bars, fees-vs-expenses, export.
+- **Petty Cash** (`/finance/petty-cash`): funds with a float and a "Low" flag; top up / spend (with receipt, also posted as an expense) / return to bank; the balance is locked, so two parallel spends of 200 on a 300 balance → one 201 and one 409; void (a spend's expense is voided with it).
+- **Budget** (`/finance/budgets`): lines per category (optional department), the principal approves, editing reopens it; live budget vs actual (near ≥ 90%, over > 100%) and unbudgeted spend; recording an expense warns when it goes over budget.
+- **Payroll** (`/finance/payroll`):
+  - Staff pay: basic salary, allowances (taxable or not), recurring deductions and bank details for every teacher, admin and support staff member.
+  - PAYE: Sierra Leone monthly bands, first Le 600 at 0%, then 15/20/25%, 30% above Le 2,400.
+  - NASSIT: 5% employee, 10% employer, of basic pay, deducted before PAYE. The principal can edit these rates.
+  - Run lifecycle: draft (recalculate, bonus or overtime, one-off deductions) → **principal approves** → mark paid. Paying records **Salaries = gross** and **Statutory = employer NASSIT** as expenses. Paying twice → 409; cancel voids the expenses.
+  - Payslip PDF, email to staff, **My Payslips** for staff (own payslips only, approved and paid runs), run export for the NRA and NASSIT.
+- **Verified:**
+  - PAYE: 500 → 0, 1,000 → 60, 2,400 → 360, 5,000 → 1,140.
+  - Basic 3,000 + 500 transport − 50 union → gross 3,500, NASSIT 150 / 300, taxable 3,350, PAYE 645, net 2,655. A Le 200 bonus → PAYE 705, net 2,795.
+  - Bursar approving → 403; paying before approval → 409.
+  - Teacher downloads their own payslip PDF → 200; someone else's → 403.
+  - Budget Utilities 251/200 over; petty cash overdraw refused.
+  - All test rows removed.
+
 ### Staff onboarding — ✅ done & verified (before Accountant and Admissions)
 
 Before this, a school had no way to hire an accountant or admissions officer,
