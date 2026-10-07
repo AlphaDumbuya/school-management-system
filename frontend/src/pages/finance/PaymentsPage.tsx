@@ -28,6 +28,7 @@ import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { StudentAccountModal } from '@components/finance/StudentAccount';
+import { usePaged, TablePager } from '@components/admin/table/TablePager';
 import { bursarService } from '@services/bursarService';
 import { Modal } from '@components/admin/feedback/Modal';
 import { financeService } from '@services/financeService';
@@ -191,6 +192,7 @@ export const PaymentsPage: React.FC = () => {
     const matchTo = !toDate || (pd && pd <= new Date(toDate + 'T23:59:59'));
     return matchSearch && matchSection && matchClass && matchMethod && matchStatus && matchBalance && matchFrom && matchTo;
   });
+  const pg = usePaged(filtered, [year, search, sectionFilter, classFilter, methodFilter, statusFilter, balanceFilter, fromDate, toDate]);
 
   const queryClient = useQueryClient();
   const refetchAll = () => {
@@ -269,7 +271,7 @@ export const PaymentsPage: React.FC = () => {
             />
             <Button variant="outline" size="sm" onClick={() => setRemindOpen(true)}><Bell size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Send Reminders</span></Button>
             <Button variant="outline" size="sm" onClick={() => setBulkOpen(true)}><Receipt size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Email receipts</span></Button>
-            <Button variant="default" size="sm" onClick={() => setRecordOpen(true)}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Record Payment</span></Button>
+            <Button variant="create" size="sm" onClick={() => setRecordOpen(true)}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Record Payment</span></Button>
           </div>
         }
       >
@@ -490,7 +492,7 @@ export const PaymentsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
-                {filtered.map((p, rowIndex) => {
+                {pg.pageRows.map((p, rowIndex) => {
                   const meta = methodMeta(p.method || p.payment_method);
                   return (
                     <tr key={p.id} className={`transition-colors hover:bg-sky-100 dark:hover:bg-gray-700/30 ${rowIndex % 2 === 1 ? 'bg-sky-50 dark:bg-gray-900/30' : 'bg-white dark:bg-transparent'}`}>
@@ -519,6 +521,7 @@ export const PaymentsPage: React.FC = () => {
                 })}
               </tbody>
             </table>
+            <TablePager {...pg.pager} label="payments" />
           </div>
           </>
         )}
@@ -834,7 +837,7 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
         </div>
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="default" size="sm" onClick={submit} disabled={saving}>{saving ? 'Recording…' : 'Record Payment'}</Button>
+          <Button variant="create" size="sm" onClick={submit} disabled={saving}>{saving ? 'Recording…' : 'Record Payment'}</Button>
         </div>
       </div>
     </div>,

@@ -19,6 +19,7 @@ import { showToast } from '@utils/toast';
 import { financeService } from '@services/financeService';
 import { bursarService, BUCKET_LABEL, type Bucket } from '@services/bursarService';
 import { StudentAccountModal, le, Pill } from '@components/finance/StudentAccount';
+import { usePaged, TablePager } from '@components/admin/table/TablePager';
 
 const BUCKETS: Bucket[] = ['not_due', 'd1_30', 'd31_60', 'd61_90', 'd90_plus'];
 const TONE: Record<Bucket, string> = {
@@ -50,6 +51,8 @@ export const AgingPage: React.FC = () => {
   });
   const data = q.data;
   const rows = useMemo(() => (data?.students || []).filter((s: any) => !search || `${s.student_name} ${s.admission_no} ${s.class_name}`.toLowerCase().includes(search.toLowerCase())), [data, search]);
+
+  const pg = usePaged<any>(rows, [year, search, section, min, bucket]);
 
   const sendReminders = async () => {
     let sent = 0, skipped = 0;
@@ -111,7 +114,7 @@ export const AgingPage: React.FC = () => {
                   <tr><th className="px-3 py-3 text-left">Student</th><th className="px-3 py-3 text-left">Class</th>{BUCKETS.map((b) => <th key={b} className="px-3 py-3 text-right whitespace-nowrap">{BUCKET_LABEL[b]}</th>)}<th className="px-3 py-3 text-right">Total</th><th className="px-3 py-3 text-left">Last paid</th><th className="px-3 py-3" /></tr>
                 </thead>
                 <tbody>
-                  {rows.map((s: any) => (
+                  {pg.pageRows.map((s: any) => (
                     <tr key={s.student_id} className="border-t border-gray-100 dark:border-gray-800">
                       <td className="px-3 py-2.5"><button type="button" onClick={() => setAccount({ id: s.student_id, name: s.student_name, admissionNo: s.admission_no })} className="font-medium text-blue-700 hover:underline dark:text-blue-300">{s.student_name}</button>
                         <div className="text-[11px] text-gray-400">{s.admission_no}{s.on_plan ? ' · ' : ''}{s.on_plan && <Pill s="approved" label="On plan" />}</div></td>
@@ -124,6 +127,7 @@ export const AgingPage: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+              <TablePager {...pg.pager} label="students" />
             </div>
           )}
 

@@ -162,18 +162,18 @@ export const GrantDiscountForm: React.FC<{ studentId: string; year: string; onDo
       {oneOff && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="col-span-2 sm:col-span-1"><label htmlFor="g-label" className="text-xs font-semibold text-gray-500">Name</label>
-            <input id="g-label" value={label} onChange={(e) => setLabel(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" /></div>
+            <input id="g-label" placeholder="e.g. Hardship waiver" value={label} onChange={(e) => setLabel(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" /></div>
           <div><label htmlFor="g-basis" className="text-xs font-semibold text-gray-500">Type</label>
             <select id="g-basis" value={basis} onChange={(e) => setBasis(e.target.value as any)} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"><option value="fixed">Amount (Le)</option><option value="percent">Percent</option></select></div>
           <div><label htmlFor="g-value" className="text-xs font-semibold text-gray-500">{basis === 'percent' ? '%' : 'Le'}</label>
-            <input id="g-value" type="number" min={0} value={value} onChange={(e) => setValue(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" /></div>
+            <input id="g-value" type="number" min={0} placeholder={basis === 'percent' ? 'e.g. 25' : 'e.g. 300'} value={value} onChange={(e) => setValue(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" /></div>
           <div><label htmlFor="g-applies" className="text-xs font-semibold text-gray-500">On</label>
             <select id="g-applies" value={appliesTo} onChange={(e) => setAppliesTo(e.target.value as any)} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"><option value="all">All charges</option><option value="tuition">Tuition only</option></select></div>
         </div>
       )}
       <ReasonField id="g-reason" value={reason} onChange={setReason} placeholder={oneOff ? 'Why is this waived? (required)' : 'Optional note (required for custom discounts)'} />
       <div className="flex justify-end">
-        <Button size="sm" onClick={submit} disabled={saving || (oneOff && (!(Number(value) > 0) || reason.trim().length < 5))}>{saving ? 'Saving…' : 'Give discount'}</Button>
+        <Button size="sm" variant="create" onClick={submit} disabled={saving || (oneOff && (!(Number(value) > 0) || reason.trim().length < 5))}>{saving ? 'Saving…' : 'Give discount'}</Button>
       </div>
     </div>
   );
@@ -235,7 +235,7 @@ export const StudentCredit: React.FC<{ studentId: string; staff?: boolean }> = (
         <div className="text-sm">Available credit: <strong className="text-emerald-700">{le(bal)}</strong></div>
         {staff && (
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => { setAmount(''); setReason(''); setMode('note'); }}>Credit note</Button>
+            <Button size="sm" variant="create" onClick={() => { setAmount(''); setReason(''); setMode('note'); }}>Credit note</Button>
             <Button size="sm" variant="outline" disabled={bal <= 0} onClick={async () => {
               const r: any = await bursarService.applyCredit(studentId);
               if (r?.success === false) return showToast.error(r.error || 'Could not apply credit');
@@ -262,7 +262,7 @@ export const StudentCredit: React.FC<{ studentId: string; staff?: boolean }> = (
           showToast.success('Saved'); refresh();
         }}>
         <label htmlFor="credit-amount" className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mt-2">Amount (Le)</label>
-        <input id="credit-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" />
+        <input id="credit-amount" type="number" min={0} placeholder="e.g. 500" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" />
         <ReasonField id="credit-reason" value={reason} onChange={setReason} />
       </ConfirmationDialog>
     </div>
@@ -319,14 +319,14 @@ export const StudentPlans: React.FC<{ studentId: string; year: string; staff?: b
             <div><label htmlFor="p-term" className="text-xs font-semibold text-gray-500">Covers</label>
               <select id="p-term" value={term} onChange={(e) => setTerm(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"><option value="">Whole year</option>{TERMS.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
             <div><label htmlFor="p-count" className="text-xs font-semibold text-gray-500">Instalments</label>
-              <input id="p-count" type="number" min={2} max={24} value={count} onChange={(e) => setCount(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" /></div>
+              <input id="p-count" type="number" min={2} max={24} placeholder="e.g. 3" value={count} onChange={(e) => setCount(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" /></div>
             <div><label htmlFor="p-first" className="text-xs font-semibold text-gray-500">First due</label>
               <input id="p-first" type="date" value={first} onChange={(e) => setFirst(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" /></div>
             <div><label htmlFor="p-gap" className="text-xs font-semibold text-gray-500">Months apart</label>
-              <input id="p-gap" type="number" min={1} max={6} value={gap} onChange={(e) => setGap(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" /></div>
+              <input id="p-gap" type="number" min={1} max={6} placeholder="1" value={gap} onChange={(e) => setGap(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" /></div>
           </div>
           <div className="flex justify-end">
-            <Button size="sm" disabled={saving || !first} onClick={async () => {
+            <Button size="sm" variant="create" disabled={saving || !first} onClick={async () => {
               setSaving(true);
               try {
                 const r: any = await bursarService.createPlan({ student_id: studentId, academic_year: year, term: term || null, count: Number(count), first_due_date: first, months_apart: Number(gap) });

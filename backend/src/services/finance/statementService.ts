@@ -7,6 +7,7 @@
  * `reconciles` says whether the lines add up to the live balances (they do
  * whenever every money path keeps the balance identity).
  */
+// @ts-ignore pdfkit ships without TypeScript types
 import PDFDocument from 'pdfkit';
 import { db } from '@utils/database';
 import { normalizeAcademicYear, resolveActiveYear } from '@utils/academicYear';

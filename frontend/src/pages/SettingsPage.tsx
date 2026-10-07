@@ -2038,21 +2038,21 @@ export const SettingsPage: React.FC = () => {
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div>
                               <label htmlFor="fin-late-fixed" className="text-xs font-semibold text-gray-500 block mb-1">Fixed late fee (Le)</label>
-                              <input id="fin-late-fixed" type="number" min={0} value={settings.fin_late_fee_fixed ?? 0}
+                              <input id="fin-late-fixed" placeholder="e.g. 50" type="number" min={0} value={settings.fin_late_fee_fixed ?? 0}
                                 onChange={(e) => setSettings({ ...settings, fin_late_fee_fixed: Number(e.target.value) })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white" />
                               <p className="text-[10px] text-gray-400 mt-1">When above 0, used instead of the %.</p>
                             </div>
                             <div>
                               <label htmlFor="fin-late-grace" className="text-xs font-semibold text-gray-500 block mb-1">Grace days</label>
-                              <input id="fin-late-grace" type="number" min={0} step={1} value={settings.fin_late_fee_grace_days ?? 0}
+                              <input id="fin-late-grace" placeholder="e.g. 7" type="number" min={0} step={1} value={settings.fin_late_fee_grace_days ?? 0}
                                 onChange={(e) => setSettings({ ...settings, fin_late_fee_grace_days: Number(e.target.value) })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white" />
                               <p className="text-[10px] text-gray-400 mt-1">Days after the due date before a late fee.</p>
                             </div>
                             <div>
                               <label htmlFor="fin-late-cap" className="text-xs font-semibold text-gray-500 block mb-1">Late fee cap (Le)</label>
-                              <input id="fin-late-cap" type="number" min={0} value={settings.fin_late_fee_cap ?? 0}
+                              <input id="fin-late-cap" placeholder="e.g. 500" type="number" min={0} value={settings.fin_late_fee_cap ?? 0}
                                 onChange={(e) => setSettings({ ...settings, fin_late_fee_cap: Number(e.target.value) })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white" />
                               <p className="text-[10px] text-gray-400 mt-1">0 = no cap.</p>
@@ -2061,7 +2061,7 @@ export const SettingsPage: React.FC = () => {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-gray-100">
                             <div>
                               <label htmlFor="fin-disc-limit" className="text-xs font-semibold text-gray-500 block mb-1">Discounts the bursar can approve alone, up to (Le)</label>
-                              <input id="fin-disc-limit" type="number" min={0} value={settings.fin_discount_approval_threshold ?? 0}
+                              <input id="fin-disc-limit" placeholder="e.g. 1000" type="number" min={0} value={settings.fin_discount_approval_threshold ?? 0}
                                 onChange={(e) => setSettings({ ...settings, fin_discount_approval_threshold: Number(e.target.value) })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white" />
                               <p className="text-[10px] text-gray-400 mt-1">0 = every discount the bursar gives waits for your approval.</p>

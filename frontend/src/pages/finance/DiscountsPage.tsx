@@ -20,6 +20,7 @@ import useAuthStore from '@store/authStore';
 import { bursarService, type DiscountRule, type DiscountGrant } from '@services/bursarService';
 import { StudentPicker, type PickedStudent } from '@components/finance/StudentPicker';
 import { GrantDiscountForm, StudentAccountModal, Pill, le } from '@components/finance/StudentAccount';
+import { usePaged, TablePager } from '@components/admin/table/TablePager';
 
 const KIND_LABEL: Record<string, string> = { sibling: 'Sibling', staff_child: 'Staff child', scholarship: 'Scholarship / bursary', custom: 'Custom' };
 async function ok<T>(p: Promise<any>): Promise<T> { const r = await p; if (r?.success === false) throw new Error(r.error || 'Could not load.'); return r?.data as T; }
@@ -41,16 +42,16 @@ const RuleModal: React.FC<{ rule: Partial<DiscountRule> | null; onClose: () => v
   const input = 'w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm';
   return (
     <Modal isOpen onClose={onClose} title={f.id ? 'Edit discount type' : 'New discount type'} size="md"
-      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving || !f.name || !(Number(f.value) > 0) || !f.kind || !f.basis}>{saving ? 'Saving…' : 'Save'}</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="create" onClick={save} disabled={saving || !f.name || !(Number(f.value) > 0) || !f.kind || !f.basis}>{saving ? 'Saving…' : 'Save'}</Button></>}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="sm:col-span-2"><label htmlFor="r-name" className="text-xs font-semibold text-gray-500">Name</label><input id="r-name" className={input} value={f.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Second child discount" /></div>
+        <div className="sm:col-span-2"><label htmlFor="r-name" className="text-xs font-semibold text-gray-500">Name</label><input id="r-name" className={input} value={f.name || ''} onChange={(e) => set('name', e.target.value)} placeholder={f.kind === 'custom' ? 'Type your own discount name, e.g. Orphan support' : 'e.g. Second child discount'} /></div>
         <div><label htmlFor="r-kind" className="text-xs font-semibold text-gray-500">Type</label>
           <select id="r-kind" className={input} value={f.kind || ''} onChange={(e) => set('kind', e.target.value)}><option value="" disabled>Choose…</option>{Object.entries(KIND_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
         {f.kind === 'sibling' && <div><label htmlFor="r-order" className="text-xs font-semibold text-gray-500">From which child</label>
           <select id="r-order" className={input} value={String(f.sibling_order || 2)} onChange={(e) => set('sibling_order', Number(e.target.value))}><option value="2">2nd child and later</option><option value="3">3rd child and later</option><option value="4">4th child and later</option></select></div>}
         <div><label htmlFor="r-basis" className="text-xs font-semibold text-gray-500">Discount is</label>
           <select id="r-basis" className={input} value={f.basis || ''} onChange={(e) => set('basis', e.target.value)}><option value="" disabled>Choose…</option><option value="percent">A percentage</option><option value="fixed">A fixed amount (Le)</option></select></div>
-        <div><label htmlFor="r-value" className="text-xs font-semibold text-gray-500">{f.basis === 'percent' ? 'Percent' : 'Amount (Le)'}</label><input id="r-value" type="number" min={0} max={f.basis === 'percent' ? 100 : undefined} className={input} value={String(f.value ?? '')} onChange={(e) => set('value', e.target.value)} /></div>
+        <div><label htmlFor="r-value" className="text-xs font-semibold text-gray-500">{f.basis === 'percent' ? 'Percent' : 'Amount (Le)'}</label><input id="r-value" type="number" min={0} placeholder={f.basis === 'percent' ? 'e.g. 10' : 'e.g. 200'} max={f.basis === 'percent' ? 100 : undefined} className={input} value={String(f.value ?? '')} onChange={(e) => set('value', e.target.value)} /></div>
         <div><label htmlFor="r-applies" className="text-xs font-semibold text-gray-500">Applies to</label>
           <select id="r-applies" className={input} value={f.applies_to || 'tuition'} onChange={(e) => set('applies_to', e.target.value)}><option value="tuition">Tuition only</option><option value="all">All charges</option></select></div>
         {f.id && <label className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" checked={f.active !== false} onChange={(e) => set('active', e.target.checked)} /> Active</label>}
@@ -85,6 +86,7 @@ export const DiscountsPage: React.FC = () => {
 
   const grants = (grantsQ.data || []).filter((g) => !search || `${g.student_name} ${g.admission_no} ${g.label}`.toLowerCase().includes(search.toLowerCase()));
   const pending = (grantsQ.data || []).filter((g) => g.status === 'pending').length;
+  const pg = usePaged(grants, [year, search, status]);
   const totalApplied = (grantsQ.data || []).filter((g) => g.status === 'approved').reduce((s, g) => s + Number(g.applied_amount || 0), 0);
 
   return (
@@ -92,7 +94,7 @@ export const DiscountsPage: React.FC = () => {
       <PageShell title="Discounts & Scholarships" subtitle="Sibling and staff discounts, scholarships, bursaries and one-off waivers"
         actions={<div className="flex items-center gap-2">
           <YearFilter value={year} onChange={(y) => setPicked(!y || y === activeYear ? '' : y)} noAutoSelect />
-          {!viewingPast && <Button size="sm" onClick={() => { setGrantFor(null); setGrantOpen(true); }}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Give a discount</span></Button>}
+          {!viewingPast && <Button size="sm" variant="create" onClick={() => { setGrantFor(null); setGrantOpen(true); }}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Give a discount</span></Button>}
         </div>}>
         {viewingPast && <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">Showing {year} as history. New discounts are given in {activeYear}.</div>}
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
@@ -117,13 +119,14 @@ export const DiscountsPage: React.FC = () => {
               </select>
             </div>
             {grantsQ.error ? <p role="alert" className="text-sm text-red-600">{(grantsQ.error as Error).message} <button type="button" className="font-bold underline" onClick={() => grantsQ.refetch()}>Retry</button></p>
+              : grantsQ.isLoading ? <p className="py-8 text-center text-sm text-gray-400">Loading…</p>
               : grants.length === 0 ? <EmptyState message={`No discounts in ${year}`} description="Give a sibling, staff-child or scholarship discount, or a one-off waiver." />
               : (
                 <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-gray-900/40 text-xs text-gray-500"><tr><th className="px-4 py-3 text-left">Student</th><th className="px-4 py-3 text-left">Discount</th><th className="px-4 py-3 text-left">Covers</th><th className="px-4 py-3 text-right">Taken off</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3" /></tr></thead>
                     <tbody>
-                      {grants.map((g) => (
+                      {pg.pageRows.map((g) => (
                         <tr key={g.id} className="border-t border-gray-100 dark:border-gray-800">
                           <td className="px-4 py-3"><button type="button" onClick={() => setAccount({ id: g.student_id, name: g.student_name, admissionNo: g.admission_no })} className="font-medium text-blue-700 hover:underline dark:text-blue-300">{g.student_name}</button><div className="text-xs text-gray-400">{g.admission_no}</div></td>
                           <td className="px-4 py-3">{g.label}<div className="text-xs text-gray-500">{g.basis === 'percent' ? `${Number(g.value)}%` : le(g.value)} on {g.applies_to === 'all' ? 'all charges' : 'tuition'}{g.reason ? ` · ${g.reason}` : ''}</div></td>
@@ -140,6 +143,7 @@ export const DiscountsPage: React.FC = () => {
                       ))}
                     </tbody>
                   </table>
+                  <TablePager {...pg.pager} label="discounts" />
                 </div>
               )}
           </>
@@ -147,7 +151,7 @@ export const DiscountsPage: React.FC = () => {
 
         {tab === 'rules' && (
           <>
-            <div className="flex justify-end mb-3"><Button size="sm" variant="outline" onClick={() => setRuleEdit({ kind: 'sibling', basis: 'percent', applies_to: 'tuition', sibling_order: 2 })}><Plus size={14} className="mr-1" /> New discount type</Button></div>
+            <div className="flex justify-end mb-3"><Button size="sm" variant="create" onClick={() => setRuleEdit({ kind: 'sibling', basis: 'percent', applies_to: 'tuition', sibling_order: 2 })}><Plus size={14} className="mr-1" /> New discount type</Button></div>
             {(rulesQ.data || []).length === 0 ? <EmptyState message="No discount types yet" description="Set up sibling, staff-child and scholarship discounts once, then give them to students." /> : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {(rulesQ.data || []).map((r) => (
@@ -183,7 +187,7 @@ export const DiscountsPage: React.FC = () => {
               {(siblingsQ.data || []).map((c) => (
                 <div key={c.student_id} className="flex items-center justify-between rounded-lg border border-gray-100 dark:border-gray-800 px-3 py-2 text-sm">
                   <span>{c.name} <span className="text-xs text-gray-500">{c.admission_no} · child {c.child_number} of {c.siblings}</span></span>
-                  <Button size="sm" variant="outline" onClick={async () => {
+                  <Button size="sm" variant="create" onClick={async () => {
                     const r: any = await bursarService.grant({ student_id: c.student_id, rule_id: siblingRule!.id, academic_year: year });
                     if (r?.success === false) return showToast.error(r.error || 'Could not give the discount');
                     showToast.success(r.data.needsApproval ? 'Sent for approval' : `Approved · ${le(r.data.applied)} off`); refresh();
@@ -204,7 +208,7 @@ export const DiscountsPage: React.FC = () => {
             showToast.success(decide!.d === 'approve' ? `Approved · ${le(r.data.applied)} taken off` : 'Rejected'); refresh();
           }}>
           <label htmlFor="decide-reason" className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mt-2">{decide?.d === 'reject' ? 'Reason (required)' : 'Note (optional)'}</label>
-          <textarea id="decide-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" />
+          <textarea id="decide-reason" placeholder={decide?.d === 'reject' ? 'e.g. Family does not meet the scholarship criteria' : 'Optional note'} value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" />
         </ConfirmationDialog>
 
         <StudentAccountModal student={account} onClose={() => setAccount(null)} initialTab="discounts" />

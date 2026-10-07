@@ -31,6 +31,7 @@ import { feeStructureService, FeeStructure, FeeStructureExpense } from '@service
 import { financeService } from '@services/financeService';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import { YearFilter } from '@components/common/YearFilter';
+import { usePaged, TablePager } from '@components/admin/table/TablePager';
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 const fmtLe = (v: number | string | null | undefined) => `Le ${(Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
@@ -89,6 +90,7 @@ export const FeesPage: React.FC = () => {
     return classes.filter((c) => !t || c.name?.toLowerCase().includes(t) || c.level?.toLowerCase().includes(t));
   }, [classes, search]);
 
+  const pg = usePaged<any>(structures, [year], 10);
   const toggleExpand = (id: string) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
 
@@ -224,7 +226,7 @@ export const FeesPage: React.FC = () => {
                 <strong> Bill a term</strong> (layers) button on a structure.
               </span>
             </div>}
-            {structures.map((s: any, idx: number) => {
+            {pg.pageRows.map((s: any, idx: number) => {
               const isOpen = expanded.has(s.id);
               const t1 = Number(s.term1_tuition) || 0;
               const t2 = Number(s.term2_tuition) || 0;
@@ -311,6 +313,7 @@ export const FeesPage: React.FC = () => {
                 </div>
               );
             })}
+            <TablePager {...pg.pager} label="classes" />
           </div>
         )}
 
@@ -600,7 +603,7 @@ const FeeStructureModal: React.FC<{
                 <button type="button" onClick={() => removeExpense(i)} className="p-1.5 text-gray-400 hover:text-rose-600 flex-shrink-0"><Trash2 size={15} /></button>
               </div>
             ))}
-            <button type="button" onClick={() => addExpense({ label: '', amount: '', required: true })} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline mt-1"><Plus size={14} /> Add Charge Item</button>
+            <Button type="button" size="sm" variant="create" className="mt-1" onClick={() => addExpense({ label: '', amount: '', required: true })}><Plus size={14} /> Add Charge Item</Button>
             {expTotal > 0 && <p className="text-xs text-gray-500 mt-2">Total Academic Year Expenses: <span className="font-bold">{fmtLe(expTotal)}</span></p>}
           </Section>
 
@@ -686,7 +689,7 @@ const FeeStructureModal: React.FC<{
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700 sticky bottom-0 bg-white dark:bg-gray-800 rounded-b-2xl">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           {existingError && <span role="alert" className="mr-auto text-xs text-red-600">{(existingError as Error).message} Close and try again.</span>}
-          <Button variant="default" size="sm" onClick={handleSubmit(submit)} disabled={saving || existingLoading || !!existingError}>{saving ? 'Saving…' : existingLoading ? 'Loading…' : 'Save Academic Year Fees'}</Button>
+          <Button variant="create" size="sm" onClick={handleSubmit(submit)} disabled={saving || existingLoading || !!existingError}>{saving ? 'Saving…' : existingLoading ? 'Loading…' : 'Save Academic Year Fees'}</Button>
         </div>
       </div>
     </div>
@@ -762,7 +765,7 @@ const BillTermModal: React.FC<{ structure: any; onClose: () => void; onDone: () 
         </div>
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="default" size="sm" onClick={submit} disabled={saving}>{saving ? 'Billing…' : term === 'year' ? 'Bill Full Year' : `Bill Term ${term}`}</Button>
+          <Button variant="create" size="sm" onClick={submit} disabled={saving}>{saving ? 'Billing…' : term === 'year' ? 'Bill Full Year' : `Bill Term ${term}`}</Button>
         </div>
       </div>
     </div>
@@ -834,7 +837,7 @@ const AmtField: React.FC<{ label: string; value: string; onChange: (v: string) =
     <label className="text-[11px] text-gray-400 uppercase font-semibold">{label}</label>
     <div className="relative mt-1">
       {!value && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">Le</span>}
-      <input type="number" value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} className={`w-full py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm disabled:opacity-50 disabled:cursor-not-allowed ${!value ? 'pl-8 pr-3' : 'px-3'} ${error ? 'border-red-500' : ''}`} />
+      <input type="number" min={0} placeholder="e.g. 1500" value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} className={`w-full py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm disabled:opacity-50 disabled:cursor-not-allowed ${!value ? 'pl-8 pr-3' : 'px-3'} ${error ? 'border-red-500' : ''}`} />
     </div>
     {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
   </div>
@@ -844,7 +847,7 @@ const PolicyField: React.FC<{ label: string; value: string; onChange: (v: string
   <div>
     <label className="text-[11px] text-gray-400 uppercase font-semibold">{label}</label>
     <div className="relative mt-1">
-      <input type="number" value={value} onChange={(e) => onChange(e.target.value)} min={0} max={100} className="w-full pl-3 pr-8 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+      <input type="number" placeholder="e.g. 50" value={value} onChange={(e) => onChange(e.target.value)} min={0} max={100} className="w-full pl-3 pr-8 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
     </div>
   </div>
