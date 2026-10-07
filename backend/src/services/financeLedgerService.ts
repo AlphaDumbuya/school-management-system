@@ -308,6 +308,38 @@ class FinanceLedgerService {
   }
 
   /**
+   * The smallest payment the policy accepts right now (same rules as
+   * enforceMinimumPayment), for the payment forms: what is owed in total,
+   * whether part payments are allowed, the minimum and why.
+   */
+  async minimumPayment(tenantId: string, studentId: string): Promise<{
+    outstanding: number; allow_part: boolean; minimum: number; reason: string | null; next_instalment: number | null;
+  }> {
+    const rows = await db('fees').where({ tenant_id: tenantId, student_id: studentId }).whereNot('status', 'deleted').select('amount', 'balance', 'type');
+    const outstanding = Math.round(rows.reduce((s: number, f: any) => s + (Number(f.balance ?? f.amount) || 0), 0) * 100) / 100;
+    if (outstanding <= 0) return { outstanding: 0, allow_part: true, minimum: 0, reason: null, next_instalment: null };
+    let nextDue: number | null = null;
+    try {
+      const { planService } = await import('./finance/planService.js');
+      nextDue = await planService.nextInstalmentAmount(tenantId, studentId);
+    } catch { /* best-effort */ }
+    if (nextDue !== null) return { outstanding, allow_part: true, minimum: Math.min(nextDue, outstanding), reason: 'the next instalment of their payment plan', next_instalment: nextDue };
+    const policy = await this.getPaymentPolicy(tenantId, studentId).catch(() => null);
+    if (!policy) return { outstanding, allow_part: true, minimum: 0, reason: null, next_instalment: null };
+    if (!policy.allow_installments) return { outstanding, allow_part: false, minimum: outstanding, reason: 'the school requires the full balance (no part payments)', next_instalment: null };
+    const options: Array<[number, string]> = [];
+    if (policy.charges_compulsory_first_term) {
+      const charges = rows.filter((f: any) => !/tuition/i.test(String(f.type || ''))).reduce((s: number, f: any) => s + (Number(f.balance ?? f.amount) || 0), 0);
+      if (charges > 0) options.push([charges, 'all charges must be paid before tuition']);
+    }
+    if (policy.min_percent > 0) options.push([(policy.min_percent / 100) * outstanding, `${policy.min_percent}% minimum for ${policy.is_new_student ? 'new' : 'continuing'} students`]);
+    if (policy.min_percent_term > 0) options.push([(policy.min_percent_term / 100) * outstanding, `${policy.min_percent_term}% per-term minimum`]);
+    const top = options.sort((a, b) => b[0] - a[0])[0];
+    const minimum = top ? Math.min(outstanding, Math.round(top[0] * 100) / 100) : 0;
+    return { outstanding, allow_part: true, minimum, reason: top ? top[1] : null, next_instalment: null };
+  }
+
+  /**
    * Enforce the school's minimum-payment policy for a payment of `amount`
    * against a student's outstanding fees. Returns an error message when the
    * amount is below what the policy permits, else null (payment allowed).

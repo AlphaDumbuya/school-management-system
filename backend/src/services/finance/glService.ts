@@ -75,22 +75,12 @@ const chartReady = new Set<string>();
 const lastSync = new Map<string, number>();
 
 /** Academic year for a date, from the school's session starts (same rule as expenses). */
-async function yearStarts(tenantId: string): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  for (const s of await db('academic_sessions').where({ tenant_id: tenantId }).whereNotNull('start_date').select('name', 'start_date')) {
-    const y = normalizeAcademicYear(s.name);
-    const d = ymd(s.start_date);
-    if (y && (!out.has(y) || d < out.get(y)!)) out.set(y, d);
-  }
-  return out;
-}
-
 async function yearResolver(tenantId: string): Promise<(d: string) => string | null> {
   const sessions = await db('academic_sessions').where({ tenant_id: tenantId }).whereNotNull('start_date').select('name', 'start_date');
   const sorted = sessions
     .map((s: any) => ({ y: normalizeAcademicYear(s.name), start: ymd(s.start_date) }))
     .filter((s) => s.y && /^\d{4}\/\d{4}$/.test(s.y))
-    .sort((a, b) => a.start.localeCompare(b.start));
+    .sort((a, b) => a.start.localeCompare(b.start) || a.y!.localeCompare(b.y!)); // same start: the later year wins
   const fallback = (await resolveActiveYear(tenantId)).yearString || null;
   return (d: string) => {
     let hit: string | null = null;
@@ -112,6 +102,8 @@ const entryNo = (n: number) => `JE-${String(n).padStart(6, '0')}`;
 
 type Doc = {
   type: string; id: string; date: string; change: string | null; memo: string; student?: string | null;
+  /** Academic year the record belongs to (its own year, not its date): drives year reports. */
+  year?: string | null;
   lines: Map<string, number>; // account id → cents (debit +, credit −)
 };
 
@@ -188,7 +180,6 @@ export const glService = {
     const today = await tenantToday(tenantId);
     const lock = await this.lockDate(tenantId);
     const yearOf = await yearResolver(tenantId);
-    const starts = await yearStarts(tenantId);
     const result = await db.transaction(async (trx) => {
       await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [`gl:${tenantId}`]);
       const byKey = await this.accountsByKey(trx, tenantId);
@@ -207,26 +198,29 @@ export const glService = {
           .map((r: any) => [r.id, r.n || 'Student']),
       );
       const who = (id: string) => names.get(id) || 'Student';
+      const Y = (v: any) => { const y = normalizeAcademicYear(v || null); return y && /^\d{4}\/\d{4}$/.test(y) ? y : null; };
+      const feeYear = new Map<string, string | null>();
 
       // Fees billed.
       for (const f of await trx('fees').where({ tenant_id: tenantId }).select('id', 'student_id', 'amount', 'status', 'type', 'source', 'term', 'academic_year', 'created_at', 'updated_at')) {
         const amt = f.status === 'deleted' ? 0 : cents(f.amount);
         const inc = f.source === 'late_fee' ? 'inc:late' : String(f.type || '').toLowerCase() === 'tuition' ? 'inc:tuition' : 'inc:other';
-        // Billed ahead of its year (e.g. in the holidays): income belongs to that year.
-        const ys = starts.get(normalizeAcademicYear(f.academic_year || null) || '');
-        const billed = ymd(f.created_at);
-        add({ type: 'fee', id: f.id, date: ys && billed < ys ? ys : billed, change: ymd(f.updated_at), student: f.student_id, memo: `${f.type || 'Fee'}${f.term ? ` · ${f.term}` : ''}: ${who(f.student_id)}` },
+        feeYear.set(f.id, Y(f.academic_year));
+        add({ type: 'fee', id: f.id, year: Y(f.academic_year), date: ymd(f.created_at), change: ymd(f.updated_at), student: f.student_id, memo: `${f.type || 'Fee'}${f.term ? ` · ${f.term}` : ''}: ${who(f.student_id)}` },
           [[A('ar'), amt], [A(inc), -amt]]);
       }
 
       // Payments received (refunded ones were received too; the refund posts the outflow).
       const overpaid = new Set((await trx('student_credits').where({ tenant_id: tenantId, kind: 'overpayment' }).whereNotNull('payment_id').select('payment_id')).map((r: any) => r.payment_id));
       const payMethod = new Map<string, string>();
-      for (const p of await trx('payments').where({ tenant_id: tenantId }).select('id', 'student_id', 'amount', 'status', 'method', 'payment_method', 'payment_date', 'created_at', 'updated_at', 'receipt_number')) {
+      for (const p of await trx('payments as p').where('p.tenant_id', tenantId)
+        .select('p.id', 'p.student_id', 'p.amount', 'p.status', 'p.method', 'p.payment_method', 'p.payment_date', 'p.created_at', 'p.updated_at', 'p.receipt_number')) {
         const method = p.method || p.payment_method;
         payMethod.set(p.id, method);
+        // Cash is in the year it arrived (a 2026/2027 arrear paid now lowers this year's receivable).
+        const year = yearOf(ymd(p.payment_date || p.created_at));
         const amt = ['completed', 'refunded'].includes(String(p.status)) ? cents(p.amount) : 0;
-        add({ type: 'payment', id: p.id, date: ymd(p.payment_date || p.created_at), change: ymd(p.updated_at), student: p.student_id, memo: `Payment${p.receipt_number ? ` ${p.receipt_number}` : ''}: ${who(p.student_id)}` },
+        add({ type: 'payment', id: p.id, year, date: ymd(p.payment_date || p.created_at), change: ymd(p.updated_at), student: p.student_id, memo: `Payment${p.receipt_number ? ` ${p.receipt_number}` : ''}: ${who(p.student_id)}` },
           [[A(cashKeyFor(method)), amt], [A(overpaid.has(p.id) ? 'credit' : 'ar'), -amt]]);
       }
 
@@ -239,11 +233,11 @@ export const glService = {
       }
 
       // Non-cash adjustments to fee balances.
-      for (const a of await trx('fee_adjustments').where({ tenant_id: tenantId }).select('id', 'student_id', 'kind', 'amount', 'created_at', 'reversed_at')) {
+      for (const a of await trx('fee_adjustments').where({ tenant_id: tenantId }).select('id', 'fee_id', 'student_id', 'kind', 'amount', 'created_at', 'reversed_at')) {
         const amt = a.reversed_at ? 0 : cents(a.amount);
         const dr = a.kind === 'credit_applied' ? 'credit' : a.kind === 'late_fee_waiver' ? 'inc:late' : 'inc:discount';
         const label = ({ discount: 'Discount', waiver: 'Waiver', credit_applied: 'Credit applied', late_fee_waiver: 'Late fee waived' } as any)[a.kind] || 'Adjustment';
-        add({ type: 'adjustment', id: a.id, date: ymd(a.created_at), change: ymd(a.reversed_at), student: a.student_id, memo: `${label}: ${who(a.student_id)}` },
+        add({ type: 'adjustment', id: a.id, year: feeYear.get(a.fee_id) || null, date: ymd(a.created_at), change: ymd(a.reversed_at), student: a.student_id, memo: `${label}: ${who(a.student_id)}` },
           [[A(dr), amt], [A('ar'), -amt]]);
       }
 
@@ -259,30 +253,30 @@ export const glService = {
 
       // Expenses (payroll expenses are posted from the pay run with its liabilities).
       for (const e of await trx('school_expenses').where({ tenant_id: tenantId }).whereNot('source', 'payroll')
-        .select('id', 'category', 'amount', 'expense_date', 'payment_method', 'source', 'vendor', 'description', 'voided_at', 'updated_at', 'created_at')) {
+        .select('id', 'academic_year', 'category', 'amount', 'expense_date', 'payment_method', 'source', 'vendor', 'description', 'voided_at', 'updated_at', 'created_at')) {
         const acc = await this.expenseAccount(trx, tenantId, byKey, e.category);
         const amt = e.voided_at ? 0 : cents(e.amount);
         const credit = e.source === 'petty_cash' ? 'petty' : cashKeyFor(e.payment_method);
-        add({ type: 'expense', id: e.id, date: ymd(e.expense_date || e.created_at), change: ymd(e.voided_at || e.updated_at), memo: `${e.category}${e.vendor ? `: ${e.vendor}` : e.description ? `: ${String(e.description).slice(0, 80)}` : ''}${e.source === 'petty_cash' ? ' (petty cash)' : ''}` },
+        add({ type: 'expense', id: e.id, year: Y(e.academic_year), date: ymd(e.expense_date || e.created_at), change: ymd(e.voided_at || e.updated_at), memo: `${e.category}${e.vendor ? `: ${e.vendor}` : e.description ? `: ${String(e.description).slice(0, 80)}` : ''}${e.source === 'petty_cash' ? ' (petty cash)' : ''}` },
           [[acc.id, amt], [A(credit), -amt]]);
       }
 
       // Petty cash float movements (spends are expenses above).
       for (const p of await trx('petty_cash_entries as e').join('petty_cash_funds as f', 'f.id', 'e.fund_id').where('e.tenant_id', tenantId).whereIn('e.kind', ['top_up', 'return'])
-        .select('e.id', 'e.kind', 'e.amount', 'e.entry_date', 'e.voided_at', 'e.created_at', 'f.name')) {
+        .select('e.id', 'e.kind', 'e.amount', 'e.entry_date', 'e.academic_year', 'e.voided_at', 'e.created_at', 'f.name')) {
         const amt = p.voided_at ? 0 : cents(p.amount);
         const lines: Array<[string, number]> = p.kind === 'top_up' ? [[A('petty'), amt], [A('bank'), -amt]] : [[A('bank'), amt], [A('petty'), -amt]];
-        add({ type: 'petty_cash', id: p.id, date: ymd(p.entry_date || p.created_at), change: ymd(p.voided_at), memo: `${p.kind === 'top_up' ? 'Petty cash top-up' : 'Petty cash returned to bank'}: ${p.name}` }, lines);
+        add({ type: 'petty_cash', id: p.id, year: Y(p.academic_year), date: ymd(p.entry_date || p.created_at), change: ymd(p.voided_at), memo: `${p.kind === 'top_up' ? 'Petty cash top-up' : 'Petty cash returned to bank'}: ${p.name}` }, lines);
       }
 
       // Paid payroll runs.
       for (const r of await trx('payroll_runs').where({ tenant_id: tenantId }).whereIn('status', ['paid', 'cancelled'])
-        .select('id', 'period', 'status', 'gross', 'paye', 'nassit_employee', 'nassit_employer', 'other_deductions', 'payment_date', 'paid_at', 'updated_at')) {
+        .select('id', 'period', 'academic_year', 'status', 'gross', 'paye', 'nassit_employee', 'nassit_employer', 'other_deductions', 'payment_date', 'paid_at', 'updated_at')) {
         if (r.status === 'cancelled' && !r.paid_at) continue;
         const live = r.status === 'paid';
         const gross = live ? cents(r.gross) : 0, paye = live ? cents(r.paye) : 0;
         const ee = live ? cents(r.nassit_employee) : 0, er = live ? cents(r.nassit_employer) : 0, other = live ? cents(r.other_deductions) : 0;
-        add({ type: 'payroll', id: r.id, date: ymd(r.payment_date || r.paid_at), change: ymd(r.updated_at), memo: `Payroll ${r.period}` }, [
+        add({ type: 'payroll', id: r.id, year: Y(r.academic_year), date: ymd(r.payment_date || r.paid_at), change: ymd(r.updated_at), memo: `Payroll ${r.period}` }, [
           [A('exp:salaries'), gross], [A('exp:statutory (paye/nassit)'), er],
           [A('bank'), -(gross - paye - ee - other)], [A('paye'), -paye], [A('nassit'), -(ee + er)], [A('payded'), -other],
         ]);
@@ -323,13 +317,23 @@ export const glService = {
           date, diff, correction,
         });
       }
+      // Keep every automatic entry in its record's academic year (a fee moved to another year follows).
+      const tags: string[][] = Array.from(docs.values()).filter((d) => d.year).map((d) => [d.type, d.id, d.year as string]);
+      for (let i = 0; i < tags.length; i += 500) {
+        const chunk = tags.slice(i, i + 500);
+        await trx.raw(
+          `UPDATE gl_entries e SET academic_year = v.y FROM (VALUES ${chunk.map(() => '(?, ?::uuid, ?)').join(', ')}) AS v(t, id, y)
+           WHERE e.tenant_id = ? AND e.kind = 'auto' AND e.source_type = v.t AND e.source_id = v.id AND e.academic_year IS DISTINCT FROM v.y`,
+          [...chunk.flat(), tenantId],
+        );
+      }
       if (!out.length) return { posted: 0, documents: docs.size };
 
       let n = await reserveNumbers(trx, tenantId, out.length);
       for (let i = 0; i < out.length; i += 400) {
         const chunk = out.slice(i, i + 400);
         const entries = chunk.map((o) => ({
-          tenant_id: tenantId, entry_no: entryNo(n++), entry_date: o.date, academic_year: yearOf(o.date),
+          tenant_id: tenantId, entry_no: entryNo(n++), entry_date: o.date, academic_year: o.doc.year || yearOf(o.date),
           memo: o.correction ? `Correction: ${o.doc.memo}` : o.doc.memo, kind: 'auto', source_type: o.doc.type, source_id: o.doc.id,
         }));
         const ids: Array<{ id: string }> = await trx('gl_entries').insert(entries).returning('id');

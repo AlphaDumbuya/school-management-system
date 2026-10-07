@@ -662,9 +662,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
       return !item.roles.includes(String(user?.role)) && duties.some((d) => item.roles.includes(d));
     }
     return canAccess(item.roles as any[]);
-    // canAccess is derived from user.role which is stable after login
+    // Re-filter when the role or duties change (live role sync after a promotion
+    // or a new Bursar duty), not only on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [isSuperAdmin]);
+  }), [isSuperAdmin, user?.role, JSON.stringify((user as any)?.staffDuties ?? [])]);
 
   // Group the filtered items.
   const groupedNav = React.useMemo(() => {

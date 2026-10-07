@@ -67,6 +67,27 @@ const COMMON_FAQ: Faq[] = [
   { q: 'The app isn\'t showing my latest changes.', a: 'The app caches for offline use. Pull to refresh, or if an update badge appears at the top, tap it to load the newest version.' },
 ];
 
+/** Questions the bursar asks most (shown above the common ones). */
+const ROLE_FAQ: Partial<Record<string, Faq[]>> = {
+  accountant: [
+    { q: 'A parent paid cash at the office. How do I record it?', a: 'Payments & Receipts → Record Payment. Type part of the student\'s name, admission number, class or the parent\'s phone, pick the student, choose what the payment is for, enter the amount and method. It settles the oldest fees first and gives a numbered receipt.' },
+    { q: 'I recorded a payment for the wrong student.', a: 'Refund that payment with a reason (the balance goes back on the fees), then record it again for the right student. Payments are never deleted, so the audit log shows both.' },
+    { q: 'Why is my discount "waiting for approval"?', a: 'It is above the amount you can give alone (Settings → Payment Policy), or it is a percentage on fees that aren\'t billed yet. The principal is notified and decides; you get a notification when they do.' },
+    { q: 'Can I sign in for a day I forgot?', a: 'No. Staff sign in for today only, until the school\'s closing time. For any other day, or after the cut-off, ask the principal to record your attendance.' },
+    { q: 'How do I pay PAYE and NASSIT over to the NRA and NASSIT?', a: 'Marking a pay run as paid records what you owe them. When you pay it over, open Journal → New journal → "PAYE / NASSIT paid over", enter the amounts and post it.' },
+    { q: 'The bank statement doesn\'t match the books.', a: 'Open Bank Reconciliation, import the statement CSV, run Auto-match, then match or add the remaining lines (bank charges, interest). Enter the statement balance to see the difference.' },
+  ],
+};
+
+/** Shortcuts on the Help Center home, per role. */
+const ROLE_ACTIONS: Partial<Record<string, Array<{ label: string; to: string; icon: any; accent: 'blue' | 'violet' | 'emerald' | 'amber' }>>> = {
+  accountant: [
+    { label: 'Record a payment', to: '/support/finance/payments-record', icon: Wallet, accent: 'blue' },
+    { label: 'Discounts', to: '/support/finance/discounts', icon: CreditCard, accent: 'violet' },
+    { label: 'Bank reconciliation', to: '/support/finance/bank-reconciliation', icon: Building, accent: 'emerald' },
+  ],
+};
+
 export const SupportPage: React.FC = () => {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -115,11 +136,13 @@ export const SupportPage: React.FC = () => {
   const popular = useMemo(() => getPopularArticles(role), [role]);
   const q = search.trim();
   const results = useMemo(() => (q.length > 1 ? searchArticles(q, role) : []), [q, role]);
+  const allFaqs = useMemo(() => [...(ROLE_FAQ[String(role)] || []), ...COMMON_FAQ], [role]);
+  const roleActions = ROLE_ACTIONS[String(role)];
   const filteredFaqs = useMemo(() => {
     const ql = q.toLowerCase();
-    if (!ql) return COMMON_FAQ;
-    return COMMON_FAQ.filter((f) => f.q.toLowerCase().includes(ql) || f.a.toLowerCase().includes(ql));
-  }, [q]);
+    if (!ql) return allFaqs;
+    return allFaqs.filter((f) => f.q.toLowerCase().includes(ql) || f.a.toLowerCase().includes(ql));
+  }, [q, allFaqs]);
 
   return (
     <MainLayout>
@@ -180,10 +203,14 @@ export const SupportPage: React.FC = () => {
           <>
             {/* Quick actions */}
             <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <QuickAction icon={Rocket} label="Getting started" to="/support/getting-started/welcome" accent="blue" />
+              {roleActions
+                ? roleActions.map((a) => <QuickAction key={a.to} icon={a.icon} label={a.label} to={a.to} accent={a.accent} />)
+                : <>
+                  <QuickAction icon={Rocket} label="Getting started" to="/support/getting-started/welcome" accent="blue" />
+                  <QuickAction icon={Mail} label="Email support" href="mailto:support@wiskulsl.com" accent="emerald" />
+                  <QuickAction icon={ShieldCheck} label="Account security" to="/support/account/account-security" accent="amber" />
+                </>}
               <QuickAction icon={Ticket} label="My tickets" onClick={() => document.getElementById('tickets-section')?.scrollIntoView({ behavior: 'smooth' })} accent="violet" />
-              <QuickAction icon={Mail} label="Email support" href="mailto:support@wiskulsl.com" accent="emerald" />
-              <QuickAction icon={ShieldCheck} label="Account security" to="/support/account/account-security" accent="amber" />
             </div>
 
             {/* Popular articles */}
@@ -223,7 +250,7 @@ export const SupportPage: React.FC = () => {
                 <HelpCircle size={18} className="text-blue-600" />
                 <h3 className="text-base font-bold text-gray-900 dark:text-white">Quick answers</h3>
               </div>
-              <FaqList faqs={COMMON_FAQ} openFaq={openFaq} setOpenFaq={setOpenFaq} />
+              <FaqList faqs={allFaqs} openFaq={openFaq} setOpenFaq={setOpenFaq} />
             </section>
           </>
         )}
@@ -391,11 +418,18 @@ const CATEGORY_OPTIONS = [
     desc: 'Something is broken or not working',
   },
   {
+    value: 'School fees & finance',
+    icon: Wallet,
+    color: 'bg-teal-50 text-teal-600 border-teal-200 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-900/40',
+    selected: 'ring-2 ring-teal-400 border-teal-400 bg-teal-50 dark:bg-teal-900/30',
+    desc: 'Fees, payments, receipts, payroll or the books',
+  },
+  {
     value: 'Billing',
     icon: BillingIcon,
     color: 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900/40',
     selected: 'ring-2 ring-emerald-400 border-emerald-400 bg-emerald-50 dark:bg-emerald-900/30',
-    desc: 'Subscription, payments or invoices',
+    desc: 'Your WiSkul subscription and its invoices',
   },
   {
     value: 'Account',
@@ -436,6 +470,7 @@ const PRIORITY_OPTIONS = [
 
 const CATEGORY_TIPS: Record<string, string> = {
   'Technical Issue': 'Include the page or feature where the issue appears, what you did, what happened, and what you expected.',
+  'School fees & finance': 'Include the page (e.g. Payments, Discounts, Payroll), the student\'s admission number or the receipt / journal number, the amount, and what you expected to happen. Never send card or mobile-money PINs.',
   'Billing': 'Include your subscription plan, the date of the charge or invoice, and the amount in question.',
   'Account': 'Include the affected user\'s email or role, and whether the issue affects just one account or multiple.',
   'Feature Request': 'Describe your workflow and what problem the feature would solve. Screenshots or examples help.',

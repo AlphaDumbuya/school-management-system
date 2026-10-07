@@ -5,6 +5,7 @@
  * announcements addressed to 'all' or to their specific role.
  */
 import { db } from '@utils/database';
+import { parseDuties } from '@utils/staffDuties';
 import { logger } from '@utils/logger';
 import { AppError } from '@middleware/errorHandler';
 import { applyYearScope, type YearScope } from '@utils/academicYear';
@@ -196,11 +197,18 @@ export class AnnouncementService {
    *   - audience is 'all' or their own role, AND
    *   - it is not class-scoped, OR they belong to that class (or authored it).
    */
+  /** Staff duties of a teacher viewer (users.staff_duties): extra audiences they receive. */
+  private async viewerDuties(viewerId?: string, viewerRole?: string): Promise<string[]> {
+    if (!viewerId || viewerRole !== 'teacher') return [];
+    const row = await db('users').where('id', viewerId).first('staff_duties').catch(() => null);
+    return parseDuties(row?.staff_duties);
+  }
+
   private applyAudienceFilter(
     query: any,
     tenantId: string,
     viewerRole?: string,
-    ctx?: { viewerId?: string; viewerClassIds?: string[] }
+    ctx?: { viewerId?: string; viewerClassIds?: string[]; extraAudiences?: string[] }
   ) {
     query.where('announcements.tenant_id', tenantId);
     if (viewerRole && !['principal', 'super_admin'].includes(viewerRole)) {
@@ -209,9 +217,10 @@ export class AnnouncementService {
       // The audiences this viewer's role should receive. 'guardian' and 'parent'
       // are the same audience (both are parent/guardian logins), so a viewer of
       // either role sees announcements addressed to 'parent'.
+      // A teacher who is also Bursar / Admissions also gets that duty's posts.
       const roleAudiences = (viewerRole === 'guardian' || viewerRole === 'parent')
         ? ['parent', 'guardian']
-        : [viewerRole];
+        : [viewerRole, ...(ctx?.extraAudiences ?? [])];
       // Audience match: 'all' OR any audience mapped to this role.
       query.andWhere((q: any) => {
         q.where('announcements.audience', 'all').orWhereIn('announcements.audience', roleAudiences);
@@ -240,7 +249,7 @@ export class AnnouncementService {
 
     const viewerId = opts.viewerId;
     const viewerClassIds = viewerId ? await this.getViewerClassIds(tenantId, viewerId, opts.viewerRole) : [];
-    const ctx = { viewerId, viewerClassIds };
+    const ctx = { viewerId, viewerClassIds, extraAudiences: await this.viewerDuties(viewerId, opts.viewerRole) };
     // Optional academic-year scope: posts dated inside that year's window.
     const yearScope = opts.yearScope ?? null;
 
@@ -308,6 +317,7 @@ export class AnnouncementService {
   async unreadCount(tenantId: string, viewerId: string, viewerRole?: string): Promise<number> {
     if (!tenantId || !viewerId) return 0;
     const viewerClassIds = await this.getViewerClassIds(tenantId, viewerId, viewerRole);
+    const extraAudiences = await this.viewerDuties(viewerId, viewerRole);
     const q = db('announcements').leftJoin('announcement_reads', function () {
       this.on('announcement_reads.announcement_id', '=', 'announcements.id').andOn(
         'announcement_reads.user_id',
@@ -315,7 +325,7 @@ export class AnnouncementService {
         db.raw('?', [viewerId])
       );
     });
-    this.applyAudienceFilter(q, tenantId, viewerRole, { viewerId, viewerClassIds });
+    this.applyAudienceFilter(q, tenantId, viewerRole, { viewerId, viewerClassIds, extraAudiences });
     q.whereNull('announcement_reads.id');
     const row: any = await q.count('announcements.id as count').first();
     return Number(row?.count ?? 0);
@@ -337,8 +347,9 @@ export class AnnouncementService {
   async markAllRead(tenantId: string, viewerId: string, viewerRole?: string) {
     if (!tenantId || !viewerId) return;
     const viewerClassIds = await this.getViewerClassIds(tenantId, viewerId, viewerRole);
+    const extraAudiences = await this.viewerDuties(viewerId, viewerRole);
     const q = db('announcements');
-    this.applyAudienceFilter(q, tenantId, viewerRole, { viewerId, viewerClassIds });
+    this.applyAudienceFilter(q, tenantId, viewerRole, { viewerId, viewerClassIds, extraAudiences });
     const rows = await q.select('announcements.id');
     if (!rows.length) return;
     const now = new Date();

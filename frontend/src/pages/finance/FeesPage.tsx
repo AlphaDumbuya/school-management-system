@@ -64,7 +64,7 @@ export const FeesPage: React.FC = () => {
   // rows after a rollover, and fee structures point at that year's classes).
   const { data: classResp, isLoading: classLoading, error: classError } = useQuery({
     queryKey: ['classes-all', year],
-    queryFn: () => okOrThrow(classesService.listClasses({ limit: 200, academic_year: year } as any)),
+    queryFn: () => okOrThrow(classesService.listClasses({ limit: 200, academic_year: year, scope: 'finance' } as any)),
     enabled: !!year,
     staleTime: 60_000,
   });

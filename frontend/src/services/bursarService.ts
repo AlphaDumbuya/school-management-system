@@ -71,8 +71,21 @@ export async function downloadFile(endpoint: string, filename: string): Promise<
   await saveBlob(await res.blob(), filename);
 }
 
+export type StudentHit = {
+  id: string; admission_no: string; name: string; status: string | null; photo_url: string | null;
+  class_name: string | null; class_level: string | null; outstanding: number; guardian_name: string | null; guardian_phone: string | null; left_school: boolean;
+};
+export type FinanceStudentProfile = {
+  id: string; admission_no: string; name: string; status: string | null; photo_url: string | null; gender: string | null; enrollment_date: string | null;
+  email: string | null; phone: string | null; class_name: string | null; class_level: string | null; enrolment_status: string | null; left_school: boolean;
+  guardians: Array<{ name: string | null; relationship: string | null; phone: string | null; email: string | null; is_primary: boolean; has_account: boolean }>;
+  money: { academic_year: string | null; billed_this_year: number; owed_this_year: number; owed_total: number; credit: number; last_payment: { date: string; amount: number; receipt_number: string | null } | null };
+};
+
 export const bursarService = {
   // Discounts
+  searchStudents: (q: string) => apiClient.get<{ success: boolean; data: StudentHit[] }>(`${F}/students/search${qs({ q })}`),
+  studentProfile: (id: string) => apiClient.get<{ success: boolean; data: FinanceStudentProfile }>(`${F}/students/${id}/profile`),
   listRules: () => apiClient.get<{ success: boolean; data: DiscountRule[] }>(`${F}/discounts/rules`),
   createRule: (b: Partial<DiscountRule>) => apiClient.post<{ success: boolean; data: DiscountRule }>(`${F}/discounts/rules`, b),
   updateRule: (id: string, b: Partial<DiscountRule>) => apiClient.put<{ success: boolean; data: DiscountRule }>(`${F}/discounts/rules/${id}`, b),
@@ -183,6 +196,8 @@ export const bursarB = {
 export type GLAccount = {
   id: string; code: string; name: string; type: 'asset' | 'liability' | 'equity' | 'income' | 'expense';
   subtype: string | null; system_key: string | null; is_active: boolean; is_system: boolean; control: boolean; balance: number; has_activity: boolean;
+  /** Income / expense: the academic year the balance covers (balance-sheet accounts: null = balance now). */
+  period: string | null;
 };
 export type GLLine = { id: string; entry_id: string; account_id: string; code: string; name: string; debit: number; credit: number; memo: string | null };
 export type GLEntry = {

@@ -74,7 +74,10 @@ export const DiscountsPage: React.FC = () => {
   const [ruleEdit, setRuleEdit] = useState<Partial<DiscountRule> | null>(null);
   const [grantFor, setGrantFor] = useState<PickedStudent | null>(null);
   const [grantOpen, setGrantOpen] = useState(false);
-  const [decide, setDecide] = useState<{ g: DiscountGrant; d: 'approve' | 'reject' } | null>(null);
+  const [decide, setDecide] = useState<{ g: DiscountGrant; d: 'approve' | 'reject' | 'revoke' } | null>(null);
+  const [givingTo, setGivingTo] = useState<string | null>(null);
+  // The bursar may withdraw any request and take back a discount they gave within their own limit.
+  const canRevoke = (g: DiscountGrant) => !viewingPast && (g.status === 'pending' || (g.status === 'approved' && (isPrincipal || ((g as any).requested_by === user?.id && (g as any).decided_by === user?.id))));
   const [reason, setReason] = useState('');
   const [account, setAccount] = useState<{ id: string; name: string; admissionNo?: string } | null>(null);
   const [siblingRule, setSiblingRule] = useState<DiscountRule | null>(null);
@@ -99,7 +102,7 @@ export const DiscountsPage: React.FC = () => {
         {viewingPast && <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">Showing {year} as history. New discounts are given in {activeYear}.</div>}
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
           <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"><div className="text-xl font-black">{le(totalApplied)}</div><div className="text-xs text-gray-500">Taken off fees · {year}</div></div>
-          <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"><div className="text-xl font-black">{(grantsQ.data || []).filter((g) => g.status === 'approved').length}</div><div className="text-xs text-gray-500">Students with a discount</div></div>
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"><div className="text-xl font-black">{new Set((grantsQ.data || []).filter((g) => g.status === 'approved').map((g) => g.student_id)).size}</div><div className="text-xs text-gray-500">Students with a discount</div></div>
           <button type="button" onClick={() => { setTab('grants'); setStatus('pending'); }} className="text-left rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 p-4"><div className="text-xl font-black text-amber-700">{pending}</div><div className="text-xs text-amber-800">{isPrincipal ? 'Waiting for your approval' : 'Waiting for the principal'}</div></button>
         </div>
 
@@ -134,10 +137,13 @@ export const DiscountsPage: React.FC = () => {
                           <td className="px-4 py-3 text-right">{g.status === 'approved' ? le(g.applied_amount) : '—'}</td>
                           <td className="px-4 py-3"><Pill s={g.status} /><div className="text-[11px] text-gray-400">{g.status === 'pending' ? `by ${g.requested_by_name || 'bursar'}` : g.decided_by_name ? `by ${g.decided_by_name}` : ''}</div></td>
                           <td className="px-4 py-3 text-right whitespace-nowrap">
-                            {g.status === 'pending' && isPrincipal && <>
+                            {g.status === 'pending' && isPrincipal && !viewingPast && <>
                               <button type="button" onClick={() => { setReason(''); setDecide({ g, d: 'approve' }); }} className="text-xs font-semibold text-emerald-700 hover:underline mr-3">Approve</button>
-                              <button type="button" onClick={() => { setReason(''); setDecide({ g, d: 'reject' }); }} className="text-xs font-semibold text-red-600 hover:underline">Reject</button>
+                              <button type="button" onClick={() => { setReason(''); setDecide({ g, d: 'reject' }); }} className="text-xs font-semibold text-red-600 hover:underline mr-3">Reject</button>
                             </>}
+                            {canRevoke(g) && !(g.status === 'pending' && isPrincipal) && (
+                              <button type="button" onClick={() => { setReason(''); setDecide({ g, d: 'revoke' }); }} className="text-xs font-semibold text-red-600 hover:underline">{g.status === 'pending' ? 'Withdraw' : 'Revoke'}</button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -182,16 +188,19 @@ export const DiscountsPage: React.FC = () => {
         </Modal>
 
         <Modal isOpen={!!siblingRule} onClose={() => setSiblingRule(null)} title={`Eligible for ${siblingRule?.name || ''} · ${year}`} size="lg">
-          {siblingsQ.isLoading ? <p className="text-sm text-gray-400">Looking for families…</p> : (siblingsQ.data || []).length === 0 ? <p className="text-sm text-gray-500">No more eligible students. Families are matched by their parent account.</p> : (
+          {siblingsQ.isLoading ? <p className="text-sm text-gray-400">Looking for families…</p> : (siblingsQ.data || []).length === 0 ? <p className="text-sm text-gray-500">No more eligible students. Children at school this year are matched into a family by their parent account or guardian phone number, oldest first.</p> : (
             <div className="space-y-2">
               {(siblingsQ.data || []).map((c) => (
                 <div key={c.student_id} className="flex items-center justify-between rounded-lg border border-gray-100 dark:border-gray-800 px-3 py-2 text-sm">
                   <span>{c.name} <span className="text-xs text-gray-500">{c.admission_no} · child {c.child_number} of {c.siblings}</span></span>
-                  <Button size="sm" variant="create" onClick={async () => {
-                    const r: any = await bursarService.grant({ student_id: c.student_id, rule_id: siblingRule!.id, academic_year: year });
-                    if (r?.success === false) return showToast.error(r.error || 'Could not give the discount');
-                    showToast.success(r.data.needsApproval ? 'Sent for approval' : `Approved · ${le(r.data.applied)} off`); refresh();
-                  }}>Give</Button>
+                  <Button size="sm" variant="create" disabled={givingTo === c.student_id} onClick={async () => {
+                    setGivingTo(c.student_id);
+                    try {
+                      const r: any = await bursarService.grant({ student_id: c.student_id, rule_id: siblingRule!.id, academic_year: year });
+                      if (r?.success === false) return showToast.error(r.error || 'Could not give the discount');
+                      showToast.success(r.data.needsApproval ? 'Sent to the principal for approval' : `Approved · ${le(r.data.applied)} off`); refresh();
+                    } finally { setGivingTo(null); }
+                  }}>{givingTo === c.student_id ? 'Giving…' : 'Give'}</Button>
                 </div>
               ))}
             </div>
@@ -199,16 +208,17 @@ export const DiscountsPage: React.FC = () => {
         </Modal>
 
         <ConfirmationDialog isOpen={!!decide} onClose={() => setDecide(null)} isDestructive={decide?.d === 'reject'}
-          title={decide?.d === 'approve' ? 'Approve discount' : 'Reject discount'} confirmLabel={decide?.d === 'approve' ? 'Approve' : 'Reject'}
-          message={decide ? `${decide.g.label} for ${decide.g.student_name} (${decide.g.basis === 'percent' ? `${Number(decide.g.value)}%` : le(decide.g.value)}, ${decide.g.term || 'whole year'}).${decide.d === 'approve' ? ' It reduces the fees as soon as you approve.' : ''}` : ''}
-          confirmDisabled={decide?.d === 'reject' && reason.trim().length < 5}
+          title={decide?.d === 'approve' ? 'Approve discount' : decide?.d === 'reject' ? 'Reject discount' : decide?.g.status === 'pending' ? 'Withdraw request' : 'Revoke discount'}
+          confirmLabel={decide?.d === 'approve' ? 'Approve' : decide?.d === 'reject' ? 'Reject' : decide?.g.status === 'pending' ? 'Withdraw' : 'Revoke'}
+          message={decide ? `${decide.g.label} for ${decide.g.student_name} (${decide.g.basis === 'percent' ? `${Number(decide.g.value)}%` : le(decide.g.value)}, ${decide.g.term || 'whole year'}).${decide.d === 'approve' ? ' It reduces the fees as soon as you approve.' : decide.d === 'revoke' && decide.g.status === 'approved' ? ` ${le(decide.g.applied_amount)} will be owed again.` : ''}` : ''}
+          confirmDisabled={decide?.d !== 'approve' && reason.trim().length < 5}
           onConfirm={async () => {
             const r: any = await bursarService.decide(decide!.g.id, decide!.d, reason.trim());
             if (r?.success === false) { showToast.error(r.error || 'Failed'); throw new Error('x'); }
-            showToast.success(decide!.d === 'approve' ? `Approved · ${le(r.data.applied)} taken off` : 'Rejected'); refresh();
+            showToast.success(decide!.d === 'approve' ? `Approved · ${le(r.data.applied)} taken off` : decide!.d === 'reject' ? 'Rejected' : decide!.g.status === 'pending' ? 'Request withdrawn' : `Revoked · ${le(r.data.restored)} owed again`); refresh();
           }}>
-          <label htmlFor="decide-reason" className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mt-2">{decide?.d === 'reject' ? 'Reason (required)' : 'Note (optional)'}</label>
-          <textarea id="decide-reason" placeholder={decide?.d === 'reject' ? 'e.g. Family does not meet the scholarship criteria' : 'Optional note'} value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" />
+          <label htmlFor="decide-reason" className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mt-2">{decide?.d === 'approve' ? 'Note (optional)' : 'Reason (required)'}</label>
+          <textarea id="decide-reason" placeholder={decide?.d === 'reject' ? 'e.g. Family does not meet the scholarship criteria' : decide?.d === 'revoke' ? 'e.g. Given to the wrong student' : 'Optional note'} value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" />
         </ConfirmationDialog>
 
         <StudentAccountModal student={account} onClose={() => setAccount(null)} initialTab="discounts" />

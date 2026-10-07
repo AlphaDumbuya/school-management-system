@@ -10,8 +10,8 @@
 import type { Knex } from 'knex';
 import { db } from '@utils/database';
 import { AppError } from '@middleware/errorHandler';
-import { normalizeAcademicYear, resolveActiveYear } from '@utils/academicYear';
-import { round2, applyAdjustment, reverseAdjustment, financeSettings, audit } from './core';
+import { normalizeAcademicYear, resolveActiveYear, resolveYearScope } from '@utils/academicYear';
+import { round2, applyAdjustment, reverseAdjustment, financeSettings, audit, notifyFinanceStaff, notifyUsers } from './core';
 
 const KINDS = ['sibling', 'staff_child', 'scholarship', 'custom'];
 const TERMS = ['First Term', 'Second Term', 'Third Term'];
@@ -38,16 +38,29 @@ function grantFeesQuery(trx: Knex | Knex.Transaction, grant: any) {
     .where({ tenant_id: grant.tenant_id, student_id: grant.student_id, academic_year: grant.academic_year })
     .whereNot('status', 'deleted')
     .where((w) => w.whereNull('source').orWhereNot('source', 'late_fee'));
-  if (grant.term) q.where('term', grant.term);
-  if (grant.applies_to === 'tuition') q.where('type', 'Tuition');
+  // Terms are stored as 'First Term' by fee structures but 'first_term' by
+  // some older billing paths; match either. Tuition likewise ignores case.
+  if (grant.term) q.whereRaw("LOWER(REPLACE(COALESCE(term, ''), '_', ' ')) = LOWER(?)", [grant.term]);
+  if (grant.applies_to === 'tuition') q.whereRaw("LOWER(type) = 'tuition'");
   return q.orderBy('due_date', 'asc').orderBy('created_at', 'asc');
 }
 
 /** What the grant is worth on the student's matching fees (for approval + preview). */
-async function estimate(trx: Knex | Knex.Transaction, grant: any): Promise<number> {
-  const fees = await grantFeesQuery(trx, grant).select('amount');
+async function estimate(trx: Knex | Knex.Transaction, grant: any): Promise<{ worth: number; billed: number; open: number }> {
+  const fees = await grantFeesQuery(trx, grant).select('amount', 'balance');
   const billed = fees.reduce((s: number, f: any) => s + Number(f.amount || 0), 0);
-  return round2(grant.basis === 'percent' ? (billed * Number(grant.value)) / 100 : Math.min(Number(grant.value), billed || Number(grant.value)));
+  const open = fees.reduce((s: number, f: any) => s + Math.max(0, Number(f.balance ?? f.amount) || 0), 0);
+  const worth = round2(grant.basis === 'percent' ? (billed * Number(grant.value)) / 100 : Math.min(Number(grant.value), billed || Number(grant.value)));
+  return { worth, billed: round2(billed), open: round2(open) };
+}
+
+/** Students who have left can't be given new discounts. */
+const LEFT_STATUSES = ['inactive', 'withdrawn', 'transferred', 'graduated', 'expelled', 'deleted'];
+
+/** Grants in a past academic year are history: no approving or revoking. */
+async function assertGrantYearOpen(tenantId: string, year: string) {
+  const active = (await resolveActiveYear(tenantId)).yearString;
+  if (active && year && year < active) throw new AppError(`${year} is a past academic year and is read-only.`, 409, 'PAST_YEAR_READ_ONLY');
 }
 
 export const discountService = {
@@ -84,7 +97,7 @@ export const discountService = {
         's.student_id as admission_no',
         db.raw("TRIM(CONCAT_WS(' ', rq.first_name, rq.last_name)) as requested_by_name"),
         db.raw("TRIM(CONCAT_WS(' ', dc.first_name, dc.last_name)) as decided_by_name"),
-        db.raw("(SELECT COALESCE(SUM(a.amount),0) FROM fee_adjustments a WHERE a.discount_grant_id = g.id AND a.reversed_at IS NULL) as applied_amount"),
+        db.raw("(SELECT COALESCE(SUM(a.amount),0) FROM fee_adjustments a JOIN fees f ON f.id = a.fee_id WHERE a.discount_grant_id = g.id AND a.reversed_at IS NULL AND f.status <> 'deleted') as applied_amount"),
       )
       .orderBy('g.created_at', 'desc');
     const y = normalizeAcademicYear(filters.year || null);
@@ -98,6 +111,9 @@ export const discountService = {
   async grant(tenantId: string, user: { id: string; role: string }, body: any) {
     const student = await db('students').where({ id: body?.student_id, tenant_id: tenantId }).first();
     if (!student) throw new AppError('Student not found', 404, 'NOT_FOUND');
+    if (LEFT_STATUSES.includes(String(student.status || '').toLowerCase())) {
+      throw new AppError(`This student is ${student.status}. Discounts are only given to current students.`, 409, 'STUDENT_INACTIVE');
+    }
     const year = normalizeAcademicYear(body?.academic_year || null) || (await resolveActiveYear(tenantId)).yearString;
     if (!year || !/^\d{4}\/\d{4}$/.test(year)) throw new AppError('Choose an academic year.', 400, 'VALIDATION_ERROR');
     const active = (await resolveActiveYear(tenantId)).yearString;
@@ -120,22 +136,34 @@ export const discountService = {
       shape = { basis: c.basis, value: c.value, applies_to: c.applies_to, label: c.name };
     }
 
-    const dup = await db('discount_grants')
-      .where({ tenant_id: tenantId, student_id: student.id, academic_year: year })
-      .whereIn('status', ['pending', 'approved'])
-      .modify((q) => { if (rule) q.where('rule_id', rule.id); else q.whereNull('rule_id').where('label', shape.label); })
-      .modify((q) => { if (term) q.where('term', term); else q.whereNull('term'); })
-      .first();
-    if (dup) throw new AppError(`${shape.label} is already ${dup.status} for this student in ${year}.`, 409, 'DUPLICATE');
-
     const draft = { tenant_id: tenantId, student_id: student.id, academic_year: year, term, ...shape, value: shape.value };
-    const worth = await estimate(db, draft);
+    const { worth, billed } = await estimate(db, draft);
     const { discountApprovalThreshold } = await financeSettings(tenantId);
-    const autoApprove = user.role === 'principal' || user.role === 'super_admin' || (discountApprovalThreshold > 0 && worth <= discountApprovalThreshold);
+    const isPrincipal = user.role === 'principal' || user.role === 'super_admin';
+    // A percentage on fees that aren't billed yet is worth an unknown amount
+    // (Le 0 today, the whole tuition once billed), so the principal decides.
+    const unknownWorth = shape.basis === 'percent' && billed <= 0;
+    const autoApprove = isPrincipal || (!unknownWorth && discountApprovalThreshold > 0 && worth <= discountApprovalThreshold);
 
     let grant: any;
     let applied = 0;
     await db.transaction(async (trx) => {
+      // One grant at a time per student: a double click can't create two.
+      await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [`discount-grant:${student.id}`]);
+      const dupQ = trx('discount_grants')
+        .where({ tenant_id: tenantId, student_id: student.id, academic_year: year })
+        .whereIn('status', ['pending', 'approved'])
+        .modify((q) => { if (term) q.where('term', term); else q.whereNull('term'); });
+      if (rule) {
+        const dup = await dupQ.where('rule_id', rule.id).first();
+        if (dup) throw new AppError(`${shape.label} is already ${dup.status} for this student in ${year}.`, 409, 'DUPLICATE');
+      } else {
+        // Several one-off waivers are allowed; the same one twice within a few
+        // minutes is a double submit.
+        const dup = await dupQ.whereNull('rule_id').where({ label: shape.label, basis: shape.basis, value: shape.value })
+          .where('created_at', '>', new Date(Date.now() - 5 * 60_000)).first();
+        if (dup) throw new AppError(`The same ${shape.label} was just given to this student. Check the list before giving it again.`, 409, 'DUPLICATE');
+      }
       [grant] = await trx('discount_grants').insert({
         tenant_id: tenantId, student_id: student.id, rule_id: rule?.id || null, label: shape.label,
         academic_year: year, term, basis: shape.basis, value: shape.value, applies_to: shape.applies_to,
@@ -144,8 +172,15 @@ export const discountService = {
       }).returning('*');
       if (autoApprove) applied = await this.applyGrant(trx, grant, user.id);
     });
-    await audit('discount_grant', grant.id, autoApprove ? 'grant_approved' : 'grant_requested', user.id, { ...shape, year, term, worth, applied });
-    return { grant, worth, applied, needsApproval: !autoApprove };
+    await audit('discount_grant', grant.id, autoApprove ? 'grant_approved' : 'grant_requested', user.id, { ...shape, year, term, worth, applied, amount: autoApprove ? applied : worth });
+    if (!autoApprove) {
+      await notifyFinanceStaff(tenantId, ['principal'], {
+        subject: 'Discount waiting for your approval',
+        message: `${shape.label} for ${student.first_name || ''} ${student.last_name || ''}`.replace(/\s+/g, ' ').trim() + (unknownWorth ? ` (${shape.value}% of fees not billed yet)` : ` (about Le ${Number(worth).toLocaleString('en-US', { minimumFractionDigits: 2 })})`) + ' needs your approval.',
+        url: '/finance/discounts', sourceType: 'discount_grant', sourceId: grant.id,
+      });
+    }
+    return { grant, worth, applied, needsApproval: !autoApprove, unbilled: billed <= 0, shortfall: autoApprove ? round2(Math.max(0, Math.min(worth, billed) - applied)) : 0 };
   },
 
   /** Apply an approved grant to the student's matching fees. Returns Le applied now. */
@@ -190,29 +225,49 @@ export const discountService = {
       grant = await trx('discount_grants').where({ id, tenant_id: tenantId }).forUpdate().first();
       if (!grant) throw new AppError('Discount request not found', 404, 'NOT_FOUND');
       if (grant.status !== 'pending') throw new AppError(`This request is already ${grant.status}.`, 409, 'CONFLICT');
+      await assertGrantYearOpen(tenantId, grant.academic_year);
       if (decision === 'reject' && reason.trim().length < 5) throw new AppError('Give a reason for rejecting (at least 5 characters).', 400, 'VALIDATION_ERROR');
       const status = decision === 'approve' ? 'approved' : 'rejected';
       await trx('discount_grants').where({ id }).update({ status, decided_by: userId, decided_at: new Date(), decision_reason: reason || null, updated_at: new Date() });
       grant.status = status;
       if (status === 'approved') applied = await this.applyGrant(trx, grant, userId);
     });
-    await audit('discount_grant', id, decision, userId, { reason, applied });
+    await audit('discount_grant', id, decision, userId, { reason, applied, label: grant.label });
+    if (grant.requested_by && grant.requested_by !== userId) {
+      await notifyUsers([grant.requested_by], {
+        subject: decision === 'approve' ? 'Discount approved' : 'Discount rejected',
+        message: decision === 'approve'
+          ? `${grant.label} was approved. Le ${applied.toLocaleString('en-US', { minimumFractionDigits: 2 })} was taken off the fees.`
+          : `${grant.label} was rejected${reason ? `: ${reason}` : ''}.`,
+        url: '/finance/discounts', sourceType: 'discount_grant', sourceId: id,
+      });
+    }
     return { id, status: grant.status, applied };
   },
 
   /** Withdraw an approved discount: its lines come off and the amounts are owed again. */
-  async revoke(tenantId: string, userId: string, id: string, reason: string) {
+  async revoke(tenantId: string, userId: string, id: string, reason: string, role = 'principal') {
     if (reason.trim().length < 5) throw new AppError('Give a reason (at least 5 characters).', 400, 'VALIDATION_ERROR');
     let restored = 0;
+    let wasPending = false;
     await db.transaction(async (trx) => {
       const grant = await trx('discount_grants').where({ id, tenant_id: tenantId }).forUpdate().first();
       if (!grant) throw new AppError('Discount not found', 404, 'NOT_FOUND');
       if (grant.status !== 'approved' && grant.status !== 'pending') throw new AppError(`This discount is already ${grant.status}.`, 409, 'CONFLICT');
+      await assertGrantYearOpen(tenantId, grant.academic_year);
+      wasPending = grant.status === 'pending';
+      // The bursar may withdraw any request, and take back a discount they gave
+      // within their own limit. Anything the principal approved stays theirs.
+      const isPrincipal = role === 'principal' || role === 'super_admin';
+      const ownAuto = grant.requested_by === userId && grant.decided_by === userId;
+      if (!isPrincipal && grant.status === 'approved' && !ownAuto) {
+        throw new AppError('Only the principal can revoke a discount they approved.', 403, 'FORBIDDEN');
+      }
       const adjs = await trx('fee_adjustments').where({ discount_grant_id: id }).whereNull('reversed_at');
       for (const a of adjs) restored += await reverseAdjustment(trx, a, userId);
       await trx('discount_grants').where({ id }).update({ status: 'revoked', decided_by: userId, decided_at: new Date(), decision_reason: reason, updated_at: new Date() });
     });
-    await audit('discount_grant', id, 'revoke', userId, { reason, restored });
+    await audit('discount_grant', id, wasPending ? 'withdraw' : 'revoke', userId, { reason, restored });
     return { id, status: 'revoked', restored: round2(restored) };
   },
 
@@ -224,12 +279,21 @@ export const discountService = {
   async siblingCandidates(tenantId: string, ruleId: string, year: string) {
     const rule = await db('discount_rules').where({ id: ruleId, tenant_id: tenantId, kind: 'sibling' }).first();
     if (!rule) throw new AppError('Sibling discount not found', 404, 'NOT_FOUND');
-    const rows = await db('guardians as g')
+    // Children at school THAT year (an enrolment in one of the year's classes).
+    const scope = await resolveYearScope(tenantId, year);
+    const inYear = scope && scope.classIds.length
+      ? new Set((await db('enrollments').whereIn('class_id', scope.classIds)
+        .whereIn('status', ['enrolled', 'active', 'completed', 'promoted', 'repeated']).distinct('student_id')).map((r: any) => String(r.student_id)))
+      : null;
+    // A family is a parent account, or (no account yet) the same guardian phone.
+    const rows = (await db('guardians as g')
       .join('students as s', 's.id', 'g.student_id')
       .leftJoin('users as u', 'u.id', 's.user_id')
-      .where('s.tenant_id', tenantId).where('s.status', 'active').whereNotNull('g.user_id')
-      .select('g.user_id as family', 's.id', 's.student_id', 's.date_of_birth', 's.created_at',
-        db.raw("COALESCE(u.first_name || ' ' || u.last_name, s.first_name || ' ' || s.last_name) as name"));
+      .where('s.tenant_id', tenantId).where('s.status', 'active')
+      .where((w) => w.whereNotNull('g.user_id').orWhereNotNull('g.phone_number'))
+      .select(db.raw("COALESCE(g.user_id::text, 'tel:' || regexp_replace(g.phone_number, '\\D', '', 'g')) as family"), 's.id', 's.student_id', 's.date_of_birth', 's.created_at',
+        db.raw("COALESCE(u.first_name || ' ' || u.last_name, s.first_name || ' ' || s.last_name) as name")))
+      .filter((r: any) => r.family && r.family !== 'tel:' && (!inYear || inYear.has(String(r.id))));
     const families = new Map<string, any[]>();
     for (const r of rows) (families.get(r.family) ?? families.set(r.family, []).get(r.family)!).push(r);
     const granted = new Set((await db('discount_grants').where({ tenant_id: tenantId, rule_id: ruleId, academic_year: year })
@@ -238,7 +302,12 @@ export const discountService = {
     const seen = new Set<string>();
     for (const kids of families.values()) {
       const uniq = kids.filter((k, i) => kids.findIndex((x) => x.id === k.id) === i)
-        .sort((a, b) => String(a.date_of_birth || a.created_at).localeCompare(String(b.date_of_birth || b.created_at)));
+        // Oldest child first (date of birth; children without one go last, by enrolment).
+        .sort((a, b) => {
+          const da = a.date_of_birth ? new Date(a.date_of_birth).getTime() : Infinity;
+          const dbt = b.date_of_birth ? new Date(b.date_of_birth).getTime() : Infinity;
+          return da - dbt || new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        });
       uniq.forEach((k, i) => {
         const order = i + 1;
         if (order >= (rule.sibling_order || 2) && !granted.has(String(k.id)) && !seen.has(String(k.id))) {

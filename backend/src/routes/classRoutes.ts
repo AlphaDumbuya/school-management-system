@@ -5,6 +5,7 @@ import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
 import { normalizeAcademicYear } from '../utils/academicYear.js';
+import { isFinanceLookup } from '../utils/financeLookup.js';
 
 const router = Router();
 router.use(authenticate);
@@ -234,8 +235,9 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 
     // Teacher scoping: teachers only see classes they are assigned to teach
     // (via teacher_assignments) or lead as the class teacher. Staff-admins
-    // (principal / super_admin) see all tenant classes.
-    if (req.user?.role === 'teacher') {
+    // (principal / super_admin) see all tenant classes. A teacher who is also the
+    // Bursar gets every class on finance pages (?scope=finance).
+    if (req.user?.role === 'teacher' && !(await isFinanceLookup(req))) {
       const teacher = await db('teachers')
         .join('users', 'teachers.user_id', 'users.id')
         .where('teachers.user_id', req.user.id)

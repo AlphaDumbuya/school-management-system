@@ -6,7 +6,19 @@ import { db } from '@utils/database';
 import { resolveYearScope, applyYearScope } from '../utils/academicYear.js';
 // "Today" = the school's day (tenants.timezone); teacher attendance has no
 // class, so a past year is a date before the active year's start.
-import { tenantToday, isPastYearDate } from '../utils/schoolDate.js';
+import { tenantToday, tenantTimeOfDay, isPastYearDate } from '../utils/schoolDate.js';
+
+/**
+ * Self sign-in is for arriving at school today, so it closes at the end of the
+ * school day (school setting staff_signin_closes_at, default 18:00, school
+ * time). After that, or for any other day, only the principal records it.
+ */
+async function signInWindow(tenantId: string) {
+  const row = await db('school_config_settings').where({ tenant_id: tenantId, setting_key: 'staff_signin_closes_at' }).first('setting_value').catch(() => null);
+  const closesAt = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(row?.setting_value || '')) ? String(row!.setting_value) : '18:00';
+  const now = await tenantTimeOfDay(tenantId);
+  return { closes_at: closesAt, now, open: now < closesAt };
+}
 
 const router = Router();
 router.use(authenticate, attachUserContext);
@@ -104,7 +116,7 @@ router.get('/my', authorize(...STAFF_ROLES), async (req: Request, res: Response,
     const total = counts.present + counts.late + counts.absent + counts.excused;
     const stats = { total, ...counts, rate: total > 0 ? Math.round(((counts.present + counts.late) / total) * 100) : 0 };
 
-    res.json({ success: true, data: { records, stats, today: await tenantToday(tenantId) } });
+    res.json({ success: true, data: { records, stats, today: await tenantToday(tenantId), sign_in: await signInWindow(tenantId) } });
   } catch (error) { next(error); }
 });
 
@@ -123,6 +135,16 @@ router.post('/check-in', authorize(...STAFF_ROLES), async (req: Request, res: Re
     }
     if (!validComment(comment)) throw new AppError('Comment must be at most 500 characters', 400, 'VALIDATION_ERROR');
     const date = await tenantToday(tenantId);
+    const win = await signInWindow(tenantId);
+    if (!win.open) {
+      throw new AppError(`Sign-in for today closed at ${win.closes_at}. Ask your principal to record your attendance.`, 409, 'SIGN_IN_CLOSED');
+    }
+    // The principal already recorded today as absent / excused: arriving
+    // changes that, so it's their call, not a self sign-in.
+    const marked = await db('teacher_attendance').where({ tenant_id: tenantId, teacher_id: teacher.id, attendance_date: date }).first('status', 'signed_in_at');
+    if (marked && !marked.signed_in_at && ['absent', 'excused'].includes(String(marked.status))) {
+      throw new AppError(`Your principal recorded you as ${marked.status} today. Ask them to change it if you are at school.`, 409, 'MARKED_BY_PRINCIPAL');
+    }
     const signedInAt = new Date();
     const inserted = await db('teacher_attendance').insert({
       tenant_id: tenantId, teacher_id: teacher.id, attendance_date: date,

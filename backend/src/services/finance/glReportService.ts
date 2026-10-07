@@ -10,17 +10,22 @@
 import { db } from '@utils/database';
 import { AppError } from '@middleware/errorHandler';
 import { tenantToday } from '@utils/schoolDate';
-import { normalizeAcademicYear, resolveActiveYear, resolveYearScope } from '@utils/academicYear';
+import { normalizeAcademicYear, resolveActiveYear } from '@utils/academicYear';
 import { round2 } from './core';
 import { glService } from './glService';
 
 const cents = (n: any) => Math.round((Number(n) || 0) * 100);
 const le = (c: number) => round2(c / 100);
 const isDate = (v: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
-const addDays = (d: string, n: number) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 const debitNormal = (t: string) => t === 'asset' || t === 'expense';
 
-export type Range = { from: string | null; to: string; academic_year: string | null; label: string };
+/**
+ * academic_year set → "year mode": entries are picked by the year they belong
+ * to (a fee's own year, an expense's year, a payment's year of arrival), not by
+ * session dates, so a past year's records never land in the current year.
+ * Otherwise "date mode": from / to on the entry date.
+ */
+export type Range = { from: string | null; to: string; academic_year: string | null; label: string; as_at: string };
 
 /** A date range from ?from&to, else an academic year (default: the active one). */
 export async function rangeFor(tenantId: string, q: any): Promise<Range> {
@@ -29,28 +34,44 @@ export async function rangeFor(tenantId: string, q: any): Promise<Range> {
     const from = isDate(q.from) ? String(q.from) : null;
     const to = isDate(q.to) ? String(q.to) : today;
     if (from && from > to) throw new AppError('The start date is after the end date.', 400, 'VALIDATION_ERROR');
-    return { from, to, academic_year: null, label: `${from || 'Start'} to ${to}` };
+    return { from, to, academic_year: null, label: `${from || 'Start'} to ${to}`, as_at: to };
   }
-  const year = normalizeAcademicYear(q?.academic_year || null) || (await resolveActiveYear(tenantId)).yearString;
-  const scope = year ? await resolveYearScope(tenantId, year) : null;
-  const from = scope?.from ? scope.from.toISOString().slice(0, 10) : null;
-  let to = scope?.to ? addDays(scope.to.toISOString().slice(0, 10), -1) : today;
-  if (to > today) to = today;
-  return { from, to, academic_year: year || null, label: year ? `Academic year ${year}` : `To ${to}` };
+  const active = (await resolveActiveYear(tenantId)).yearString;
+  const year = normalizeAcademicYear(q?.academic_year || null) || active;
+  if (!year || !/^\d{4}\/\d{4}$/.test(year)) return { from: null, to: today, academic_year: null, label: `To ${today}`, as_at: today };
+  return { from: null, to: today, academic_year: year, label: `Academic year ${year}`, as_at: active && year < active ? `end of ${year}` : today };
+}
+
+/** SQL pieces for a range: rows in scope, before the period, in the period. */
+function scopeSql(r: Range) {
+  if (r.academic_year) {
+    const y = r.academic_year;
+    return {
+      base: [`COALESCE(e.academic_year, '') <= ?`, [y]] as [string, any[]],
+      before: [`COALESCE(e.academic_year, '') < ?`, [y]] as [string, any[]],
+      inPeriod: [`e.academic_year = ?`, [y]] as [string, any[]],
+    };
+  }
+  return {
+    base: [`e.entry_date <= ?::date`, [r.to]] as [string, any[]],
+    before: [`(?::date IS NOT NULL AND e.entry_date < ?::date)`, [r.from, r.from]] as [string, any[]],
+    inPeriod: [`(?::date IS NULL OR e.entry_date >= ?::date)`, [r.from, r.from]] as [string, any[]],
+  };
 }
 
 type Bal = { id: string; code: string; name: string; type: string; subtype: string | null; system_key: string | null; is_active: boolean; is_system: boolean; opening: number; dr: number; cr: number; closing: number };
 
-/** Per account: opening (before from), period debits/credits, closing (to). Cents, debit-positive. */
-async function balances(tenantId: string, from: string | null, to: string): Promise<Bal[]> {
+/** Per account: opening (before the period), period debits/credits, closing. Cents, debit-positive. */
+async function balances(tenantId: string, range: Range): Promise<Bal[]> {
+  const sq = scopeSql(range);
   const rows = await db('gl_accounts as a')
     .leftJoin(
-      db('gl_lines as l').join('gl_entries as e', 'e.id', 'l.entry_id').where('l.tenant_id', tenantId).where('e.entry_date', '<=', to)
+      db('gl_lines as l').join('gl_entries as e', 'e.id', 'l.entry_id').where('l.tenant_id', tenantId).whereRaw(sq.base[0], sq.base[1])
         .groupBy('l.account_id')
         .select('l.account_id',
-          db.raw('SUM(CASE WHEN ?::date IS NOT NULL AND e.entry_date < ?::date THEN l.debit - l.credit ELSE 0 END) as opening', [from, from]),
-          db.raw('SUM(CASE WHEN ?::date IS NULL OR e.entry_date >= ?::date THEN l.debit ELSE 0 END) as dr', [from, from]),
-          db.raw('SUM(CASE WHEN ?::date IS NULL OR e.entry_date >= ?::date THEN l.credit ELSE 0 END) as cr', [from, from]),
+          db.raw(`SUM(CASE WHEN ${sq.before[0]} THEN l.debit - l.credit ELSE 0 END) as opening`, sq.before[1]),
+          db.raw(`SUM(CASE WHEN ${sq.inPeriod[0]} THEN l.debit ELSE 0 END) as dr`, sq.inPeriod[1]),
+          db.raw(`SUM(CASE WHEN ${sq.inPeriod[0]} THEN l.credit ELSE 0 END) as cr`, sq.inPeriod[1]),
           db.raw('SUM(l.debit - l.credit) as closing'))
         .as('b'),
       'b.account_id', 'a.id')
@@ -68,23 +89,25 @@ export const glReportService = {
     return rangeFor(tenantId, q);
   },
 
+  /** Balance-sheet accounts: balance now. Income / expense accounts: this academic year. */
   async accounts(tenantId: string) {
     await glService.ensureSynced(tenantId);
-    const today = await tenantToday(tenantId);
-    const rows = await balances(tenantId, null, today);
+    const range = await rangeFor(tenantId, {});
+    const rows = await balances(tenantId, range);
     const used = new Set((await db('gl_lines').where({ tenant_id: tenantId }).distinct('account_id')).map((r: any) => r.account_id));
     return rows.map((a) => ({
       id: a.id, code: a.code, name: a.name, type: a.type, subtype: a.subtype, system_key: a.system_key, is_active: a.is_active,
       is_system: !!a.is_system,
       control: ['ar', 'credit', 'petty'].includes(String(a.system_key)),
-      balance: le(debitNormal(a.type) ? a.closing : -a.closing),
+      balance: (() => { const pl = a.type === 'income' || a.type === 'expense'; const v = pl ? a.dr - a.cr : a.closing; return le(debitNormal(a.type) ? v : -v); })(),
+      period: a.type === 'income' || a.type === 'expense' ? range.academic_year : null,
       has_activity: used.has(a.id),
     }));
   },
 
   async trialBalance(tenantId: string, q: any) {
     const range = await this.prepare(tenantId, q);
-    const rows = await balances(tenantId, range.from, range.to);
+    const rows = await balances(tenantId, range);
     let prior = 0;
     const lines: any[] = [];
     for (const a of rows) {
@@ -94,14 +117,14 @@ export const glReportService = {
       if (!bal && !a.dr && !a.cr) continue;
       lines.push({ account_id: a.id, code: a.code, name: a.name, type: a.type, debit: bal > 0 ? le(bal) : 0, credit: bal < 0 ? le(-bal) : 0 });
     }
-    if (prior) lines.push({ account_id: null, code: '—', name: 'Accumulated surplus brought forward', type: 'equity', debit: prior > 0 ? le(prior) : 0, credit: prior < 0 ? le(-prior) : 0 });
+    if (prior) lines.push({ account_id: null, code: '—', name: range.academic_year ? 'Accumulated surplus from earlier years' : 'Accumulated surplus brought forward', type: 'equity', debit: prior > 0 ? le(prior) : 0, credit: prior < 0 ? le(-prior) : 0 });
     const td = lines.reduce((s, l) => s + cents(l.debit), 0), tc = lines.reduce((s, l) => s + cents(l.credit), 0);
     return { range, lines, total_debit: le(td), total_credit: le(tc), balanced: td === tc };
   },
 
   async incomeStatement(tenantId: string, q: any) {
     const range = await this.prepare(tenantId, q);
-    const rows = await balances(tenantId, range.from, range.to);
+    const rows = await balances(tenantId, range);
     const income = rows.filter((a) => a.type === 'income' && (a.dr || a.cr)).map((a) => ({ account_id: a.id, code: a.code, name: a.name, contra: a.subtype === 'contra', amount: le(a.cr - a.dr) }));
     const expenses = rows.filter((a) => a.type === 'expense' && (a.dr || a.cr)).map((a) => ({ account_id: a.id, code: a.code, name: a.name, amount: le(a.dr - a.cr) }));
     const ti = income.reduce((s, l) => s + cents(l.amount), 0), te = expenses.reduce((s, l) => s + cents(l.amount), 0);
@@ -111,14 +134,14 @@ export const glReportService = {
 
   async balanceSheet(tenantId: string, q: any) {
     const range = await this.prepare(tenantId, q);
-    const rows = await balances(tenantId, null, range.to);
+    const rows = await balances(tenantId, range);
     const pick = (t: string) => rows.filter((a) => a.type === t && a.closing).map((a) => ({ account_id: a.id, code: a.code, name: a.name, amount: le(debitNormal(t) ? a.closing : -a.closing) }));
     const assets = pick('asset'), liabilities = pick('liability'), equity = pick('equity');
     const surplus = -rows.filter((a) => a.type === 'income' || a.type === 'expense').reduce((s, a) => s + a.closing, 0);
     if (surplus) equity.push({ account_id: null as any, code: '—', name: 'Accumulated surplus (deficit)', amount: le(surplus) });
     const sum = (l: any[]) => l.reduce((s, x) => s + cents(x.amount), 0);
     const ta = sum(assets), tl = sum(liabilities), teq = sum(equity);
-    return { range, as_at: range.to, assets, liabilities, equity, total_assets: le(ta), total_liabilities: le(tl), total_equity: le(teq), balanced: ta === tl + teq };
+    return { range, as_at: range.as_at, assets, liabilities, equity, total_assets: le(ta), total_liabilities: le(tl), total_equity: le(teq), balanced: ta === tl + teq };
   },
 
   async cashFlow(tenantId: string, q: any) {
@@ -126,13 +149,13 @@ export const glReportService = {
     const accs = await db('gl_accounts').where({ tenant_id: tenantId }).select('id', 'type', 'subtype', 'system_key', 'name');
     const byId = new Map(accs.map((a: any) => [a.id, a]));
     const cashIds = accs.filter(isCash).map((a: any) => a.id);
-    const bal = await balances(tenantId, range.from, range.to);
+    const bal = await balances(tenantId, range);
+    const sq = scopeSql(range);
     const opening = bal.filter(isCash).reduce((s, a) => s + a.opening, 0);
     const closing = bal.filter(isCash).reduce((s, a) => s + a.closing, 0);
 
     const lines = await db('gl_lines as l').join('gl_entries as e', 'e.id', 'l.entry_id')
-      .where('e.tenant_id', tenantId).where('e.entry_date', '<=', range.to)
-      .modify((x) => { if (range.from) x.where('e.entry_date', '>=', range.from); })
+      .where('e.tenant_id', tenantId).whereRaw(sq.base[0], sq.base[1]).whereRaw(sq.inPeriod[0], sq.inPeriod[1])
       .whereIn('e.id', db('gl_lines').whereIn('account_id', cashIds.length ? cashIds : ['00000000-0000-0000-0000-000000000000']).select('entry_id'))
       .select('e.id as entry_id', 'e.source_type', 'l.account_id', 'l.debit', 'l.credit');
     const byEntry = new Map<string, { source: string; lines: any[] }>();
@@ -182,14 +205,13 @@ export const glReportService = {
     const a = await db('gl_accounts').where({ id: accountId, tenant_id: tenantId }).first();
     if (!a) throw new AppError('Account not found', 404, 'NOT_FOUND');
     const sign = debitNormal(a.type) ? 1 : -1;
-    const op = range.from
-      ? await db('gl_lines as l').join('gl_entries as e', 'e.id', 'l.entry_id').where({ 'l.account_id': accountId, 'l.tenant_id': tenantId }).where('e.entry_date', '<', range.from).sum({ s: db.raw('l.debit - l.credit') }).first()
-      : null;
+    const sq = scopeSql(range);
+    const op = await db('gl_lines as l').join('gl_entries as e', 'e.id', 'l.entry_id').where({ 'l.account_id': accountId, 'l.tenant_id': tenantId })
+      .whereRaw(sq.before[0], sq.before[1]).sum({ s: db.raw('l.debit - l.credit') }).first();
     let run = cents((op as any)?.s) * sign;
     const opening = run;
     const rows = await db('gl_lines as l').join('gl_entries as e', 'e.id', 'l.entry_id')
-      .where({ 'l.account_id': accountId, 'l.tenant_id': tenantId }).where('e.entry_date', '<=', range.to)
-      .modify((x) => { if (range.from) x.where('e.entry_date', '>=', range.from); })
+      .where({ 'l.account_id': accountId, 'l.tenant_id': tenantId }).whereRaw(sq.base[0], sq.base[1]).whereRaw(sq.inPeriod[0], sq.inPeriod[1])
       .orderBy('e.entry_date').orderBy('e.entry_no')
       .limit(5000)
       .select('l.id', 'e.id as entry_id', 'e.entry_no', 'e.entry_date', 'e.memo', 'e.kind', 'e.source_type', 'l.memo as line_memo', 'l.debit', 'l.credit');
@@ -204,7 +226,7 @@ export const glReportService = {
   async integrity(tenantId: string) {
     await glService.ensureSynced(tenantId);
     const today = await tenantToday(tenantId);
-    const rows = await balances(tenantId, null, today);
+    const rows = await balances(tenantId, { from: null, to: today, academic_year: null, label: '', as_at: today });
     const k = (key: string) => rows.find((a) => a.system_key === key);
     const fees = await db('fees').where({ tenant_id: tenantId }).whereNot('status', 'deleted').sum({ s: db.raw('COALESCE(balance, amount)') }).first();
     const credits = await db('student_credits').where({ tenant_id: tenantId }).sum({ s: 'amount' }).first();

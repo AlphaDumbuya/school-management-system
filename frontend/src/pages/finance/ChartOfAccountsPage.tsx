@@ -61,7 +61,7 @@ export const ChartOfAccountsPage: React.FC = () => {
 
   return (
     <MainLayout>
-      <PageShell title="Chart of Accounts" subtitle="Every account in the school's books, with its balance today" onRefresh={() => q.refetch()} isRefreshing={q.isFetching}
+      <PageShell title="Chart of Accounts" subtitle="Every account in the school's books. Assets, liabilities and equity show the balance today; income and expenses show this academic year" onRefresh={() => q.refetch()} isRefreshing={q.isFetching}
         actions={<Button size="sm" variant="create" onClick={() => setEdit({})}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">New account</span></Button>}>
         <div className="flex flex-col sm:flex-row gap-2 mb-4 sm:items-center">
           <SearchBar placeholder="Search code or account name…" onSearch={setSearch} className="w-full sm:max-w-sm" />
@@ -77,7 +77,7 @@ export const ChartOfAccountsPage: React.FC = () => {
                 const total = group.reduce((s, a) => s + a.balance, 0);
                 return (
                   <section key={type} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-x-auto">
-                    <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-900/40"><h2 className="text-sm font-bold">{label}</h2><span className="text-sm font-bold"><Money v={total} zero="Le 0.00" /></span></div>
+                    <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-900/40"><h2 className="text-sm font-bold">{label}<span className="ml-2 text-[11px] font-normal text-gray-500">{group[0]?.period ? `${group[0].period} only` : 'balance today'}</span></h2><span className="text-sm font-bold"><Money v={total} zero="Le 0.00" /></span></div>
                     <table className="w-full text-sm">
                       <thead className="sr-only"><tr><th>Code</th><th>Account</th><th>Balance</th><th>Actions</th></tr></thead>
                       <tbody>

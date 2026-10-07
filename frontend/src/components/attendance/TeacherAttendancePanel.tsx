@@ -52,6 +52,10 @@ export const TeacherAttendancePanel: React.FC<{ role: string }> = ({ role }) => 
     queryFn: () => teacherAttendanceService.getMyAttendance(year),
     enabled: !isPrincipal && !!year,
     staleTime: 0,
+    // Keep "today" current: a page left open overnight moves to the new day,
+    // and sign-in closes at the school's cut-off time.
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   useEffect(() => {
@@ -97,6 +101,10 @@ export const TeacherAttendancePanel: React.FC<{ role: string }> = ({ role }) => 
   if (!isPrincipal) {
     const todayRecord = mine.data?.records.find((record) => record.date.slice(0, 10) === mine.data?.today);
     const stats = mine.data?.stats;
+    const win = (mine.data as any)?.sign_in as { open: boolean; closes_at: string } | undefined;
+    const signInOpen = win ? win.open : true;
+    const markedAway = !!todayRecord && !todayRecord.signed_in_at && (todayRecord.status === 'absent' || todayRecord.status === 'excused');
+    const todayLabel = mine.data?.today ? new Date(`${mine.data.today}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '';
     return (
       <div className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -127,8 +135,8 @@ export const TeacherAttendancePanel: React.FC<{ role: string }> = ({ role }) => 
 
         {/* Today's sign-in is a "right now" action: current year only. */}
         {!viewingPast && <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <h2 className="text-base font-bold text-gray-900 dark:text-white">My attendance</h2>
-          <p className="mt-1 text-sm text-gray-500">Sign in when you arrive at school and sign out when you leave. Your principal can review or correct the record.</p>
+          <h2 className="text-base font-bold text-gray-900 dark:text-white">My attendance{todayLabel ? <span className="font-normal text-gray-500"> · today, {todayLabel}</span> : null}</h2>
+          <p className="mt-1 text-sm text-gray-500">Sign in when you arrive at school and sign out when you leave. You can only sign in for today{win ? `, until ${win.closes_at}` : ''}; your principal records or corrects any other day.</p>
           {mine.isLoading || !year ? <Loader2 className="mt-5 animate-spin text-blue-600" /> : mine.isError ? (
             <p role="alert" className="mt-4 text-sm text-red-600">{(mine.error as Error).message}</p>
           ) : (
@@ -146,7 +154,13 @@ export const TeacherAttendancePanel: React.FC<{ role: string }> = ({ role }) => 
                     )}
                   </div>
                   {/* Principal marked today before arrival: the teacher can still sign in. */}
-                  {!todayRecord.signed_in_at && (
+                  {!todayRecord.signed_in_at && markedAway && (
+                    <p className="text-sm text-gray-600 dark:text-gray-300">Your principal recorded you as {label(todayRecord.status).toLowerCase()} today. If you are at school, ask them to change it.</p>
+                  )}
+                  {!todayRecord.signed_in_at && !markedAway && !signInOpen && (
+                    <p className="text-sm text-amber-700">Sign-in for today closed at {win?.closes_at}. Ask your principal to record your attendance.</p>
+                  )}
+                  {!todayRecord.signed_in_at && !markedAway && signInOpen && (
                     <div className="space-y-2">
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300" htmlFor="teacher-late-sign-in-comment">Arrived? Sign in (optional comment)</label>
                       <input id="teacher-late-sign-in-comment" value={checkInComment} maxLength={500} onChange={(event) => setCheckInComment(event.target.value)}
@@ -168,6 +182,8 @@ export const TeacherAttendancePanel: React.FC<{ role: string }> = ({ role }) => 
                     </div>
                   )}
                 </>
+              ) : !signInOpen ? (
+                <p className="text-sm text-amber-700">Sign-in for today closed at {win?.closes_at}. You weren't signed in today; ask your principal to record your attendance.</p>
               ) : (
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300" htmlFor="teacher-sign-in-comment">Sign-in comment (optional)</label>

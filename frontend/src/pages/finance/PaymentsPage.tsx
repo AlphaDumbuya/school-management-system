@@ -28,11 +28,11 @@ import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { StudentAccountModal } from '@components/finance/StudentAccount';
+import { StudentPicker, type PickedStudent } from '@components/finance/StudentPicker';
 import { usePaged, TablePager } from '@components/admin/table/TablePager';
 import { bursarService } from '@services/bursarService';
 import { Modal } from '@components/admin/feedback/Modal';
 import { financeService } from '@services/financeService';
-import { studentsService } from '@services/studentsService';
 import { classesService } from '@services/classesService';
 import { schoolConfigService } from '@services/schoolConfigService';
 import { financeLedgerService, LedgerTerm } from '@services/financeLedgerService';
@@ -117,7 +117,7 @@ export const PaymentsPage: React.FC = () => {
   // every option, each with a live count of matching payments.
   const { data: classesResp } = useQuery({
     queryKey: ['finance-filter-classes', year],
-    queryFn: () => classesService.listAllClasses({ limit: 100, academic_year: year || 'all' }),
+    queryFn: () => classesService.listAllClasses({ limit: 100, academic_year: year || 'all', scope: 'finance' } as any),
     enabled: yearReady,
     staleTime: 60_000,
   });
@@ -590,14 +590,16 @@ const BulkReceiptsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
 // ── Record manual payment ─────────────────────────────────────────────────────
 const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }> = ({ onClose, onSaved }) => {
-  const [studentQuery, setStudentQuery] = useState('');
-  const [studentId, setStudentId] = useState('');
+  const [picked, setPicked] = useState<PickedStudent | null>(null);
+  const studentId = picked?.id || '';
   const [scopeId, setScopeId] = useState('');
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('cash');
   const [reference, setReference] = useState('');
   const [saving, setSaving] = useState(false);
   const [keepCredit, setKeepCredit] = useState(false);
+  // Pay the selected item in full, or a part payment the school's policy allows.
+  const [payMode, setPayMode] = useState<'full' | 'part'>('full');
   const todayLocal = (() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -607,12 +609,6 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
   // same payment instead of recording it twice. Renewed after each success.
   const idemKey = React.useRef<string>(newKey());
 
-  const { data: studentsResp } = useQuery({
-    queryKey: ['pay-students', studentQuery],
-    queryFn: () => studentsService.listStudents({ search: studentQuery, limit: 10 } as any),
-    enabled: studentQuery.trim().length > 1, staleTime: 30_000,
-  });
-  const students = ((studentsResp as any)?.data?.data ?? (studentsResp as any)?.data ?? []) as any[];
 
   // Load the student's ledger and build the SAME "what to pay for" scopes the
   // parent/student portal offers (full outstanding / full year / term / charges).
@@ -697,6 +693,35 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
   }, [ledger]);
 
   const selectedScope = scopes.find((s) => s.id === scopeId) || null;
+  // Start on the first item (usually the full outstanding balance) so "Pay in
+  // full / Part payment" is visible as soon as the student is picked.
+  useEffect(() => {
+    if (!scopeId && scopes.length) { setScopeId(scopes[0].id); setPayMode('full'); setAmount(String(scopes[0].amount)); }
+  }, [scopes, scopeId]);
+
+  // The school's payment policy for this student (part payments, minimum).
+  const { data: policyResp } = useQuery({
+    queryKey: ['payment-policy', studentId], queryFn: () => financeLedgerService.getPaymentPolicy(studentId),
+    enabled: !!studentId, staleTime: 30_000,
+  });
+  const policy = ((policyResp as any)?.data?.data ?? (policyResp as any)?.data ?? null) as any;
+  const minInfo = policy?.minimum as { outstanding: number; allow_part: boolean; minimum: number; reason: string | null; next_instalment: number | null } | null | undefined;
+  const allowPart = minInfo ? minInfo.allow_part : policy ? policy.allow_installments !== false : true;
+  // Paying everything the student owes is always accepted; otherwise the minimum applies.
+  const minimum = minInfo ? minInfo.minimum : 0;
+  const amt = Number(amount) || 0;
+  const coversAll = !!minInfo && amt >= minInfo.outstanding - 0.005;
+  const belowMin = payMode === 'part' && amt > 0 && !coversAll && amt < minimum - 0.005;
+  const choose = (mode: 'full' | 'part') => {
+    setPayMode(mode);
+    if (mode === 'full' && selectedScope) setAmount(String(selectedScope.amount));
+    if (mode === 'part') setAmount('');
+    setKeepCredit(false);
+  };
+  const chips = selectedScope ? Array.from(new Set([
+    ...(minimum > 0 && minimum < selectedScope.amount ? [minimum] : []),
+    ...[0.25, 0.5, 0.75].map((f) => Math.round(selectedScope.amount * f * 100) / 100).filter((v) => v >= minimum - 0.005 && v < selectedScope.amount),
+  ])).sort((a, b) => a - b) : [];
 
   // Lock background scroll so the centered modal is the focal point.
   useEffect(() => {
@@ -709,6 +734,7 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
     if (!selectedScope) { showToast.error('Select what to pay for'); return; }
     const amt = Number(amount);
     if (!(amt > 0)) { showToast.error('Enter a valid amount'); return; }
+    if (belowMin) { showToast.error(`The school's minimum right now is ${fmtMoney(minimum)}${minInfo?.reason ? ` (${minInfo.reason})` : ''}.`); return; }
     if (amt > selectedScope.amount + 0.005 && !keepCredit) { showToast.error(`Amount is more than what's owed for this selection (${fmtMoney(selectedScope.amount)}). Tick "Keep the extra as account credit" to accept it.`); return; }
     if (saving) return;
     setSaving(true);
@@ -749,38 +775,12 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
           <button onClick={onClose} className="p-1.5 rounded-lg text-white/80 hover:bg-white/20"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase">Student</label>
-            <input value={studentQuery} onChange={(e) => { setStudentQuery(e.target.value); setStudentId(''); setScopeId(''); setAmount(''); }} placeholder="Search by name or admission #…" className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
-            {/* Names can repeat — always pick by admission #, which is unique. */}
-            {studentQuery && !studentId && students.length > 0 && (
-              <div className="mt-1 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
-                {students.map((s: any) => {
-                  const cls = s.class_name || s.className || (s.enrollment && s.enrollment.class_name) || '';
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => { setStudentId(s.id); setStudentQuery(`${s.first_name} ${s.last_name} · ${s.student_id}`); }}
-                      className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between gap-3 border-b border-gray-50 dark:border-gray-700/40 last:border-0"
-                    >
-                      <span className="text-sm text-gray-900 dark:text-white truncate">{s.first_name} {s.last_name}</span>
-                      <span className="flex items-center gap-2 flex-shrink-0">
-                        {cls && <span className="text-[10px] text-gray-400">{cls}</span>}
-                        <span className="text-[11px] font-mono font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">{s.student_id}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {studentId && (
-              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">Selected: {studentQuery}</p>
-            )}
-          </div>
+          {/* Names can repeat: results show admission no., class, guardian and balance. */}
+          <StudentPicker value={picked} autoFocus onChange={(p) => { setPicked(p); setScopeId(''); setAmount(''); }} />
           {studentId && (
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase">What to pay for</label>
-              <select value={scopeId} onChange={(e) => { setScopeId(e.target.value); const s = scopes.find((x) => x.id === e.target.value); setAmount(s ? String(s.amount) : ''); }} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+              <select value={scopeId} onChange={(e) => { setScopeId(e.target.value); const s = scopes.find((x) => x.id === e.target.value); setPayMode('full'); setKeepCredit(false); setAmount(s ? String(s.amount) : ''); }} className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
                 <option value="">Select what to pay for…</option>
                 {scopes.map((s) => <option key={s.id} value={s.id}>{s.label} — {fmtMoney(s.amount)}</option>)}
               </select>
@@ -808,10 +808,48 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
               )}
             </div>
           )}
+          {selectedScope && (
+            <div>
+              <span className="text-xs font-semibold text-gray-500 uppercase">How much</span>
+              <div role="radiogroup" aria-label="How much" className="mt-1 grid grid-cols-2 gap-2">
+                <button type="button" role="radio" aria-checked={payMode === 'full'} onClick={() => choose('full')}
+                  className={`rounded-xl border px-3 py-2 text-left text-sm ${payMode === 'full' ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50 dark:bg-blue-950/30' : 'border-gray-200 dark:border-gray-700'}`}>
+                  <span className="block font-semibold">Pay in full</span><span className="block text-xs text-gray-500">{fmtMoney(selectedScope.amount)}</span>
+                </button>
+                <button type="button" role="radio" aria-checked={payMode === 'part'} disabled={!allowPart} onClick={() => choose('part')}
+                  className={`rounded-xl border px-3 py-2 text-left text-sm disabled:opacity-50 disabled:cursor-not-allowed ${payMode === 'part' ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50 dark:bg-blue-950/30' : 'border-gray-200 dark:border-gray-700'}`}>
+                  <span className="block font-semibold">Part payment</span>
+                  <span className="block text-xs text-gray-500">{!allowPart ? 'Not allowed by the school' : minimum > 0 ? `At least ${fmtMoney(minimum)}` : 'Any amount'}</span>
+                </button>
+              </div>
+              {!allowPart && <p className="mt-1 text-[11px] text-gray-500">The school's payment policy requires the full balance for this student.</p>}
+              {payMode === 'part' && (
+                <div className="mt-2 space-y-2">
+                  {minimum > 0 && minInfo?.reason && <p className="text-[11px] text-gray-600 dark:text-gray-300">Minimum {fmtMoney(minimum)}: {minInfo.reason}.{minimum > selectedScope.amount ? ' That is more than this item, so choose a bigger item or the full balance.' : ''}</p>}
+                  {chips.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {chips.map((v) => (
+                        <button key={v} type="button" onClick={() => setAmount(String(v))}
+                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${Math.abs(amt - v) < 0.005 ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:border-blue-300'}`}>
+                          {v === minimum ? 'Minimum · ' : `${Math.round((v / selectedScope.amount) * 100)}% · `}{fmtMoney(v)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Amount (Le)</label>
-              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className="w-full mt-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+              <label htmlFor="pay-amount" className="text-xs font-semibold text-gray-500 uppercase">Amount (Le)</label>
+              <input id="pay-amount" type="number" min={0} step="0.01" value={amount} readOnly={!!selectedScope && payMode === 'full'}
+                onChange={(e) => setAmount(e.target.value)} placeholder={payMode === 'part' ? 'Amount received' : '0'}
+                className={`w-full mt-1 px-3 py-2 rounded-xl border bg-white dark:bg-gray-900 text-sm ${belowMin ? 'border-red-400' : 'border-gray-200 dark:border-gray-700'} ${selectedScope && payMode === 'full' ? 'bg-gray-50 dark:bg-gray-800 text-gray-600' : ''}`} />
+              {selectedScope && payMode === 'part' && amt > 0 && amt < selectedScope.amount && !belowMin && (
+                <p className="mt-1 text-[11px] text-gray-500">Leaves {fmtMoney(selectedScope.amount - amt)} still owed on this item.</p>
+              )}
+              {belowMin && <p role="alert" className="mt-1 text-[11px] text-red-600">Below the minimum of {fmtMoney(minimum)}.</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase">Method</label>
@@ -837,7 +875,7 @@ const RecordPaymentModal: React.FC<{ onClose: () => void; onSaved: () => void }>
         </div>
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="create" size="sm" onClick={submit} disabled={saving}>{saving ? 'Recording…' : 'Record Payment'}</Button>
+          <Button variant="create" size="sm" onClick={submit} disabled={saving || !selectedScope || !(amt > 0) || belowMin}>{saving ? 'Recording…' : 'Record Payment'}</Button>
         </div>
       </div>
     </div>,
@@ -1176,7 +1214,7 @@ const SendRemindersModal: React.FC<{ onClose: () => void; defaulterCount?: numbe
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
 
-  const { data: classesResp } = useQuery({ queryKey: ['remind-classes'], queryFn: () => classesService.listAllClasses({ limit: 100 }), staleTime: 60_000 });
+  const { data: classesResp } = useQuery({ queryKey: ['remind-classes'], queryFn: () => classesService.listAllClasses({ limit: 100, scope: 'finance' } as any), staleTime: 60_000 });
   const classes = ((classesResp as any)?.data?.data ?? (classesResp as any)?.data ?? []) as any[];
   // Sections present among the school's classes (Nursery / Primary / JSS / SSS).
   const availableSections = useMemo(() => {

@@ -75,7 +75,7 @@ function cameraErrorMessage(err: any): string {
     return 'No camera was found on this device.';
   }
   if (name === 'NotReadableError' || name === 'TrackStartError' || name === 'AbortError') {
-    return 'The camera is in use by another app. Close it and try again.';
+    return 'The camera is busy (another app or browser tab may be using it). Close it and try again, or use the camera app.';
   }
   return 'The camera could not be started.';
 }
@@ -102,6 +102,10 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
   const shutterRef = useRef<HTMLButtonElement>(null);
   // Each start() gets an id; a slower, superseded start releases its stream.
   const reqId = useRef(0);
+  // The camera request still opening, if any. A new start waits for it: on
+  // Windows (and some Android phones) a second request while the first is
+  // still opening the device fails with NotReadableError ("in use").
+  const inFlight = useRef<Promise<unknown> | null>(null);
 
   const [facing, setFacing] = useState<CameraFacing>(initialFacing);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -157,19 +161,36 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
           { video: true, audio: false },
         ];
 
+    // Let an earlier request finish (its stream is dropped as stale) first.
+    if (inFlight.current) await inFlight.current.catch(() => {});
+    if (id !== reqId.current) return null;
+
+    const busy = (e: any) => ['NotReadableError', 'TrackStartError', 'AbortError'].includes(e?.name);
+    const wait = (ms: number) => new Promise((res) => window.setTimeout(res, ms));
     let stream: MediaStream | null = null;
     let used = -1;
     let lastErr: any = null;
-    for (let i = 0; i < attempts.length; i++) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(attempts[i]);
-        used = i;
-        break;
-      } catch (e: any) {
-        lastErr = e;
-        // A refusal won't change with looser constraints.
-        if (e?.name === 'NotAllowedError' || e?.name === 'SecurityError') break;
+    for (let i = 0; i < attempts.length && !stream; i++) {
+      // A camera that was just stopped (by us, a previous page or a flip) can
+      // take a moment to be released: retry "in use" twice before giving up.
+      for (let retry = 0; retry < 3; retry++) {
+        if (id !== reqId.current) return null;
+        try {
+          const p = navigator.mediaDevices.getUserMedia(attempts[i]);
+          inFlight.current = p;
+          stream = await p;
+          used = i;
+          break;
+        } catch (e: any) {
+          lastErr = e;
+          if (!busy(e) || retry === 2) break;
+          await wait(retry === 0 ? 400 : 1000);
+        } finally {
+          inFlight.current = null;
+        }
       }
+      // A refusal won't change with looser constraints.
+      if (!stream && (lastErr?.name === 'NotAllowedError' || lastErr?.name === 'SecurityError')) break;
     }
     if (id !== reqId.current) {
       stopStream(stream);

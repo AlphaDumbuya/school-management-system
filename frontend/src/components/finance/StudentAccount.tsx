@@ -4,9 +4,11 @@
  * Discounts, Credit, Instalment plan, Receipts. Opened from any finance page.
  * Read-only parts are reused by parents/students (`viewer` mode).
  */
+import useAuthStore from '@store/authStore';
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Download, Mail, FileText, Percent, Wallet, CalendarClock, Receipt } from 'lucide-react';
+import { Loader2, Download, Mail, FileText, Percent, Wallet, CalendarClock, Receipt, User, Phone, Bell } from 'lucide-react';
+import { financeService } from '@services/financeService';
 import { Modal } from '@components/admin/feedback/Modal';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { Button } from '@components/ui/button';
@@ -136,7 +138,11 @@ export const GrantDiscountForm: React.FC<{ studentId: string; year: string; onDo
         ...(oneOff ? { label, basis, value: Number(value), applies_to: appliesTo } : { rule_id: ruleId }),
       });
       if (r?.success === false) { showToast.error(r.error || 'Could not give the discount'); return; }
-      showToast.success(r.data.needsApproval ? 'Sent to the principal for approval.' : `Approved. ${le(r.data.applied)} taken off the fees.`);
+      const d = r.data;
+      if (d.needsApproval) showToast.success(d.unbilled ? 'Sent to the principal. The fees aren\'t billed yet, so it applies once they are.' : 'Sent to the principal for approval.');
+      else if (d.unbilled) showToast.success('Approved. It comes off the fees automatically when they are billed.');
+      else if (d.shortfall > 0) showToast.success(`Approved. ${le(d.applied)} taken off; ${le(d.shortfall)} couldn't be, because those fees are already paid. Issue a credit note on the Credit tab if the family should get it back.`);
+      else showToast.success(`Approved. ${le(d.applied)} taken off the fees.`);
       setValue(''); setReason('');
       onDone();
     } finally { setSaving(false); }
@@ -173,7 +179,7 @@ export const GrantDiscountForm: React.FC<{ studentId: string; year: string; onDo
       )}
       <ReasonField id="g-reason" value={reason} onChange={setReason} placeholder={oneOff ? 'Why is this waived? (required)' : 'Optional note (required for custom discounts)'} />
       <div className="flex justify-end">
-        <Button size="sm" variant="create" onClick={submit} disabled={saving || (oneOff && (!(Number(value) > 0) || reason.trim().length < 5))}>{saving ? 'Saving…' : 'Give discount'}</Button>
+        <Button size="sm" variant="create" onClick={submit} disabled={saving || (oneOff && (!(Number(value) > 0) || (basis === 'percent' && Number(value) > 100) || reason.trim().length < 5)) || (!oneOff && rules.find((x) => x.id === ruleId)?.kind === 'custom' && reason.trim().length < 5)}>{saving ? 'Saving…' : 'Give discount'}</Button>
       </div>
     </div>
   );
@@ -181,6 +187,12 @@ export const GrantDiscountForm: React.FC<{ studentId: string; year: string; onDo
 
 export const StudentDiscounts: React.FC<{ studentId: string; year: string }> = ({ studentId, year }) => {
   const qc = useQueryClient();
+  const { activeYear } = useAcademicYears();
+  const me = useAuthStore((st) => st.user);
+  const isPrincipal = me?.role === 'principal' || me?.role === 'super_admin';
+  // A past year is history; the bursar takes back only what they gave within their limit.
+  const pastYear = !!year && !!activeYear && year < activeYear;
+  const canRevoke = (g: any) => !pastYear && (g.status === 'pending' || (g.status === 'approved' && (isPrincipal || (g.requested_by === me?.id && g.decided_by === me?.id))));
   const q = useQuery({ queryKey: ['fin-grants', studentId, year], queryFn: () => ok<any[]>(bursarService.listGrants({ student_id: studentId, academic_year: year })) });
   const [revoke, setRevoke] = useState<any | null>(null);
   const [reason, setReason] = useState('');
@@ -197,13 +209,15 @@ export const StudentDiscounts: React.FC<{ studentId: string; year: string }> = (
           </div>
           <div className="flex items-center gap-2">
             <Pill s={g.status} />
-            {(g.status === 'approved' || g.status === 'pending') && (
+            {canRevoke(g) && (
               <button type="button" onClick={() => { setReason(''); setRevoke(g); }} className="text-[11px] font-semibold text-red-600 hover:underline">{g.status === 'pending' ? 'Withdraw' : 'Revoke'}</button>
             )}
           </div>
         </div>
       ))}
-      <GrantDiscountForm studentId={studentId} year={year} onDone={refresh} />
+      {pastYear
+        ? <p className="text-xs text-gray-500">{year} is a past academic year, so its discounts are read-only. Give new discounts in {activeYear}.</p>
+        : <GrantDiscountForm studentId={studentId} year={year} onDone={refresh} />}
       <ConfirmationDialog isOpen={!!revoke} onClose={() => setRevoke(null)} title={revoke?.status === 'pending' ? 'Withdraw request' : 'Revoke discount'} confirmLabel={revoke?.status === 'pending' ? 'Withdraw' : 'Revoke'}
         message={revoke ? `${revoke.status === 'pending' ? 'Withdraw' : 'Revoke'} "${revoke.label}"? ${revoke.status === 'approved' ? `${le(revoke.applied_amount)} will be owed again.` : ''}` : ''}
         confirmDisabled={reason.trim().length < 5}
@@ -386,9 +400,81 @@ export const ReceiptsList: React.FC<{ studentId: string; staff?: boolean }> = ({
   );
 };
 
+// ── Profile (what the bursar needs to know about the student) ───────────────
+export const StudentProfilePanel: React.FC<{ studentId: string; onOpen: (t: Tab) => void }> = ({ studentId, onOpen }) => {
+  const q = useQuery({ queryKey: ['fin-student-profile', studentId], queryFn: () => ok<any>(bursarService.studentProfile(studentId)) });
+  const [sending, setSending] = useState(false);
+  const p = q.data;
+  if (q.error) return <ErrorLine error={q.error} onRetry={() => q.refetch()} />;
+  if (q.isLoading || !p) return <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div>;
+  const m = p.money;
+  const tile = (label: string, v: React.ReactNode, tone = '', go?: Tab) => (
+    <button type="button" disabled={!go} onClick={() => go && onOpen(go)} className={`text-left rounded-xl border border-gray-200 dark:border-gray-700 p-3 ${go ? 'hover:border-blue-300' : 'cursor-default'}`}>
+      <div className="text-[11px] text-gray-500">{label}</div><div className={`font-bold ${tone}`}>{v}</div>
+    </button>
+  );
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-4">
+        {p.photo_url
+          ? <img src={p.photo_url} alt="" className="w-16 h-16 rounded-2xl object-cover border border-gray-200 dark:border-gray-700" />
+          : <span className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400"><User size={26} /></span>}
+        <div className="min-w-0">
+          <div className="text-lg font-bold">{p.name}</div>
+          <div className="text-sm text-gray-600 dark:text-gray-300">{p.admission_no}{p.class_name ? ` · ${p.class_name}` : ' · no class'}{p.gender ? ` · ${String(p.gender).toLowerCase()}` : ''}</div>
+          <div className="mt-1 flex flex-wrap gap-2 text-xs">
+            <Pill s={p.left_school ? 'revoked' : 'approved'} label={String(p.status || 'active').replace(/_/g, ' ')} />
+            {p.enrollment_date && <span className="text-gray-500">Joined {String(p.enrollment_date).slice(0, 10)}</span>}
+            {p.email && <a href={`mailto:${p.email}`} className="text-blue-600 hover:underline">{p.email}</a>}
+          </div>
+        </div>
+      </div>
+      {p.left_school && <p className="rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800">This student has left the school ({p.status}). What they still owe can still be collected.</p>}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {tile(`Billed ${m.academic_year || 'this year'}`, le(m.billed_this_year), '', 'statement')}
+        {tile(`Owed ${m.academic_year || 'this year'}`, le(m.owed_this_year), m.owed_this_year > 0 ? 'text-rose-600' : '', 'statement')}
+        {tile('Owed in total (all years)', le(m.owed_total), m.owed_total > 0 ? 'text-rose-600' : '', 'statement')}
+        {tile('Account credit', le(m.credit), m.credit > 0 ? 'text-emerald-700' : '', 'credit')}
+      </div>
+      <p className="text-xs text-gray-500">{m.last_payment ? <>Last payment {le(m.last_payment.amount)} on {m.last_payment.date}{m.last_payment.receipt_number ? ` (${m.last_payment.receipt_number})` : ''}. <button type="button" className="text-blue-600 hover:underline" onClick={() => onOpen('receipts')}>See receipts</button></> : 'No payments yet.'}</p>
+      <div>
+        <h3 className="text-sm font-bold mb-2">Parents / guardians</h3>
+        {p.guardians.length === 0 ? <p className="text-xs text-gray-500">No guardian on record. Ask the school office to add one so reminders reach the family.</p> : (
+          <ul className="space-y-2">
+            {p.guardians.map((g: any, i: number) => (
+              <li key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 dark:border-gray-800 px-3 py-2 text-sm">
+                <span><span className="font-medium">{g.name || 'Guardian'}</span>{g.relationship ? <span className="text-xs text-gray-500"> · {g.relationship}</span> : null}{g.is_primary ? <span className="text-[11px] text-blue-600"> · primary</span> : null}{g.has_account ? <span className="text-[11px] text-emerald-700"> · has a parent login</span> : null}</span>
+                <span className="flex items-center gap-3 text-xs">
+                  {g.phone && <a href={`tel:${g.phone}`} className="inline-flex items-center gap-1 text-blue-600 hover:underline"><Phone size={12} /> {g.phone}</a>}
+                  {g.email && <a href={`mailto:${g.email}`} className="inline-flex items-center gap-1 text-blue-600 hover:underline"><Mail size={12} /> {g.email}</a>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {m.owed_total > 0 && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" disabled={sending} onClick={async () => {
+            setSending(true);
+            try {
+              const r: any = await financeService.sendBalanceReminders({ scope: 'student', studentId } as any);
+              if (r?.success === false) return showToast.error(r.error || 'Could not send the reminder');
+              const sent = Number(r?.data?.sent || 0);
+              if (sent > 0) showToast.success('Reminder sent to the family.');
+              else showToast.error('No email on file for this family. Call them instead.');
+            } finally { setSending(false); }
+          }}><Bell size={14} className="mr-1" /> {sending ? 'Sending…' : 'Send a fee reminder'}</Button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── The staff modal ──────────────────────────────────────────────────────────
-type Tab = 'statement' | 'discounts' | 'credit' | 'plan' | 'receipts';
+type Tab = 'profile' | 'statement' | 'discounts' | 'credit' | 'plan' | 'receipts';
 const TABS: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
+  { id: 'profile', label: 'Profile', icon: <User size={14} /> },
   { id: 'statement', label: 'Statement', icon: <FileText size={14} /> },
   { id: 'discounts', label: 'Discounts', icon: <Percent size={14} /> },
   { id: 'credit', label: 'Credit', icon: <Wallet size={14} /> },
@@ -396,8 +482,10 @@ const TABS: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
   { id: 'receipts', label: 'Receipts', icon: <Receipt size={14} /> },
 ];
 
-export const StudentAccountModal: React.FC<{ student: { id: string; name: string; admissionNo?: string } | null; onClose: () => void; initialTab?: Tab }> = ({ student, onClose, initialTab = 'statement' }) => {
+export const StudentAccountModal: React.FC<{ student: { id: string; name: string; admissionNo?: string } | null; onClose: () => void; initialTab?: Tab }> = ({ student, onClose, initialTab = 'profile' }) => {
   const [tab, setTab] = useState<Tab>(initialTab);
+  // Each student opens on the requested tab (the modal stays mounted between students).
+  React.useEffect(() => { setTab(initialTab); }, [student?.id, initialTab]);
   const { activeYear } = useAcademicYears();
   const [picked, setPicked] = useState('');
   const year = picked || activeYear;
@@ -416,6 +504,7 @@ export const StudentAccountModal: React.FC<{ student: { id: string; name: string
         </div>
         {!year ? <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div> : (
           <>
+            {tab === 'profile' && <StudentProfilePanel studentId={student.id} onOpen={setTab} />}
             {tab === 'statement' && <StatementPanel studentId={student.id} label={student.admissionNo || student.name} year={year} staff />}
             {tab === 'discounts' && <StudentDiscounts studentId={student.id} year={year} />}
             {tab === 'credit' && <StudentCredit studentId={student.id} staff />}

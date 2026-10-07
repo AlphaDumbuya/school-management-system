@@ -254,7 +254,7 @@ const GenerateInvoicesModal: React.FC<{ academicYear: string; onClose: () => voi
   // Only the active year's classes — invoices are generated for the current year.
   const { data: classesResp } = useQuery({
     queryKey: ['gen-classes', academicYear],
-    queryFn: () => classesService.listClasses({ limit: 200, academic_year: academicYear } as any),
+    queryFn: () => classesService.listClasses({ limit: 200, academic_year: academicYear, scope: 'finance' } as any),
     enabled: !!academicYear,
     staleTime: 60_000,
   });
