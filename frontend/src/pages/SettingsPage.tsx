@@ -57,6 +57,7 @@ import {
   borderKind,
 } from '@lib/reportCardBorders';
 import { showToast } from '@utils/toast';
+import { apiClient } from '@lib/apiClient';
 
 /** Keep in sync with backend PasswordService.validatePasswordPolicy. */
 const PASSWORD_RULES: { label: string; test: (p: string) => boolean }[] = [
@@ -78,6 +79,10 @@ export const SettingsPage: React.FC = () => {
   // The bursar: an accountant, or a teacher holding the Bursar duty. They work
   // under the school's payment policy, so they get a read-only view of it.
   const isBursar = user?.role === 'accountant' || (isTeacher && ((user as any)?.staffDuties ?? []).includes('accountant'));
+  // The admissions office (or a teacher holding the Admissions duty) works under
+  // the school's ID format and admissions rules: a read-only view of them.
+  const isOffice = user?.role === 'admissions_officer' || (isTeacher && ((user as any)?.staffDuties ?? []).includes('admissions_officer'));
+  const [officeLink, setOfficeLink] = useState<string>('');
   // A tenant/school admin (principal) manages the school-config tabs. The super
   // admin is the PLATFORM operator and has no school to configure — they only
   // get Profile + Security (2FA). `isPrincipalOrSuper` gates school-config data
@@ -271,6 +276,18 @@ export const SettingsPage: React.FC = () => {
       // Basic Profile - Any logged in user
       if (activeTab === 'profile') {
         // Handled locally from authStore for now
+      }
+
+      // The admissions office reads (never saves) the ID format + admissions link.
+      if (isOffice && !isPrincipalOrSuper) {
+        const [res, link]: any[] = await Promise.all([
+          schoolConfigService.getSettings().catch(() => ({ success: false, data: {} })),
+          apiClient.get('/api/v1/admissions/share-link').catch(() => null),
+        ]);
+        if (res.success && res.data) { setSettings((prev) => ({ ...prev, ...res.data })); setSettingsLoadFailed(false); }
+        else setSettingsLoadFailed(true);
+        const path = link?.data?.path;
+        if (path) setOfficeLink(new URL(path, window.location.protocol.startsWith('http') ? window.location.origin : (link?.data?.public_base_url || window.location.origin)).toString());
       }
 
       // The bursar reads (never saves) the payment policy.
@@ -833,6 +850,7 @@ export const SettingsPage: React.FC = () => {
     { id: 'security', label: 'Security', icon: <ShieldCheck size={18} />, adminOnly: false },
     { id: 'offline', label: 'Offline & Storage', icon: <HardDrive size={18} />, adminOnly: false, teacherOnly: true },
     { id: 'policy', label: 'Payment Policy', icon: <DollarSign size={18} />, adminOnly: false, bursarOnly: true },
+    { id: 'admissions', label: 'Admissions & IDs', icon: <GraduationCap size={18} />, adminOnly: false, officeOnly: true },
     // ── School identity (admin) ──
     { id: 'school', label: 'School Info', icon: <Building size={18} />, adminOnly: true },
     { id: 'academic', label: 'Academic Config', icon: <Calendar size={18} />, adminOnly: true },
@@ -853,6 +871,7 @@ export const SettingsPage: React.FC = () => {
     if (t.adminOnly && !isPrincipalOrSuper) return false;
     if ((t as any).teacherOnly && !isTeacher) return false;
     if ((t as any).bursarOnly && !isBursar) return false;
+    if ((t as any).officeOnly && !isOffice) return false;
     return true;
   };
   // Unknown (?tab=typo) or not-permitted tabs fall back to My Profile instead
@@ -860,7 +879,7 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     if (!tabAllowed(activeTab)) setActiveTab('profile');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, isPrincipalOrSuper, isTeacher, isBursar]);
+  }, [activeTab, isPrincipalOrSuper, isTeacher, isBursar, isOffice]);
 
   return (
     <MainLayout>
@@ -872,6 +891,8 @@ export const SettingsPage: React.FC = () => {
             ? 'Configure your personal preferences and school-wide administrative variables.'
             : user?.role === 'accountant'
               ? 'Manage your profile, password and sign-in security, and see the payment policy you work under.'
+              : user?.role === 'admissions_officer'
+                ? 'Manage your profile, password and sign-in security, and see the admissions rules and ID formats you work with.'
               : isTeacher
                 ? 'Manage your profile, password, sign-in security and offline storage on this device.'
                 : 'Manage your profile, password and sign-in security.'}
@@ -886,6 +907,7 @@ export const SettingsPage: React.FC = () => {
                   if (tab.adminOnly && !isPrincipalOrSuper) return null;
                   if ((tab as any).teacherOnly && !isTeacher) return null;
                   if ((tab as any).bursarOnly && !isBursar) return null;
+                  if ((tab as any).officeOnly && !isOffice) return null;
                   const active = activeTab === tab.id;
                   return (
                     <button
@@ -914,6 +936,7 @@ export const SettingsPage: React.FC = () => {
                   if (tab.adminOnly && !isPrincipalOrSuper) return null;
                   if ((tab as any).teacherOnly && !isTeacher) return null;
                   if ((tab as any).bursarOnly && !isBursar) return null;
+                  if ((tab as any).officeOnly && !isOffice) return null;
                   const active = activeTab === tab.id;
                   return (
                     <button
@@ -1004,6 +1027,63 @@ export const SettingsPage: React.FC = () => {
                   );
                 })()}
 
+                {/* ── ADMISSIONS & IDs (admissions office, read-only) ── */}
+                {activeTab === 'admissions' && (() => {
+                  const sep = settings.id_separator === 'none' || settings.id_separator == null ? '' : String(settings.id_separator);
+                  const yf = settings.id_year_format || (settings.id_include_year === false ? 'none' : 'full');
+                  const yr = String(new Date().getFullYear());
+                  const yp = yf === 'full' ? yr : yf === 'short' ? yr.slice(-2) : '';
+                  const pad = Number(settings.id_padding) || 5;
+                  const sample = (prefix: string, from: any) => [prefix, yp, String((Number(from) || 0) + 1).padStart(pad, '0')].filter(Boolean).join(sep);
+                  const rows: Array<[string, React.ReactNode]> = [
+                    ['Intake year', <>{activeAcademicYear || '—'} <span className="text-gray-500 font-normal">(new applications and enrolments go into the current year)</span></>],
+                    ['Application numbers', <span className="font-mono">{sample(settings.id_admission_prefix || 'ADM', settings.id_admission_start_from)}</span>],
+                    ['Student numbers', <span className="font-mono">{sample(settings.id_student_prefix || settings.id_admission_prefix || 'STU', settings.id_student_start_from)}</span>],
+                    ['Decisions emailed to families', 'Interview invitation, approved, waitlist and rejected (each once). Withdrawals and notes are never emailed.'],
+                    ['Becoming a student', 'Only when you press Enrol on an approved application, into a class of the current year. Fees already billed to the class can be billed to the new student.'],
+                    ['Online applications', 'Up to 5 per family per day; the same child sent twice keeps the first application.'],
+                    ['ID card designs', 'You design student cards; the principal approves them. Cards are printed on approved designs only.'],
+                  ];
+                  return (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2.5">
+                          <span className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><GraduationCap size={18} /></span>
+                          Admissions &amp; ID Numbers
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <p className="text-sm text-gray-600">The rules admissions follows. The principal sets the ID format in Settings → ID Format; ask them if something needs to change.</p>
+                        {officeLink && (
+                          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                            <p className="text-xs font-semibold text-blue-900 mb-1.5">Online application link</p>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <input readOnly aria-label="Online application link" value={officeLink} onClick={(e) => e.currentTarget.select()} className="min-w-0 flex-1 text-sm bg-white" />
+                              <Button size="sm" onClick={async () => { try { await navigator.clipboard.writeText(officeLink); showToast.success('Link copied'); } catch { showToast.error('Select and copy the link'); } }}><Copy size={14} className="mr-1" /> Copy</Button>
+                            </div>
+                          </div>
+                        )}
+                        {settingsLoadFailed
+                          ? <p role="alert" className="text-sm text-red-600">Couldn't load the school's settings. Refresh the page to try again.</p>
+                          : (
+                            <dl className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                              {rows.map(([k, v]) => (
+                                <div key={k} className="grid grid-cols-1 sm:grid-cols-3 gap-1 px-4 py-2.5 text-sm">
+                                  <dt className="text-gray-500">{k}</dt>
+                                  <dd className="sm:col-span-2 font-medium text-gray-800">{v}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          )}
+                        <div className="flex flex-wrap gap-4 text-xs font-semibold">
+                          <a href="/students/admissions" className="text-blue-700 underline hover:text-blue-900">Open Admissions →</a>
+                          <a href="/identity/templates" className="text-blue-700 underline hover:text-blue-900">Card designs →</a>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
+
                 {/* ── OFFLINE & STORAGE TAB (teachers) ── */}
                 {activeTab === 'offline' && (
                   <Card>
@@ -1087,7 +1167,7 @@ export const SettingsPage: React.FC = () => {
                       </CardHeader>
                       <CardContent>
                         <form onSubmit={handleSavePassword} className="space-y-4">
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                             <div>
                               <label className="text-xs font-semibold text-gray-500 block mb-1">Current Password</label>
                               <div className="relative">

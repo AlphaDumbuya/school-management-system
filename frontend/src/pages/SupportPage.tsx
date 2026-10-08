@@ -87,6 +87,9 @@ ROLE_FAQ.admissions_officer = [
   { q: 'Where do I find a student\'s or parent\'s password?', a: 'Right after enrolling it is shown once. Afterwards, Student Profiles → Portal Login Credentials (Show), where you can also reset it.' },
   { q: 'Why can\'t I enter scores or edit classes?', a: 'Academic pages are view-only for admissions. Teachers enter scores; the principal manages classes and timetables.' },
   { q: 'Can I sign in for a day I forgot?', a: 'No. Staff sign in for today only, until the school\'s closing time. For any other day, ask the principal to record your attendance.' },
+  { q: 'How do I change how student ID cards look?', a: 'Card Templates → Create Template (or Duplicate an approved one). It is saved as a draft; press Submit for Approval and the principal is notified. Once approved you can make it the default for student cards. Cards are only printed on approved designs.' },
+  { q: 'A family says they already have a student card, but I need a new one.', a: 'ID Cards → open their card → Regenerate (same holder, new print). To issue a different card, Revoke the old one first, then generate a new one.' },
+  { q: 'A student left the school. What do I do?', a: 'Student Directory → Deactivate. The record and history stay; reactivate it if they come back. Permanent delete is only for mistakes and is done by the principal.' },
 ];
 /** Shortcuts on the Help Center home, per role. */
 const ROLE_ACTIONS: Partial<Record<string, Array<{ label: string; to: string; icon: any; accent: 'blue' | 'violet' | 'emerald' | 'amber' }>>> = {
@@ -98,7 +101,7 @@ const ROLE_ACTIONS: Partial<Record<string, Array<{ label: string; to: string; ic
   admissions_officer: [
     { label: 'Process admissions', to: '/support/students/admissions', icon: ClipboardCheck, accent: 'blue' },
     { label: 'Enrol and manage students', to: '/support/students/students-add', icon: Users, accent: 'violet' },
-    { label: 'Open Admissions', to: '/students/admissions', icon: GraduationCap, accent: 'emerald' },
+    { label: 'Card designs & ID cards', to: '/support/identity/id-cards-issue', icon: CreditCard, accent: 'emerald' },
   ],
 };
 
@@ -439,6 +442,13 @@ const CATEGORY_OPTIONS = [
     desc: 'Fees, payments, receipts, payroll or the books',
   },
   {
+    value: 'Admissions & student records',
+    icon: GraduationCap,
+    color: 'bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-900/40',
+    selected: 'ring-2 ring-indigo-400 border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30',
+    desc: 'Applications, enrolment, student records, logins or ID cards',
+  },
+  {
     value: 'Billing',
     icon: BillingIcon,
     color: 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900/40',
@@ -485,6 +495,7 @@ const PRIORITY_OPTIONS = [
 const CATEGORY_TIPS: Record<string, string> = {
   'Technical Issue': 'Include the page or feature where the issue appears, what you did, what happened, and what you expected.',
   'School fees & finance': 'Include the page (e.g. Payments, Discounts, Payroll), the student\'s admission number or the receipt / journal number, the amount, and what you expected to happen. Never send card or mobile-money PINs.',
+  'Admissions & student records': 'Include the application number (e.g. ADM-…) or the student number, the page (Admissions, Student Profiles, ID Cards), what you did and what you expected. Never send a family\'s password.',
   'Billing': 'Include your subscription plan, the date of the charge or invoice, and the amount in question.',
   'Account': 'Include the affected user\'s email or role, and whether the issue affects just one account or multiple.',
   'Feature Request': 'Describe your workflow and what problem the feature would solve. Screenshots or examples help.',

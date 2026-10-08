@@ -214,6 +214,8 @@ export const CardGenerationModal: React.FC<CardGenerationModalProps> = ({
     const seen = new Set();
     return list.filter((t: any) => {
       const tid = t.id || t.templateId;
+      // Cards are printed on approved designs only (the server enforces it too).
+      if (t.status && t.status !== 'approved') return false;
       if (!tid || seen.has(tid)) return false;
       seen.add(tid);
       return true;

@@ -38,6 +38,35 @@ async function assertTemplateInTenant(req: Request, templateId: string): Promise
 router.use(authenticate);
 router.use(attachUserContext);
 
+/**
+ * The admissions office designs STUDENT cards: it creates and edits drafts,
+ * submits them, and picks the default student design among approved ones.
+ * The principal approves designs, and only the principal changes or archives
+ * an approved design (cards are printed on it).
+ */
+const isOffice = (req: Request) => (req as any).user?.role === 'admissions_officer';
+async function templateRow(req: Request, templateId: string) {
+  return db('card_templates').where({ id: templateId, tenant_id: (req as any).user?.tenant_id }).first();
+}
+/** Service errors are plain Errors; give them a proper status instead of a 500. */
+function asHttp(error: any) {
+  if (error instanceof AppError) return error;
+  const m = String(error?.message || '');
+  if (/not found/i.test(m)) return new AppError(m, 404, 'NOT_FOUND');
+  if (/only approved|not in draft|not pending|cannot approve|in use by|cannot delete/i.test(m)) return new AppError(m, 409, 'CONFLICT');
+  return error;
+}
+async function notifyRoleUsers(tenantId: string, roles: string[], n: { subject: string; message: string; exceptUserId?: string }, userIds?: string[]) {
+  try {
+    const ids = userIds?.length ? userIds : (await db('users').where({ tenant_id: tenantId, status: 'active' }).whereIn('role', roles).pluck('id'));
+    const { default: notificationService } = await import('../services/notificationService.js');
+    for (const id of ids) {
+      if (id === n.exceptUserId) continue;
+      await notificationService.createNotification({ recipientId: id, notificationType: 'announcement', subject: n.subject, message: n.message, data: { url: '/identity/templates' }, channels: ['in_app'], sourceType: 'card_template' } as any).catch(() => null);
+    }
+  } catch { /* best-effort */ }
+}
+
 // Configure multer for logo uploads
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -61,7 +90,7 @@ const upload = multer({
  */
 router.post(
   '/',
-  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = (req as any).user.tenant_id;
@@ -82,7 +111,8 @@ router.post(
         config: req.body.config,
         createdBy,
         // Only a duplicate explicitly requests 'draft'; anything else activates.
-        status: req.body.status === 'draft' ? 'draft' : undefined,
+        // The admissions office's designs always start as drafts (principal approves).
+        status: req.body.status === 'draft' || isOffice(req) ? 'draft' : undefined,
       };
 
       // Validate required fields
@@ -115,7 +145,7 @@ router.post(
  */
 router.put(
   '/:templateId',
-  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { templateId } = req.params;
@@ -124,6 +154,12 @@ router.put(
         throw new AppError('Invalid or missing template ID', 400);
       }
       await assertTemplateInTenant(req, templateId); // tenant guard
+      if (isOffice(req)) {
+        const row = await templateRow(req, templateId);
+        if (row && !['draft', 'pending_approval'].includes(String(row.status))) {
+          throw new AppError('This design is approved and cards are printed on it. Duplicate it to make changes; the principal approves the new design.', 409, 'APPROVED_LOCKED');
+        }
+      }
 
       const updates: TemplateUpdateRequest = {
         name: req.body.name,
@@ -235,7 +271,7 @@ router.get(
  */
 router.post(
   '/:templateId/set-default',
-  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { templateId } = req.params;
@@ -257,7 +293,10 @@ router.post(
       }
 
       await assertTemplateInTenant(req, templateId); // tenant guard
-      await templateService.setDefaultTemplate(templateId, roles);
+      if (isOffice(req) && roles.some((r: string) => r !== 'student')) {
+        throw new AppError('Admissions can set the default design for student cards only.', 403, 'STUDENTS_ONLY');
+      }
+      await templateService.setDefaultTemplate(templateId, roles).catch((e) => { throw asHttp(e); });
 
       res.json({
         message: 'Template set as default successfully',
@@ -279,13 +318,18 @@ router.post(
  */
 router.post(
   '/:templateId/submit-approval',
-  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { templateId } = req.params;
       await assertTemplateInTenant(req, templateId); // tenant guard
 
-      await templateService.submitForApproval(templateId);
+      await templateService.submitForApproval(templateId).catch((e) => { throw asHttp(e); });
+      const row = await templateRow(req, templateId);
+      await notifyRoleUsers((req as any).user.tenant_id, ['principal'], {
+        subject: 'Card design waiting for approval',
+        message: `"${row?.name || 'A card design'}" was submitted for approval.`, exceptUserId: (req as any).user.id,
+      });
 
       res.json({
         message: 'Template submitted for approval',
@@ -313,7 +357,11 @@ router.post(
       const approverId = (req as any).user.id;
       await assertTemplateInTenant(req, templateId); // tenant guard
 
-      await templateService.approveTemplate(templateId, approverId);
+      await templateService.approveTemplate(templateId, approverId).catch((e) => { throw asHttp(e); });
+      const row = await templateRow(req, templateId);
+      if (row?.created_by && row.created_by !== approverId) {
+        await notifyRoleUsers((req as any).user.tenant_id, [], { subject: 'Card design approved', message: `"${row.name}" is approved and can be used for ID cards.` }, [row.created_by]);
+      }
 
       res.json({
         message: 'Template approved successfully',
@@ -334,7 +382,7 @@ router.post(
  */
 router.delete(
   '/:templateId',
-  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { templateId } = req.params;
@@ -343,8 +391,14 @@ router.delete(
         throw new AppError('Invalid or missing template ID', 400);
       }
       await assertTemplateInTenant(req, templateId); // tenant guard
+      if (isOffice(req)) {
+        const row = await templateRow(req, templateId);
+        if (row && !['draft', 'pending_approval'].includes(String(row.status))) {
+          throw new AppError('Only the principal can archive an approved design.', 403, 'APPROVED_LOCKED');
+        }
+      }
 
-      await templateService.deleteTemplate(templateId);
+      await templateService.deleteTemplate(templateId).catch((e) => { throw asHttp(e); });
 
       res.json({
         message: 'Template archived successfully',
@@ -365,7 +419,7 @@ router.delete(
  */
 router.post(
   '/upload-logo',
-  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   upload.single('logo'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {

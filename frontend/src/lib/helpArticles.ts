@@ -479,6 +479,32 @@ export const HELP_ARTICLES: HelpArticle[] = [
     related: ['students-add', 'account-security', 'login-help'],
   },
   {
+    id: 'admissions-online',
+    collection: 'students',
+    title: 'Online applications',
+    summary: 'Share the application link, and what families see and get.',
+    roles: ['principal', 'super_admin', 'admissions_officer'],
+    route: '/students/admissions',
+    routeLabel: 'Admissions',
+    keywords: ['apply online', 'application link', 'share', 'families', 'duplicate', 'spam'],
+    sections: [
+      {
+        id: 'share',
+        heading: 'Share the link',
+        blocks: [
+          p(['On ', link('Admissions', '/students/admissions'), ', copy or share the Online admission link (also in Settings → Admissions & IDs). Use Preview to see the form families get.']),
+          list([
+            ['Families need no account. They fill in the child, parent, medical and emergency details for this year\'s classes.'],
+            ['They get an application number on screen and by email; you get a notification and the application arrives as New.'],
+            ['The same child sent twice (same name, birthday and phone) keeps the first application. A family can send up to 5 applications a day.'],
+          ]),
+          note(['If the school turns on the security check (Cloudflare Turnstile), families tick it before sending.']),
+        ],
+      },
+    ],
+    related: ['admissions', 'students-add'],
+  },
+  {
     id: 'admissions',
     collection: 'students',
     title: 'Process admissions',
@@ -1147,11 +1173,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'From template to card',
         blocks: [
           steps([
-            { title: 'Design a template', body: [['Build the layout, colours, fields and allowed roles in ', link('Card Templates', '/identity/templates'), '. Approve it and set a default.']], action: { label: 'Card Templates', to: '/identity/templates' } },
+            { title: 'Design a template', body: [['Build the layout, colours and fields in ', link('Card Templates', '/identity/templates'), '. The admissions office saves designs as drafts and submits them; the principal approves. Then set the default design for each role (admissions: student cards).']], action: { label: 'Card Templates', to: '/identity/templates' } },
             { title: 'Generate cards', body: [['In ', link('ID Cards', '/identity/cards'), ', generate one card or bulk-generate for a class or the whole school.']], action: { label: 'ID Cards', to: '/identity/cards' } },
             { title: 'Manage a card', body: [['Regenerate, revoke or report a card lost from its row. Cards show an expiry date.']] },
           ]),
-          note(['ID cards are issued per academic year and expire yearly. Generate replacements when cards are due to expire.']),
+          note(['Cards are printed on approved designs only. To change an approved design, duplicate it and submit the copy. ID cards are issued per academic year and expire yearly; the Expiring Soon tab lists cards due for renewal.']),
         ],
       },
       {

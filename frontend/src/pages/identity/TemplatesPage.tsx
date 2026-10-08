@@ -25,6 +25,7 @@ import { DataTable } from '@components/admin/table/DataTable';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
 import { RoleGuard } from '@components/admin/common/RoleGuard';
+import useAuthStore from '@store/authStore';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { idCardService, CardTemplate, TemplateStatus } from '@services/idCardService';
@@ -63,6 +64,12 @@ function formatDate(dateStr: string | null | undefined): string {
 
 export const TemplatesPage: React.FC = () => {
     const queryClient = useQueryClient();
+    // The admissions office designs student cards; the principal approves them
+    // and is the only one who changes or archives an approved design.
+    const viewerRole = useAuthStore((st) => st.user?.role);
+    const isOffice = viewerRole === 'admissions_officer';
+    const canApprove = viewerRole === 'principal' || viewerRole === 'super_admin';
+    const editable = (t: CardTemplate) => !isOffice || t.status === 'draft' || t.status === 'pending_approval';
 
     // State
     const [formModalOpen, setFormModalOpen] = useState(false);
@@ -250,13 +257,13 @@ export const TemplatesPage: React.FC = () => {
         <MainLayout>
             <PageShell
                 title="Card Templates"
-                subtitle="Manage ID card design templates and branding"
+                subtitle={isOffice ? 'Design student ID cards. New designs go to the principal for approval before cards can be printed on them.' : 'Manage ID card design templates and branding'}
                 breadcrumbs={[{ label: 'Identity' }, { label: 'Templates' }]}
                 onRefresh={() => refetch()}
                 isRefreshing={isLoading}
                 actions={
                     <div className="flex items-center gap-2 sm:gap-3">
-                        <RoleGuard roles={['principal', 'super_admin']}>
+                        <RoleGuard roles={['principal', 'super_admin', 'admissions_officer']}>
                             <Button
                                 variant="default"
                                 size="sm"
@@ -368,13 +375,13 @@ export const TemplatesPage: React.FC = () => {
                                 label: 'View',
                                 onClick: (row: CardTemplate) => setViewTarget(row),
                             },
-                            {
+                            ...(editable(template) ? [{
                                 label: 'Edit',
                                 onClick: (row: CardTemplate) => {
                                     setEditingTemplate(row);
                                     setFormModalOpen(true);
                                 },
-                            },
+                            }] : []),
                         ];
 
                         if (template.status === 'draft') {
@@ -392,7 +399,7 @@ export const TemplatesPage: React.FC = () => {
                             });
                         }
 
-                        if (template.status === 'pending_approval') {
+                        if (template.status === 'pending_approval' && canApprove) {
                             actions.push({
                                 label: 'Approve',
                                 onClick: (row: CardTemplate) => setApproveTarget(row),
@@ -424,10 +431,12 @@ export const TemplatesPage: React.FC = () => {
                             },
                         });
 
-                        actions.push({
-                            label: 'Delete',
-                            onClick: (row: CardTemplate) => setDeleteTarget(row),
-                        });
+                        if (editable(template)) {
+                            actions.push({
+                                label: isOffice ? 'Archive' : 'Delete',
+                                onClick: (row: CardTemplate) => setDeleteTarget(row),
+                            });
+                        }
 
                         return actions;
                     }}
@@ -442,6 +451,7 @@ export const TemplatesPage: React.FC = () => {
                     setEditingTemplate(null);
                 }}
                 onSuccess={() => {
+                    if (isOffice && !editingTemplate) showToast.success('Saved as a draft. Use "Submit for Approval" when it is ready; the principal is notified.');
                     queryClient.invalidateQueries({ queryKey: ['card-templates'] });
                     refetch();
                 }}
@@ -463,9 +473,9 @@ export const TemplatesPage: React.FC = () => {
                 isOpen={!!deleteTarget}
                 onClose={() => setDeleteTarget(null)}
                 onConfirm={handleDelete}
-                title="Delete Template"
-                message={`Are you sure you want to delete template "${deleteTarget?.name}"? This action cannot be undone.`}
-                confirmLabel="Delete"
+                title="Archive Template"
+                message={`Archive template "${deleteTarget?.name}"? It can no longer be used for new cards. Cards already printed on it keep working.`}
+                confirmLabel="Archive"
             />
 
             <ConfirmationDialog
@@ -490,7 +500,7 @@ export const TemplatesPage: React.FC = () => {
                             </p>
                         </div>
                         <div className="p-5 space-y-2">
-                            {(['student', 'teacher', 'staff', 'principal'] as const).map((role) => {
+                            {(isOffice ? (['student'] as const) : (['student', 'teacher', 'staff', 'principal'] as const)).map((role) => {
                                 const checked = defaultRoles.includes(role);
                                 return (
                                     <label key={role} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">

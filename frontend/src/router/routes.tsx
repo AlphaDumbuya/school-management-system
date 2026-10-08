@@ -442,7 +442,7 @@ const router = createBrowserRouter(
         },
         {
           path: 'identity/templates',
-          element: <P requiredRoles={['principal', 'super_admin']}><TemplatesPage /></P>,
+          element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><TemplatesPage /></P>,
         },
         {
           path: 'identity/qr-codes',

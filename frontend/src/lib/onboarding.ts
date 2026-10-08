@@ -962,36 +962,137 @@ const ADMISSIONS: RoleGuide = {
   intro:
     'You take a child from application to student: receive applications (online or at the office), review them, invite for an interview, decide, and enrol the accepted ones into this year’s classes. You also look after student records, parent logins and ID cards. Academic pages are view-only for you.',
 
+  // ── First-login walkthrough (also "Replay walkthrough"), in sidebar order ──
   steps: [
     {
       title: 'Start on your Overview',
-      body: 'The intake year at a glance: applications, how many are waiting for review, interviews coming up, acceptance and enrolment rates, and the pipeline by stage. Tap any number to open that stage.',
+      body: 'The intake year at a glance: applications (this month and online), how many wait for review, the acceptance and enrolment rates, upcoming interviews and approved children not enrolled yet. The pipeline, recent applications and applications per class are below. Tap any number or name to open it.',
       route: '/admissions/dashboard',
       routeLabel: 'Open my Overview',
     },
     {
       title: 'Share the online application link',
-      body: 'On Admissions, copy or share the school’s application link. Families apply without an account. Each new application arrives as “New” and you get a notification.',
+      body: 'On Admissions, copy or share the school’s link (it is also in Settings → Admissions & IDs). Families apply without an account and get an application number by email. Each application arrives as “New” and you get a notification. The same child sent twice keeps the first application.',
       route: '/students/admissions',
       routeLabel: 'Admissions',
     },
     {
-      title: 'Review, interview, decide',
-      body: 'Open an application to see everything the family entered, tick the documents they handed in, add notes, and move it on: Start review, Schedule interview, then Approve, Waitlist or Reject. The family is emailed for the interview and each decision, once.',
+      title: 'Enter walk-in applications',
+      body: '+ New Application takes a family at the office: child, parent, medical and emergency details, this year’s class (you see places left) and the documents handed in. Tick “Accept and enrol now” to make the child a student straight away.',
+      route: '/students/admissions',
+      routeLabel: '+ New Application',
+    },
+    {
+      title: 'Review and interview',
+      body: 'Open an application: check the details, tick the documents, add staff notes and see the timeline. Start review, then Schedule interview with a date, time and place. The family is emailed the invitation once, in the school’s time zone.',
       route: '/students/admissions?status=pending',
       routeLabel: 'New applications',
     },
     {
+      title: 'Decide',
+      body: 'Approve (with an optional message), Waitlist or Reject (with a reason), and record the assessment score. Each decision is emailed to the family once. Mark withdrawn if the family no longer wants the place. Rejected, withdrawn and approved applications can be reopened.',
+      route: '/students/admissions?status=under_review',
+      routeLabel: 'Under review',
+    },
+    {
       title: 'Enrol accepted children',
-      body: 'Approved applicants become students only when you press Enrol and pick this year’s class (you see places left). WiSkul creates the student number, links the parent and creates both portal sign-ins. Hand the sign-ins to the family.',
+      body: 'Approving does not create a student. Press Enrol and choose this year’s class: WiSkul creates the student number, links the parent and creates both portal sign-ins (shown once, then on the Student Profile). Fees already billed to the class can be billed to the child, and the bursar and class teacher are told. Enrol never creates the same student twice.',
       route: '/students/admissions?status=approved',
       routeLabel: 'Approved, to enrol',
     },
     {
-      title: 'Student records and ID cards',
-      body: 'Student Directory and Student Profiles hold every student, their parents and portal sign-ins. ID Cards issues student cards, one by one or a whole class at a time.',
+      title: 'Student Directory',
+      body: 'Every student for the year: search, add, import from a spreadsheet, export, edit and deactivate (withdraw) or reactivate. Past years are read-only history. Permanent delete is the principal’s.',
       route: '/students/directory',
       routeLabel: 'Student Directory',
+    },
+    {
+      title: 'Student Profiles and family logins',
+      body: 'Open a student for their overview, results, attendance and conduct for the year. Create or link the parent account, show the portal sign-ins and reset a student’s or parent’s password (you are asked to confirm).',
+      route: '/students/profiles',
+      routeLabel: 'Student Profiles',
+    },
+    {
+      title: 'Classes, timetables and results (view only)',
+      body: 'To answer families: Classes & Streams lists every class this year with places and students; Subjects, Timetables and Exam Timetable show the school’s plan; Results shows class rankings for released terms; Report Cards opens released report cards. Teachers and the principal keep these up to date.',
+      route: '/academic/classes',
+      routeLabel: 'Classes & Streams',
+    },
+    {
+      title: 'Issue student ID cards',
+      body: 'ID Cards generates a card for one student or a whole class (Bulk Generate), and lets you regenerate, revoke, report lost or download cards. Expiring Soon lists cards due for renewal. Staff cards are the principal’s.',
+      route: '/identity/cards',
+      routeLabel: 'ID Cards',
+    },
+    {
+      title: 'Design the student card',
+      body: 'In Card Templates create or duplicate a design. It is saved as a draft: Submit for Approval and the principal is notified. Once approved, make it the default for student cards. Cards are printed on approved designs only; to change one, duplicate it.',
+      route: '/identity/templates',
+      routeLabel: 'Card Templates',
+    },
+    {
+      title: 'Sign in and out each day',
+      body: 'Staff Attendance: sign in when you arrive and sign out when you leave, for today only and before the school’s cut-off. The principal records any other day.',
+      route: '/staff/attendance',
+      routeLabel: 'Staff Attendance',
+    },
+    {
+      title: 'Announcements, payslips and help',
+      body: 'Post announcements to everyone, students or parents (edit or delete your own). My Payslips has your approved payslips as PDF. Support has help articles and tickets (category “Admissions & student records”).',
+      route: '/communication/announcements',
+      routeLabel: 'Announcements',
+    },
+    {
+      title: 'Settings and security',
+      body: 'Settings → Admissions & IDs shows the application link, how application and student numbers look and the admissions rules. You handle family data: use a strong password, turn on two-step sign-in and add a passkey in Security.',
+      route: '/settings?tab=admissions',
+      routeLabel: 'Admissions & IDs',
+    },
+  ],
+
+  // ── Your admissions rhythm ──
+  setupTitle: 'Your admissions rhythm',
+  setupIntro: 'What a typical day, week, intake and new year looks like for the admissions office.',
+  setupOrder: [
+    {
+      order: 1,
+      title: 'Every day',
+      why: 'Families hear back quickly and nothing waits in “New”.',
+      tasks: [
+        { label: 'Open new applications and start the review', route: '/students/admissions?status=pending', routeLabel: 'New' },
+        { label: 'Enrol approved children whose families confirmed', route: '/students/admissions?status=approved', routeLabel: 'To enrol' },
+        { label: 'Sign in on Staff Attendance (today only, before the cut-off)', route: '/staff/attendance', routeLabel: 'Staff Attendance' },
+      ],
+    },
+    {
+      order: 2,
+      title: 'Every week',
+      why: 'Interviews and decisions stay on schedule.',
+      tasks: [
+        { label: 'Check upcoming interviews on the Overview', route: '/admissions/dashboard', routeLabel: 'Overview' },
+        { label: 'Decide on interviewed applicants; move the waitlist when places free up', route: '/students/admissions?status=interview_scheduled', routeLabel: 'Interviews' },
+        { label: 'Issue ID cards for new students', route: '/identity/cards', routeLabel: 'ID Cards' },
+      ],
+    },
+    {
+      order: 3,
+      title: 'During an intake',
+      why: 'Families can apply easily and every class has room.',
+      tasks: [
+        { label: 'Share the online application link', route: '/students/admissions', routeLabel: 'Admissions' },
+        { label: 'Watch places left per class', route: '/academic/classes', routeLabel: 'Classes' },
+        { label: 'Announce open days and deadlines to parents', route: '/communication/announcements', routeLabel: 'Announcements' },
+      ],
+    },
+    {
+      order: 4,
+      title: 'Each new academic year',
+      why: 'New applications and enrolments go into the new year’s classes.',
+      tasks: [
+        { label: 'Check the new year’s classes are set up (the principal creates them)', route: '/academic/classes', routeLabel: 'Classes' },
+        { label: 'Review the student card design and set the default', route: '/identity/templates', routeLabel: 'Card Templates' },
+        { label: 'Bulk-generate cards for the new year', route: '/identity/cards', routeLabel: 'ID Cards' },
+      ],
     },
   ],
 
@@ -1061,15 +1162,26 @@ const ADMISSIONS: RoleGuide = {
       route: '/academic/classes', routeLabel: 'Classes & Streams',
     },
     {
-      id: 'idcards', title: 'ID Cards', icon: 'ShieldCheck',
-      intro: 'Issue student ID cards.',
-      points: ['One student, or a whole class at once (Bulk Generate). Failures are listed in the job report.', 'Staff cards are issued by the principal.'],
+      id: 'idcards', title: 'ID Cards & card designs', icon: 'ShieldCheck',
+      intro: 'Issue student ID cards and design how they look.',
+      points: [
+        'One student, or a whole class at once (Bulk Generate). Failures are listed in the job report.',
+        'Card Templates: create or duplicate a student card design. It is saved as a draft; Submit for Approval and the principal is notified.',
+        'Cards can only be printed on approved designs. Pick the default design for student cards among the approved ones.',
+        'To change an approved design, duplicate it and submit the copy. Staff cards and staff designs stay with the principal.',
+      ],
       route: '/identity/cards', routeLabel: 'ID Cards',
     },
     {
       id: 'more', title: 'Announcements, attendance, payslips and help', icon: 'Megaphone',
       intro: 'The everyday staff pages.',
-      points: ['Announcements to everyone, students or parents.', 'Staff Attendance: sign in for today.', 'My Payslips, Support (help articles and tickets) and Settings → My Profile / Security.'],
+      points: [
+        'Announcements to everyone, students or parents; edit or delete your own.',
+        'Staff Attendance: sign in when you arrive and sign out when you leave (today only).',
+        'My Payslips: your approved payslips, as PDF.',
+        'Support: help articles, and tickets (category "Admissions & student records").',
+        'Settings → Admissions & IDs: the online application link, how application and student numbers look, and the admissions rules. Settings → Security: password, two-step sign-in and passkeys.',
+      ],
       route: '/communication/announcements', routeLabel: 'Announcements',
     },
   ],
@@ -1088,6 +1200,8 @@ const ADMISSIONS: RoleGuide = {
     { q: 'The class is full.', a: 'The enrol box shows places left. Choose another class, or tick “enrol over capacity” if the principal agreed.' },
     { q: 'The family didn’t get the email.', a: 'The application needs a parent email (shown on Details). The timeline shows each email that was sent. Give the decision by phone if needed.' },
     { q: 'Where are the parent’s sign-in details?', a: 'They are shown once right after you enrol, and always on the Student Profile under Portal Login Credentials, where you can also reset them.' },
+    { q: 'How do I change the student card design?', a: 'Card Templates: create or duplicate a design. It is saved as a draft; Submit for Approval and the principal is notified. Once approved, set it as the default for student cards. Cards are only printed on approved designs.' },
+    { q: 'A student left. Can I remove them?', a: 'Deactivate them in the Student Directory; their records stay and you can reactivate them. Permanent delete is for mistakes only and is done by the principal.' },
   ],
 };
 

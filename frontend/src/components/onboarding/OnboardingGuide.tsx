@@ -110,13 +110,15 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ onClose }) => 
           </div>
 
           {/* Step dots */}
-          <div className="mt-6 flex items-center justify-center gap-1.5">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-1.5">
             {steps.map((_, i) => (
               <button
                 key={i}
                 onClick={() => setIndex(i)}
                 aria-label={`Go to step ${i + 1}`}
-                className={`h-1.5 rounded-full transition-all ${i === index ? 'w-6 bg-[#1d4ed8]' : 'w-1.5 bg-slate-300 hover:bg-slate-400'}`}
+                aria-current={i === index ? 'step' : undefined}
+                // !p-0: the global button style adds padding that turned each dot into a pill.
+                className={`!p-0 !min-h-0 h-1.5 rounded-full transition-all ${i === index ? 'w-6 bg-[#1d4ed8]' : 'w-1.5 bg-slate-300 hover:bg-slate-400'}`}
               />
             ))}
           </div>

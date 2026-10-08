@@ -124,7 +124,7 @@ export const AdmissionsPage: React.FC = () => {
   const columns: ColumnDef<AdmissionRecord, any>[] = [
     { id: 'application_number', header: 'App ID', cell: ({ row }) => <span className="font-mono text-xs font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">{row.original.application_number}</span> },
     { id: 'child', header: 'Child', cell: ({ row }) => (
-      <button type="button" onClick={() => setOpenId(row.original.id)} className="text-left min-w-[130px]">
+      <button type="button" onClick={() => setOpenId(row.original.id)} className="!flex flex-col !items-start !justify-start !p-0 text-left min-w-[130px]">
         <p className="font-medium text-blue-700 dark:text-blue-400 hover:underline">{row.original.child_first_name} {row.original.child_last_name}</p>
         <p className="text-[11px] text-gray-500 capitalize">{row.original.child_gender} · {fmtDate(row.original.child_dob)}</p>
       </button>
@@ -143,7 +143,7 @@ export const AdmissionsPage: React.FC = () => {
     const hasPhoto = !!app.child_photo_url && app.child_photo_url.length > 10;
     return (
       <div key={app.id} className={`group relative overflow-hidden ${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 border sm:border-gray-200/60 sm:dark:border-gray-700/60 rounded-2xl shadow-sm hover:shadow-md transition-all`}>
-        <button type="button" onClick={() => setOpenId(app.id)} className="block w-full text-left p-5 pb-3" aria-label={`Open application of ${app.child_first_name} ${app.child_last_name}`}>
+        <button type="button" onClick={() => setOpenId(app.id)} className="!block w-full text-left !p-5 !pb-3 !rounded-none" aria-label={`Open application of ${app.child_first_name} ${app.child_last_name}`}>
           <div className="flex items-center gap-3 mb-3">
             <div className={`w-11 h-11 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center bg-gradient-to-br ${gradient}`}>
               {hasPhoto ? <img src={app.child_photo_url} alt="" className="w-full h-full object-cover" /> : <span className="text-sm font-bold text-white">{initials(app)}</span>}
@@ -232,7 +232,7 @@ export const AdmissionsPage: React.FC = () => {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
           {isLoading && !data ? <><SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard /></> : kpis.map((k) => (
             <button key={k.label} type="button" onClick={() => setStatusFilter(k.stage)}
-              className="text-left rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:border-blue-300">
+              className="!flex flex-col !items-start !justify-start w-full text-left rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 !p-4 hover:border-blue-300">
               <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-white ${k.tint} mb-2`}>{k.icon}</div>
               <div className="text-2xl font-black text-gray-900 dark:text-white">{k.value}</div>
               <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">{k.label}</div>
@@ -246,22 +246,22 @@ export const AdmissionsPage: React.FC = () => {
           {[['', 'All', allCount] as const, ...STAGES.map((s) => [s, ADM_LABEL[s], counts[s] || 0] as const)].map(([s, l, n]) => (
             <button key={s || 'all'} type="button" role="tab" aria-selected={statusFilter === s} onClick={() => setStatusFilter(s)}
               className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold ${statusFilter === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-blue-300'}`}>
-              {l} <span className={statusFilter === s ? 'text-blue-100' : 'text-gray-400'}>{n}</span>
+              {l}<span className={`ml-1.5 ${statusFilter === s ? 'text-blue-100' : 'text-gray-400'}`}>{n}</span>
             </button>
           ))}
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col gap-3 mb-5 lg:flex-row lg:items-center">
-          <SearchBar placeholder="Search name, application no., parent, phone or email…" onSearch={setSearch} isLoading={isFetching} resultCount={search ? total : undefined} className="w-full lg:max-w-md" />
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] gap-3 mb-5 items-center">
+          <SearchBar placeholder="Search name, application no., parent, phone or email…" onSearch={setSearch} isLoading={isFetching} resultCount={search ? total : undefined} className="w-full" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
             <YearFilter value={year} onChange={(y) => setYear(y)} includeAllOption />
-            <div className="min-w-[150px]"><label htmlFor="adm-class" className="sr-only">Class</label>
+            <div className="min-w-0 sm:min-w-[150px]"><label htmlFor="adm-class" className="sr-only">Class</label>
               <select id="adm-class" value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className={select}>
                 <option value="">All classes</option>
                 {(meta?.classes || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select></div>
-            <div className="min-w-[130px]"><label htmlFor="adm-source" className="sr-only">Source</label>
+            <div className="min-w-0 sm:min-w-[140px]"><label htmlFor="adm-source" className="sr-only">Source</label>
               <select id="adm-source" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as any)} className={select}>
                 <option value="">Online and office</option><option value="online">Online</option><option value="office">Office</option>
               </select></div>
