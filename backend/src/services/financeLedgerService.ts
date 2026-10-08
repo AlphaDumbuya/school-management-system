@@ -62,12 +62,19 @@ export interface LedgerCharge {
   term: LedgerTerm | null;
   academic_year: string | null;
   required: boolean;
+  /** Taken off without cash: discounts, scholarships, waivers (optional, default 0). */
+  discounted?: number;
+  /** Paid from the student's account credit (optional, default 0). */
+  credit_applied?: number;
 }
 
 export interface TermBucket {
   term: LedgerTerm;
   billed: number;
+  /** Cash paid (online or at the office): billed − discounted − credit_applied − outstanding. */
   paid: number;
+  discounted: number;
+  credit_applied: number;
   outstanding: number;
   charges: LedgerCharge[];
 }
@@ -76,6 +83,8 @@ export interface YearBucket {
   academic_year: string;
   billed: number;
   paid: number;
+  discounted: number;
+  credit_applied: number;
   outstanding: number;
   terms: TermBucket[];
 }
@@ -84,7 +93,7 @@ export interface StudentLedger {
   student_id: string;
   tenant_id: string;
   years: YearBucket[];
-  totals: { billed: number; paid: number; outstanding: number };
+  totals: { billed: number; paid: number; discounted: number; credit_applied: number; outstanding: number };
 }
 
 function num(v: any): number {
@@ -119,17 +128,22 @@ export function projectLedger(
         const list = termMap.get(term) ?? [];
         const billed = list.reduce((s, c) => s + c.amount, 0);
         const outstanding = list.reduce((s, c) => s + c.outstanding, 0);
-        return { term, billed, paid: billed - outstanding, outstanding, charges: list };
+        const discounted = list.reduce((s, c) => s + (c.discounted || 0), 0);
+        const credit_applied = list.reduce((s, c) => s + (c.credit_applied || 0), 0);
+        return { term, billed, paid: billed - discounted - credit_applied - outstanding, discounted, credit_applied, outstanding, charges: list };
       });
-      const billed = terms.reduce((s, t) => s + t.billed, 0);
-      const outstanding = terms.reduce((s, t) => s + t.outstanding, 0);
-      return { academic_year, billed, paid: billed - outstanding, outstanding, terms };
+      const sum = (k: 'billed' | 'outstanding' | 'discounted' | 'credit_applied') => terms.reduce((s, t) => s + t[k], 0);
+      const billed = sum('billed'), outstanding = sum('outstanding'), discounted = sum('discounted'), credit_applied = sum('credit_applied');
+      return { academic_year, billed, paid: billed - discounted - credit_applied - outstanding, discounted, credit_applied, outstanding, terms };
     })
     .sort((a, b) => b.academic_year.localeCompare(a.academic_year));
 
   const totals = years.reduce(
-    (acc, y) => ({ billed: acc.billed + y.billed, paid: acc.paid + y.paid, outstanding: acc.outstanding + y.outstanding }),
-    { billed: 0, paid: 0, outstanding: 0 },
+    (acc, y) => ({
+      billed: acc.billed + y.billed, paid: acc.paid + y.paid, discounted: acc.discounted + y.discounted,
+      credit_applied: acc.credit_applied + y.credit_applied, outstanding: acc.outstanding + y.outstanding,
+    }),
+    { billed: 0, paid: 0, discounted: 0, credit_applied: 0, outstanding: 0 },
   );
 
   return { student_id: studentId, tenant_id: tenantId, years, totals };
@@ -147,6 +161,14 @@ class FinanceLedgerService {
       .where({ tenant_id: tenantId, student_id: studentId })
       .whereNot('status', 'deleted')
       .select('id', 'type', 'description', 'amount', 'balance', 'status', 'due_date', 'term', 'academic_year', 'required');
+    // Non-cash reductions per fee (active only): discounts / waivers, and credit applied.
+    const adj = fees.length
+      ? await db('fee_adjustments').whereIn('fee_id', fees.map((f: any) => f.id)).whereNull('reversed_at')
+        .groupBy('fee_id').select('fee_id',
+          db.raw("COALESCE(SUM(CASE WHEN kind = 'credit_applied' THEN 0 ELSE amount END),0) as discounted"),
+          db.raw("COALESCE(SUM(CASE WHEN kind = 'credit_applied' THEN amount ELSE 0 END),0) as credit"))
+      : [];
+    const adjBy = new Map(adj.map((a: any) => [String(a.fee_id), a]));
 
     const charges: LedgerCharge[] = fees.map((f: any) => ({
       id: f.id,
@@ -159,6 +181,8 @@ class FinanceLedgerService {
       term: normaliseTerm(f.term),
       academic_year: f.academic_year ?? null,
       required: f.required == null ? true : f.required === true,
+      discounted: num(adjBy.get(String(f.id))?.discounted),
+      credit_applied: num(adjBy.get(String(f.id))?.credit),
     }));
 
     return projectLedger(studentId, tenantId, charges);

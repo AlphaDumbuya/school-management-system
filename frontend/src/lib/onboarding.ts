@@ -744,7 +744,7 @@ const ACCOUNTANT: RoleGuide = {
     },
     {
       title: 'Online payments record themselves',
-      body: 'When a family pays online (Monime), the payment, receipt and balance update on their own and you get a notification. Online payments are refunded through the payment provider, not here.',
+      body: 'When a family pays online (Monime), the payment, receipt and balance update on their own and you get a notification. To refund one, send the money back from your Monime dashboard, then press Refund on the payment here so the balance and the books match.',
     },
   ],
 
@@ -925,6 +925,10 @@ const ACCOUNTANT: RoleGuide = {
     {
       q: 'A parent paid cash at the office. How do I record it?',
       a: 'Payments & Receipts → Record Payment. Find the student, choose what the payment is for, enter the amount and method. It settles the oldest fees first and gives a numbered receipt you can print or email.',
+    },
+    {
+      q: 'How do I refund a payment made online (Monime)?',
+      a: 'WiSkul can\'t send money back through Monime. Send the refund from your Monime dashboard first, then press Refund on that payment in Payments & Receipts with a reason, so the fee balance and the books match. If the family should keep the money as credit instead, give a credit note on their account.',
     },
     {
       q: 'I recorded a payment against the wrong student. What now?',
@@ -1244,6 +1248,26 @@ const GUIDES: Record<UserRole, RoleGuide> = {
   parent: PARENT,
 };
 
-export function getRoleGuide(role?: UserRole): RoleGuide {
-  return (role && GUIDES[role]) || PRINCIPAL;
+/**
+ * The guide for a role. A teacher who also holds the Bursar and/or Admissions
+ * duty gets those guides' sections, rules and questions added after their own.
+ */
+export function getRoleGuide(role?: UserRole, duties?: ReadonlyArray<string> | null): RoleGuide {
+  const base = (role && GUIDES[role]) || PRINCIPAL;
+  if (role !== 'teacher' || !Array.isArray(duties) || duties.length === 0) return base;
+  const extras = ([['accountant', ACCOUNTANT, 'Bursar'], ['admissions_officer', ADMISSIONS, 'Admissions']] as const)
+    .filter(([d]) => duties.includes(d));
+  if (extras.length === 0) return base;
+  const jobs = extras.map(([, , label]) => label).join(' and ');
+  return {
+    ...base,
+    headline: `${base.headline} (and your ${jobs} work)`,
+    intro: `${base.intro} You also hold the ${jobs} duty, so those parts of the guide are below your teaching sections.`,
+    sections: [
+      ...base.sections,
+      ...extras.flatMap(([d, g, label]) => g.sections.map((s) => ({ ...s, id: `${d}-${s.id}`, title: `${label}: ${s.title}` }))),
+    ],
+    keyRules: [...(base.keyRules || []), ...extras.flatMap(([, g]) => g.keyRules || [])],
+    faqs: [...(base.faqs || []), ...extras.flatMap(([, g]) => g.faqs || [])],
+  };
 }

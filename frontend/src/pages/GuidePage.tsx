@@ -41,7 +41,7 @@ const CARD_TINTS = [
 export const GuidePage: React.FC = () => {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const guide = getRoleGuide(user?.role);
+  const guide = getRoleGuide(user?.role, user?.staffDuties);
   const [replayed, setReplayed] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   // The principal's roadmap is a one-time setup with "Required" steps; other

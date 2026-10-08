@@ -168,7 +168,7 @@ export const DiscountsPage: React.FC = () => {
                     </div>
                     <div className="mt-3 flex gap-3 text-xs font-semibold">
                       <button type="button" onClick={() => setRuleEdit(r)} className="text-blue-600 hover:underline">Edit</button>
-                      {r.kind === 'sibling' && r.active && !viewingPast && <button type="button" onClick={() => setSiblingRule(r)} className="inline-flex items-center gap-1 text-blue-600 hover:underline"><Users size={12} /> Find eligible siblings</button>}
+                      {(r.kind === 'sibling' || r.kind === 'staff_child') && r.active && !viewingPast && <button type="button" onClick={() => setSiblingRule(r)} className="inline-flex items-center gap-1 text-blue-600 hover:underline"><Users size={12} /> {r.kind === 'sibling' ? 'Find eligible siblings' : 'Find staff children'}</button>}
                     </div>
                   </div>
                 ))}
@@ -188,11 +188,14 @@ export const DiscountsPage: React.FC = () => {
         </Modal>
 
         <Modal isOpen={!!siblingRule} onClose={() => setSiblingRule(null)} title={`Eligible for ${siblingRule?.name || ''} · ${year}`} size="lg">
-          {siblingsQ.isLoading ? <p className="text-sm text-gray-400">Looking for families…</p> : (siblingsQ.data || []).length === 0 ? <p className="text-sm text-gray-500">No more eligible students. Children at school this year are matched into a family by their parent account or guardian phone number, oldest first.</p> : (
+          {siblingsQ.isLoading ? <p className="text-sm text-gray-400">Looking for families…</p> : (siblingsQ.data || []).length === 0 ? <p className="text-sm text-gray-500">{siblingRule?.kind === 'staff_child'
+            ? 'No more eligible students. A child is matched to a member of staff when a guardian\'s login, email or phone number is the same as the staff member\'s.'
+            : 'No more eligible students. Children at school this year are matched into a family by their parent account or guardian phone number, oldest first.'}</p> : (
             <div className="space-y-2">
+              {siblingRule?.kind === 'staff_child' && <p className="text-xs text-gray-500">Check each match before you give the discount.</p>}
               {(siblingsQ.data || []).map((c) => (
                 <div key={c.student_id} className="flex items-center justify-between rounded-lg border border-gray-100 dark:border-gray-800 px-3 py-2 text-sm">
-                  <span>{c.name} <span className="text-xs text-gray-500">{c.admission_no} · child {c.child_number} of {c.siblings}</span></span>
+                  <span>{c.name} <span className="text-xs text-gray-500">{c.admission_no} · {c.staff_name ? `child of ${c.staff_name} (same ${c.matched_by})` : `child ${c.child_number} of ${c.siblings}`}</span></span>
                   <Button size="sm" variant="create" disabled={givingTo === c.student_id} onClick={async () => {
                     setGivingTo(c.student_id);
                     try {

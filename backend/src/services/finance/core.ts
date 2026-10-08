@@ -170,6 +170,64 @@ export async function notifyUsers(ids: string[], n: { subject: string; message: 
   } catch { /* never fail the money action */ }
 }
 
+const leFmt = (n: number) => `Le ${round2(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * In-app notification (bell) to a student's family: every linked parent /
+ * guardian login and the student's own login. Opens My Fees. Best-effort.
+ */
+export async function notifyFamily(
+  studentId: string,
+  n: { subject: string; message: string; sourceType?: string; sourceId?: string },
+  opts: { emailTenantId?: string } = {},
+): Promise<void> {
+  try {
+    const contact = await familyContact(studentId);
+    const { name } = await studentLabel(studentId);
+    const message = n.message.split('{student}').join(name);
+    await notifyUsers(contact.userIds, { ...n, message, url: '/finance/my-fees' });
+    // Also by email when asked (families who don't open the app still hear).
+    if (opts.emailTenantId && contact.email) await emailFamily(opts.emailTenantId, contact.email, contact.name, n.subject, message);
+  } catch { /* never fail the money action */ }
+}
+
+const esc = (t: string) => String(t).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' } as any)[c]);
+
+/** A short branded finance email to a family, with a link to My Fees. Best-effort. */
+export async function emailFamily(tenantId: string, to: string, toName: string, subject: string, message: string): Promise<boolean> {
+  try {
+    const { default: emailService } = await import('@services/emailService');
+    const { resolveTenantBranding } = await import('@services/email/emailBranding');
+    const { renderEmail } = await import('@services/email/emailLayout');
+    const branding: any = await resolveTenantBranding(tenantId);
+    const appUrl = String(process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '');
+    const link = appUrl ? `<p><a href="${appUrl}/finance/my-fees">Open Fees &amp; Payments</a></p>` : '<p>Open <strong>Fees &amp; Payments</strong> in the school portal for the details.</p>';
+    const res: any = await (emailService as any).sendEmail({
+      ...(emailService as any).senderFromBranding?.(branding),
+      to, subject: `${subject} — ${branding?.name || 'School'}`,
+      body: renderEmail({ branding, eyebrow: 'School fees', heading: subject, preheader: message.slice(0, 120),
+        bodyHtml: `<p>Dear ${esc(toName || 'Parent')},</p><p>${esc(message)}</p>${link}` } as any),
+      isHtml: true,
+    });
+    return res?.success !== false;
+  } catch { return false; }
+}
+
+/**
+ * Claim a one-time notice (e.g. "instalment 2 of plan X is due soon").
+ * Returns true only the first time for that key, so a daily job never repeats it.
+ */
+export async function claimNotice(tenantId: string, key: string): Promise<boolean> {
+  const r = await db.raw('INSERT INTO finance_notices (tenant_id, key) VALUES (?, ?) ON CONFLICT DO NOTHING RETURNING key', [tenantId, key.slice(0, 200)]).catch(() => null);
+  return !!r?.rows?.length;
+}
+
+/** Money accounts the bursar can pick (books: 1000 cash, 1010 bank, 1020 mobile). */
+export const MONEY_ACCOUNTS = ['bank', 'cash', 'mobile'] as const;
+export const cleanMoneyAccount = (v: unknown, dflt: 'bank' | 'cash' | 'mobile' = 'bank') =>
+  (MONEY_ACCOUNTS as readonly string[]).includes(String(v)) ? (String(v) as 'bank' | 'cash' | 'mobile') : dflt;
+export { leFmt };
+
 /**
  * In-app notification (bell) to a school's finance people. 'accountant' also
  * reaches teachers holding the Bursar duty. Best-effort: never fails the

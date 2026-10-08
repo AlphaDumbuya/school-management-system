@@ -563,6 +563,28 @@ Spec `.kiro/specs/bursar-finance-phase-c`. Migration `167_bursar_finance_c` (gl_
 - **Finance Audit Log** (`/finance/audit-log`): school-scoped (through the acting user), by area, person, dates, text; server-paged.
 - **Verified** (44 HTTP checks on real data, migration rolled back afterwards so Vercel runs it on deploy): chart 28 accounts; second sync posts 0; integrity checks agree (Fees receivable 1,812); expense + void → correction, Utilities back to 0; custom category → account 5200; petty cash 800 after top-up 1,000 / spend 200; unbalanced, control-account and future-dated journals → 400; second reversal and reversing an automatic entry → 409; trial balance 11,819 = 11,819; balance sheet assets = liabilities + equity; cash flow opening + change = closing; CSV and PDF exports; bank import 3, re-import skipped 3, auto-match 2, bank charge booked and matched, reconciled; undo blocked while matched; closed period → 409; teacher → 403.
 
+### Accountant pass, part 5: family connection and final gaps (✅ done & verified)
+
+Migration `168_bursar_finance_final` (additive): `payroll_runs.paid_from`, `petty_cash_entries.money_account`, `discount_grants.credit_shortfall` + `credited_amount`, `finance_notices` (one row per reminder sent).
+
+- **Family side:** the ledger's `paid` is cash only. Discounts and applied credit are separate lines. Families get `GET /finance/students/:id/discounts` and see credit history. The principal KPI `collected` subtracts discounts. Students and parents are notified in-app and by email (`notifyFamily(…, { emailTenantId })`) for discounts added, late fees, refunds and instalment reminders. Payments received are in-app only, because the receipt email already exists.
+- **Instalment reminders:** `planService.remindDue`, run from the daily late-fee job, sends one "due within 3 days" and one "overdue" reminder per instalment. `claimNotice` dedupes them.
+- **Payroll:** a non-principal can't change their own pay profile or payslip (403 `OWN_PAY`). "Mark paid" records which account paid it (bank, cash or mobile money), the books credit that account, and each staff member with a login is notified.
+- **Petty cash:** top-ups and returns say which account the money came from or went to, and the books use it. The fallback is bank.
+- **Discounts:** "Find staff children" on staff-child rules matches a guardian's login, email or phone (last 8 digits) to a teacher, bursar, admissions officer, principal or support staff. The bursar confirms each match. Optional "credit what's already paid": the part of a discount on paid fees becomes account credit, capped at the fees (billed − discounts − credit other grants already gave). It is stored on the grant so it is never doubled. Revoking a grant does not take that credit back, and the dialog says so.
+- **Budget:** saving notifies the principal that it needs approval.
+- **Monime refunds:** the provider API has no refund call. The refund dialog and the Guide/Support say to refund in the Monime dashboard first, then record it here.
+- **Guide:** a teacher with the Bursar/Admissions duty gets those guide sections, rules and FAQs (`getRoleGuide(role, staffDuties)`).
+- **Tests:** `bursarFinance.unit.test.ts` (PAYE bands, payslip maths, band validation, money-account mapping, categories) and the ledger property tests: 29 pass.
+- **Verified** (26 HTTP checks on real data, email stubbed, test rows removed, migration rolled back so Vercel runs it on deploy):
+  - OWN_PAY 403 for own pay, but not for others or the principal.
+  - Top-up from cash → Dr 1030 / Cr 1000. Return to mobile → Dr 1020 / Cr 1030. Unknown account → bank.
+  - Payroll paid from cash → Cr 1000 and the expense method is cash.
+  - Staff-child finder matched Alpha to Ibrahim by phone. The sibling finder is unchanged.
+  - Credit shortfall: Le 100 credited. Without the flag, the shortfall is only reported. The approve path is capped at Le 400.
+  - Reminders: 1 overdue and 1 due soon, then 0 on a re-run. They reach the parent in-app and by email.
+  - Budget notice reaches the principal. The parent can see the discounts list.
+
 ### Staff onboarding — ✅ done & verified (before Accountant and Admissions)
 
 Before this, a school had no way to hire an accountant or admissions officer,

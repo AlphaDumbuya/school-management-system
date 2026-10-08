@@ -71,6 +71,7 @@ const COMMON_FAQ: Faq[] = [
 const ROLE_FAQ: Partial<Record<string, Faq[]>> = {
   accountant: [
     { q: 'A parent paid cash at the office. How do I record it?', a: 'Payments & Receipts → Record Payment. Type part of the student\'s name, admission number, class or the parent\'s phone, pick the student, choose what the payment is for, enter the amount and method. It settles the oldest fees first and gives a numbered receipt.' },
+    { q: 'How do I refund a payment made online (Monime)?', a: 'WiSkul can\'t send money back through Monime. Send the refund from your Monime dashboard first, then press Refund on that payment in Payments & Receipts with a reason, so the fee balance and the books match. If the family should keep the money as credit instead, give a credit note on their account.' },
     { q: 'I recorded a payment for the wrong student.', a: 'Refund that payment with a reason (the balance goes back on the fees), then record it again for the right student. Payments are never deleted, so the audit log shows both.' },
     { q: 'Why is my discount "waiting for approval"?', a: 'It is above the amount you can give alone (Settings → Payment Policy), or it is a percentage on fees that aren\'t billed yet. The principal is notified and decides; you get a notification when they do.' },
     { q: 'Can I sign in for a day I forgot?', a: 'No. Staff sign in for today only, until the school\'s closing time. For any other day, or after the cut-off, ask the principal to record your attendance.' },

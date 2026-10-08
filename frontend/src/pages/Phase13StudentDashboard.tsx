@@ -144,9 +144,10 @@ export const Phase13StudentDashboard: React.FC = () => {
   const feesChartData = useMemo(
     () => [
       { name: 'Paid', value: Number(fees.paid) || 0, color: '#10B981' },
+      ...(Number((fees as any).discounted) > 0 ? [{ name: 'Discounts & credit', value: Number((fees as any).discounted) || 0, color: '#6366F1' }] : []),
       { name: 'Outstanding', value: Number(fees.outstanding) || 0, color: '#EF4444' },
     ].filter((d) => d.value > 0),
-    [fees.paid, fees.outstanding]
+    [fees.paid, fees.outstanding, (fees as any).discounted]
   );
 
   if (isLoading || !year) {
@@ -477,6 +478,12 @@ export const Phase13StudentDashboard: React.FC = () => {
                           <span className="text-sm text-gray-600 dark:text-gray-300">Paid</span>
                           <span className="font-bold text-green-600">{fmtMoney(fees.paid)}</span>
                         </div>
+                        {Number((fees as any).discounted) > 0 && (
+                          <div className="flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-950/20 rounded-lg">
+                            <span className="text-sm text-gray-600 dark:text-gray-300">Discounts &amp; credit</span>
+                            <span className="font-bold text-indigo-600">{fmtMoney((fees as any).discounted)}</span>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
                           <span className="text-sm text-gray-600 dark:text-gray-300">Outstanding</span>
                           <span className="font-bold text-red-600">{fmtMoney(fees.outstanding)}</span>
@@ -797,6 +804,7 @@ export const Phase13StudentDashboard: React.FC = () => {
                 <h3 className="text-base font-bold text-gray-900 dark:text-white mb-3 px-1">Fees for {year}</h3>
                 {/* Only the selected year; other years' unpaid balance shows as one line. */}
                 <StudentLedgerView academicYear={year} redirectToPay />
+                <button type="button" onClick={() => navigate('/finance/my-fees')} className="text-sm font-semibold text-blue-600 hover:underline">Receipts, statement, discounts &amp; instalment plan →</button>
               </div>
 
               <Card>

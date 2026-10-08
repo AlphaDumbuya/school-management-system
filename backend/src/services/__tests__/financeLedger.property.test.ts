@@ -91,3 +91,29 @@ describe('projectLedger — Property 7: term zero-fill', () => {
     expect(third.billed).toBe(0);
   });
 });
+
+describe('projectLedger — discounts and credit are not cash paid', () => {
+  it('billed == paid + discounted + credit_applied + outstanding at every level', () => {
+    for (let run = 0; run < 100; run++) {
+      const charges = randomCharges(1 + rand(25)).map((c) => {
+        // Split what was settled into cash, discount and credit.
+        const settled = c.amount - c.outstanding;
+        const discounted = Math.round(settled * Math.random() * 100) / 100;
+        const credit_applied = Math.round((settled - discounted) * Math.random() * 100) / 100;
+        return { ...c, discounted, credit_applied };
+      });
+      const ledger = projectLedger('s', 't', charges);
+      const check = (b: any) => expect(approx(b.billed, b.paid + b.discounted + b.credit_applied + b.outstanding)).toBe(true);
+      for (const y of ledger.years) { check(y); y.terms.forEach(check); }
+      check(ledger.totals);
+      const inputDiscount = charges.reduce((s, c) => s + (c.discounted || 0), 0);
+      expect(approx(ledger.totals.discounted, inputDiscount)).toBe(true);
+    }
+  });
+
+  it('a fully discounted fee shows 0 paid', () => {
+    const ledger = projectLedger('s', 't', [{ id: 'a', type: 'Tuition', description: null, amount: 900, outstanding: 0, discounted: 900, credit_applied: 0, status: 'paid', due_date: null, term: 'first_term', academic_year: '2027/2028', required: true }]);
+    expect(ledger.totals.paid).toBe(0);
+    expect(ledger.totals.discounted).toBe(900);
+  });
+});

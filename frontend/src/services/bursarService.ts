@@ -124,6 +124,7 @@ export const bursarService = {
 
   // Plans
   plans: (year?: string) => apiClient.get<{ success: boolean; data: PlanSchedule[] }>(`${F}/plans${qs({ academic_year: year })}`),
+  studentDiscounts: (studentId: string, year?: string) => apiClient.get<{ success: boolean; data: Array<{ id: string; label: string; basis: string; value: number; applies_to: string; academic_year: string; term: string | null; applied_amount: number }> }>(`${F}/students/${studentId}/discounts${qs({ academic_year: year })}`),
   studentPlans: (studentId: string) => apiClient.get<{ success: boolean; data: PlanSchedule[] }>(`${F}/plans/student/${studentId}`),
   createPlan: (b: any) => apiClient.post<{ success: boolean; data: PlanSchedule }>(`${F}/plans`, b),
   cancelPlan: (id: string, reason: string) => apiClient.post(`${F}/plans/${id}/cancel`, { reason }),

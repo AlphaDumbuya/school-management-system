@@ -53,6 +53,7 @@ const RunDetail: React.FC<{ runId: string; onClose: () => void; isPrincipal: boo
   const [deds, setDeds] = useState<PayLine[]>([]);
   const [act, setAct] = useState<null | 'approve' | 'pay' | 'cancel'>(null);
   const [payDate, setPayDate] = useState(todayLocal());
+  const [paidFrom, setPaidFrom] = useState('bank');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const r = q.data;
@@ -73,7 +74,7 @@ const RunDetail: React.FC<{ runId: string; onClose: () => void; isPrincipal: boo
       {q.isLoading || !r ? <div className="py-10 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div> : (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2"><Pill s={RUN_PILL[r.status][0]} label={RUN_PILL[r.status][1]} /><span className="text-xs text-gray-500">{r.staff_count} staff{r.approved_by_name ? ` · approved by ${r.approved_by_name}` : ''}{r.payment_date ? ` · paid ${String(r.payment_date).slice(0, 10)}` : ''}{r.cancelled_reason ? ` · ${r.cancelled_reason}` : ''}</span></div>
+            <div className="flex items-center gap-2"><Pill s={RUN_PILL[r.status][0]} label={RUN_PILL[r.status][1]} /><span className="text-xs text-gray-500">{r.staff_count} staff{r.approved_by_name ? ` · approved by ${r.approved_by_name}` : ''}{r.payment_date ? ` · paid ${String(r.payment_date).slice(0, 10)}${(r as any).paid_from ? ` from ${({ bank: 'bank', cash: 'cash on hand', mobile: 'mobile money' } as Record<string, string>)[(r as any).paid_from] || (r as any).paid_from}` : ''}` : ''}{r.cancelled_reason ? ` · ${r.cancelled_reason}` : ''}</span></div>
             <div className="flex flex-wrap gap-2">
               {draft && <Button size="sm" variant="outline" disabled={busy} onClick={async () => { setBusy(true); try { await doAction('regenerate'); } catch { /* toast shown */ } finally { setBusy(false); } }}><RefreshCw size={14} className="mr-1" /> Recalculate</Button>}
               {draft && isPrincipal && <Button size="sm" onClick={() => setAct('approve')}><CheckCircle2 size={14} className="mr-1" /> Approve</Button>}
@@ -130,9 +131,12 @@ const RunDetail: React.FC<{ runId: string; onClose: () => void; isPrincipal: boo
         message={r ? `Approve payroll ${r.period}: ${r.staff_count} staff, net pay ${le(r.net)}. It can't be changed after approval.` : ''} onConfirm={() => doAction('approve')} />
       <ConfirmationDialog isOpen={act === 'pay'} onClose={() => setAct(null)} isDestructive={false} title="Mark as paid" confirmLabel="Mark paid"
         message={r ? `Record that salaries for ${r.period} were paid. ${le(r.gross)} (salaries) and ${le(r.nassit_employer)} (employer NASSIT) are added to School Expenses.` : ''}
-        onConfirm={() => doAction('pay', { payment_date: payDate })}>
+        onConfirm={() => doAction('pay', { payment_date: payDate, paid_from: paidFrom })}>
         <label htmlFor="pay-date-run" className="block text-xs font-semibold text-gray-600 mt-2">Payment date</label>
         <input id="pay-date-run" type="date" max={todayLocal()} value={payDate} onChange={(e) => setPayDate(e.target.value)} className={input} />
+        <label htmlFor="pay-from-run" className="block text-xs font-semibold text-gray-600 mt-2">Paid from</label>
+        <select id="pay-from-run" value={paidFrom} onChange={(e) => setPaidFrom(e.target.value)} className={input}><option value="bank">Bank</option><option value="cash">Cash on hand</option><option value="mobile">Mobile money</option></select>
+        <p className="text-[11px] text-gray-500 mt-1">The net pay comes out of this account in the books.</p>
       </ConfirmationDialog>
       <ConfirmationDialog isOpen={act === 'cancel'} onClose={() => setAct(null)} title="Cancel pay run" confirmLabel="Cancel run" confirmDisabled={reason.trim().length < 5}
         message={r?.status === 'paid' ? 'This run is marked paid: its salary expenses are voided. Make sure no salaries were actually paid.' : 'The run is cancelled; you can generate a new one for the month.'}

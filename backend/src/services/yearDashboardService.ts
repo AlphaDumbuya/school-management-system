@@ -97,7 +97,7 @@ class YearDashboardService {
   }
 
   private async fees(tenantId: string, s: YearScope) {
-    if (!s.name && !s.classIds.length) return { billed: 0, collected: 0, outstanding: 0, overdue: 0 };
+    if (!s.name && !s.classIds.length) return { billed: 0, collected: 0, outstanding: 0, adjusted: 0, overdue: 0 };
     const r: any = await this.feesFor(tenantId, s)
       .select(
         db.raw('COALESCE(SUM(fees.amount),0) as billed'),
@@ -106,7 +106,12 @@ class YearDashboardService {
       ).first();
     const billed = num(r?.billed);
     const outstanding = num(r?.outstanding);
-    return { billed, outstanding, collected: Math.max(0, billed - outstanding), overdue: num(r?.overdue) };
+    // Discounts, waivers and applied credit reduce what's owed but aren't cash collected.
+    const a: any = await db('fee_adjustments as fa').whereNull('fa.reversed_at')
+      .whereIn('fa.fee_id', this.feesFor(tenantId, s).select('fees.id'))
+      .first(db.raw('COALESCE(SUM(fa.amount),0) as adjusted')).catch(() => null);
+    const adjusted = num(a?.adjusted);
+    return { billed, outstanding, adjusted, collected: Math.max(0, billed - outstanding - adjusted), overdue: num(r?.overdue) };
   }
 
   private async attendance(tenantId: string, s: YearScope) {

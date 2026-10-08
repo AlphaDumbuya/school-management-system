@@ -8,7 +8,7 @@ import { db } from '@utils/database';
 import { AppError } from '@middleware/errorHandler';
 import { normalizeAcademicYear, resolveActiveYear } from '@utils/academicYear';
 import { tenantToday } from '@utils/schoolDate';
-import { round2, audit } from './core';
+import { round2, audit, claimNotice, notifyFamily, leFmt } from './core';
 
 const TERMS = ['First Term', 'Second Term', 'Third Term'];
 
@@ -149,6 +149,43 @@ export const planService = {
       (await planFees(tenantId, s).select('id')).forEach((f: any) => ids.add(String(f.id)));
     }
     return ids;
+  },
+
+  /**
+   * Daily: remind families about instalments due within `daysAhead` days, and
+   * once more when one becomes overdue. Each reminder is sent once (in the app
+   * and by email). Returns how many families were reminded.
+   */
+  async remindDue(tenantId: string, daysAhead = 3): Promise<{ due_soon: number; overdue: number }> {
+    const today = await tenantToday(tenantId);
+    const soon = new Date(`${today}T00:00:00Z`); soon.setUTCDate(soon.getUTCDate() + daysAhead);
+    const soonYmd = soon.toISOString().slice(0, 10);
+    const plans = await db('payment_plans').where({ tenant_id: tenantId, status: 'active' }).select('id', 'student_id');
+    let dueSoon = 0, overdue = 0;
+    for (const p of plans) {
+      const s = await this.schedule(tenantId, p.id);
+      for (const i of s.installments) {
+        if (i.remaining <= 0.005) continue;
+        if (i.status === 'overdue') {
+          if (!(await claimNotice(tenantId, `plan:${p.id}:${i.number}:overdue`))) continue;
+          overdue++;
+          await notifyFamily(p.student_id, {
+            subject: 'Instalment overdue',
+            message: `Instalment ${i.number} for {student} (${leFmt(i.remaining)}) was due on ${i.due_date} and is not paid yet. Please pay it to keep to the payment plan.`,
+            sourceType: 'payment_plan', sourceId: p.id,
+          }, { emailTenantId: tenantId });
+        } else if (i.due_date >= today && i.due_date <= soonYmd) {
+          if (!(await claimNotice(tenantId, `plan:${p.id}:${i.number}:due`))) continue;
+          dueSoon++;
+          await notifyFamily(p.student_id, {
+            subject: 'Instalment due soon',
+            message: `Instalment ${i.number} for {student} (${leFmt(i.remaining)}) is due on ${i.due_date}.`,
+            sourceType: 'payment_plan', sourceId: p.id,
+          }, { emailTenantId: tenantId });
+        }
+      }
+    }
+    return { due_soon: dueSoon, overdue };
   },
 
   /** For the minimum-payment policy: the next instalment still owed, if on a plan. */

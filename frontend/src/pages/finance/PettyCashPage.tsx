@@ -1,6 +1,6 @@
 /**
  * Petty Cash (bursar Phase B, R2): small day-to-day cash. Funds with a float;
- * top up, spend (becomes an expense), return to bank; void with a reason.
+ * top up (from bank, cash or mobile money), spend (becomes an expense), return; void with a reason.
  */
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,7 +21,7 @@ import { usePaged, TablePager } from '@components/admin/table/TablePager';
 const input = 'w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm';
 const todayLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const KIND: Record<string, { label: string; sign: string; tone: string }> = {
-  top_up: { label: 'Top up', sign: '+', tone: 'text-emerald-700' }, spend: { label: 'Spend', sign: '−', tone: 'text-rose-700' }, return: { label: 'Returned to bank', sign: '−', tone: 'text-gray-700' },
+  top_up: { label: 'Top up', sign: '+', tone: 'text-emerald-700' }, spend: { label: 'Spend', sign: '−', tone: 'text-rose-700' }, return: { label: 'Returned', sign: '−', tone: 'text-gray-700' },
 };
 
 export const PettyCashPage: React.FC = () => {
@@ -31,7 +31,7 @@ export const PettyCashPage: React.FC = () => {
   const fundId = selected || funds.data?.[0]?.id || '';
   const entries = useQuery({ queryKey: ['fin-fund-entries', fundId], queryFn: async () => { const r: any = await bursarB.fundEntries(fundId); if (r?.success === false) throw new Error(r.error); return r.data; }, enabled: !!fundId });
   const [fundEdit, setFundEdit] = useState<any | null>(null);
-  const [entry, setEntry] = useState<{ kind: string; amount: string; category: string; description: string; entry_date: string; receipt_url: string } | null>(null);
+  const [entry, setEntry] = useState<{ kind: string; amount: string; category: string; description: string; entry_date: string; receipt_url: string; money_account?: string } | null>(null);
   const [voidT, setVoidT] = useState<any | null>(null);
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
@@ -62,8 +62,8 @@ export const PettyCashPage: React.FC = () => {
                 <div className="flex flex-wrap gap-2 mb-3">
                   {fund.active && <>
                     <Button size="sm" variant="create" onClick={() => setEntry({ kind: 'spend', amount: '', category: 'Supplies', description: '', entry_date: todayLocal(), receipt_url: '' })}><ArrowUpCircle size={14} className="mr-1" /> Record a spend</Button>
-                    <Button size="sm" variant="create" className="!bg-teal-600 hover:!bg-teal-700" onClick={() => setEntry({ kind: 'top_up', amount: fund.float_amount > fund.balance ? String((fund.float_amount - fund.balance).toFixed(2)) : '', category: '', description: '', entry_date: todayLocal(), receipt_url: '' })}><ArrowDownCircle size={14} className="mr-1" /> Top up</Button>
-                    <Button size="sm" variant="outline" disabled={fund.balance <= 0} onClick={() => setEntry({ kind: 'return', amount: String(fund.balance), category: '', description: 'Returned to bank', entry_date: todayLocal(), receipt_url: '' })}><Undo2 size={14} className="mr-1" /> Return to bank</Button>
+                    <Button size="sm" variant="create" className="!bg-teal-600 hover:!bg-teal-700" onClick={() => setEntry({ kind: 'top_up', amount: fund.float_amount > fund.balance ? String((fund.float_amount - fund.balance).toFixed(2)) : '', category: '', description: '', entry_date: todayLocal(), receipt_url: '', money_account: 'bank' })}><ArrowDownCircle size={14} className="mr-1" /> Top up</Button>
+                    <Button size="sm" variant="outline" disabled={fund.balance <= 0} onClick={() => setEntry({ kind: 'return', amount: String(fund.balance), category: '', description: 'Unused float returned', entry_date: todayLocal(), receipt_url: '', money_account: 'bank' })}><Undo2 size={14} className="mr-1" /> Return money</Button>
                   </>}
                   <Button size="sm" variant="ghost" onClick={() => setFundEdit(fund)}>Edit fund</Button>
                 </div>
@@ -79,7 +79,7 @@ export const PettyCashPage: React.FC = () => {
                         {pg.pageRows.map((e: any) => (
                           <tr key={e.id} className={`border-t border-gray-100 dark:border-gray-800 ${e.voided_at ? 'opacity-60' : ''}`}>
                             <td className="px-3 py-2.5 whitespace-nowrap text-gray-600">{String(e.entry_date).slice(0, 10)}</td>
-                            <td className="px-3 py-2.5">{e.voided_at ? <Pill s="revoked" label="Void" /> : KIND[e.kind]?.label}</td>
+                            <td className="px-3 py-2.5">{e.voided_at ? <Pill s="revoked" label="Void" /> : KIND[e.kind]?.label}{!e.voided_at && e.money_account && <div className="text-[11px] text-gray-400">{e.kind === 'top_up' ? 'from' : 'to'} {({ bank: 'bank', cash: 'cash on hand', mobile: 'mobile money' } as Record<string, string>)[e.money_account] || e.money_account}</div>}</td>
                             <td className="px-3 py-2.5">{e.category ? <span className="font-medium">{e.category}: </span> : null}{e.description || '—'}
                               <div className="text-[11px] text-gray-400">{e.recorded_by_name}{e.receipt_url && <> · <a href={e.receipt_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">receipt</a></>}{e.voided_at && <span className="text-red-600"> · {e.void_reason}</span>}</div></td>
                             <td className={`px-3 py-2.5 text-right font-semibold ${KIND[e.kind]?.tone} ${e.voided_at ? 'line-through' : ''}`}>{KIND[e.kind]?.sign}{le(e.amount)}</td>
@@ -128,6 +128,8 @@ export const PettyCashPage: React.FC = () => {
               {entry.kind === 'spend' && <div><label htmlFor="pe-cat" className="text-xs font-semibold text-gray-500">Spent on</label>
                 <CategorySelect id="pe-cat" value={entry.category} onChange={(v) => setEntry({ ...entry, category: v })} exclude={['Salaries', 'Statutory (PAYE/NASSIT)']} /></div>}
               <div className={entry.kind === 'spend' ? '' : 'sm:col-span-2'}><label htmlFor="pe-desc" className="text-xs font-semibold text-gray-500">Description{entry.kind === 'spend' ? ' (required)' : ''}</label><input id="pe-desc" className={input} value={entry.description} onChange={(e) => setEntry({ ...entry, description: e.target.value })} placeholder={entry.kind === 'spend' ? 'e.g. Chalk and markers' : entry.kind === 'top_up' ? 'e.g. Cash from the bank, cheque 0045' : 'e.g. Returned to the school account'} /></div>
+              {entry.kind !== 'spend' && <div className="sm:col-span-2"><label htmlFor="pe-acct" className="text-xs font-semibold text-gray-500">{entry.kind === 'top_up' ? 'Money taken from' : 'Money returned to'}</label>
+                <select id="pe-acct" className={input} value={entry.money_account || 'bank'} onChange={(e) => setEntry({ ...entry, money_account: e.target.value })}><option value="bank">Bank</option><option value="cash">Cash on hand</option><option value="mobile">Mobile money</option></select></div>}
               {entry.kind === 'spend' && <div className="sm:col-span-2"><FileUploader label="Receipt (optional)" value={entry.receipt_url} onChange={(v) => setEntry({ ...entry, receipt_url: v })} accept="image/*,.pdf" previewType="file" enableCamera cameraGuide="frame" /></div>}
               {entry.kind !== 'top_up' && <p className="sm:col-span-2 text-[11px] text-gray-500">In the fund now: {le(fund.balance)}.{entry.kind === 'spend' ? ' The spend is also recorded under School Expenses.' : ''}</p>}
             </div>

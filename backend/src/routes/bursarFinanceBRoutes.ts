@@ -99,13 +99,13 @@ router.put('/payroll/settings', principal, wrap(async (req, res) => {
   res.json({ success: true, data: await payrollService.settings(T(req)) });
 }));
 router.get('/payroll/staff', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.staff(T(req)) })));
-router.put('/payroll/staff', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.saveProfile(T(req), U(req), req.body) })));
+router.put('/payroll/staff', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.saveProfile(T(req), U(req), req.body, String(req.user!.role)) })));
 router.get('/payroll/runs', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.runs(T(req)) })));
 router.post('/payroll/runs', staff, wrap(async (req, res) => res.status(201).json({ success: true, data: await payrollService.generate(T(req), U(req), String(req.body?.period || '')) })));
 router.get('/payroll/runs/:id', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.run(T(req), req.params.id) })));
 router.post('/payroll/runs/:id/regenerate', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.regenerate(T(req), U(req), req.params.id) })));
 router.post('/payroll/runs/:id/approve', principal, wrap(async (req, res) => res.json({ success: true, data: await payrollService.approve(T(req), U(req), req.params.id) })));
-router.post('/payroll/runs/:id/pay', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.markPaid(T(req), U(req), req.params.id, req.body?.payment_date) })));
+router.post('/payroll/runs/:id/pay', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.markPaid(T(req), U(req), req.params.id, req.body?.payment_date, req.body?.paid_from) })));
 router.post('/payroll/runs/:id/cancel', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.cancel(T(req), U(req), req.params.id, reason(req)) })));
 router.post('/payroll/runs/:id/email', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.emailSlips(T(req), U(req), req.params.id) })));
 router.get('/payroll/runs/:id/export', staff, wrap(async (req, res) => {
@@ -123,7 +123,7 @@ router.get('/payroll/runs/:id/export', staff, wrap(async (req, res) => {
     filename: `payroll_${r.period}`, title: `Payroll ${r.period} (${r.status})`, sheetName: 'Payroll', highlightLastRow: true,
   } as any);
 }));
-router.put('/payroll/payslips/:id', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.editSlip(T(req), U(req), req.params.id, req.body) })));
-router.delete('/payroll/payslips/:id', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.removeSlip(T(req), U(req), req.params.id) })));
+router.put('/payroll/payslips/:id', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.editSlip(T(req), U(req), req.params.id, req.body, String(req.user!.role)) })));
+router.delete('/payroll/payslips/:id', staff, wrap(async (req, res) => res.json({ success: true, data: await payrollService.removeSlip(T(req), U(req), req.params.id, String(req.user!.role)) })));
 
 export default router;

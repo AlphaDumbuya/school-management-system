@@ -128,13 +128,14 @@ export const GrantDiscountForm: React.FC<{ studentId: string; year: string; onDo
   const [label, setLabel] = useState('Waiver');
   const [appliesTo, setAppliesTo] = useState<'tuition' | 'all'>('all');
   const [reason, setReason] = useState('');
+  const [creditPaid, setCreditPaid] = useState(false);
   const [saving, setSaving] = useState(false);
   const oneOff = ruleId === '';
   const submit = async () => {
     setSaving(true);
     try {
       const r: any = await bursarService.grant({
-        student_id: studentId, academic_year: year, term: term || null, reason: reason.trim() || undefined,
+        student_id: studentId, academic_year: year, term: term || null, reason: reason.trim() || undefined, credit_shortfall: creditPaid,
         ...(oneOff ? { label, basis, value: Number(value), applies_to: appliesTo } : { rule_id: ruleId }),
       });
       if (r?.success === false) { showToast.error(r.error || 'Could not give the discount'); return; }
@@ -142,6 +143,7 @@ export const GrantDiscountForm: React.FC<{ studentId: string; year: string; onDo
       if (d.needsApproval) showToast.success(d.unbilled ? 'Sent to the principal. The fees aren\'t billed yet, so it applies once they are.' : 'Sent to the principal for approval.');
       else if (d.unbilled) showToast.success('Approved. It comes off the fees automatically when they are billed.');
       else if (d.shortfall > 0) showToast.success(`Approved. ${le(d.applied)} taken off; ${le(d.shortfall)} couldn't be, because those fees are already paid. Issue a credit note on the Credit tab if the family should get it back.`);
+      else if (d.credited > 0) showToast.success(`Approved. ${le(d.applied)} taken off and ${le(d.credited)} (on fees already paid) added as account credit.`);
       else showToast.success(`Approved. ${le(d.applied)} taken off the fees.`);
       setValue(''); setReason('');
       onDone();
@@ -178,6 +180,10 @@ export const GrantDiscountForm: React.FC<{ studentId: string; year: string; onDo
         </div>
       )}
       <ReasonField id="g-reason" value={reason} onChange={setReason} placeholder={oneOff ? 'Why is this waived? (required)' : 'Optional note (required for custom discounts)'} />
+      <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-300">
+        <input type="checkbox" className="mt-0.5" checked={creditPaid} onChange={(e) => setCreditPaid(e.target.checked)} />
+        <span>If some of these fees are already paid, add the discount on them to the family's account credit (it settles later fees or can be refunded).</span>
+      </label>
       <div className="flex justify-end">
         <Button size="sm" variant="create" onClick={submit} disabled={saving || (oneOff && (!(Number(value) > 0) || (basis === 'percent' && Number(value) > 100) || reason.trim().length < 5)) || (!oneOff && rules.find((x) => x.id === ruleId)?.kind === 'custom' && reason.trim().length < 5)}>{saving ? 'Saving…' : 'Give discount'}</Button>
       </div>
@@ -219,7 +225,7 @@ export const StudentDiscounts: React.FC<{ studentId: string; year: string }> = (
         ? <p className="text-xs text-gray-500">{year} is a past academic year, so its discounts are read-only. Give new discounts in {activeYear}.</p>
         : <GrantDiscountForm studentId={studentId} year={year} onDone={refresh} />}
       <ConfirmationDialog isOpen={!!revoke} onClose={() => setRevoke(null)} title={revoke?.status === 'pending' ? 'Withdraw request' : 'Revoke discount'} confirmLabel={revoke?.status === 'pending' ? 'Withdraw' : 'Revoke'}
-        message={revoke ? `${revoke.status === 'pending' ? 'Withdraw' : 'Revoke'} "${revoke.label}"? ${revoke.status === 'approved' ? `${le(revoke.applied_amount)} will be owed again.` : ''}` : ''}
+        message={revoke ? `${revoke.status === 'pending' ? 'Withdraw' : 'Revoke'} "${revoke.label}"? ${revoke.status === 'approved' ? `${le(revoke.applied_amount)} will be owed again.${(revoke as any).credit_shortfall ? ' Account credit it added for fees already paid is not taken back.' : ''}` : ''}` : ''}
         confirmDisabled={reason.trim().length < 5}
         onConfirm={async () => {
           const r: any = await bursarService.decide(revoke.id, 'revoke', reason.trim());
