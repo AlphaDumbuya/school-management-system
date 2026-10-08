@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "npm install --legacy-peer-deps --include=dev",
-  "buildCommand": "(cd backend && ../node_modules/.bin/tsup && if [ \"$VERCEL_ENV\" = \"preview\" ] && [ \"$PREVIEW_DATABASE_ISOLATED\" != \"1\" ]; then echo 'Preview build: database migrations skipped (preview shares the production database)'; else ../node_modules/.bin/knex migrate:latest --knexfile knexfile.js; fi) && (cd frontend && ../node_modules/.bin/vite build)",
+  "buildCommand": "bash scripts/vercel-build.sh",
   "outputDirectory": "frontend/dist",
   "routes": [
     {
