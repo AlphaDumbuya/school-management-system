@@ -958,14 +958,136 @@ const ACCOUNTANT: RoleGuide = {
 };
 
 const ADMISSIONS: RoleGuide = {
-  headline: 'Welcome — manage admissions',
-  intro: 'Move applicants through the pipeline to enrolment.',
+  headline: 'Welcome — here’s how to run admissions on WiSkul',
+  intro:
+    'You take a child from application to student: receive applications (online or at the office), review them, invite for an interview, decide, and enrol the accepted ones into this year’s classes. You also look after student records, parent logins and ID cards. Academic pages are view-only for you.',
+
   steps: [
-    { title: 'Review the pipeline', body: 'See applications grouped by stage: new, under review, approved, enrolled.', route: '/admissions/dashboard', routeLabel: 'My Dashboard' },
-    { title: 'Process applications', body: 'Open an application to review details and update its status. Decisions email the applicant automatically.', route: '/admissions/dashboard', routeLabel: 'Applications' },
+    {
+      title: 'Start on your Overview',
+      body: 'The intake year at a glance: applications, how many are waiting for review, interviews coming up, acceptance and enrolment rates, and the pipeline by stage. Tap any number to open that stage.',
+      route: '/admissions/dashboard',
+      routeLabel: 'Open my Overview',
+    },
+    {
+      title: 'Share the online application link',
+      body: 'On Admissions, copy or share the school’s application link. Families apply without an account. Each new application arrives as “New” and you get a notification.',
+      route: '/students/admissions',
+      routeLabel: 'Admissions',
+    },
+    {
+      title: 'Review, interview, decide',
+      body: 'Open an application to see everything the family entered, tick the documents they handed in, add notes, and move it on: Start review, Schedule interview, then Approve, Waitlist or Reject. The family is emailed for the interview and each decision, once.',
+      route: '/students/admissions?status=pending',
+      routeLabel: 'New applications',
+    },
+    {
+      title: 'Enrol accepted children',
+      body: 'Approved applicants become students only when you press Enrol and pick this year’s class (you see places left). WiSkul creates the student number, links the parent and creates both portal sign-ins. Hand the sign-ins to the family.',
+      route: '/students/admissions?status=approved',
+      routeLabel: 'Approved, to enrol',
+    },
+    {
+      title: 'Student records and ID cards',
+      body: 'Student Directory and Student Profiles hold every student, their parents and portal sign-ins. ID Cards issues student cards, one by one or a whole class at a time.',
+      route: '/students/directory',
+      routeLabel: 'Student Directory',
+    },
   ],
+
   sections: [
-    { id: 'pipeline', title: 'Applications Pipeline', icon: 'Users', intro: 'Track applicants from enquiry to enrolment.', points: ['Move applications through stages.', 'Approve or reject with automatic notifications.'], route: '/admissions/dashboard', routeLabel: 'Admissions' },
+    {
+      id: 'overview', title: 'Overview', icon: 'BarChart2',
+      intro: 'One intake year at a glance. Use the year picker to look at an earlier intake.',
+      points: [
+        'Applications this year, this month and online.',
+        'To review (new + under review), acceptance rate, enrolled.',
+        'Upcoming interviews, and approved children not enrolled yet.',
+        'Pipeline by stage, recent applications and applications per class. Everything opens the matching list.',
+      ],
+      route: '/admissions/dashboard', routeLabel: 'Overview',
+    },
+    {
+      id: 'applications', title: 'Admissions', icon: 'ClipboardList',
+      intro: 'Every application for the intake year, by stage, with search and filters.',
+      points: [
+        'Stage chips (New, Under review, Interview, Approved, Waitlist, Enrolled, Rejected, Withdrawn) with counts.',
+        'Search by child, application number, parent, phone or email; filter by class and by online or office.',
+        '+ New Application for walk-ins. Tick “Accept and enrol now” to make the child a student straight away.',
+        'Export the filtered list to CSV, Excel or PDF.',
+      ],
+      route: '/students/admissions', routeLabel: 'Admissions',
+    },
+    {
+      id: 'application', title: 'One application', icon: 'FileText',
+      intro: 'Open a card to see and manage one application.',
+      points: [
+        'Details: child, parent, medical, emergency contact, interview and decision.',
+        'Documents: tick what was handed in (birth certificate, last report, photo…).',
+        'Timeline: every move, note and email, with who did it and when. Add staff-only notes.',
+        'Edit details until the child is enrolled. A possible duplicate (same name and birthday) is flagged.',
+        'Only the next allowed steps are offered. Rejected, withdrawn or approved applications can be reopened.',
+      ],
+      route: '/students/admissions', routeLabel: 'Admissions',
+    },
+    {
+      id: 'enrol', title: 'Enrolment', icon: 'GraduationCap',
+      intro: 'Approved is not yet a student. Enrol is the step that creates the student.',
+      points: [
+        'Pick a class of the current year; you see how many places are left. A full class needs a confirmation.',
+        'The student number follows the school’s ID format. The parent is linked (siblings share one parent account).',
+        'Student and parent sign-ins are created and shown once; they are also on the Student Profile.',
+        'Pressing Enrol twice never creates two students.',
+      ],
+      route: '/students/admissions?status=approved', routeLabel: 'To enrol',
+    },
+    {
+      id: 'students', title: 'Student Directory & Profiles', icon: 'Users',
+      intro: 'All students, their parents and portal logins.',
+      points: [
+        'Add, import, export and edit students in the current year.',
+        'Create or link a parent account; show or reset portal passwords (you are asked to confirm).',
+        'Past years are view-only history.',
+      ],
+      route: '/students/directory', routeLabel: 'Student Directory',
+    },
+    {
+      id: 'academics', title: 'Classes, timetables and results (view only)', icon: 'BookOpen',
+      intro: 'See the school’s classes, subjects, timetables, exam timetable, class rankings and report cards, to answer families’ questions.',
+      points: [
+        'Nothing here can be changed from your account; teachers and the principal keep it up to date.',
+        'Class & Streams shows every class this year with its places.',
+      ],
+      route: '/academic/classes', routeLabel: 'Classes & Streams',
+    },
+    {
+      id: 'idcards', title: 'ID Cards', icon: 'ShieldCheck',
+      intro: 'Issue student ID cards.',
+      points: ['One student, or a whole class at once (Bulk Generate). Failures are listed in the job report.', 'Staff cards are issued by the principal.'],
+      route: '/identity/cards', routeLabel: 'ID Cards',
+    },
+    {
+      id: 'more', title: 'Announcements, attendance, payslips and help', icon: 'Megaphone',
+      intro: 'The everyday staff pages.',
+      points: ['Announcements to everyone, students or parents.', 'Staff Attendance: sign in for today.', 'My Payslips, Support (help articles and tickets) and Settings → My Profile / Security.'],
+      route: '/communication/announcements', routeLabel: 'Announcements',
+    },
+  ],
+
+  keyRules: [
+    { title: 'Applications belong to an intake year', body: 'New applications go into the current academic year. After a new year starts, last year’s intake stays as history; enrol into this year’s classes only.' },
+    { title: 'Approve, then enrol', body: 'Approving emails the family. The child becomes a student only when you press Enrol, so you can wait for the family to confirm and pay.' },
+    { title: 'Emails go once', body: 'Each decision (approved, waitlist, rejected) and each interview time is emailed to the parent once. Withdrawn and notes are never emailed.' },
+    { title: 'Nothing is lost', body: 'Every move and note is on the application’s timeline. An application that became a student can’t be deleted; it is that student’s admission record.' },
+  ],
+
+  faqs: [
+    { q: 'A family says they applied online but I can’t find it.', a: 'Check the year picker (it shows the current intake), clear the stage filter, and search by the parent’s phone or email. If they applied twice for the same child, WiSkul keeps the first application and gives them the same number.' },
+    { q: 'I approved a child by mistake.', a: 'Open the application and press Reopen (it goes back to Under review), or mark it withdrawn with a reason. Nothing changes in the student list until you enrol.' },
+    { q: 'The class they applied for is from last year.', a: 'When you enrol, choose this year’s class. The enrol box tells you when the original class is no longer open.' },
+    { q: 'The class is full.', a: 'The enrol box shows places left. Choose another class, or tick “enrol over capacity” if the principal agreed.' },
+    { q: 'The family didn’t get the email.', a: 'The application needs a parent email (shown on Details). The timeline shows each email that was sent. Give the decision by phone if needed.' },
+    { q: 'Where are the parent’s sign-in details?', a: 'They are shown once right after you enrol, and always on the Student Profile under Portal Login Credentials, where you can also reset them.' },
   ],
 };
 

@@ -55,7 +55,6 @@ import { asyncSafeApp } from '@utils/asyncRoutes';
 import phase22SerializationRoutes from '@routes/phase22SerializationRoutes';
 import phase25ExternalServicesRoutes from '@routes/phase25ExternalServicesRoutes';
 import platformRoutes from '@routes/platformRoutes';
-import admissionRoutes from '@routes/admissionRoutes';
 import idCardRoutes from '@routes/idCardRoutes';
 import publicVerifyRoutes from '@routes/publicVerifyRoutes';
 import templateRoutes from '@routes/templateRoutes';
@@ -354,7 +353,9 @@ app.use('/api/v1', phase25ExternalServicesRoutes);
 app.use('/api/v1/platform', platformRoutes);
 
 // Admission Management Routes (Phase 1.3: Admissions Officer Enhancement)
-app.use('/api/v1/admissions', admissionRoutes);
+// The legacy Phase 1.3 admissions router (routes/admissionRoutes.ts) is no longer mounted:
+// its GETs were shadowed by admissionsRoutes and its PATCH/DELETE paths bypassed the
+// pipeline rules (no transition checks, duplicate students). admissionsRoutes is the API.
 
 // ID Card Management Routes (Phase 2.1: Identity Management Module)
 app.use('/api/v1/id-cards', idCardRoutes);

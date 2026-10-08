@@ -32,6 +32,7 @@ import { CardPdfExporter, buildCardExportData } from './components/cardExport';
 import type { CardPdfExporterHandle } from './components/cardExport';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
+import useAuthStore from '@store/authStore';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ActiveTab = 'cards' | 'expiring' | 'bulk' | 'qr';
@@ -401,6 +402,9 @@ function ExpiringTab({ onGenerateNew }: { onGenerateNew: () => void }) {
 // ── Bulk Generate Tab ─────────────────────────────────────────────────────────
 function BulkGenerateTab() {
   const queryClient = useQueryClient();
+  // Admissions officers issue student cards only (the server enforces it too).
+  const studentsOnly = useAuthStore((st) => st.user?.role) === 'admissions_officer';
+  const { activeYear: bulkYear } = useAcademicYears();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [target, setTarget] = useState<'all_students' | 'all_teachers' | 'all' | 'by_class'>('all_students');
   const [classId, setClassId] = useState('');
@@ -413,8 +417,8 @@ function BulkGenerateTab() {
 
   // Classes for the "By Class" target
   const { data: classesData } = useQuery({
-    queryKey: ['bulk-classes-list'],
-    queryFn: () => classesService.listClasses({ limit: 200 }),
+    queryKey: ['bulk-classes-list', bulkYear],
+    queryFn: () => classesService.listClasses({ limit: 200, academic_year: bulkYear || undefined }),
     staleTime: 60_000,
     enabled: target === 'by_class',
   });
@@ -513,7 +517,7 @@ function BulkGenerateTab() {
                 { v: 'by_class', l: 'By Class', icon: <BookOpen size={22} />, d: 'Students in one class' },
                 { v: 'all_teachers', l: 'All Teachers', icon: <Users size={22} />, d: 'All teaching staff' },
                 { v: 'all', l: 'All Members', icon: <Users size={22} />, d: 'Students + teachers' },
-              ].map(opt => (
+              ].filter((opt) => !studentsOnly || opt.v === 'all_students' || opt.v === 'by_class').map(opt => (
                 <button key={opt.v} onClick={() => { setTarget(opt.v as any); if (opt.v !== 'by_class') setClassId(''); }}
                   className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-center ${target === opt.v ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-800'}`}>
                   <span className={target === opt.v ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}>{opt.icon}</span>

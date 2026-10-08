@@ -455,10 +455,14 @@ export const TimetablesPage: React.FC = () => {
                 : classesData && classes.length === 0
                   ? (canManage
                       ? (viewingPast ? `There were no classes in ${year}.` : 'Create classes first, then build their weekly schedule.')
-                      : (viewingPast ? `You didn't teach any classes in ${year}.` : `You have no classes assigned for ${activeYear} yet.`))
+                      : user?.role === 'admissions_officer'
+                        ? (viewingPast ? `There were no classes in ${year}.` : `There are no classes in ${activeYear} yet.`)
+                        : (viewingPast ? `You didn't teach any classes in ${year}.` : `You have no classes assigned for ${activeYear} yet.`))
                   : canManage
                     ? 'Choose a class from the selector above to manage its weekly schedule.'
-                    : 'Choose one of your classes from the selector above to see its weekly schedule.'}
+                    : user?.role === 'admissions_officer'
+                      ? 'Choose a class from the selector above to see its weekly schedule.'
+                      : 'Choose one of your classes from the selector above to see its weekly schedule.'}
             </p>
           </div>
         )}

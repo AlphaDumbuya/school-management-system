@@ -810,7 +810,7 @@ export const ReportCardsPage: React.FC = () => {
             <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-amber-500 text-white text-xs font-bold">!</span>
             <span>
               <strong>Draft — not yet released.</strong>{' '}
-              {user?.role === 'teacher'
+              {user?.role === 'teacher' || user?.role === 'admissions_officer'
                 ? "Parents and students can't see this report until the principal publishes the results."
                 : <>Parents and students can't see this report until you publish it in Settings → Grading &amp; Results.</>}
             </span>

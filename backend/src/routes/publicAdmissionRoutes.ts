@@ -130,15 +130,40 @@ router.post('/:schoolSlug', submitLimiter, async (req: Request, res: Response, n
     // The legacy and newer admissions schemas coexist in deployed databases.
     const columns = await db('admission_applications').columnInfo();
     const allowedRow = Object.fromEntries(Object.entries(row).filter(([key]) => key in columns));
+    // The same child sent twice (double submit, or the family applying again
+    // while the first is still open) returns the first application.
+    const digits = (v: unknown) => String(v || '').replace(/\D/g, '').slice(-8);
+    const open = await db('admission_applications').where({ tenant_id: school.id, academic_year: intakeYear })
+      .whereNotIn('status', ['rejected', 'withdrawn'])
+      .whereRaw('LOWER(TRIM(COALESCE(child_first_name, first_name))) = LOWER(?) AND LOWER(TRIM(COALESCE(child_last_name, last_name))) = LOWER(?)', [input.child_first_name.trim(), input.child_last_name.trim()])
+      .whereRaw('COALESCE(child_dob, date_of_birth)::date = ?::date', [input.child_dob])
+      .select('application_number', 'guardian_phone', 'parent_phone');
+    const dup = open.find((o: any) => digits(o.guardian_phone || o.parent_phone) === digits(input.guardian_phone));
+    if (dup) {
+      res.status(200).json({ success: true, data: { application_number: dup.application_number, email_sent: false, duplicate: true } });
+      return;
+    }
+    let createdId: string | null = null;
     const applicationNumber = await db.transaction(async (trx) => {
       // The ID generator scans existing numbers; serialize public submissions.
       await trx.raw('SELECT pg_advisory_xact_lock(?)', [62106125]);
       const nextId = await generateNextId(trx, school.id, 'admission');
       const [created] = await trx('admission_applications')
         .insert({ ...allowedRow, application_number: nextId, ...(columns.application_id ? { application_id: nextId } : {}) })
-        .returning('application_number');
+        .returning(['id', 'application_number']);
+      createdId = created.id;
       return created.application_number;
     });
+    // Timeline + tell the admissions team (best-effort).
+    if (createdId) {
+      await db('admission_application_events').insert({ tenant_id: school.id, application_id: createdId, kind: 'created', to_status: 'pending', note: 'Applied online' }).catch(() => null);
+      const { notifyAdmissionsStaff } = await import('../services/admissions/admissionPipelineService.js');
+      await notifyAdmissionsStaff(school.id, {
+        subject: 'New online application',
+        message: `${input.child_first_name.trim()} ${input.child_last_name.trim()}${selectedClass?.name ? ` applied for ${selectedClass.name}` : ' applied'} (${applicationNumber}).`,
+        url: '/students/admissions', sourceId: createdId,
+      });
+    }
     let emailSent = false;
     try {
       const result = await emailService.sendAdmissionSubmissionEmail(school.id, input.guardian_email.trim(), {

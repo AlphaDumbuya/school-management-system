@@ -3,7 +3,7 @@
  * Sierra Leone school format: Child Info, Guardian, Medical, Emergency, Documents
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Modal } from '@components/admin/feedback/Modal';
 import { Button } from '@components/ui/button';
@@ -11,8 +11,7 @@ import { FormField } from '@components/admin/forms/FormField';
 import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
 import { FileUploader } from '@components/admin/forms/FileUploader';
 import { showToast } from '@utils/toast';
-import { admissionsService } from '@services/admissionsService';
-import { classesService } from '@services/classesService';
+import { admissionsService, type AdmissionRecord, type EnrolResult } from '@services/admissionsService';
 
 const RELATIONSHIPS = ['Father', 'Mother', 'Guardian'];
 const RELIGIONS = ['Christianity', 'Islam', 'Traditional', 'Other'];
@@ -23,10 +22,19 @@ interface AdmissionFormModalProps {
   onSuccess: (applicationNumber?: string, emailSent?: boolean | null) => void;
   publicSchoolSlug?: string;
   publicClasses?: { id: string; name: string; level: string }[];
+  /** Staff: edit this application instead of creating one. */
+  editing?: AdmissionRecord | null;
+  /** Staff: called when "enrol now" made the applicant a student. */
+  onEnrolled?: (result: EnrolResult, childName: string) => void;
 }
 
-export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, onClose, onSuccess, publicSchoolSlug, publicClasses }) => {
+const EDIT_KEYS = ['child_first_name', 'child_middle_name', 'child_last_name', 'child_dob', 'child_gender', 'child_nationality', 'child_religion', 'child_place_of_birth', 'class_applying_for', 'child_address', 'previous_school', 'last_grade_attained', 'child_photo_url', 'guardian_first_name', 'guardian_middle_name', 'guardian_last_name', 'guardian_relationship', 'guardian_phone', 'guardian_alt_phone', 'guardian_email', 'guardian_occupation', 'guardian_address', 'guardian_nationality', 'guardian_national_id', 'takes_medication', 'medication_details', 'has_allergies', 'allergy_details', 'has_chronic_illness', 'chronic_illness_details', 'allow_first_aid', 'emergency_contact_name', 'emergency_contact_relationship', 'emergency_contact_phone'] as const;
+
+export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, onClose, onSuccess, publicSchoolSlug, publicClasses, editing, onEnrolled }) => {
   const [step, setStep] = useState(1);
+  const isStaffCreate = !publicSchoolSlug && !editing;
+  const [enrolNow, setEnrolNow] = useState(false);
+  const [docs, setDocs] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -49,13 +57,32 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
 
   const updateForm = (key: string, value: any) => setForm((f: any) => ({ ...f, [key]: value }));
 
-  // Fetch classes
-  const { data: classesData } = useQuery({
-    queryKey: ['admission-classes'], queryFn: () => classesService.listClasses({ limit: 100 }),
+  // Staff: this year's classes only (with places left), from the admissions API.
+  const { data: metaRes } = useQuery({
+    queryKey: ['admissions-meta'], queryFn: () => admissionsService.getMeta(),
     staleTime: 60_000, enabled: isOpen && !publicSchoolSlug,
   });
-  const classes = publicSchoolSlug ? (publicClasses ?? []) : ((classesData as any)?.data ?? []);
-  const classOptions = useMemo(() => classes.map((c: any) => ({ value: String(c.id), label: c.name, sublabel: c.level })), [classes]);
+  const meta = (metaRes as any)?.data;
+  const classes = publicSchoolSlug ? (publicClasses ?? []) : (meta?.classes ?? []);
+  const classOptions = useMemo(() => classes.map((c: any) => ({
+    value: String(c.id), label: c.name,
+    sublabel: c.capacity ? `${c.level} · ${c.enrolled}/${c.capacity}${c.full ? ' full' : ''}` : c.level,
+  })), [classes]);
+
+  // Editing: load the application into the form.
+  useEffect(() => {
+    if (!isOpen || !editing) return;
+    const next: any = {};
+    for (const k of EDIT_KEYS) {
+      const v = (editing as any)[k];
+      next[k] = typeof v === 'boolean' ? v : v == null ? '' : (k === 'child_dob' ? String(v).slice(0, 10) : String(v));
+    }
+    if (editing.allow_first_aid === undefined || editing.allow_first_aid === null) next.allow_first_aid = true;
+    // A class from an earlier year can't be kept; the officer picks this year's.
+    if (next.class_applying_for && meta?.classes && !meta.classes.some((c: any) => c.id === next.class_applying_for)) next.class_applying_for = '';
+    setForm((f: any) => ({ ...f, ...next }));
+    setStep(1); setServerError(null);
+  }, [isOpen, editing?.id, meta?.classes?.length]);
 
   const handleSubmit = async () => {
     if (!form.child_first_name || !form.child_last_name || !form.child_dob || !form.child_gender) {
@@ -74,16 +101,29 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
       setServerError('Please enter a valid guardian email address');
       setStep(2); return;
     }
+    if (isStaffCreate && enrolNow && !form.class_applying_for) {
+      setServerError('Choose the class to enrol into, or untick "Accept and enrol now"');
+      setStep(1); return;
+    }
     setServerError(null);
     setIsSubmitting(true);
     try {
-      const res = publicSchoolSlug
+      if (editing) {
+        const r: any = await admissionsService.updateApplication(editing.id, form);
+        if (r?.success === false) throw new Error(r.error ?? 'Could not save');
+        showToast.success('Application updated');
+        onSuccess(editing.application_number, null); onClose();
+        return;
+      }
+      const res: any = publicSchoolSlug
         ? await admissionsService.submitPublicApplication(publicSchoolSlug, form)
-        : await admissionsService.submitApplication(form);
+        : await admissionsService.submitApplication({ ...form, documents: docs, enrol_now: enrolNow });
       if (res.success === false) throw new Error(res.error ?? 'Submission failed');
-      showToast.success('Application submitted');
+      const enrolment = res.data?.enrolment;
+      if (enrolment && onEnrolled) onEnrolled(enrolment, `${form.child_first_name} ${form.child_last_name}`);
+      else showToast.success(res.data?.duplicate ? 'This application was already received' : 'Application submitted');
       onSuccess(res.data?.application_number, res.data?.email_sent); onClose();
-      setStep(1);
+      setStep(1); setDocs({}); setEnrolNow(false);
       setForm({ child_first_name: '', child_middle_name: '', child_last_name: '', child_dob: '', child_gender: '', child_nationality: 'Sierra Leonean', child_religion: '', child_place_of_birth: '', class_applying_for: '', child_address: '', previous_school: '', last_grade_attained: '', child_photo_url: '', guardian_first_name: '', guardian_middle_name: '', guardian_last_name: '', guardian_relationship: '', guardian_phone: '', guardian_alt_phone: '', guardian_email: '', guardian_occupation: '', guardian_address: '', guardian_nationality: 'Sierra Leonean', guardian_national_id: '', takes_medication: false, medication_details: '', has_allergies: false, allergy_details: '', has_chronic_illness: false, chronic_illness_details: '', allow_first_aid: true, emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '' });
     } catch (err) {
       setServerError(err instanceof Error ? err.message : 'Something went wrong');
@@ -94,14 +134,14 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
   const stepTitles = ['Child Information', 'Parent / Guardian', 'Medical Information', 'Emergency Contact'];
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Admission Application" size="xl"
+    <Modal isOpen={isOpen} onClose={onClose} title={editing ? `Edit application ${editing.application_number}` : 'Admission Application'} size="xl"
       footer={
         <div className="flex items-center justify-between w-full gap-3">
           <div className="text-xs text-gray-400 dark:text-gray-500 hidden sm:block">Step {step} of {totalSteps}: {stepTitles[step - 1]}</div>
           <div className="flex items-center gap-2 ml-auto">
             {step > 1 && <Button variant="ghost" onClick={() => setStep(step - 1)}>Back</Button>}
             {step < totalSteps && <Button variant="default" onClick={() => setStep(step + 1)}>Next</Button>}
-            {step === totalSteps && <Button variant="default" disabled={isSubmitting} onClick={handleSubmit}>{isSubmitting ? 'Submitting…' : 'Submit Application'}</Button>}
+            {step === totalSteps && <Button variant="default" disabled={isSubmitting} onClick={handleSubmit}>{isSubmitting ? 'Saving…' : editing ? 'Save changes' : isStaffCreate && enrolNow ? 'Save and enrol' : 'Submit Application'}</Button>}
           </div>
         </div>
       }
@@ -210,10 +250,30 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
             <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Relationship</label><input value={form.emergency_contact_relationship} placeholder="e.g. Uncle, Neighbour" onChange={(e) => updateForm('emergency_contact_relationship', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
             <div className="flex flex-col gap-1"><label className="text-sm font-medium text-gray-700 dark:text-gray-300">Phone Number</label><input type="tel" value={form.emergency_contact_phone} placeholder="+232..." onChange={(e) => updateForm('emergency_contact_phone', e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
           </div>
+          {isStaffCreate && (meta?.documents?.length ?? 0) > 0 && (
+            <div className="mt-4">
+              <p className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-widest mb-2">Documents handed in</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {meta.documents.map((d: any) => (
+                  <label key={d.key} className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm">
+                    <input type="checkbox" checked={!!docs[d.key]} onChange={(e) => setDocs({ ...docs, [d.key]: e.target.checked })} /> {d.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          {isStaffCreate && (
+            <label className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-900 p-3 text-sm text-emerald-900 dark:text-emerald-200">
+              <input type="checkbox" className="mt-0.5" checked={enrolNow} onChange={(e) => setEnrolNow(e.target.checked)} />
+              <span><strong>Accept and enrol now</strong> (walk-in admission). The child becomes a student in the chosen class straight away and portal sign-ins are created. Leave it unticked to review the application first.</span>
+            </label>
+          )}
+          {!editing && (
           <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950/20 rounded-xl border border-blue-200 dark:border-blue-800">
             <p className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-1">Ready to Submit</p>
             <p className="text-xs text-blue-600 dark:text-blue-400">By submitting, you confirm all information is accurate. The application will be reviewed by the admissions team.</p>
           </div>
+          )}
         </div>
       )}
     </Modal>

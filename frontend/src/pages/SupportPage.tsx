@@ -80,12 +80,25 @@ const ROLE_FAQ: Partial<Record<string, Faq[]>> = {
   ],
 };
 
+ROLE_FAQ.admissions_officer = [
+  { q: 'How do families apply online?', a: 'Admissions → Online admission link: copy or share it. Families apply without an account, get an application number by email, and the application arrives as New. You get a notification.' },
+  { q: 'I approved an applicant. Why are they not in the Student Directory?', a: 'Approving only accepts them (and emails the family). Press Enrol on the application and pick this year\'s class; that creates the student, links the parent and creates their sign-ins.' },
+  { q: 'Can I undo a decision?', a: 'Yes, until the child is enrolled: open the application and press Reopen. It goes back to Under review and the timeline keeps the history.' },
+  { q: 'Where do I find a student\'s or parent\'s password?', a: 'Right after enrolling it is shown once. Afterwards, Student Profiles → Portal Login Credentials (Show), where you can also reset it.' },
+  { q: 'Why can\'t I enter scores or edit classes?', a: 'Academic pages are view-only for admissions. Teachers enter scores; the principal manages classes and timetables.' },
+  { q: 'Can I sign in for a day I forgot?', a: 'No. Staff sign in for today only, until the school\'s closing time. For any other day, ask the principal to record your attendance.' },
+];
 /** Shortcuts on the Help Center home, per role. */
 const ROLE_ACTIONS: Partial<Record<string, Array<{ label: string; to: string; icon: any; accent: 'blue' | 'violet' | 'emerald' | 'amber' }>>> = {
   accountant: [
     { label: 'Record a payment', to: '/support/finance/payments-record', icon: Wallet, accent: 'blue' },
     { label: 'Discounts', to: '/support/finance/discounts', icon: CreditCard, accent: 'violet' },
     { label: 'Bank reconciliation', to: '/support/finance/bank-reconciliation', icon: Building, accent: 'emerald' },
+  ],
+  admissions_officer: [
+    { label: 'Process admissions', to: '/support/students/admissions', icon: ClipboardCheck, accent: 'blue' },
+    { label: 'Enrol and manage students', to: '/support/students/students-add', icon: Users, accent: 'violet' },
+    { label: 'Open Admissions', to: '/students/admissions', icon: GraduationCap, accent: 'emerald' },
   ],
 };
 

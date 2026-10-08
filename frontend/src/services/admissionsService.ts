@@ -4,7 +4,7 @@
 
 import { apiClient } from '@lib/apiClient';
 
-export type AdmissionStatus = 'pending' | 'under_review' | 'interview_scheduled' | 'approved' | 'rejected' | 'enrolled';
+export type AdmissionStatus = 'pending' | 'under_review' | 'interview_scheduled' | 'approved' | 'waitlist' | 'rejected' | 'withdrawn' | 'enrolled';
 
 export interface AdmissionRecord {
   id: string;
@@ -50,10 +50,55 @@ export interface AdmissionRecord {
   status: AdmissionStatus;
   date_received?: string;
   interview_date?: string;
+  interview_location?: string;
   assessment_score?: number;
   decision_notes?: string;
   created_at: string;
   email_sent?: boolean | null;
+  application_source?: string;
+  documents?: Record<string, boolean>;
+  student_id?: string | null;
+  student_number?: string | null;
+  enrolled_class_id?: string | null;
+  enrolled_class_name?: string | null;
+  enrolled_at?: string | null;
+  withdrawn_reason?: string | null;
+  decided_by_name?: string | null;
+}
+
+export interface AdmissionEvent {
+  id: string; kind: string; from_status?: string | null; to_status?: string | null;
+  note?: string | null; by_name?: string | null; created_at: string;
+}
+
+/** One application with its timeline and what can happen next. */
+export interface AdmissionDetail extends AdmissionRecord {
+  events: AdmissionEvent[];
+  duplicates: { applications: { id: string; application_number: string; status: string; academic_year: string }[]; students: { id: string; student_id: string; status: string }[] };
+  allowed: AdmissionStatus[];
+  can_enrol: boolean;
+  class_is_current: boolean;
+  documents_list: { key: string; label: string }[];
+}
+
+export interface AdmissionClass { id: string; name: string; level: string; section?: string | null; capacity: number | null; enrolled: number; full: boolean }
+
+export interface AdmissionsMeta {
+  statuses: AdmissionStatus[];
+  transitions: Record<AdmissionStatus, AdmissionStatus[]>;
+  labels: Record<AdmissionStatus, string>;
+  documents: { key: string; label: string }[];
+  active_year: string;
+  classes: AdmissionClass[];
+}
+
+export interface EnrolResult {
+  already: boolean;
+  student: { id: string; student_id: string };
+  class?: { id: string; name: string };
+  warnings?: string[];
+  accounts: { student_username: string | null; student_password: string | null; parent_email: string | null; parent_password: string | null } | null;
+  application: AdmissionDetail;
 }
 
 export interface ListAdmissionsParams {
@@ -62,6 +107,8 @@ export interface ListAdmissionsParams {
   status?: string;
   academic_year?: string;
   search?: string;
+  class_id?: string;
+  source?: 'online' | 'office';
 }
 
 export interface PublicAdmissionInfo {
@@ -74,14 +121,21 @@ export const ADMISSION_STATUSES: { value: AdmissionStatus; label: string }[] = [
   { value: 'under_review', label: 'Under Review' },
   { value: 'interview_scheduled', label: 'Interview Scheduled' },
   { value: 'approved', label: 'Approved' },
+  { value: 'waitlist', label: 'Waitlist' },
   { value: 'rejected', label: 'Rejected' },
+  { value: 'withdrawn', label: 'Withdrawn' },
   { value: 'enrolled', label: 'Enrolled' },
 ];
 
 export interface AdmissionsOverview {
+  academicYear: string | null;
   totalApplications: number;
   thisMonth: number;
+  online: number;
+  acceptanceRate: number;
   enrollmentRate: number;
+  upcomingInterviews: { id: string; applicationNumber: string; studentName: string; at: string; location?: string | null }[];
+  byClass: { class_name: string; applications: number; enrolled: number; open: number }[];
   byStatus: Record<AdmissionStatus, number>;
   applications: {
     id: string;
@@ -114,7 +168,27 @@ export const admissionsService = {
   },
 
   async listApplications(params: ListAdmissionsParams = {}) {
-    return apiClient.get<{ data: AdmissionRecord[]; pagination: any }>('/api/v1/admissions', { params });
+    return apiClient.get<{ data: AdmissionRecord[]; pagination: any; counts: Record<AdmissionStatus, number> }>('/api/v1/admissions', { params });
+  },
+
+  async getMeta() {
+    return apiClient.get<{ success: boolean; data: AdmissionsMeta }>('/api/v1/admissions/meta');
+  },
+
+  async getDetail(id: string) {
+    return apiClient.get<{ success: boolean; data: AdmissionDetail }>(`/api/v1/admissions/${id}`);
+  },
+
+  async updateApplication(id: string, data: Record<string, unknown>) {
+    return apiClient.put<{ success: boolean; data: AdmissionDetail & { email_sent?: boolean | null } }>(`/api/v1/admissions/${id}`, data);
+  },
+
+  async addNote(id: string, note: string) {
+    return apiClient.post<{ success: boolean; data: AdmissionDetail }>(`/api/v1/admissions/${id}/notes`, { note });
+  },
+
+  async enrol(id: string, data: { class_id: string; allow_over_capacity?: boolean }) {
+    return apiClient.post<{ success: boolean; data: EnrolResult }>(`/api/v1/admissions/${id}/enrol`, data);
   },
 
   async getApplication(id: string) {
@@ -122,11 +196,11 @@ export const admissionsService = {
   },
 
   async submitApplication(data: any) {
-    return apiClient.post<AdmissionRecord>('/api/v1/admissions', data);
+    return apiClient.post<{ success: boolean; data: AdmissionDetail & { enrolment?: EnrolResult | null } }>('/api/v1/admissions', data);
   },
 
-  async updateStatus(id: string, data: { status: string; interview_date?: string; assessment_score?: number; decision_notes?: string }) {
-    return apiClient.put<AdmissionRecord>(`/api/v1/admissions/${id}/status`, data);
+  async updateStatus(id: string, data: { status: string; note?: string; interview_date?: string; interview_location?: string; assessment_score?: number | string }) {
+    return apiClient.put<{ success: boolean; data: AdmissionDetail & { email_sent?: boolean | null } }>(`/api/v1/admissions/${id}/status`, data);
   },
 
   async deleteApplication(id: string) {

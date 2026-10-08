@@ -85,6 +85,25 @@ function isCardStaff(req: Request): boolean {
   return [UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER].map(String).includes(role);
 }
 
+/**
+ * Admissions officers issue STUDENT cards only (staff cards are the
+ * principal's). Checked on the server for single, bulk-by-ids and bulk-by-filter.
+ */
+async function assertAdmissionsStudentsOnly(req: Request, userIds?: unknown, filters?: any) {
+  if ((req as any).user?.role !== 'admissions_officer') return;
+  const tenantId = (req as any).user.tenant_id;
+  if (filters && !userIds) {
+    if (String(filters.role || '') !== 'student') throw new AppError('Admissions can only generate student ID cards.', 403, 'STUDENTS_ONLY');
+    return;
+  }
+  const ids = (Array.isArray(userIds) ? userIds : [userIds]).filter(Boolean).map(String);
+  if (!ids.length) return;
+  const rows = await db('users').where({ tenant_id: tenantId }).whereIn('id', ids).select('id', 'role');
+  if (rows.length !== ids.length || rows.some((r: any) => r.role !== 'student')) {
+    throw new AppError('Admissions can only generate student ID cards.', 403, 'STUDENTS_ONLY');
+  }
+}
+
 /** Assert a bulk job belongs to the caller's tenant. */
 async function assertBulkJobInTenant(req: Request, jobId: string): Promise<void> {
   const tenantId = (req as any).user?.tenant_id;
@@ -444,6 +463,7 @@ router.post(
       if (!['pvc', 'badge'].includes(format)) {
         throw new AppError('Invalid format. Must be "pvc" or "badge"', 400);
       }
+      await assertAdmissionsStudentsOnly(req, userId);
 
       const result = await idCardService.generateCard(userId, tenantId, {
         templateId,
@@ -738,6 +758,7 @@ router.post(
       if (!userIds && !filters) {
         throw new AppError('Either userIds or filters must be provided', 400);
       }
+      await assertAdmissionsStudentsOnly(req, userIds, filters);
 
       const result = await bulkService.createBulkJob({
         tenantId,

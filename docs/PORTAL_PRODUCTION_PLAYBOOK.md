@@ -442,7 +442,7 @@ Student-specific things to probe:
 | 2 | Parent | ✅ done (pushed `036435a`) |
 | — | Staff onboarding (prerequisite for 3 and 4) | ✅ done (see below) |
 | 3 | Accountant (finance) | ✅ done (this branch) |
-| 4 | Admissions | last |
+| 4 | Admissions | ✅ done (this branch) |
 
 ### Parent — after Student (work order)
 
@@ -656,6 +656,19 @@ Accountant-specific things to probe:
 - **Audit trail:** who recorded or voided a payment. Voids and refunds need a reason and use `ConfirmationDialog`.
 - Reminders don't double-send. Receipts and exports (CSV/PDF) match on-screen totals.
 
+### Admissions pass: pipeline and enrolment (✅ done & verified)
+
+Migration `169_admissions_pipeline` (additive): on `admission_applications` interview date/location, assessment score, documents checklist (jsonb), `student_id` (unique: one student per application), enrolled class/date, withdrawal reason, `emailed_decisions`; new `admission_application_events` (timeline). Existing enrolled applications are linked to their students. Service `services/admissions/admissionPipelineService.ts`; routes `admissionsRoutes.ts`. The legacy `admissionRoutes.ts` (shadowed GETs, PATCH path that created duplicate students) is no longer mounted.
+
+- **Stages:** pending (New) → under_review → interview_scheduled → approved | waitlist | rejected | withdrawn; reopen rejected / withdrawn / approved → under_review. Every move is checked on the server (`TRANSITIONS`, 409 `INVALID_TRANSITION`) and written to the timeline. Reject and withdraw need a reason; an interview needs a date.
+- **Approve ≠ enrol.** `POST /admissions/:id/enrol` creates the student once: transaction + per-application lock, current-year class only (400 `INVALID_CLASS` for last year's copy), capacity check (409 `CLASS_FULL` unless confirmed), plan limit, enrolment with `academic_session_id`, parent linked, student + parent sign-ins returned once. A retry or double click returns the same student.
+- **Emails:** interview invitation, approved / waitlist / rejected each sent once (`emailed_decisions`), enrolment confirmation without passwords. Withdrawals and notes never emailed.
+- **Office:** walk-in form uses this year's classes with places left, documents checklist, optional "Accept and enrol now"; edit until enrolled; notes; duplicate warning (same name + birthday, applications and students); principal-only delete, never for an enrolled application (409 `ENROLLED_KEEP`), audited.
+- **Public form:** same child + birthday + phone in the open intake returns the first application (no second row or email); admissions staff (officers, duty teachers, principal) get an in-app notice.
+- **Page:** stage chips with server counts, KPIs, search (child, number, parent, phone, email), class / source filters, year (all years option), server paging in grid and list, filtered export, `?status=` / `?open=` deep links; application modal with Details / Documents / Timeline and only the allowed actions.
+- **Verified** (40 HTTP checks on real data, emails stubbed, test rows removed, migration rolled back so Vercel runs it): illegal moves refused; interview + decision emails once; approve creates no student; last-year class refused; enrol → student, session-tagged enrolment, guardian, sign-ins; enrol again and two parallel enrols → one student; walk-in enrol-now; edit / delete guards; withdraw + reopen; duplicate flag; list counts, search, status filter, export; overview active-year default and all years; public duplicate submit; officer notified; admissions staff cards 403.
+- **Data note:** `ADM-2026-00001` (Alpha, 2026/2027 intake) was approved under the old code but no student was linked; it now shows as "Approved, to enrol" in the 2026/2027 intake with a duplicate warning pointing at the existing students. Mark it withdrawn or leave it.
+
 ### Admissions — last (work order)
 
 Admissions-officer sidebar, top to bottom. Email Notifications and Enrollment
@@ -663,20 +676,20 @@ Reports are v2 (hidden) and skipped.
 
 | # | Sidebar item (admissions order) | Route | Status |
 |---|---|---|---|
-| 0 | Overview / Dashboard (pipeline) | `/admissions/dashboard` | 🔎 |
-| 1 | Classes & Streams | `/academic/classes` | 🔎 |
-| 2 | Subjects | `/academic/subjects` | 🔎 |
-| 3 | Timetables | `/academic/timetables` | 🔎 |
-| 4 | Exam Timetable | `/academic/exam-timetable` | 🔎 |
-| 5 | Results & Grades | `/academic/results` | 🔎 |
-| 6 | Report Cards | `/academic/report-cards` | 🔎 |
-| 7 | Student Directory | `/students/directory` | 🔎 |
-| 8 | Admissions | `/students/admissions` | 🔎 |
-| 9 | Student Profiles | `/students/profiles` | 🔎 |
-| 10 | Announcements | `/communication/announcements` | 🔎 |
-| 11 | Support | `/support` | 🔎 |
-| 12 | ID Cards | `/identity/cards` | 🔎 |
-| — | Settings, Guide & Replay walkthrough | `/settings`, `/guide` | 🔎 (§2.11) |
+| 0 | Overview / Dashboard (pipeline) | `/admissions/dashboard` | ✅ year-aware (active year default, YearFilter); KPIs (applications / this month / online, to review, acceptance rate, enrolled), upcoming interviews, approved-not-enrolled, pipeline / recent / by-class tabs; every tile deep-links `?status=` / `?open=`; error + Retry |
+| 1 | Classes & Streams | `/academic/classes` | ✅ view-only, all classes of the year (`listAllClasses`), office wording |
+| 2 | Subjects | `/academic/subjects` | ✅ view-only (writes 403) |
+| 3 | Timetables | `/academic/timetables` | ✅ view-only, office empty states |
+| 4 | Exam Timetable | `/academic/exam-timetable` | ✅ view-only (writes 403) |
+| 5 | Results & Grades | `/academic/results` | ✅ Class Ranking only, "view only" title; score/rating tabs hidden (grid + scores 403) |
+| 6 | Report Cards | `/academic/report-cards` | ✅ view; draft banner says the principal publishes |
+| 7 | Student Directory | `/students/directory` | ✅ (existing manager rights; delete is principal) |
+| 8 | Admissions | `/students/admissions` | ✅ rebuilt (part below) |
+| 9 | Student Profiles | `/students/profiles` | ✅ password reset now asks to confirm |
+| 10 | Announcements | `/communication/announcements` | ✅ school-wide to everyone / students / parents (existing) |
+| 11 | Support | `/support` | ✅ admissions FAQs + shortcuts; help article rewritten (enrol step) |
+| 12 | ID Cards | `/identity/cards` | ✅ students only for this role (server 403 `STUDENTS_ONLY` on generate/bulk; UI hides staff targets; by-class uses this year's classes) |
+| — | Settings, Guide & Replay walkthrough | `/settings`, `/guide` | ✅ Settings: profile + security; Guide rewritten (5-step walkthrough, 8 sections, rules, FAQs; merged for duty teachers) |
 
 Admissions-specific things to probe:
 - **Pipeline integrity:** status moves follow the allowed order. Approve → enrol creates exactly one student (no duplicates on retry). Decisions email the applicant once. Admission numbers follow the school's ID format.
