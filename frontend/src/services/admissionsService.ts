@@ -115,6 +115,8 @@ export interface ListAdmissionsParams {
 export interface PublicAdmissionInfo {
   school: { name: string; logo_url: string | null };
   classes: { id: string; name: string; level: string }[];
+  /** Cloudflare Turnstile site key when the school's server has it switched on. */
+  captcha_site_key?: string | null;
 }
 
 export const ADMISSION_STATUSES: { value: AdmissionStatus; label: string }[] = [

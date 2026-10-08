@@ -19,6 +19,7 @@ import { logger } from '@utils/logger';
 import { generateNextId } from '@utils/idGenerator';
 import { linkGuardianForStudent } from '@utils/guardianLinking';
 import { normalizeAcademicYear, resolveActiveYear } from '@utils/academicYear';
+import { tenantTimezone } from '@utils/schoolDate';
 
 export const STATUSES = ['pending', 'under_review', 'interview_scheduled', 'approved', 'waitlist', 'rejected', 'withdrawn', 'enrolled'] as const;
 export type AdmStatus = typeof STATUSES[number];
@@ -333,6 +334,12 @@ export const admissionPipelineService = {
       score = Number(body.assessment_score);
       if (!Number.isFinite(score) || score < 0 || score > 100) throw new AppError('The assessment score must be between 0 and 100.', 400, 'VALIDATION_ERROR');
     }
+    // Interview times are shown in the school's timezone (emails and timeline).
+    const tz = interviewAt ? await tenantTimezone(tenantId) : 'UTC';
+    const whenText = (d: Date, style: 'full' | 'short') => {
+      try { return d.toLocaleString('en-GB', { timeZone: tz, ...(style === 'full' ? { dateStyle: 'full', timeStyle: 'short' } : { dateStyle: 'medium', timeStyle: 'short' }) } as any); }
+      catch { return d.toISOString().slice(0, 16).replace('T', ' '); }
+    };
     let from: AdmStatus = 'pending';
     let app: any;
     await db.transaction(async (trx) => {
@@ -348,7 +355,7 @@ export const admissionPipelineService = {
       if (score !== undefined) upd.assessment_score = score;
       await trx('admission_applications').where({ id: app.id }).update(upd);
       const extra = [
-        to === 'interview_scheduled' ? `Interview ${interviewAt!.toISOString().slice(0, 16).replace('T', ' ')}${upd.interview_location ? ` at ${upd.interview_location}` : ''}` : '',
+        to === 'interview_scheduled' ? `Interview ${whenText(interviewAt!, 'short')}${upd.interview_location ? ` at ${upd.interview_location}` : ''}` : '',
         score !== undefined && score !== null ? `Assessment score ${score}` : '',
         note,
       ].filter(Boolean).join(' · ');
@@ -364,7 +371,7 @@ export const admissionPipelineService = {
       if (['approved', 'rejected', 'waitlist', 'interview_scheduled'].includes(to) && !sent.includes(key)) {
         try {
           if (to === 'interview_scheduled') {
-            const when = interviewAt!.toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'short', timeZone: 'UTC' });
+            const when = whenText(interviewAt!, 'full');
             emailSent = await emailApplicant(tenantId, to_email, guardianName(app), 'Admission interview', [
               `${name(app)} is invited for an admission interview on ${when}${body?.interview_location ? ` at ${String(body.interview_location).trim()}` : ''}.`,
               `Application number: ${app.application_number}. Please bring the child and any documents the school asked for.`,

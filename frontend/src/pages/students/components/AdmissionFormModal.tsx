@@ -26,12 +26,46 @@ interface AdmissionFormModalProps {
   editing?: AdmissionRecord | null;
   /** Staff: called when "enrol now" made the applicant a student. */
   onEnrolled?: (result: EnrolResult, childName: string) => void;
+  /** Public form: Cloudflare Turnstile site key (security check), when enabled. */
+  captchaSiteKey?: string | null;
 }
+
+/** Cloudflare Turnstile widget (loaded only when the school turned it on). */
+const TURNSTILE_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+const Turnstile: React.FC<{ siteKey: string; onToken: (t: string) => void }> = ({ siteKey, onToken }) => {
+  const ref = React.useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let widgetId: string | undefined; let cancelled = false;
+    const render = () => {
+      const ts = (window as any).turnstile;
+      if (cancelled || !ts || !ref.current) return;
+      widgetId = ts.render(ref.current, {
+        sitekey: siteKey,
+        callback: (t: string) => onToken(t),
+        'expired-callback': () => onToken(''),
+        'error-callback': () => onToken(''),
+      });
+    };
+    if ((window as any).turnstile) render();
+    else {
+      let el = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SRC}"]`);
+      if (!el) { el = document.createElement('script'); el.src = TURNSTILE_SRC; el.async = true; el.defer = true; document.head.appendChild(el); }
+      el.addEventListener('load', render);
+    }
+    return () => { cancelled = true; try { if (widgetId) (window as any).turnstile?.remove(widgetId); } catch { /* ignore */ } };
+  }, [siteKey]);
+  return <div ref={ref} className="mt-4" aria-label="Security check" />;
+};
 
 const EDIT_KEYS = ['child_first_name', 'child_middle_name', 'child_last_name', 'child_dob', 'child_gender', 'child_nationality', 'child_religion', 'child_place_of_birth', 'class_applying_for', 'child_address', 'previous_school', 'last_grade_attained', 'child_photo_url', 'guardian_first_name', 'guardian_middle_name', 'guardian_last_name', 'guardian_relationship', 'guardian_phone', 'guardian_alt_phone', 'guardian_email', 'guardian_occupation', 'guardian_address', 'guardian_nationality', 'guardian_national_id', 'takes_medication', 'medication_details', 'has_allergies', 'allergy_details', 'has_chronic_illness', 'chronic_illness_details', 'allow_first_aid', 'emergency_contact_name', 'emergency_contact_relationship', 'emergency_contact_phone'] as const;
 
-export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, onClose, onSuccess, publicSchoolSlug, publicClasses, editing, onEnrolled }) => {
+export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, onClose, onSuccess, publicSchoolSlug, publicClasses, editing, onEnrolled, captchaSiteKey }) => {
   const [step, setStep] = useState(1);
+  // Public form: bots fill this hidden field; people never see it.
+  const [website, setWebsite] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaKey, setCaptchaKey] = useState(0);
+  const needsCaptcha = !!publicSchoolSlug && !!captchaSiteKey;
   const isStaffCreate = !publicSchoolSlug && !editing;
   const [enrolNow, setEnrolNow] = useState(false);
   const [docs, setDocs] = useState<Record<string, boolean>>({});
@@ -116,7 +150,7 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
         return;
       }
       const res: any = publicSchoolSlug
-        ? await admissionsService.submitPublicApplication(publicSchoolSlug, form)
+        ? await admissionsService.submitPublicApplication(publicSchoolSlug, { ...form, website, turnstile_token: captchaToken || undefined })
         : await admissionsService.submitApplication({ ...form, documents: docs, enrol_now: enrolNow });
       if (res.success === false) throw new Error(res.error ?? 'Submission failed');
       const enrolment = res.data?.enrolment;
@@ -127,6 +161,8 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
       setForm({ child_first_name: '', child_middle_name: '', child_last_name: '', child_dob: '', child_gender: '', child_nationality: 'Sierra Leonean', child_religion: '', child_place_of_birth: '', class_applying_for: '', child_address: '', previous_school: '', last_grade_attained: '', child_photo_url: '', guardian_first_name: '', guardian_middle_name: '', guardian_last_name: '', guardian_relationship: '', guardian_phone: '', guardian_alt_phone: '', guardian_email: '', guardian_occupation: '', guardian_address: '', guardian_nationality: 'Sierra Leonean', guardian_national_id: '', takes_medication: false, medication_details: '', has_allergies: false, allergy_details: '', has_chronic_illness: false, chronic_illness_details: '', allow_first_aid: true, emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '' });
     } catch (err) {
       setServerError(err instanceof Error ? err.message : 'Something went wrong');
+      // A security-check token works once: show a fresh check for the retry.
+      if (needsCaptcha) { setCaptchaToken(''); setCaptchaKey((k) => k + 1); }
     } finally { setIsSubmitting(false); }
   };
 
@@ -141,7 +177,7 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
           <div className="flex items-center gap-2 ml-auto">
             {step > 1 && <Button variant="ghost" onClick={() => setStep(step - 1)}>Back</Button>}
             {step < totalSteps && <Button variant="default" onClick={() => setStep(step + 1)}>Next</Button>}
-            {step === totalSteps && <Button variant="default" disabled={isSubmitting} onClick={handleSubmit}>{isSubmitting ? 'Saving…' : editing ? 'Save changes' : isStaffCreate && enrolNow ? 'Save and enrol' : 'Submit Application'}</Button>}
+            {step === totalSteps && <Button variant="default" disabled={isSubmitting || (needsCaptcha && !captchaToken)} onClick={handleSubmit}>{isSubmitting ? 'Saving…' : editing ? 'Save changes' : isStaffCreate && enrolNow ? 'Save and enrol' : 'Submit Application'}</Button>}
           </div>
         </div>
       }
@@ -268,6 +304,13 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
               <span><strong>Accept and enrol now</strong> (walk-in admission). The child becomes a student in the chosen class straight away, portal sign-ins are created and any terms already billed to the class are billed to them too (the bursar is told). Leave it unticked to review the application first.</span>
             </label>
           )}
+          {publicSchoolSlug && (
+            <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>
+              <label htmlFor="adm-website">Leave this empty</label>
+              <input id="adm-website" tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
+            </div>
+          )}
+          {needsCaptcha && <Turnstile key={captchaKey} siteKey={captchaSiteKey!} onToken={setCaptchaToken} />}
           {!editing && (
           <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950/20 rounded-xl border border-blue-200 dark:border-blue-800">
             <p className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-1">Ready to Submit</p>

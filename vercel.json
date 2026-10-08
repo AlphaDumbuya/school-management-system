@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "npm install --legacy-peer-deps --include=dev",
-  "buildCommand": "(cd backend && ../node_modules/.bin/tsup && ../node_modules/.bin/knex migrate:latest --knexfile knexfile.js) && (cd frontend && ../node_modules/.bin/vite build)",
+  "buildCommand": "(cd backend && ../node_modules/.bin/tsup && if [ \"$VERCEL_ENV\" = \"preview\" ] && [ \"$PREVIEW_DATABASE_ISOLATED\" != \"1\" ]; then echo 'Preview build: database migrations skipped (preview shares the production database)'; else ../node_modules/.bin/knex migrate:latest --knexfile knexfile.js; fi) && (cd frontend && ../node_modules/.bin/vite build)",
   "outputDirectory": "frontend/dist",
   "routes": [
     {
@@ -15,7 +15,7 @@
       "src": "/(.*)",
       "dest": "/index.html",
       "headers": {
-        "Content-Security-Policy-Report-Only": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data:; connect-src 'self' https: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+        "Content-Security-Policy-Report-Only": "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data:; connect-src 'self' https: wss:; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Permissions-Policy": "geolocation=(), microphone=(), camera=(self)"

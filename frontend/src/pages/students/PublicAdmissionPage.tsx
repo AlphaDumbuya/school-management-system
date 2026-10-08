@@ -117,6 +117,7 @@ const PublicAdmissionPage: React.FC = () => {
           onSuccess={(number, sent) => { setApplicationNumber(number || 'Submitted'); setEmailSent(sent === true); }}
           publicSchoolSlug={schoolSlug}
           publicClasses={info.classes}
+          captchaSiteKey={info.captcha_site_key || null}
         />
       )}
     </main>

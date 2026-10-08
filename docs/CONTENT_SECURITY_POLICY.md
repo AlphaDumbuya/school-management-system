@@ -14,11 +14,12 @@ break the real app before we enforce it.
 
 ```
 default-src 'self';
-script-src 'self';
+script-src 'self' https://challenges.cloudflare.com;   # Cloudflare Turnstile on the public admission form
 style-src 'self' 'unsafe-inline';
 img-src 'self' data: https: blob:;
 font-src 'self' data:;
 connect-src 'self' https: wss:;
+frame-src https://challenges.cloudflare.com;            # Turnstile widget iframe
 frame-ancestors 'none';
 base-uri 'self';
 form-action 'self';
