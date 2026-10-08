@@ -1,4 +1,5 @@
 import { Knex } from 'knex';
+import { AppError } from '../middleware/errorHandler.js';
 import PDFDocument from 'pdfkit';
 import { logger } from '../utils/logger.js';
 import { QrCodeService } from './qrCodeService.js';
@@ -80,7 +81,7 @@ export class IdCardService {
         .first();
 
       if (existingCard) {
-        throw new Error(`User ${userId} already has an active card`);
+        throw new AppError('This person already has an active ID card. Regenerate it, or revoke it first to issue a new one.', 409, 'ALREADY_HAS_CARD');
       }
 
       // Retrieve user information (checking both users table and students table)
@@ -133,6 +134,9 @@ export class IdCardService {
       let template;
       if (options.templateId) {
         template = await this.templateService.getTemplateById(options.templateId);
+        if ((template as any)?.status && (template as any).status !== 'approved') {
+          throw new AppError('This card design is not approved yet. Choose an approved template, or ask the principal to approve it.', 409, 'TEMPLATE_NOT_APPROVED');
+        }
       } else {
         template = await this.templateService.getDefaultTemplate(
           tenantId,

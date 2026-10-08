@@ -462,7 +462,7 @@ const navItems: NavItem[] = [
     label: 'Card Templates',
     icon: <FaBarcode className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/identity/templates',
-    roles: ['super_admin', 'principal'],
+    roles: ['super_admin', 'principal', 'admissions_officer'],
     module: 'Identity Management',
     group: 'Identity',
     version: 'v1',

@@ -84,7 +84,7 @@ export const Phase13AdmissionsDashboard: React.FC = () => {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
             {kpis.map((k) => (
-              <button key={k.label} type="button" onClick={() => go(k.to)} className="text-left rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:border-blue-300">
+              <button key={k.label} type="button" onClick={() => go(k.to)} className="!flex flex-col !items-start !justify-start text-left w-full rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 !p-4 hover:border-blue-300">
                 <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${k.tint} mb-3`}>{k.icon}</div>
                 <div className="text-2xl font-black text-gray-900 dark:text-white">{isLoading ? <span className="inline-block h-7 w-16 rounded bg-gray-100 dark:bg-gray-700 animate-pulse" /> : k.value}</div>
                 <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mt-0.5">{k.label}</div>
@@ -98,13 +98,13 @@ export const Phase13AdmissionsDashboard: React.FC = () => {
         {!isLoading && !error && !viewingPast && (newCount > 0 || toEnrol > 0 || interviews.length > 0) && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
             {newCount > 0 && (
-              <button type="button" onClick={() => go('?status=pending')} className="flex gap-3 text-left rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 p-4">
+              <button type="button" onClick={() => go('?status=pending')} className="!flex !justify-start items-start gap-3 text-left rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 !p-4">
                 <AlertCircle className="text-amber-600 flex-shrink-0" size={20} />
                 <span><span className="block font-semibold text-amber-900 dark:text-amber-200">{newCount} new application{newCount === 1 ? '' : 's'}</span><span className="text-xs text-amber-800 dark:text-amber-300">Start the review →</span></span>
               </button>
             )}
             {toEnrol > 0 && (
-              <button type="button" onClick={() => go('?status=approved')} className="flex gap-3 text-left rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 p-4">
+              <button type="button" onClick={() => go('?status=approved')} className="!flex !justify-start items-start gap-3 text-left rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 !p-4">
                 <ClipboardCheck className="text-emerald-600 flex-shrink-0" size={20} />
                 <span><span className="block font-semibold text-emerald-900 dark:text-emerald-200">{toEnrol} approved, not enrolled</span><span className="text-xs text-emerald-800 dark:text-emerald-300">Enrol them into this year’s classes →</span></span>
               </button>
@@ -114,7 +114,7 @@ export const Phase13AdmissionsDashboard: React.FC = () => {
                 <p className="flex items-center gap-2 font-semibold text-purple-900 dark:text-purple-200"><CalendarClock size={18} /> Upcoming interviews</p>
                 <ul className="mt-1 space-y-1">
                   {interviews.slice(0, 4).map((i) => (
-                    <li key={i.id}><button type="button" onClick={() => go(`?open=${i.id}`)} className="text-xs text-purple-800 dark:text-purple-300 hover:underline text-left">
+                    <li key={i.id}><button type="button" onClick={() => go(`?open=${i.id}`)} className="!px-0 !py-0 !justify-start text-xs text-purple-800 dark:text-purple-300 hover:underline text-left">
                       {new Date(i.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · {i.studentName}{i.location ? ` · ${i.location}` : ''}
                     </button></li>
                   ))}
@@ -143,19 +143,19 @@ export const Phase13AdmissionsDashboard: React.FC = () => {
             action={{ label: 'Open Admissions', onClick: () => go('') }}
           />
         ) : activeTab === 'pipeline' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          <div className="flex gap-4 overflow-x-auto pb-2 snap-x" role="list" aria-label="Pipeline by stage">
             {PIPELINE.map((status) => (
-              <div key={status} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-                <button type="button" onClick={() => go(`?status=${status}`)} className="flex w-full items-center gap-2 mb-4 text-left">
+              <div key={status} role="listitem" className="snap-start flex-shrink-0 w-[78%] sm:w-[240px] xl:flex-1 xl:min-w-[200px] bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                <button type="button" onClick={() => go(`?status=${status}`)} className="!flex w-full !justify-start items-center gap-2 mb-4 text-left !px-0 !py-0">
                   <span className={`w-3 h-3 rounded-full ${DOT[status]}`} />
                   <h3 className="font-semibold text-gray-900 dark:text-white text-sm">{ADM_LABEL[status]}</h3>
                   <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700">{byStatus[status] ?? 0}</span>
                 </button>
                 <div className="space-y-2">
                   {groups[status].slice(0, 6).map((app) => (
-                    <button key={app.id} type="button" onClick={() => go(`?open=${app.id}`)} className="w-full text-left p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-100 dark:border-gray-700 hover:border-blue-300">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{app.studentName}</p>
-                      <p className="text-xs text-gray-500 mt-0.5 truncate">{app.className}</p>
+                    <button key={app.id} type="button" onClick={() => go(`?open=${app.id}`)} className="!flex flex-col !items-start !justify-start w-full text-left !p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-100 dark:border-gray-700 hover:border-blue-300 min-w-0">
+                      <p className="w-full text-sm font-medium text-gray-900 dark:text-white truncate">{app.studentName}</p>
+                      <p className="w-full text-xs text-gray-500 mt-0.5 truncate">{app.className}</p>
                     </button>
                   ))}
                   {(byStatus[status] ?? 0) > groups[status].slice(0, 6).length && (
