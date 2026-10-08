@@ -265,7 +265,7 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
           {isStaffCreate && (
             <label className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-900 p-3 text-sm text-emerald-900 dark:text-emerald-200">
               <input type="checkbox" className="mt-0.5" checked={enrolNow} onChange={(e) => setEnrolNow(e.target.checked)} />
-              <span><strong>Accept and enrol now</strong> (walk-in admission). The child becomes a student in the chosen class straight away and portal sign-ins are created. Leave it unticked to review the application first.</span>
+              <span><strong>Accept and enrol now</strong> (walk-in admission). The child becomes a student in the chosen class straight away, portal sign-ins are created and any terms already billed to the class are billed to them too (the bursar is told). Leave it unticked to review the application first.</span>
             </label>
           )}
           {!editing && (

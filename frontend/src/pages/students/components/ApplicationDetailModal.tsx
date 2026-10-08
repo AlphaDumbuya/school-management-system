@@ -79,6 +79,9 @@ export const EnrolCredentials: React.FC<{ result: EnrolResult; childLabel: strin
           <Button size="sm" variant="outline" onClick={() => copy(all)}><Copy size={13} className="mr-1" /> Copy all</Button>
         </div>
       ) : !result.already ? <p className="text-xs text-gray-500">Portal sign-ins already existed for this family. See Student Profiles.</p> : null}
+      {result.fees && (result.fees.billed.length > 0 || result.fees.not_billed.length > 0) && (
+        <p className="text-xs text-gray-600 dark:text-gray-300">Fees: {result.fees.billed.length ? <>billed {result.fees.billed.join(', ')} (Le {result.fees.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })})</> : 'nothing billed'}{result.fees.not_billed.length ? <>; not billed {result.fees.not_billed.join(', ')}</> : null}. The bursar has been told.</p>
+      )}
       {(result.warnings || []).map((w) => <p key={w} role="alert" className="text-xs text-amber-700">{w}</p>)}
       <Link to="/students/profiles" state={{ studentId: result.student.id }} className="inline-block text-xs font-bold text-blue-600 hover:underline">Open the student profile →</Link>
     </div>
@@ -92,16 +95,19 @@ export const EnrolDialog: React.FC<{ app: { id: string; class_applying_for?: str
   const [classId, setClassId] = useState(preferred);
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [terms, setTerms] = useState<string[]>([]);
   React.useEffect(() => { setClassId(preferred); setOver(false); }, [app?.id, preferred]);
-  if (!app) return null;
   const cls = classes.find((c) => c.id === classId);
+  // Default: bill every term the class has already been billed.
+  React.useEffect(() => { setTerms(cls?.billed_terms || []); }, [cls?.id, cls?.billed_terms?.length]);
+  if (!app) return null;
   return (
     <Modal isOpen onClose={onClose} title={`Enrol ${childName(app)}`} size="md"
       footer={<><Button variant="ghost" disabled={busy} onClick={onClose}>Cancel</Button>
         <Button disabled={busy || !classId || (!!cls?.full && !over)} onClick={async () => {
           setBusy(true);
           try {
-            const r: any = await admissionsService.enrol(app.id, { class_id: classId, allow_over_capacity: over });
+            const r: any = await admissionsService.enrol(app.id, { class_id: classId, allow_over_capacity: over, bill_terms: terms });
             if (r?.success === false) return showToast.error(r.error || 'Could not enrol');
             onDone(r.data);
           } finally { setBusy(false); }
@@ -116,6 +122,21 @@ export const EnrolDialog: React.FC<{ app: { id: string; class_applying_for?: str
             {classes.map((c) => <option key={c.id} value={c.id}>{c.name}{c.capacity ? ` · ${c.enrolled}/${c.capacity}${c.full ? ' (full)' : ''}` : ` · ${c.enrolled} students`}</option>)}
           </select>
         </div>
+        {cls && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 text-xs">
+            {cls.billed_terms.length === 0
+              ? <p className="text-gray-500">No fees are billed to {cls.name} yet this year. The bursar bills them from Fee Structures and is told about this student.</p>
+              : <>
+                <p className="font-semibold text-gray-700 dark:text-gray-200 mb-1">Fees already billed to {cls.name}: bill them to this student too</p>
+                {cls.billed_terms.map((t) => (
+                  <label key={t} className="flex items-center gap-2 py-0.5">
+                    <input type="checkbox" checked={terms.includes(t)} onChange={(e) => setTerms(e.target.checked ? [...terms, t] : terms.filter((x) => x !== t))} /> {t}
+                  </label>
+                ))}
+                <p className="text-gray-500 mt-1">Untick a term the child is not paying for (e.g. joining late). The bursar is notified either way.</p>
+              </>}
+          </div>
+        )}
         {cls?.full && (
           <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 p-2 text-xs text-amber-900 dark:text-amber-200">
             <input type="checkbox" className="mt-0.5" checked={over} onChange={(e) => setOver(e.target.checked)} />

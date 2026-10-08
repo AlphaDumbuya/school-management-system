@@ -26,7 +26,7 @@ const requireStaff = (req: Request, res: Response, next: NextFunction) => {
  */
 const router = Router();
 
-const TERM_LABELS: Record<number, string> = { 1: 'First Term', 2: 'Second Term', 3: 'Third Term' };
+export const TERM_LABELS: Record<number, string> = { 1: 'First Term', 2: 'Second Term', 3: 'Third Term' };
 
 // Populate req.user (id/tenant_id/role) for every route before the staff guard.
 router.use(authenticate, attachUserContext);
@@ -267,7 +267,7 @@ router.delete('/:id', authenticate, requireStaff, async (req: Request, res: Resp
 });
 
 /** Bill one term for a structure inside a transaction. Returns students touched. */
-async function billOneTerm(
+export async function billOneTerm(
   trx: any,
   tenantId: string,
   s: any,

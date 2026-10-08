@@ -93,7 +93,43 @@ export async function currentYearClasses(tenantId: string) {
     .select('c.id', 'c.name', 'c.level', 'c.section', 'c.capacity', 'c.academic_session_id',
       db.raw("(SELECT COUNT(*) FROM enrollments e WHERE e.class_id = c.id AND e.status IN ('enrolled','active'))::int as enrolled"))
     .orderBy('c.name');
-  return rows.map((c: any) => ({ ...c, capacity: Number(c.capacity) || null, enrolled: Number(c.enrolled) || 0, full: !!c.capacity && Number(c.enrolled) >= Number(c.capacity) }));
+  const { yearString } = await resolveActiveYear(tenantId);
+  const billed = rows.length ? await db('fees').where({ tenant_id: tenantId, academic_year: yearString, source: 'structure' }).whereNot('status', 'deleted')
+    .whereIn('class_id', rows.map((r: any) => r.id)).where('type', 'Tuition').distinct('class_id', 'term') : [];
+  const termsOf = (id: string) => ['First Term', 'Second Term', 'Third Term'].filter((t) => billed.some((b: any) => b.class_id === id && b.term === t));
+  return rows.map((c: any) => ({ ...c, capacity: Number(c.capacity) || null, enrolled: Number(c.enrolled) || 0, full: !!c.capacity && Number(c.enrolled) >= Number(c.capacity), billed_terms: termsOf(c.id) }));
+}
+
+/**
+ * Bill a newly enrolled student the terms already billed to their class this
+ * year (same structure, same due dates as the class), then apply any approved
+ * discounts. Same rules and lock as Fee Structures → Bill, so nothing doubles.
+ */
+async function billCatchUp(tenantId: string, studentId: string, classId: string, year: string, terms: string[]) {
+  const out = { billed: [] as string[], amount: 0 };
+  if (!terms.length) return out;
+  const s = await db('fee_structures').where({ tenant_id: tenantId, class_id: classId, academic_year: year }).first();
+  if (!s) return out;
+  const { billOneTerm, TERM_LABELS } = await import('../../routes/feeStructureRoutes.js');
+  await db.transaction(async (trx) => {
+    await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [`fee-bill:${s.id}`]);
+    for (const n of [1, 2, 3] as const) {
+      const label = TERM_LABELS[n];
+      if (!terms.includes(label)) continue;
+      // The class's due date for that term.
+      const ref = await trx('fees').where({ tenant_id: tenantId, class_id: classId, academic_year: year, term: label, source: 'structure', type: 'Tuition' })
+        .whereNot('status', 'deleted').orderBy('due_date').first('due_date');
+      if (!ref) continue;
+      const before = Number((await trx('fees').where({ tenant_id: tenantId, student_id: studentId }).whereNot('status', 'deleted').sum({ s: 'amount' }).first() as any)?.s) || 0;
+      const ids = await billOneTerm(trx, tenantId, s, n, new Date(ref.due_date), [{ id: studentId }]);
+      const after = Number((await trx('fees').where({ tenant_id: tenantId, student_id: studentId }).whereNot('status', 'deleted').sum({ s: 'amount' }).first() as any)?.s) || 0;
+      if (ids.size) { out.billed.push(label); out.amount += after - before; }
+    }
+    const { discountService } = await import('../finance/discountService.js');
+    await discountService.applyApprovedGrantsForStudent(trx, tenantId, studentId, year);
+  });
+  out.amount = Math.round(out.amount * 100) / 100;
+  return out;
 }
 
 /** Same-name + same-birthday children already applying or at school. */
@@ -241,7 +277,7 @@ export const admissionPipelineService = {
     if (body?.enrol_now === true) {
       if (!created.class_applying_for) throw new AppError('Choose a class to enrol into.', 400, 'VALIDATION_ERROR');
       await this.changeStatus(tenantId, user, created.id, { status: 'approved', note: 'Accepted at the office', silent: true });
-      enrolment = await this.enrol(tenantId, user, created.id, { class_id: created.class_applying_for });
+      enrolment = await this.enrol(tenantId, user, created.id, { class_id: created.class_applying_for, bill_terms: Array.isArray(body?.bill_terms) ? body.bill_terms : undefined, bill_all: !Array.isArray(body?.bill_terms) });
     }
     return { application: await this.get(tenantId, created.id), enrolment };
   },
@@ -356,7 +392,7 @@ export const admissionPipelineService = {
    * Enrol an approved applicant: create the student once, enrol them in a
    * current-year class, link parents and provision logins. Idempotent.
    */
-  async enrol(tenantId: string, user: { id: string; role?: string }, id: string, body: { class_id?: string; allow_over_capacity?: boolean }) {
+  async enrol(tenantId: string, user: { id: string; role?: string }, id: string, body: { class_id?: string; allow_over_capacity?: boolean; bill_terms?: string[]; bill_all?: boolean }) {
     const pre = await getApp(db, tenantId, id);
     if (pre.student_id) {
       const s = await db('students').where({ id: pre.student_id }).first('id', 'student_id');
@@ -430,6 +466,34 @@ export const admissionPipelineService = {
       } as any);
     } catch (e) { warnings.push('Portal logins could not be created. Create them in Student Profiles.'); logger.warn(`Account provisioning failed: ${(e as any)?.message || e}`); }
 
+    // Fees: bill the terms the class has already been billed (the officer chose which).
+    let fees = { billed: [] as string[], amount: 0 };
+    const wanted = (body?.bill_all ? (cls.billed_terms || []) : Array.isArray(body?.bill_terms) ? body.bill_terms : []).map(String).filter((t) => (cls.billed_terms || []).includes(t));
+    try { fees = await billCatchUp(tenantId, student.id, cls.id, yearString, wanted); }
+    catch (e) { warnings.push('Fees could not be billed automatically. Ask the bursar to bill this student.'); logger.warn(`Catch-up billing failed: ${(e as any)?.message || e}`); }
+    const notBilled = (cls.billed_terms || []).filter((t: string) => !fees.billed.includes(t));
+
+    // Bursar: a new student to bill / who was billed.
+    try {
+      const { notifyFinanceStaff } = await import('../finance/core.js');
+      await notifyFinanceStaff(tenantId, ['accountant'], {
+        subject: 'New student enrolled',
+        message: `${name(app)} (${student.student_id}) joined ${cls.name}.`
+          + (fees.billed.length ? ` Billed ${fees.billed.join(', ')} (Le ${fees.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}).` : '')
+          + (notBilled.length ? ` Not billed: ${notBilled.join(', ')}.` : '')
+          + (!(cls.billed_terms || []).length ? ' The class has no fees billed yet this year.' : ''),
+        url: '/finance/fees', sourceType: 'student', sourceId: student.id, exceptUserId: user.id,
+      });
+    } catch { /* best-effort */ }
+    // Class teacher: a new pupil in their register.
+    try {
+      const ct = await db('classes as c').join('teachers as t', 't.id', 'c.class_teacher_id').where('c.id', cls.id).first('t.user_id');
+      if (ct?.user_id && ct.user_id !== user.id) {
+        const { notifyUsers } = await import('../finance/core.js');
+        await notifyUsers([ct.user_id], { subject: 'New student in your class', message: `${name(app)} (${student.student_id}) has joined ${cls.name}.`, url: '/academic/classes', sourceType: 'student', sourceId: student.id });
+      }
+    } catch { /* best-effort */ }
+
     const to = app.guardian_email || app.parent_email;
     if (to) {
       const ok = await emailApplicant(tenantId, to, guardianName(app), 'Enrolment confirmed', [
@@ -443,7 +507,7 @@ export const admissionPipelineService = {
       url: '/students/directory', sourceId: app.id, exceptUserId: user.id,
     });
     return {
-      already: false, student: { id: student.id, student_id: student.student_id }, class: { id: cls.id, name: cls.name }, warnings,
+      already: false, student: { id: student.id, student_id: student.student_id }, class: { id: cls.id, name: cls.name }, warnings, fees: { ...fees, not_billed: notBilled },
       accounts: accounts ? { student_username: accounts.studentUsername, student_password: accounts.studentPassword, parent_email: accounts.parentEmail, parent_password: accounts.parentPassword } : null,
       application: await this.get(tenantId, id),
     };

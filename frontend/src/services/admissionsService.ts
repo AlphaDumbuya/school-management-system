@@ -81,7 +81,7 @@ export interface AdmissionDetail extends AdmissionRecord {
   documents_list: { key: string; label: string }[];
 }
 
-export interface AdmissionClass { id: string; name: string; level: string; section?: string | null; capacity: number | null; enrolled: number; full: boolean }
+export interface AdmissionClass { id: string; name: string; level: string; section?: string | null; capacity: number | null; enrolled: number; full: boolean; billed_terms: string[] }
 
 export interface AdmissionsMeta {
   statuses: AdmissionStatus[];
@@ -97,6 +97,7 @@ export interface EnrolResult {
   student: { id: string; student_id: string };
   class?: { id: string; name: string };
   warnings?: string[];
+  fees?: { billed: string[]; amount: number; not_billed: string[] };
   accounts: { student_username: string | null; student_password: string | null; parent_email: string | null; parent_password: string | null } | null;
   application: AdmissionDetail;
 }
@@ -187,7 +188,7 @@ export const admissionsService = {
     return apiClient.post<{ success: boolean; data: AdmissionDetail }>(`/api/v1/admissions/${id}/notes`, { note });
   },
 
-  async enrol(id: string, data: { class_id: string; allow_over_capacity?: boolean }) {
+  async enrol(id: string, data: { class_id: string; allow_over_capacity?: boolean; bill_terms?: string[] }) {
     return apiClient.post<{ success: boolean; data: EnrolResult }>(`/api/v1/admissions/${id}/enrol`, data);
   },
 
