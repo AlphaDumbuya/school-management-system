@@ -45,6 +45,14 @@ const ROLE_GUIDE: Record<string, { blurb: string; tips: string[] }> = {
       'Send balance reminders and export finance reports',
     ],
   },
+  admissions_officer: {
+    blurb: 'You now run admissions for the school.',
+    tips: [
+      'Share the online application link and review new applications',
+      'Interview, decide and enrol accepted children into this year’s classes',
+      'Keep student records, parent logins and ID cards up to date',
+    ],
+  },
   administrator: {
     blurb: 'You now handle admissions and general administration.',
     tips: [

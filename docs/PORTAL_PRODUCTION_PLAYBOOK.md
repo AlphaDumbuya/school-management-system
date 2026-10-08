@@ -442,7 +442,7 @@ Student-specific things to probe:
 | 2 | Parent | ✅ done (pushed `036435a`) |
 | — | Staff onboarding (prerequisite for 3 and 4) | ✅ done (see below) |
 | 3 | Accountant (finance) | ✅ done (this branch) |
-| 4 | Admissions | last |
+| 4 | Admissions | ✅ done (this branch) |
 
 ### Parent — after Student (work order)
 
@@ -563,6 +563,28 @@ Spec `.kiro/specs/bursar-finance-phase-c`. Migration `167_bursar_finance_c` (gl_
 - **Finance Audit Log** (`/finance/audit-log`): school-scoped (through the acting user), by area, person, dates, text; server-paged.
 - **Verified** (44 HTTP checks on real data, migration rolled back afterwards so Vercel runs it on deploy): chart 28 accounts; second sync posts 0; integrity checks agree (Fees receivable 1,812); expense + void → correction, Utilities back to 0; custom category → account 5200; petty cash 800 after top-up 1,000 / spend 200; unbalanced, control-account and future-dated journals → 400; second reversal and reversing an automatic entry → 409; trial balance 11,819 = 11,819; balance sheet assets = liabilities + equity; cash flow opening + change = closing; CSV and PDF exports; bank import 3, re-import skipped 3, auto-match 2, bank charge booked and matched, reconciled; undo blocked while matched; closed period → 409; teacher → 403.
 
+### Accountant pass, part 5: family connection and final gaps (✅ done & verified)
+
+Migration `168_bursar_finance_final` (additive): `payroll_runs.paid_from`, `petty_cash_entries.money_account`, `discount_grants.credit_shortfall` + `credited_amount`, `finance_notices` (one row per reminder sent).
+
+- **Family side:** the ledger's `paid` is cash only. Discounts and applied credit are separate lines. Families get `GET /finance/students/:id/discounts` and see credit history. The principal KPI `collected` subtracts discounts. Students and parents are notified in-app and by email (`notifyFamily(…, { emailTenantId })`) for discounts added, late fees, refunds and instalment reminders. Payments received are in-app only, because the receipt email already exists.
+- **Instalment reminders:** `planService.remindDue`, run from the daily late-fee job, sends one "due within 3 days" and one "overdue" reminder per instalment. `claimNotice` dedupes them.
+- **Payroll:** a non-principal can't change their own pay profile or payslip (403 `OWN_PAY`). "Mark paid" records which account paid it (bank, cash or mobile money), the books credit that account, and each staff member with a login is notified.
+- **Petty cash:** top-ups and returns say which account the money came from or went to, and the books use it. The fallback is bank.
+- **Discounts:** "Find staff children" on staff-child rules matches a guardian's login, email or phone (last 8 digits) to a teacher, bursar, admissions officer, principal or support staff. The bursar confirms each match. Optional "credit what's already paid": the part of a discount on paid fees becomes account credit, capped at the fees (billed − discounts − credit other grants already gave). It is stored on the grant so it is never doubled. Revoking a grant does not take that credit back, and the dialog says so.
+- **Budget:** saving notifies the principal that it needs approval.
+- **Monime refunds:** the provider API has no refund call. The refund dialog and the Guide/Support say to refund in the Monime dashboard first, then record it here.
+- **Guide:** a teacher with the Bursar/Admissions duty gets those guide sections, rules and FAQs (`getRoleGuide(role, staffDuties)`).
+- **Tests:** `bursarFinance.unit.test.ts` (PAYE bands, payslip maths, band validation, money-account mapping, categories) and the ledger property tests: 29 pass.
+- **Verified** (26 HTTP checks on real data, email stubbed, test rows removed, migration rolled back so Vercel runs it on deploy):
+  - OWN_PAY 403 for own pay, but not for others or the principal.
+  - Top-up from cash → Dr 1030 / Cr 1000. Return to mobile → Dr 1020 / Cr 1030. Unknown account → bank.
+  - Payroll paid from cash → Cr 1000 and the expense method is cash.
+  - Staff-child finder matched Alpha to Ibrahim by phone. The sibling finder is unchanged.
+  - Credit shortfall: Le 100 credited. Without the flag, the shortfall is only reported. The approve path is capped at Le 400.
+  - Reminders: 1 overdue and 1 due soon, then 0 on a re-run. They reach the parent in-app and by email.
+  - Budget notice reaches the principal. The parent can see the discounts list.
+
 ### Staff onboarding — ✅ done & verified (before Accountant and Admissions)
 
 Before this, a school had no way to hire an accountant or admissions officer,
@@ -634,6 +656,36 @@ Accountant-specific things to probe:
 - **Audit trail:** who recorded or voided a payment. Voids and refunds need a reason and use `ConfirmationDialog`.
 - Reminders don't double-send. Receipts and exports (CSV/PDF) match on-screen totals.
 
+### Admissions pass: pipeline and enrolment (✅ done & verified)
+
+Migration `169_admissions_pipeline` (additive): on `admission_applications` interview date/location, assessment score, documents checklist (jsonb), `student_id` (unique: one student per application), enrolled class/date, withdrawal reason, `emailed_decisions`; new `admission_application_events` (timeline). Existing enrolled applications are linked to their students. Service `services/admissions/admissionPipelineService.ts`; routes `admissionsRoutes.ts`. The legacy `admissionRoutes.ts` (shadowed GETs, PATCH path that created duplicate students) is no longer mounted.
+
+- **Stages:** pending (New) → under_review → interview_scheduled → approved | waitlist | rejected | withdrawn; reopen rejected / withdrawn / approved → under_review. Every move is checked on the server (`TRANSITIONS`, 409 `INVALID_TRANSITION`) and written to the timeline. Reject and withdraw need a reason; an interview needs a date.
+- **Approve ≠ enrol.** `POST /admissions/:id/enrol` creates the student once: transaction + per-application lock, current-year class only (400 `INVALID_CLASS` for last year's copy), capacity check (409 `CLASS_FULL` unless confirmed), plan limit, enrolment with `academic_session_id`, parent linked, student + parent sign-ins returned once. A retry or double click returns the same student.
+- **Emails:** interview invitation, approved / waitlist / rejected each sent once (`emailed_decisions`), enrolment confirmation without passwords. Withdrawals and notes never emailed.
+- **Office:** walk-in form uses this year's classes with places left, documents checklist, optional "Accept and enrol now"; edit until enrolled; notes; duplicate warning (same name + birthday, applications and students); principal-only delete, never for an enrolled application (409 `ENROLLED_KEEP`), audited.
+- **Public form:** same child + birthday + phone in the open intake returns the first application (no second row or email); admissions staff (officers, duty teachers, principal) get an in-app notice.
+- **Page:** stage chips with server counts, KPIs, search (child, number, parent, phone, email), class / source filters, year (all years option), server paging in grid and list, filtered export, `?status=` / `?open=` deep links; application modal with Details / Documents / Timeline and only the allowed actions.
+- **Verified** (40 HTTP checks on real data, emails stubbed, test rows removed, migration rolled back so Vercel runs it): illegal moves refused; interview + decision emails once; approve creates no student; last-year class refused; enrol → student, session-tagged enrolment, guardian, sign-ins; enrol again and two parallel enrols → one student; walk-in enrol-now; edit / delete guards; withdraw + reopen; duplicate flag; list counts, search, status filter, export; overview active-year default and all years; public duplicate submit; officer notified; admissions staff cards 403.
+- **Cross-portal (follow-up):** `GET /students` used to run `syncEnrolledApplicationsToStudents`, which turned every non-rejected application (even New ones) into a student on each Student Directory load. Removed: Enrol is the only way an application becomes a student. Enrolling now bills the terms already billed to the class (officer can untick, e.g. a late joiner; class due dates; approved discounts applied; same lock as Fee Structures → Bill), notifies the bursar (what was and wasn't billed) and the class teacher. Verified 7 more checks (no ghost student, billing, bursar notice, roster).
+- **Hardening (release pass):**
+  - Public form: shared rate limiter (Redis when `REDIS_URL` is set), database caps that hold on every serverless instance (5 online applications per family per day, 120 per school per hour → 429), duplicate re-checked under the numbering lock (a double click gives one application), honeypot field rendered, optional Cloudflare Turnstile (`TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY`; CSP allows `challenges.cloudflare.com`). Verified 8 checks with Cloudflare's test keys.
+  - Interview times in emails and the timeline use the school's timezone.
+  - Vercel preview builds no longer run migrations against the shared production database (`PREVIEW_DATABASE_ISOLATED=1` once previews have their own `DATABASE_URL`).
+  - Component tests `ApplicationDetailModal.test.tsx` (7): allowed actions per stage, reject needs a reason, enrol bills the chosen terms, full class guard, last-year class not preselected.
+  - Brevo email check passes 6/6 with the local `.env`.
+- **Sidebar walk (every page as a real admissions officer, 66/66 API checks):** fixed what the officer was shown but the server refused or broke:
+  - Student Directory: Deactivate / Reactivate now allowed for admissions (withdraw / readmit); permanent Delete hidden (principal only).
+  - Student Profiles: Attendance tab was 403 (now read-only access); "Reset password" was 403 (now allowed for student and parent logins only; staff accounts stay with the principal).
+  - Report Cards: an unreleased card returned a 500, now a clear 403 "not released yet"; the office sees released terms only (it was shown draft terms as if staff).
+  - Results: ranking opened on Third Term ("not released"); new `GET /report-cards/released` makes it open on a released term, with a clear message when none is.
+  - Staff Attendance: a hidden student-logs request failed on every load (removed for office staff); an office user added outside staff onboarding had no staff row and could not sign in (row created on first use); empty tab bar removed; "teacher profile" wording fixed.
+  - ID Cards: Expiring tab was a 500 for everyone (ambiguous SQL columns); admissions can manage student cards only (regenerate / revoke / suspend / reactivate / preview checked on the server); staff cards are view-only for them; Delete hidden (principal only).
+  - Support: the ticket list was a 500 for anyone with a ticket (`JSON.parse` on an already-parsed jsonb column), for every role.
+  - Global search finds classes and subjects for the office; promotion banner has an admissions guide.
+- **Data:** `ADM-2026-00001` (approved by the old code, never a student) was marked Withdrawn with a note; Reopen it if it was a different child.
+- **Release checklist (needs the Vercel / GitHub owner):** merge the PR (runs migrations 168 + 169, already applied to the shared DB); in Vercel Production set `CRON_SECRET`, confirm `BREVO_API_KEY` / `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME`, optionally `REDIS_URL` and the two Turnstile keys; one browser click-through as admissions officer, principal and a parent.
+
 ### Admissions — last (work order)
 
 Admissions-officer sidebar, top to bottom. Email Notifications and Enrollment
@@ -641,20 +693,20 @@ Reports are v2 (hidden) and skipped.
 
 | # | Sidebar item (admissions order) | Route | Status |
 |---|---|---|---|
-| 0 | Overview / Dashboard (pipeline) | `/admissions/dashboard` | 🔎 |
-| 1 | Classes & Streams | `/academic/classes` | 🔎 |
-| 2 | Subjects | `/academic/subjects` | 🔎 |
-| 3 | Timetables | `/academic/timetables` | 🔎 |
-| 4 | Exam Timetable | `/academic/exam-timetable` | 🔎 |
-| 5 | Results & Grades | `/academic/results` | 🔎 |
-| 6 | Report Cards | `/academic/report-cards` | 🔎 |
-| 7 | Student Directory | `/students/directory` | 🔎 |
-| 8 | Admissions | `/students/admissions` | 🔎 |
-| 9 | Student Profiles | `/students/profiles` | 🔎 |
-| 10 | Announcements | `/communication/announcements` | 🔎 |
-| 11 | Support | `/support` | 🔎 |
-| 12 | ID Cards | `/identity/cards` | 🔎 |
-| — | Settings, Guide & Replay walkthrough | `/settings`, `/guide` | 🔎 (§2.11) |
+| 0 | Overview / Dashboard (pipeline) | `/admissions/dashboard` | ✅ year-aware (active year default, YearFilter); KPIs (applications / this month / online, to review, acceptance rate, enrolled), upcoming interviews, approved-not-enrolled, pipeline / recent / by-class tabs; every tile deep-links `?status=` / `?open=`; error + Retry |
+| 1 | Classes & Streams | `/academic/classes` | ✅ view-only, all classes of the year (`listAllClasses`), office wording |
+| 2 | Subjects | `/academic/subjects` | ✅ view-only (writes 403) |
+| 3 | Timetables | `/academic/timetables` | ✅ view-only, office empty states |
+| 4 | Exam Timetable | `/academic/exam-timetable` | ✅ view-only (writes 403) |
+| 5 | Results & Grades | `/academic/results` | ✅ Class Ranking only, "view only" title; score/rating tabs hidden (grid + scores 403) |
+| 6 | Report Cards | `/academic/report-cards` | ✅ view; draft banner says the principal publishes |
+| 7 | Student Directory | `/students/directory` | ✅ (existing manager rights; delete is principal) |
+| 8 | Admissions | `/students/admissions` | ✅ rebuilt (part below) |
+| 9 | Student Profiles | `/students/profiles` | ✅ password reset now asks to confirm |
+| 10 | Announcements | `/communication/announcements` | ✅ school-wide to everyone / students / parents (existing) |
+| 11 | Support | `/support` | ✅ admissions FAQs + shortcuts; help article rewritten (enrol step) |
+| 12 | ID Cards | `/identity/cards` | ✅ students only for this role (server 403 `STUDENTS_ONLY` on generate/bulk; UI hides staff targets; by-class uses this year's classes) |
+| — | Settings, Guide & Replay walkthrough | `/settings`, `/guide` | ✅ Settings: profile + security; Guide rewritten (5-step walkthrough, 8 sections, rules, FAQs; merged for duty teachers) |
 
 Admissions-specific things to probe:
 - **Pipeline integrity:** status moves follow the allowed order. Approve → enrol creates exactly one student (no duplicates on retry). Decisions email the applicant once. Admission numbers follow the school's ID format.

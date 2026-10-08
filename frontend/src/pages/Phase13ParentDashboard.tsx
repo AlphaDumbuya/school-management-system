@@ -161,9 +161,10 @@ export const Phase13ParentDashboard: React.FC = () => {
   const feesChartData = useMemo(
     () => [
       { name: 'Paid', value: Number(fees.paid) || 0, color: '#10B981' },
+      ...(Number((fees as any).discounted) > 0 ? [{ name: 'Discounts & credit', value: Number((fees as any).discounted) || 0, color: '#6366F1' }] : []),
       { name: 'Outstanding', value: Number(fees.outstanding) || 0, color: '#EF4444' },
     ].filter((d) => d.value > 0),
-    [fees.paid, fees.outstanding]
+    [fees.paid, fees.outstanding, (fees as any).discounted]
   );
 
   // Selected child's grades bar chart (latest mean per subject).
@@ -254,7 +255,7 @@ export const Phase13ParentDashboard: React.FC = () => {
                     ).join('; ')}. These balances must still be paid.
                   </span>
                 </span>
-                <button type="button" onClick={() => navigate('/finance/my-fees')} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 px-3 py-1.5 text-xs font-bold text-white">
+                <button type="button" onClick={() => { const owing = children.find((c) => Number(c.other_years_outstanding) > 0); navigate(owing ? `/finance/my-fees?child=${owing.id}` : '/finance/my-fees'); }} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 px-3 py-1.5 text-xs font-bold text-white">
                   <CreditCard size={13} /> Pay now
                 </button>
               </div>
@@ -781,6 +782,7 @@ export const Phase13ParentDashboard: React.FC = () => {
                           <h3 className="text-base font-bold text-gray-900 dark:text-white mb-3 px-1">{childFirst}'s fees · {year}</h3>
                           {/* That year only; other years' unpaid balances stay listed as still payable. */}
                           <StudentLedgerView studentId={currentChildId} academicYear={year} redirectToPay />
+                          <button type="button" onClick={() => navigate(`/finance/my-fees?child=${currentChildId}`)} className="mt-3 text-sm font-semibold text-blue-600 hover:underline">Receipts, statement, discounts &amp; instalment plan →</button>
                         </div>
                       )}
 

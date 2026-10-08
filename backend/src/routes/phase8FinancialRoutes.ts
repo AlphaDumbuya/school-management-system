@@ -2460,7 +2460,18 @@ router.post('/finance/payments/record', authenticate, requireStaff, async (req: 
     const result = await paymentService.recordAcrossFees({
       tenantId, feeIds, amount, method, transactionReference, notes, paymentDate, idempotencyKey, allowCredit: allowCredit === true,
     }, userId);
-    // E-receipt to the family (best-effort, after the money is committed).
+    // Tell the family in the app, and email the e-receipt (best-effort, after the money is committed).
+    if (!result.duplicate) {
+      const fee = await db('fees').whereIn('id', feeIds).first('student_id').catch(() => null);
+      if (fee?.student_id) {
+        const { notifyFamily, leFmt } = await import('@services/finance/core');
+        void notifyFamily(fee.student_id, {
+          subject: 'Payment received',
+          message: `${leFmt(Number(result.recorded ?? amount))} was received for {student}${result.receipt_number ? ` (receipt ${result.receipt_number})` : ''}. Thank you.`,
+          sourceType: 'payment',
+        });
+      }
+    }
     if (!result.duplicate && result.receipt_number) {
       const { financeSettings } = await import('@services/finance/core');
       if ((await financeSettings(tenantId)).emailManualReceipts) {

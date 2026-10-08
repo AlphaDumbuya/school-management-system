@@ -59,9 +59,9 @@ export const StudentLedgerView: React.FC<Props> = ({ studentId, academicYear, ca
   const ledger: StudentLedger | undefined = React.useMemo(() => {
     if (!fullLedger || !academicYear) return fullLedger;
     const years = fullLedger.years.filter((y) => sameYear(y.academic_year, academicYear));
-    const sum = (k: 'billed' | 'paid' | 'outstanding') =>
+    const sum = (k: 'billed' | 'paid' | 'outstanding' | 'discounted' | 'credit_applied') =>
       Math.round(years.reduce((s, y: any) => s + Number(y[k] || 0), 0) * 100) / 100;
-    return { ...fullLedger, years, totals: { ...fullLedger.totals, billed: sum('billed'), paid: sum('paid'), outstanding: sum('outstanding') } };
+    return { ...fullLedger, years, totals: { ...fullLedger.totals, billed: sum('billed'), paid: sum('paid'), discounted: sum('discounted'), credit_applied: sum('credit_applied'), outstanding: sum('outstanding') } as any };
   }, [fullLedger, academicYear]);
   // Unpaid balances from OTHER years, per year (oldest first), so the student
   // is told exactly which year's fees are still owed.
@@ -123,7 +123,7 @@ export const StudentLedgerView: React.FC<Props> = ({ studentId, academicYear, ca
         <div className="mt-3 flex justify-end">
           <button
             type="button"
-            onClick={() => navigate('/finance/my-fees')}
+            onClick={() => navigate(studentId ? `/finance/my-fees?child=${studentId}` : '/finance/my-fees')}
             className="inline-flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 px-4 py-2 text-sm font-bold text-white shadow-sm"
           >
             <CreditCard size={15} /> Pay {fmtLe(otherYearsOutstanding)} now
@@ -145,7 +145,8 @@ export const StudentLedgerView: React.FC<Props> = ({ studentId, academicYear, ca
     );
   }
 
-  const paidPct = pct(ledger.totals.paid, ledger.totals.billed);
+  // Progress = how much of the bill is settled (paid, discounted or covered by credit).
+  const paidPct = pct(ledger.totals.billed - ledger.totals.outstanding, ledger.totals.billed);
   const settled = ledger.totals.outstanding <= 0;
   const sid = ledger.student_id;
 
@@ -191,7 +192,7 @@ export const StudentLedgerView: React.FC<Props> = ({ studentId, academicYear, ca
     if (redirectToPay) {
       return (
         <button
-          onClick={() => navigate('/finance/my-fees')}
+          onClick={() => navigate(studentId ? `/finance/my-fees?child=${studentId}` : '/finance/my-fees')}
           className="inline-flex items-center justify-center gap-2 font-semibold rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm hover:shadow-md transition-all px-4 py-2.5 text-sm w-full sm:w-auto"
         >
           <CreditCard size={16} /> Pay Fees
@@ -215,6 +216,13 @@ export const StudentLedgerView: React.FC<Props> = ({ studentId, academicYear, ca
           <SummaryStat icon={<CheckCircle2 className="w-4 h-4" />} iconBg="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400" label="Total Paid" value={fmtLe(ledger.totals.paid)} valueClass="text-emerald-600 dark:text-emerald-400" />
           <SummaryStat icon={settled ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />} iconBg={settled ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400'} label="Outstanding" value={fmtLe(ledger.totals.outstanding)} valueClass={settled ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'} />
         </div>
+        {(Number((ledger.totals as any).discounted) > 0 || Number((ledger.totals as any).credit_applied) > 0) && (
+          <p className="mt-3 text-xs text-indigo-700 dark:text-indigo-300">
+            {Number((ledger.totals as any).discounted) > 0 && <>Discounts &amp; scholarships took {fmtLe((ledger.totals as any).discounted)} off the fees. </>}
+            {Number((ledger.totals as any).credit_applied) > 0 && <>{fmtLe((ledger.totals as any).credit_applied)} was paid from account credit. </>}
+            “Total Paid” is money actually paid.
+          </p>
+        )}
 
         <div className="mt-4">
           <div className="flex items-center justify-between mb-1.5">
@@ -265,6 +273,7 @@ const TermsCard: React.FC<{ year: any }> = ({ year: y }) => (
             <th className="text-left font-semibold px-4 py-2">Term</th>
             <th className="text-right font-semibold px-3 py-2">Billed</th>
             <th className="text-right font-semibold px-3 py-2">Paid</th>
+            {Number(y.discounted) + Number(y.credit_applied || 0) > 0 && <th className="text-right font-semibold px-3 py-2">Discount / credit</th>}
             <th className="text-right font-semibold px-4 py-2">Due</th>
           </tr>
         </thead>
@@ -281,6 +290,7 @@ const TermsCard: React.FC<{ year: any }> = ({ year: y }) => (
                 </td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-gray-600 dark:text-gray-300">{fmtLe(t.billed)}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{fmtLe(t.paid)}</td>
+                {Number(y.discounted) + Number(y.credit_applied || 0) > 0 && <td className="px-3 py-2.5 text-right tabular-nums text-indigo-600 dark:text-indigo-400">{Number(t.discounted) + Number(t.credit_applied || 0) > 0 ? fmtLe(Number(t.discounted) + Number(t.credit_applied || 0)) : '—'}</td>}
                 <td className={`px-4 py-2.5 text-right tabular-nums font-semibold ${done ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{fmtLe(t.outstanding)}</td>
               </tr>
             );
@@ -291,6 +301,7 @@ const TermsCard: React.FC<{ year: any }> = ({ year: y }) => (
             <td className="px-4 py-2.5">Total</td>
             <td className="px-3 py-2.5 text-right tabular-nums">{fmtLe(y.billed)}</td>
             <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{fmtLe(y.paid)}</td>
+            {Number(y.discounted) + Number(y.credit_applied || 0) > 0 && <td className="px-3 py-2.5 text-right tabular-nums text-indigo-600 dark:text-indigo-400">{fmtLe(Number(y.discounted) + Number(y.credit_applied || 0))}</td>}
             <td className={`px-4 py-2.5 text-right tabular-nums ${y.outstanding <= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{fmtLe(y.outstanding)}</td>
           </tr>
         </tfoot>

@@ -6,7 +6,7 @@
 import { db } from '@utils/database';
 import { AppError } from '@middleware/errorHandler';
 import { normalizeAcademicYear, resolveActiveYear } from '@utils/academicYear';
-import { round2, audit } from './core';
+import { round2, audit, notifyFinanceStaff } from './core';
 import { cleanCategory, assertOpenYear } from './expenseService';
 
 export const budgetService = {
@@ -60,6 +60,12 @@ export const budgetService = {
       if (lines.length) await trx('budget_lines').insert(lines.map((l: any) => ({ ...l, budget_id: b.id })));
     });
     await audit('budget', null, wasApproved ? 'edit_approved' : 'save', userId, { year, lines });
+    const total = round2(lines.reduce((s: number, l: any) => s + l.amount, 0));
+    await notifyFinanceStaff(tenantId, ['principal'], {
+      subject: wasApproved ? `Budget ${year} changed: needs approval again` : `Budget ${year} waiting for approval`,
+      message: `The ${year} budget (${lines.length} line${lines.length === 1 ? '' : 's'}, Le ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}) was saved. Check it and approve it.`,
+      url: '/finance/budgets', sourceType: 'budget', exceptUserId: userId,
+    });
     return { ...(await this.get(tenantId, year)), reopened: wasApproved };
   },
 

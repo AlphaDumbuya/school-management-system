@@ -6,7 +6,7 @@
  */
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Download, Receipt, CalendarClock, FileText } from 'lucide-react';
+import { Download, Receipt, CalendarClock, FileText, Percent } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
@@ -25,9 +25,15 @@ export const FamilyAccountExtras: React.FC<{ studentId: string; label: string; y
   });
   const credit = useQuery({
     queryKey: ['fin-credit', studentId],
-    queryFn: async () => { const r: any = await bursarService.credit(studentId); if (r?.success === false) throw new Error(r.error); return r.data as { balance: number }; },
+    queryFn: async () => { const r: any = await bursarService.credit(studentId); if (r?.success === false) throw new Error(r.error); return r.data as { balance: number; entries: any[] }; },
     enabled: !!studentId,
   });
+  const discounts = useQuery({
+    queryKey: ['fin-family-discounts', studentId, y],
+    queryFn: async () => { const r: any = await bursarService.studentDiscounts(studentId, y); if (r?.success === false) throw new Error(r.error); return r.data as any[]; },
+    enabled: !!studentId && !!y,
+  });
+  const CREDIT_KIND: Record<string, string> = { overpayment: 'Overpayment kept as credit', credit_note: 'Credit from the school', applied: 'Used for fees', refunded: 'Refunded to you' };
   const active = (plans.data || []).filter((p) => p.status === 'active');
   return (
     <div className="space-y-4">
@@ -35,6 +41,36 @@ export const FamilyAccountExtras: React.FC<{ studentId: string; label: string; y
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-200">
           {le(credit.data!.balance)} is held as credit on this account. The school applies it to the next fees.
         </div>
+      )}
+      {(discounts.data || []).length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Percent size={16} /> Discounts &amp; scholarships · {y}</CardTitle></CardHeader>
+          <CardContent>
+            <ul className="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+              {discounts.data!.map((g) => (
+                <li key={g.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <span><span className="font-medium">{g.label}</span> <span className="text-xs text-gray-500">{g.basis === 'percent' ? `${g.value}%` : le(g.value)} on {g.applies_to === 'all' ? 'all charges' : 'tuition'} · {g.term || 'whole year'}</span></span>
+                  <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">{g.applied_amount > 0 ? `${le(g.applied_amount)} off` : 'Applies when fees are billed'}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+      {(credit.data?.entries || []).length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Receipt size={16} /> Account credit</CardTitle></CardHeader>
+          <CardContent>
+            <ul className="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+              {credit.data!.entries.map((e: any) => (
+                <li key={e.id} className="flex justify-between py-1.5">
+                  <span>{CREDIT_KIND[e.kind] || e.kind} <span className="text-gray-400">{String(e.created_at).slice(0, 10)}</span></span>
+                  <span className={Number(e.amount) >= 0 ? 'text-emerald-700' : 'text-gray-600'}>{Number(e.amount) >= 0 ? '+' : '−'}{le(Math.abs(Number(e.amount)))}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       )}
       {active.length > 0 && (
         <Card>

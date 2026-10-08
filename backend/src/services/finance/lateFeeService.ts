@@ -13,7 +13,7 @@ import { AppError } from '@middleware/errorHandler';
 import { tenantToday } from '@utils/schoolDate';
 import { resolveActiveYear } from '@utils/academicYear';
 import { logger } from '@utils/logger';
-import { round2, applyAdjustment, financeSettings, audit } from './core';
+import { round2, applyAdjustment, financeSettings, audit, notifyFamily, leFmt } from './core';
 import { planService } from './planService';
 
 function addDays(ymd: string, days: number): string {
@@ -79,12 +79,24 @@ export const lateFeeService = {
       .select('f.*');
     let charged = 0;
     let amount = 0;
+    const perStudent = new Map<string, number>();
     for (const f of fees) {
       if (protectedIds.has(String(f.id))) continue;
       const amt = this.lateFeeAmount(s, Number(f.balance));
       if (amt <= 0) continue;
       const label = s.lateFeeFixed > 0 ? `Late fee on ${f.type} (${f.term || f.academic_year})` : `Late fee ${s.lateFeePercent}% on ${f.type} (${f.term || f.academic_year})`;
-      if (await this.insertLateFee(f, amt, today, null, label)) { charged++; amount += amt; }
+      if (await this.insertLateFee(f, amt, today, null, label)) {
+        charged++; amount += amt;
+        perStudent.set(String(f.student_id), (perStudent.get(String(f.student_id)) || 0) + amt);
+      }
+    }
+    // One notice per family, not one per charge.
+    for (const [studentId, total] of perStudent) {
+      await notifyFamily(studentId, {
+        subject: 'Late fee added',
+        message: `A late fee of ${leFmt(total)} was added because fees for {student} are past due. Pay the balance to avoid more.`,
+        sourceType: 'fee',
+      }, { emailTenantId: tenantId });
     }
     return { charged, amount: round2(amount) };
   },
@@ -93,7 +105,8 @@ export const lateFeeService = {
     const protectedIds = await planService.protectedFeeIds(tenantId);
     const markedOverdue = await this.markOverdue(tenantId, protectedIds);
     const late = await this.applyLateFees(tenantId, protectedIds);
-    return { markedOverdue, lateFeesCharged: late.charged, lateFeeAmount: late.amount };
+    const reminders = await planService.remindDue(tenantId).catch(() => ({ due_soon: 0, overdue: 0 }));
+    return { markedOverdue, lateFeesCharged: late.charged, lateFeeAmount: late.amount, instalmentReminders: reminders };
   },
 
   /** Every active school (cron) or one school (Run now). */

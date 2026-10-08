@@ -189,103 +189,6 @@ router.post('/', authenticate, attachUserContext, authorize('principal', 'super_
   }
 });
 
-async function syncEnrolledApplicationsToStudents(dbInstance: any, tenantId: string) {
-  try {
-    if (!tenantId) return;
-
-    // Fetch admission applications SPECIFIC TO THIS TENANT
-    const applications = await dbInstance('admission_applications')
-      .where('tenant_id', tenantId)
-      .andWhere(function(this: any) {
-        this.whereRaw('LOWER(status) NOT IN (?, ?)', ['rejected', 'waitlist']);
-      });
-
-    for (const app of applications) {
-      const firstName = (app.child_first_name || app.first_name || '').trim();
-      const lastName = (app.child_last_name || app.last_name || '').trim();
-      if (!firstName || !lastName) continue;
-
-      const existing = await dbInstance('students')
-        .where('tenant_id', tenantId)
-        .andWhere(function (this: any) {
-          this.where(dbInstance.raw('LOWER(first_name) = ?', [firstName.toLowerCase()]))
-            .andWhere(dbInstance.raw('LOWER(last_name) = ?', [lastName.toLowerCase()]));
-        })
-        .first();
-
-      if (!existing) {
-        const studentId = await generateNextId(dbInstance, tenantId, 'student');
-        const dob = app.child_dob || app.date_of_birth || null;
-        const gender = app.child_gender || app.gender || null;
-        const email = app.guardian_email || app.email || null;
-        const phone = app.guardian_phone || app.phone_number || app.parent_phone || null;
-        const address = app.child_address || app.address || null;
-        const classId = app.class_applying_for || app.grade_id || null;
-
-        const [newStudent] = await dbInstance('students').insert({
-          tenant_id: tenantId,
-          user_id: null,
-          student_id: studentId,
-          first_name: firstName,
-          last_name: lastName,
-          email: email ? email.toLowerCase() : null,
-          date_of_birth: dob,
-          gender: gender,
-          phone: phone,
-          address: address,
-          country: app.child_nationality || 'Sierra Leone',
-          enrollment_date: app.created_at ? new Date(app.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          photo_url: app.child_photo_url || null,
-          religion: app.child_religion || null,
-          nationality: app.child_nationality || null,
-          place_of_birth: app.child_place_of_birth || null,
-          guardian_name: [app.guardian_first_name || app.parent_name, app.guardian_last_name].filter(Boolean).join(' ') || app.parent_name || null,
-          guardian_phone: app.guardian_phone || app.parent_phone || null,
-          guardian_relationship: app.guardian_relationship || null,
-          guardian_occupation: app.guardian_occupation || null,
-          emergency_contact: app.emergency_contact_phone || null,
-          previous_school: app.previous_school || null,
-          medical_conditions: [app.medication_details, app.allergy_details, app.chronic_illness_details].filter(Boolean).join('; ') || null,
-          status: 'active',
-          created_at: app.created_at || new Date(),
-          updated_at: new Date(),
-        }).returning('*');
-
-        if (classId && newStudent?.id) {
-          await dbInstance('enrollments').insert({
-            student_id: newStudent.id,
-            class_id: classId,
-            enrollment_date: new Date().toISOString().split('T')[0],
-            status: 'active',
-            created_at: new Date(),
-            updated_at: new Date(),
-          }).catch((e) => { logger.warn(`Bulk import: student ${newStudent.student_id} enrollment into class ${classId} failed: ${e?.message || e}`); });
-        }
-
-        // Smart parent/guardian linking — reuse an existing parent (sibling) if one matches.
-        if (newStudent?.id) {
-          await linkGuardianForStudent(
-            dbInstance,
-            tenantId,
-            newStudent.id,
-            lastName,
-            {
-              guardian_name: [app.guardian_first_name || app.parent_name, app.guardian_last_name].filter(Boolean).join(' ') || app.parent_name || null,
-              guardian_email: app.guardian_email || app.email || null,
-              guardian_phone: app.guardian_phone || app.parent_phone || null,
-              guardian_relationship: app.guardian_relationship || null,
-              guardian_occupation: app.guardian_occupation || null,
-            },
-            null,
-          );
-        }
-        logger.info(`Auto-synced enrolled admission application ${app.id} to student ${studentId} for tenant ${tenantId}`);
-      }
-    }
-  } catch (err) {
-    logger.error(`Error in syncEnrolledApplicationsToStudents: ${err}`);
-  }
-}
 
 /**
  * GET /api/v1/students/parent/children
@@ -368,10 +271,9 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
 
     const effectiveTenantId = requestedTenantId || tenantId || '';
 
-    // Auto-sync any approved/enrolled admissions applications to students table
-    if (effectiveTenantId) {
-      await syncEnrolledApplicationsToStudents(db, effectiveTenantId);
-    }
+    // Students come from admissions only through Enrol (admissionPipelineService).
+    // The old "sync applications to students" pass that ran here turned every
+    // non-rejected application (even new ones) into a student on each list load.
 
     // Academic-year scope. A year shows THAT year's roster, with the class each
     // student was in that year (not their class today). No year = everyone,
@@ -1133,7 +1035,7 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
  * Deactivate student (soft delete)
  * @requires admin, principal
  */
-router.delete('/:studentId', authenticate, authorize('principal', 'super_admin'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:studentId', authenticate, authorize('principal', 'super_admin', 'admissions_officer'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const currentUser = req.auth;
@@ -1228,7 +1130,7 @@ router.delete('/:studentId/permanent', authenticate, authorize('principal', 'sup
  * Reactivate a deactivated student
  * @requires admin, principal
  */
-router.post('/:studentId/reactivate', authenticate, authorize('principal', 'super_admin'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:studentId/reactivate', authenticate, authorize('principal', 'super_admin', 'admissions_officer'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const currentUser = req.auth;

@@ -247,7 +247,9 @@ const LevelFilterPopover: React.FC<LevelFilterPopoverProps> = ({ value, onChange
 
 export const ClassesPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { canAccess } = useAuth();
+  const { canAccess, user } = useAuth();
+  // Admissions officers see every class of the year, read-only.
+  const isOffice = user?.role === 'admissions_officer';
   // Only principals/super-admins manage classes. Teachers and admissions
   // officers get a read-only, assignment-scoped view.
   const canManage = canAccess(['principal', 'super_admin']);
@@ -296,7 +298,7 @@ export const ClassesPage: React.FC = () => {
       // Managers always hit the authoritative API list (no offline roster
       // fallback, which can be a partial teacher-scoped set); teachers keep the
       // offline-capable list so their class selectors work without a network.
-      return canManage ? classesService.listAllClasses(params) : classesService.listClasses(params);
+      return canManage || isOffice ? classesService.listAllClasses(params) : classesService.listClasses(params);
     },
     enabled: !!year,
     staleTime: 30_000,
@@ -355,8 +357,8 @@ export const ClassesPage: React.FC = () => {
   }, [classes, pagination, serverStats]);
 
   const emptyText = viewingPast
-    ? (canManage ? `No classes in ${year}.` : `You didn't teach any classes in ${year}.`)
-    : (canManage ? 'Try adjusting your filters or search query.' : `You have no classes assigned for ${activeYear} yet.`);
+    ? (canManage || isOffice ? `No classes in ${year}.` : `You didn't teach any classes in ${year}.`)
+    : (canManage || isOffice ? 'Try adjusting your filters or search query.' : `You have no classes assigned for ${activeYear} yet.`);
 
   // Deactivate handler
   const handleDeactivate = async () => {
@@ -469,7 +471,7 @@ export const ClassesPage: React.FC = () => {
         title="Classes & Streams"
         subtitle={canManage
           ? 'Manage school classes, streams, and enrolment capacity'
-          : 'Your assigned classes and their students'}
+          : isOffice ? 'Every class this year, with places and students (view only)' : 'Your assigned classes and their students'}
         breadcrumbs={[{ label: 'Classes & Streams' }]}
         onRefresh={() => refetch()}
         isRefreshing={isLoading}

@@ -1,94 +1,66 @@
 /**
- * Admissions Dashboard — real, tenant-scoped application pipeline.
- *
- * Pulls live data from GET /api/v1/dashboards/admissions/overview (KPIs +
- * status pipeline + recent applications). No mock data. Actions link to the
- * full Admissions management page (/students/admissions).
+ * Admissions Overview: the intake year at a glance.
+ * GET /api/v1/dashboards/admissions/overview?academic_year (server counts;
+ * default the active year). Every number and card opens the matching stage or
+ * application on the Admissions page (?status= / ?open=).
  */
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { FileText, ArrowRight, AlertCircle, Loader2, Users, CheckCircle, Clock } from 'lucide-react';
+import { AlertCircle, ArrowRight, CalendarClock, CheckCircle, ClipboardCheck, FileText, Globe, GraduationCap, Inbox, Loader2 } from 'lucide-react';
 import { MainLayout } from '@components/layout/MainLayout';
 import { WelcomeHero } from '@components/dashboard/WelcomeHero';
 import { HeroRefreshButton } from '@components/dashboard/HeroRefreshButton';
 import { AnnouncementsWidget } from '@components/dashboard/AnnouncementsWidget';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
+import { YearFilter } from '@components/common/YearFilter';
+import { useAcademicYears } from '@hooks/useAcademicYears';
 import useAuthStore from '@store/authStore';
-import { admissionsService, AdmissionStatus } from '@services/admissionsService';
+import { admissionsService, type AdmissionStatus, type AdmissionsOverview } from '@services/admissionsService';
+import { StatusPill, ADM_LABEL } from './students/components/ApplicationDetailModal';
 
-const STATUS_LABELS: Record<AdmissionStatus, string> = {
-  pending: 'Pending',
-  under_review: 'Under Review',
-  interview_scheduled: 'Interview',
-  approved: 'Approved',
-  rejected: 'Rejected',
-  enrolled: 'Enrolled',
-};
-
-const STATUS_BADGE: Record<AdmissionStatus, string> = {
-  pending: 'bg-blue-100 text-blue-800',
-  under_review: 'bg-orange-100 text-orange-800',
-  interview_scheduled: 'bg-indigo-100 text-indigo-800',
-  approved: 'bg-green-100 text-green-800',
-  rejected: 'bg-red-100 text-red-800',
-  enrolled: 'bg-purple-100 text-purple-800',
-};
-
-// Order of columns shown in the pipeline view
-const PIPELINE_ORDER: AdmissionStatus[] = [
-  'pending',
-  'under_review',
-  'interview_scheduled',
-  'approved',
-  'enrolled',
-  'rejected',
-];
-
-const PIPELINE_DOT: Record<AdmissionStatus, string> = {
-  pending: 'bg-blue-600',
-  under_review: 'bg-orange-600',
-  interview_scheduled: 'bg-indigo-600',
-  approved: 'bg-green-600',
-  enrolled: 'bg-purple-600',
-  rejected: 'bg-red-600',
+const PIPELINE: AdmissionStatus[] = ['pending', 'under_review', 'interview_scheduled', 'approved', 'waitlist', 'enrolled'];
+const DOT: Record<string, string> = {
+  pending: 'bg-amber-500', under_review: 'bg-blue-500', interview_scheduled: 'bg-purple-500', approved: 'bg-emerald-500', waitlist: 'bg-orange-500', enrolled: 'bg-teal-500',
 };
 
 export const Phase13AdmissionsDashboard: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'pipeline' | 'list'>('pipeline');
+  const [activeTab, setActiveTab] = useState<'pipeline' | 'list' | 'classes'>('pipeline');
+  const { activeYear } = useAcademicYears();
+  const [picked, setPicked] = useState('');
+  const year = picked || activeYear;
+  const viewingPast = !!year && !!activeYear && year !== activeYear;
 
-  const { data: resp, isLoading, refetch } = useQuery({
-    queryKey: ['admissions-overview'],
-    queryFn: () => admissionsService.getOverview(),
+  const { data: resp, isLoading, error, refetch } = useQuery({
+    queryKey: ['admissions-overview', year],
+    queryFn: async () => { const r: any = await admissionsService.getOverview(year); if (r?.success === false) throw new Error(r.error || 'Could not load the admissions overview'); return r.data as AdmissionsOverview; },
+    enabled: !!year,
     staleTime: 60_000,
   });
-
-  const data = (resp as any)?.data;
-  const byStatus = data?.byStatus ?? {};
-  const applications: any[] = data?.applications ?? [];
+  const data = resp;
+  const byStatus: Record<string, number> = (data?.byStatus as any) ?? {};
+  const applications = data?.applications ?? [];
+  const go = (q: string) => navigate(`/students/admissions${q}`);
 
   const kpis = [
-    { label: 'Total Applications', value: data?.totalApplications ?? 0, icon: <FileText size={20} />, tint: 'text-blue-600 bg-blue-500/10' },
-    { label: 'This Month', value: data?.thisMonth ?? 0, icon: <Users size={20} />, tint: 'text-emerald-600 bg-emerald-500/10' },
-    { label: 'Under Review', value: byStatus.under_review ?? 0, icon: <Clock size={20} />, tint: 'text-orange-600 bg-orange-500/10' },
-    { label: 'Enrollment Rate', value: `${data?.enrollmentRate ?? 0}%`, icon: <CheckCircle size={20} />, tint: 'text-purple-600 bg-purple-500/10' },
+    { label: 'Applications', value: data?.totalApplications ?? 0, sub: `${data?.thisMonth ?? 0} this month · ${data?.online ?? 0} online`, icon: <FileText size={20} />, tint: 'text-blue-600 bg-blue-500/10', to: '' },
+    { label: 'To review', value: (byStatus.pending ?? 0) + (byStatus.under_review ?? 0), sub: `${byStatus.pending ?? 0} new`, icon: <Inbox size={20} />, tint: 'text-amber-600 bg-amber-500/10', to: '?status=pending' },
+    { label: 'Acceptance rate', value: `${data?.acceptanceRate ?? 0}%`, sub: 'of decided applications', icon: <CheckCircle size={20} />, tint: 'text-emerald-600 bg-emerald-500/10', to: '?status=approved' },
+    { label: 'Enrolled', value: byStatus.enrolled ?? 0, sub: `${data?.enrollmentRate ?? 0}% of accepted`, icon: <GraduationCap size={20} />, tint: 'text-teal-600 bg-teal-500/10', to: '?status=enrolled' },
   ];
 
-  const pendingReview = byStatus.pending ?? 0;
-  const awaitingDecision = (byStatus.interview_scheduled ?? 0) + (byStatus.under_review ?? 0);
-
-  const pipelineGroups = useMemo(() => {
-    const groups: Record<string, any[]> = {};
-    PIPELINE_ORDER.forEach((s) => (groups[s] = []));
-    applications.forEach((a) => {
-      if (groups[a.status]) groups[a.status].push(a);
-    });
-    return groups;
+  const groups = useMemo(() => {
+    const g: Record<string, typeof applications> = {};
+    PIPELINE.forEach((s) => (g[s] = []));
+    applications.forEach((a) => { if (g[a.status]) g[a.status].push(a); });
+    return g;
   }, [applications]);
 
-  const goToApplications = () => navigate('/students/admissions');
+  const newCount = byStatus.pending ?? 0;
+  const toEnrol = byStatus.approved ?? 0;
+  const interviews = data?.upcomingInterviews ?? [];
 
   return (
     <MainLayout>
@@ -96,143 +68,143 @@ export const Phase13AdmissionsDashboard: React.FC = () => {
         firstName={user?.firstName ?? (user as any)?.first_name}
         role="admissions"
         roleLabel="Admissions Officer"
-        subtitle="Manage student applications and the enrollment pipeline."
-        actions={<HeroRefreshButton onRefresh={() => refetch()} />}
+        subtitle={`The ${year || ''} intake: applications, interviews and enrolment.`}
+        actions={<div className="flex items-center gap-2"><YearFilter value={year} onChange={(y) => setPicked(!y || y === activeYear ? '' : y)} noAutoSelect /><HeroRefreshButton onRefresh={() => refetch()} /></div>}
       />
 
       <div className="mt-2">
-        {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
-          {kpis.map((k) => (
-            <div key={k.label} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-              <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${k.tint} mb-3`}>{k.icon}</div>
-              <div className="text-2xl font-black text-gray-900 dark:text-white">
-                {isLoading ? <span className="inline-block h-7 w-16 rounded bg-gray-100 dark:bg-gray-700 animate-pulse" /> : k.value}
-              </div>
-              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-0.5">{k.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Announcements */}
-        <div className="mb-6">
-          <AnnouncementsWidget limit={4} />
-        </div>
-
-        {/* Action banner (only when there is real work pending) */}
-        {!isLoading && (pendingReview > 0 || awaitingDecision > 0) && (
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6 flex gap-3">
-            <AlertCircle className="text-orange-600 flex-shrink-0" size={20} />
-            <div className="flex-1">
-              <p className="font-semibold text-orange-900">Action Required</p>
-              <p className="text-sm text-orange-800 mt-1">
-                {pendingReview} new application{pendingReview === 1 ? '' : 's'} pending review
-                {awaitingDecision > 0 ? `, ${awaitingDecision} awaiting a decision.` : '.'}
-              </p>
-            </div>
-            <button onClick={goToApplications} className="self-center px-3 py-2 bg-orange-600 text-white rounded text-xs font-medium hover:bg-orange-700 whitespace-nowrap">
-              Review
-            </button>
+        {viewingPast && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/20 px-4 py-2.5 text-sm text-blue-900 dark:text-blue-200">
+            <span>Showing the <strong>{year}</strong> intake. New applications go into {activeYear}.</span>
+            <button type="button" onClick={() => setPicked('')} className="text-xs font-bold text-blue-700 hover:underline">Back to {activeYear}</button>
+          </div>
+        )}
+        {error ? (
+          <p role="alert" className="mb-6 text-sm text-red-600">{(error as Error).message} <button type="button" className="font-bold underline" onClick={() => refetch()}>Retry</button></p>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
+            {kpis.map((k) => (
+              <button key={k.label} type="button" onClick={() => go(k.to)} className="text-left rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:border-blue-300">
+                <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${k.tint} mb-3`}>{k.icon}</div>
+                <div className="text-2xl font-black text-gray-900 dark:text-white">{isLoading ? <span className="inline-block h-7 w-16 rounded bg-gray-100 dark:bg-gray-700 animate-pulse" /> : k.value}</div>
+                <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mt-0.5">{k.label}</div>
+                <div className="text-[11px] text-gray-500">{isLoading ? '' : k.sub}</div>
+              </button>
+            ))}
           </div>
         )}
 
-        {/* Tabs */}
-        <div className="flex gap-4 border-b border-gray-200 mb-6">
-          <button
-            onClick={() => setActiveTab('pipeline')}
-            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'pipeline' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <ArrowRight size={18} />
-            Pipeline
-          </button>
-          <button
-            onClick={() => setActiveTab('list')}
-            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <FileText size={18} />
-            Recent Applications
-          </button>
+        {/* Work waiting */}
+        {!isLoading && !error && !viewingPast && (newCount > 0 || toEnrol > 0 || interviews.length > 0) && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+            {newCount > 0 && (
+              <button type="button" onClick={() => go('?status=pending')} className="flex gap-3 text-left rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 p-4">
+                <AlertCircle className="text-amber-600 flex-shrink-0" size={20} />
+                <span><span className="block font-semibold text-amber-900 dark:text-amber-200">{newCount} new application{newCount === 1 ? '' : 's'}</span><span className="text-xs text-amber-800 dark:text-amber-300">Start the review →</span></span>
+              </button>
+            )}
+            {toEnrol > 0 && (
+              <button type="button" onClick={() => go('?status=approved')} className="flex gap-3 text-left rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 p-4">
+                <ClipboardCheck className="text-emerald-600 flex-shrink-0" size={20} />
+                <span><span className="block font-semibold text-emerald-900 dark:text-emerald-200">{toEnrol} approved, not enrolled</span><span className="text-xs text-emerald-800 dark:text-emerald-300">Enrol them into this year’s classes →</span></span>
+              </button>
+            )}
+            {interviews.length > 0 && (
+              <div className="rounded-xl border border-purple-200 bg-purple-50 dark:bg-purple-950/20 p-4">
+                <p className="flex items-center gap-2 font-semibold text-purple-900 dark:text-purple-200"><CalendarClock size={18} /> Upcoming interviews</p>
+                <ul className="mt-1 space-y-1">
+                  {interviews.slice(0, 4).map((i) => (
+                    <li key={i.id}><button type="button" onClick={() => go(`?open=${i.id}`)} className="text-xs text-purple-800 dark:text-purple-300 hover:underline text-left">
+                      {new Date(i.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · {i.studentName}{i.location ? ` · ${i.location}` : ''}
+                    </button></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mb-6"><AnnouncementsWidget limit={4} /></div>
+
+        <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 mb-6" role="tablist">
+          {([['pipeline', 'Pipeline'], ['list', 'Recent applications'], ['classes', 'By class']] as const).map(([k, l]) => (
+            <button key={k} type="button" role="tab" aria-selected={activeTab === k} onClick={() => setActiveTab(k)}
+              className={`px-4 py-3 font-medium text-sm border-b-2 -mb-px ${activeTab === k ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900 dark:text-gray-400'}`}>{l}</button>
+          ))}
+          <button type="button" onClick={() => go('')} className="ml-auto self-center inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:underline">Open Admissions <ArrowRight size={14} /></button>
         </div>
 
         {isLoading ? (
           <div className="py-16 flex justify-center text-gray-400"><Loader2 className="animate-spin" size={22} /></div>
-        ) : applications.length === 0 ? (
+        ) : error ? null : (data?.totalApplications ?? 0) === 0 ? (
           <EmptyState
-            message="No applications yet"
-            description="New admission applications will appear here as they are submitted."
-            action={{ label: 'Open Admissions', onClick: goToApplications }}
+            message={`No applications for ${year} yet`}
+            description="Share the online application link from the Admissions page, or enter a walk-in application there."
+            action={{ label: 'Open Admissions', onClick: () => go('') }}
           />
         ) : activeTab === 'pipeline' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-            {PIPELINE_ORDER.map((status) => (
+            {PIPELINE.map((status) => (
               <div key={status} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className={`w-3 h-3 rounded-full ${PIPELINE_DOT[status]}`} />
-                  <h3 className="font-semibold text-gray-900 dark:text-white text-sm">{STATUS_LABELS[status]}</h3>
-                  <span className={`ml-auto text-xs font-semibold px-2 py-1 rounded ${STATUS_BADGE[status]}`}>
-                    {byStatus[status] ?? 0}
-                  </span>
-                </div>
+                <button type="button" onClick={() => go(`?status=${status}`)} className="flex w-full items-center gap-2 mb-4 text-left">
+                  <span className={`w-3 h-3 rounded-full ${DOT[status]}`} />
+                  <h3 className="font-semibold text-gray-900 dark:text-white text-sm">{ADM_LABEL[status]}</h3>
+                  <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700">{byStatus[status] ?? 0}</span>
+                </button>
                 <div className="space-y-2">
-                  {pipelineGroups[status].slice(0, 8).map((app) => (
-                    <button
-                      key={app.id}
-                      onClick={goToApplications}
-                      className="w-full text-left p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-100 dark:border-gray-700 hover:border-blue-300 transition-colors"
-                    >
+                  {groups[status].slice(0, 6).map((app) => (
+                    <button key={app.id} type="button" onClick={() => go(`?open=${app.id}`)} className="w-full text-left p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-100 dark:border-gray-700 hover:border-blue-300">
                       <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{app.studentName}</p>
                       <p className="text-xs text-gray-500 mt-0.5 truncate">{app.className}</p>
                     </button>
                   ))}
-                  {pipelineGroups[status].length === 0 && (
-                    <p className="text-xs text-gray-400 py-2">None</p>
+                  {(byStatus[status] ?? 0) > groups[status].slice(0, 6).length && (
+                    <button type="button" onClick={() => go(`?status=${status}`)} className="text-xs font-semibold text-blue-600 hover:underline">See all {byStatus[status]} →</button>
                   )}
+                  {(byStatus[status] ?? 0) === 0 && <p className="text-xs text-gray-400 py-2">None</p>}
                 </div>
               </div>
             ))}
           </div>
+        ) : activeTab === 'list' ? (
+          <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-gray-500 border-b border-gray-100 dark:border-gray-700">
+                <th className="py-3 px-4">Applicant</th><th className="py-3 px-4">Parent / guardian</th><th className="py-3 px-4">Class</th><th className="py-3 px-4">Stage</th><th className="py-3 px-4">Applied</th>
+              </tr></thead>
+              <tbody>
+                {applications.slice(0, 25).map((app) => (
+                  <tr key={app.id} className="border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                    <td className="py-3 px-4"><button type="button" onClick={() => go(`?open=${app.id}`)} className="font-medium text-blue-700 dark:text-blue-400 hover:underline">{app.studentName}</button></td>
+                    <td className="py-3 px-4 text-gray-500">{app.parentName}</td>
+                    <td className="py-3 px-4 text-gray-500">{app.className}</td>
+                    <td className="py-3 px-4"><StatusPill status={app.status} /></td>
+                    <td className="py-3 px-4 text-gray-500">{app.applicationDate ? new Date(app.applicationDate).toLocaleDateString('en-GB') : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500 border-b border-gray-100 dark:border-gray-700">
-                  <th className="py-3 px-4">Applicant</th>
-                  <th className="py-3 px-4">Parent / Guardian</th>
-                  <th className="py-3 px-4">Class</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4"></th>
-                </tr>
-              </thead>
+              <thead><tr className="text-left text-gray-500 border-b border-gray-100 dark:border-gray-700">
+                <th className="py-3 px-4">Class applied for</th><th className="py-3 px-4 text-right">Applications</th><th className="py-3 px-4 text-right">Still open</th><th className="py-3 px-4 text-right">Enrolled</th>
+              </tr></thead>
               <tbody>
-                {applications.map((app) => (
-                  <tr key={app.id} className="border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                    <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">{app.studentName}</td>
-                    <td className="py-3 px-4 text-gray-500">{app.parentName}</td>
-                    <td className="py-3 px-4 text-gray-500">{app.className}</td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2.5 py-1 text-xs font-semibold rounded ${STATUS_BADGE[app.status as AdmissionStatus] ?? 'bg-gray-100 text-gray-700'}`}>
-                        {STATUS_LABELS[app.status as AdmissionStatus] ?? app.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-gray-500">
-                      {app.applicationDate ? new Date(app.applicationDate).toLocaleDateString() : '—'}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <button onClick={goToApplications} className="text-blue-600 hover:text-blue-800 text-xs font-medium">
-                        Manage
-                      </button>
-                    </td>
+                {(data?.byClass ?? []).map((c) => (
+                  <tr key={c.class_name} className="border-b border-gray-50 dark:border-gray-800">
+                    <td className="py-2.5 px-4 font-medium">{c.class_name}</td>
+                    <td className="py-2.5 px-4 text-right">{c.applications}</td>
+                    <td className="py-2.5 px-4 text-right">{c.open}</td>
+                    <td className="py-2.5 px-4 text-right">{c.enrolled}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+        <p className="mt-6 flex items-center gap-2 text-xs text-gray-500"><Globe size={13} /> Online applications come from the link on the Admissions page. You’re notified of each one.</p>
       </div>
     </MainLayout>
   );

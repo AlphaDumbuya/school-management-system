@@ -511,6 +511,14 @@ export class PaymentService {
       } as any).catch((e: any) => logger.warn(`Refund audit failed: ${e?.message || e}`));
 
       logger.info(`Payment refund ${refundId} processed`);
+      try {
+        const { notifyFamily, leFmt } = await import('./finance/core.js');
+        await notifyFamily(payment.student_id, {
+          subject: 'Payment refunded',
+          message: `${leFmt(Number(payment.amount))}${payment.receipt_number ? ` (receipt ${payment.receipt_number})` : ''} for {student} was refunded. The fees show it as owed again.`,
+          sourceType: 'payment', sourceId: paymentId,
+        }, { emailTenantId: payment.tenant_id });
+      } catch { /* best-effort */ }
       return refund;
     } catch (error) {
       logger.error(`Error refunding payment: ${error}`);

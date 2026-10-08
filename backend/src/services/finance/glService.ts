@@ -263,22 +263,24 @@ export const glService = {
 
       // Petty cash float movements (spends are expenses above).
       for (const p of await trx('petty_cash_entries as e').join('petty_cash_funds as f', 'f.id', 'e.fund_id').where('e.tenant_id', tenantId).whereIn('e.kind', ['top_up', 'return'])
-        .select('e.id', 'e.kind', 'e.amount', 'e.entry_date', 'e.academic_year', 'e.voided_at', 'e.created_at', 'f.name')) {
+        .select('e.id', 'e.kind', 'e.amount', 'e.entry_date', 'e.academic_year', 'e.voided_at', 'e.created_at', 'e.money_account', 'f.name')) {
         const amt = p.voided_at ? 0 : cents(p.amount);
-        const lines: Array<[string, number]> = p.kind === 'top_up' ? [[A('petty'), amt], [A('bank'), -amt]] : [[A('bank'), amt], [A('petty'), -amt]];
-        add({ type: 'petty_cash', id: p.id, year: Y(p.academic_year), date: ymd(p.entry_date || p.created_at), change: ymd(p.voided_at), memo: `${p.kind === 'top_up' ? 'Petty cash top-up' : 'Petty cash returned to bank'}: ${p.name}` }, lines);
+        const other = ['bank', 'cash', 'mobile'].includes(p.money_account) ? p.money_account : 'bank';
+        const lines: Array<[string, number]> = p.kind === 'top_up' ? [[A('petty'), amt], [A(other), -amt]] : [[A(other), amt], [A('petty'), -amt]];
+        const where = other === 'bank' ? 'bank' : other === 'cash' ? 'cash on hand' : 'mobile money';
+        add({ type: 'petty_cash', id: p.id, year: Y(p.academic_year), date: ymd(p.entry_date || p.created_at), change: ymd(p.voided_at), memo: `${p.kind === 'top_up' ? `Petty cash top-up from ${where}` : `Petty cash returned to ${where}`}: ${p.name}` }, lines);
       }
 
       // Paid payroll runs.
       for (const r of await trx('payroll_runs').where({ tenant_id: tenantId }).whereIn('status', ['paid', 'cancelled'])
-        .select('id', 'period', 'academic_year', 'status', 'gross', 'paye', 'nassit_employee', 'nassit_employer', 'other_deductions', 'payment_date', 'paid_at', 'updated_at')) {
+        .select('id', 'period', 'academic_year', 'status', 'gross', 'paye', 'nassit_employee', 'nassit_employer', 'other_deductions', 'payment_date', 'paid_at', 'paid_from', 'updated_at')) {
         if (r.status === 'cancelled' && !r.paid_at) continue;
         const live = r.status === 'paid';
         const gross = live ? cents(r.gross) : 0, paye = live ? cents(r.paye) : 0;
         const ee = live ? cents(r.nassit_employee) : 0, er = live ? cents(r.nassit_employer) : 0, other = live ? cents(r.other_deductions) : 0;
         add({ type: 'payroll', id: r.id, year: Y(r.academic_year), date: ymd(r.payment_date || r.paid_at), change: ymd(r.updated_at), memo: `Payroll ${r.period}` }, [
           [A('exp:salaries'), gross], [A('exp:statutory (paye/nassit)'), er],
-          [A('bank'), -(gross - paye - ee - other)], [A('paye'), -paye], [A('nassit'), -(ee + er)], [A('payded'), -other],
+          [A(['bank', 'cash', 'mobile'].includes(r.paid_from) ? r.paid_from : 'bank'), -(gross - paye - ee - other)], [A('paye'), -paye], [A('nassit'), -(ee + er)], [A('payded'), -other],
         ]);
       }
 

@@ -262,7 +262,7 @@ class StudentDashboardService {
       // Billed / paid / outstanding come from the finance LEDGER (the `fees`
       // projection staff reports use), so the KPI, the fees chart and the Fees
       // tab ledger always agree. Invoices above are just the payable documents.
-      let feeTotal = 0, feePaid = 0, feeOutstanding = 0, ledgerOtherYears = 0;
+      let feeTotal = 0, feePaid = 0, feeOutstanding = 0, feeDiscounted = 0, ledgerOtherYears = 0;
       // Per-year unpaid balances from OTHER years, so the UI can name them.
       const otherYears: { academic_year: string; outstanding: number }[] = [];
       let ledgerOk = false;
@@ -274,6 +274,8 @@ class StudentDashboardService {
             feeTotal += Number(y.billed || 0);
             feePaid += Number(y.paid || 0);
             feeOutstanding += Number(y.outstanding || 0);
+            // Discounts / scholarships and applied credit: off the fees, not cash paid.
+            feeDiscounted += Number(y.discounted || 0) + Number(y.credit_applied || 0);
           } else {
             const owed = Math.max(0, Number(y.outstanding || 0));
             ledgerOtherYears += owed;
@@ -337,6 +339,7 @@ class StudentDashboardService {
         fees: {
           total: Math.round(feeTotal * 100) / 100,
           paid: Math.round(feePaid * 100) / 100,
+          discounted: Math.round(feeDiscounted * 100) / 100,
           outstanding: Math.round(feeOutstanding * 100) / 100,
           // Unpaid balance from other academic years (still payable).
           other_years_outstanding: Math.round(arrears * 100) / 100,

@@ -492,11 +492,26 @@ export const HELP_ARTICLES: HelpArticle[] = [
         id: 'pipeline',
         heading: 'The applications pipeline',
         blocks: [
-          p(['Open ', link('Admissions', '/students/admissions'), ' to track applicants from enquiry to enrolment, grouped by stage.']),
+          p(['Open ', link('Admissions', '/students/admissions'), ' to track applicants from application to enrolment, grouped by stage, for one intake year.']),
           list([
-            ['Share your public application link so families can apply online.'],
-            ['Review each application and Approve or Reject it. Approved applicants are emailed automatically.'],
-            ['Approving an applicant creates their student record and enrols them.'],
+            ['Share your public application link so families can apply online. Each new one arrives as New and admissions staff are notified.'],
+            ['Open an application: Start review, Schedule interview (the family is emailed the time and place), then Approve, Waitlist or Reject (a reason is required).'],
+            ['Tick the documents handed in, add staff notes, and see every step on the Timeline.'],
+            ['Mark withdrawn when the family no longer wants the place. Rejected, withdrawn and approved applications can be reopened.'],
+          ]),
+          note(['Each decision email is sent once. Withdrawals and notes are never emailed.']),
+        ],
+      },
+      {
+        id: 'enrol',
+        heading: 'Enrolling an approved child',
+        blocks: [
+          p(['Approving does not create a student. Press ', link('Enrol', '/students/admissions?status=approved'), ' and choose a class of the current year (places left are shown).']),
+          list([
+            ['WiSkul creates the student number in the school’s ID format, enrols them, links the parent (siblings share one parent account) and creates student and parent sign-ins.'],
+            ['The sign-ins are shown once; they are also on the Student Profile.'],
+            ['Enrol can’t create the same student twice, and a class from last year can’t be used.'],
+            ['Walk-ins: on + New Application, tick “Accept and enrol now”.'],
           ]),
           note(['Admissions needs an internet connection — it shows a "requires internet" state when offline.']),
         ],

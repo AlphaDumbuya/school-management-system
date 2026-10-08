@@ -15,7 +15,7 @@ import { tenantToday } from '@utils/schoolDate';
 import { logger } from '@utils/logger';
 import { resolveTenantBranding } from '@services/email/emailBranding';
 import { renderEmail } from '@services/email/emailLayout';
-import { round2, audit, notifyFinanceStaff } from './core';
+import { round2, audit, notifyFinanceStaff, notifyUsers, cleanMoneyAccount } from './core';
 import { expenseService, yearForDate, assertOpenYear } from './expenseService';
 
 export type Band = { upto: number | null; rate: number };
@@ -131,6 +131,19 @@ async function lockedRun(trx: Knex.Transaction, tenantId: string, runId: string)
   return r;
 }
 
+/**
+ * Separation of duties: only the principal changes the pay of the person
+ * running payroll. The bursar can't edit their own pay details or payslip.
+ */
+const isPrincipalRole = (role?: string) => role === 'principal' || role === 'super_admin';
+async function assertNotOwnPay(tenantId: string, userId: string, role: string | undefined, staffKind: string, staffRefId: string) {
+  if (isPrincipalRole(role) || staffKind !== 'staff') return;
+  const t = await db('teachers').where({ id: staffRefId }).first('user_id');
+  if (t?.user_id && String(t.user_id) === String(userId)) {
+    throw new AppError('You can\'t change your own pay. Ask the principal to do it.', 403, 'OWN_PAY');
+  }
+}
+
 export const payrollService = {
   settings: payrollSettings,
 
@@ -142,9 +155,10 @@ export const payrollService = {
     }));
   },
 
-  async saveProfile(tenantId: string, userId: string, body: any) {
+  async saveProfile(tenantId: string, userId: string, body: any, role?: string) {
     const kind = body?.staff_kind === 'support' ? 'support' : body?.staff_kind === 'staff' ? 'staff' : null;
     if (!kind || !body?.staff_ref_id) throw new AppError('Choose a staff member.', 400, 'VALIDATION_ERROR');
+    await assertNotOwnPay(tenantId, userId, role, kind, body.staff_ref_id);
     const exists = kind === 'staff'
       ? await db('teachers as t').join('users as u', 'u.id', 't.user_id').where({ 't.id': body.staff_ref_id, 'u.tenant_id': tenantId }).first()
       : await db('support_staff').where({ id: body.staff_ref_id, tenant_id: tenantId }).first();
@@ -233,10 +247,13 @@ export const payrollService = {
   },
 
   /** One-off additions (bonus, overtime) and deductions on a draft payslip. */
-  async editSlip(tenantId: string, userId: string, slipId: string, body: any) {
+  async editSlip(tenantId: string, userId: string, slipId: string, body: any, role?: string) {
     await db.transaction(async (trx) => {
       const slip = await trx('payslips').where({ id: slipId, tenant_id: tenantId }).forUpdate().first();
       if (!slip) throw new AppError('Payslip not found', 404, 'NOT_FOUND');
+      if (!isPrincipalRole(role) && slip.user_id && String(slip.user_id) === String(userId)) {
+        throw new AppError('You can\'t change your own payslip. Ask the principal to do it.', 403, 'OWN_PAY');
+      }
       const r = await lockedRun(trx, tenantId, slip.run_id);
       if (r.status !== 'draft') throw new AppError('This pay run is locked. Only drafts can be changed.', 409, 'LOCKED');
       const profile = await trx('staff_pay_profiles').where({ tenant_id: tenantId, staff_kind: slip.staff_kind, staff_ref_id: slip.staff_ref_id }).first();
@@ -255,10 +272,13 @@ export const payrollService = {
     return db('payslips').where({ id: slipId }).first();
   },
 
-  async removeSlip(tenantId: string, userId: string, slipId: string) {
+  async removeSlip(tenantId: string, userId: string, slipId: string, role?: string) {
     await db.transaction(async (trx) => {
       const slip = await trx('payslips').where({ id: slipId, tenant_id: tenantId }).first();
       if (!slip) throw new AppError('Payslip not found', 404, 'NOT_FOUND');
+      if (!isPrincipalRole(role) && slip.user_id && String(slip.user_id) === String(userId)) {
+        throw new AppError('You can\'t remove your own payslip. Ask the principal to do it.', 403, 'OWN_PAY');
+      }
       const r = await lockedRun(trx, tenantId, slip.run_id);
       if (r.status !== 'draft') throw new AppError('This pay run is locked.', 409, 'LOCKED');
       await trx('payslips').where({ id: slipId }).del();
@@ -286,7 +306,8 @@ export const payrollService = {
   },
 
   /** Mark paid: records the salary cost and employer NASSIT as expenses (once). */
-  async markPaid(tenantId: string, userId: string, runId: string, paymentDate?: string) {
+  async markPaid(tenantId: string, userId: string, runId: string, paymentDate?: string, paidFrom?: string) {
+    const from = cleanMoneyAccount(paidFrom, 'bank');
     const date = String(paymentDate || await tenantToday(tenantId)).slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new AppError('Set the payment date.', 400, 'VALIDATION_ERROR');
     if (date > await tenantToday(tenantId)) throw new AppError('The payment date cannot be in the future.', 400, 'VALIDATION_ERROR');
@@ -295,14 +316,24 @@ export const payrollService = {
       if (r.status === 'paid') throw new AppError('This pay run is already marked paid.', 409, 'ALREADY_PAID');
       if (r.status !== 'approved') throw new AppError('The principal must approve the pay run before it is paid.', 409, 'NOT_APPROVED');
       const year = await yearForDate(tenantId, date);
-      const base = { tenant_id: tenantId, expense_date: date, academic_year: year, source: 'payroll' as const, source_id: runId, recorded_by: userId, payment_method: 'bank_transfer' };
+      const base = { tenant_id: tenantId, expense_date: date, academic_year: year, source: 'payroll' as const, source_id: runId, recorded_by: userId, payment_method: from === 'bank' ? 'bank_transfer' : from === 'mobile' ? 'mobile_money' : 'cash' };
       await expenseService.createLinked(trx, { ...base, category: 'Salaries', amount: Number(r.gross), description: `Salaries for ${r.period} (${r.staff_count} staff; PAYE Le ${Number(r.paye).toFixed(2)} and NASSIT Le ${Number(r.nassit_employee).toFixed(2)} withheld)` });
       if (Number(r.nassit_employer) > 0) {
         await expenseService.createLinked(trx, { ...base, category: 'Statutory (PAYE/NASSIT)', amount: Number(r.nassit_employer), description: `Employer NASSIT for ${r.period}` });
       }
-      await trx('payroll_runs').where({ id: runId }).update({ status: 'paid', paid_by: userId, paid_at: new Date(), payment_date: date, updated_at: new Date() });
+      await trx('payroll_runs').where({ id: runId }).update({ status: 'paid', paid_by: userId, paid_at: new Date(), payment_date: date, paid_from: from, updated_at: new Date() });
     });
-    await audit('payroll_run', runId, 'paid', userId, { date });
+    await audit('payroll_run', runId, 'paid', userId, { date, paid_from: from });
+    // Tell each staff member with a login that their salary was paid.
+    const run = await db('payroll_runs').where({ id: runId }).first('period');
+    const slips = await db('payslips').where({ run_id: runId }).whereNotNull('user_id').select('user_id', 'net');
+    for (const sl of slips) {
+      await notifyUsers([sl.user_id], {
+        subject: `Salary for ${run?.period} paid`,
+        message: `Your net pay of Le ${Number(sl.net).toLocaleString('en-US', { minimumFractionDigits: 2 })} for ${run?.period} was paid. Your payslip is under My Payslips.`,
+        url: '/finance/my-payslips', sourceType: 'payroll_run', sourceId: runId,
+      });
+    }
     return this.run(tenantId, runId);
   },
 

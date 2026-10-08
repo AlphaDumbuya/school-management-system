@@ -11,7 +11,34 @@ import type { Knex } from 'knex';
 import { db } from '@utils/database';
 import { AppError } from '@middleware/errorHandler';
 import { normalizeAcademicYear, resolveActiveYear, resolveYearScope } from '@utils/academicYear';
-import { round2, applyAdjustment, reverseAdjustment, financeSettings, audit, notifyFinanceStaff, notifyUsers } from './core';
+import { round2, applyAdjustment, reverseAdjustment, financeSettings, audit, notifyFinanceStaff, notifyUsers, notifyFamily, leFmt } from './core';
+import { creditService } from './creditService';
+
+/**
+ * The part of a discount that lands on fees already paid can't lower a
+ * balance. If the grant asks for it, that part becomes account credit.
+ */
+async function shortfallOf(grant: any, applied: number): Promise<number> {
+  const { worth, billed } = await estimate(db, grant);
+  // Never give more than the fees: billed − discounts/waivers already on them
+  // − credit other overlapping grants already gave for paid fees.
+  const ids = (await grantFeesQuery(db, grant).select('id')).map((f: any) => f.id);
+  const disc = ids.length ? Number((await db('fee_adjustments').whereIn('fee_id', ids).whereNull('reversed_at')
+    .whereIn('kind', ['discount', 'waiver']).sum({ s: 'amount' }).first() as any)?.s) || 0 : 0;
+  const other = Number((await db('discount_grants').where({ tenant_id: grant.tenant_id, student_id: grant.student_id, academic_year: grant.academic_year, status: 'approved' })
+    .whereNot('id', grant.id).modify((q) => { if (grant.term) q.where((w) => w.whereNull('term').orWhere('term', grant.term)); })
+    .sum({ s: 'credited_amount' }).first() as any)?.s) || 0;
+  return round2(Math.max(0, Math.min(worth - applied, billed - disc - other)));
+}
+
+async function creditShortfall(tenantId: string, userId: string, grant: any, applied: number): Promise<number> {
+  if (!grant?.credit_shortfall) return 0;
+  const short = await shortfallOf(grant, applied);
+  if (short <= 0) return 0;
+  await creditService.creditNote(tenantId, userId, grant.student_id, short, `${grant.label} (${grant.academic_year}${grant.term ? `, ${grant.term}` : ''}): on fees already paid`);
+  await db('discount_grants').where({ id: grant.id }).update({ credited_amount: short, updated_at: new Date() });
+  return short;
+}
 
 const KINDS = ['sibling', 'staff_child', 'scholarship', 'custom'];
 const TERMS = ['First Term', 'Second Term', 'Third Term'];
@@ -167,12 +194,20 @@ export const discountService = {
       [grant] = await trx('discount_grants').insert({
         tenant_id: tenantId, student_id: student.id, rule_id: rule?.id || null, label: shape.label,
         academic_year: year, term, basis: shape.basis, value: shape.value, applies_to: shape.applies_to,
-        reason: reason || null, status: autoApprove ? 'approved' : 'pending', requested_by: user.id,
+        reason: reason || null, status: autoApprove ? 'approved' : 'pending', requested_by: user.id, credit_shortfall: body?.credit_shortfall === true,
         ...(autoApprove ? { decided_by: user.id, decided_at: new Date(), decision_reason: 'Auto-approved' } : {}),
       }).returning('*');
       if (autoApprove) applied = await this.applyGrant(trx, grant, user.id);
     });
-    await audit('discount_grant', grant.id, autoApprove ? 'grant_approved' : 'grant_requested', user.id, { ...shape, year, term, worth, applied, amount: autoApprove ? applied : worth });
+    const credited = autoApprove ? await creditShortfall(tenantId, user.id, grant, applied) : 0;
+    await audit('discount_grant', grant.id, autoApprove ? 'grant_approved' : 'grant_requested', user.id, { ...shape, year, term, worth, applied, credited, amount: autoApprove ? applied : worth });
+    if (autoApprove) {
+      await notifyFamily(student.id, {
+        subject: 'Discount added',
+        message: `{student} has a ${shape.label} (${shape.basis === 'percent' ? `${shape.value}%` : leFmt(shape.value)}${term ? `, ${term}` : `, ${year}`}).${applied > 0 ? ` ${leFmt(applied)} was taken off the fees.` : credited > 0 ? '' : ' It comes off the fees when they are billed.'}${credited > 0 ? ` ${leFmt(credited)} on fees already paid was added to the account as credit.` : ''}`,
+        sourceType: 'discount_grant', sourceId: grant.id,
+      }, { emailTenantId: tenantId });
+    }
     if (!autoApprove) {
       await notifyFinanceStaff(tenantId, ['principal'], {
         subject: 'Discount waiting for your approval',
@@ -180,7 +215,7 @@ export const discountService = {
         url: '/finance/discounts', sourceType: 'discount_grant', sourceId: grant.id,
       });
     }
-    return { grant, worth, applied, needsApproval: !autoApprove, unbilled: billed <= 0, shortfall: autoApprove ? round2(Math.max(0, Math.min(worth, billed) - applied)) : 0 };
+    return { grant, worth, applied, credited, needsApproval: !autoApprove, unbilled: billed <= 0, shortfall: autoApprove && !credited ? await shortfallOf(grant, applied) : 0 };
   },
 
   /** Apply an approved grant to the student's matching fees. Returns Le applied now. */
@@ -232,17 +267,25 @@ export const discountService = {
       grant.status = status;
       if (status === 'approved') applied = await this.applyGrant(trx, grant, userId);
     });
-    await audit('discount_grant', id, decision, userId, { reason, applied, label: grant.label });
+    const credited = decision === 'approve' ? await creditShortfall(tenantId, userId, grant, applied) : 0;
+    await audit('discount_grant', id, decision, userId, { reason, applied, credited, label: grant.label });
+    if (decision === 'approve') {
+      await notifyFamily(grant.student_id, {
+        subject: 'Discount added',
+        message: `{student} has a ${grant.label} (${grant.basis === 'percent' ? `${Number(grant.value)}%` : leFmt(Number(grant.value))}${grant.term ? `, ${grant.term}` : `, ${grant.academic_year}`}).${applied > 0 ? ` ${leFmt(applied)} was taken off the fees.` : credited > 0 ? '' : ' It comes off the fees when they are billed.'}${credited > 0 ? ` ${leFmt(credited)} on fees already paid was added to the account as credit.` : ''}`,
+        sourceType: 'discount_grant', sourceId: id,
+      }, { emailTenantId: tenantId });
+    }
     if (grant.requested_by && grant.requested_by !== userId) {
       await notifyUsers([grant.requested_by], {
         subject: decision === 'approve' ? 'Discount approved' : 'Discount rejected',
         message: decision === 'approve'
-          ? `${grant.label} was approved. Le ${applied.toLocaleString('en-US', { minimumFractionDigits: 2 })} was taken off the fees.`
+          ? `${grant.label} was approved. Le ${applied.toLocaleString('en-US', { minimumFractionDigits: 2 })} was taken off the fees.${credited > 0 ? ` ${leFmt(credited)} was added as account credit.` : ''}`
           : `${grant.label} was rejected${reason ? `: ${reason}` : ''}.`,
         url: '/finance/discounts', sourceType: 'discount_grant', sourceId: id,
       });
     }
-    return { id, status: grant.status, applied };
+    return { id, status: grant.status, applied, credited };
   },
 
   /** Withdraw an approved discount: its lines come off and the amounts are owed again. */
@@ -317,6 +360,53 @@ export const discountService = {
       });
     }
     return out;
+  },
+
+  /**
+   * Students who qualify for a staff-child rule: an active child at school that
+   * year whose guardian is a member of staff, matched by login, email or phone
+   * (last 8 digits), without the rule yet. The bursar still confirms each one.
+   */
+  async staffChildCandidates(tenantId: string, ruleId: string, year: string) {
+    const rule = await db('discount_rules').where({ id: ruleId, tenant_id: tenantId, kind: 'staff_child' }).first();
+    if (!rule) throw new AppError('Staff-child discount not found', 404, 'NOT_FOUND');
+    const scope = await resolveYearScope(tenantId, year);
+    const inYear = scope && scope.classIds.length
+      ? new Set((await db('enrollments').whereIn('class_id', scope.classIds)
+        .whereIn('status', ['enrolled', 'active', 'completed', 'promoted', 'repeated']).distinct('student_id')).map((r: any) => String(r.student_id)))
+      : null;
+    const tel = (v: unknown) => { const d = String(v || '').replace(/\D/g, ''); return d.length >= 8 ? d.slice(-8) : ''; };
+    // Staff: logins with a staff role, their teacher phone, plus support staff (no login).
+    const staffUsers = await db('users as u').leftJoin('teachers as t', 't.user_id', 'u.id')
+      .where('u.tenant_id', tenantId).whereIn('u.role', ['teacher', 'accountant', 'admissions_officer', 'principal'])
+      .whereRaw("COALESCE(u.status, 'active') NOT IN ('deleted', 'inactive', 'suspended')")
+      .select('u.id', 'u.email', 'u.first_name', 'u.last_name', 'u.role', 't.phone');
+    const byUser = new Map<string, string>(), byEmail = new Map<string, string>(), byPhone = new Map<string, string>();
+    for (const u of staffUsers) {
+      const name = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email;
+      byUser.set(String(u.id), name);
+      if (u.email) byEmail.set(String(u.email).toLowerCase().trim(), name);
+      if (tel(u.phone)) byPhone.set(tel(u.phone), name);
+    }
+    for (const s of await db('support_staff').where({ tenant_id: tenantId }).whereRaw("COALESCE(status, 'active') NOT IN ('deleted', 'inactive', 'terminated')").select('first_name', 'last_name', 'phone')) {
+      if (tel(s.phone) && !byPhone.has(tel(s.phone))) byPhone.set(tel(s.phone), `${s.first_name || ''} ${s.last_name || ''}`.trim());
+    }
+    const rows = await db('guardians as g').join('students as s', 's.id', 'g.student_id').leftJoin('users as u', 'u.id', 's.user_id')
+      .where('s.tenant_id', tenantId).where('s.status', 'active')
+      .select('s.id', 's.student_id', 'g.user_id', 'g.email', 'g.phone_number',
+        db.raw("COALESCE(u.first_name || ' ' || u.last_name, s.first_name || ' ' || s.last_name) as name"));
+    const granted = new Set((await db('discount_grants').where({ tenant_id: tenantId, rule_id: ruleId, academic_year: year })
+      .whereIn('status', ['pending', 'approved']).select('student_id')).map((r: any) => String(r.student_id)));
+    const out = new Map<string, any>();
+    for (const r of rows) {
+      const id = String(r.id);
+      if (out.has(id) || granted.has(id) || (inYear && !inYear.has(id))) continue;
+      const hit = (r.user_id && byUser.get(String(r.user_id)) && { staff: byUser.get(String(r.user_id)), match: 'login' })
+        || (r.email && byEmail.get(String(r.email).toLowerCase().trim()) && { staff: byEmail.get(String(r.email).toLowerCase().trim()), match: 'email' })
+        || (tel(r.phone_number) && byPhone.get(tel(r.phone_number)) && { staff: byPhone.get(tel(r.phone_number)), match: 'phone' });
+      if (hit) out.set(id, { student_id: r.id, admission_no: r.student_id, name: r.name, staff_name: hit.staff, matched_by: hit.match });
+    }
+    return [...out.values()].sort((a, b) => String(a.staff_name).localeCompare(String(b.staff_name)) || String(a.name).localeCompare(String(b.name)));
   },
 };
 

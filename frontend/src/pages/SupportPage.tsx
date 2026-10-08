@@ -71,6 +71,7 @@ const COMMON_FAQ: Faq[] = [
 const ROLE_FAQ: Partial<Record<string, Faq[]>> = {
   accountant: [
     { q: 'A parent paid cash at the office. How do I record it?', a: 'Payments & Receipts → Record Payment. Type part of the student\'s name, admission number, class or the parent\'s phone, pick the student, choose what the payment is for, enter the amount and method. It settles the oldest fees first and gives a numbered receipt.' },
+    { q: 'How do I refund a payment made online (Monime)?', a: 'WiSkul can\'t send money back through Monime. Send the refund from your Monime dashboard first, then press Refund on that payment in Payments & Receipts with a reason, so the fee balance and the books match. If the family should keep the money as credit instead, give a credit note on their account.' },
     { q: 'I recorded a payment for the wrong student.', a: 'Refund that payment with a reason (the balance goes back on the fees), then record it again for the right student. Payments are never deleted, so the audit log shows both.' },
     { q: 'Why is my discount "waiting for approval"?', a: 'It is above the amount you can give alone (Settings → Payment Policy), or it is a percentage on fees that aren\'t billed yet. The principal is notified and decides; you get a notification when they do.' },
     { q: 'Can I sign in for a day I forgot?', a: 'No. Staff sign in for today only, until the school\'s closing time. For any other day, or after the cut-off, ask the principal to record your attendance.' },
@@ -79,12 +80,25 @@ const ROLE_FAQ: Partial<Record<string, Faq[]>> = {
   ],
 };
 
+ROLE_FAQ.admissions_officer = [
+  { q: 'How do families apply online?', a: 'Admissions → Online admission link: copy or share it. Families apply without an account, get an application number by email, and the application arrives as New. You get a notification.' },
+  { q: 'I approved an applicant. Why are they not in the Student Directory?', a: 'Approving only accepts them (and emails the family). Press Enrol on the application and pick this year\'s class; that creates the student, links the parent and creates their sign-ins.' },
+  { q: 'Can I undo a decision?', a: 'Yes, until the child is enrolled: open the application and press Reopen. It goes back to Under review and the timeline keeps the history.' },
+  { q: 'Where do I find a student\'s or parent\'s password?', a: 'Right after enrolling it is shown once. Afterwards, Student Profiles → Portal Login Credentials (Show), where you can also reset it.' },
+  { q: 'Why can\'t I enter scores or edit classes?', a: 'Academic pages are view-only for admissions. Teachers enter scores; the principal manages classes and timetables.' },
+  { q: 'Can I sign in for a day I forgot?', a: 'No. Staff sign in for today only, until the school\'s closing time. For any other day, ask the principal to record your attendance.' },
+];
 /** Shortcuts on the Help Center home, per role. */
 const ROLE_ACTIONS: Partial<Record<string, Array<{ label: string; to: string; icon: any; accent: 'blue' | 'violet' | 'emerald' | 'amber' }>>> = {
   accountant: [
     { label: 'Record a payment', to: '/support/finance/payments-record', icon: Wallet, accent: 'blue' },
     { label: 'Discounts', to: '/support/finance/discounts', icon: CreditCard, accent: 'violet' },
     { label: 'Bank reconciliation', to: '/support/finance/bank-reconciliation', icon: Building, accent: 'emerald' },
+  ],
+  admissions_officer: [
+    { label: 'Process admissions', to: '/support/students/admissions', icon: ClipboardCheck, accent: 'blue' },
+    { label: 'Enrol and manage students', to: '/support/students/students-add', icon: Users, accent: 'violet' },
+    { label: 'Open Admissions', to: '/students/admissions', icon: GraduationCap, accent: 'emerald' },
   ],
 };
 

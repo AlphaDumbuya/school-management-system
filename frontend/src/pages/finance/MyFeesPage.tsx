@@ -69,8 +69,9 @@ const ParentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: ()
   });
   const dash = (dashResp as any)?.data ?? (dashResp as any);
   const children = dash?.children ?? [];
-  // If arriving with a pay intent for a specific child, preselect that child.
-  const [selectedId, setSelectedId] = useState(autoPay?.studentId || '');
+  // A pay intent or a ?child= link (from the dashboard) preselects that child.
+  const childParam = new URLSearchParams(window.location.search).get('child') || '';
+  const [selectedId, setSelectedId] = useState(autoPay?.studentId || childParam);
   const currentId = selectedId || autoPay?.studentId || children[0]?.id || '';
 
   const { data: ledgerResp } = useQuery({

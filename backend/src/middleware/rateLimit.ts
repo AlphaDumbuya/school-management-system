@@ -122,7 +122,7 @@ function makeLimiter(opts: Partial<Options>) {
   return failOpen;
 }
 
-const clientIp = (req: Request) =>
+export const clientIp = (req: Request) =>
   (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
 
 const emailKey = (req: Request) => `${(req.body?.email ?? '').toString().toLowerCase().trim()}`;
@@ -151,6 +151,16 @@ export const otpLimiter = makeLimiter({
   limit: 5,
   keyGenerator: (req) => `otp:${clientIp(req)}:${emailKey(req)}`,
   message: { success: false, error: 'Too many attempts. Please try again later.' },
+});
+
+// Public admission form: per IP + school. Shares the Redis store when
+// REDIS_URL is set; the route also applies database caps that hold across
+// serverless instances either way.
+export const publicFormLimiter = makeLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => `apply:${clientIp(req)}:${String(req.params?.schoolSlug || '').toLowerCase()}`,
+  message: { success: false, error: 'Too many applications from this connection. Please wait a few minutes and try again.' },
 });
 
 // Passkey registration / authentication.

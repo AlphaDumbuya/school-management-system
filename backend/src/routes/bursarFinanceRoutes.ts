@@ -49,7 +49,10 @@ router.post('/discounts/rules', staff, wrap(async (req, res) => res.status(201).
 router.put('/discounts/rules/:id', staff, wrap(async (req, res) => res.json({ success: true, data: await discountService.updateRule(T(req), U(req), req.params.id, req.body) })));
 router.get('/discounts/rules/:id/candidates', staff, wrap(async (req, res) => {
   const year = normalizeAcademicYear(String(req.query.academic_year || '')) || (await resolveActiveYear(T(req))).yearString;
-  res.json({ success: true, data: await discountService.siblingCandidates(T(req), req.params.id, year) });
+  const rule = await db('discount_rules').where({ id: req.params.id, tenant_id: T(req) }).first('kind');
+  res.json({ success: true, data: rule?.kind === 'staff_child'
+    ? await discountService.staffChildCandidates(T(req), req.params.id, year)
+    : await discountService.siblingCandidates(T(req), req.params.id, year) });
 }));
 router.get('/discounts/grants', staff, wrap(async (req, res) => res.json({
   success: true,
@@ -59,6 +62,16 @@ router.post('/discounts/grants', staff, wrap(async (req, res) => res.status(201)
 router.post('/discounts/grants/:id/approve', principal, wrap(async (req, res) => res.json({ success: true, data: await discountService.decide(T(req), U(req), req.params.id, 'approve', reasonOf(req)) })));
 router.post('/discounts/grants/:id/reject', principal, wrap(async (req, res) => res.json({ success: true, data: await discountService.decide(T(req), U(req), req.params.id, 'reject', reasonOf(req)) })));
 router.post('/discounts/grants/:id/revoke', staff, wrap(async (req, res) => res.json({ success: true, data: await discountService.revoke(T(req), U(req), req.params.id, reasonOf(req), String(req.user!.role)) })));
+
+/** A student's approved discounts and scholarships (staff, the student, or a linked parent). */
+router.get('/students/:id/discounts', wrap(async (req, res) => {
+  const { tenantId } = await assertCanViewStudent(req, req.params.id);
+  const rows = await discountService.listGrants(tenantId, { studentId: req.params.id, year: req.query.academic_year as string, status: 'approved' });
+  res.json({ success: true, data: rows.map((g: any) => ({
+    id: g.id, label: g.label, basis: g.basis, value: Number(g.value), applies_to: g.applies_to,
+    academic_year: g.academic_year, term: g.term, applied_amount: g.applied_amount, decided_at: g.decided_at,
+  })) });
+}));
 
 // ── Overdue + late fees ─────────────────────────────────────────────────────
 router.post('/late-fees/run', staff, wrap(async (req, res) => {

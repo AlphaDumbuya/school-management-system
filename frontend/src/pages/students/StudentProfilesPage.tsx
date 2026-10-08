@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@hooks/useAuth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -96,6 +97,7 @@ export const StudentProfilesPage: React.FC = () => {
   const [parentModalOpen, setParentModalOpen] = useState(false);
   // Password reset state (which account is resetting).
   const [resettingRole, setResettingRole] = useState<'student' | 'parent' | null>(null);
+  const [confirmReset, setConfirmReset] = useState<'student' | 'parent' | null>(null);
 
   useEffect(() => {
     if (location.state?.studentId) {
@@ -802,7 +804,7 @@ export const StudentProfilesPage: React.FC = () => {
                               {canManage && (
                                 <button
                                   type="button"
-                                  onClick={() => handleResetPassword('student')}
+                                  onClick={() => setConfirmReset('student')}
                                   disabled={resettingRole === 'student'}
                                   className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 hover:text-amber-200 disabled:opacity-50"
                                 >
@@ -826,7 +828,7 @@ export const StudentProfilesPage: React.FC = () => {
                               {canManage && student.demo_login?.parent_user_id && (
                                 <button
                                   type="button"
-                                  onClick={() => handleResetPassword('parent')}
+                                  onClick={() => setConfirmReset('parent')}
                                   disabled={resettingRole === 'parent'}
                                   className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 hover:text-amber-200 disabled:opacity-50"
                                 >
@@ -1369,6 +1371,15 @@ export const StudentProfilesPage: React.FC = () => {
           </div>
         )}
       </PageShell>
+      <ConfirmationDialog
+        isOpen={!!confirmReset}
+        onClose={() => setConfirmReset(null)}
+        isDestructive={false}
+        title={confirmReset === 'parent' ? 'Reset the parent password' : 'Reset the student password'}
+        confirmLabel="Reset password"
+        message={`The ${confirmReset === 'parent' ? 'parent' : 'student'} gets a new demo password and the old one stops working at once. Give them the new one from the credentials card.`}
+        onConfirm={async () => { if (confirmReset) await handleResetPassword(confirmReset); }}
+      />
     </MainLayout>
   );
 };

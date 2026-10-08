@@ -7,7 +7,7 @@
 import { db } from '@utils/database';
 import { AppError } from '@middleware/errorHandler';
 import { tenantToday } from '@utils/schoolDate';
-import { round2, audit } from './core';
+import { round2, audit, cleanMoneyAccount } from './core';
 import { expenseService, cleanCategory, yearForDate, assertOpenYear } from './expenseService';
 
 async function balanceOf(q: any, fundId: string): Promise<number> {
@@ -71,6 +71,8 @@ export const pettyCashService = {
     await assertOpenYear(tenantId, year, 'petty cash');
     const description = String(body?.description || '').trim().slice(0, 500);
     let category: string | null = null;
+    // Where a top-up came from / a return went to (books: bank, cash on hand or mobile money).
+    const moneyAccount = kind === 'spend' ? null : cleanMoneyAccount(body?.money_account, 'bank');
     if (kind === 'spend') {
       category = cleanCategory(body?.category);
       if (!description) throw new AppError('Describe the spend (e.g. "Chalk and markers").', 400, 'VALIDATION_ERROR');
@@ -87,7 +89,7 @@ export const pettyCashService = {
       }
       [entry] = await trx('petty_cash_entries').insert({
         tenant_id: tenantId, fund_id: fundId, kind, amount, category, description: description || null,
-        entry_date: date, academic_year: year, receipt_url: body?.receipt_url || null, recorded_by: userId,
+        entry_date: date, academic_year: year, receipt_url: body?.receipt_url || null, recorded_by: userId, money_account: moneyAccount,
       }).returning('*');
       if (kind === 'spend') {
         const e = await expenseService.createLinked(trx, {
@@ -99,7 +101,7 @@ export const pettyCashService = {
         entry.expense_id = e.id;
       }
     });
-    await audit('petty_cash_entry', entry.id, kind, userId, { fundId, amount, category, description });
+    await audit('petty_cash_entry', entry.id, kind, userId, { fundId, amount, category, description, money_account: moneyAccount });
     return { ...entry, balance: await balanceOf(db, fundId) };
   },
 

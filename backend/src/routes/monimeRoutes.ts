@@ -512,6 +512,16 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
 
   logger.info(`Monime payment reconciled for session ${sessionId}`);
 
+  // Tell the family in the app (best-effort; the email receipt follows).
+  try {
+    const { notifyFamily, leFmt } = await import('../services/finance/core.js');
+    await notifyFamily(session.student_id, {
+      subject: 'Payment received',
+      message: `${leFmt(Number(session.amount))} paid online for {student}${receiptNumber ? ` (receipt ${receiptNumber})` : ''}. Thank you.`,
+      sourceType: 'payment', sourceId: sessionId,
+    });
+  } catch { /* never block the webhook */ }
+
   // Tell the bursar (best-effort).
   try {
     const { notifyFinanceStaff } = await import('../services/finance/core.js');

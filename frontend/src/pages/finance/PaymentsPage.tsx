@@ -544,6 +544,11 @@ export const PaymentsPage: React.FC = () => {
           <textarea id="refund-reason" value={refundReason} onChange={(e) => setRefundReason(e.target.value)} rows={2} maxLength={500}
             placeholder="e.g. Recorded against the wrong student"
             className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" />
+          {refundTarget && /(monime|online|mobile|momo|orange|afri)/i.test(`${refundTarget.method || ''} ${refundTarget.payment_method || ''}`) && (
+            <p role="note" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+              This was paid online (mobile money). WiSkul can't send money back through Monime: send the refund from your Monime dashboard first, then confirm here so the books and the family's balance match.
+            </p>
+          )}
         </ConfirmationDialog>
       </PageShell>
     </MainLayout>

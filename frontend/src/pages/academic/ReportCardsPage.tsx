@@ -242,7 +242,8 @@ export const ReportCardsPage: React.FC = () => {
 
   // Released terms for the current card. Staff (no publish gate) may view any
   // term; students/parents only see released ones.
-  const isStaff = !isStudent && !isParent;
+  // Principal / teachers see drafts; the office (admissions, bursar) only what is released.
+  const isStaff = ['principal', 'super_admin', 'teacher'].includes(String(user?.role));
   const publishedTerms: SLTerm[] = ((card?.published_terms as SLTerm[]) || []);
   const yearReleased = !!card?.year_released;
   const allTerms: SLTerm[] = ['first_term', 'second_term', 'third_term'];
@@ -810,7 +811,7 @@ export const ReportCardsPage: React.FC = () => {
             <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-amber-500 text-white text-xs font-bold">!</span>
             <span>
               <strong>Draft — not yet released.</strong>{' '}
-              {user?.role === 'teacher'
+              {user?.role === 'teacher' || user?.role === 'admissions_officer'
                 ? "Parents and students can't see this report until the principal publishes the results."
                 : <>Parents and students can't see this report until you publish it in Settings → Grading &amp; Results.</>}
             </span>

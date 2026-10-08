@@ -22,7 +22,10 @@ export interface LedgerCharge {
 export interface TermBucket {
   term: LedgerTerm;
   billed: number;
+  /** Cash paid. Discounts and applied credit are separate. */
   paid: number;
+  discounted?: number;
+  credit_applied?: number;
   outstanding: number;
   charges: LedgerCharge[];
 }
@@ -31,6 +34,8 @@ export interface YearBucket {
   academic_year: string;
   billed: number;
   paid: number;
+  discounted?: number;
+  credit_applied?: number;
   outstanding: number;
   terms: TermBucket[];
 }
@@ -39,7 +44,7 @@ export interface StudentLedger {
   student_id: string;
   tenant_id: string;
   years: YearBucket[];
-  totals: { billed: number; paid: number; outstanding: number };
+  totals: { billed: number; paid: number; outstanding: number; discounted?: number; credit_applied?: number };
 }
 
 export interface PaymentPolicy {

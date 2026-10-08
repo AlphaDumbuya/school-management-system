@@ -1,6 +1,13 @@
 import type { Knex } from 'knex';
 import { v4 as uuidv4 } from 'uuid';
 import { AppError } from '@middleware/errorHandler';
+
+/** jsonb columns arrive already parsed; text columns as a JSON string. Never throws. */
+function parseList(v: unknown): any[] {
+  if (Array.isArray(v)) return v;
+  if (typeof v === 'string' && v.trim()) { try { const x = JSON.parse(v); return Array.isArray(x) ? x : []; } catch { return []; } }
+  return [];
+}
 import { logger } from '@utils/logger';
 
 /**
@@ -141,7 +148,7 @@ export class SupportTicketService {
       category: t.category,
       assignedTo: t.assigned_to,
       resolution: t.resolution,
-      attachments: JSON.parse(t.attachments || '[]'),
+      attachments: parseList(t.attachments),
       createdAt: t.created_at,
       updatedAt: t.updated_at,
       resolvedAt: t.resolved_at,
@@ -242,7 +249,7 @@ export class SupportTicketService {
         status: ticket.status,
         category: ticket.category,
         assignedTo: ticket.assigned_to,
-        attachments: JSON.parse(ticket.attachments || '[]'),
+        attachments: parseList(ticket.attachments),
         resolution: ticket.resolution,
         createdAt: ticket.created_at,
         updatedAt: ticket.updated_at,
@@ -316,7 +323,7 @@ export class SupportTicketService {
         status: t.status,
         category: t.category,
         assignedTo: t.assigned_to,
-        attachments: JSON.parse(t.attachments || '[]'),
+        attachments: parseList(t.attachments),
         resolution: t.resolution,
         createdAt: t.created_at,
         updatedAt: t.updated_at,
@@ -458,7 +465,7 @@ export class SupportTicketService {
         ticketId: r.ticket_id,
         responderId: r.responder_id,
         message: r.message,
-        attachments: JSON.parse(r.attachments || '[]'),
+        attachments: parseList(r.attachments),
         isPublic: r.is_public,
         createdAt: r.created_at,
       }));
