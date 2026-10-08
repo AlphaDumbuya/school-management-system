@@ -209,7 +209,8 @@ export const AttendancePage: React.FC = () => {
         search: search || undefined,
         academic_year: year,
       }),
-    enabled: !!year,
+    // Office staff (bursar, admissions) only sign themselves in here.
+    enabled: !!year && !staffSelfOnly,
     staleTime: 30_000,
   });
 
@@ -221,7 +222,7 @@ export const AttendancePage: React.FC = () => {
   const { data: classesData } = useQuery({
     queryKey: ['att-classes', year],
     queryFn: () => classesService.listClasses({ limit: 100, academic_year: year }),
-    enabled: !!year,
+    enabled: !!year && !staffSelfOnly,
     staleTime: 120_000,
   });
   const classes = (classesData as any)?.data ?? [];
@@ -595,7 +596,7 @@ export const AttendancePage: React.FC = () => {
         <div className="space-y-6">
 
           {/* ── Tab bar ─────────────────────────────────────────────────── */}
-          <div className="flex items-center gap-2 bg-slate-100 dark:bg-gray-800 p-1.5 rounded-2xl w-full overflow-x-auto scrollbar-none whitespace-nowrap sm:w-fit">
+          {!staffSelfOnly && <div className="flex items-center gap-2 bg-slate-100 dark:bg-gray-800 p-1.5 rounded-2xl w-full overflow-x-auto scrollbar-none whitespace-nowrap sm:w-fit">
             {TABS.filter((tab) => !(viewingPast && tab.id === 'register')).filter((tab) => !staffSelfOnly || tab.id === 'teachers').map((tab) => (
               <button
                 key={tab.id}
@@ -613,7 +614,7 @@ export const AttendancePage: React.FC = () => {
                 </span>
               </button>
             ))}
-          </div>
+          </div>}
 
           {viewingPast && activeTab !== 'teachers' && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">

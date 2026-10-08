@@ -351,18 +351,27 @@ export class CardLifecycleService {
       const thresholdDate = new Date();
       thresholdDate.setDate(thresholdDate.getDate() + daysThreshold);
 
+      // Columns are qualified (id_cards and users both have tenant_id/status),
+      // and a student card may point at the student row rather than a login.
       const expiringCards = await this.db('id_cards')
-        .where({ tenant_id: tenantId, status: 'active' })
-        .whereBetween('expires_at', [today, thresholdDate])
-        .join('users', 'id_cards.user_id', 'users.id')
+        .where({ 'id_cards.tenant_id': tenantId, 'id_cards.status': 'active' })
+        .whereBetween('id_cards.expires_at', [today, thresholdDate])
+        .leftJoin('students', function (this: any) {
+          this.on('students.user_id', '=', 'id_cards.user_id').orOn('students.id', '=', 'id_cards.user_id');
+        })
+        .leftJoin('users', function (this: any) {
+          this.on('users.id', '=', 'id_cards.user_id').orOn('users.id', '=', 'students.user_id');
+        })
+        .distinctOn('id_cards.expires_at', 'id_cards.id')
         .select(
           'id_cards.*',
-          'users.first_name',
-          'users.last_name',
-          'users.email',
-          'users.role'
+          this.db.raw("COALESCE(users.first_name, students.first_name) as first_name"),
+          this.db.raw("COALESCE(users.last_name, students.last_name) as last_name"),
+          this.db.raw("COALESCE(users.email, '') as email"),
+          this.db.raw("COALESCE(users.role, 'student') as role"),
         )
-        .orderBy('id_cards.expires_at', 'asc');
+        .orderBy('id_cards.expires_at', 'asc')
+        .orderBy('id_cards.id');
 
       logger.info(`Found ${expiringCards.length} cards expiring within ${daysThreshold} days`, {
         tenantId,

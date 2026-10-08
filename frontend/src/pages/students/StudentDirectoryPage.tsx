@@ -66,6 +66,8 @@ export const StudentDirectoryPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { canAccess } = useAuth();
+  // Permanent delete is the principal's; the office deactivates (withdraws) instead.
+  const canDeleteForever = canAccess(['principal', 'super_admin']);
   // Teachers view a read-only, class-scoped directory; only these roles manage.
   const canManage = canAccess(['principal', 'super_admin', 'admissions_officer']);
 
@@ -487,7 +489,7 @@ export const StudentDirectoryPage: React.FC = () => {
                   ? [{ label: 'Deactivate', variant: 'destructive' as const, onClick: (r: StudentRecord) => setDeactivateTarget(r) }]
                   : [{ label: 'Reactivate', onClick: (r: StudentRecord) => handleReactivate(r) }]
                 ),
-                { label: 'Delete', variant: 'destructive' as const, onClick: (r: StudentRecord) => setDeleteTarget(r) },
+                ...(canDeleteForever ? [{ label: 'Delete', variant: 'destructive' as const, onClick: (r: StudentRecord) => setDeleteTarget(r) }] : []),
               ] : []),
             ]}
           />

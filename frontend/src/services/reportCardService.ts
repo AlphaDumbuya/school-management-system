@@ -314,6 +314,11 @@ export const reportCardService = {
     return apiClient.get<{ success: boolean; data: ClassRanking }>(`${BASE}/ranking`, { params });
   },
 
+  /** Terms released for a class+year (read-only staff open on a released term). */
+  async getReleased(classId: string, academicYear: string) {
+    return apiClient.get<{ success: boolean; data: { terms: SLTerm[]; year_released: boolean } }>(`${BASE}/released`, { params: { class_id: classId, academic_year: academicYear } });
+  },
+
   /**
    * Download the server-generated PDF (clean, no browser header/footer).
    * Pass `term` (first_term/second_term) for a single-A4 terminal result sheet;

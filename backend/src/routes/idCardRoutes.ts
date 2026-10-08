@@ -104,6 +104,16 @@ async function assertAdmissionsStudentsOnly(req: Request, userIds?: unknown, fil
   }
 }
 
+/** Admissions may change STUDENT cards only (regenerate, revoke, suspend, reactivate, preview). */
+async function assertAdmissionsCardIsStudent(req: Request, cardId: string) {
+  if ((req as any).user?.role !== 'admissions_officer') return;
+  const card = await db('id_cards').where({ id: cardId }).first('user_id');
+  if (!card) return;
+  const u = await db('users').where({ id: card.user_id }).first('role');
+  const isStudent = u ? u.role === 'student' : !!(await db('students').where({ id: card.user_id }).first('id'));
+  if (!isStudent) throw new AppError('Admissions can only manage student ID cards.', 403, 'STUDENTS_ONLY');
+}
+
 /** Assert a bulk job belongs to the caller's tenant. */
 async function assertBulkJobInTenant(req: Request, jobId: string): Promise<void> {
   const tenantId = (req as any).user?.tenant_id;
@@ -496,6 +506,7 @@ router.post(
     try {
       const { cardId } = req.params;
       await assertCardInTenant(req, cardId); // tenant guard
+      await assertAdmissionsCardIsStudent(req, cardId);
 
       const result = await idCardService.regenerateCard(cardId, resolveRequestOrigin(req));
 
@@ -599,6 +610,7 @@ router.post(
       if (!userId || !templateId) {
         throw new AppError('Missing required fields: userId, templateId', 400);
       }
+      await assertAdmissionsStudentsOnly(req, userId);
 
       const pdfBuffer = await idCardService.previewCard(userId, tenantId, templateId);
 
@@ -628,6 +640,7 @@ router.post(
         throw new AppError('Reason for revocation is required', 400);
       }
       await assertCardInTenant(req, cardId); // tenant guard
+      await assertAdmissionsCardIsStudent(req, cardId);
 
       await lifecycleService.revokeCard(cardId, revokedBy, reason);
 
@@ -685,6 +698,7 @@ router.post(
         throw new AppError('Reason for suspension is required', 400);
       }
       await assertCardInTenant(req, cardId); // tenant guard
+      await assertAdmissionsCardIsStudent(req, cardId);
 
       await lifecycleService.suspendCard(cardId, suspendedBy, reason);
 
@@ -707,6 +721,7 @@ router.post(
       const { cardId } = req.params;
       const reactivatedBy = (req as any).user.id;
       await assertCardInTenant(req, cardId); // tenant guard
+      await assertAdmissionsCardIsStudent(req, cardId);
 
       await lifecycleService.reactivateCard(cardId, reactivatedBy);
 

@@ -1035,7 +1035,7 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
  * Deactivate student (soft delete)
  * @requires admin, principal
  */
-router.delete('/:studentId', authenticate, authorize('principal', 'super_admin'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:studentId', authenticate, authorize('principal', 'super_admin', 'admissions_officer'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const currentUser = req.auth;
@@ -1130,7 +1130,7 @@ router.delete('/:studentId/permanent', authenticate, authorize('principal', 'sup
  * Reactivate a deactivated student
  * @requires admin, principal
  */
-router.post('/:studentId/reactivate', authenticate, authorize('principal', 'super_admin'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:studentId/reactivate', authenticate, authorize('principal', 'super_admin', 'admissions_officer'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const currentUser = req.auth;

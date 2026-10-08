@@ -131,8 +131,8 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({ onClose, mobil
     try {
       const canSeeStudents   = ['principal', 'teacher', 'accountant', 'admissions_officer'].includes(role);
       const canSeeTeachers   = ['principal'].includes(role);
-      const canSeeClasses    = ['principal', 'teacher'].includes(role);
-      const canSeeSubjects   = ['principal', 'teacher'].includes(role);
+      const canSeeClasses    = ['principal', 'teacher', 'admissions_officer'].includes(role);
+      const canSeeSubjects   = ['principal', 'teacher', 'admissions_officer'].includes(role);
       const canSeeAnnounce   = true; // all roles
 
       const promises: Promise<SearchResult[]>[] = [];

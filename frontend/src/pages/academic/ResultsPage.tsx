@@ -60,6 +60,18 @@ export const ResultsPage: React.FC = () => {
 
   // Ranking tab state
   const [rankingClassId, setRankingClassId] = useState('');
+  // Read-only staff see released terms only (the server gates the rest).
+  const { data: releasedResp } = useQuery({
+    queryKey: ['results-released', rankingClassId, academicYear],
+    queryFn: () => reportCardService.getReleased(rankingClassId, academicYear),
+    enabled: readOnlyStaff && !!rankingClassId && !!academicYear,
+    staleTime: 60_000,
+  });
+  const released = (releasedResp as any)?.data as { terms: SLTerm[]; year_released: boolean } | undefined;
+  const releasedTerms = useMemo(() => {
+    if (!released) return [] as Array<SLTerm | 'full'>;
+    return [...released.terms, ...(released.year_released ? ['full' as const] : [])] as Array<SLTerm | 'full'>;
+  }, [released]);
 
   // Ratings tab state
   const [ratingsClassId, setRatingsClassId] = useState('');
@@ -283,8 +295,13 @@ export const ResultsPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
               <SearchableSelect label="Class" options={classOptions} value={rankingClassId} onChange={setRankingClassId} placeholder="Select class..." />
             </div>
-            {rankingClassId ? (
-              <ClassRankingView classId={rankingClassId} academicYear={academicYear} />
+            {rankingClassId && readOnlyStaff && released && !releasedTerms.length ? (
+              <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl">
+                <Trophy size={28} className="mx-auto mb-2 text-gray-400" />
+                No results are released for this class in {academicYear} yet. The ranking appears once the principal releases a term.
+              </div>
+            ) : rankingClassId && (!readOnlyStaff || released) ? (
+              <ClassRankingView classId={rankingClassId} academicYear={academicYear} availableTerms={readOnlyStaff ? releasedTerms : undefined} />
             ) : (
               <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl">
                 <Trophy size={28} className="mx-auto mb-2 text-gray-400" />

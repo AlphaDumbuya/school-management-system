@@ -674,6 +674,15 @@ Migration `169_admissions_pipeline` (additive): on `admission_applications` inte
   - Vercel preview builds no longer run migrations against the shared production database (`PREVIEW_DATABASE_ISOLATED=1` once previews have their own `DATABASE_URL`).
   - Component tests `ApplicationDetailModal.test.tsx` (7): allowed actions per stage, reject needs a reason, enrol bills the chosen terms, full class guard, last-year class not preselected.
   - Brevo email check passes 6/6 with the local `.env`.
+- **Sidebar walk (every page as a real admissions officer, 66/66 API checks):** fixed what the officer was shown but the server refused or broke:
+  - Student Directory: Deactivate / Reactivate now allowed for admissions (withdraw / readmit); permanent Delete hidden (principal only).
+  - Student Profiles: Attendance tab was 403 (now read-only access); "Reset password" was 403 (now allowed for student and parent logins only; staff accounts stay with the principal).
+  - Report Cards: an unreleased card returned a 500, now a clear 403 "not released yet"; the office sees released terms only (it was shown draft terms as if staff).
+  - Results: ranking opened on Third Term ("not released"); new `GET /report-cards/released` makes it open on a released term, with a clear message when none is.
+  - Staff Attendance: a hidden student-logs request failed on every load (removed for office staff); an office user added outside staff onboarding had no staff row and could not sign in (row created on first use); empty tab bar removed; "teacher profile" wording fixed.
+  - ID Cards: Expiring tab was a 500 for everyone (ambiguous SQL columns); admissions can manage student cards only (regenerate / revoke / suspend / reactivate / preview checked on the server); staff cards are view-only for them; Delete hidden (principal only).
+  - Support: the ticket list was a 500 for anyone with a ticket (`JSON.parse` on an already-parsed jsonb column), for every role.
+  - Global search finds classes and subjects for the office; promotion banner has an admissions guide.
 - **Data:** `ADM-2026-00001` (approved by the old code, never a student) was marked Withdrawn with a note; Reopen it if it was a different child.
 - **Release checklist (needs the Vercel / GitHub owner):** merge the PR (runs migrations 168 + 169, already applied to the shared DB); in Vercel Production set `CRON_SECRET`, confirm `BREVO_API_KEY` / `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME`, optionally `REDIS_URL` and the two Turnstile keys; one browser click-through as admissions officer, principal and a parent.
 

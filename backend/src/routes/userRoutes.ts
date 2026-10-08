@@ -100,7 +100,7 @@ router.post(
   '/:id/reset-password',
   authenticate,
   attachUserContext,
-  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const targetId = req.params.id;
@@ -116,6 +116,10 @@ router.post(
         throw new AppError('You can only reset passwords for users in your school', 403, 'FORBIDDEN');
       }
 
+      // The admissions office hands out family logins: students and parents only.
+      if (actor.role === 'admissions_officer' && !['student', 'parent', 'guardian'].includes(String(target.role))) {
+        throw new AppError('Admissions can reset student and parent logins only. Ask the principal for staff accounts.', 403, 'FORBIDDEN');
+      }
       // Never allow resetting a super_admin via this route.
       if (target.role === 'super_admin') {
         throw new AppError('Super admin passwords cannot be reset here', 403, 'FORBIDDEN');

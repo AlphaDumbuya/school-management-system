@@ -44,12 +44,34 @@ const adminRoles = [UserRole.PRINCIPAL, UserRole.SUPER_ADMIN] as const;
 const STAFF_ROLES = [UserRole.TEACHER, UserRole.ACCOUNTANT, UserRole.ADMISSIONS_OFFICER];
 const STAFF_ROLE_VALUES = STAFF_ROLES.map(String);
 const validComment = (value: unknown) => value == null || (typeof value === 'string' && value.length <= 500);
+const findOwnTeacher = (req: Request, tenantId: string) => db('teachers as t')
+  .join('users as u', 'u.id', 't.user_id')
+  .where({ 't.user_id': req.user?.id, 'u.tenant_id': tenantId }).whereIn('u.role', STAFF_ROLE_VALUES)
+  .select('t.id', 'u.status as user_status', 't.status as teacher_status')
+  .first();
+/**
+ * The signed-in staff member's staff record. Office staff (bursar, admissions)
+ * added outside staff onboarding have no staff row yet: one is created on
+ * first use so they can sign in like everyone else.
+ */
 const ownTeacher = async (req: Request, tenantId: string) => {
-  return db('teachers as t')
-    .join('users as u', 'u.id', 't.user_id')
-    .where({ 't.user_id': req.user?.id, 'u.tenant_id': tenantId }).whereIn('u.role', STAFF_ROLE_VALUES)
-    .select('t.id', 'u.status as user_status', 't.status as teacher_status')
-    .first();
+  const found = await findOwnTeacher(req, tenantId);
+  if (found || !['accountant', 'admissions_officer'].includes(String(req.user?.role))) return found;
+  const user = await db('users').where({ id: req.user?.id, tenant_id: tenantId }).first('id', 'role', 'status');
+  if (!user || String(user.status) !== 'active') return found;
+  try {
+    const { generateNextId } = await import('../utils/idGenerator.js');
+    await db.transaction(async (trx) => {
+      await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [`staff-row:${user.id}`]);
+      if (await trx('teachers').where({ user_id: user.id }).first('id')) return;
+      await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', ['teacher-number']);
+      await trx('teachers').insert({
+        user_id: user.id, teacher_id: await generateNextId(trx as any, tenantId, 'teacher'), status: 'active',
+        designation: user.role === 'accountant' ? 'bursar' : 'administrator', created_at: new Date(), updated_at: new Date(),
+      });
+    });
+  } catch { /* fall through: reported as "staff profile not found" */ }
+  return findOwnTeacher(req, tenantId);
 };
 
 /** Principal's dated register; teachers from other schools are never returned. */
@@ -98,7 +120,7 @@ router.get('/my', authorize(...STAFF_ROLES), async (req: Request, res: Response,
     requireCurrentRole(req, ...STAFF_ROLES);
     const tenantId = tenantFor(req);
     const teacher = await ownTeacher(req, tenantId);
-    if (!teacher) throw new AppError('Teacher profile not found', 404, 'NOT_FOUND');
+    if (!teacher) throw new AppError('Your staff profile was not found. Ask the principal to add you in Teaching & Admin Staff.', 404, 'NOT_FOUND');
     // Optional academic year → that year's date window (no year = recent history).
     const scope = await resolveYearScope(tenantId, req.query.academic_year);
     const base = applyYearScope(
@@ -127,7 +149,7 @@ router.post('/check-in', authorize(...STAFF_ROLES), async (req: Request, res: Re
     const tenantId = tenantFor(req);
     const teacher = await ownTeacher(req, tenantId);
     if (!teacher || teacher.user_status !== 'active' || teacher.teacher_status !== 'active') {
-      throw new AppError('Active teacher profile required', 403, 'FORBIDDEN');
+      throw new AppError('Your staff profile is not active. Ask the principal to reactivate it.', 403, 'FORBIDDEN');
     }
     const { status, comment } = req.body ?? {};
     if (status !== 'present' && status !== 'late') {
@@ -179,7 +201,7 @@ router.post('/sign-out', authorize(...STAFF_ROLES), async (req: Request, res: Re
     const tenantId = tenantFor(req);
     const teacher = await ownTeacher(req, tenantId);
     if (!teacher || teacher.user_status !== 'active' || teacher.teacher_status !== 'active') {
-      throw new AppError('Active teacher profile required', 403, 'FORBIDDEN');
+      throw new AppError('Your staff profile is not active. Ask the principal to reactivate it.', 403, 'FORBIDDEN');
     }
     const { comment } = req.body ?? {};
     if (!validComment(comment)) throw new AppError('Comment must be at most 500 characters', 400, 'VALIDATION_ERROR');

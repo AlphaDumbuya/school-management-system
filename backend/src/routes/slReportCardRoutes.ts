@@ -325,6 +325,26 @@ router.get('/student/:studentId/summary', authorize(UserRole.PRINCIPAL, UserRole
 });
 
 /**
+ * GET /released?class_id&academic_year
+ * Which terms (and whether the whole year) are released for a class. Lets
+ * read-only staff (admissions, bursar) open on a released term instead of an
+ * empty "not released" view.
+ */
+router.get('/released', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER, UserRole.ADMISSIONS_OFFICER, UserRole.ACCOUNTANT), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { class_id, academic_year } = req.query;
+    if (!class_id || !academic_year) return res.status(400).json({ success: false, error: 'class_id and academic_year are required' });
+    await slReportCardService.assertClassInTenant(class_id as string, tenant(req));
+    const terms: string[] = [];
+    for (const t of ['first_term', 'second_term', 'third_term']) {
+      if (await slReportCardService.isPublished(tenant(req), class_id as string, academic_year as string, t)) terms.push(t);
+    }
+    const year = await slReportCardService.isPublished(tenant(req), class_id as string, academic_year as string);
+    res.json({ success: true, data: { terms, year_released: year } });
+  } catch (error) { next(error); }
+});
+
+/**
  * GET /ranking?class_id&academic_year&term
  * Class results directory ordered by position (1st, 2nd, 3rd …). Publish-gated
  * for non-staff. Flags the class leader(s) so the UI can celebrate them.
@@ -489,7 +509,7 @@ router.get('/:studentId', async (req: Request, res: Response, next: NextFunction
     if (
       error.message?.includes('only view') || error.message?.includes('not permitted') ||
       error.message?.includes('published') || error.message?.includes('authorized') ||
-      error.message?.includes('assigned')
+      error.message?.includes('assigned') || error.message?.includes('released')
     ) {
       return res.status(403).json({ success: false, error: error.message });
     }

@@ -132,7 +132,7 @@ export class SLReportCardService {
       : ['enrolled', 'active'];
   }
 
-  private async assertClassInTenant(classId: string, tenantId: string): Promise<void> {
+  async assertClassInTenant(classId: string, tenantId: string): Promise<void> {
     const c = await db('classes')
       .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
       .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')

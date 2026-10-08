@@ -647,7 +647,7 @@ router.get('/my', authenticate, attachUserContext, authorize(UserRole.STUDENT), 
  * GET /api/v1/attendance/student/:studentId
  * Get attendance records & summary statistics for a specific student
  */
-router.get('/student/:studentId', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.STUDENT), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/student/:studentId', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.TEACHER, UserRole.STUDENT, UserRole.ADMISSIONS_OFFICER), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { studentId } = req.params;
     const currentUser = (req as any).user;

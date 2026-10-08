@@ -92,7 +92,7 @@ function Avatar({ name, photoUrl, size = 'md' }: { name: string; photoUrl?: stri
 
 // ── Visual ID Card Tile ───────────────────────────────────────────────────────
 function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReportLost, onReactivate, onDownload, downloading, readOnly = false }: {
-  card: IdCard; onView: () => void; onRevoke: () => void; onRegenerate: () => void; onDelete: () => void; onReportLost: () => void; onReactivate: () => void; onDownload: (output: 'pdf' | 'png' | 'jpg') => void; downloading: boolean;
+  card: IdCard; onView: () => void; onRevoke: () => void; onRegenerate: () => void; onDelete?: () => void; onReportLost: () => void; onReactivate: () => void; onDownload: (output: 'pdf' | 'png' | 'jpg') => void; downloading: boolean;
   /** Past-year card: view/download only. */
   readOnly?: boolean;
 }) {
@@ -221,7 +221,7 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReport
 function CardActionMenu({ card, downloading, onDownload, onRegenerate, onRevoke, onReportLost, onReactivate, onDelete, readOnly = false }: {
   card: IdCard; downloading: boolean;
   onDownload: (output: 'pdf' | 'png' | 'jpg') => void;
-  onRegenerate: () => void; onRevoke: () => void; onReportLost: () => void; onReactivate: () => void; onDelete: () => void;
+  onRegenerate: () => void; onRevoke: () => void; onReportLost: () => void; onReactivate: () => void; onDelete?: () => void;
   readOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -268,8 +268,10 @@ function CardActionMenu({ card, downloading, onDownload, onRegenerate, onRevoke,
           {card.status === 'suspended' && (
             <button onClick={act(onReactivate)} className={item}><RotateCcw size={13} className="text-emerald-600" /> Reactivate</button>
           )}
+          {onDelete && <>
           <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
           <button onClick={act(onDelete)} className={`${item} text-red-600 dark:text-red-400`}><Trash2 size={13} /> Delete</button>
+          </>}
           </>}
         </div>
       )}
@@ -703,6 +705,11 @@ function BulkGenerateTab() {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export const IdCardsPage: React.FC = () => {
   const queryClient = useQueryClient();
+  // Deleting a card is the principal's; the office revokes or regenerates.
+  const viewerRole = useAuthStore((st) => st.user?.role);
+  const canDeleteCards = viewerRole === 'principal' || viewerRole === 'super_admin';
+  // Admissions manage student cards only; staff cards are view/download for them.
+  const cardReadOnly = (card: IdCard) => viewingPast || (viewerRole === 'admissions_officer' && String((card as any).user_role || (card as any).user?.role || 'student') !== 'student');
   const [activeTab, setActiveTab] = useState<ActiveTab>('cards');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [search, setSearch] = useState('');
@@ -1034,12 +1041,12 @@ export const IdCardsPage: React.FC = () => {
                       onView={() => setDetailsModal({ open: true, cardId: card.id })}
                       onRevoke={() => setRevokeTarget(card)}
                       onRegenerate={() => setRegenerateTarget(card)}
-                      onDelete={() => setDeleteTarget(card)}
+                      onDelete={canDeleteCards ? () => setDeleteTarget(card) : undefined}
                       onReportLost={() => setReportLostTarget(card)}
                       onReactivate={() => setReactivateTarget(card)}
                       onDownload={(output) => handleDownload(card, output)}
                       downloading={downloadingId === card.id}
-                      readOnly={viewingPast} />
+                      readOnly={cardReadOnly(card)} />
                   ))}
                 </div>
               ) : (
@@ -1091,12 +1098,12 @@ export const IdCardsPage: React.FC = () => {
                                 <div className="flex items-center justify-end gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                   <button onClick={() => setDetailsModal({ open: true, cardId: card.id })} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="View"><Eye size={14} /></button>
                                   <button onClick={() => handleDownload(card)} disabled={downloadingId === card.id} className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors disabled:opacity-50" title="Download PDF">{downloadingId === card.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}</button>
-                                  {!viewingPast && <>
+                                  {!cardReadOnly(card) && <>
                                   <button onClick={() => setRegenerateTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors" title="Regenerate"><RotateCcw size={14} /></button>
                                   {card.status === 'active' && <button onClick={() => setRevokeTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Revoke"><Ban size={14} /></button>}
                                   {card.status === 'active' && <button onClick={() => setReportLostTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors" title="Report Lost"><AlertTriangle size={14} /></button>}
                                   {card.status === 'suspended' && <button onClick={() => setReactivateTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors" title="Reactivate"><RotateCcw size={14} /></button>}
-                                  <button onClick={() => setDeleteTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete"><Trash2 size={14} /></button>
+                                  {canDeleteCards && <button onClick={() => setDeleteTarget(card)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete"><Trash2 size={14} /></button>}
                                   </>}
                                 </div>
                               </td>

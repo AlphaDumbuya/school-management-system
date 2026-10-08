@@ -242,7 +242,8 @@ export const ReportCardsPage: React.FC = () => {
 
   // Released terms for the current card. Staff (no publish gate) may view any
   // term; students/parents only see released ones.
-  const isStaff = !isStudent && !isParent;
+  // Principal / teachers see drafts; the office (admissions, bursar) only what is released.
+  const isStaff = ['principal', 'super_admin', 'teacher'].includes(String(user?.role));
   const publishedTerms: SLTerm[] = ((card?.published_terms as SLTerm[]) || []);
   const yearReleased = !!card?.year_released;
   const allTerms: SLTerm[] = ['first_term', 'second_term', 'third_term'];
