@@ -8,6 +8,8 @@
 export const PLATFORM_SUPPORT = {
   email: (import.meta.env.VITE_SUPPORT_EMAIL as string) || 'support@wiskulsl.com',
   phone: (import.meta.env.VITE_SUPPORT_PHONE as string) || '+232 78 261 892',
+  /** Office address shown on the public marketing pages. */
+  address: '75 Main Road, Kossoh Town, Sierra Leone',
 };
 
 /** tel: href with spaces stripped. */

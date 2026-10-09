@@ -63,7 +63,7 @@ export const PricingPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f7fb] text-slate-700 overflow-x-hidden font-sans antialiased">
-      <PublicNavbar ctaText="Register School Free" />
+      <PublicNavbar ctaText="Start Free Trial" />
 
       {/* ═══ HERO (navy) ═══ */}
       <section className={`relative pt-28 sm:pt-36 pb-16 px-6 sm:px-10 text-center overflow-hidden ${NAVY_BAND}`}>
@@ -72,7 +72,7 @@ export const PricingPage: React.FC = () => {
           <span className="text-amber-300 text-xs font-bold tracking-[0.3em] uppercase">Simple Pricing</span>
           <h1 className="text-4xl sm:text-5xl font-black mt-3 mb-5 text-white">Choose your <span className="text-amber-400">plan</span></h1>
           <p className="text-blue-100/90 text-sm sm:text-base max-w-xl mx-auto mb-8">
-            Start free and scale as you grow. All prices in New Leones (NLe).
+            Start with a free trial, then choose the plan that fits your school. All prices in New Leones (NLe).
           </p>
           <div className="inline-flex items-center bg-white/10 border border-white/20 rounded-full p-1">
             {(['monthly', 'yearly'] as const).map((b) => (
@@ -210,12 +210,12 @@ export const PricingPage: React.FC = () => {
           </div>
           <div className="space-y-4">
             {[
-              { q: 'Is there a free trial?', a: 'Yes. Every new school starts with a free trial of the full platform, no card required. When it ends you pick a plan. Nothing is deleted: anything outside your plan stays viewable in read-only mode until you upgrade.' },
-              { q: 'Can I upgrade later?', a: 'Absolutely. You can change plans at any time from Settings → Plan & Billing, and your data and settings carry over.' },
-              { q: 'How do I pay for paid tiers?', a: 'We accept mobile money, card, and bank transfer via Monime, plus cash at our office. Reach out to sales to get set up.' },
-              { q: 'What if I reach my student limit?', a: "Your existing students and data are never removed — you keep full access to everyone already added. To enrol beyond your plan's limit, simply upgrade; we'll prompt you when you're close." },
-              { q: 'Can I get a custom plan?', a: 'Yes — contact us for schools with special needs and we\'ll tailor a package to your budget and requirements.' },
-              { q: 'Is my data safe?', a: 'Yes. Data is encrypted with 256-bit encryption, backed up regularly, and isolated per school (multi-tenant).' },
+              { q: 'Is there a free trial?', a: 'Yes. Every new school starts with a free trial, no card required. When it ends you choose a plan in Settings → Plan & Billing. Nothing is deleted when a trial ends.' },
+              { q: 'Can I upgrade later?', a: 'Yes. You can change plans at any time from Settings → Plan & Billing, and your data and settings carry over.' },
+              { q: 'How do I pay for a plan?', a: 'The principal pays online from Settings → Plan & Billing by mobile money or card through Monime. If you need to pay another way, contact us.' },
+              { q: 'What if I reach my student limit?', a: "Your existing students and data are never removed, and you keep access to everyone already added. To enrol beyond your plan's limit, upgrade to a larger plan." },
+              { q: 'Can I get a custom plan?', a: 'Contact us if your school has special requirements and we will talk through the options.' },
+              { q: 'Is my data safe?', a: "Data is encrypted in transit (HTTPS), each school's data is kept separate, and access is controlled by role, with optional two-factor sign-in and passkeys. The database has automated backups with point-in-time recovery." },
             ].map((faq) => (
               <div key={faq.q} className="bg-white border border-[#e5e9f2] rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
                 <h4 className="text-sm font-bold text-slate-900 mb-2">{faq.q}</h4>
@@ -238,7 +238,7 @@ export const PricingPage: React.FC = () => {
                 Contact Sales <ArrowRight size={16} />
               </button>
               <button onClick={() => navigate('/register')} className="w-full sm:w-auto border border-white/25 hover:border-white/50 text-white font-bold text-sm px-8 py-3.5 rounded-xl transition-all">
-                Start Free
+                Start Free Trial
               </button>
             </div>
           </div>

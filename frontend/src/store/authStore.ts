@@ -279,6 +279,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     // Purge any queued offline writes so they never replay under a different
     // tenant/user after logout.
     clearQueue().catch(() => {});
+    // Phone notifications already shown belong to this user only.
+    try { localStorage.removeItem('wiskul.native.notified.v1'); } catch { /* ignore */ }
     set({
       user: null,
       isAuthenticated: false,

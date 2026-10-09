@@ -251,18 +251,28 @@ export class AuthService {
         // Ignored if table optional
       }
 
-      // Create Principal User
-      const [userRow] = await this.db('users').insert({
-        tenant_id: tenantId,
-        email,
-        password_hash: hashedPassword,
-        first_name: payload.admin_first_name.trim(),
-        last_name: payload.admin_last_name.trim(),
-        role: UserRole.PRINCIPAL,
-        status: UserStatus.ACTIVE,
-        created_at: new Date(),
-        updated_at: new Date(),
-      }).returning('*');
+      // Create Principal User. If this fails (e.g. the same email registered a
+      // moment ago), remove the half-created school so it doesn't linger as an
+      // orphan tenant with no owner.
+      let userRow: any;
+      try {
+        [userRow] = await this.db('users').insert({
+          tenant_id: tenantId,
+          email,
+          password_hash: hashedPassword,
+          first_name: payload.admin_first_name.trim(),
+          last_name: payload.admin_last_name.trim(),
+          role: UserRole.PRINCIPAL,
+          status: UserStatus.ACTIVE,
+          created_at: new Date(),
+          updated_at: new Date(),
+        }).returning('*');
+      } catch (userErr: any) {
+        await this.db('tenants').where({ id: tenantId }).del().catch((e: any) =>
+          logger.warn(`registerSchool: could not remove orphan tenant ${tenantId}: ${e?.message || e}`));
+        if (String(userErr?.code) === '23505') throw new AppError('An account with this email already exists', 409, 'USER_EXISTS');
+        throw userErr;
+      }
 
       // Seed initial ID-format + school-type settings into school_config_settings
       // — the SAME table the ID generator (utils/idGenerator) and the Settings

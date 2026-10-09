@@ -1,22 +1,22 @@
 /**
  * AppDownloadButtons — marketing-site download CTAs for the WiSkul mobile app.
  *
- * Two URLs, both env-driven so they only appear once configured:
- *   VITE_APK_DOWNLOAD_URL  → direct APK download (available before Play Store)
- *   VITE_PLAY_STORE_URL    → Google Play listing (add after publishing, $25)
- *
- * Renders nothing if neither is set, so the site never shows a broken button.
+ * The Android download button is ALWAYS shown: it goes to the backend's
+ * /api/v1/app/download, which counts the download and serves the latest APK
+ * (Blob URL from the build workflow, or the GitHub Release). It no longer
+ * depends on a build-time variable, so preview and production builds match.
+ *   VITE_APK_DOWNLOAD_URL=off → hide the APK button (e.g. once only on Play)
+ *   VITE_PLAY_STORE_URL       → also show a Google Play badge (after publishing)
  */
 import React from 'react';
 import { Download, Smartphone } from 'lucide-react';
 
-const APK_URL = import.meta.env.VITE_APK_DOWNLOAD_URL as string | undefined;
-const PLAY_URL = import.meta.env.VITE_PLAY_STORE_URL as string | undefined;
+const APK_SETTING = String(import.meta.env.VITE_APK_DOWNLOAD_URL || '').trim();
+const APK_URL = APK_SETTING.toLowerCase() === 'off' ? undefined : '/api/v1/app/download';
+const PLAY_URL = (import.meta.env.VITE_PLAY_STORE_URL as string | undefined) || undefined;
 
-// Route APK clicks through the backend so downloads are counted; the endpoint
-// increments the counter then 302-redirects to the actual APK file. Falls back
-// to the direct URL if the tracking endpoint isn't reachable.
-const APK_DOWNLOAD_HREF = APK_URL ? '/api/v1/app/download' : undefined;
+// Always routed through the backend so downloads are counted.
+const APK_DOWNLOAD_HREF = APK_URL;
 
 interface Props {
   /**

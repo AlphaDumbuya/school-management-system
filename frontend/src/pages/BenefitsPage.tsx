@@ -31,23 +31,23 @@ export const BenefitsPage: React.FC = () => {
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
   const benefits = [
-    { icon: ShieldCheck, title: 'Be Protected', desc: '256-bit encryption secures all student and staff data, with full audit trails and a zero-trust approach.', features: ['256-bit AES encryption', 'Compliance-ready', 'Full audit trails', 'Zero-trust security'] },
-    { icon: Users, title: 'Know Your Students', desc: 'Complete 360° profiles — academic history, attendance, behaviour and health — in one unified view.', features: ['360° profiles', 'Academic history', 'Behaviour tracking', 'Health records'] },
-    { icon: TrendingUp, title: 'Data-Driven Decisions', desc: 'Analytics surface trends in performance, attendance and finances before they become problems.', features: ['Trend detection', 'Real-time dashboards', 'Resource optimisation', 'Actionable insight'] },
+    { icon: ShieldCheck, title: 'Be Protected', desc: "Each school's data is kept separate, all traffic uses HTTPS, and sign-in is protected by role-based access, two-factor authentication and passkeys.", features: ['Separate data per school', 'HTTPS everywhere', 'Two-factor & passkeys', 'Finance audit log'] },
+    { icon: Users, title: 'Know Your Students', desc: 'Student profiles bring together guardians, class placement, attendance, results and conduct records.', features: ['Student profiles', 'Multiple guardians', 'Attendance history', 'Conduct records'] },
+    { icon: TrendingUp, title: 'Clear Dashboards', desc: 'Every role has a live dashboard with the numbers that matter to them: enrolment, attendance, results and fees.', features: ['Role dashboards', 'Attendance rates', 'Fees collected & owed', 'Event analytics'] },
     { icon: Zap, title: 'Instant Communication', desc: 'Announcements, in-app notifications and email keep parents, teachers and students connected.', features: ['School & class announcements', 'In-app notification bell', 'Email alerts', 'Real-time updates'] },
-    { icon: Globe, title: 'Access Anywhere', desc: 'Cloud-based and mobile-optimised — manage your school from any device, anywhere.', features: ['Cloud-based', 'Mobile optimised', 'Cross-platform', 'Works offline (PWA)'] },
+    { icon: Globe, title: 'Access Anywhere', desc: 'Use WiSkul in any browser, as an installable web app, or in the Android app.', features: ['Any browser', 'Android app', 'Installable web app', 'Offline teacher attendance'] },
     { icon: RefreshCw, title: 'Seamless Integration', desc: 'Online fee payments and exports built in, so nothing extra needs setting up.', features: ['Monime online payments', 'Mobile money & card', 'Excel, PDF & CSV exports', 'Email delivery'] },
-    { icon: Wallet, title: 'Reduce Costs', desc: 'Eliminate paper, reduce admin overhead and automate repetitive tasks to save on printing and storage.', features: ['Paperless operations', 'Task automation', 'Lower overhead', 'Cost savings'] },
-    { icon: Clock, title: 'Save Time', desc: 'Automate attendance, grading, report cards and fee reminders — reclaim hours every week.', features: ['Auto attendance', 'Auto grading', 'Report generation', 'Smart reminders'] },
-    { icon: Target, title: 'Increase Efficiency', desc: 'Streamlined workflows reduce errors and speed up every process — admissions to graduation.', features: ['Streamlined workflows', 'Fewer errors', 'Process automation', 'Higher productivity'] },
-    { icon: Smartphone, title: 'Empower Parents', desc: "Parents track their child's journey from anywhere — grades, attendance, fees and events.", features: ['Parent portal', 'Real-time updates', 'Mobile access', 'Transparent reporting'] },
-    { icon: GraduationCap, title: 'Engage Students', desc: 'Students access timetables, assignments, results and announcements instantly.', features: ['Student portal', 'Assignment tracking', 'Result access', 'Digital engagement'] },
-    { icon: BarChart3, title: 'Powerful Reporting', desc: 'Generate detailed reports on academics, finances and attendance, and export to PDF in one click.', features: ['Custom reports', 'PDF export', 'Financial reports', 'Academic analytics'] },
+    { icon: Wallet, title: 'Reduce Costs', desc: 'Replace paper registers, mark sheets and receipt books, and cut printing for receipts and report cards.', features: ['Paperless registers', 'PDF receipts', 'PDF report cards', 'Fewer printed forms'] },
+    { icon: Clock, title: 'Save Time', desc: 'Grades, class positions and report cards are calculated for you, and receipts, absence alerts and fee notices are sent automatically.', features: ['Auto grade calculation', 'Batch report cards', 'Automatic receipts', 'Instalment reminders'] },
+    { icon: Target, title: 'Increase Efficiency', desc: 'Admissions move from application to enrolment in one pipeline, and approved discounts apply to fees on their own.', features: ['Admissions pipeline', 'Online applications', 'Student promotions', 'Automatic discounts'] },
+    { icon: Smartphone, title: 'Empower Parents', desc: "Parents follow their child's attendance, results, fees and school events, and pay fees online.", features: ['Parent portal', 'Online fee payment', 'Report cards', 'Announcements'] },
+    { icon: GraduationCap, title: 'Engage Students', desc: 'Students see their timetable, submit assignments and check results and announcements in their own portal.', features: ['Student portal', 'Online submissions', 'Results access', 'Event calendar'] },
+    { icon: BarChart3, title: 'Reports & Exports', desc: 'Financial statements, arrears aging and the academic archive, with Excel, PDF and CSV exports from every list.', features: ['Financial statements', 'Arrears aging', 'Academic archive', 'Excel, PDF & CSV'] },
   ];
 
   return (
     <div className="min-h-screen bg-[#f5f7fb] text-slate-700 overflow-x-hidden font-sans antialiased">
-      <PublicNavbar ctaText="Register School Free" />
+      <PublicNavbar ctaText="Start Free Trial" />
 
       {/* ═══ HERO (navy) ═══ */}
       <section className={`relative pt-28 sm:pt-36 pb-20 px-6 sm:px-10 overflow-hidden ${NAVY_BAND}`}>
@@ -62,8 +62,8 @@ export const BenefitsPage: React.FC = () => {
             The WiSkul <span className="text-amber-400">benefits</span>
           </h1>
           <p className="text-blue-100/90 text-base sm:text-lg max-w-2xl mx-auto leading-relaxed">
-            More than software — a complete digital transformation toolkit that saves time,
-            reduces costs and unlocks new possibilities for your institution.
+            What changes for your staff, parents and students when the school's records,
+            fees and communication move into one platform.
           </p>
         </div>
       </section>
@@ -127,7 +127,7 @@ export const BenefitsPage: React.FC = () => {
       <section className="px-6 sm:px-10 py-20">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
-            <p className="text-[#1d4ed8] text-xs font-bold tracking-[0.2em] uppercase mb-2">The transformation</p>
+            <p className="text-[#1d4ed8] text-xs font-bold tracking-[0.2em] uppercase mb-2">The difference</p>
             <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Before &amp; after WiSkul</h2>
             <div className="w-12 h-1 bg-[#f59e0b] rounded-full mx-auto mt-4" />
           </div>
@@ -160,12 +160,12 @@ export const BenefitsPage: React.FC = () => {
               </div>
               <ul className="space-y-3.5">
                 {[
-                  'Digital attendance with automatic parent notifications',
-                  'Auto-generated report cards in seconds',
-                  'Parents access everything via a mobile portal',
-                  'Real-time analytics and clear insights',
-                  'Automated fee tracking and payment reminders',
-                  'Zero manual data entry — everything is digital',
+                  'Digital registers, with absence emails to parents',
+                  'Report cards generated from the gradebook, for a whole class at once',
+                  'Parents see attendance, results and fees in their own portal',
+                  'Live dashboards for every role',
+                  'Fees, payments and receipts tracked in one ledger, with online payment',
+                  'Records kept once and reused across admissions, classes and fees',
                 ].map((benefit) => (
                   <li key={benefit} className="flex items-start gap-3 text-slate-700">
                     <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0 mt-0.5"><Check size={11} strokeWidth={3} /></span>
@@ -183,12 +183,12 @@ export const BenefitsPage: React.FC = () => {
         <div className={`max-w-4xl mx-auto relative overflow-hidden rounded-[2rem] px-8 sm:px-14 py-14 text-center ${NAVY_BAND}`}>
           <div className="absolute inset-0 opacity-[0.1] pointer-events-none" style={DOT_PATTERN} />
           <div className="relative z-10">
-            <h2 className="text-3xl sm:text-4xl font-black text-white mb-4">Start your digital transformation</h2>
-            <p className="text-blue-100/80 text-sm mb-8 max-w-lg mx-auto">Set up your school in minutes — the core plan is free, no card required.</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-white mb-4">Ready to set up your school?</h2>
+            <p className="text-blue-100/80 text-sm mb-8 max-w-lg mx-auto">Register your school and start with a free trial. No card required.</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <button onClick={() => navigate('/register')}
                 className="w-full sm:w-auto bg-[#f59e0b] hover:bg-[#d97706] text-white font-bold text-sm px-10 py-4 rounded-xl transition-all duration-300 shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2">
-                Register School Free <ArrowRight size={16} />
+                Start Free Trial <ArrowRight size={16} />
               </button>
               <button onClick={() => navigate('/pricing')}
                 className="w-full sm:w-auto border border-white/25 hover:border-white/50 text-white font-bold text-sm px-10 py-4 rounded-xl transition-all duration-300">

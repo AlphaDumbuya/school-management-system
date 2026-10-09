@@ -4,7 +4,7 @@ import { AuthService } from '@services/authService';
 import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
 import { authenticate, authorize, attachUserContext, rateLimitLogin, clearLoginAttempts } from '@middleware/authMiddleware';
-import { loginLimiter, otpLimiter, passkeyLimiter } from '@middleware/rateLimit';
+import { loginLimiter, otpLimiter, passkeyLimiter, publicFormLimiter } from '@middleware/rateLimit';
 import { logger } from '@utils/logger';
 import { parseDuties } from '@utils/staffDuties';
 import { UserRole, UserStatus } from '@types/auth';
@@ -45,7 +45,8 @@ async function sameTenantAsCaller(callerUserId: string, callerRole: string, targ
  * POST /api/v1/auth/register-school
  * Self-service registration for new schools/tenants
  */
-router.post('/register-school', async (req: Request, res: Response, next: NextFunction) => {
+// Public signup: rate limited per IP so bots can't mass-create schools.
+router.post('/register-school', publicFormLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const {
       school_name,
