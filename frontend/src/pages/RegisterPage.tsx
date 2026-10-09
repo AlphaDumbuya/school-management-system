@@ -34,6 +34,7 @@ import {
 } from 'react-icons/fa';
 import { authService } from '@services/authService';
 import useAuthStore from '@store/authStore';
+import { getDashboardPath } from '@hooks/useAuth';
 import { showToast } from '@utils/toast';
 import { toast } from 'react-toastify';
 
@@ -57,7 +58,14 @@ const registerSchema = z.object({
   admin_first_name: z.string().min(1, 'First name is required'),
   admin_last_name: z.string().min(1, 'Last name is required'),
   contact_email: z.string().min(1, 'Work email is required').email('Valid email address required'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  // Same policy the server enforces, so the error shows on the field instead of
+  // a generic failure after submit.
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Add at least one uppercase letter')
+    .regex(/[a-z]/, 'Add at least one lowercase letter')
+    .regex(/[0-9]/, 'Add at least one number')
+    .regex(/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/, 'Add at least one special character (e.g. ! @ # $)'),
   consent_accepted: z.boolean().refine((val) => val === true, {
     message: 'You must accept the institutional authorization and Terms of Service to register.',
   }),
@@ -159,12 +167,20 @@ export const RegisterPage: React.FC = () => {
         password: values.password,
       });
 
-      if (res.success && res.data) {
-        setUser(res.data.user);
-        showToast.success(`Welcome to WiSkul! A confirmation email has been dispatched to ${values.contact_email}.`);
-        navigate('/admin/dashboard', { replace: true });
+      const data: any = (res as any)?.data;
+      if (res.success && data?.user) {
+        // Sign the new principal in straight away (tokens are already stored by
+        // authService). Without isAuthenticated the dashboard route bounced
+        // them back to the login screen.
+        useAuthStore.setState({ user: data.user, isAuthenticated: true, accessToken: data.accessToken || null, isInitialized: true });
+        setUser(data.user);
+        showToast.success(`Welcome to WiSkul! We've sent a confirmation email to ${values.contact_email}.`);
+        navigate(getDashboardPath(data.user.role), { replace: true });
+        // Load plan access (sidebar) and the rest of the profile.
+        useAuthStore.getState().refreshUser?.().catch?.(() => undefined);
       } else {
-        showToast.error(res.error || 'Failed to register school.');
+        const err: any = (res as any)?.error;
+        showToast.error((typeof err === 'string' ? err : err?.message) || 'Failed to register school.');
       }
     } catch (err: any) {
       showToast.error(err?.response?.data?.message || err?.message || 'Registration failed.');
@@ -177,13 +193,13 @@ export const RegisterPage: React.FC = () => {
     <div className="min-h-screen bg-[#0b1234] text-white flex flex-col justify-between p-4 sm:p-8 relative overflow-hidden font-sans">
       {/* Layered background: artwork image + depth gradients + accent glow */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {/* Data-cube artwork, fixed for depth — kept fairly clear */}
+        {/* Data-cube artwork, dimmed so it stays a texture behind the content */}
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-80"
+          className="absolute inset-0 bg-cover bg-center opacity-45"
           style={{ backgroundImage: 'url(/login.jpg)', backgroundAttachment: 'fixed' }}
         />
-        {/* Light gradient so content stays readable while the image shows through */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0b1234]/55 via-[#141a4a]/45 to-[#0b1234]/70" />
+        {/* Darkening scrim: text and form fields stay readable over the image */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0b1234]/80 via-[#0f1640]/75 to-[#0b1234]/90" />
         {/* Warm accent glow behind the hero for contrast */}
         <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[700px] h-[500px] rounded-full bg-amber-400/10 blur-[130px]" />
         <div className="auth-blob-1 absolute bottom-[-15%] right-[-10%] w-[560px] h-[560px] rounded-full bg-[#2563eb]/20 blur-[130px]" />
@@ -221,7 +237,7 @@ export const RegisterPage: React.FC = () => {
             {/* Hero Section */}
             <div className="text-center max-w-3xl mx-auto space-y-5">
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-xs font-bold uppercase tracking-widest shadow-inner">
-                <FaRocket className="animate-pulse" /> Self-Service School Onboarding · 100% Free Core Release
+                <FaRocket aria-hidden="true" /> Self-Service School Onboarding · Free Trial, No Card Needed
               </div>
               <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight leading-tight">
                 Empower Your Institution with Modern Cloud Management
@@ -276,8 +292,8 @@ export const RegisterPage: React.FC = () => {
               <div className="flex items-start gap-3">
                 <FaInfoCircle size={22} className="text-amber-400 flex-shrink-0 mt-0.5" />
                 <div className="text-xs text-gray-300 space-y-1">
-                  <p className="font-bold text-white text-sm">Free Core Release Policy</p>
-                  <p>All core management features in v1.0.0 (Admissions, Attendance, ID Cards, Staff, Portals) are free. Optional settings (motto, EMIS registration number, address) can be completed now or updated anytime in School Settings.</p>
+                  <p className="font-bold text-white text-sm">Start with a free trial</p>
+                  <p>Your school starts on a free trial straight after registering. No card is needed, and you choose a plan in Settings → Plan &amp; Billing when you're ready. Optional details (motto, EMIS number, address) can be added now or later in School Settings.</p>
                 </div>
               </div>
               <button
@@ -311,7 +327,7 @@ export const RegisterPage: React.FC = () => {
                       <FaBuilding className="text-amber-400" /> Workspace Summary
                     </div>
                     <span className="text-[10px] bg-amber-400/10 text-amber-400 px-2 py-0.5 rounded font-mono font-bold">
-                      FREE TIER
+                      FREE TRIAL
                     </span>
                   </div>
 
@@ -332,7 +348,7 @@ export const RegisterPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-gray-400 pt-1 leading-snug">
+                  <p className="text-[11px] text-gray-300 pt-1 leading-snug">
                     <span className="text-amber-300 font-bold">Note:</span> After registration, an official welcome email containing your portal details will be dispatched to your inbox.
                   </p>
                 </div>
@@ -343,7 +359,7 @@ export const RegisterPage: React.FC = () => {
                 <div className="relative">
                   <div className="absolute -inset-[1px] rounded-3xl bg-gradient-to-br from-amber-400/40 via-[#1d4ed8]/20 to-amber-400/10 opacity-70 blur-[1px]" />
 
-                  <div className="relative bg-[#20308a]/40 backdrop-blur-2xl border border-white/[0.12] rounded-3xl p-6 sm:p-10 shadow-2xl space-y-6">
+                  <div className="relative bg-[#141d52]/90 backdrop-blur-2xl border border-white/[0.14] rounded-3xl p-6 sm:p-10 shadow-2xl space-y-6">
                     {/* Stepper Header */}
                     <div className="flex items-center justify-between border-b border-white/10 pb-5">
                       <StepIndicator current={step} step={1} label="School Identity" />
@@ -361,7 +377,7 @@ export const RegisterPage: React.FC = () => {
                             <h2 className="text-lg font-bold text-white flex items-center gap-2">
                               <FaBuilding className="text-amber-400" /> Step 1: Institutional Identity
                             </h2>
-                            <p className="text-xs text-gray-400 mt-1">Enter your school's official designation and location.</p>
+                            <p className="text-xs text-gray-300 mt-1">Enter your school's official designation and location.</p>
                           </div>
 
                           {/* Official School Name */}
@@ -373,7 +389,7 @@ export const RegisterPage: React.FC = () => {
                               type="text"
                               {...register('school_name')}
                               placeholder="e.g. St. Joseph's Secondary School"
-                              className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 focus:ring-2 focus:ring-[#1d4ed8]/20 rounded-xl px-4 py-3.5 text-sm text-white placeholder-white/70 outline-none transition-all"
+                              className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 focus:ring-2 focus:ring-[#1d4ed8]/20 rounded-xl px-4 py-3.5 text-sm text-white placeholder-white/45 outline-none transition-all"
                             />
                             {errors.school_name && (
                               <p className="mt-1.5 text-xs text-red-400">{errors.school_name.message}</p>
@@ -428,7 +444,7 @@ export const RegisterPage: React.FC = () => {
                               type="text"
                               {...register('country')}
                               placeholder="Sierra Leone"
-                              className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 rounded-xl px-4 py-3.5 text-sm text-white placeholder-white/70 outline-none"
+                              className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 rounded-xl px-4 py-3.5 text-sm text-white placeholder-white/45 outline-none"
                             />
                           </div>
 
@@ -450,7 +466,7 @@ export const RegisterPage: React.FC = () => {
                               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                                 <FaGraduationCap className="text-amber-400" /> Step 2: Configuration & Capacity
                               </h2>
-                              <p className="text-xs text-gray-400 mt-1">Specify your curriculum and student enrollment range.</p>
+                              <p className="text-xs text-gray-300 mt-1">Specify your curriculum and student enrollment range.</p>
                             </div>
                             <button
                               type="button"
@@ -508,32 +524,32 @@ export const RegisterPage: React.FC = () => {
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
-                                <label className="block text-[11px] font-semibold text-gray-400 mb-1">EMIS / Registration Number</label>
+                                <label className="block text-[11px] font-semibold text-gray-300 mb-1">EMIS / Registration Number</label>
                                 <input
                                   type="text"
                                   {...register('emis_number')}
                                   placeholder="e.g. MEST/SL/2026/04"
-                                  className="w-full bg-white/10 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/70 outline-none"
+                                  className="w-full bg-white/10 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/45 outline-none"
                                 />
                               </div>
                               <div>
-                                <label className="block text-[11px] font-semibold text-gray-400 mb-1">City / Town</label>
+                                <label className="block text-[11px] font-semibold text-gray-300 mb-1">City / Town</label>
                                 <input
                                   type="text"
                                   {...register('city')}
                                   placeholder="e.g. Freetown"
-                                  className="w-full bg-white/10 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/70 outline-none"
+                                  className="w-full bg-white/10 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/45 outline-none"
                                 />
                               </div>
                             </div>
 
                             <div>
-                              <label className="block text-[11px] font-semibold text-gray-400 mb-1">School Motto / Tagline</label>
+                              <label className="block text-[11px] font-semibold text-gray-300 mb-1">School Motto / Tagline</label>
                               <input
                                 type="text"
                                 {...register('school_motto')}
                                 placeholder="e.g. Disce Aut Discede (Learn or Depart)"
-                                className="w-full bg-white/10 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/70 outline-none"
+                                className="w-full bg-white/10 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/45 outline-none"
                               />
                             </div>
                           </div>
@@ -565,7 +581,7 @@ export const RegisterPage: React.FC = () => {
                               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                                 <FaUserCheck className="text-amber-400" /> Step 3: Admin Credentials & Authorization
                               </h2>
-                              <p className="text-xs text-gray-400 mt-1">Set up your principal login details and sign legal declaration.</p>
+                              <p className="text-xs text-gray-300 mt-1">Set up your principal login details and sign legal declaration.</p>
                             </div>
                             <button
                               type="button"
@@ -585,7 +601,7 @@ export const RegisterPage: React.FC = () => {
                                 type="text"
                                 {...register('admin_first_name')}
                                 placeholder="e.g. Joseph"
-                                className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 rounded-xl px-4 py-3.5 text-sm text-white placeholder-white/70 outline-none"
+                                className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 rounded-xl px-4 py-3.5 text-sm text-white placeholder-white/45 outline-none"
                               />
                               {errors.admin_first_name && <p className="mt-1 text-xs text-red-400">{errors.admin_first_name.message}</p>}
                             </div>
@@ -598,7 +614,7 @@ export const RegisterPage: React.FC = () => {
                                 type="text"
                                 {...register('admin_last_name')}
                                 placeholder="e.g. Kamara"
-                                className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 rounded-xl px-4 py-3.5 text-sm text-white placeholder-white/70 outline-none"
+                                className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 rounded-xl px-4 py-3.5 text-sm text-white placeholder-white/45 outline-none"
                               />
                               {errors.admin_last_name && <p className="mt-1 text-xs text-red-400">{errors.admin_last_name.message}</p>}
                             </div>
@@ -612,7 +628,7 @@ export const RegisterPage: React.FC = () => {
                               type="email"
                               {...register('contact_email')}
                               placeholder="principal@stjoseph.edu.sl"
-                              className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 rounded-xl px-4 py-3.5 text-sm text-white placeholder-white/70 outline-none"
+                              className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 rounded-xl px-4 py-3.5 text-sm text-white placeholder-white/45 outline-none"
                             />
                             {errors.contact_email && <p className="mt-1 text-xs text-red-400">{errors.contact_email.message}</p>}
                           </div>
@@ -625,13 +641,15 @@ export const RegisterPage: React.FC = () => {
                               <input
                                 type={showPassword ? 'text' : 'password'}
                                 {...register('password')}
-                                placeholder="At least 8 characters"
-                                className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 rounded-xl px-4 py-3.5 pr-12 text-sm text-white placeholder-white/70 outline-none"
+                                placeholder="8+ characters, A–z, 0–9 and a symbol"
+                                autoComplete="new-password"
+                                className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 rounded-xl px-4 py-3.5 pr-12 text-sm text-white placeholder-white/45 outline-none"
                               />
                               <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-500 hover:text-amber-400 transition-colors"
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-300 hover:text-amber-400 transition-colors"
                               >
                                 {showPassword ? <FaEyeSlash size={14} /> : <FaEye size={14} />}
                               </button>
@@ -644,13 +662,16 @@ export const RegisterPage: React.FC = () => {
                             <label className="flex items-start gap-3 cursor-pointer select-none">
                               <button
                                 type="button"
+                                role="checkbox"
+                                aria-checked={!!watchedConsent}
+                                aria-label="I confirm the authorization declaration"
                                 onClick={() => setValue('consent_accepted', !watchedConsent, { shouldValidate: true })}
                                 className="mt-0.5 text-amber-400 hover:scale-110 transition-transform"
                               >
-                                {watchedConsent ? <FaCheckSquare size={18} /> : <FaSquare size={18} className="text-gray-500" />}
+                                {watchedConsent ? <FaCheckSquare size={18} /> : <FaSquare size={18} className="text-gray-400" />}
                               </button>
-                              <span className="text-xs text-gray-300 leading-relaxed">
-                                <strong className="text-white">Authorization Declaration:</strong> I confirm that I am an authorized principal or legal representative of <strong>{watchedSchoolName || 'this school'}</strong>, and I agree to the <Link to="/terms" className="text-amber-400 underline" target="_blank">WiSkul Terms of Service</Link> and <Link to="/privacy" className="text-amber-400 underline" target="_blank">Privacy Policy</Link>.
+                              <span className="text-xs text-gray-200 leading-relaxed">
+                                <strong className="text-white">Authorization Declaration:</strong> I confirm that I am an authorized principal or legal representative of <strong>{watchedSchoolName || 'this school'}</strong>, and I agree to WiSkul's terms of use and the <Link to="/privacy-policy" className="text-amber-400 underline" target="_blank" rel="noopener">Privacy Policy</Link>.
                               </span>
                             </label>
                             {errors.consent_accepted && (
@@ -672,7 +693,7 @@ export const RegisterPage: React.FC = () => {
                               className="w-2/3 py-4 bg-[#f59e0b] hover:bg-[#d97706] text-white font-black text-sm tracking-wider rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_30px_rgba(245,158,11,0.3)] disabled:opacity-50"
                             >
                               {isSubmitting ? <FaSpinner className="animate-spin" /> : <FaRocket />}
-                              {isSubmitting ? 'PROVISIONING SCHOOL...' : 'CREATE FREE SCHOOL WORKSPACE'}
+                              {isSubmitting ? 'SETTING UP YOUR SCHOOL...' : 'CREATE SCHOOL WORKSPACE'}
                             </button>
                           </div>
                         </div>
@@ -688,8 +709,8 @@ export const RegisterPage: React.FC = () => {
 
       {/* Footer */}
       <footer className="relative z-10 w-full max-w-7xl mx-auto text-center py-4 border-t border-white/5 mt-8">
-        <p className="text-[11px] text-gray-500">
-          © {new Date().getFullYear()} WiSkul School Management System · 100% Free Public Launch Edition
+        <p className="text-[11px] text-gray-400">
+          © {new Date().getFullYear()} WiSkul School Management System · <Link to="/privacy-policy" className="underline hover:text-gray-300">Privacy Policy</Link>
         </p>
       </footer>
 
@@ -707,7 +728,7 @@ const FeatureCard: React.FC<{ icon: React.ReactNode; title: string; desc: string
   <div className="bg-[#20308a]/90 border border-white/10 rounded-2xl p-5 space-y-2 hover:border-[#1d4ed8]/40 transition-all duration-300 backdrop-blur-sm group hover:-translate-y-1">
     <div className="text-2xl mb-1 group-hover:scale-110 transition-transform">{icon}</div>
     <h3 className="text-sm font-bold text-white tracking-tight">{title}</h3>
-    <p className="text-xs text-gray-400 leading-relaxed">{desc}</p>
+    <p className="text-xs text-gray-300 leading-relaxed">{desc}</p>
   </div>
 );
 
