@@ -3,10 +3,11 @@
  * Light edu-SaaS theme (see docs/THEME_GUIDE.md). Shared navbar + footer.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, X, ArrowRight } from 'lucide-react';
+import { Check, X, ArrowRight, Loader2 } from 'lucide-react';
 import PublicNavbar, { PublicFooter } from '@components/public';
+import { usePublicPlans, isUnlimited, planAdds, PlanCatalogPayload, PlanFeatureDef } from '@services/planService';
 
 const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
 const DOT_PATTERN: React.CSSProperties = {
@@ -14,43 +15,49 @@ const DOT_PATTERN: React.CSSProperties = {
   backgroundSize: '26px 26px',
 };
 
-const PLANS = [
-  {
-    id: 'freetong', name: 'Freetong', meaning: 'v1.0 Core — 100% Free', highlight: true, badge: 'FREE CORE',
-    price: { monthly: 0, yearly: 0 }, accent: '#1d4ed8', students: 'Up to 250', staff: 'Up to 20',
-    features: [
-      'Isolated multi-tenant portal', 'Student directory & profiles', 'Admissions & onboarding',
-      'Daily attendance & tracking', 'Classes, streams & subjects', 'Timetable builder',
-      'Digital ID cards & batch printing', 'Teacher & staff directory', 'Assignments & exams',
-      'Gradebook, results & report cards', 'Student promotions', 'Fees & online payments',
-      'Student & parent portals',
-    ],
-    notIncluded: ['SMS & WhatsApp alerts (v2)', 'Staff HR & leave (v2)', 'Payroll (v2)'],
-  },
-  {
-    id: 'combra', name: 'Combra', meaning: 'v2.0 Pro — HR & Payroll', highlight: false, badge: 'COMING v2',
-    price: { monthly: 500, yearly: 5000 }, accent: '#f59e0b', students: 'Up to 1,000', staff: 'Up to 75',
-    features: [
-      'Everything in Freetong, plus:', 'Staff leave requests & HR approvals (v2)',
-      'Financial expense & budget reports (v2)', 'Payroll & payslip generation (v2)',
-    ],
-    notIncluded: ['WhatsApp Business API (v3)', 'Custom API & white-label'],
-  },
-  {
-    id: 'bintumani', name: 'Bintumani', meaning: 'v3.0 Enterprise — Unlimited', highlight: false, badge: 'ENTERPRISE',
-    price: { monthly: 1200, yearly: 12000 }, accent: '#7c3aed', students: 'Unlimited', staff: 'Unlimited',
-    features: [
-      'Everything in Combra, plus:', 'Bulk SMS to parents (v3)', 'WhatsApp broadcasts (v3)',
-      'Custom Excel & PDF exports (v3)', 'Dedicated onboarding specialist',
-      'Priority WhatsApp & phone support', 'Multi-branch network support',
-    ],
-    notIncluded: [],
-  },
-];
+const ACCENTS: Record<string, string> = { freetong: '#1d4ed8', combra: '#f59e0b', bintumani: '#7c3aed' };
+const ACCENT_FALLBACK = ['#1d4ed8', '#f59e0b', '#7c3aed'];
+
+interface PlanCard {
+  id: string; name: string; meaning: string; highlight: boolean; badge: string; accent: string;
+  price: { monthly: number; yearly: number }; students: string; staff: string;
+  features: string[]; notIncluded: string[];
+}
+
+const limitText = (n: number, unlimited: number) => (isUnlimited(n, unlimited) ? 'Unlimited' : `Up to ${Number(n).toLocaleString('en-US')}`);
+const withSoon = (f: PlanFeatureDef) => (f.soon ? `${f.label} (coming soon)` : f.label);
+
+/** Pricing cards from the live plan catalog (the same data billing uses). */
+function buildCards(catalog: PlanCatalogPayload): PlanCard[] {
+  const plans = catalog.plans;
+  const top = plans[plans.length - 1];
+  return plans.map((p, i) => {
+    const prev = plans[i - 1];
+    const core = catalog.features.filter((f) => f.core).map((f) => f.label);
+    const features = i === 0
+      ? [...core, ...catalog.features.filter((f) => !f.core && p.features[f.key]).map(withSoon)]
+      : [`Everything in ${prev.name}, plus:`, ...planAdds(p, prev, catalog).map(withSoon)];
+    const notIncluded = top && top.id !== p.id
+      ? catalog.features.filter((f) => !f.core && !f.soon && !p.features[f.key] && top.features[f.key]).map((f) => f.label).slice(0, 4)
+      : [];
+    return {
+      id: p.id, name: p.name, meaning: p.tagline, highlight: p.featured, badge: p.badge,
+      accent: ACCENTS[p.id] || ACCENT_FALLBACK[i % ACCENT_FALLBACK.length],
+      price: { monthly: p.monthly_price, yearly: p.yearly_price },
+      students: limitText(p.max_students, catalog.unlimited), staff: limitText(p.max_staff, catalog.unlimited),
+      features: [...features, ...(p.highlights || [])], notIncluded,
+    };
+  });
+}
 
 export const PricingPage: React.FC = () => {
   const navigate = useNavigate();
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly');
+  const { data: catalog, isLoading, isError } = usePublicPlans();
+  const PLANS = useMemo(() => (catalog ? buildCards(catalog) : []), [catalog]);
+  // Best yearly saving across plans, for the toggle label.
+  const yearlySave = useMemo(() => Math.max(0, ...PLANS.filter((p) => p.price.monthly > 0)
+    .map((p) => Math.round((1 - p.price.yearly / (p.price.monthly * 12)) * 100))), [PLANS]);
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
@@ -71,7 +78,7 @@ export const PricingPage: React.FC = () => {
             {(['monthly', 'yearly'] as const).map((b) => (
               <button key={b} onClick={() => setBilling(b)}
                 className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${billing === b ? 'bg-[#f59e0b] text-white' : 'text-blue-100/80 hover:text-white'}`}>
-                {b === 'monthly' ? 'Monthly' : <>Yearly <span className="text-[10px] ml-1 opacity-80">Save 17%</span></>}
+                {b === 'monthly' ? 'Monthly' : <>Yearly {yearlySave > 0 && <span className="text-[10px] ml-1 opacity-80">Save up to {yearlySave}%</span>}</>}
               </button>
             ))}
           </div>
@@ -80,7 +87,17 @@ export const PricingPage: React.FC = () => {
 
       {/* ═══ PRICING CARDS (light, overlapping) ═══ */}
       <section className="px-6 sm:px-10 -mt-8 relative z-20 pb-16">
-        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+        {isLoading && (
+          <div className="max-w-6xl mx-auto rounded-2xl bg-white border border-[#e5e9f2] p-10 text-center text-sm text-slate-500 flex items-center justify-center gap-2" role="status">
+            <Loader2 className="animate-spin" size={16} aria-hidden="true" /> Loading plans…
+          </div>
+        )}
+        {!isLoading && (isError || !PLANS.length) && (
+          <div className="max-w-6xl mx-auto rounded-2xl bg-white border border-[#e5e9f2] p-10 text-center text-sm text-slate-600">
+            Plans couldn’t be loaded right now. <button className="font-semibold text-[#1d4ed8] underline" onClick={() => navigate('/contact')}>Contact us</button> for pricing.
+          </div>
+        )}
+        <div className={`max-w-6xl mx-auto grid grid-cols-1 gap-6 lg:gap-8 ${PLANS.length >= 3 ? 'md:grid-cols-3' : PLANS.length === 2 ? 'md:grid-cols-2' : ''}`}>
           {PLANS.map((plan) => (
             <div key={plan.id}
               className={`relative rounded-2xl bg-white flex flex-col shadow-sm border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${
@@ -101,11 +118,11 @@ export const PricingPage: React.FC = () => {
                 <div className="mb-6">
                   <div className="flex items-baseline gap-1">
                     <span className="text-slate-400 text-sm">NLe</span>
-                    <span className="text-4xl font-black" style={{ color: plan.accent }}>{billing === 'monthly' ? plan.price.monthly : plan.price.yearly}</span>
+                    <span className="text-4xl font-black" style={{ color: plan.accent }}>{(billing === 'monthly' ? plan.price.monthly : plan.price.yearly).toLocaleString('en-US')}</span>
                     <span className="text-slate-400 text-sm">/{billing === 'monthly' ? 'mo' : 'yr'}</span>
                   </div>
-                  {billing === 'yearly' && plan.price.monthly > 0 && (
-                    <p className="text-emerald-600 text-[10px] font-bold mt-1">Save NLe {plan.price.monthly * 12 - plan.price.yearly} per year</p>
+                  {billing === 'yearly' && plan.price.monthly * 12 - plan.price.yearly > 0 && (
+                    <p className="text-emerald-600 text-[10px] font-bold mt-1">Save NLe {(plan.price.monthly * 12 - plan.price.yearly).toLocaleString('en-US')} per year</p>
                   )}
                 </div>
                 <div className="flex gap-6 mb-6 pb-6 border-b border-[#eef1f7]">
@@ -127,13 +144,13 @@ export const PricingPage: React.FC = () => {
                   ))}
                 </ul>
                 <button
-                  onClick={() => (plan.id === 'freetong' ? navigate('/register') : navigate('/contact'))}
+                  onClick={() => (plan.id === PLANS[0]?.id ? navigate('/register') : navigate('/contact'))}
                   className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all active:scale-[0.98] ${
                     plan.highlight ? 'bg-[#f59e0b] hover:bg-[#d97706] text-white shadow-lg shadow-amber-500/25' : 'border-2 hover:bg-slate-50'
                   }`}
                   style={!plan.highlight ? { borderColor: `${plan.accent}55`, color: plan.accent } : {}}
                 >
-                  {plan.id === 'freetong' ? 'Start with Freetong' : plan.id === 'combra' ? 'Contact Sales' : 'Contact Sales'}
+                  {plan.id === PLANS[0]?.id ? 'Start your free trial' : 'Contact Sales'}
                 </button>
               </div>
             </div>
@@ -152,34 +169,29 @@ export const PricingPage: React.FC = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#f8fafc] border-b border-[#e5e9f2]">
-                  <th className="text-left py-3 px-4 text-slate-500 font-bold text-xs uppercase tracking-wider whitespace-nowrap">Feature</th>
-                  <th className="text-center py-3 px-4 text-[#1d4ed8] font-bold text-xs">Freetong</th>
-                  <th className="text-center py-3 px-4 text-[#f59e0b] font-bold text-xs">Combra</th>
-                  <th className="text-center py-3 px-4 text-[#7c3aed] font-bold text-xs">Bintumani</th>
+                  <th scope="col" className="text-left py-3 px-4 text-slate-500 font-bold text-xs uppercase tracking-wider whitespace-nowrap">Feature</th>
+                  {PLANS.map((p) => (
+                    <th key={p.id} scope="col" className="text-center py-3 px-4 font-bold text-xs" style={{ color: p.accent }}>{p.name}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#eef1f7]">
-                {[
-                  { feature: 'Students', freetong: '250', combra: '1,000', bintumani: 'Unlimited' },
-                  { feature: 'Staff accounts', freetong: '20', combra: '75', bintumani: 'Unlimited' },
-                  { feature: 'Student directory', freetong: '✓', combra: '✓', bintumani: '✓' },
-                  { feature: 'Attendance tracking', freetong: '✓', combra: '✓ + alerts', bintumani: '✓ + alerts' },
-                  { feature: 'Grades & report cards', freetong: '✓', combra: '✓', bintumani: '✓ + custom' },
-                  { feature: 'Fees & online payments', freetong: '✓', combra: '✓', bintumani: '✓ + payroll' },
-                  { feature: 'ID cards (bulk)', freetong: '✓', combra: '✓', bintumani: '✓' },
-                  { feature: 'Events & calendar', freetong: '✓', combra: '✓', bintumani: '✓' },
-                  { feature: 'SMS notifications', freetong: '—', combra: '200/mo', bintumani: 'Unlimited' },
-                  { feature: 'WhatsApp', freetong: '—', combra: '—', bintumani: '✓' },
-                  { feature: 'Staff HR & leave', freetong: '—', combra: '✓', bintumani: '✓' },
-                  { feature: 'Multi-branch', freetong: '—', combra: '—', bintumani: '✓' },
-                  { feature: 'API access', freetong: '—', combra: '—', bintumani: '✓' },
-                  { feature: 'Support', freetong: 'Email', combra: 'Priority', bintumani: 'Dedicated + phone' },
+                {catalog && [
+                  { feature: 'Students', cells: catalog.plans.map((p) => (isUnlimited(p.max_students, catalog.unlimited) ? 'Unlimited' : p.max_students.toLocaleString('en-US'))) },
+                  { feature: 'Staff accounts', cells: catalog.plans.map((p) => (isUnlimited(p.max_staff, catalog.unlimited) ? 'Unlimited' : p.max_staff.toLocaleString('en-US'))) },
+                  ...catalog.features.filter((f) => f.core).map((f) => ({ feature: f.label, cells: catalog.plans.map(() => '✓') })),
+                  ...catalog.features.filter((f) => !f.core && catalog.plans.some((p) => p.features[f.key])).map((f) => ({
+                    feature: f.soon ? `${f.label} (coming soon)` : f.label,
+                    cells: catalog.plans.map((p) => (p.features[f.key] ? '✓' : '—')),
+                  })),
                 ].map((row) => (
                   <tr key={row.feature} className="hover:bg-[#f8fafc] transition-colors">
-                    <td className="py-3 px-4 text-slate-700 font-medium whitespace-nowrap">{row.feature}</td>
-                    <td className="py-3 px-4 text-center text-slate-500">{row.freetong}</td>
-                    <td className="py-3 px-4 text-center text-slate-600">{row.combra}</td>
-                    <td className="py-3 px-4 text-center text-slate-900 font-medium">{row.bintumani}</td>
+                    <th scope="row" className="py-3 px-4 text-left text-slate-700 font-medium whitespace-nowrap">{row.feature}</th>
+                    {row.cells.map((c, i) => (
+                      <td key={i} className={`py-3 px-4 text-center ${c === '—' ? 'text-slate-400' : 'text-slate-900 font-medium'}`}>
+                        {c === '✓' ? <><span aria-hidden="true">✓</span><span className="sr-only">Included</span></> : c === '—' ? <><span aria-hidden="true">—</span><span className="sr-only">Not included</span></> : c}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -198,8 +210,8 @@ export const PricingPage: React.FC = () => {
           </div>
           <div className="space-y-4">
             {[
-              { q: 'Is the core plan really free?', a: 'Yes — the Freetong (v1.0) core is 100% free for schools, with no card required. Paid tiers add advanced HR, payroll and messaging features.' },
-              { q: 'Can I upgrade later?', a: 'Absolutely. You can move from Freetong to Combra or Bintumani at any time — your data and settings carry over seamlessly.' },
+              { q: 'Is there a free trial?', a: 'Yes. Every new school starts with a free trial of the full platform, no card required. When it ends you pick a plan. Nothing is deleted: anything outside your plan stays viewable in read-only mode until you upgrade.' },
+              { q: 'Can I upgrade later?', a: 'Absolutely. You can change plans at any time from Settings → Plan & Billing, and your data and settings carry over.' },
               { q: 'How do I pay for paid tiers?', a: 'We accept mobile money, card, and bank transfer via Monime, plus cash at our office. Reach out to sales to get set up.' },
               { q: 'What if I reach my student limit?', a: "Your existing students and data are never removed — you keep full access to everyone already added. To enrol beyond your plan's limit, simply upgrade; we'll prompt you when you're close." },
               { q: 'Can I get a custom plan?', a: 'Yes — contact us for schools with special needs and we\'ll tailor a package to your budget and requirements.' },

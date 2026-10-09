@@ -20,6 +20,19 @@ import { isAppMode } from '@lib/appMode';
 import { PLATFORM_SUPPORT, platformSupportTel } from '@config/platform.config';
 import CyberBackground from '@components/auth/CyberBackground';
 
+/**
+ * Where to go after signing in: the page the user was sent here from (an email
+ * link, a bookmark — `?next=`), else their dashboard. Only same-site paths are
+ * accepted, so the parameter can't be used to redirect off-site.
+ */
+function afterLoginPath(role: string): string {
+  try {
+    const next = new URLSearchParams(window.location.search).get('next') || '';
+    if (next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') && !next.startsWith('/login')) return next;
+  } catch { /* ignore */ }
+  return getDashboardPath(role as any);
+}
+
 const loginSchema = z.object({
   // Accepts an email (parents/staff) OR a student ID username (students).
   email: z.string().min(1, 'Username or email is required'),
@@ -124,7 +137,7 @@ export const LoginPage: React.FC = () => {
 
   useEffect(() => {
     if (isInitialized && isAuthenticated && user) {
-      navigate(getDashboardPath(user.role), { replace: true });
+      navigate(afterLoginPath(user.role), { replace: true });
     }
   }, [isInitialized, isAuthenticated, user, navigate]);
 
@@ -180,7 +193,7 @@ export const LoginPage: React.FC = () => {
       const verifiedUser = (verifyRes as any)?.data?.user || (verifyRes as any)?.user;
       if (verifyRes.success && verifiedUser) {
         useAuthStore.setState({ user: verifiedUser, isAuthenticated: true, mfaToken: null });
-        navigate(getDashboardPath(verifiedUser.role), { replace: true });
+        navigate(afterLoginPath(verifiedUser.role), { replace: true });
       } else {
         setPasskeyError(verifyRes.error || 'Passkey sign-in failed.');
       }
@@ -224,7 +237,7 @@ export const LoginPage: React.FC = () => {
       const verifiedUser = (verifyRes as any)?.data?.user || (verifyRes as any)?.user;
       if (verifyRes.success && verifiedUser) {
         useAuthStore.setState({ user: verifiedUser, isAuthenticated: true, mfaToken: null });
-        navigate(getDashboardPath(verifiedUser.role), { replace: true });
+        navigate(afterLoginPath(verifiedUser.role), { replace: true });
       } else {
         setPasskeyError(verifyRes.error || 'No passkey found for this device. Sign in with your password.');
       }

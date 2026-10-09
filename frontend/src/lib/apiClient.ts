@@ -191,16 +191,22 @@ axiosInstance.interceptors.response.use(
         if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
           window.location.assign(code === 'ACCOUNT_INACTIVE' ? '/login?disabled=1' : '/login?suspended=1');
         }
-      } else if (code === 'SUBSCRIPTION_EXPIRED' || code === 'PLAN_LIMIT_REACHED') {
+      } else if (code === 'SUBSCRIPTION_EXPIRED' || code === 'PLAN_LIMIT_REACHED' || code === 'FEATURE_READ_ONLY') {
         // Broadcast so a single global listener can toast + prompt an upgrade,
         // instead of every call site handling plan limits individually.
+        // Only for actions the user took (writes): background reads of a
+        // feature outside the plan (dashboard widgets) fail quietly, since the
+        // UI already hides or marks those features.
+        const method = String(error.config?.method || 'get').toLowerCase();
         const msg = (error.response?.data as any)?.error?.message
           || (error.response?.data as any)?.message
           || (error.response?.data as any)?.error
           || 'Your plan limit was reached. Upgrade to continue.';
-        try {
-          window.dispatchEvent(new CustomEvent('wiskul:plan-limit', { detail: { code, message: msg } }));
-        } catch { /* SSR / non-DOM */ }
+        if (method !== 'get' && method !== 'head') {
+          try {
+            window.dispatchEvent(new CustomEvent('wiskul:plan-limit', { detail: { code, message: msg } }));
+          } catch { /* SSR / non-DOM */ }
+        }
       }
       console.warn('403 Forbidden:', error.response?.config?.url);
     }

@@ -16,6 +16,14 @@ export interface TrialConfig {
   planType: 'freetong' | 'combra' | 'bintumani';
   /** Trial length in days. */
   durationDays: number;
+  /**
+   * What happens when the trial ends:
+   *  - 'downgrade'       → the school moves to Freetong and keeps working (free).
+   *  - 'require_payment' → the school must pay for a plan; until it does, it is
+   *                        read-only (everyone signs in and views records,
+   *                        nothing can be added or changed). Nothing is deleted.
+   */
+  afterTrial: 'downgrade' | 'require_payment';
 }
 
 const TRIAL_KEY = 'trial_config';
@@ -25,6 +33,7 @@ const DEFAULT_TRIAL: TrialConfig = {
   enabled: true,
   planType: 'bintumani',
   durationDays: 30,
+  afterTrial: 'downgrade',
 };
 
 /** Env fallback (lets ops seed a value before the owner sets one in the UI). */
@@ -33,6 +42,7 @@ function trialFromEnv(): Partial<TrialConfig> {
   if (process.env.TRIAL_PLAN) out.planType = process.env.TRIAL_PLAN as TrialConfig['planType'];
   if (process.env.TRIAL_DAYS) out.durationDays = Number(process.env.TRIAL_DAYS);
   if (process.env.TRIAL_ENABLED) out.enabled = process.env.TRIAL_ENABLED !== 'false';
+  if (process.env.TRIAL_AFTER) out.afterTrial = process.env.TRIAL_AFTER === 'require_payment' ? 'require_payment' : 'downgrade';
   return out;
 }
 
@@ -45,6 +55,7 @@ function normalizeTrial(raw: any): TrialConfig {
     enabled: raw?.enabled ?? env.enabled ?? DEFAULT_TRIAL.enabled,
     planType: validPlan,
     durationDays: Number.isFinite(days) && days > 0 ? Math.floor(days) : DEFAULT_TRIAL.durationDays,
+    afterTrial: (raw?.afterTrial ?? env.afterTrial) === 'require_payment' ? 'require_payment' : 'downgrade',
   };
 }
 

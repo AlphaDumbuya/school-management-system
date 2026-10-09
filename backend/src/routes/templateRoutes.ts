@@ -67,6 +67,33 @@ async function notifyRoleUsers(tenantId: string, roles: string[], n: { subject: 
   } catch { /* best-effort */ }
 }
 
+/**
+ * Short tenant-branded email for the card-design workflow (submitted →
+ * principals, approved → creator). Fire-and-forget: never awaited by the
+ * route and never fails it.
+ */
+function emailTemplateStatus(
+  tenantId: string,
+  recipients: { roles?: string[]; userIds?: string[]; exceptUserId?: string },
+  data: { templateName: string; action: 'submitted' | 'approved'; actorId?: string },
+): void {
+  void (async () => {
+    const users = recipients.userIds?.length
+      ? await db('users').where({ tenant_id: tenantId }).whereIn('id', recipients.userIds).select('id', 'email', 'first_name', 'last_name')
+      : await db('users').where({ tenant_id: tenantId, status: 'active' }).whereIn('role', recipients.roles || []).select('id', 'email', 'first_name', 'last_name');
+    const actor = data.actorId ? await db('users').where({ id: data.actorId }).first('first_name', 'last_name') : null;
+    const actorName = actor ? [actor.first_name, actor.last_name].filter(Boolean).join(' ') : undefined;
+    const { default: emailService } = await import('../services/emailService.js');
+    for (const u of users) {
+      if (!u.email || u.id === recipients.exceptUserId) continue;
+      await emailService.sendCardTemplateStatusEmail(tenantId, u.email, {
+        recipientName: [u.first_name, u.last_name].filter(Boolean).join(' ') || 'there',
+        templateName: data.templateName, action: data.action, actorName: actorName || undefined,
+      }).catch((e: any) => logger.warn(`Card template ${data.action} email to ${u.id} failed: ${e?.message || e}`));
+    }
+  })().catch((e) => logger.warn(`Card template ${data.action} emails failed: ${e?.message || e}`));
+}
+
 // Configure multer for logo uploads
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -330,6 +357,9 @@ router.post(
         subject: 'Card design waiting for approval',
         message: `"${row?.name || 'A card design'}" was submitted for approval.`, exceptUserId: (req as any).user.id,
       });
+      emailTemplateStatus((req as any).user.tenant_id, { roles: ['principal'], exceptUserId: (req as any).user.id }, {
+        templateName: row?.name || 'Card design', action: 'submitted', actorId: (req as any).user.id,
+      });
 
       res.json({
         message: 'Template submitted for approval',
@@ -361,6 +391,9 @@ router.post(
       const row = await templateRow(req, templateId);
       if (row?.created_by && row.created_by !== approverId) {
         await notifyRoleUsers((req as any).user.tenant_id, [], { subject: 'Card design approved', message: `"${row.name}" is approved and can be used for ID cards.` }, [row.created_by]);
+        emailTemplateStatus((req as any).user.tenant_id, { userIds: [row.created_by] }, {
+          templateName: row.name || 'Card design', action: 'approved', actorId: approverId,
+        });
       }
 
       res.json({

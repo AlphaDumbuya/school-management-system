@@ -50,6 +50,31 @@ const assertEventTenant = async (req: Request, res: Response, next: NextFunction
   }
 };
 
+/**
+ * Ties :regId to :eventId (which assertEventTenant already pinned to the
+ * caller's tenant). The registration service approves/rejects by
+ * registration_id alone, so without this a principal could act on another
+ * school's registration by passing their own eventId with a foreign regId.
+ */
+const assertRegistrationInEvent = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const reg = await db('event_registrations')
+      .where({ registration_id: req.params.regId, event_id: req.params.eventId })
+      .first('registration_id');
+    if (!reg) return res.status(404).json({ success: false, error: 'Registration not found' });
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Strip identity/ownership columns from an update body (mass-assignment guard). */
+const withoutProtected = (body: any, keys: string[]) => {
+  const out = { ...(body || {}) };
+  for (const k of keys) delete out[k];
+  return out;
+};
+
 // =====================================================================
 // STATIC / PREFIX ROUTES — must come before /:eventId
 // =====================================================================
@@ -192,7 +217,9 @@ router.put(
       const category = await eventCategoryService.updateCategory(
         req.params.categoryId,
         req.user!.tenant_id,
-        req.body,
+        // The service spreads this into .update(): never let it move the row
+        // to another tenant or flip system flags.
+        withoutProtected(req.body, ['tenant_id', 'category_id', 'is_system', 'created_at']),
       );
       res.json({ success: true, data: category });
     } catch (error) {
@@ -448,7 +475,9 @@ router.put(
         req.params.eventId,
         req.user!.tenant_id,
         req.user!.id,
-        req.body,
+        // The service spreads this into .update(): never let it move the event
+        // to another tenant or rewrite who created it.
+        withoutProtected(req.body, ['tenant_id', 'event_id', 'created_by', 'created_at']),
       );
       res.json({ success: true, data: event });
     } catch (error) {
@@ -719,6 +748,7 @@ router.post(
   '/:eventId/registrations/:regId/approve',
   authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   assertEventTenant,
+  assertRegistrationInEvent,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const registration = await eventRegistrationService.approveRegistration(
@@ -740,6 +770,7 @@ router.post(
   '/:eventId/registrations/:regId/reject',
   authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
   assertEventTenant,
+  assertRegistrationInEvent,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const registration = await eventRegistrationService.rejectRegistration(
@@ -921,6 +952,18 @@ router.post(
       let attendance;
 
       if (req.body.qr_data) {
+        // The QR's own event_id is what gets checked in to. Require it to be
+        // THIS (tenant-verified) event, so another school's QR can't be used.
+        let qrEventId: string | undefined;
+        try {
+          const outer = typeof req.body.qr_data === 'string' ? JSON.parse(req.body.qr_data) : req.body.qr_data;
+          qrEventId = JSON.parse(outer?.payload || '{}')?.event_id;
+        } catch {
+          qrEventId = undefined;
+        }
+        if (!qrEventId || String(qrEventId) !== String(req.params.eventId)) {
+          return res.status(400).json({ success: false, error: 'Invalid QR code' });
+        }
         attendance = await eventAttendanceService.checkInWithQRCode(
           req.body.qr_data,
           req.user!.id,

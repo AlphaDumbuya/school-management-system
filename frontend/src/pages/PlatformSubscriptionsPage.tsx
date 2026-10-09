@@ -25,10 +25,13 @@ import { Modal } from '@components/admin/feedback/Modal';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { showToast } from '@utils/toast';
 import platformService, { PlatformTenant } from '../services/platformService';
+import { PlanCatalogEditor } from '@components/platform/PlanCatalogEditor';
+import { fmtPrice, usePublicPlans } from '@services/planService';
 
 export const PlatformSubscriptionsPage: React.FC = () => {
   const [tenants, setTenants] = useState<PlatformTenant[]>([]);
   const [loading, setLoading] = useState(true);
+  const { data: plansData } = usePublicPlans();
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('');
@@ -47,7 +50,7 @@ export const PlatformSubscriptionsPage: React.FC = () => {
   });
 
   // New-school trial config (platform-owner controlled).
-  const [trial, setTrial] = useState<{ enabled: boolean; planType: 'freetong' | 'combra' | 'bintumani'; durationDays: number } | null>(null);
+  const [trial, setTrial] = useState<{ enabled: boolean; planType: 'freetong' | 'combra' | 'bintumani'; durationDays: number; afterTrial?: 'downgrade' | 'require_payment' } | null>(null);
   const [trialSaving, setTrialSaving] = useState(false);
 
   const loadTrial = async () => {
@@ -66,10 +69,12 @@ export const PlatformSubscriptionsPage: React.FC = () => {
         enabled: trial.enabled,
         plan_type: trial.planType,
         duration_days: trial.durationDays,
+        after_trial: trial.afterTrial || 'downgrade',
       });
       if (res.success) {
         showToast.success(res.message || 'Trial settings saved');
-        if (res.data) setTrial({ enabled: res.data.enabled, planType: res.data.planType as any, durationDays: res.data.durationDays });
+        const d: any = (res as any).data;
+        if (d) setTrial({ enabled: d.enabled, planType: d.planType, durationDays: d.durationDays, afterTrial: d.afterTrial });
       } else {
         showToast.error((res as any).error || 'Failed to save');
       }
@@ -184,7 +189,8 @@ export const PlatformSubscriptionsPage: React.FC = () => {
                   <Sparkles size={16} className="text-amber-500" /> New-school free trial
                 </h3>
                 <p className="text-xs text-gray-500 mt-1 max-w-xl">
-                  Every newly registered school starts here. When the trial ends they drop to the free Freetong plan automatically (never locked out). Changes apply to schools created after you save.
+                  Every newly registered school starts here, free, for the number of days you set (any plan, including Freetong).
+                  Plan and length apply to schools created after you save; what happens at the end applies to every trial that ends from now on.
                 </p>
               </div>
               <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700">
@@ -197,7 +203,7 @@ export const PlatformSubscriptionsPage: React.FC = () => {
               </label>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Trial plan</label>
                 <select
@@ -222,6 +228,19 @@ export const PlatformSubscriptionsPage: React.FC = () => {
                   onChange={(e) => setTrial({ ...trial, durationDays: Number(e.target.value) })}
                 />
               </div>
+              <div>
+                <label htmlFor="after-trial" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">When the trial ends</label>
+                <select
+                  id="after-trial"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                  value={trial.afterTrial || 'downgrade'}
+                  disabled={!trial.enabled}
+                  onChange={(e) => setTrial({ ...trial, afterTrial: e.target.value as any })}
+                >
+                  <option value="downgrade">Move to Freetong (free)</option>
+                  <option value="require_payment">Require payment</option>
+                </select>
+              </div>
               <div className="flex items-end">
                 <Button onClick={saveTrial} disabled={trialSaving} className="w-full">
                   {trialSaving && <Loader2 className="animate-spin mr-1.5" size={14} />}
@@ -229,62 +248,20 @@ export const PlatformSubscriptionsPage: React.FC = () => {
                 </Button>
               </div>
             </div>
+            {trial.enabled && trial.afterTrial === 'require_payment' && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                When a trial ends, the school stays signed in but becomes read-only until the principal pays for a plan in Plan &amp; Billing. Nothing is deleted. Reminders go out 7 days and 1 day before.
+              </p>
+            )}
             {!trial.enabled && (
-              <p className="text-xs text-gray-500 mt-3">Trial is off — new schools start directly on the free Freetong plan.</p>
+              <p className="text-xs text-gray-500 mt-3">Trial is off — new schools start directly on Freetong.</p>
             )}
           </div>
         )}
 
-        {/* Plan Cards Information */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
-            <div className="absolute right-[-10%] top-[-10%] opacity-10"><CreditCard size={150} /></div>
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded">Basic Plan</span>
-              <Sparkles size={18} />
-            </div>
-            <h3 className="text-xl font-bold mb-1">Freetong Trial</h3>
-            <p className="text-2xl font-black mb-4">Le 400 <span className="text-xs font-normal">/ month</span></p>
-            <ul className="text-xs space-y-2 border-t border-white/10 pt-4 opacity-90">
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Basic attendance & profiles</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Class/Subject & schedule manager</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Fee collection & SMS reminders</li>
-              <li className="flex items-center gap-1.5 text-white/50"><X size={12} /> ID Card templates, WhatsApp, Analytics</li>
-            </ul>
-          </div>
+        {/* Plan catalog: prices, limits and features per plan (live). */}
+        <PlanCatalogEditor />
 
-          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
-            <div className="absolute right-[-10%] top-[-10%] opacity-10"><CreditCard size={150} /></div>
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded">Growth Plan</span>
-              <Sparkles size={18} />
-            </div>
-            <h3 className="text-xl font-bold mb-1">Combra Standard</h3>
-            <p className="text-2xl font-black mb-4">Le 900 <span className="text-xs font-normal">/ month</span></p>
-            <ul className="text-xs space-y-2 border-t border-white/10 pt-4 opacity-90">
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Everything in Freetong plan</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> ID cards designer & events tracking</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Discipline records & analytics</li>
-              <li className="flex items-center gap-1.5 text-white/50"><X size={12} /> Advanced payroll, custom branding</li>
-            </ul>
-          </div>
-
-          <div className="bg-gradient-to-br from-purple-600 to-pink-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
-            <div className="absolute right-[-10%] top-[-10%] opacity-10"><CreditCard size={150} /></div>
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded">Unlimited Plan</span>
-              <Sparkles size={18} />
-            </div>
-            <h3 className="text-xl font-bold mb-1">Bintumani Enterprise</h3>
-            <p className="text-2xl font-black mb-4">Le 1,750 <span className="text-xs font-normal">/ month</span></p>
-            <ul className="text-xs space-y-2 border-t border-white/10 pt-4 opacity-90">
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> All features unlocked</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Payroll modules & scholarships admin</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Custom school branding & logo configs</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Multi-branch school administration</li>
-            </ul>
-          </div>
-        </div>
 
         {/* Filters */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
@@ -423,9 +400,13 @@ export const PlatformSubscriptionsPage: React.FC = () => {
                 onChange={(e) => setModifyForm({ ...modifyForm, plan_type: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-100"
               >
-                <option value="freetong">Freetong (Basic Trial) — Le 400/mo</option>
-                <option value="combra">Combra (Standard) — Le 900/mo</option>
-                <option value="bintumani">Bintumani (Enterprise) — Le 1,750/mo</option>
+                {(plansData?.plans?.length ? plansData.plans : [
+                  { id: 'freetong', name: 'Freetong', monthly_price: 0 },
+                  { id: 'combra', name: 'Combra', monthly_price: 0 },
+                  { id: 'bintumani', name: 'Bintumani', monthly_price: 0 },
+                ] as any[]).map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.name}{p.monthly_price ? ` — ${fmtPrice(p.monthly_price)}/mo` : ''}</option>
+                ))}
               </select>
             </div>
 

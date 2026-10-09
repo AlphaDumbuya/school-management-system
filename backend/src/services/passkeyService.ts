@@ -201,6 +201,9 @@ class PasskeyService {
       entityId: row.id,
     });
 
+    // Security notice to the account owner (fire-and-forget).
+    this.notifyPasskeyChange(userId, tenantId, 'added', row.device_label || finalLabel);
+
     return this.toDTO(row);
   }
 
@@ -490,9 +493,36 @@ class PasskeyService {
       entityType: 'passkey',
       entityId: cred.id,
     });
+
+    // Security notice to the account owner (fire-and-forget).
+    this.notifyPasskeyChange(userId, tenantId, 'removed', cred.device_label, user);
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Best-effort "a passkey was added/removed" security email. Never awaited by
+   * the caller and never throws — a mail failure must not affect the change.
+   */
+  private notifyPasskeyChange(
+    userId: string,
+    tenantId: string | null,
+    action: 'added' | 'removed',
+    deviceName?: string | null,
+    knownUser?: any
+  ): void {
+    void (async () => {
+      const user = knownUser || (await db('users').where({ id: userId }).select('email', 'first_name', 'last_name', 'tenant_id').first());
+      if (!user?.email) return;
+      const userName = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'there';
+      const { default: emailService } = await import('./emailService');
+      await emailService.sendPasskeyStatusEmail(tenantId || user.tenant_id || null, user.email, {
+        userName,
+        action,
+        deviceName: deviceName || undefined,
+      });
+    })().catch((err) => logger.warn(`Passkey ${action} email failed for user ${userId}: ${err}`));
+  }
 
   private toDTO(row: any): PasskeyDTO {
     return {

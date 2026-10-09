@@ -4,13 +4,15 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '../middleware/authMiddleware.js';
+import { authenticate, authorize, attachUserContext } from '../middleware/authMiddleware.js';
 import { logger } from '../utils/logger.js';
 import promotionService from '../services/promotionService.js';
 
 const router = Router();
 
-router.use(authenticate);
+// Handlers read req.user.tenant_id — load it here rather than relying on
+// another router's blanket attachUserContext earlier in the chain.
+router.use(authenticate, attachUserContext);
 
 /**
  * GET /api/v1/promotions/candidates?class_id=&academic_year=

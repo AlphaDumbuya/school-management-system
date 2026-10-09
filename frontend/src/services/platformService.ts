@@ -177,12 +177,12 @@ export const platformService = {
 
   // ── New-school trial config (platform owner controlled) ────────────────────
   async getTrialConfig() {
-    return apiClient.get<{ enabled: boolean; planType: 'freetong' | 'combra' | 'bintumani'; durationDays: number }>(
+    return apiClient.get<{ enabled: boolean; planType: 'freetong' | 'combra' | 'bintumani'; durationDays: number; afterTrial?: 'downgrade' | 'require_payment' }>(
       '/api/v1/platform/settings/trial'
     );
   },
-  async updateTrialConfig(patch: { enabled?: boolean; plan_type?: 'freetong' | 'combra' | 'bintumani'; duration_days?: number }) {
-    return apiClient.put<{ success: boolean; message: string; data: { enabled: boolean; planType: string; durationDays: number } }>(
+  async updateTrialConfig(patch: { enabled?: boolean; plan_type?: 'freetong' | 'combra' | 'bintumani'; duration_days?: number; after_trial?: 'downgrade' | 'require_payment' }) {
+    return apiClient.put<{ success: boolean; message: string; data: { enabled: boolean; planType: string; durationDays: number; afterTrial?: 'downgrade' | 'require_payment' } }>(
       '/api/v1/platform/settings/trial',
       patch
     );

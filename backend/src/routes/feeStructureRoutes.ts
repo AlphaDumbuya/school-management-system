@@ -274,6 +274,8 @@ export async function billOneTerm(
   term: 1 | 2 | 3,
   dueDate: Date,
   students: Array<{ id: string }>,
+  /** Optional: accumulates the amount newly billed per student (for family notices). */
+  billedAmounts?: Map<string, number>,
 ): Promise<Set<string>> {
   const tuition = Number(term === 1 ? s.term1_tuition : term === 2 ? s.term2_tuition : s.term3_tuition) || 0;
   // Itemised academic-year expenses are billed ONCE, with Term 1.
@@ -298,6 +300,7 @@ export async function billOneTerm(
           due_date: dueDate, status: 'pending', created_at: now, updated_at: now,
         });
         added = true;
+        billedAmounts?.set(stu.id, (billedAmounts.get(stu.id) || 0) + tuition);
       }
     }
     for (const e of expenses) {
@@ -317,6 +320,7 @@ export async function billOneTerm(
         due_date: dueDate, status: 'pending', created_at: now, updated_at: now,
       });
       added = true;
+      billedAmounts?.set(stu.id, (billedAmounts.get(stu.id) || 0) + amt);
     }
     if (added) billedIds.add(stu.id);
   }
@@ -355,13 +359,15 @@ router.post('/:id/bill', authenticate, requireStaff, async (req: Request, res: R
     if (students.length === 0) return res.status(400).json({ success: false, error: 'No active students in this class' });
 
     let billed = 0;
+    const billedAmounts = new Map<string, number>();
     await db.transaction(async (trx) => {
       // Serialise billing per structure: two clicks / two tabs used to both
       // pass the duplicate check and charge students twice.
       await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [`fee-bill:${s.id}`]);
+      billedAmounts.clear(); // (a retried transaction starts from scratch)
       const touched = new Set<string>();
       for (const t of (isYear ? [1, 2, 3] : [term]) as Array<1 | 2 | 3>) {
-        const ids = await billOneTerm(trx, tenantId, s, t, dueDate, students);
+        const ids = await billOneTerm(trx, tenantId, s, t, dueDate, students, billedAmounts);
         ids.forEach((id) => touched.add(id));
       }
       billed = touched.size;
@@ -369,6 +375,14 @@ router.post('/:id/bill', authenticate, requireStaff, async (req: Request, res: R
       const { discountService } = await import('../services/finance/discountService.js');
       for (const st of students) await discountService.applyApprovedGrantsForStudent(trx, tenantId, st.id, s.academic_year);
     });
+
+    // Committed — one "new fees" notice per billed family (in-app + email).
+    // Fire-and-forget: never slows or fails the billing response.
+    if (billedAmounts.size) {
+      import('../services/finance/core.js')
+        .then(({ notifyFeesBilled }) => notifyFeesBilled(tenantId, Array.from(billedAmounts, ([studentId, amount]) => ({ studentId, amount, dueDate }))))
+        .catch((e) => logger.warn(`Fee-structure billing notices failed: ${e?.message || e}`));
+    }
 
     res.json({ success: true, data: { billed, term: isYear ? 'Full Year' : TERM_LABELS[term] } });
   } catch (error) { next(error); }

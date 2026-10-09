@@ -13,7 +13,7 @@
 import { db } from '../utils/database';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
-import { PLAN_LIMITS, SubscriptionService } from './subscriptionService';
+import { planLimits, SubscriptionService } from './subscriptionService';
 import { monimeService } from './monimeService';
 
 type PlanType = 'freetong' | 'combra' | 'bintumani';
@@ -33,8 +33,7 @@ export class SubscriptionCheckout {
   }): Promise<{ sessionId: string; ussdCode: string | null; amount: number; expireTime: string | null }> {
     const { tenantId, userId, planType, billingCycle } = opts;
 
-    const limits = PLAN_LIMITS[planType];
-    if (!limits) throw new AppError('Invalid subscription plan type', 400, 'VALIDATION_ERROR');
+    const limits = await planLimits(planType); // throws on an unknown plan
 
     // Platform must have its own Monime account configured to collect revenue.
     if (!monimeService.isConfigured()) {
@@ -57,7 +56,7 @@ export class SubscriptionCheckout {
       .count('* as count');
     const currentStudents = parseInt((studentCountRow as any)?.count as string, 10) || 0;
     const currentStaff = parseInt((staffCountRow as any)?.count as string, 10) || 0;
-    const maxStaff = planType === 'freetong' ? 15 : planType === 'combra' ? 40 : 999999;
+    const maxStaff = limits.max_staff;
 
     if (currentStudents > limits.max_students) {
       throw new AppError(
@@ -74,9 +73,9 @@ export class SubscriptionCheckout {
       );
     }
 
-    const amount = billingCycle === 'monthly' ? limits.monthly_price : limits.monthly_price * 10;
+    const amount = billingCycle === 'monthly' ? limits.monthly_price : limits.yearly_price;
     if (!(amount > 0)) {
-      // No plan is free today, but guard anyway: nothing to collect → apply now.
+      // A free plan (price set to 0 in the catalog): nothing to collect → apply now.
       await SubscriptionService.changePlan(tenantId, planType, billingCycle, userId);
       return { sessionId: 'immediate', ussdCode: null, amount: 0, expireTime: null };
     }
@@ -181,6 +180,26 @@ export class SubscriptionCheckout {
       .update({ status: 'completed', updated_at: new Date() });
 
     logger.info(`Subscription payment reconciled — tenant ${session.tenant_id} now on ${session.plan_type} (session ${sessionId})`);
+
+    // Payment confirmation / receipt to the school contact (best-effort).
+    try {
+      const { tenantContactEmail } = await import('../jobs/subscriptionJobs.js');
+      const to = await tenantContactEmail(session.tenant_id);
+      if (to) {
+        const [tenant, sub, limits] = await Promise.all([
+          db('tenants').where({ id: session.tenant_id }).first('name'),
+          SubscriptionService.getActiveSubscription(session.tenant_id),
+          planLimits(session.plan_type),
+        ]);
+        const { default: emailService } = await import('./emailService.js');
+        await emailService.sendSubscriptionLifecycleEmail(to, {
+          kind: 'payment_received', schoolName: tenant?.name || 'your school', planName: limits.name,
+          amount: Number(session.amount) || undefined, billingCycle: session.billing_cycle, endDate: sub?.end_date || null,
+        });
+      }
+    } catch (mailErr: any) {
+      logger.warn(`Subscription payment email failed for tenant ${session.tenant_id}: ${mailErr?.message || mailErr}`);
+    }
   }
 
   /** Read a subscription session's status (for the return page to poll). */

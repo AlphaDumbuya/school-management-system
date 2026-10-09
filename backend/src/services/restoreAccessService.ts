@@ -22,7 +22,7 @@ import crypto from 'crypto';
 import { db } from '../utils/database';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
-import { PLAN_LIMITS, SubscriptionService } from './subscriptionService';
+import { planLimits, SubscriptionService } from './subscriptionService';
 
 // Never fall back to a repo-visible placeholder in production — that would make
 // restore tokens forgeable. Boot-time env validation (utils/env.ts) blocks a
@@ -76,8 +76,8 @@ export async function getRestoreInfo(token: string): Promise<{
   if (!tenant) throw new AppError('School not found', 404, 'TENANT_NOT_FOUND');
 
   const sub = await SubscriptionService.getActiveSubscription(tenantId);
-  const planType = (sub.plan_type as keyof typeof PLAN_LIMITS) || 'freetong';
-  const amountDue = PLAN_LIMITS[planType]?.monthly_price ?? 0;
+  const planType = sub.plan_type || 'freetong';
+  const amountDue = (await planLimits(planType).catch(() => null))?.monthly_price ?? 0;
 
   return {
     tenantId,

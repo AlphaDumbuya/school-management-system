@@ -9,7 +9,26 @@ import { logger } from '@utils/logger';
 
 const router = Router();
 
+// Every route here needs the DB-backed user context (req.user.tenant_id/role).
+// Mounted at /api/v1/users, so a router-wide guard is safe.
+router.use(authenticate, attachUserContext);
+
 const STAFF_ROLES = ['teacher', 'accountant', 'admissions_officer', 'principal'];
+
+const isSuperAdmin = (actor: any) => actor?.role === UserRole.SUPER_ADMIN;
+
+/**
+ * Tenant isolation: a `users` query restricted to the caller's school.
+ * Super admins (platform operators) are not restricted.
+ */
+function tenantUsers(actor: any) {
+  const q = db('users');
+  if (!isSuperAdmin(actor)) {
+    if (!actor?.tenant_id) throw new AppError('Tenant context is required', 403, 'TENANT_REQUIRED');
+    q.where('tenant_id', actor.tenant_id);
+  }
+  return q;
+}
 
 /**
  * POST /api/v1/users
@@ -23,6 +42,10 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
     // Validate input
     if (!email || !first_name || !last_name || !role) {
       throw new AppError('Missing required fields', 400, 'VALIDATION_ERROR');
+    }
+    // Only a super admin may mint another super admin.
+    if (String(role) === UserRole.SUPER_ADMIN && !isSuperAdmin((req as any).user)) {
+      throw new AppError('You cannot create a super admin account', 403, 'FORBIDDEN');
     }
 
     // Enforce the plan's staff limit when creating a staff-role account (closes
@@ -62,6 +85,8 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       password_hash: passwordHash,
       role,
       status: status || 'active',
+      // New accounts belong to the creator's school (never tenant-less).
+      tenant_id: creatorTenantId || null,
       created_by: createdBy,
       created_at: new Date(),
       updated_at: new Date(),
@@ -177,7 +202,8 @@ router.get('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN
     const status = req.query.status as string;
     const search = req.query.search as string;
 
-    let query = db('users').select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'last_login', 'created_at');
+    const actor = (req as any).user;
+    let query = tenantUsers(actor).select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'last_login', 'created_at');
 
     if (role) {
       query = query.where('role', role);
@@ -194,7 +220,7 @@ router.get('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN
       });
     }
 
-    const countQuery = db('users');
+    const countQuery = tenantUsers(actor);
     if (role) countQuery.where('role', role);
     if (status) countQuery.where('status', status);
     if (search) {
@@ -236,13 +262,15 @@ router.get('/:id', authenticate, async (req: Request, res: Response, next: NextF
   try {
     const userId = req.params.id;
     const currentUser = (req as any).user;
+    const isSelf = String(userId) === String(currentUser.id);
 
-    // Users can only view their own profile unless they're principal
-    if (userId !== currentUser.id && currentUser.role !== 'principal') {
+    // Users can only view their own profile unless they're principal/super admin
+    if (!isSelf && currentUser.role !== 'principal' && !isSuperAdmin(currentUser)) {
       throw new AppError('Unauthorized', 403, 'AUTHORIZATION_ERROR');
     }
 
-    const user = await db('users')
+    // Tenant-scoped: a principal only sees users in their own school.
+    const user = await (isSelf ? db('users') : tenantUsers(currentUser))
       .select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'last_login', 'created_at', 'updated_at')
       .where('id', userId)
       .first();
@@ -267,9 +295,21 @@ router.put('/:id', authenticate, async (req: Request, res: Response, next: NextF
     const currentUser = (req as any).user;
     const { first_name, last_name, status } = req.body;
 
-    // Users can only update their own profile unless they're principal
-    if (userId !== currentUser.id && currentUser.role !== 'principal') {
+    const isSelf = String(userId) === String(currentUser.id);
+    const isAdmin = currentUser.role === 'principal' || isSuperAdmin(currentUser);
+
+    // Users can only update their own profile unless they're principal/super admin
+    if (!isSelf && !isAdmin) {
       throw new AppError('Unauthorized', 403, 'AUTHORIZATION_ERROR');
+    }
+
+    // Tenant isolation + never let a principal edit a super admin.
+    if (!isSelf) {
+      const target = await tenantUsers(currentUser).where('id', userId).first('id', 'role');
+      if (!target) throw new AppError('User not found', 404, 'NOT_FOUND');
+      if (target.role === UserRole.SUPER_ADMIN && !isSuperAdmin(currentUser)) {
+        throw new AppError('You cannot modify a super admin account', 403, 'FORBIDDEN');
+      }
     }
 
     // Admin/principal can change status, but users cannot
@@ -277,12 +317,12 @@ router.put('/:id', authenticate, async (req: Request, res: Response, next: NextF
     if (first_name) updateData.first_name = first_name;
     if (last_name) updateData.last_name = last_name;
 
-    if (status && currentUser.role === 'principal') {
+    if (status && isAdmin) {
       updateData.status = status;
     }
 
     updateData.updated_at = new Date();
-    if (currentUser.id !== userId) {
+    if (!isSelf) {
       updateData.updated_by = currentUser.id;
     }
 
@@ -314,13 +354,17 @@ router.delete('/:id', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER
     const currentUser = (req as any).user;
 
     // Prevent self-deletion
-    if (userId === currentUser.id) {
+    if (String(userId) === String(currentUser.id)) {
       throw new AppError('Cannot delete your own account', 400, 'VALIDATION_ERROR');
     }
 
-    const user = await db('users').where('id', userId).first();
+    // Tenant-scoped lookup: a principal can only deactivate users in their school.
+    const user = await tenantUsers(currentUser).where('id', userId).first();
     if (!user) {
       throw new AppError('User not found', 404, 'NOT_FOUND');
+    }
+    if (user.role === UserRole.SUPER_ADMIN && !isSuperAdmin(currentUser)) {
+      throw new AppError('You cannot deactivate a super admin account', 403, 'FORBIDDEN');
     }
 
     // Soft delete
@@ -355,9 +399,13 @@ router.put('/:id/role', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUP
       throw new AppError(`Invalid role. Must be one of: ${validRoles.join(', ')}`, 400, 'VALIDATION_ERROR');
     }
 
-    const user = await db('users').where('id', userId).first();
+    // Tenant-scoped lookup: a principal can only change roles in their school.
+    const user = await tenantUsers(currentUser).where('id', userId).first();
     if (!user) {
       throw new AppError('User not found', 404, 'NOT_FOUND');
+    }
+    if (user.role === UserRole.SUPER_ADMIN && !isSuperAdmin(currentUser)) {
+      throw new AppError('You cannot change a super admin account', 403, 'FORBIDDEN');
     }
 
     await db('users').where('id', userId).update({
@@ -393,8 +441,9 @@ router.get('/role/:role', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
       throw new AppError(`Invalid role. Must be one of: ${validRoles.join(', ')}`, 400, 'VALIDATION_ERROR');
     }
 
-    const total = await db('users').where('role', role).count('* as count').first();
-    const users = await db('users')
+    const actor = (req as any).user;
+    const total: any = await tenantUsers(actor).where('role', role).count('* as count').first();
+    const users = await tenantUsers(actor)
       .select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'created_at')
       .where('role', role)
       .limit(limit)

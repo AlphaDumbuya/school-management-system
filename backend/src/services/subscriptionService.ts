@@ -2,12 +2,17 @@ import { db } from '../utils/database';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { v4 as uuidv4 } from 'uuid';
+import { PlanCatalog } from './planCatalogService';
+import { EntitlementService } from './entitlementService';
 
 export interface ActiveSubscription {
   id: string;
   tenant_id: string;
   plan_type: 'freetong' | 'combra' | 'bintumani';
   status: 'active' | 'suspended' | 'expired' | 'cancelled';
+  /** Live staff limit from the plan catalog. */
+  max_staff?: number;
+  is_comp?: boolean;
   start_date: Date;
   end_date: Date | null;
   monthly_price: number;
@@ -20,73 +25,26 @@ export interface ActiveSubscription {
   updated_at: Date;
 }
 
-export const PLAN_LIMITS = {
-  freetong: {
-    monthly_price: 400,
-    max_users: 15, // matches staff limit of 15 + 1 admin
-    max_students: 200,
-    max_storage_gb: 5,
-    features: {
-      attendance_basic: true,
-      directory_profiles: true,
-      class_subject_mgmt: true,
-      fee_collection: true,
-      sms_notifications: true,
-      id_cards: false,
-      events: false,
-      advanced_analytics: false,
-      whatsapp: false,
-      payroll: false,
-      scholarships: false,
-    },
-  },
-  combra: {
-    monthly_price: 900,
-    max_users: 45, // matches staff limit of 40 + 5 admins
-    max_students: 500,
-    max_storage_gb: 20,
-    features: {
-      attendance_basic: true,
-      attendance_advanced: true,
-      directory_profiles: true,
-      class_subject_mgmt: true,
-      fee_collection: true,
-      sms_notifications: true,
-      id_cards: true,
-      events: true,
-      discipline: true,
-      advanced_analytics: true,
-      whatsapp: true,
-      exports: true,
-      payroll: false,
-      scholarships: false,
-    },
-  },
-  bintumani: {
-    monthly_price: 1750,
-    max_users: 99999, // unlimited
-    max_students: 999999, // unlimited
-    max_storage_gb: 100,
-    features: {
-      attendance_basic: true,
-      attendance_advanced: true,
-      directory_profiles: true,
-      class_subject_mgmt: true,
-      fee_collection: true,
-      sms_notifications: true,
-      id_cards: true,
-      events: true,
-      discipline: true,
-      advanced_analytics: true,
-      whatsapp: true,
-      exports: true,
-      payroll: true,
-      scholarships: true,
-      custom_branding: true,
-      multi_branch: true,
-    },
-  },
-};
+/**
+ * Live plan limits + full feature map from the super-admin-editable catalog
+ * (planCatalogService). Replaces the old hardcoded PLAN_LIMITS table.
+ */
+export async function planLimits(planType: string) {
+  const plan = await PlanCatalog.get(planType);
+  return {
+    name: plan.name,
+    monthly_price: plan.monthly_price,
+    yearly_price: plan.yearly_price,
+    max_users: plan.max_users,
+    max_students: plan.max_students,
+    max_staff: plan.max_staff,
+    max_storage_gb: plan.max_storage_gb,
+    features: await PlanCatalog.featuresFor(planType),
+  };
+}
+
+const priceFor = (l: { monthly_price: number; yearly_price: number }, cycle: 'monthly' | 'yearly') =>
+  cycle === 'yearly' ? l.yearly_price : l.monthly_price;
 
 export class SubscriptionService {
   /**
@@ -106,25 +64,24 @@ export class SubscriptionService {
       // PAID subscriptions expire and lock the tenant.
       if (subscription && subscription.status === 'active' && subscription.end_date && new Date(subscription.end_date) < new Date()) {
         if (subscription.is_trial || subscription.is_comp) {
-          logger.info(`${subscription.is_comp ? 'Comp' : 'Trial'} ${subscription.id} for tenant ${tenantId} ended — downgrading to Freetong.`);
-          return {
-            ...(await this.downgradeExpiredTrial(tenantId)),
-            features: PLAN_LIMITS.freetong.features,
-          } as any;
+          const ended = { id: subscription.id, plan_type: subscription.plan_type };
+          const outcome = await this.endTrialOrComp(tenantId, subscription);
+          // "Your trial has ended" (claimed once per subscription; best-effort).
+          void import('../jobs/subscriptionJobs.js').then((m) => m.notifyTrialEnded(tenantId, ended)).catch(() => undefined);
+          if (outcome === 'payment_required') {
+            subscription.status = 'expired';
+          } else {
+            return {
+              ...(await db('subscriptions').where({ tenant_id: tenantId, status: 'active' }).orderBy('created_at', 'desc').first()),
+              features: await PlanCatalog.featuresFor('freetong'),
+            } as any;
+          }
+        } else {
+          logger.info(`Subscription ${subscription.id} for tenant ${tenantId} has expired. Updating database status.`);
+          await db('subscriptions').where({ id: subscription.id }).update({ status: 'expired', updated_at: db.fn.now() });
+          await db('tenants').where({ id: tenantId }).update({ status: 'expired', updated_at: db.fn.now() });
+          subscription.status = 'expired';
         }
-
-        logger.info(`Subscription ${subscription.id} for tenant ${tenantId} has expired. Updating database status.`);
-
-        await db('subscriptions')
-          .where({ id: subscription.id })
-          .update({ status: 'expired', updated_at: db.fn.now() });
-
-        await db('tenants')
-          .where({ id: tenantId })
-          .update({ status: 'expired', updated_at: db.fn.now() });
-
-        // Set status locally
-        subscription.status = 'expired';
       }
 
       if (!subscription) {
@@ -132,6 +89,20 @@ export class SubscriptionService {
         subscription = await this.initializeDefaultSubscription(tenantId);
       }
 
+      // Features and limits come LIVE from the plan catalog, so a super admin
+      // edit to a plan applies to every school on it immediately. (The row's
+      // `features` snapshot is kept as history for read-only entitlements.)
+      if (PlanCatalog.isPlanId(subscription.plan_type)) {
+        const live = await planLimits(subscription.plan_type);
+        return {
+          ...subscription,
+          max_users: live.max_users,
+          max_students: live.max_students,
+          max_staff: live.max_staff,
+          max_storage_gb: live.max_storage_gb,
+          features: live.features,
+        };
+      }
       return {
         ...subscription,
         features: typeof subscription.features === 'string' 
@@ -159,7 +130,7 @@ export class SubscriptionService {
     const useTrial = trial.enabled;
 
     const planType = useTrial ? trial.planType : 'freetong';
-    const limits = PLAN_LIMITS[planType];
+    const limits = await planLimits(planType);
     const startDate = new Date();
     const endDate = new Date();
     if (useTrial) {
@@ -193,12 +164,37 @@ export class SubscriptionService {
   }
 
   /**
+   * A trial or time-boxed comp reached its end date. Comps always fall back to
+   * Freetong. Trials follow the platform setting (Platform → Subscriptions):
+   *  - 'downgrade'       → Freetong, keeps working.
+   *  - 'require_payment' → the trial row is marked expired but the SCHOOL stays
+   *    active: everyone can sign in and view, every change is refused
+   *    (planFeatureGate) until a plan is paid. Nothing is deleted.
+   */
+  static async endTrialOrComp(tenantId: string, sub: { id: string; is_trial?: boolean; is_comp?: boolean }): Promise<'downgraded' | 'payment_required'> {
+    if (sub.is_trial && !sub.is_comp) {
+      const { PlatformSettingsService } = await import('./platformSettingsService.js');
+      const cfg = await PlatformSettingsService.getTrialConfig();
+      if (cfg.afterTrial === 'require_payment') {
+        await db('subscriptions').where({ id: sub.id }).update({ status: 'expired', updated_at: db.fn.now() });
+        EntitlementService.clear(tenantId);
+        logger.info(`Trial ${sub.id} for tenant ${tenantId} ended — payment required (school is read-only until paid).`);
+        return 'payment_required';
+      }
+    }
+    logger.info(`${sub.is_comp ? 'Comp' : 'Trial'} ${sub.id} for tenant ${tenantId} ended — downgrading to Freetong.`);
+    await this.downgradeExpiredTrial(tenantId);
+    return 'downgraded';
+  }
+
+  /**
    * When a TRIAL ends, drop the tenant to the free-tier baseline (Freetong)
    * WITHOUT locking them out. They keep using the system within Freetong
    * limits/features and can upgrade any time.
    */
   static async downgradeExpiredTrial(tenantId: string): Promise<any> {
-    const limits = PLAN_LIMITS.freetong;
+    const limits = await planLimits('freetong');
+    EntitlementService.clear(tenantId);
     const startDate = new Date();
     const endDate = new Date();
     endDate.setFullYear(startDate.getFullYear() + 1);
@@ -254,10 +250,8 @@ export class SubscriptionService {
     grantedBy: string,
     opts?: { durationDays?: number | null; reason?: string }
   ): Promise<ActiveSubscription> {
-    if (!PLAN_LIMITS[planType]) {
-      throw new AppError('Invalid subscription plan type', 400, 'VALIDATION_ERROR');
-    }
-    const limits = PLAN_LIMITS[planType];
+    const limits = await planLimits(planType); // throws on an unknown plan
+    EntitlementService.clear(tenantId);
     const startDate = new Date();
     let endDate: Date | null = null;
     if (opts?.durationDays && opts.durationDays > 0) {
@@ -316,7 +310,7 @@ export class SubscriptionService {
     }
     const sub = await this.downgradeExpiredTrial(tenantId); // reuse graceful downgrade
     logger.info(`Comp revoked for tenant ${tenantId} by ${revokedBy} — moved to Freetong`);
-    return { ...sub, features: PLAN_LIMITS.freetong.features } as any;
+    return { ...sub, features: await PlanCatalog.featuresFor('freetong') } as any;
   }
 
   /**
@@ -329,11 +323,8 @@ export class SubscriptionService {
     userId: string
   ): Promise<ActiveSubscription> {
     try {
-      if (!PLAN_LIMITS[newPlanType]) {
-        throw new AppError('Invalid subscription plan type', 400, 'VALIDATION_ERROR');
-      }
-
-      const limits = PLAN_LIMITS[newPlanType];
+      const limits = await planLimits(newPlanType); // throws on an unknown plan
+      EntitlementService.clear(tenantId);
 
       // Guard downgrades: refuse to move to a plan whose limits are below the
       // tenant's CURRENT usage, so a school can't strand itself over-limit.
@@ -347,7 +338,7 @@ export class SubscriptionService {
         .count('* as count');
       const currentStudents = parseInt((studentCountRow as any)?.count as string, 10) || 0;
       const currentStaff = parseInt((staffCountRow as any)?.count as string, 10) || 0;
-      const maxStaff = newPlanType === 'freetong' ? 15 : newPlanType === 'combra' ? 40 : 999999;
+      const maxStaff = limits.max_staff;
 
       if (currentStudents > limits.max_students) {
         throw new AppError(
@@ -363,7 +354,7 @@ export class SubscriptionService {
           'DOWNGRADE_OVER_LIMIT'
         );
       }
-      const price = billingCycle === 'monthly' ? limits.monthly_price : limits.monthly_price * 10;
+      const price = priceFor(limits, billingCycle);
       
       const startDate = new Date();
       const endDate = new Date();
@@ -386,7 +377,7 @@ export class SubscriptionService {
           status: 'active',
           start_date: startDate,
           end_date: endDate,
-          monthly_price: billingCycle === 'monthly' ? limits.monthly_price : limits.monthly_price * 10 / 12,
+          monthly_price: billingCycle === 'monthly' ? limits.monthly_price : Math.round((limits.yearly_price / 12) * 100) / 100,
           max_users: limits.max_users,
           max_students: limits.max_students,
           max_storage_gb: limits.max_storage_gb,
@@ -461,13 +452,14 @@ export class SubscriptionService {
   ): Promise<ActiveSubscription> {
     try {
       const sub = await this.getActiveSubscription(tenantId);
-      const limits = PLAN_LIMITS[sub.plan_type];
+      const limits = await planLimits(sub.plan_type);
+      EntitlementService.clear(tenantId);
       const base = sub.end_date && new Date(sub.end_date) > new Date() ? new Date(sub.end_date) : new Date();
       const newEnd = new Date(base);
       if (billingCycle === 'monthly') newEnd.setMonth(newEnd.getMonth() + 1);
       else newEnd.setFullYear(newEnd.getFullYear() + 1);
 
-      const price = billingCycle === 'monthly' ? limits.monthly_price : limits.monthly_price * 10;
+      const price = priceFor(limits, billingCycle);
 
       const [updated] = await db('subscriptions')
         .where({ id: sub.id })
@@ -509,6 +501,7 @@ export class SubscriptionService {
         throw new AppError('Days must be a positive number', 400, 'VALIDATION_ERROR');
       }
       const sub = await this.getActiveSubscription(tenantId);
+      EntitlementService.clear(tenantId);
       const base = sub.end_date && new Date(sub.end_date) > new Date() ? new Date(sub.end_date) : new Date();
       const newEnd = new Date(base);
       newEnd.setDate(newEnd.getDate() + Math.floor(days));
@@ -536,6 +529,7 @@ export class SubscriptionService {
   static async expireSubscription(tenantId: string, userId: string): Promise<ActiveSubscription> {
     try {
       const sub = await this.getActiveSubscription(tenantId);
+      EntitlementService.clear(tenantId);
       const [updated] = await db('subscriptions')
         .where({ id: sub.id })
         .update({ status: 'expired', end_date: new Date(), updated_at: db.fn.now() })
@@ -608,8 +602,8 @@ export class SubscriptionService {
           .count('* as count');
         currentCount = parseInt(count as string, 10);
         
-        // Freetong limits to 15 staff, Combra to 40, Bintumani unlimited.
-        const maxStaff = sub.plan_type === 'freetong' ? 15 : sub.plan_type === 'combra' ? 40 : 999999;
+        // Staff limit from the live plan catalog.
+        const maxStaff = sub.max_staff ?? (await planLimits(sub.plan_type)).max_staff;
 
         return {
           allowed: currentCount < maxStaff,

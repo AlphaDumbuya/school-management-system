@@ -114,6 +114,23 @@ async function assertAdmissionsCardIsStudent(req: Request, cardId: string) {
   if (!isStudent) throw new AppError('Admissions can only manage student ID cards.', 403, 'STUDENTS_ONLY');
 }
 
+/**
+ * Assert a body-supplied templateId is one of the caller's tenant's templates.
+ * TemplateService.getTemplateById looks templates up by id ALONE, so without
+ * this a school could render/issue cards on another school's template (logo,
+ * layout). No templateId → service default, nothing to check.
+ */
+async function assertTemplateInTenant(req: Request, templateId: unknown): Promise<void> {
+  if (!templateId) return;
+  const tenantId = (req as any).user?.tenant_id;
+  const row = await db('card_templates')
+    .where({ id: String(templateId) })
+    .andWhere((q) => q.where('tenant_id', tenantId).orWhereNull('tenant_id'))
+    .first('id')
+    .catch(() => null);
+  if (!row) throw new AppError('Template not found', 404, 'NOT_FOUND');
+}
+
 /** Assert a bulk job belongs to the caller's tenant. */
 async function assertBulkJobInTenant(req: Request, jobId: string): Promise<void> {
   const tenantId = (req as any).user?.tenant_id;
@@ -474,6 +491,7 @@ router.post(
         throw new AppError('Invalid format. Must be "pvc" or "badge"', 400);
       }
       await assertAdmissionsStudentsOnly(req, userId);
+      await assertTemplateInTenant(req, templateId);
 
       const result = await idCardService.generateCard(userId, tenantId, {
         templateId,
@@ -611,6 +629,7 @@ router.post(
         throw new AppError('Missing required fields: userId, templateId', 400);
       }
       await assertAdmissionsStudentsOnly(req, userId);
+      await assertTemplateInTenant(req, templateId);
 
       const pdfBuffer = await idCardService.previewCard(userId, tenantId, templateId);
 
@@ -774,6 +793,7 @@ router.post(
         throw new AppError('Either userIds or filters must be provided', 400);
       }
       await assertAdmissionsStudentsOnly(req, userIds, filters);
+      await assertTemplateInTenant(req, templateId);
 
       const result = await bulkService.createBulkJob({
         tenantId,

@@ -1,15 +1,66 @@
 import express, { Router, Request, Response, NextFunction } from 'express';
-import { authenticate } from '@middleware/authMiddleware';
+import { authenticate, attachUserContext, authorize } from '@middleware/authMiddleware';
 import { ReportingService } from '@services/reportingService';
 import { AnalyticsService } from '@services/analyticsService';
 import { db } from '@utils/database';
 import { logger } from '@utils/logger';
 import { AuditService } from '@services/auditService';
+import { UserRole } from '../types/auth';
 
 const router: Router = express.Router();
 const reportingService = new ReportingService(db);
 const analyticsService = new AnalyticsService(db);
 const auditService = new AuditService(db);
+
+// SECURITY: this router is mounted at bare /api/v1, so guards are per-route
+// (an unscoped router.use would apply to every later /api/v1 router).
+//
+// staffOnly: school staff who work with class/student data — never students or
+// parents. Inputs (classId/studentId/reportId) are tenant-checked below.
+const staffOnly = [
+  authenticate,
+  attachUserContext,
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER),
+];
+// platformOnly: AnalyticsService/ReportingService aggregate these WITHOUT a
+// tenant filter (every school's data), so only the platform operator may see them.
+const platformOnly = [authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN)];
+
+const isSuperAdmin = (req: Request) => req.user?.role === UserRole.SUPER_ADMIN;
+
+/** True when the row exists in `table` within the caller's tenant (super_admin: any). */
+async function inTenant(table: 'classes' | 'students', id: string, req: Request): Promise<boolean> {
+  if (!id) return false;
+  if (isSuperAdmin(req)) return !!(await db(table).where('id', id).first('id'));
+  const tenantId = req.user?.tenant_id;
+  if (table === 'students') {
+    return !!(await db('students').where({ id, tenant_id: tenantId }).first('id'));
+  }
+  // `classes` has no tenant_id column: a class belongs to its academic
+  // session's tenant (or, with no session, its creator's) — same rule as
+  // slReportCardService.assertClassInTenant.
+  const c = await db('classes')
+    .leftJoin('academic_sessions', 'classes.academic_session_id', 'academic_sessions.id')
+    .leftJoin('users as class_creator', 'classes.created_by', 'class_creator.id')
+    .where('classes.id', id)
+    .where(function () {
+      this.where('academic_sessions.tenant_id', tenantId).orWhere(function () {
+        this.whereNull('classes.academic_session_id').where('class_creator.tenant_id', tenantId);
+      });
+    })
+    .first('classes.id');
+  return !!c;
+}
+
+/** A stored report, only if its creator belongs to the caller's tenant. */
+function tenantReport(reportId: string, req: Request) {
+  const q = db('reports')
+    .join('users', 'users.id', 'reports.created_by')
+    .where('reports.id', reportId)
+    .select('reports.*');
+  if (!isSuperAdmin(req)) q.andWhere('users.tenant_id', req.user?.tenant_id);
+  return q.first();
+}
 
 /**
  * Generate grade report for a class
@@ -18,7 +69,7 @@ const auditService = new AuditService(db);
  */
 router.post(
   '/reports/grades',
-  authenticate,
+  ...staffOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { classId, startDate, endDate } = req.body;
@@ -29,6 +80,9 @@ router.post(
         return res
           .status(400)
           .json({ error: 'classId is required' });
+      }
+      if (!(await inTenant('classes', classId, req))) {
+        return res.status(404).json({ error: 'Class not found' });
       }
 
       const filters = { startDate, endDate };
@@ -75,7 +129,7 @@ router.post(
  */
 router.post(
   '/reports/attendance',
-  authenticate,
+  ...staffOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { classId, startDate, endDate } = req.body;
@@ -85,6 +139,9 @@ router.post(
         return res
           .status(400)
           .json({ error: 'classId is required' });
+      }
+      if (!(await inTenant('classes', classId, req))) {
+        return res.status(404).json({ error: 'Class not found' });
       }
 
       const filters = { startDate, endDate };
@@ -131,7 +188,7 @@ router.post(
  */
 router.post(
   '/reports/performance',
-  authenticate,
+  ...staffOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { studentId } = req.body;
@@ -141,6 +198,9 @@ router.post(
         return res
           .status(400)
           .json({ error: 'studentId is required' });
+      }
+      if (!(await inTenant('students', studentId, req))) {
+        return res.status(404).json({ error: 'Student not found' });
       }
 
       const report = await reportingService.generateStudentPerformanceReport(
@@ -184,7 +244,7 @@ router.post(
  */
 router.post(
   '/reports/class-performance',
-  authenticate,
+  ...staffOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { classId } = req.body;
@@ -194,6 +254,9 @@ router.post(
         return res
           .status(400)
           .json({ error: 'classId is required' });
+      }
+      if (!(await inTenant('classes', classId, req))) {
+        return res.status(404).json({ error: 'Class not found' });
       }
 
       const report = await reportingService.generateClassPerformanceReport(
@@ -237,7 +300,7 @@ router.post(
  */
 router.post(
   '/reports/schedule-utilization',
-  authenticate,
+  ...platformOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { academicPeriod } = req.body;
@@ -290,7 +353,7 @@ router.post(
  */
 router.get(
   '/analytics/dashboard',
-  authenticate,
+  ...platformOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const userId = (req as any).user.id;
@@ -342,11 +405,14 @@ router.get(
  */
 router.get(
   '/analytics/students/:studentId',
-  authenticate,
+  ...staffOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { studentId } = req.params;
       const userId = (req as any).user.id;
+      if (!(await inTenant('students', studentId, req))) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
 
       const analytics = await analyticsService.getStudentAnalytics(studentId);
 
@@ -382,10 +448,13 @@ router.get(
  */
 router.get(
   '/analytics/classes/:classId',
-  authenticate,
+  ...staffOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { classId } = req.params;
+      if (!(await inTenant('classes', classId, req))) {
+        return res.status(404).json({ error: 'Class not found' });
+      }
 
       const analytics = await analyticsService.getClassAnalytics(classId);
 
@@ -421,7 +490,7 @@ router.get(
  */
 router.get(
   '/analytics/enrollment',
-  authenticate,
+  ...platformOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const userId = (req as any).user.id;
@@ -460,7 +529,7 @@ router.get(
  */
 router.get(
   '/analytics/health',
-  authenticate,
+  ...platformOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const health = await analyticsService.getSystemHealthMetrics();
@@ -487,7 +556,7 @@ router.get(
  */
 router.get(
   '/reports/history',
-  authenticate,
+  ...platformOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
@@ -518,14 +587,13 @@ router.get(
  */
 router.get(
   '/reports/:reportId',
-  authenticate,
+  ...staffOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { reportId } = req.params;
 
-      const report = await db('reports')
-        .where('id', reportId)
-        .first();
+      // Tenant-scoped (reports has no tenant_id; scope via the creator).
+      const report = await tenantReport(reportId, req);
 
       if (!report) {
         return res
@@ -559,15 +627,14 @@ router.get(
  */
 router.delete(
   '/reports/:reportId',
-  authenticate,
+  ...staffOnly,
   async (req: Request, res: Response, NextFunction: NextFunction) => {
     try {
       const { reportId } = req.params;
       const userId = (req as any).user.id;
 
-      const report = await db('reports')
-        .where('id', reportId)
-        .first();
+      // Tenant-scoped (reports has no tenant_id; scope via the creator).
+      const report = await tenantReport(reportId, req);
 
       if (!report) {
         return res

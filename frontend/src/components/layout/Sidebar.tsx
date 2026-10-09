@@ -33,9 +33,11 @@ import {
   FaUniversity,
   FaListAlt,
   FaHistory,
+  FaLock,
 } from 'react-icons/fa';
 import { FaRightFromBracket, FaAnglesLeft, FaAnglesRight, FaCircleCheck } from 'react-icons/fa6';
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
+import { routeAccess } from '@lib/planFeatures';
 import clsx from 'clsx';
 
 interface NavItem {
@@ -661,11 +663,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
       const duties = ((user as any)?.staffDuties ?? []) as string[];
       return !item.roles.includes(String(user?.role)) && duties.some((d) => item.roles.includes(d));
     }
-    return canAccess(item.roles as any[]);
-    // Re-filter when the role or duties change (live role sync after a promotion
-    // or a new Bursar duty), not only on mount.
+    if (!canAccess(item.roles as any[])) return false;
+    // Plan features: hide what the school's plan doesn't include. Read-only
+    // items (held on the trial / an earlier plan) stay, badged below.
+    return routeAccess(user, item.path) !== 'locked';
+    // Re-filter when the role, duties or plan change (live role sync after a
+    // promotion, a new Bursar duty, an upgrade), not only on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [isSuperAdmin, user?.role, JSON.stringify((user as any)?.staffDuties ?? [])]);
+  }), [isSuperAdmin, user?.role, JSON.stringify((user as any)?.staffDuties ?? []), JSON.stringify(user?.planAccess?.features ?? null)]);
 
   // Group the filtered items.
   const groupedNav = React.useMemo(() => {
@@ -811,11 +816,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                     {isGroupOpen && items.map((item) => {
                       const itemPath = item.path.replace(/\/+$/, '');
                       const isActive = currentPath === itemPath || currentPath.startsWith(itemPath + '/');
+                      const readOnly = routeAccess(user, item.path) === 'read_only';
                       return (
                         <button
                           key={item.path}
                           onClick={() => handleNavigation(item.path)}
-                          title={collapsed ? item.label : undefined}
+                          title={collapsed ? `${item.label}${readOnly ? ' (read-only)' : ''}` : readOnly ? 'Read-only on your current plan' : undefined}
+                          aria-label={readOnly ? `${item.label}, read-only` : undefined}
                           aria-current={isActive ? 'page' : undefined}
                           className={clsx(
                             'relative w-full flex items-center gap-2 sm:gap-3 py-2 sm:py-2.5 lg:py-3 rounded-lg transition-colors duration-200 text-xs sm:text-sm',
@@ -831,7 +838,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                               <span className="hidden lg:block absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500" />
                             )}
                           </div>
-                          <span className={clsx('flex-1 text-left font-medium truncate', collapsed && 'lg:hidden')}>{item.label}</span>
+                          <span className={clsx('flex-1 text-left font-medium truncate', collapsed && 'lg:hidden', readOnly && !isActive && 'text-gray-400')}>{item.label}</span>
+                          {readOnly && (
+                            <FaLock
+                              aria-hidden="true"
+                              className={clsx('w-3 h-3 flex-shrink-0', isActive ? 'text-amber-200' : 'text-amber-400', collapsed && 'lg:hidden')}
+                            />
+                          )}
                           {!collapsed && item.badge && (
                             <span className="bg-red-600 text-white text-xs px-1.5 sm:px-2 py-0.5 rounded-full flex-shrink-0">
                               {item.badge}

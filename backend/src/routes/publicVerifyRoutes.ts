@@ -76,6 +76,8 @@ router.get('/verify-report-card/:hash', async (req: Request, res: Response, next
       .where({ verification_code: code })
       .where({ student_id: studentId })
       .where({ academic_year: academicYear })
+      // A code only verifies a card issued by the student's OWN school.
+      .where({ tenant_id: tenantId })
       .first();
 
     if (dbMatch) {
@@ -90,7 +92,9 @@ router.get('/verify-report-card/:hash', async (req: Request, res: Response, next
         .digest('hex')
         .slice(0, 24);
 
-      if (code === expectedHash) {
+      // Legacy hashes are unkeyed (computable from ids), so they only ever
+      // reveal RELEASED results — never drafts.
+      if (code === expectedHash && (await slReportCardService.isAnythingPublished(tenantId, classId, academicYear))) {
         return res.json({ success: true, data: await buildResponse(classId) });
       }
     }
@@ -128,6 +132,14 @@ router.get('/verify-report-card/:hash', async (req: Request, res: Response, next
         return res.status(404).json({
           success: false,
           error: 'Could not find the student\'s class for this academic year.',
+        });
+      }
+
+      // Legacy fallbacks are unkeyed: released results only.
+      if (!(await slReportCardService.isAnythingPublished(tenantId, enrollment.class_id, academicYear))) {
+        return res.status(403).json({
+          success: false,
+          error: 'Verification failed: the QR code does not match this report card.',
         });
       }
 

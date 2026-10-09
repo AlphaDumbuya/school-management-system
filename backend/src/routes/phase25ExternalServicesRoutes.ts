@@ -3,6 +3,8 @@ import { logger } from '@utils/logger';
 import BrevoEmailService, { EmailConfig, EmailTemplateData } from '@services/phase25BrevoEmailService';
 import UploadThingService, { FileUploadConfig } from '@services/phase25UploadThingService';
 import NeonDatabaseService from '@services/phase25NeonDatabaseService';
+import { authenticate, attachUserContext, authorize } from '@middleware/authMiddleware';
+import { UserRole } from '../types/auth';
 
 /**
  * Phase 25 External Services Integration Routes
@@ -14,6 +16,12 @@ import NeonDatabaseService from '@services/phase25NeonDatabaseService';
  */
 
 const router: Router = express.Router();
+
+// SECURITY: these endpoints (email relay, file read/delete, DB maintenance) are
+// platform-operator tooling only. The router is mounted at bare /api/v1, so the
+// guard MUST stay path-scoped to '/external-services' — an unscoped
+// router.use() would 401 every other /api/v1 route that falls through here.
+router.use('/external-services', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN));
 
 /**
  * ============================================================================

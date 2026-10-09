@@ -20,6 +20,32 @@ import VerifyIntroModal from '@components/verification/VerifyIntroModal';
 import { ResultReleasePopup } from '@components/results/ResultReleasePopup';
 import { showToast } from '@utils/toast';
 
+/**
+ * School-wide notice when the trial / plan has ended and payment is required:
+ * everything stays viewable, changes are paused until a plan is paid.
+ */
+const SubscriptionLapsedBanner: React.FC = () => {
+  const user = useAuthStore((s) => s.user);
+  const pa = user && user.role !== 'super_admin' ? user.planAccess : null;
+  if (!pa?.lapsed) return null;
+  const isPrincipal = user?.role === 'principal';
+  return (
+    <div role="alert" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 flex flex-wrap items-center gap-x-4 gap-y-2">
+      <span className="flex-1 min-w-[14rem]">
+        <strong className="font-semibold">{pa.isTrial ? 'Your free period has ended.' : 'Your plan has ended.'}</strong>{' '}
+        {isPrincipal
+          ? 'Everything is safe and can be viewed. Choose a plan to keep adding and changing records.'
+          : 'Everything is safe and can be viewed. Changes are paused until your principal chooses a plan.'}
+      </span>
+      {isPrincipal && (
+        <a href="/settings?tab=billing" className="inline-flex items-center rounded-lg bg-amber-600 px-3 py-1.5 font-semibold text-white hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2">
+          Choose a plan
+        </a>
+      )}
+    </div>
+  );
+};
+
 interface MainLayoutProps {
   children: React.ReactNode;
 }
@@ -81,11 +107,23 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       const detail = (e as CustomEvent).detail || {};
       const isExpired = detail.code === 'SUBSCRIPTION_EXPIRED';
       const base = detail.message || (isExpired ? 'Your subscription has expired.' : 'Plan limit reached.');
-      showToast.error(`${base} Open Settings → Plan & Billing to upgrade or renew.`);
+      const role = useAuthStore.getState().user?.role;
+      showToast.error(role === 'principal'
+        ? `${base} Open Settings → Plan & Billing to upgrade or renew.`
+        : `${base} Ask your principal about the school's plan.`);
+      // The plan may have changed since sign-in: refresh what the sidebar shows.
+      useAuthStore.getState().refreshUser?.().catch?.(() => undefined);
     };
     window.addEventListener('wiskul:plan-limit', onLimit as EventListener);
     return () => window.removeEventListener('wiskul:plan-limit', onLimit as EventListener);
   }, []);
+
+  // Plan features drive the sidebar. Sessions restored from storage (or a
+  // login response) may not carry them yet: fetch /me once to fill them in.
+  const needsPlan = useAuthStore((s) => !!s.user && s.user.role !== 'super_admin' && s.user.planAccess === undefined);
+  useEffect(() => {
+    if (needsPlan) useAuthStore.getState().refreshUser?.().catch?.(() => undefined);
+  }, [needsPlan]);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024);
@@ -184,6 +222,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           }}
         >
           <div className="px-2 py-3 sm:p-6 animate-page-enter">
+            <SubscriptionLapsedBanner />
             <PromotionWelcomeBanner />
             {children}
           </div>

@@ -750,6 +750,13 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
       promotionWelcome,
       // Extra portals for a teacher who is also Bursar / Admissions Officer.
       staffDuties: user.role === 'teacher' ? parseDuties((user as any).staff_duties) : [],
+      // The school's plan features (enabled / read_only / locked): drives the
+      // sidebar and route gating. null for super admins / no tenant.
+      planAccess: user.role === 'super_admin' ? null : await (async () => {
+        const { entitlementsOrNull } = await import('../services/entitlementService.js');
+        const ent = await entitlementsOrNull(user.tenant_id);
+        return ent ? { plan: ent.plan_type, planName: ent.plan_name, isTrial: ent.is_trial, lapsed: ent.lapsed, features: ent.features } : null;
+      })(),
     });
   } catch (error) {
     next(error);

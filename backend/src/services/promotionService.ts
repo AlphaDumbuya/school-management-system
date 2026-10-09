@@ -246,6 +246,10 @@ class PromotionService {
     const stageMove = !leavesSchool;
 
     const defaultTarget = payload.graduate ? null : payload.to_class_id ?? null;
+    // Tenant isolation: the default target is used for promotions AND for
+    // stage moves ("graduated" below SSS 3), so always validate it — not only
+    // when a plain promotion needs it.
+    if (defaultTarget) await this.assertClassInTenant(defaultTarget, tenantId);
     if (!payload.graduate) {
       if (stageMove && payload.decisions.some((d) => d.outcome === 'graduated' && !d.to_class_id) && !defaultTarget) {
         throw new Error(`Choose the ${stage.nextLevel ? stage.nextLevel.replace(/(\D+)(\d)/, '$1 $2') : 'next'} class these students move into. Graduating from ${String(fromClass?.level || 'this class')} moves them up a stage; only SSS 3 leaves the school.`);

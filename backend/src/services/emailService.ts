@@ -579,8 +579,29 @@ class EmailService {
             .first();
 
           if (notification) {
+            // notifications store the recipient's USER id (user_id); resolve
+            // it to that user's email address. No address → nothing to retry.
+            const recipientUserId = notification.user_id ?? notification.recipientId;
+            const recipient = recipientUserId
+              ? await db('users').where({ id: recipientUserId }).select('email').first()
+              : null;
+            const toEmail = recipient?.email ? String(recipient.email).trim() : '';
+            if (!toEmail) {
+              logger.warn(`Skipping email retry for delivery ${delivery.id}: recipient has no email address`);
+              // Exhaust the retries so this delivery isn't picked up again.
+              await db('notification_deliveries')
+                .where({ id: delivery.id })
+                .update({
+                  deliveryAttempts: this.MAX_RETRIES,
+                  lastAttemptAt: db.fn.now(),
+                  failureReason: 'Recipient has no email address',
+                })
+                .catch(() => null);
+              continue;
+            }
+
             await this.sendEmail({
-              to: notification.recipientId, // This would need to be mapped to actual email
+              to: toEmail,
               subject: notification.subject || 'Notification',
               body: notification.message,
             });
@@ -907,7 +928,7 @@ class EmailService {
     return this.sendEmail({
       ...this.platformSender('info'),
       to: toEmail,
-      subject: `Welcome to WiSkul — ${data.schoolName} is ready 🎉`,
+      subject: `Welcome to WiSkul — ${data.schoolName} is ready`,
       body: renderEmail({ branding, eyebrow: 'Onboarding', heading: `Welcome, ${data.schoolName}!`, bodyHtml, preheader: `Your WiSkul workspace is ready — here's how to get started.` }),
       isHtml: true,
     });
@@ -927,7 +948,7 @@ class EmailService {
     return this.sendEmail({
       ...this.platformSender('sales'),
       to: toEmail,
-      subject: 'Welcome to the WiSkul newsletter 🎉',
+      subject: 'Welcome to the WiSkul newsletter',
       body: renderEmail({
         branding,
         eyebrow: 'Newsletter',
@@ -999,6 +1020,120 @@ class EmailService {
         ? `Action required: ${data.schoolName} subscription expired`
         : `Subscription ${verb} — ${data.schoolName}`,
       body: renderEmail({ branding, eyebrow: 'Billing', heading: `Subscription ${verb}`, bodyHtml, preheader: `${data.schoolName} subscription ${verb}.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Automatic subscription lifecycle notices → school contact (platform-branded):
+   *  - trial_ending   : promo trial ends in N days
+   *  - trial_ended    : trial / complimentary plan ended → moved to the base plan
+   *                     (earlier features stay visible read-only)
+   *  - expiring       : paid plan ends in N days
+   *  - payment_received: self-serve plan payment confirmed
+   */
+  async sendSubscriptionLifecycleEmail(
+    toEmail: string,
+    data: {
+      kind: 'trial_ending' | 'trial_ended' | 'expiring' | 'payment_received';
+      schoolName: string;
+      planName: string;
+      newPlanName?: string;
+      endDate?: string | Date | null;
+      daysLeft?: number;
+      amount?: number;
+      billingCycle?: 'monthly' | 'yearly';
+      readOnlyFeatures?: string[];
+      /** Trial ends with payment required (school becomes read-only until paid). */
+      paymentRequired?: boolean;
+    }
+  ): Promise<EmailResponse> {
+    const branding = platformBranding();
+    const supportEmail = process.env.SUPPORT_EMAIL || 'support@wiskulsl.com';
+    const billingUrl = `${branding.appUrl}/settings?tab=billing`;
+    const school = escapeHtml(data.schoolName);
+    const plan = escapeHtml(data.planName);
+    const end = data.endDate ? this.fmtDate(data.endDate) : '';
+    const days = Math.max(0, Math.round(Number(data.daysLeft) || 0));
+    const dayText = days <= 1 ? 'tomorrow' : `in ${days} days`;
+
+    let eyebrow = 'Billing';
+    let heading: string;
+    let subject: string;
+    let preheader: string;
+    let bodyHtml: string;
+
+    if (data.kind === 'trial_ending') {
+      heading = `Your free trial ends ${dayText}`;
+      subject = `${data.schoolName}: your WiSkul trial ends ${dayText}`;
+      preheader = `Choose a plan to keep every feature after ${end || 'your trial'}.`;
+      bodyHtml = `
+        <p>Hello,</p>
+        <p>The free <strong>${plan}</strong> trial for <strong>${school}</strong> ends ${escapeHtml(dayText)}${end ? ` (${escapeHtml(end)})` : ''}.</p>
+        ${data.paymentRequired
+          ? calloutBlock('To keep adding and changing records after that date, choose a plan and pay before the trial ends. If you don’t, everyone can still sign in and view everything, but changes are paused until a plan is paid. Nothing is deleted.', 'warn')
+          : calloutBlock('Nothing is deleted when the trial ends. Your school moves to the base plan, and records from features outside it stay visible in read-only mode until you upgrade.', 'info')}
+        ${emailButton('Choose a plan', billingUrl)}
+        <p style="color:#64748b;font-size:13px;">Questions about plans? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
+    } else if (data.kind === 'trial_ended' && data.paymentRequired) {
+      heading = 'Your free trial has ended';
+      subject = `Action required: choose a plan for ${data.schoolName}`;
+      preheader = 'Your records are safe. Choose a plan to keep making changes.';
+      bodyHtml = `
+        <p>Hello,</p>
+        <p>The free <strong>${plan}</strong> trial for <strong>${school}</strong> has ended.</p>
+        ${calloutBlock('Everyone can still sign in and view all records, but adding or changing anything is paused until a plan is paid. Nothing has been deleted.', 'warn')}
+        <p>The principal can choose a plan and pay by mobile money in a few minutes. Access to every change is restored as soon as the payment is confirmed.</p>
+        ${emailButton('Choose a plan', billingUrl)}
+        <p style="color:#64748b;font-size:13px;">Questions? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
+    } else if (data.kind === 'trial_ended') {
+      const newPlan = escapeHtml(data.newPlanName || 'the base plan');
+      const ro = (data.readOnlyFeatures || []).slice(0, 12);
+      heading = 'Your trial has ended';
+      subject = `${data.schoolName} is now on ${data.newPlanName || 'the base plan'}`;
+      preheader = `Your data is safe. Upgrade any time to unlock everything again.`;
+      bodyHtml = `
+        <p>Hello,</p>
+        <p>The <strong>${plan}</strong> trial for <strong>${school}</strong> has ended, and the school is now on <strong>${newPlan}</strong>. Everyone can keep signing in as usual.</p>
+        ${ro.length ? `<p style="font-weight:600;margin-top:16px;">Now read-only</p>
+        <p>Your records in these areas are kept and can still be viewed. Upgrade to add or change them:</p>
+        <ul style="color:#334155;font-size:14px;line-height:1.7;padding-left:20px;margin:8px 0;">${ro.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>` : ''}
+        ${emailButton('Upgrade plan', billingUrl)}
+        <p style="color:#64748b;font-size:13px;">Questions? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
+    } else if (data.kind === 'expiring') {
+      heading = `Your plan renews ${dayText}`;
+      subject = `Reminder: ${data.schoolName} subscription ends ${dayText}`;
+      preheader = `Renew ${data.planName} before ${end || 'it ends'} to avoid interruption.`;
+      bodyHtml = `
+        <p>Hello,</p>
+        <p>The <strong>${plan}</strong> subscription for <strong>${school}</strong> ends ${escapeHtml(dayText)}${end ? ` (${escapeHtml(end)})` : ''}.</p>
+        ${calloutBlock('If it is not renewed, access to the school portal is paused for all users until payment. Your data is never deleted.', 'warn')}
+        ${emailButton('Renew now', billingUrl)}
+        <p style="color:#64748b;font-size:13px;">Already arranged payment with our team? You can ignore this reminder.</p>`;
+    } else {
+      eyebrow = 'Payment received';
+      heading = 'Thank you, your plan is active';
+      subject = `Payment received: ${data.schoolName} is on ${data.planName}`;
+      preheader = `${data.planName} is active${end ? ` until ${end}` : ''}.`;
+      const rows =
+        detailRow('School', school) +
+        detailRow('Plan', plan) +
+        (data.billingCycle ? detailRow('Billing', data.billingCycle === 'yearly' ? 'Yearly' : 'Monthly') : '') +
+        (data.amount != null ? detailRow('Amount paid', escapeHtml(this.fmtMoney(data.amount, 'NLe'))) : '') +
+        (end ? detailRow('Active until', escapeHtml(end)) : '');
+      bodyHtml = `
+        <p>Hello,</p>
+        <p>We received your payment. The new plan is active immediately for everyone at <strong>${school}</strong>.</p>
+        ${detailsCard(rows)}
+        ${emailButton('Open Plan & Billing', billingUrl)}
+        <p style="color:#64748b;font-size:13px;">Keep this email as your receipt. Billing history is also in Settings → Plan &amp; Billing.</p>`;
+    }
+
+    return this.sendEmail({
+      ...this.platformSender('support'),
+      to: toEmail,
+      subject,
+      body: renderEmail({ branding, eyebrow, heading, bodyHtml, preheader }),
       isHtml: true,
     });
   }
@@ -1225,7 +1360,7 @@ class EmailService {
     return this.sendEmail({
       ...this.senderFromBranding(branding),
       to: toEmail,
-      subject: `${isAccepted ? '🎉 ' : ''}Admission ${this.titleCase(decision)} — ${branding.name}`,
+      subject: `Admission ${this.titleCase(decision)} — ${branding.name}`,
       body: renderEmail({ branding, eyebrow, heading, bodyHtml, preheader: `Admissions decision for ${data.studentName}.` }),
       isHtml: true,
     });
@@ -1375,6 +1510,45 @@ class EmailService {
       to: toEmail,
       subject: `Two-factor authentication ${enabled ? 'enabled' : 'disabled'}`,
       body: renderEmail({ branding, eyebrow: 'Account Security', heading: `2FA ${enabled ? 'Enabled' : 'Disabled'}`, bodyHtml, preheader: `Two-factor authentication was ${data.action} on your account.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Security notice → user, when a passkey is added to / removed from their
+   * account. Tenant-branded when the user belongs to a school; platform-branded
+   * (support sender) for platform users with no tenant (e.g. super admins).
+   */
+  async sendPasskeyStatusEmail(
+    tenantId: string | null,
+    toEmail: string,
+    data: { userName: string; action: 'added' | 'removed'; deviceName?: string }
+  ): Promise<EmailResponse> {
+    const branding = tenantId ? await resolveTenantBranding(tenantId) : platformBranding();
+    const securityUrl = `${branding.appUrl}/settings?tab=security`;
+    const added = data.action === 'added';
+    const when = new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+
+    const rows =
+      (data.deviceName ? detailRow('Passkey', escapeHtml(data.deviceName)) : '') +
+      detailRow('Change', added ? 'Passkey added' : 'Passkey removed') +
+      detailRow('Time', escapeHtml(when));
+
+    const bodyHtml = `
+      <p>Hello ${escapeHtml(data.userName)},</p>
+      <p>A passkey was just <strong>${added ? 'added to' : 'removed from'}</strong> your account.</p>
+      ${detailsCard(rows)}
+      ${added
+        ? calloutBlock('You can now use this passkey to verify your sign-in instead of typing a code.', 'success')
+        : calloutBlock('This passkey can no longer be used to sign in to your account.', 'info')}
+      ${calloutBlock("If this wasn't you, reset your password right away and review the passkeys on your account.", 'warn')}
+      ${emailButton('Review Account Security', securityUrl)}`;
+
+    return this.sendEmail({
+      ...(tenantId ? this.senderFromBranding(branding) : this.platformSender('support')),
+      to: toEmail,
+      subject: `A passkey was ${added ? 'added to' : 'removed from'} your account`,
+      body: renderEmail({ branding, eyebrow: 'Account Security', heading: `Passkey ${added ? 'Added' : 'Removed'}`, bodyHtml, preheader: `A passkey was ${data.action} on your account.` }),
       isHtml: true,
     });
   }
@@ -1630,6 +1804,130 @@ class EmailService {
   }
 
   /**
+   * Absence alert → guardian. Sent when a teacher marks a child ABSENT in the
+   * class register (at most once per student per day).
+   */
+  async sendAbsenceAlertEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      recipientName: string;
+      studentName: string;
+      date?: string;
+      className?: string;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/students/attendance`;
+
+    const rows =
+      detailRow('Student', escapeHtml(data.studentName)) +
+      (data.className ? detailRow('Class', escapeHtml(data.className)) : '') +
+      detailRow('Status', '<strong style="color:#b91c1c;">Absent</strong>') +
+      (data.date ? detailRow('Date', escapeHtml(this.fmtDate(data.date))) : '');
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(data.recipientName)},</p>
+      <p>This is to let you know that <strong>${escapeHtml(data.studentName)}</strong> was marked <strong>absent</strong> from <strong>${escapeHtml(branding.name)}</strong>${data.date ? ` on <strong>${escapeHtml(this.fmtDate(data.date))}</strong>` : ' today'}.</p>
+      ${detailsCard(rows)}
+      ${calloutBlock('If your child is unwell or was absent for another reason, please let the school know. If you believe this is a mistake, contact the school office.', 'warn')}
+      ${emailButton('View Attendance', portalUrl)}`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: `${data.studentName} was marked absent — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: 'Attendance', heading: 'Absence Recorded', bodyHtml, preheader: `${data.studentName} was marked absent${data.date ? ` on ${this.fmtDate(data.date)}` : ' today'}.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * New assignment posted for a class → parent/guardian (one email per family).
+   */
+  async sendAssignmentPostedEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      recipientName: string;
+      studentNames: string[];
+      title: string;
+      subjectName?: string;
+      className?: string;
+      type?: string;
+      dueDate?: Date | string;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/academic/assignments`;
+    const students = data.studentNames.filter(Boolean);
+    const who = students.length ? students.join(', ') : 'your child';
+
+    const rows =
+      detailRow('Assignment', `<strong>${escapeHtml(data.title)}</strong>`) +
+      (students.length ? detailRow(students.length > 1 ? 'Students' : 'Student', escapeHtml(students.join(', '))) : '') +
+      (data.className ? detailRow('Class', escapeHtml(data.className)) : '') +
+      (data.subjectName ? detailRow('Subject', escapeHtml(data.subjectName)) : '') +
+      (data.type ? detailRow('Type', escapeHtml(this.titleCase(data.type))) : '') +
+      (data.dueDate ? detailRow('Due Date', `<strong>${escapeHtml(this.fmtDate(data.dueDate))}</strong>`) : '');
+
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(data.recipientName)},</p>
+      <p>A new assignment has been posted for <strong>${escapeHtml(who)}</strong> at <strong>${escapeHtml(branding.name)}</strong>.</p>
+      ${detailsCard(rows)}
+      ${calloutBlock('You can see the full instructions and track submission from the portal. Please encourage your child to hand it in before the due date.', 'info')}
+      ${emailButton('View Assignment', portalUrl)}`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: `New assignment: ${data.title} — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: 'Assignment', heading: 'New Assignment Posted', bodyHtml, preheader: `${data.title}${data.dueDate ? ` — due ${this.fmtDate(data.dueDate)}` : ''}` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * ID-card design workflow → staff. 'submitted' goes to the principal(s) who
+   * approve designs; 'approved' goes back to the design's creator.
+   */
+  async sendCardTemplateStatusEmail(
+    tenantId: string,
+    toEmail: string,
+    data: { recipientName: string; templateName: string; action: 'submitted' | 'approved'; actorName?: string }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/identity/templates`;
+    const submitted = data.action === 'submitted';
+
+    const rows =
+      detailRow('Card Design', `<strong>${escapeHtml(data.templateName)}</strong>`) +
+      detailRow('Status', submitted ? 'Waiting for approval' : 'Approved') +
+      (data.actorName ? detailRow(submitted ? 'Submitted by' : 'Approved by', escapeHtml(data.actorName)) : '');
+
+    const bodyHtml = `
+      <p>Hello ${escapeHtml(data.recipientName)},</p>
+      <p>${submitted
+        ? `The ID card design <strong>${escapeHtml(data.templateName)}</strong> was submitted and is waiting for your approval.`
+        : `Your ID card design <strong>${escapeHtml(data.templateName)}</strong> has been approved and can now be used to print ID cards.`}</p>
+      ${detailsCard(rows)}
+      ${submitted
+        ? calloutBlock('Review the design and approve it so cards can be printed on it.', 'info')
+        : calloutBlock('The design is now available for ID card printing.', 'success')}
+      ${emailButton(submitted ? 'Review Card Design' : 'Open Card Designs', portalUrl)}`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: submitted
+        ? `Card design waiting for approval: ${data.templateName} — ${branding.name}`
+        : `Card design approved: ${data.templateName} — ${branding.name}`,
+      body: renderEmail({ branding, eyebrow: 'ID Cards', heading: submitted ? 'Card Design Awaiting Approval' : 'Card Design Approved', bodyHtml, preheader: submitted ? `"${data.templateName}" is waiting for approval.` : `"${data.templateName}" is approved.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
    * Results released → staff (teachers / principal / admin). Informs staff that
    * a class's results have gone live so they know parents & students can see them.
    */
@@ -1858,7 +2156,7 @@ export async function sendContactEmail(data: {
     ${detailsCard(rows)}
     <p style="font-weight:700;color:#1a1a2e;margin:18px 0 6px;">Message</p>
     <div style="background:#f8fafc;border-left:4px solid #7c3aed;border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.6;color:#334155;white-space:pre-wrap;">${escapeHtml(data.message)}</div>
-    ${emailButton('Reply to ' + escapeHtml(data.name), `mailto:${data.email}`)}
+    ${emailButton('Reply to ' + data.name, `mailto:${encodeURIComponent(String(data.email || '')).replace(/%40/g, '@')}`)}
     ${calloutBlock('Please respond within 24 hours.', 'warn')}`;
 
   const emailService = new EmailService();
@@ -1888,12 +2186,12 @@ export async function sendAutoResponse(email: string, name: string): Promise<Ema
     <p>Hi ${escapeHtml(name)},</p>
     <p>Thanks for reaching out to <strong>WiSkul</strong>. We've received your message and a member of our team will get back to you within <strong>24 hours</strong>.</p>
     ${calloutBlock('While you wait, here are a few links you might find useful.', 'info')}
-    <p style="font-size:14px;line-height:1.9;">
-      🔎 <a href="${base}/features" target="_blank" style="color:#00d4aa;text-decoration:none;font-weight:600;">Explore Features</a><br/>
-      💡 <a href="${base}/why" target="_blank" style="color:#00d4aa;text-decoration:none;font-weight:600;">Why WiSkul</a><br/>
-      🎯 <a href="${base}/benefits" target="_blank" style="color:#00d4aa;text-decoration:none;font-weight:600;">Benefits for your school</a><br/>
-      💳 <a href="${base}/pricing" target="_blank" style="color:#00d4aa;text-decoration:none;font-weight:600;">Pricing</a>
-    </p>
+    <ul style="margin:0 0 14px;padding-left:20px;font-size:14px;line-height:26px;">
+      <li><a href="${base}/features" target="_blank" style="color:#1e40af;font-weight:600;">Features</a></li>
+      <li><a href="${base}/why" target="_blank" style="color:#1e40af;font-weight:600;">Why WiSkul</a></li>
+      <li><a href="${base}/benefits" target="_blank" style="color:#1e40af;font-weight:600;">Benefits for your school</a></li>
+      <li><a href="${base}/pricing" target="_blank" style="color:#1e40af;font-weight:600;">Pricing</a></li>
+    </ul>
     ${emailButton('Explore WiSkul', `${base}/features`)}
     <p style="color:#64748b;font-size:13px;">If your enquiry is urgent, just reply to this email and we'll prioritise it.</p>`;
 
@@ -1952,7 +2250,7 @@ export async function sendSchoolWelcomeEmail(data: {
   return emailService.sendEmail({
     ...emailService.platformSenderFor('info'),
     to: data.toEmail,
-    subject: `Welcome to WiSkul — ${data.schoolName} is ready 🎉`,
+    subject: `Welcome to WiSkul — ${data.schoolName} is ready`,
     body: renderEmail({
       branding,
       eyebrow: 'Welcome Aboard',

@@ -14,6 +14,8 @@
  */
 import { db } from '../utils/database';
 import { logger } from '../utils/logger';
+import { notifyGuardiansOfAbsence } from './attendanceNotifications';
+import { notifyAssignmentPosted } from './assignmentNotifications';
 
 interface Scope {
   tenantId: string;
@@ -180,6 +182,10 @@ export class SyncService {
           check_out_time: ['absent', 'excused'].includes(payload.status) ? null : (payload.check_out_time ?? key.check_out_time ?? null),
           client_id: clientId, marked_by: userId, marked_at: new Date(), updated_at: new Date(),
         });
+        // Changed INTO absent → guardian alert (best-effort, once per day).
+        if (payload.status === 'absent' && key.status !== 'absent') {
+          notifyGuardiansOfAbsence(scope.tenantId, payload.student_id, payload.date, payload.class_id || null);
+        }
         return { result: 'applied', serverId: key.id };
       }
       const [row] = await db('attendance').insert({
@@ -191,6 +197,10 @@ export class SyncService {
         marked_by: userId, marked_at: new Date(), client_id: clientId,
         created_at: new Date(), updated_at: new Date(),
       }).returning('id');
+      // Marked absent → guardian alert (best-effort, once per day).
+      if (payload.status === 'absent') {
+        notifyGuardiansOfAbsence(scope.tenantId, payload.student_id, payload.date, payload.class_id || null);
+      }
       return { result: 'applied', serverId: typeof row === 'object' ? row.id : row };
     }
 
@@ -228,7 +238,10 @@ export class SyncService {
         instructions: payload.instructions || null, status: payload.status || 'active',
         created_by: userId, client_id: clientId, created_at: new Date(), updated_at: new Date(),
       }).returning('id');
-      return { result: 'applied', serverId: typeof row === 'object' ? row.id : row };
+      const assignmentId = typeof row === 'object' ? row.id : row;
+      // Posted offline (not a draft) → class + parents hear about it (best-effort).
+      if ((payload.status || 'active') !== 'draft') notifyAssignmentPosted(scope.tenantId, assignmentId);
+      return { result: 'applied', serverId: assignmentId };
     }
 
     return { result: 'rejected', reason: `Unknown entity: ${entity}` };

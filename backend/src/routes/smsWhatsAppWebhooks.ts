@@ -9,6 +9,14 @@ import { logger } from '@utils/logger';
 
 const router = express.Router();
 
+/** Constant-time string comparison (false on length mismatch, never throws). */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a, 'utf8');
+  const bb = Buffer.from(b, 'utf8');
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
 // Public webhook endpoint for providers to POST delivery updates
 // POST /api/v1/sms-whatsapp/webhooks/:providerId
 // Capture raw body for signature verification using the verify option
@@ -26,6 +34,17 @@ router.post('/:providerId', rawJsonMiddleware, async (req: Request, res: Respons
     if (!provider) {
       logger.warn(`Webhook received for unknown provider: ${providerId}`);
       return res.status(404).send('Provider not found');
+    }
+
+    // Fail closed: in production an unsigned payload is never accepted. A
+    // provider without a webhook_secret can't be authenticated, so anyone
+    // could forge delivery statuses or STOP/START opt-outs for its tenant.
+    if (!provider.webhook_secret) {
+      if (process.env.NODE_ENV === 'production') {
+        logger.warn(`Rejected webhook for provider ${providerId}: no webhook_secret configured`);
+        return res.status(401).send('Webhook secret not configured');
+      }
+      logger.warn(`Accepting UNSIGNED webhook for provider ${providerId} (non-production only)`);
     }
 
     // Verify webhook signature for Brevo (Sendinblue) using HMAC-SHA256
@@ -71,7 +90,7 @@ router.post('/:providerId', rawJsonMiddleware, async (req: Request, res: Respons
     } else if (provider.webhook_secret) {
       // Fallback: support a simple shared-secret header for other providers
       const headerSecret = (req.header('x-webhook-secret') || req.header('x-hook-secret') || req.header('x-signature') || '').toString();
-      if (!headerSecret || headerSecret !== provider.webhook_secret) {
+      if (!headerSecret || !safeEqual(headerSecret, String(provider.webhook_secret))) {
         logger.warn(`Invalid webhook secret for provider ${providerId}`);
         return res.status(403).send('Invalid webhook signature');
       }

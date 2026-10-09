@@ -1,9 +1,14 @@
 import { db } from '../utils/database.js';
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '../middleware/authMiddleware.js';
+import { authenticate, authorize, attachUserContext } from '../middleware/authMiddleware.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
 import { IdCardReportingService } from '../services/idCardReportingService.js';
+import { UserRole } from '../types/auth.js';
+
+// Roles that manage ID cards (same set as idCardRoutes). The legacy
+// 'admin_staff' role these routes used doesn't exist.
+const CARD_STAFF = [UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ADMISSIONS_OFFICER];
 
 /**
  * ID Card Reporting and Analytics Routes
@@ -14,6 +19,9 @@ import { IdCardReportingService } from '../services/idCardReportingService.js';
  */
 
 const router = Router();
+
+// Mounted at /api/v1/id-cards/reports; handlers need req.user.tenant_id.
+router.use(authenticate, attachUserContext);
 
 // Initialize service
 const reportingService = new IdCardReportingService(db);
@@ -26,7 +34,7 @@ const reportingService = new IdCardReportingService(db);
 router.get(
   '/dashboard',
   authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(CARD_STAFF),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = (req as any).user.tenant_id;
@@ -52,7 +60,7 @@ router.get(
 router.get(
   '/issuance',
   authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(CARD_STAFF),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = (req as any).user.tenant_id;
@@ -105,15 +113,21 @@ router.get(
         ? new Date(req.query.endDate as string)
         : undefined;
 
-      // Check if user is requesting their own data or is admin
+      // Check if user is requesting their own data or is card staff
       const requestingUserId = (req as any).user.id;
-      const requestingUserRole = (req as any).user.role;
+      const requestingUserRole = String((req as any).user.role || '');
+      const isSelf = String(userId) === String(requestingUserId);
 
-      if (
-        userId !== requestingUserId &&
-        !['principal', 'admin_staff'].includes(requestingUserRole)
-      ) {
+      if (!isSelf && !CARD_STAFF.map(String).includes(requestingUserRole)) {
         throw new AppError('You can only view your own scan analytics', 403);
+      }
+
+      // Tenant isolation: staff may only view users in their own school.
+      if (!isSelf && requestingUserRole !== UserRole.SUPER_ADMIN) {
+        const target = await db('users')
+          .where({ id: userId, tenant_id: (req as any).user.tenant_id })
+          .first('id');
+        if (!target) throw new AppError('User not found', 404, 'NOT_FOUND');
       }
 
       const analytics = await reportingService.getUserScanAnalytics(
@@ -137,7 +151,7 @@ router.get(
 router.get(
   '/volume',
   authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(CARD_STAFF),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = (req as any).user.tenant_id;
@@ -173,7 +187,7 @@ router.get(
 router.get(
   '/security-alerts',
   authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(CARD_STAFF),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = (req as any).user.tenant_id;
@@ -198,7 +212,7 @@ router.get(
 router.get(
   '/scan-history',
   authenticate,
-  authorize('principal', 'admin_staff'),
+  authorize(CARD_STAFF),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = (req as any).user.tenant_id;

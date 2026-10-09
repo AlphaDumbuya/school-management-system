@@ -10,6 +10,7 @@ import type { Knex } from 'knex';
 import { db } from '@utils/database';
 import { AppError } from '@middleware/errorHandler';
 import { AuditService } from '@services/auditService';
+import { logger } from '@utils/logger';
 
 export const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 export const money = (n: number) => `Le ${round2(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -191,25 +192,59 @@ export async function notifyFamily(
   } catch { /* never fail the money action */ }
 }
 
+export interface BilledNotice { studentId: string; amount: number; dueDate?: Date | string | null }
+
+/**
+ * "New school fees invoice" (in-app + email) to each billed family — ONE
+ * notice per student per billing action, however many fee lines were created
+ * (lines for the same student are summed; the earliest due date is shown).
+ * Fire-and-forget and sequential: call it AFTER the billing transaction has
+ * committed; it never fails or slows the billing action.
+ */
+export function notifyFeesBilled(tenantId: string, notices: BilledNotice[]): void {
+  const byStudent = new Map<string, { amount: number; due: Date | null }>();
+  for (const n of notices || []) {
+    if (!n?.studentId || !(Number(n.amount) > 0)) continue;
+    const due = n.dueDate ? new Date(n.dueDate) : null;
+    const validDue = due && !Number.isNaN(due.getTime()) ? due : null;
+    const cur = byStudent.get(n.studentId);
+    if (!cur) { byStudent.set(n.studentId, { amount: round2(Number(n.amount)), due: validDue }); continue; }
+    cur.amount = round2(cur.amount + Number(n.amount));
+    if (validDue && (!cur.due || validDue < cur.due)) cur.due = validDue;
+  }
+  if (!tenantId || !byStudent.size) return;
+  void (async () => {
+    for (const [studentId, n] of byStudent) {
+      const dueText = n.due ? `, due ${n.due.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : '';
+      await notifyFamily(studentId, {
+        subject: 'New school fees invoice',
+        message: `School fees of ${leFmt(n.amount)} have been billed for {student}${dueText}. You can view the details and pay from Fees & Payments.`,
+        sourceType: 'fee', sourceId: studentId,
+      }, { emailTenantId: tenantId });
+    }
+  })().catch((err) => logger.warn(`Fees-billed notices failed for tenant ${tenantId}: ${err?.message || err}`));
+}
+
 const esc = (t: string) => String(t).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' } as any)[c]);
 
 /** A short branded finance email to a family, with a link to My Fees. Best-effort. */
 export async function emailFamily(tenantId: string, to: string, toName: string, subject: string, message: string): Promise<boolean> {
   try {
     const { default: emailService } = await import('@services/emailService');
-    const { resolveTenantBranding } = await import('@services/email/emailBranding');
-    const { renderEmail } = await import('@services/email/emailLayout');
+    const { resolveTenantBranding, appLink } = await import('@services/email/emailBranding');
+    const { renderEmail, emailButton } = await import('@services/email/emailLayout');
     const branding: any = await resolveTenantBranding(tenantId);
-    const appUrl = String(process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '');
-    const link = appUrl ? `<p><a href="${appUrl}/finance/my-fees">Open Fees &amp; Payments</a></p>` : '<p>Open <strong>Fees &amp; Payments</strong> in the school portal for the details.</p>';
+    const contact = branding?.contactEmail
+      ? `<p style="color:#6b7280;font-size:13px;">Questions about this? Reply to this email or contact the school office at <a href="mailto:${esc(branding.contactEmail)}">${esc(branding.contactEmail)}</a>${branding.contactPhone ? ` or ${esc(branding.contactPhone)}` : ''}.</p>`
+      : '';
     const res: any = await (emailService as any).sendEmail({
       ...(emailService as any).senderFromBranding?.(branding),
       to, subject: `${subject} — ${branding?.name || 'School'}`,
       body: renderEmail({ branding, eyebrow: 'School fees', heading: subject, preheader: message.slice(0, 120),
-        bodyHtml: `<p>Dear ${esc(toName || 'Parent')},</p><p>${esc(message)}</p>${link}` } as any),
+        bodyHtml: `<p>Dear ${esc(toName || 'Parent')},</p><p>${esc(message)}</p>${emailButton('Open Fees & Payments', appLink('/finance/my-fees'))}${contact}` } as any),
       isHtml: true,
     });
-    return res?.success !== false;
+    return res?.status === 'sent' || res?.status === 'disabled';
   } catch { return false; }
 }
 
