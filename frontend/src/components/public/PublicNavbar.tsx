@@ -8,6 +8,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Mail, Phone } from 'lucide-react';
+import { PLATFORM_SUPPORT, platformSupportTel } from '@config/platform.config';
 
 export interface PublicNavbarProps {
   ctaText?:   string;
@@ -111,18 +113,18 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-              <a href="tel:+23234330610" style={{ color: '#e0e7ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                📞 +232 34 330 610
+              <a href={platformSupportTel()} style={{ color: '#e0e7ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Phone size={13} aria-hidden="true" /> {PLATFORM_SUPPORT.phone}
               </a>
-              <a href="mailto:info@wiskulsl.com" style={{ color: '#e0e7ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                ✉️ info@wiskulsl.com
+              <a href={`mailto:${PLATFORM_SUPPORT.email}`} style={{ color: '#e0e7ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Mail size={13} aria-hidden="true" /> {PLATFORM_SUPPORT.email}
               </a>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1.1rem' }}>
               <Link to="/pricing" style={{ color: '#e0e7ff', textDecoration: 'none', fontWeight: 600 }}>Pricing</Link>
               <Link to="/features" style={{ color: '#e0e7ff', textDecoration: 'none', fontWeight: 600 }}>Features</Link>
-              <Link to="/contact" style={{ color: '#e0e7ff', textDecoration: 'none', fontWeight: 600 }}>Become a Partner</Link>
-              <Link to="/register" style={{ color: '#fbbf24', textDecoration: 'none', fontWeight: 700 }}>Free Sign Up ▸</Link>
+              <Link to="/contact" style={{ color: '#e0e7ff', textDecoration: 'none', fontWeight: 600 }}>Contact Us</Link>
+              <Link to="/register" style={{ color: '#fbbf24', textDecoration: 'none', fontWeight: 700 }}>Start Free Trial</Link>
             </div>
           </div>
         </div>

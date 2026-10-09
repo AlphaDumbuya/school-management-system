@@ -1,7 +1,7 @@
 {
   "name": "WiSkul — School Management",
   "short_name": "WiSkul",
-  "description": "Comprehensive school management platform for academics, attendance, identity, and fee management.",
+  "description": "School management for Sierra Leone: admissions, attendance, report cards, fees, ID cards and announcements.",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#1a2b6b",

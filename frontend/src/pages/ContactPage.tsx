@@ -11,6 +11,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Mail, Phone, MapPin, ArrowRight, Check, X, Loader2, Clock } from 'lucide-react';
 import PublicNavbar, { PublicFooter } from '@components/public';
+import { PLATFORM_SUPPORT, platformSupportTel } from '@config/platform.config';
 
 const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
 const DOT_PATTERN: React.CSSProperties = {
@@ -74,7 +75,7 @@ export const ContactPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f7fb] text-slate-700 overflow-x-hidden font-sans antialiased">
-      <PublicNavbar ctaText="Register School Free" />
+      <PublicNavbar ctaText="Start Free Trial" />
 
       {/* ═══ HERO (navy) ═══ */}
       <section className={`relative pt-28 sm:pt-36 pb-16 px-6 sm:px-10 overflow-hidden ${NAVY_BAND}`}>
@@ -112,11 +113,11 @@ export const ContactPage: React.FC = () => {
                 </div>
                 <div className="flex items-start gap-4">
                   <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0"><Phone size={18} /></div>
-                  <div><p className="text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Phone</p><p className="text-slate-800 text-sm font-medium">+232 34 330 610</p><p className="text-slate-400 text-xs">Mon–Fri, 9AM – 5PM</p></div>
+                  <div><p className="text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Phone</p><p className="text-sm font-medium"><a href={platformSupportTel()} className="text-slate-800 hover:text-[#1d4ed8]">{PLATFORM_SUPPORT.phone}</a></p><p className="text-slate-400 text-xs">Mon–Fri, 9AM – 5PM</p></div>
                 </div>
                 <div className="flex items-start gap-4">
                   <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><MapPin size={18} /></div>
-                  <div><p className="text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Office</p><p className="text-slate-800 text-sm font-medium">Kossoh Town</p><p className="text-slate-400 text-xs">Sierra Leone</p></div>
+                  <div><p className="text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Office</p><p className="text-slate-800 text-sm font-medium">{PLATFORM_SUPPORT.address}</p></div>
                 </div>
               </div>
             </div>
@@ -125,8 +126,8 @@ export const ContactPage: React.FC = () => {
               <div className="absolute inset-0 opacity-[0.1]" style={DOT_PATTERN} />
               <div className="relative">
                 <div className="w-11 h-11 mx-auto rounded-xl bg-amber-500 text-white flex items-center justify-center mb-3"><Clock size={20} /></div>
-                <p className="text-2xl font-black text-white mb-1">&lt; 24 hours</p>
-                <p className="text-sm text-blue-100/80">Average response time</p>
+                <p className="text-2xl font-black text-white mb-1">Within 24 hours</p>
+                <p className="text-sm text-blue-100/80">Our aim on business days</p>
               </div>
             </div>
           </div>

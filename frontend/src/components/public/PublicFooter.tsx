@@ -4,10 +4,11 @@
  * contact, social chips and legal row. See docs/THEME_GUIDE.md.
  */
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, Loader2 } from 'lucide-react';
 import apiClient from '@lib/apiClient';
 import { showToast } from '@utils/toast';
+import { PLATFORM_SUPPORT, platformSupportTel } from '@config/platform.config';
 
 const DOT_PATTERN: React.CSSProperties = {
   backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)',
@@ -79,8 +80,8 @@ export const PublicFooter: React.FC = () => {
               <span className="font-black text-lg text-white">Wi<span className="text-amber-400">Skul</span></span>
             </div>
             <p className="text-blue-100/70 text-sm leading-relaxed max-w-xs">
-              Next-generation school management protecting student data while empowering
-              educators across Sierra Leone and beyond.
+              School management for Sierra Leone: academics, attendance, fees and
+              communication in one platform, with each school's data kept separate.
             </p>
             {state === 'done' ? (
               <div className="mt-5 flex items-center gap-2 max-w-xs text-sm text-emerald-300 font-semibold">
@@ -132,9 +133,9 @@ export const PublicFooter: React.FC = () => {
           <div>
             <h5 className="text-white font-bold text-xs mb-4 uppercase tracking-wider">Contact</h5>
             <ul className="space-y-2.5 text-sm text-blue-100/70">
-              <li><a href="mailto:info@wiskulsl.com" className="hover:text-amber-400 transition-colors">info@wiskulsl.com</a></li>
-              <li><a href="tel:+23234330610" className="hover:text-amber-400 transition-colors">+232 34 330 610</a></li>
-              <li className="text-blue-100/50">Kossoh Town, Sierra Leone</li>
+              <li><a href={`mailto:${PLATFORM_SUPPORT.email}`} className="hover:text-amber-400 transition-colors">{PLATFORM_SUPPORT.email}</a></li>
+              <li><a href={platformSupportTel()} className="hover:text-amber-400 transition-colors">{PLATFORM_SUPPORT.phone}</a></li>
+              <li className="text-blue-100/50">{PLATFORM_SUPPORT.address}</li>
             </ul>
             <div className="flex items-center gap-2.5 mt-4">
               <a
@@ -155,8 +156,8 @@ export const PublicFooter: React.FC = () => {
         <div className="max-w-6xl mx-auto mt-12 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-blue-100/50 text-xs">© {new Date().getFullYear()} WiSkul. All rights reserved.</p>
           <div className="flex items-center gap-5 text-xs text-blue-100/50">
-            <span className="hover:text-amber-400 cursor-pointer transition-colors">Privacy Policy</span>
-            <span className="hover:text-amber-400 cursor-pointer transition-colors">Terms of Service</span>
+            <Link to="/privacy-policy" className="hover:text-amber-400 transition-colors">Privacy Policy</Link>
+            <Link to="/contact" className="hover:text-amber-400 transition-colors">Contact</Link>
           </div>
         </div>
       </div>

@@ -97,9 +97,10 @@ router.get('/notifications', authenticate, async (req: Request, res: Response) =
     const result = await notificationService.getUserNotifications((req as any).user.id, {
       notificationType: notificationType as string,
       status: status as string,
-      isRead: isRead === 'true',
-      limit: parseInt(limit as string),
-      offset: parseInt(offset as string),
+      // Only filter when asked: no isRead → read AND unread (the bell shows both).
+      isRead: isRead === undefined ? undefined : isRead === 'true',
+      limit: Math.min(Math.max(parseInt(limit as string) || 20, 1), 100),
+      offset: Math.max(parseInt(offset as string) || 0, 0),
     });
 
     res.json({
@@ -122,12 +123,13 @@ router.get('/notifications', authenticate, async (req: Request, res: Response) =
  */
 router.patch('/notifications/:notificationId/read', authenticate, async (req: Request, res: Response) => {
   try {
-    const notification = await notificationService.markAsRead(req.params.notificationId);
-
-    // Check authorization
-    if (notification.recipientId !== (req as any).user.id && (req as any).user.role !== 'principal') {
+    // Ownership is checked BEFORE the write: only the recipient can mark it read.
+    const existing = await notificationService.getNotificationById(req.params.notificationId).catch(() => null);
+    if (!existing) return res.status(404).json({ error: 'Notification not found' });
+    if (String(existing.recipientId) !== String((req as any).user.id)) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
+    const notification = await notificationService.markAsRead(req.params.notificationId);
 
     res.json({
       message: 'Notification marked as read',

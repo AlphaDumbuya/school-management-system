@@ -240,10 +240,10 @@ export const RegisterPage: React.FC = () => {
                 <FaRocket aria-hidden="true" /> Self-Service School Onboarding · Free Trial, No Card Needed
               </div>
               <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight leading-tight">
-                Empower Your Institution with Modern Cloud Management
+                Register your school on WiSkul
               </h1>
               <p className="text-gray-300 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto">
-                Join schools across Sierra Leone and globally. Provision your private school workspace in under 2 minutes with zero upfront costs. Core v1.0 features remain free to help your school thrive.
+                Create your school's workspace and principal account in three short steps. Your free trial starts straight away, with no card needed.
               </p>
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
                 <button
@@ -267,23 +267,23 @@ export const RegisterPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 pt-6">
               <FeatureCard
                 icon={<FaBuilding className="text-amber-400" />}
-                title="Instant School Tenant"
-                desc="Automated creation of your isolated school database, current academic session, and principal credentials."
+                title="Ready Straight Away"
+                desc="Your school's own workspace, an active academic year and your principal login are created as soon as you register."
               />
               <FeatureCard
                 icon={<FaGraduationCap className="text-purple-400" />}
-                title="Sierra Leone & Global Curricula"
-                desc="Pre-configured support for WASSCE, BECE, IGCSE, and customized Sierra Leone academic grading scales."
+                title="Built for Sierra Leone"
+                desc="Class levels from Nursery to SSS, Sierra Leone report cards with QR verification, and fees in New Leones."
               />
               <FeatureCard
                 icon={<FaUserCheck className="text-cyan-400" />}
-                title="Digital ID Cards & Admissions"
-                desc="Automatic enrollment conversion upon application approval and batch digital ID card generation."
+                title="Admissions & ID Cards"
+                desc="An online application form for your school, an admissions pipeline through to enrolment, and batch ID card printing."
               />
               <FeatureCard
                 icon={<FaShieldAlt className="text-amber-400" />}
-                title="Verified Portal Security"
-                desc="Multi-guardian account linking, student portal logins, and role-based permissions for staff."
+                title="Secure Portals"
+                desc="Portals for staff, parents and students, with role-based access, two-factor sign-in and passkeys."
               />
             </div>
 

@@ -7,7 +7,8 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ShieldCheck, Search, Lock, BarChart3, ArrowRight, Check, Zap, Server, Cloud,
+  ShieldCheck, Lock, ArrowRight, Check, Zap, Server, Cloud,
+  KeyRound, WifiOff, GraduationCap,
 } from 'lucide-react';
 import PublicNavbar, { PublicFooter } from '@components/public';
 
@@ -23,7 +24,7 @@ export const WhyWiskulPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f7fb] text-slate-700 overflow-x-hidden font-sans antialiased">
-      <PublicNavbar ctaText="Register School Free" />
+      <PublicNavbar ctaText="Start Free Trial" />
 
       {/* ═══ HERO (navy) ═══ */}
       <section className={`relative pt-28 sm:pt-36 pb-20 px-6 sm:px-10 overflow-hidden ${NAVY_BAND}`}>
@@ -37,21 +38,21 @@ export const WhyWiskulPage: React.FC = () => {
           </div>
 
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-black leading-[1.1] mb-6 text-white">
-            Why schools trust <span className="text-amber-400">WiSkul</span>
+            Why choose <span className="text-amber-400">WiSkul</span>
           </h1>
 
           <p className="text-blue-100/90 text-base sm:text-lg max-w-3xl mx-auto leading-relaxed mb-12">
-            In an age where data breaches are costly and manual processes waste countless hours,
-            WiSkul delivers strong security with zero-effort automation — so you can focus on
-            teaching, not paperwork.
+            WiSkul keeps each school's records separate and protected, and replaces paper
+            registers, mark sheets and receipt books with one platform, so staff spend less
+            time on admin and more time on teaching.
           </p>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-4xl mx-auto">
             {[
-              { value: '256-bit', label: 'Encryption', icon: Lock },
-              { value: '99.9%', label: 'Uptime target', icon: Zap },
-              { value: '<200ms', label: 'Response', icon: Server },
-              { value: 'Free', label: 'Core plan', icon: Check },
+              { value: 'HTTPS', label: 'Encrypted in transit', icon: Lock },
+              { value: '2FA', label: 'And passkeys', icon: KeyRound },
+              { value: 'Offline', label: 'Teacher attendance', icon: WifiOff },
+              { value: 'Free', label: 'Trial, no card needed', icon: Check },
             ].map((stat) => (
               <div key={stat.label} className="bg-white/[0.07] border border-white/10 rounded-2xl p-6 backdrop-blur-sm text-center">
                 <span className="inline-flex w-10 h-10 rounded-xl bg-amber-400/20 text-amber-300 items-center justify-center mb-3"><stat.icon size={18} /></span>
@@ -68,16 +69,16 @@ export const WhyWiskulPage: React.FC = () => {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
             <p className="text-[#1d4ed8] text-xs font-bold tracking-[0.2em] uppercase mb-2">What sets us apart</p>
-            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Four pillars of excellence</h2>
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Four things we focus on</h2>
             <div className="w-12 h-1 bg-[#f59e0b] rounded-full mx-auto mt-4" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {[
-              { num: '01', icon: ShieldCheck, title: 'Multi-Tenant Data Isolation', desc: 'Each school operates in a completely isolated environment. Records, financials and communications are separated at the database level with zero cross-contamination.', tint: 'bg-blue-50 border-blue-100', chip: 'bg-blue-100 text-[#1d4ed8]', features: ['Database-level separation', 'Zero data leakage', 'Compliance-ready', 'Independent backups'] },
-              { num: '02', icon: Search, title: 'Real-Time Threat Detection', desc: 'Access attempts are monitored for suspicious patterns and threats blocked automatically before they can compromise your data.', tint: 'bg-emerald-50 border-emerald-100', chip: 'bg-emerald-100 text-emerald-600', features: ['Anomaly detection', 'Automatic IP blocking', 'Failed-login tracking', 'Audit trails'] },
-              { num: '03', icon: Lock, title: 'End-to-End Encryption', desc: 'Data in transit and at rest is encrypted with 256-bit AES. Notifications, communications and financial records are fully secure.', tint: 'bg-amber-50 border-amber-100', chip: 'bg-amber-100 text-amber-600', features: ['AES-256 encryption', 'Encrypted backups', 'Secure API', 'HTTPS everywhere'] },
-              { num: '04', icon: BarChart3, title: 'Intelligent Analytics', desc: 'Turn raw data into insight — track performance, spot at-risk learners, forecast enrollment and optimise resources in real time.', tint: 'bg-purple-50 border-purple-100', chip: 'bg-purple-100 text-purple-600', features: ['Performance trends', 'Real-time dashboards', 'Report builder', 'Actionable insights'] },
+              { num: '01', icon: ShieldCheck, title: 'Separate Data for Each School', desc: "Every record (students, grades, finances, announcements) belongs to one school, and every request is checked against that school, so one school cannot see another school's data.", tint: 'bg-blue-50 border-blue-100', chip: 'bg-blue-100 text-[#1d4ed8]', features: ['Per-school data separation', 'Role-based access', 'School verification badge', 'Per-school data backup'] },
+              { num: '02', icon: KeyRound, title: 'Secure Sign-in', desc: 'Two-factor authentication with an authenticator app, and passkeys so users can sign in with fingerprint or face on supported devices. Sign-in attempts are rate limited.', tint: 'bg-emerald-50 border-emerald-100', chip: 'bg-emerald-100 text-emerald-600', features: ['Two-factor authentication', 'Passkeys', 'Role-based permissions', 'Password reset by email'] },
+              { num: '03', icon: Lock, title: 'Encrypted in Transit, Backed Up', desc: 'All traffic between your device and WiSkul uses HTTPS. The database has automated backups with point-in-time recovery, and finance changes are recorded in an audit log.', tint: 'bg-amber-50 border-amber-100', chip: 'bg-amber-100 text-amber-600', features: ['HTTPS everywhere', 'Automated database backups', 'Point-in-time recovery', 'Finance audit log'] },
+              { num: '04', icon: GraduationCap, title: 'Built for Sierra Leone Schools', desc: 'Sierra Leone report cards, class levels from Nursery to SSS, fees in New Leones, and mobile money payments through Monime. Teachers can take attendance offline in the app.', tint: 'bg-purple-50 border-purple-100', chip: 'bg-purple-100 text-purple-600', features: ['SL report cards', 'QR-verified documents', 'NLe fees & mobile money', 'Offline teacher attendance'] },
             ].map((p) => (
               <div key={p.num} className={`${p.tint} border rounded-3xl p-8 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300`}>
                 <div className="flex items-start gap-4 mb-6">
@@ -112,15 +113,15 @@ export const WhyWiskulPage: React.FC = () => {
         <div className="relative max-w-5xl mx-auto">
           <div className="text-center mb-14">
             <p className="text-amber-300 text-xs font-bold tracking-[0.2em] uppercase mb-2">Under the hood</p>
-            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">Built on enterprise architecture</h2>
+            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">How WiSkul is built</h2>
             <div className="w-12 h-1 bg-[#f59e0b] rounded-full mx-auto mt-4" />
-            <p className="text-blue-100/80 text-sm mt-3">Scalable, secure and lightning-fast infrastructure</p>
+            <p className="text-blue-100/80 text-sm mt-3">Widely used, well-supported technologies</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               { layer: 'Frontend', icon: Zap, tech: ['React + TypeScript', 'TailwindCSS', 'Vite build'] },
-              { layer: 'Backend', icon: Server, tech: ['Node.js + Express', 'PostgreSQL', 'Redis cache'] },
+              { layer: 'Backend', icon: Server, tech: ['Node.js + Express', 'PostgreSQL', 'Redis rate limiting'] },
               { layer: 'Infrastructure', icon: Cloud, tech: ['Cloud hosting', 'Docker', 'CI/CD pipeline'] },
             ].map((stack) => (
               <div key={stack.layer} className="bg-white/[0.06] border border-white/10 rounded-2xl p-6 backdrop-blur-sm">
@@ -145,12 +146,12 @@ export const WhyWiskulPage: React.FC = () => {
         <div className={`max-w-4xl mx-auto relative overflow-hidden rounded-[2rem] px-8 sm:px-14 py-14 text-center ${NAVY_BAND}`}>
           <div className="absolute inset-0 opacity-[0.1] pointer-events-none" style={DOT_PATTERN} />
           <div className="relative z-10">
-            <h2 className="text-3xl sm:text-4xl font-black text-white mb-4">Ready to transform your school?</h2>
-            <p className="text-blue-100/80 text-sm mb-8 max-w-lg mx-auto">Set up your secure workspace in minutes — the core plan is free.</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-white mb-4">Ready to set up your school?</h2>
+            <p className="text-blue-100/80 text-sm mb-8 max-w-lg mx-auto">Create your school's workspace and start with a free trial. No card needed.</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <button onClick={() => navigate('/register')}
                 className="w-full sm:w-auto bg-[#f59e0b] hover:bg-[#d97706] text-white font-bold text-sm px-10 py-4 rounded-xl transition-all duration-300 shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2">
-                Register School Free <ArrowRight size={16} />
+                Start Free Trial <ArrowRight size={16} />
               </button>
               <button onClick={() => navigate('/features')}
                 className="w-full sm:w-auto border border-white/25 hover:border-white/50 text-white font-bold text-sm px-10 py-4 rounded-xl transition-all duration-300">

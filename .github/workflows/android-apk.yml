@@ -116,7 +116,12 @@ jobs:
         env:
           APP_VERSION_CODE: ${{ github.run_number }}
           APP_VERSION_NAME: 1.0.${{ github.run_number }}
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          # A debug key is generated fresh on every CI runner: Play Protect treats
+          # these APKs as unknown/untrusted, and each build has a different key so
+          # it can't update the installed app. Configure the release keystore.
+          echo "::warning title=Debug-signed APK::No release keystore secrets are set. This APK is debug-signed (Play Protect will warn, and it cannot update earlier installs). Run 'Android Signing Setup' once and add the ANDROID_KEYSTORE_* secrets."
+          ./gradlew assembleDebug --no-daemon --stacktrace
         working-directory: frontend/android
 
       - name: Rename APK
@@ -151,7 +156,7 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.release_tag != '' && github.event.inputs.release_tag || 'android-latest' }}
           name: WiSkul Android APK
-          body: 'Latest WiSkul Android app (debug-signed). Direct download — enable "install from unknown sources" if prompted.'
+          body: ${{ env.HAS_RELEASE_KEYSTORE == 'true' && 'Latest WiSkul Android app (release-signed). Direct download; allow "install unknown apps" for your browser if Android asks.' || 'Latest WiSkul Android app (DEBUG-signed: add the release keystore secrets). Direct download; allow "install unknown apps" if Android asks.' }}
           files: apk-out/wiskul.apk
           fail_on_unmatched_files: true
         env:

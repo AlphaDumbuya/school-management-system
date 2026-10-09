@@ -14,7 +14,8 @@
  * relative timestamps, type icons, empty/loading states, click-away,
  * polling with focus refresh.
  */
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import { announceNew } from '@lib/nativeNotifications';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -124,6 +125,12 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
   });
   const notifications: AppNotification[] = Array.isArray(notifResp?.data) ? notifResp!.data : [];
   const unreadNotifications = notifications.filter((n) => !n.readAt);
+
+  // Android app: surface new notifications in the phone's notification shade.
+  useEffect(() => {
+    if (notifications.length) void announceNew(notifications, (url) => navigate(url));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notifResp]);
 
   // System alerts (principals only).
   const { data: alertsResp } = useQuery({
