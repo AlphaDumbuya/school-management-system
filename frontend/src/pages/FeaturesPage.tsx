@@ -96,12 +96,12 @@ export const FeaturesPage: React.FC = () => {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14 space-y-3">
             <span className="inline-flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-full px-4 py-1.5 text-[#1d4ed8] text-xs font-bold uppercase tracking-widest">
-              <Check size={13} strokeWidth={3} /> v1.0 Operational Core · 100% Free
+              <Check size={13} strokeWidth={3} /> v1.0 Operational Core · Free trial for new schools
             </span>
             <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Operational v1.0 core modules</h2>
             <div className="w-12 h-1 bg-[#f59e0b] rounded-full mx-auto" />
             <p className="text-slate-500 text-sm max-w-xl mx-auto leading-relaxed">
-              Fully operational, tested and included free in your school workspace today.
+              Fully operational and available today. See Pricing for what each plan includes.
             </p>
           </div>
 
@@ -188,6 +188,21 @@ export const FeaturesPage: React.FC = () => {
                 'Fee Structures — per class, term and category with itemised year expenses',
                 'Online Payments — mobile money, card, bank transfer and wallets via Monime',
                 'Receipts & Reminders — automatic PDF receipts and fee reminders',
+                'Discounts & Scholarships — sibling, staff-child and scholarship/bursary discounts, waivers and payment plans',
+              ]} />
+            <ModuleSection tintIndex={0} num="13" version="v1" title="Expenses, Payroll & Accounting"
+              desc="The bursar's full toolkit, from petty cash to financial statements."
+              features={[
+                'Expenses, Petty Cash & Budgets — record spending and track it against budget',
+                'Payroll — salary runs with payslips emailed to staff',
+                'Accounting — journal, chart of accounts, financial statements and bank reconciliation',
+              ]} />
+            <ModuleSection tintIndex={1} num="14" version="v1" title="Announcements & In-app Notifications"
+              desc="Keep staff, parents and students informed inside the portal."
+              features={[
+                'Announcements — to the whole school, a role or a single class, with an optional email copy',
+                'Notification Bell — results, fees, admissions and discipline updates in one place',
+                'Email Alerts — receipts, report cards, absences and reminders, branded with your school logo',
               ]} />
           </div>
         </div>
@@ -199,12 +214,12 @@ export const FeaturesPage: React.FC = () => {
         <div className="relative max-w-6xl mx-auto">
           <div className="text-center mb-14 space-y-3">
             <span className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-amber-300 text-xs font-bold uppercase tracking-widest">
-              🚀 Version Roadmap
+              Version Roadmap
             </span>
             <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">Coming in v2.0 &amp; v3.0</h2>
             <div className="w-12 h-1 bg-[#f59e0b] rounded-full mx-auto" />
             <p className="text-blue-100/80 text-sm max-w-xl mx-auto leading-relaxed">
-              Advanced HR and messaging modules planned for future releases.
+              HR, reporting and messaging modules planned for future releases. Not available yet.
             </p>
           </div>
 
@@ -215,11 +230,11 @@ export const FeaturesPage: React.FC = () => {
                 'Digital Leave Approvals — staff submit requests for principal review',
                 'Performance Appraisals — annual goals, criteria and review records',
               ]} />
-            <ModuleSection dark num="02" version="v2" title="Payroll & Expenses (v2)"
-              desc="Staff payslips and school operational expenditure tracking."
+            <ModuleSection dark num="02" version="v2" title="Reports & Analytics (v2)"
+              desc="Cross-module reports for attendance, enrolment, finance and discipline."
               features={[
-                'School Expenses — track spending, purchase approvals and budgets',
-                'Payroll — staff payslips and salary records',
+                'Attendance & Enrolment Reports — trends across classes and terms',
+                'Finance & Discipline Reports — school-wide summaries for leadership',
               ]} />
             <ModuleSection dark num="03" version="v3" title="Automated SMS Broadcasts (v3)"
               desc="Bulk SMS for fee reminders and emergency alerts."
@@ -314,10 +329,10 @@ interface ModuleSectionProps {
 const ModuleSection: React.FC<ModuleSectionProps> = ({ num, title, desc, features, version, dark, tintIndex = 0 }) => {
   const badge =
     version === 'v1'
-      ? { cls: 'bg-blue-100 text-[#1d4ed8]', label: '✓ v1.0 · Free' }
+      ? { cls: 'bg-blue-100 text-[#1d4ed8]', label: 'Available now' }
       : version === 'v2'
-      ? { cls: 'bg-amber-100 text-amber-700', label: '🚀 Coming v2' }
-      : { cls: 'bg-purple-100 text-purple-700', label: '⚡ Coming v3' };
+      ? { cls: 'bg-amber-100 text-amber-700', label: 'Coming in v2' }
+      : { cls: 'bg-purple-100 text-purple-700', label: 'Coming in v3' };
 
   const tint = CARD_TINTS[tintIndex % CARD_TINTS.length];
 

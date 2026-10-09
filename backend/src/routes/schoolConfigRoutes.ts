@@ -508,16 +508,27 @@ router.get('/subscription/ai-analysis', authenticate, authorize(UserRole.PRINCIP
       recommendations.push(`Upgrade plan to expand your administrative and teaching staff directories.`);
     }
 
-    // Feature availability insights
-    if (subscription.plan_type === 'freetong') {
-      insights.push(`Your current trial plan (FREETONG) does not include ID Card printing or advanced Grade examinations.`);
-      recommendations.push(`Upgrade to COMBRA to unlock PVC Student ID generation, automated Report Cards, and parent WhatsApp messaging.`);
-    } else if (subscription.plan_type === 'combra') {
-      insights.push(`You are utilizing the COMBRA plan. Advanced features like Payroll, Scholarships, and Multi-branch management are locked.`);
-      recommendations.push(`Upgrade to BINTUMANI to unlock unlimited student/staff records, payroll runs, scholarship tracking, and custom school branding.`);
-    } else {
-      insights.push(`You are running on BINTUMANI (Enterprise) with unlimited students, staff, and complete access to all system modules.`);
-      recommendations.push(`Everything is fully optimized. Your school has unlimited operations capacity.`);
+    // Feature availability insights, from the live plan catalog (what the
+    // school's plan lacks, and the next plan up that adds it).
+    {
+      const { PlanCatalog, FEATURES } = await import('../services/planCatalogService.js');
+      const plans = await PlanCatalog.list();
+      const idx = plans.findIndex((p) => p.id === subscription.plan_type);
+      const current = plans[idx];
+      const missing = current ? FEATURES.filter((f) => !f.core && !f.soon && !current.features[f.key]) : [];
+      if (!current) {
+        insights.push(`Your school is on the ${String(subscription.plan_type).toUpperCase()} plan.`);
+      } else if (!missing.length) {
+        insights.push(`The ${current.name} plan includes every module available today.`);
+        recommendations.push('No upgrade needed for features. Keep an eye on your student and staff limits above.');
+      } else {
+        insights.push(`The ${current.name} plan doesn't include: ${missing.map((f) => f.label).join(', ')}.`);
+        const next = plans.slice(idx + 1).find((p) => missing.some((f) => p.features[f.key]));
+        if (next) {
+          const adds = missing.filter((f) => next.features[f.key]).map((f) => f.label);
+          recommendations.push(`Upgrade to ${next.name} to add ${adds.join(', ')}.`);
+        }
+      }
     }
 
     res.json({

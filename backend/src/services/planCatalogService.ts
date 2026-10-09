@@ -44,28 +44,28 @@ export const FEATURES: FeatureDef[] = [
   { key: 'attendance_basic', label: 'Attendance', description: 'Daily student register and staff sign-in.', group: 'Core', core: true },
   { key: 'gradebook', label: 'Assignments, results & report cards', description: 'Assignments, gradebook, results and report cards.', group: 'Core', core: true },
   { key: 'fee_collection', label: 'Fees, invoices & online payments', description: 'Fee structures, invoices, receipts and online payments.', group: 'Core', core: true },
-  { key: 'announcements', label: 'Announcements', description: 'School-wide and class announcements by email and in-app.', group: 'Core', core: true },
+  { key: 'announcements', label: 'Announcements & in-app notifications', description: 'Announcements to the whole school or a class, the in-app notification bell, and optional email copies.', group: 'Core', core: true },
   { key: 'portals', label: 'Student & parent portals', description: 'Logins for students, parents and staff, plus the mobile app.', group: 'Core', core: true },
+  { key: 'dashboards', label: 'Role dashboards', description: 'Live dashboards for the principal, teachers, bursar, admissions, parents and students.', group: 'Core', core: true },
+  { key: 'exports', label: 'Excel, PDF & CSV exports', description: 'Export lists, registers and reports from every module you have.', group: 'Core', core: true },
+  { key: 'school_branding', label: 'Your school branding', description: 'Your logo, name, motto and contacts on report cards, receipts and emails.', group: 'Core', core: true },
+  { key: 'support', label: 'Help centre & support tickets', description: 'Built-in guides and direct support from the WiSkul team.', group: 'Core', core: true },
 
   // Switchable per plan
   { key: 'admissions', label: 'Admissions & online applications', description: 'Admissions pipeline, interviews, enrolment and the public application form.', group: 'Students' },
   { key: 'promotions', label: 'Student promotions', description: 'End-of-year promotion of classes into the new year.', group: 'Academic' },
   { key: 'discipline', label: 'Discipline & conduct', description: 'Infractions, detentions, conduct reports and appeals.', group: 'Students' },
   { key: 'id_cards', label: 'ID cards & badge designer', description: 'Card templates, ID card generation and printing.', group: 'Identity' },
-  { key: 'events', label: 'Events & calendar', description: 'School events, registrations, calendar and event analytics.', group: 'Events' },
-  { key: 'fee_management', label: 'Arrears, discounts & payment plans', description: 'Aging, discounts, late fees and instalment plans.', group: 'Finance' },
+  { key: 'events', label: 'Events, calendar & event analytics', description: 'School events, registrations, calendar and event analytics.', group: 'Events' },
+  { key: 'fee_management', label: 'Discounts, scholarships, arrears & payment plans', description: 'Sibling, staff-child and scholarship/bursary discounts, waivers, arrears aging, late fees and instalment plans.', group: 'Finance' },
   { key: 'expenses', label: 'Expenses, petty cash & budgets', description: 'School expenses, petty cash and budgets.', group: 'Finance' },
   { key: 'payroll', label: 'Payroll & payslips', description: 'Salary runs and staff payslips.', group: 'Finance' },
-  { key: 'accounting', label: 'Accounting & statements', description: 'Journal, chart of accounts, financial statements, bank reconciliation and audit log.', group: 'Finance' },
-  { key: 'exports', label: 'Data exports (Excel / PDF)', description: 'Bulk exports of school data.', group: 'Platform' },
+  { key: 'accounting', label: 'Accounting & financial statements', description: 'Journal, chart of accounts, financial statements, bank reconciliation and audit log.', group: 'Finance' },
   { key: 'academic_archive', label: 'Academic archive', description: 'Past years’ results and records.', group: 'Academic' },
-  { key: 'advanced_analytics', label: 'Advanced analytics', description: 'Cross-module dashboards and reports.', group: 'Platform', soon: true },
-  { key: 'whatsapp', label: 'WhatsApp messaging', description: 'WhatsApp notifications to parents.', group: 'Communication', soon: true },
-  { key: 'sms_notifications', label: 'SMS notifications', description: 'SMS alerts to parents.', group: 'Communication', soon: true },
-  { key: 'scholarships', label: 'Scholarships manager', description: 'Scholarship programmes and awards.', group: 'Finance', soon: true },
-  { key: 'custom_branding', label: 'Custom branding', description: 'Your own email sender domain and white-label look.', group: 'Platform' },
-  { key: 'multi_branch', label: 'Multi-branch support', description: 'Several campuses under one school.', group: 'Platform', soon: true },
 ];
+// Not listed on purpose (not live, so never sold): SMS, WhatsApp, chat,
+// advanced cross-module analytics, multi-branch. Add a key here (with
+// `soon: true` until it ships) when one of them is built.
 
 const FEATURE_KEYS = new Set(FEATURES.map((f) => f.key));
 const CORE_KEYS = FEATURES.filter((f) => f.core).map((f) => f.key);
@@ -107,7 +107,7 @@ const DEFAULT_PLANS: Record<PlanId, PlanDef> = {
     id: 'combra', name: 'Combra', tagline: 'For growing schools that want more tools.', badge: 'Most popular',
     monthly_price: 900, yearly_price: 9000,
     max_students: 500, max_staff: 40, max_users: 45, max_storage_gb: 20,
-    features: on('admissions', 'promotions', 'fee_management', 'academic_archive', 'discipline', 'id_cards', 'events', 'expenses', 'exports', 'advanced_analytics', 'whatsapp'),
+    features: on('admissions', 'promotions', 'fee_management', 'academic_archive', 'discipline', 'id_cards', 'events', 'expenses'),
     highlights: ['Priority email support'], is_public: true, featured: true, sort: 1,
   },
   bintumani: {
@@ -115,7 +115,7 @@ const DEFAULT_PLANS: Record<PlanId, PlanDef> = {
     monthly_price: 1750, yearly_price: 17500,
     max_students: UNLIMITED, max_staff: UNLIMITED, max_users: UNLIMITED, max_storage_gb: 100,
     features: on(...FEATURES.filter((f) => !f.core).map((f) => f.key)),
-    highlights: ['Dedicated onboarding', 'Priority phone & WhatsApp support'], is_public: true, featured: false, sort: 2,
+    highlights: ['Dedicated onboarding', 'Priority phone support'], is_public: true, featured: false, sort: 2,
   },
 };
 
