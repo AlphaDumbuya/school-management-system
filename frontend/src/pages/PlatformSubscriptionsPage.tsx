@@ -25,10 +25,13 @@ import { Modal } from '@components/admin/feedback/Modal';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { showToast } from '@utils/toast';
 import platformService, { PlatformTenant } from '../services/platformService';
+import { PlanCatalogEditor } from '@components/platform/PlanCatalogEditor';
+import { fmtPrice, usePublicPlans } from '@services/planService';
 
 export const PlatformSubscriptionsPage: React.FC = () => {
   const [tenants, setTenants] = useState<PlatformTenant[]>([]);
   const [loading, setLoading] = useState(true);
+  const { data: plansData } = usePublicPlans();
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('');
@@ -235,56 +238,9 @@ export const PlatformSubscriptionsPage: React.FC = () => {
           </div>
         )}
 
-        {/* Plan Cards Information */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
-            <div className="absolute right-[-10%] top-[-10%] opacity-10"><CreditCard size={150} /></div>
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded">Basic Plan</span>
-              <Sparkles size={18} />
-            </div>
-            <h3 className="text-xl font-bold mb-1">Freetong Trial</h3>
-            <p className="text-2xl font-black mb-4">Le 400 <span className="text-xs font-normal">/ month</span></p>
-            <ul className="text-xs space-y-2 border-t border-white/10 pt-4 opacity-90">
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Basic attendance & profiles</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Class/Subject & schedule manager</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Fee collection & SMS reminders</li>
-              <li className="flex items-center gap-1.5 text-white/50"><X size={12} /> ID Card templates, WhatsApp, Analytics</li>
-            </ul>
-          </div>
+        {/* Plan catalog: prices, limits and features per plan (live). */}
+        <PlanCatalogEditor />
 
-          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
-            <div className="absolute right-[-10%] top-[-10%] opacity-10"><CreditCard size={150} /></div>
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded">Growth Plan</span>
-              <Sparkles size={18} />
-            </div>
-            <h3 className="text-xl font-bold mb-1">Combra Standard</h3>
-            <p className="text-2xl font-black mb-4">Le 900 <span className="text-xs font-normal">/ month</span></p>
-            <ul className="text-xs space-y-2 border-t border-white/10 pt-4 opacity-90">
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Everything in Freetong plan</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> ID cards designer & events tracking</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Discipline records & analytics</li>
-              <li className="flex items-center gap-1.5 text-white/50"><X size={12} /> Advanced payroll, custom branding</li>
-            </ul>
-          </div>
-
-          <div className="bg-gradient-to-br from-purple-600 to-pink-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
-            <div className="absolute right-[-10%] top-[-10%] opacity-10"><CreditCard size={150} /></div>
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded">Unlimited Plan</span>
-              <Sparkles size={18} />
-            </div>
-            <h3 className="text-xl font-bold mb-1">Bintumani Enterprise</h3>
-            <p className="text-2xl font-black mb-4">Le 1,750 <span className="text-xs font-normal">/ month</span></p>
-            <ul className="text-xs space-y-2 border-t border-white/10 pt-4 opacity-90">
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> All features unlocked</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Payroll modules & scholarships admin</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Custom school branding & logo configs</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 size={12} /> Multi-branch school administration</li>
-            </ul>
-          </div>
-        </div>
 
         {/* Filters */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
@@ -423,9 +379,13 @@ export const PlatformSubscriptionsPage: React.FC = () => {
                 onChange={(e) => setModifyForm({ ...modifyForm, plan_type: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-100"
               >
-                <option value="freetong">Freetong (Basic Trial) — Le 400/mo</option>
-                <option value="combra">Combra (Standard) — Le 900/mo</option>
-                <option value="bintumani">Bintumani (Enterprise) — Le 1,750/mo</option>
+                {(plansData?.plans?.length ? plansData.plans : [
+                  { id: 'freetong', name: 'Freetong', monthly_price: 0 },
+                  { id: 'combra', name: 'Combra', monthly_price: 0 },
+                  { id: 'bintumani', name: 'Bintumani', monthly_price: 0 },
+                ] as any[]).map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.name}{p.monthly_price ? ` — ${fmtPrice(p.monthly_price)}/mo` : ''}</option>
+                ))}
               </select>
             </div>
 

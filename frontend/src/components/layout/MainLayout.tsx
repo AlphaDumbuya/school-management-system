@@ -81,11 +81,23 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       const detail = (e as CustomEvent).detail || {};
       const isExpired = detail.code === 'SUBSCRIPTION_EXPIRED';
       const base = detail.message || (isExpired ? 'Your subscription has expired.' : 'Plan limit reached.');
-      showToast.error(`${base} Open Settings → Plan & Billing to upgrade or renew.`);
+      const role = useAuthStore.getState().user?.role;
+      showToast.error(role === 'principal'
+        ? `${base} Open Settings → Plan & Billing to upgrade or renew.`
+        : `${base} Ask your principal about the school's plan.`);
+      // The plan may have changed since sign-in: refresh what the sidebar shows.
+      useAuthStore.getState().refreshUser?.().catch?.(() => undefined);
     };
     window.addEventListener('wiskul:plan-limit', onLimit as EventListener);
     return () => window.removeEventListener('wiskul:plan-limit', onLimit as EventListener);
   }, []);
+
+  // Plan features drive the sidebar. Sessions restored from storage (or a
+  // login response) may not carry them yet: fetch /me once to fill them in.
+  const needsPlan = useAuthStore((s) => !!s.user && s.user.role !== 'super_admin' && s.user.planAccess === undefined);
+  useEffect(() => {
+    if (needsPlan) useAuthStore.getState().refreshUser?.().catch?.(() => undefined);
+  }, [needsPlan]);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024);

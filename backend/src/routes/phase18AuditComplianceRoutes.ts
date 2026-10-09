@@ -1,7 +1,8 @@
 import type { Express, Request, Response } from 'express';
 import type { Knex } from 'knex';
-import { authenticate } from '@middleware/authMiddleware';
+import { authenticate, attachUserContext, authorize } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
+import { UserRole } from '../types/auth';
 import { logger } from '@utils/logger';
 import ComplianceReportingService from '@services/phase18ComplianceReportingService';
 import SensitiveActionService from '@services/phase18SensitiveActionService';
@@ -26,11 +27,27 @@ export default function registerPhase18Routes(
   const sensitiveActionService = new SensitiveActionService(db);
   const retentionService = new AuditRetentionService(db, archiveStoragePath);
 
+  // SECURITY: audit/compliance data and retention operations (archive, purge,
+  // restore, approvals) are school-admin only. Only "my pending approvals"
+  // stays open to any signed-in user (it is scoped to req.user.id).
+  const adminOnly = [
+    authenticate,
+    attachUserContext,
+    authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  ];
+
+  /** 404 unless the row belongs to the caller's tenant (super_admin bypasses). */
+  async function assertTenantOwns(table: string, id: string, req: Request): Promise<void> {
+    if (req.user?.role === UserRole.SUPER_ADMIN) return;
+    const row = await db(table).where({ id, tenant_id: req.user?.tenantId }).first('id');
+    if (!row) throw new AppError('Not found', 404, 'NOT_FOUND');
+  }
+
   /**
    * POST /api/v1/compliance/reports
    * Generates a compliance report
    */
-  app.post('/api/v1/compliance/reports', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/compliance/reports', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const { reportType, startDate, endDate } = req.body;
       const tenantId = req.user?.tenantId;
@@ -79,7 +96,7 @@ export default function registerPhase18Routes(
    * GET /api/v1/compliance/reports
    * Lists compliance reports
    */
-  app.get('/api/v1/compliance/reports', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/compliance/reports', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       const { reportType, limit = 50, offset = 0 } = req.query;
@@ -115,7 +132,7 @@ export default function registerPhase18Routes(
    */
   app.get(
     '/api/v1/compliance/reports/:reportId',
-    authenticate,
+    ...adminOnly,
     async (req: Request, res: Response) => {
       try {
         const { reportId } = req.params;
@@ -154,10 +171,11 @@ export default function registerPhase18Routes(
    */
   app.get(
     '/api/v1/compliance/reports/:reportId/export',
-    authenticate,
+    ...adminOnly,
     async (req: Request, res: Response) => {
       try {
         const { reportId } = req.params;
+        await assertTenantOwns('compliance_reports', reportId, req);
         const { format = 'json' } = req.query;
 
         if (!['csv', 'json', 'pdf'].includes(format as string)) {
@@ -188,7 +206,7 @@ export default function registerPhase18Routes(
    */
   app.post(
     '/api/v1/sensitive-actions',
-    authenticate,
+    ...adminOnly,
     async (req: Request, res: Response) => {
       try {
         const {
@@ -245,7 +263,7 @@ export default function registerPhase18Routes(
    */
   app.get(
     '/api/v1/sensitive-actions',
-    authenticate,
+    ...adminOnly,
     async (req: Request, res: Response) => {
       try {
         const tenantId = req.user?.tenantId;
@@ -294,7 +312,7 @@ export default function registerPhase18Routes(
    */
   app.get(
     '/api/v1/sensitive-actions/:actionId',
-    authenticate,
+    ...adminOnly,
     async (req: Request, res: Response) => {
       try {
         const { actionId } = req.params;
@@ -330,10 +348,11 @@ export default function registerPhase18Routes(
    */
   app.post(
     '/api/v1/sensitive-actions/:actionId/approve',
-    authenticate,
+    ...adminOnly,
     async (req: Request, res: Response) => {
       try {
         const { actionId } = req.params;
+        await assertTenantOwns('sensitive_actions', actionId, req);
         const userId = req.user?.id;
 
         if (!userId) {
@@ -359,10 +378,11 @@ export default function registerPhase18Routes(
    */
   app.post(
     '/api/v1/sensitive-actions/:actionId/reject',
-    authenticate,
+    ...adminOnly,
     async (req: Request, res: Response) => {
       try {
         const { actionId } = req.params;
+        await assertTenantOwns('sensitive_actions', actionId, req);
         const { reason } = req.body;
         const userId = req.user?.id;
 
@@ -397,10 +417,11 @@ export default function registerPhase18Routes(
    */
   app.post(
     '/api/v1/sensitive-actions/:actionId/complete',
-    authenticate,
+    ...adminOnly,
     async (req: Request, res: Response) => {
       try {
         const { actionId } = req.params;
+        await assertTenantOwns('sensitive_actions', actionId, req);
         const { result } = req.body;
         const userId = req.user?.id;
 
@@ -431,10 +452,11 @@ export default function registerPhase18Routes(
    */
   app.get(
     '/api/v1/sensitive-actions/:actionId/audit-trail',
-    authenticate,
+    ...adminOnly,
     async (req: Request, res: Response) => {
       try {
         const { actionId } = req.params;
+        await assertTenantOwns('sensitive_actions', actionId, req);
         const trail = await sensitiveActionService.getActionAuditTrail(actionId);
 
         res.status(200).json({
@@ -455,6 +477,7 @@ export default function registerPhase18Routes(
   app.get(
     '/api/v1/approvals/pending',
     authenticate,
+    attachUserContext,
     async (req: Request, res: Response) => {
       try {
         const userId = req.user?.id;
@@ -491,7 +514,7 @@ export default function registerPhase18Routes(
    */
   app.post(
     '/api/v1/audit/retention-policy',
-    authenticate,
+    ...adminOnly,
     async (req: Request, res: Response) => {
       try {
         const { retentionDays, archivalDays } = req.body;
@@ -526,7 +549,7 @@ export default function registerPhase18Routes(
    * POST /api/v1/audit/archive
    * Archives old audit logs
    */
-  app.post('/api/v1/audit/archive', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/audit/archive', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
 
@@ -550,7 +573,7 @@ export default function registerPhase18Routes(
    * POST /api/v1/audit/purge
    * Purges expired audit logs
    */
-  app.post('/api/v1/audit/purge', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/audit/purge', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
 
@@ -576,7 +599,7 @@ export default function registerPhase18Routes(
    * GET /api/v1/audit/compliance
    * Verifies audit retention compliance
    */
-  app.get('/api/v1/audit/compliance', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/audit/compliance', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
 
@@ -600,7 +623,7 @@ export default function registerPhase18Routes(
    * GET /api/v1/audit/archives
    * Lists audit archives
    */
-  app.get('/api/v1/audit/archives', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/audit/archives', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       const { limit = 50, offset = 0 } = req.query;
@@ -635,10 +658,11 @@ export default function registerPhase18Routes(
    */
   app.post(
     '/api/v1/audit/archives/:archiveId/restore',
-    authenticate,
+    ...adminOnly,
     async (req: Request, res: Response) => {
       try {
         const { archiveId } = req.params;
+        await assertTenantOwns('audit_archives', archiveId, req);
         const { limit = 10000 } = req.body;
 
         const restoredCount = await retentionService.restoreFromArchive(archiveId, limit);
@@ -662,10 +686,11 @@ export default function registerPhase18Routes(
    */
   app.get(
     '/api/v1/audit/archives/:archiveId/verify',
-    authenticate,
+    ...adminOnly,
     async (req: Request, res: Response) => {
       try {
         const { archiveId } = req.params;
+        await assertTenantOwns('audit_archives', archiveId, req);
 
         const verification = await retentionService.verifyArchiveIntegrity(archiveId);
 

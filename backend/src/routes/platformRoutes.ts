@@ -663,6 +663,73 @@ router.put('/settings/trial', authenticate, authorize(UserRole.SUPER_ADMIN), asy
   }
 });
 
+// ── Plan catalog (prices, limits, features per plan) ─────────────────────────
+
+/**
+ * @route   GET /api/platform/plans
+ * @desc    Every plan (incl. hidden ones) + the feature registry, for the editor.
+ * @access  Super Admin only
+ */
+router.get('/plans', authenticate, authorize(UserRole.SUPER_ADMIN), async (_req, res, next) => {
+  try {
+    const { PlanCatalog, FEATURES, UNLIMITED } = await import('../services/planCatalogService.js');
+    const counts = await db('subscriptions').where({ status: 'active' }).groupBy('plan_type')
+      .select('plan_type').count({ n: '*' }).catch(() => [] as any[]);
+    const tenants = Object.fromEntries(counts.map((r: any) => [r.plan_type, Number(r.n) || 0]));
+    res.json({ success: true, data: { plans: await PlanCatalog.list(), features: FEATURES, unlimited: UNLIMITED, tenants } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   PUT /api/platform/plans/:id
+ * @desc    Edit a plan: name, tagline, badge, prices, limits, included
+ *          features, marketing highlights, visibility. Applies LIVE to every
+ *          school on the plan (features + limits); prices apply to the next
+ *          payment. Features a school loses stay visible read-only.
+ * @access  Super Admin only
+ */
+router.put('/plans/:id', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { PlanCatalog } = await import('../services/planCatalogService.js');
+    const { EntitlementService } = await import('../services/entitlementService.js');
+    const before = await PlanCatalog.get(req.params.id);
+    const updated = await PlanCatalog.update(req.params.id, req.body || {}, req.auth!.userId);
+    EntitlementService.clear();
+    const changedFeatures = Object.keys(updated.features).filter((k) => updated.features[k] !== before.features[k]);
+    await PlatformAuditService.record({
+      ...auditMeta(req), action: 'plans.update', entityId: updated.id,
+      changes: {
+        monthly_price: [before.monthly_price, updated.monthly_price], yearly_price: [before.yearly_price, updated.yearly_price],
+        max_students: [before.max_students, updated.max_students], max_staff: [before.max_staff, updated.max_staff],
+        features: Object.fromEntries(changedFeatures.map((k) => [k, updated.features[k]])),
+      },
+    });
+    res.json({ success: true, message: `${updated.name} plan saved.`, data: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/platform/plans/:id/reset
+ * @desc    Restore a plan to its built-in defaults.
+ * @access  Super Admin only
+ */
+router.post('/plans/:id/reset', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { PlanCatalog } = await import('../services/planCatalogService.js');
+    const { EntitlementService } = await import('../services/entitlementService.js');
+    const plan = await PlanCatalog.reset(req.params.id, req.auth!.userId);
+    EntitlementService.clear();
+    await PlatformAuditService.record({ ...auditMeta(req), action: 'plans.reset', entityId: plan.id });
+    res.json({ success: true, message: `${plan.name} plan reset to defaults.`, data: plan });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ── Tenant users ────────────────────────────────────────────────────────────
 
 router.get('/tenants/:id/users', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {

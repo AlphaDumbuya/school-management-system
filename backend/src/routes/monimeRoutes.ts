@@ -431,6 +431,28 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
   if (!session) return;
   if (session.status === 'completed') return; // already done
 
+  if (status === 'failed') {
+    // Conditional update = the transition INTO 'failed' happens exactly once,
+    // so a repeated webhook / status poll never re-notifies the family.
+    const changed = await db('payment_sessions')
+      .where({ id: sessionId })
+      .whereNotIn('status', ['failed', 'completed'])
+      .update({ status, updated_at: new Date() });
+    if (changed > 0 && session.student_id) {
+      // 'expired' / 'cancelled' are normal abandonment — only a genuine failure
+      // is worth telling the family about. Fire-and-forget (never slows the webhook).
+      void (async () => {
+        const { notifyFamily, leFmt } = await import('../services/finance/core.js');
+        await notifyFamily(session.student_id, {
+          subject: 'Online payment not completed',
+          message: `Your online payment of ${leFmt(Number(session.amount))} for {student} was not completed, so no money was taken. You can try again from Fees & Payments.`,
+          sourceType: 'payment', sourceId: sessionId,
+        }, { emailTenantId: session.tenant_id || undefined });
+      })().catch((err) => logger.warn(`Could not send payment-failed notice for session ${sessionId}: ${err?.message || err}`));
+    }
+    return;
+  }
+
   if (status !== 'completed') {
     await db('payment_sessions').where({ id: sessionId }).update({ status, updated_at: new Date() });
     return;
@@ -557,20 +579,12 @@ async function sendPaymentReceipt(session: any) {
 
   const studentName = [student.first_name, student.last_name].filter(Boolean).join(' ') || 'Student';
 
-  // Prefer a linked guardian's email; fall back to the student's own email.
-  let payerEmail: string | null = student.email || null;
-  let payerName = studentName;
-  const guardianLink = await db('student_guardians')
-    .where({ student_id: session.student_id, status: 'active' })
-    .first()
-    .catch(() => null);
-  if (guardianLink?.guardian_id) {
-    const guardian = await db('users').where({ id: guardianLink.guardian_id }).first().catch(() => null);
-    if (guardian?.email) {
-      payerEmail = guardian.email;
-      payerName = [guardian.first_name, guardian.last_name].filter(Boolean).join(' ') || payerName;
-    }
-  }
+  // Same family contact as the rest of finance: a linked parent's email,
+  // else the student's own.
+  const { familyContact } = await import('../services/finance/core.js');
+  const contact = await familyContact(session.student_id);
+  const payerEmail: string | null = contact.email || student.email || null;
+  const payerName = contact.name || studentName;
   if (!payerEmail) return;
 
   // Remaining outstanding balance across the student's fees. The fees table

@@ -8,6 +8,7 @@ import { sendExport } from '@utils/exportResponse';
 import teacherAttendanceRoutes from './teacherAttendanceRoutes';
 import { resolveYearScope, applyYearScope } from '../utils/academicYear.js';
 import { studentYearScope } from '../utils/studentScope.js';
+import { notifyGuardiansOfAbsence } from '@services/attendanceNotifications';
 
 const router = Router();
 router.use('/teachers', teacherAttendanceRoutes);
@@ -354,6 +355,8 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
     if (attendanceData.check_out_time) {
       void notifyGuardiansOfAttendance(tenantId, student_id, 'check_out', attendanceData.check_out_time, date);
     }
+    // Marked absent in the register → guardian alert (once per student per day).
+    if (status === 'absent') notifyGuardiansOfAbsence(tenantId, student_id, date, class_id || null);
   } catch (error) {
     next(error);
   }
@@ -812,6 +815,10 @@ router.put('/:attendanceId', authenticate, attachUserContext, authorize(UserRole
     if (updated?.check_out_time && !attendance.check_out_time) {
       void notifyGuardiansOfAttendance(tenantId, updated.student_id, 'check_out', updated.check_out_time, dateStr);
     }
+    // Changed INTO absent → guardian alert (once per student per day).
+    if (updated?.status === 'absent' && attendance.status !== 'absent') {
+      notifyGuardiansOfAbsence(tenantId, updated.student_id, updated.attendance_date || dateStr, updated.class_id || null);
+    }
   } catch (error) {
     next(error);
   }
@@ -958,6 +965,8 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
     // Collect NEW check-in / check-out transitions to notify parents after commit.
     const checkInNotify: Array<{ student_id: string; time: string }> = [];
     const checkOutNotify: Array<{ student_id: string; time: string }> = [];
+    // Students newly marked absent (guardian alert after commit).
+    const absentNotify = new Set<string>();
 
     // Insert or update attendance records in a transaction
     await db.transaction(async (trx) => {
@@ -992,6 +1001,7 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
           .first();
 
         const nulled = ['absent', 'excused'].includes(status);
+        if (status === 'absent' && existing?.status !== 'absent') absentNotify.add(student_id);
         if (existing) {
           const newCheckIn = nulled ? null : (check_in_time ?? existing.check_in_time ?? null);
           const newCheckOut = nulled ? null : (check_out_time ?? existing.check_out_time ?? null);
@@ -1042,6 +1052,7 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
     // Notify parents (best-effort, after commit) of arrivals + departures.
     for (const c of checkInNotify) void notifyGuardiansOfAttendance(tenantId, c.student_id, 'check_in', c.time, date);
     for (const c of checkOutNotify) void notifyGuardiansOfAttendance(tenantId, c.student_id, 'check_out', c.time, date);
+    for (const sid of absentNotify) notifyGuardiansOfAbsence(tenantId, sid, date, class_id || null);
 
     res.status(200).json({
       success: true,

@@ -58,6 +58,7 @@ import {
 } from '@lib/reportCardBorders';
 import { showToast } from '@utils/toast';
 import { apiClient } from '@lib/apiClient';
+import { usePublicPlans, fmtLimit, fmtPrice, planAdds, PlanDef } from '@services/planService';
 
 /** Keep in sync with backend PasswordService.validatePasswordPolicy. */
 const PASSWORD_RULES: { label: string; test: (p: string) => boolean }[] = [
@@ -258,6 +259,7 @@ export const SettingsPage: React.FC = () => {
   const [subscription, setSubscription] = useState<SubscriptionDetails | null>(null);
   const [billingHistory, setBillingHistory] = useState<BillingInvoice[]>([]);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const { data: planCatalog } = usePublicPlans();
   const [aiAnalysis, setAiAnalysis] = useState<{
     healthStatus: 'healthy' | 'warning' | 'critical';
     summary: string;
@@ -743,36 +745,32 @@ export const SettingsPage: React.FC = () => {
   // are shipping V1 features that ARE enforced (see backend PLAN_LIMITS.features
   // + subscriptionGuard). Note: SMS/WhatsApp are intentionally omitted (removed
   // in V1).
+  // Plan cards come from the live plan catalog (super-admin editable), so the
+  // prices, limits and features shown here are exactly what billing charges and
+  // the server enforces.
   type PlanFeature = { label: string; soon?: boolean };
-  const PLAN_CARD_FEATURES: Record<'freetong' | 'combra' | 'bintumani', PlanFeature[]> = {
-    freetong: [
-      { label: 'Up to 200 students' },
-      { label: 'Up to 15 staff' },
-      { label: 'Student & guardian directory' },
-      { label: 'Classes, subjects & timetable' },
-      { label: 'Attendance tracking' },
-      { label: 'Grading & report cards' },
-      { label: 'Fee invoices, receipts & online payments' },
-    ],
-    combra: [
-      { label: 'Everything in Freetong' },
-      { label: 'Up to 500 students' },
-      { label: 'Up to 40 staff' },
-      { label: 'ID card & PVC badge maker' },
-      { label: 'Events & calendar' },
-      { label: 'Discipline & conduct records' },
-      { label: 'Advanced analytics dashboards', soon: true },
-      { label: 'Data exports (Excel / PDF)', soon: true },
-    ],
-    bintumani: [
-      { label: 'Everything in Combra' },
-      { label: 'Unlimited students & staff' },
-      { label: 'Payroll & payslips', soon: true },
-      { label: 'Scholarships manager', soon: true },
-      { label: 'Custom branding', soon: true },
-      { label: 'Multi-branch support', soon: true },
-    ],
+  const catalogPlans: PlanDef[] = planCatalog?.plans ?? [];
+  catalogPlans.forEach((p, i) => { PLAN_RANK[p.id] = i; });
+  const planCardFeatures = (plan: PlanDef, i: number): PlanFeature[] => {
+    if (!planCatalog) return [];
+    const prev = catalogPlans[i - 1];
+    const limits: PlanFeature[] = [
+      { label: fmtLimit(plan.max_students, 'students', planCatalog.unlimited) },
+      { label: fmtLimit(plan.max_staff, 'staff', planCatalog.unlimited) },
+    ];
+    const features: PlanFeature[] = i === 0
+      ? planCatalog.features.filter((f) => f.core || plan.features[f.key]).map((f) => ({ label: f.label, soon: f.soon }))
+      : [{ label: `Everything in ${prev.name}` }, ...planAdds(plan, prev, planCatalog).map((f) => ({ label: f.label, soon: f.soon }))];
+    return [...limits, ...features, ...(plan.highlights || []).map((h) => ({ label: h }))];
   };
+  const PLAN_STYLE: Record<string, { ring: string; chip: string; check: string; button: string }> = {
+    freetong: { ring: 'border-blue-500 bg-blue-50/10', chip: 'bg-blue-100 text-blue-800', check: 'text-emerald-500', button: '' },
+    combra: { ring: 'border-purple-500 bg-purple-50/10 shadow-sm', chip: 'bg-purple-100 text-purple-800', check: 'text-purple-500', button: 'bg-purple-600 hover:bg-purple-700 text-white' },
+    bintumani: { ring: 'border-amber-500 bg-amber-50/10', chip: 'bg-amber-100 text-amber-800', check: 'text-amber-500', button: 'bg-amber-500 hover:bg-amber-600 text-white' },
+  };
+  const readOnlyFeatures = planCatalog && subscription?.entitlements
+    ? planCatalog.features.filter((f) => !f.soon && subscription.entitlements?.features?.[f.key] === 'read_only').map((f) => f.label)
+    : [];
 
   const currentPlan = (subscription?.subscription?.plan_type || 'freetong') as 'freetong' | 'combra' | 'bintumani';
   const planButtonLabel = (target: 'freetong' | 'combra' | 'bintumani'): string => {
@@ -2463,130 +2461,62 @@ export const SettingsPage: React.FC = () => {
                               billingCycle === 'yearly' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
                             }`}
                           >
-                            Yearly (Save 15%)
+                            Yearly
                           </button>
                         </div>
                       </CardHeader>
                       <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/* Plan Card: Freetong */}
-                        <div className={`p-4 sm:p-5 rounded-xl border flex flex-col justify-between ${
-                          subscription?.subscription?.plan_type === 'freetong' 
-                            ? 'border-blue-500 bg-blue-50/10' 
-                            : 'border-gray-200 bg-white'
-                        }`}>
-                          <div>
-                            <div className="flex justify-between items-start">
-                              <h4 className="font-extrabold text-gray-900 text-lg">Freetong</h4>
-                              {subscription?.subscription?.plan_type === 'freetong' && (
-                                <span className="bg-blue-100 text-blue-800 text-[9px] font-bold px-2 py-0.5 rounded-full">Current</span>
+                        {readOnlyFeatures.length > 0 && (
+                          <div role="status" className="md:col-span-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                            <strong>Read-only on your current plan:</strong> {readOnlyFeatures.join(', ')}. Your records there are kept and can be viewed; upgrade to add or change them.
+                          </div>
+                        )}
+                        {!planCatalog && (
+                          <p className="md:col-span-3 text-sm text-gray-500">Loading plans…</p>
+                        )}
+                        {catalogPlans.map((plan, i) => {
+                          const style = PLAN_STYLE[plan.id] || PLAN_STYLE.freetong;
+                          const isCurrent = currentPlan === plan.id;
+                          const price = billingCycle === 'monthly' ? plan.monthly_price : plan.yearly_price;
+                          return (
+                            <div key={plan.id} className={`p-4 sm:p-5 rounded-xl border flex flex-col justify-between relative ${isCurrent ? style.ring : 'border-gray-200 bg-white'}`}>
+                              {plan.featured && !isCurrent && (
+                                <div className={`absolute top-3 right-3 ${style.chip} text-[8px] font-bold px-2 py-0.5 rounded-full`}>{plan.badge || 'Most Popular'}</div>
                               )}
+                              <div>
+                                <div className="flex justify-between items-start gap-2">
+                                  <h4 className="font-extrabold text-gray-900 text-lg">{plan.name}</h4>
+                                  {isCurrent && (
+                                    <span className={`${style.chip} text-[9px] font-bold px-2 py-0.5 rounded-full`}>Current</span>
+                                  )}
+                                </div>
+                                {plan.tagline && <p className="text-gray-400 text-xs mt-1 italic">{plan.tagline}</p>}
+                                <p className="text-2xl font-black text-gray-900 mt-4">
+                                  {fmtPrice(price)}
+                                  <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
+                                </p>
+
+                                <ul className="space-y-2 mt-6 text-xs text-gray-600">
+                                  {planCardFeatures(plan, i).map((f) => (
+                                    <li key={f.label} className={`flex items-center gap-2 ${f.soon ? 'text-gray-400' : ''}`}>
+                                      <CheckCircle2 size={12} aria-hidden="true" className={f.soon ? 'text-gray-300' : style.check} /> {f.label}
+                                      {f.soon && <span className="ml-1 text-[10px] italic text-gray-400">(coming soon)</span>}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+
+                              <Button
+                                variant={isCurrent ? 'outline' : 'default'}
+                                onClick={() => handleUpgradePlan(plan.id)}
+                                disabled={isCurrent || saving}
+                                className={`w-full mt-8 ${isCurrent ? '' : style.button}`}
+                              >
+                                {planButtonLabel(plan.id)}
+                              </Button>
                             </div>
-                            <p className="text-gray-400 text-xs mt-1 italic">"Start free, grow strong"</p>
-                            <p className="text-2xl font-black text-gray-900 mt-4">
-                              {`Le ${billingCycle === 'monthly' ? '400' : '4000'}`}
-                              <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
-                            </p>
-                            
-                            <ul className="space-y-2 mt-6 text-xs text-gray-600">
-                              {PLAN_CARD_FEATURES.freetong.map((f) => (
-                                <li key={f.label} className={`flex items-center gap-2 ${f.soon ? 'text-gray-400' : ''}`}>
-                                  <CheckCircle2 size={12} className={f.soon ? 'text-gray-300' : 'text-emerald-500'} /> {f.label}
-                                  {f.soon && <span className="ml-1 text-[10px] italic text-gray-400">(coming soon)</span>}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-
-                          <Button
-                            variant={currentPlan === 'freetong' ? 'outline' : 'default'}
-                            onClick={() => handleUpgradePlan('freetong')}
-                            disabled={currentPlan === 'freetong' || saving}
-                            className="w-full mt-8"
-                          >
-                            {planButtonLabel('freetong')}
-                          </Button>
-                        </div>
-
-                        {/* Plan Card: Combra */}
-                        <div className={`p-4 sm:p-5 rounded-xl border flex flex-col justify-between relative ${
-                          subscription?.subscription?.plan_type === 'combra' 
-                            ? 'border-purple-500 bg-purple-50/10 shadow-sm' 
-                            : 'border-gray-200 bg-white'
-                        }`}>
-                          <div className="absolute top-3 right-3 bg-purple-100 text-purple-800 text-[8px] font-bold px-2 py-0.5 rounded-full">
-                            Most Popular
-                          </div>
-                          <div>
-                            <div className="flex justify-between items-start">
-                              <h4 className="font-extrabold text-gray-900 text-lg">Combra</h4>
-                              {subscription?.subscription?.plan_type === 'combra' && (
-                                <span className="bg-purple-100 text-purple-800 text-[9px] font-bold px-2 py-0.5 rounded-full">Current</span>
-                              )}
-                            </div>
-                            <p className="text-gray-400 text-xs mt-1 italic">"A mother managing her children"</p>
-                            <p className="text-2xl font-black text-gray-900 mt-4">
-                              {`Le ${billingCycle === 'monthly' ? '900' : '9000'}`}
-                              <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
-                            </p>
-                            
-                            <ul className="space-y-2 mt-6 text-xs text-gray-600">
-                              {PLAN_CARD_FEATURES.combra.map((f) => (
-                                <li key={f.label} className={`flex items-center gap-2 ${f.soon ? 'text-gray-400' : ''}`}>
-                                  <CheckCircle2 size={12} className={f.soon ? 'text-gray-300' : 'text-purple-500'} /> {f.label}
-                                  {f.soon && <span className="ml-1 text-[10px] italic text-gray-400">(coming soon)</span>}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-
-                          <Button
-                            variant={currentPlan === 'combra' ? 'outline' : 'default'}
-                            onClick={() => handleUpgradePlan('combra')}
-                            disabled={currentPlan === 'combra' || saving}
-                            className="w-full mt-8 bg-purple-600 hover:bg-purple-700 text-white"
-                          >
-                            {planButtonLabel('combra')}
-                          </Button>
-                        </div>
-
-                        {/* Plan Card: Bintumani */}
-                        <div className={`p-4 sm:p-5 rounded-xl border flex flex-col justify-between ${
-                          subscription?.subscription?.plan_type === 'bintumani' 
-                            ? 'border-amber-500 bg-amber-50/10' 
-                            : 'border-gray-200 bg-white'
-                        }`}>
-                          <div>
-                            <div className="flex justify-between items-start">
-                              <h4 className="font-extrabold text-gray-900 text-lg">Bintumani</h4>
-                              {subscription?.subscription?.plan_type === 'bintumani' && (
-                                <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-2 py-0.5 rounded-full">Current</span>
-                              )}
-                            </div>
-                            <p className="text-gray-400 text-xs mt-1 italic">"The highest peak"</p>
-                            <p className="text-2xl font-black text-gray-900 mt-4">
-                              {`Le ${billingCycle === 'monthly' ? '1750' : '17500'}`}
-                              <span className="text-xs text-gray-400 font-normal"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
-                            </p>
-                            
-                            <ul className="space-y-2 mt-6 text-xs text-gray-600">
-                              {PLAN_CARD_FEATURES.bintumani.map((f) => (
-                                <li key={f.label} className={`flex items-center gap-2 ${f.soon ? 'text-gray-400' : ''}`}>
-                                  <CheckCircle2 size={12} className={f.soon ? 'text-gray-300' : 'text-amber-500'} /> {f.label}
-                                  {f.soon && <span className="ml-1 text-[10px] italic text-gray-400">(coming soon)</span>}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-
-                          <Button
-                            variant={currentPlan === 'bintumani' ? 'outline' : 'default'}
-                            onClick={() => handleUpgradePlan('bintumani')}
-                            disabled={currentPlan === 'bintumani' || saving}
-                            className="w-full mt-8 bg-amber-500 hover:bg-amber-600 text-white"
-                          >
-                            {planButtonLabel('bintumani')}
-                          </Button>
-                        </div>
+                          );
+                        })}
                       </CardContent>
                     </Card>
 

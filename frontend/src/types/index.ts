@@ -31,6 +31,20 @@ export interface AuthUser {
   promotionWelcome?: { role?: string; label?: string; at?: string } | null;
   /** A teacher's extra jobs (e.g. form teacher who is also the Bursar). */
   staffDuties?: Array<'accountant' | 'admissions_officer'>;
+  /** The school's plan features (from /auth/me). null for super admins. */
+  planAccess?: PlanAccess | null;
+}
+
+/** enabled → full use; read_only → view only (held on an earlier plan/trial); locked → hidden. */
+export type FeatureAccess = 'enabled' | 'read_only' | 'locked';
+
+export interface PlanAccess {
+  plan: string;
+  planName: string;
+  isTrial: boolean;
+  /** Subscription expired/suspended. */
+  lapsed: boolean;
+  features: Record<string, FeatureAccess>;
 }
 
 export interface AuthResponse {

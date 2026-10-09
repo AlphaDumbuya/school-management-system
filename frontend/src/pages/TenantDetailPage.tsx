@@ -50,7 +50,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
 const money = (amount: number, currency = 'SLE') => `${currency === 'SLE' ? 'Le' : currency} ${Number(amount || 0).toLocaleString()}`;
 
 const PLANS = [
-  { value: 'freetong', label: 'Freetong (Free)' },
+  { value: 'freetong', label: 'Freetong' },
   { value: 'combra', label: 'Combra' },
   { value: 'bintumani', label: 'Bintumani' },
 ];

@@ -21,6 +21,7 @@ import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import { financeService } from '@services/financeService';
 import { bursarService, bursarB } from '@services/bursarService';
+import { routeAccess } from '@lib/planFeatures';
 
 const fmtLe = (v: number | string | null | undefined) =>
   `Le ${(Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -162,7 +163,7 @@ export const Phase13AccountantDashboard: React.FC = () => {
               <div className="text-xl font-black text-red-700">{fmtLe(overview?.overdueAmount)}</div>
               <div className="text-[11px] text-red-700/80">{overview?.overdueInvoices ?? 0} overdue charge{overview?.overdueInvoices === 1 ? '' : 's'} · see aging</div>
             </Link>
-            <Link to="/finance/discounts" className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:ring-2 hover:ring-blue-200">
+            <Link to={routeAccess(user, '/finance/discounts') === 'locked' ? '/finance/payments' : '/finance/discounts'} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:ring-2 hover:ring-blue-200">
               <div className="text-xs font-semibold text-gray-500">Discounts & waivers</div>
               <div className="text-xl font-black">{fmtLe(overview?.totalDiscounts)}</div>
               <div className="text-[11px] text-gray-500">Taken off fees · not counted as collected</div>
@@ -209,7 +210,7 @@ export const Phase13AccountantDashboard: React.FC = () => {
               { to: '/finance/bank-reconciliation', label: 'Bank Reconciliation', icon: <Landmark size={16} /> },
               { to: '/finance/accounts', label: 'Chart of Accounts', icon: <ListTree size={16} /> },
               { to: '/finance/audit-log', label: 'Audit Log', icon: <History size={16} /> },
-            ].map((l) => (
+            ].filter((l) => routeAccess(user, l.to) !== 'locked').map((l) => (
               <Link key={l.to} to={l.to} className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:border-blue-300 hover:text-blue-700">
                 <span className="text-blue-600 dark:text-blue-400">{l.icon}</span>
                 <span className="min-w-0"><span className="block truncate">{l.label}</span>{l.note && <span className="block text-[11px] font-medium text-amber-700">{l.note}</span>}</span>

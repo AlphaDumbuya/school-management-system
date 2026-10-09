@@ -1,7 +1,8 @@
 import type { Express, Request, Response } from 'express';
 import type { Knex } from 'knex';
-import { authenticate } from '@middleware/authMiddleware';
+import { authenticate, attachUserContext, authorize } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
+import { UserRole } from '../types/auth';
 import { logger } from '@utils/logger';
 import EmailService from '@services/phase19EmailService';
 import SMSService from '@services/phase19SMSService';
@@ -27,13 +28,27 @@ export default function registerPhase19Routes(
   const paymentService = new PaymentGatewayService(db);
   const loggingService = new IntegrationLoggingService(db);
 
+  // SECURITY: provider config (incl. secrets), sends, retries, refunds and alert
+  // resolution are school-admin actions. Read-only health/history/log views are
+  // also open to the bursar (accountant). Students/parents/teachers get 403.
+  const adminOnly = [
+    authenticate,
+    attachUserContext,
+    authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN),
+  ];
+  const financeRead = [
+    authenticate,
+    attachUserContext,
+    authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.ACCOUNTANT),
+  ];
+
   // ==================== EMAIL ENDPOINTS ====================
 
   /**
    * POST /api/v1/integrations/email/config
    * Sets email service configuration
    */
-  app.post('/api/v1/integrations/email/config', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/email/config', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const { provider, from, smtpHost, smtpPort, smtpUser, smtpPassword, sendgridApiKey, mailgunApiKey, mailgunDomain, isActive } = req.body;
       const tenantId = req.user?.tenantId;
@@ -74,7 +89,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/email/config
    * Gets email service configuration
    */
-  app.get('/api/v1/integrations/email/config', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/email/config', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       if (!tenantId) throw new AppError('User context required', 401);
@@ -91,7 +106,7 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/email/templates
    * Creates or updates email template
    */
-  app.post('/api/v1/integrations/email/templates', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/email/templates', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const { name, subject, htmlContent, textContent, category, isActive } = req.body;
       const tenantId = req.user?.tenantId;
@@ -130,7 +145,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/email/templates
    * Gets email templates
    */
-  app.get('/api/v1/integrations/email/templates', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/email/templates', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       const { category } = req.query;
@@ -149,7 +164,7 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/email/send
    * Sends email
    */
-  app.post('/api/v1/integrations/email/send', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/email/send', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const { to, subject, htmlContent, textContent, cc, bcc, templateId, templateVariables } = req.body;
       const tenantId = req.user?.tenantId;
@@ -193,7 +208,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/email/history
    * Gets email message history
    */
-  app.get('/api/v1/integrations/email/history', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/email/history', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       const { limit = 100, offset = 0 } = req.query;
@@ -212,7 +227,7 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/email/retry
    * Retries failed emails
    */
-  app.post('/api/v1/integrations/email/retry', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/email/retry', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       if (!tenantId) throw new AppError('User context required', 401);
@@ -229,7 +244,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/email/health
    * Gets email service health
    */
-  app.get('/api/v1/integrations/email/health', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/email/health', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       if (!tenantId) throw new AppError('User context required', 401);
@@ -248,7 +263,7 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/sms/config
    * Sets SMS service configuration
    */
-  app.post('/api/v1/integrations/sms/config', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/sms/config', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const { provider, fromNumber, accountSid, authToken, awsAccessKeyId, awsSecretAccessKey, awsRegion, nexmoApiKey, nexmoApiSecret, isActive } = req.body;
       const tenantId = req.user?.tenantId;
@@ -289,7 +304,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/sms/config
    * Gets SMS service configuration
    */
-  app.get('/api/v1/integrations/sms/config', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/sms/config', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       if (!tenantId) throw new AppError('User context required', 401);
@@ -306,7 +321,7 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/sms/templates
    * Creates or updates SMS template
    */
-  app.post('/api/v1/integrations/sms/templates', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/sms/templates', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const { name, message, category, characterLimit = 160, isActive } = req.body;
       const tenantId = req.user?.tenantId;
@@ -344,7 +359,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/sms/templates
    * Gets SMS templates
    */
-  app.get('/api/v1/integrations/sms/templates', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/sms/templates', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       const { category } = req.query;
@@ -363,7 +378,7 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/sms/send
    * Sends SMS
    */
-  app.post('/api/v1/integrations/sms/send', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/sms/send', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const { phoneNumber, message, templateId, templateVariables } = req.body;
       const tenantId = req.user?.tenantId;
@@ -407,7 +422,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/sms/history
    * Gets SMS message history
    */
-  app.get('/api/v1/integrations/sms/history', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/sms/history', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       const { limit = 100, offset = 0 } = req.query;
@@ -426,7 +441,7 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/sms/retry
    * Retries failed SMS
    */
-  app.post('/api/v1/integrations/sms/retry', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/sms/retry', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       if (!tenantId) throw new AppError('User context required', 401);
@@ -443,7 +458,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/sms/health
    * Gets SMS service health
    */
-  app.get('/api/v1/integrations/sms/health', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/sms/health', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       if (!tenantId) throw new AppError('User context required', 401);
@@ -462,7 +477,7 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/payment/config
    * Sets payment gateway configuration
    */
-  app.post('/api/v1/integrations/payment/config', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/payment/config', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const { provider, publicKey, secretKey, webhookSecret, currency, testMode, isActive } = req.body;
       const tenantId = req.user?.tenantId;
@@ -502,7 +517,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/payment/config
    * Gets payment gateway configuration
    */
-  app.get('/api/v1/integrations/payment/config', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/payment/config', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       if (!tenantId) throw new AppError('User context required', 401);
@@ -519,7 +534,7 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/payment/initiate
    * Initiates payment
    */
-  app.post('/api/v1/integrations/payment/initiate', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/payment/initiate', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const { studentId, feeId, amount, description } = req.body;
       const tenantId = req.user?.tenantId;
@@ -559,7 +574,7 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/payment/verify
    * Verifies payment
    */
-  app.post('/api/v1/integrations/payment/verify', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/payment/verify', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const { transactionId, externalTransactionId, paymentData } = req.body;
       const tenantId = req.user?.tenantId;
@@ -598,7 +613,7 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/payment/refund
    * Processes refund
    */
-  app.post('/api/v1/integrations/payment/refund', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/payment/refund', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const { transactionId, amount, reason } = req.body;
       const tenantId = req.user?.tenantId;
@@ -632,27 +647,24 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/payment/webhook
    * Handles payment webhook
    */
-  app.post('/api/v1/integrations/payment/webhook', async (req: Request, res: Response) => {
-    try {
-      const { tenantId, signature, payload } = req.body;
-
-      if (!tenantId || !signature || !payload) {
-        throw new AppError('tenantId, signature, and payload required', 400);
-      }
-
-      await paymentService.handleWebhook(tenantId, signature, payload);
-      res.status(200).json({ success: true });
-    } catch (error) {
-      logger.error('Failed to handle payment webhook', error);
-      throw error;
-    }
+  // SECURITY: disabled (fail closed). This endpoint trusted a caller-supplied
+  // tenantId, verified an HMAC over re-serialised JSON (not the raw body) with
+  // a non-constant-time compare, and PaymentGatewayService caches one tenant's
+  // config on a shared instance — so a principal who set their own
+  // webhookSecret could forge "payment.completed" events for another school.
+  // No provider or frontend calls it; real online payments use the Monime
+  // webhook (/api/v1/payments). Re-enable only with per-provider raw-body
+  // signature verification and a tenant resolved server-side.
+  app.post('/api/v1/integrations/payment/webhook', (req: Request, res: Response) => {
+    logger.warn('Rejected call to disabled legacy payment webhook', { ip: req.ip });
+    res.status(410).json({ success: false, error: { code: 'ENDPOINT_DISABLED', message: 'This webhook endpoint is disabled.' } });
   });
 
   /**
    * GET /api/v1/integrations/payment/history
    * Gets payment transaction history
    */
-  app.get('/api/v1/integrations/payment/history', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/payment/history', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       const { studentId, limit = 100, offset = 0 } = req.query;
@@ -676,7 +688,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/payment/refunds
    * Gets refund history
    */
-  app.get('/api/v1/integrations/payment/refunds', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/payment/refunds', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       const { transactionId } = req.query;
@@ -695,7 +707,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/payment/health
    * Gets payment gateway health
    */
-  app.get('/api/v1/integrations/payment/health', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/payment/health', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       if (!tenantId) throw new AppError('User context required', 401);
@@ -714,7 +726,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/health
    * Gets overall integration health
    */
-  app.get('/api/v1/integrations/health', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/health', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       if (!tenantId) throw new AppError('User context required', 401);
@@ -731,7 +743,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/logs
    * Gets integration logs
    */
-  app.get('/api/v1/integrations/logs', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/logs', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       const { integrationName, eventType, status, startDate, endDate, limit = 100, offset = 0 } = req.query;
@@ -759,7 +771,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/metrics
    * Gets integration metrics
    */
-  app.get('/api/v1/integrations/metrics', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/metrics', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       const { integrationName, periodDays = 30 } = req.query;
@@ -784,7 +796,7 @@ export default function registerPhase19Routes(
    * GET /api/v1/integrations/alerts
    * Gets integration alerts
    */
-  app.get('/api/v1/integrations/alerts', authenticate, async (req: Request, res: Response) => {
+  app.get('/api/v1/integrations/alerts', ...financeRead, async (req: Request, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       const { integrationName, resolved } = req.query;
@@ -809,9 +821,18 @@ export default function registerPhase19Routes(
    * POST /api/v1/integrations/alerts/:alertId/resolve
    * Resolves integration alert
    */
-  app.post('/api/v1/integrations/alerts/:alertId/resolve', authenticate, async (req: Request, res: Response) => {
+  app.post('/api/v1/integrations/alerts/:alertId/resolve', ...adminOnly, async (req: Request, res: Response) => {
     try {
       const { alertId } = req.params;
+
+      // Tenant-scope the alert: a principal may only resolve their own school's
+      // alerts (super_admin is platform-wide).
+      if (req.user?.role !== UserRole.SUPER_ADMIN) {
+        const owned = await db('integration_alerts')
+          .where({ id: alertId, tenant_id: req.user?.tenantId })
+          .first('id');
+        if (!owned) throw new AppError('Integration alert not found', 404);
+      }
 
       const alert = await loggingService.resolveIntegrationAlert(alertId);
       res.status(200).json({ success: true, data: alert });

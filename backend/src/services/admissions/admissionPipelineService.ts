@@ -480,6 +480,15 @@ export const admissionPipelineService = {
     catch (e) { warnings.push('Fees could not be billed automatically. Ask the bursar to bill this student.'); logger.warn(`Catch-up billing failed: ${(e as any)?.message || e}`); }
     const notBilled = (cls.billed_terms || []).filter((t: string) => !fees.billed.includes(t));
 
+    // Family: the new fees just billed (in-app + email). Billing has committed
+    // (billCatchUp runs its own transaction); fire-and-forget.
+    if (fees.billed.length && fees.amount > 0) {
+      const billedAmount = fees.amount;
+      import('../finance/core.js')
+        .then(({ notifyFeesBilled }) => notifyFeesBilled(tenantId, [{ studentId: student.id, amount: billedAmount }]))
+        .catch((e) => logger.warn(`Enrolment fees notice failed: ${(e as any)?.message || e}`));
+    }
+
     // Bursar: a new student to bill / who was billed.
     try {
       const { notifyFinanceStaff } = await import('../finance/core.js');

@@ -391,6 +391,18 @@ router.get(
         throw new AppError('Student not found or access denied', 404, 'NOT_FOUND');
       }
 
+      // Staff; the student themself; or a linked parent (same rule as the
+      // gradeRoutes handler mounted ahead of this one on /api/v1/grades).
+      const role = String(req.user?.role || '');
+      if (!STAFF_READ.map(String).includes(role)) {
+        let allowed = false;
+        if (role === 'student') allowed = String(student.user_id) === String(req.user?.id);
+        else if (role === 'parent' || role === 'guardian') {
+          allowed = !!(await db('guardians').where({ user_id: req.user?.id, student_id: student.id }).first('id'));
+        }
+        if (!allowed) throw new AppError('Insufficient permissions', 403, 'AUTHORIZATION_ERROR');
+      }
+
       const grades = await gradeService.getGrades({
         student_id: studentId,
       });

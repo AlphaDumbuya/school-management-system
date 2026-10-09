@@ -7,6 +7,7 @@ import { UserRole } from '../types/auth';
 import { normalizeAcademicYear } from '../utils/academicYear.js';
 import { isStudentOrParent, viewerStudentIds, viewerYearClasses, viewerInClass } from '../utils/studentScope.js';
 import { tenantToday } from '../utils/schoolDate.js';
+import { notifyAssignmentPosted } from '@services/assignmentNotifications';
 
 const router = Router();
 router.use(authenticate);
@@ -146,6 +147,9 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
     });
 
     logger.info(`Assignment created: ${title}`);
+
+    // Posted (not a draft) → students + parents (in-app) and parents (email).
+    if (inserted?.id && inserted.status !== 'draft') notifyAssignmentPosted(tenantId, inserted.id);
   } catch (error) {
     next(error);
   }
@@ -480,6 +484,11 @@ router.put('/:assignmentId', authenticate, authorize(UserRole.PRINCIPAL, UserRol
 
     res.json({ message: 'Assignment updated successfully', data: updated });
     logger.info(`Assignment updated: ${assignmentId}`);
+
+    // Published from draft → the class hears about it now (once: only on this transition).
+    if (assignment.status === 'draft' && updated?.status && updated.status !== 'draft') {
+      notifyAssignmentPosted(tenantId, assignmentId);
+    }
   } catch (error) {
     next(error);
   }

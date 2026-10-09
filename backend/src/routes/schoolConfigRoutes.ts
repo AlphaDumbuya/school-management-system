@@ -380,11 +380,14 @@ router.get('/subscription/active', authenticate, attachUserContext, async (req: 
     // Fetch limits usage counts
     const studentsLimit = await SubscriptionService.checkLimit(tenantId, 'students');
     const staffLimit = await SubscriptionService.checkLimit(tenantId, 'staff');
+    const { EntitlementService } = await import('../services/entitlementService.js');
+    const entitlements = await EntitlementService.forTenant(tenantId);
 
     res.json({
       success: true,
       data: {
         subscription,
+        entitlements,
         usage: {
           students: { current: studentsLimit.current, max: studentsLimit.max },
           staff: { current: staffLimit.current, max: staffLimit.max },

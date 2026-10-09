@@ -724,6 +724,13 @@ router.post(
         userId
       );
 
+      // Tell the family (in-app + email). Fire-and-forget; never fails the invoice.
+      if (Number(invoice?.balance) > 0) {
+        import('@services/finance/core')
+          .then(({ notifyFeesBilled }) => notifyFeesBilled(tenantId, [{ studentId, amount: Number(invoice.balance), dueDate: invoice.due_date }]))
+          .catch((e) => logger.warn(`Invoice notice failed: ${e?.message || e}`));
+      }
+
       res.status(201).json({
         success: true,
         data: invoice,
@@ -1139,6 +1146,16 @@ router.post(
       }
 
       const results = await invoiceService.bulkGenerateInvoices(classId, feeType, userId);
+
+      // One notice per invoiced family (in-app + email), after the invoices exist.
+      const newInvoiceIds: string[] = Array.isArray(results?.invoiceIds) ? results.invoiceIds : [];
+      if (newInvoiceIds.length) {
+        void (async () => {
+          const rows = await db('invoices').whereIn('id', newInvoiceIds).where('tenant_id', tenantId).select('student_id', 'balance', 'due_date');
+          const { notifyFeesBilled } = await import('@services/finance/core');
+          notifyFeesBilled(tenantId, rows.map((r: any) => ({ studentId: r.student_id, amount: Number(r.balance), dueDate: r.due_date })));
+        })().catch((e) => logger.warn(`Bulk invoice notices failed: ${e?.message || e}`));
+      }
 
       res.status(201).json({
         success: true,
@@ -2258,6 +2275,7 @@ router.post('/finance/bulk-bill', authenticate, requireStaff, async (req: Reques
     const termLabel = !t ? null : /^(1|first|first term|term 1)$/.test(t) ? 'First Term' : /^(2|second|second term|term 2)$/.test(t) ? 'Second Term' : /^(3|third|third term|term 3)$/.test(t) ? 'Third Term' : String(term);
     const feeType = String(type).trim().toLowerCase() === 'tuition' ? 'Tuition' : type;
     const { discountService } = await import('../services/finance/discountService.js');
+    const billedStudentIds: string[] = [];
     for (const s of students) {
       const feeId = crypto.randomUUID(); // fees.id is a UUID column
       try {
@@ -2278,9 +2296,17 @@ router.post('/finance/bulk-bill', authenticate, requireStaff, async (req: Reques
           updated_at: now,
         });
         created++;
+        billedStudentIds.push(s.id);
         // Approved discounts / scholarships cover this new charge too.
         if (year) await db.transaction((trx) => discountService.applyApprovedGrantsForStudent(trx, tenantId, s.id, year)).catch(() => 0);
       } catch (e) { /* skip individual failures */ }
+    }
+
+    // One "new fees" notice per billed family (in-app + email), after the writes.
+    if (billedStudentIds.length) {
+      import('@services/finance/core')
+        .then(({ notifyFeesBilled }) => notifyFeesBilled(tenantId, billedStudentIds.map((id) => ({ studentId: id, amount: amt, dueDate }))))
+        .catch((e) => logger.warn(`Bulk-bill notices failed: ${e?.message || e}`));
     }
 
     await auditService.logAudit({
@@ -2330,12 +2356,15 @@ router.post('/finance/bulk-invoice', authenticate, requireStaff, async (req: Req
     const now = new Date();
     let generated = 0;
     let failed = 0;
+    // Invoices to announce to families once their transactions have committed.
+    const issued: Array<{ studentId: string; amount: number; dueDate: Date }> = [];
     for (const s of students) {
       // One transaction per student with the fees locked: a double click, a
       // second tab or a retry can't bundle the same fees into two invoices,
       // and a failed insert can't leave an empty invoice (the old code
       // swallowed insert errors, leaving e.g. a Le 3,619 invoice with no items).
       try {
+        let issuedTotal = 0;
         const made = await db.transaction(async (trx) => {
           let fq = trx('fees')
             .where('fees.student_id', s.id)
@@ -2356,6 +2385,7 @@ router.post('/finance/bulk-invoice', authenticate, requireStaff, async (req: Req
 
           const invoiceId = crypto.randomUUID();
           const invoiceNumber = `INV-${String(academicYear || now.getFullYear()).slice(0, 4)}-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+          issuedTotal = total;
           await trx('invoices').insert({
             id: invoiceId,
             tenant_id: tenantId,
@@ -2378,11 +2408,22 @@ router.post('/finance/bulk-invoice', authenticate, requireStaff, async (req: Req
           })));
           return true;
         });
-        if (made) generated++;
+        if (made) {
+          generated++;
+          issued.push({ studentId: s.id, amount: issuedTotal, dueDate: dueDate ? new Date(dueDate) : now });
+        }
       } catch (e) {
         failed++;
         logger.error(`bulk-invoice: student ${s.id} failed: ${(e as Error).message}`);
       }
+    }
+
+    // One notice per invoiced family (in-app + email) — sent after commit,
+    // fire-and-forget, so the run is never slowed or failed by mail.
+    if (issued.length) {
+      import('@services/finance/core')
+        .then(({ notifyFeesBilled }) => notifyFeesBilled(tenantId, issued))
+        .catch((e) => logger.warn(`Bulk invoice notices failed: ${e?.message || e}`));
     }
 
     await auditService.logAudit({

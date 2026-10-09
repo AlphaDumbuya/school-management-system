@@ -115,6 +115,17 @@ export interface SubscriptionInfo {
 
 export interface SubscriptionDetails {
   subscription: SubscriptionInfo;
+  /** Per-feature access on the current plan (enabled / read_only / locked). */
+  entitlements?: {
+    plan_type: string;
+    plan_name: string;
+    status: string;
+    is_trial: boolean;
+    is_comp: boolean;
+    end_date: string | null;
+    lapsed: boolean;
+    features: Record<string, 'enabled' | 'read_only' | 'locked'>;
+  };
   usage: {
     students: { current: number; max: number };
     staff: { current: number; max: number };

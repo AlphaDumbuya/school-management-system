@@ -537,6 +537,17 @@ router.get('/:studentId/qr', async (req: Request, res: Response, next: NextFunct
       return res.status(400).json({ success: false, error: 'class_id is required' });
     }
 
+    // Same access rule as viewing the card. Without it any signed-in user could
+    // mint a verification code for any student id (and then redeem it to read
+    // that student's report card via the verify endpoints).
+    try {
+      await slReportCardService.assertCanViewReport(
+        tenantId, req.user!.id, req.user!.role, studentId, classId, academicYear, null,
+      );
+    } catch (e: any) {
+      return res.status(403).json({ success: false, error: e?.message || 'Not authorized' });
+    }
+
     // Use the latest stored verification code, or generate one if none exists yet
     let verifyCode = await slReportCardService.getLatestVerificationCode(tenantId, studentId, classId, academicYear);
     if (!verifyCode) {
@@ -576,9 +587,9 @@ router.get('/verify/:hash', async (req: Request, res: Response, next: NextFuncti
       return res.status(400).json({ success: false, error: 'Missing verification parameters (s, c, y)' });
     }
 
-    // Look up the student's tenant
+    // Look up the student — only within the caller's own school.
     const student = await db('students')
-      .where({ id: studentId })
+      .where({ id: studentId, tenant_id: tenant(req) })
       .select('tenant_id')
       .first();
 
@@ -586,11 +597,12 @@ router.get('/verify/:hash', async (req: Request, res: Response, next: NextFuncti
       return res.status(404).json({ success: false, error: 'Student not found' });
     }
 
-    // 1. Try DB-stored verification code
+    // 1. Try DB-stored verification code (issued by the student's own school)
     const dbMatch = await db('sl_report_card_verification_codes')
       .where({ verification_code: code })
       .where({ student_id: studentId })
       .where({ academic_year: academicYear })
+      .where({ tenant_id: student.tenant_id })
       .first();
 
     let resolvedClassId: string | null = dbMatch?.class_id ?? null;
@@ -605,6 +617,16 @@ router.get('/verify/:hash', async (req: Request, res: Response, next: NextFuncti
 
     if (!resolvedClassId) {
       return res.status(403).json({ success: false, error: 'Verification failed: code mismatch' });
+    }
+
+    // A signed-in caller gets no more than GET /:studentId would give them
+    // (own / ward / staff scope + publish gate).
+    try {
+      await slReportCardService.assertCanViewReport(
+        student.tenant_id, req.user!.id, req.user!.role, studentId, resolvedClassId, academicYear, null,
+      );
+    } catch (e: any) {
+      return res.status(403).json({ success: false, error: e?.message || 'Not authorized' });
     }
 
     // Fetch the full report card data

@@ -10,6 +10,7 @@ import type { Knex } from 'knex';
 import { db } from '@utils/database';
 import { AppError } from '@middleware/errorHandler';
 import { AuditService } from '@services/auditService';
+import { logger } from '@utils/logger';
 
 export const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 export const money = (n: number) => `Le ${round2(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -189,6 +190,39 @@ export async function notifyFamily(
     // Also by email when asked (families who don't open the app still hear).
     if (opts.emailTenantId && contact.email) await emailFamily(opts.emailTenantId, contact.email, contact.name, n.subject, message);
   } catch { /* never fail the money action */ }
+}
+
+export interface BilledNotice { studentId: string; amount: number; dueDate?: Date | string | null }
+
+/**
+ * "New school fees invoice" (in-app + email) to each billed family — ONE
+ * notice per student per billing action, however many fee lines were created
+ * (lines for the same student are summed; the earliest due date is shown).
+ * Fire-and-forget and sequential: call it AFTER the billing transaction has
+ * committed; it never fails or slows the billing action.
+ */
+export function notifyFeesBilled(tenantId: string, notices: BilledNotice[]): void {
+  const byStudent = new Map<string, { amount: number; due: Date | null }>();
+  for (const n of notices || []) {
+    if (!n?.studentId || !(Number(n.amount) > 0)) continue;
+    const due = n.dueDate ? new Date(n.dueDate) : null;
+    const validDue = due && !Number.isNaN(due.getTime()) ? due : null;
+    const cur = byStudent.get(n.studentId);
+    if (!cur) { byStudent.set(n.studentId, { amount: round2(Number(n.amount)), due: validDue }); continue; }
+    cur.amount = round2(cur.amount + Number(n.amount));
+    if (validDue && (!cur.due || validDue < cur.due)) cur.due = validDue;
+  }
+  if (!tenantId || !byStudent.size) return;
+  void (async () => {
+    for (const [studentId, n] of byStudent) {
+      const dueText = n.due ? `, due ${n.due.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : '';
+      await notifyFamily(studentId, {
+        subject: 'New school fees invoice',
+        message: `School fees of ${leFmt(n.amount)} have been billed for {student}${dueText}. You can view the details and pay from Fees & Payments.`,
+        sourceType: 'fee', sourceId: studentId,
+      }, { emailTenantId: tenantId });
+    }
+  })().catch((err) => logger.warn(`Fees-billed notices failed for tenant ${tenantId}: ${err?.message || err}`));
 }
 
 const esc = (t: string) => String(t).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' } as any)[c]);

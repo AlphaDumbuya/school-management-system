@@ -1389,11 +1389,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'The plans',
         blocks: [
           list([
-            ['Freetong (free): up to 200 students and 15 staff — directory, classes, attendance, grading, report cards, fees and online payments.'],
-            ['Combra: up to 500 students and 40 staff — adds ID cards, events and discipline.'],
-            ['Bintumani: unlimited students and staff.'],
+            ['Every plan includes the core: classes, timetables, the student directory, attendance, assignments, results, report cards, fees and online payments, announcements and the parent and student portals.'],
+            ['Higher plans add modules such as ID cards, events, discipline, expenses and budgets, payroll and full accounting, and raise the student and staff limits.'],
+            ['Prices, limits and the exact features of each plan are shown on the plan cards in ', link('Plan & Billing', '/settings?tab=billing'), '.'],
           ]),
-          p(['See your current plan, status and usage in ', link('Plan & Billing', '/settings?tab=billing'), '.']),
+        ],
+      },
+      {
+        id: 'read-only',
+        heading: 'When a feature becomes read-only',
+        blocks: [
+          p(['If your school used a feature during its free trial (or on a higher plan) and your current plan doesn’t include it, nothing is deleted. The page stays in the menu with a lock icon: you can open it and view your records, but you can’t add or change anything until you upgrade.']),
+          p(['Features your school has never had are hidden from the menu.']),
         ],
       },
       {

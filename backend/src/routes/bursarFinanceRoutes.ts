@@ -6,6 +6,7 @@
  * the student themself. Everything else is finance staff (bursar/principal).
  */
 import { Router, Request, Response, NextFunction } from 'express';
+import { timingSafeEqual } from 'crypto';
 import { authenticate, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { db } from '@utils/database';
@@ -194,11 +195,19 @@ export const financeCronRouter = Router();
 financeCronRouter.all('/finance-daily', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const secret = process.env.CRON_SECRET;
-    const auth = String(req.headers.authorization || '');
-    if (!secret || auth !== `Bearer ${secret}`) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    const auth = Buffer.from(String(req.headers.authorization || ''), 'utf8');
+    const expected = Buffer.from(`Bearer ${secret || ''}`, 'utf8');
+    // Constant-time compare (length guard first: timingSafeEqual throws on mismatch).
+    if (!secret || auth.length !== expected.length || !timingSafeEqual(auth, expected)) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
     const results = await lateFeeService.runDaily();
     // Then post the day's money events to the books (schools using accounting).
     const books = await glService.syncAll().catch((e) => [{ error: String(e?.message || e) }]);
-    res.json({ success: true, data: results, books });
+    // Subscription reminders + expiry sweep (node-cron doesn't run on serverless).
+    const subscriptions = await import('../jobs/subscriptionJobs.js')
+      .then((m) => m.runSubscriptionDaily())
+      .catch((e) => ({ error: String(e?.message || e) }));
+    res.json({ success: true, data: results, books, subscriptions });
   } catch (e) { next(e); }
 });

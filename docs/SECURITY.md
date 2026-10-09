@@ -246,3 +246,69 @@ Commit: `7d09fd7`.
    add Dependabot/Renovate.
 9. **Compliance:** privacy policy covering minors' data; Data Processing
    Agreement per school; breach-notification runbook.
+
+---
+
+## Production launch review (October 2026)
+
+**Portals covered:** admissions officer, bursar / accountant duty (incl. teacher
+with Bursar duty), parent / guardian, student, plus principal and super admin
+where routes overlap.
+
+### Fixed
+
+| Area | File | Change |
+|---|---|---|
+| Open email relay / file + DB tooling | `routes/phase25ExternalServicesRoutes.ts` | `router.use('/external-services', authenticate, attachUserContext, authorize(SUPER_ADMIN))` (path-scoped; router is mounted at bare `/api/v1`). |
+| Provider config / sends / refunds open to any role | `routes/phase19IntegrationRoutes.ts` | Writes + config reads (secrets) → principal/super_admin; health/history/logs → + accountant. Alert resolve tenant-scoped. Legacy `POST /integrations/payment/webhook` disabled (410): trusted body `tenantId`, unkeyed re-serialised HMAC, shared cross-tenant config cache. |
+| Cross-tenant user read/modify | `routes/userRoutes.ts` | Router-wide `authenticate, attachUserContext`; every lookup/update/list scoped to `tenant_id` (super_admin bypass); principals can't create/modify/deactivate super admins; new users get the creator's `tenant_id`. |
+| Audit purge/archive by any role | `routes/phase18AuditComplianceRoutes.ts` | All compliance/sensitive-action/retention routes → principal/super_admin; by-id routes (export, approve/reject/complete, archive restore/verify) tenant-checked. |
+| Reports/analytics | `routes/phase7ReportingRoutes.ts` | `GET/DELETE /reports/:id` scoped via creator's tenant; class/student inputs tenant-checked; staff-only (no student/parent). Tenant-less aggregates (dashboard, enrollment, health, history, schedule-utilization) → super_admin only. |
+| Unsigned SMS/WhatsApp webhooks | `routes/smsWhatsAppWebhooks.ts` | No `webhook_secret` → 401 in production; shared-secret compare uses `timingSafeEqual`. |
+| 5xx message leakage | `middleware/errorHandler.ts` | 5xx in production → generic message (code kept, real message logged). |
+| Cron secret compare | `routes/bursarFinanceRoutes.ts` | `timingSafeEqual` with length guard. |
+| Event registrations / QR / mass-assignment | `routes/eventRoutes.ts` | Approve/reject require `regId` ∈ `eventId`; QR check-in requires QR event = route event; `tenant_id`/ids stripped from event + category update bodies. |
+| Cross-tenant card templates | `routes/idCardRoutes.ts` | Body `templateId` must belong to the tenant (generate, preview, bulk). |
+| Promotion target class | `services/promotionService.ts`, `routes/promotionRoutes.ts` | Default target always tenant-validated; router loads its own user context. |
+| Report-card code minting / verify | `routes/slReportCardRoutes.ts`, `routes/publicVerifyRoutes.ts` | `/:studentId/qr` and deprecated `/verify/:hash` apply `assertCanViewReport`; codes must match the student's tenant; unkeyed legacy hashes only verify released results. |
+| Grade read by id | `routes/phase5GradeRoutes.ts` | `/student/:id` limited to staff, the student, or a linked parent (route is also shadowed by `gradeRoutes`). |
+| ID-card scan analytics | `routes/idCardReportingRoutes.ts` | Fake role `admin_staff` → principal/super_admin/admissions_officer; target user must be in caller's tenant. |
+
+### Verified OK
+
+- Bursar Phase A/B/C routes: every write behind `staff`/`principal`; family reads
+  use `assertCanViewStudent`; by-id service calls receive the tenant.
+- `announcementRoutes`, `admissionsRoutes` (mounted pipeline router): role
+  guards and tenant scoping correct.
+- `phase6ScheduleRoutes`: writes are fail-closed (`requirePermission`); reads
+  tenant-checked (open to all roles in the tenant, incl. unpublished — low).
+- `slReportCardService` class lookups: guarded upstream by
+  `assertClassInTenant` (`classes` has no `tenant_id` column — don't add one to
+  those queries).
+- Public admissions Turnstile: fails open only when Cloudflare is unreachable,
+  and already logs a warning (unchanged by design).
+
+### Remaining recommendations / accepted risks
+
+- **CSP** is still Report-Only — enforce after a report-only soak.
+- **Tokens in localStorage** (several components still read the legacy
+  `token` key: ExportDialog, sms-whatsapp AnalyticsDashboard/PhoneNumberManager/
+  TemplateManager/SendMessage/ProviderSetup).
+- **`.env.docker` is tracked** with dev placeholders — keep it placeholder-only.
+- **Rotate the Upstash token**; set `REDIS_URL` so rate limiting is distributed.
+- Prod env: `STORAGE_PROVIDER=s3`, `TURNSTILE_SECRET_KEY` + `TURNSTILE_SITE_KEY`,
+  `CRON_SECRET`.
+- `phase9NotificationRoutes` applies an unscoped `router.use(authenticate,
+  attachUserContext)` on `/api/v1`; every `/api/v1/*` router mounted after it
+  (incl. `/api/v1/sms-whatsapp/webhooks`) therefore requires a user token —
+  provider webhooks will 401 until that guard is path-scoped or the webhook is
+  mounted earlier (index.ts).
+- Phase 19 services cache provider config on a shared instance (`this.config`)
+  across tenants; routes are now admin-only and unused by the frontend, but
+  fix before enabling them.
+- `requirePermission()` always denies (permissions are never populated) —
+  those routes are dead but safe.
+- Lower-priority follow-ups: self check-in to events without a registration;
+  `assertCanViewReport` doesn't check the student's enrolment in `classId`;
+  report-card save functions don't check enrolment; event approve/reject
+  services still look up by `registration_id` alone (guarded in the route).

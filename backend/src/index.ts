@@ -25,6 +25,8 @@ import resultsRoutes from '@routes/resultsRoutes';
 import uploadRoutes from '@routes/uploadRoutes';
 import admissionsNewRoutes from '@routes/admissionsRoutes';
 import publicAdmissionRoutes from '@routes/publicAdmissionRoutes';
+import planRoutes from '@routes/planRoutes';
+import { planFeatureGate } from '@middleware/subscriptionGuard';
 import enrollmentRoutes from '@routes/enrollmentRoutes';
 import enrollmentWorkflowRoutes from '@routes/enrollmentWorkflowRoutes';
 import gradeRoutes from '@routes/gradeRoutes';
@@ -105,24 +107,28 @@ if (process.env.FRONTEND_URL) {
   });
 }
 
-// Allow all *.vercel.app subdomains for preview deployments
-allowedOrigins.push(/^https:\/\/.*\.vercel\.app$/);
+// Preview deployments of THIS Vercel project only (not every *.vercel.app
+// site): <project>-<hash>-<team>.vercel.app / <project>-git-<branch>-<team>.vercel.app.
+const previewProject = (process.env.VERCEL_PREVIEW_PROJECT || 'school-management-system').replace(/[^a-z0-9-]/gi, '');
+allowedOrigins.push(new RegExp(`^https://${previewProject}(-[a-z0-9-]+)?\\.vercel\\.app$`, 'i'));
 
+const corsBase = {
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 3600,
+};
 app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (server-to-server, mobile apps)
-      if (!origin) return callback(null, true);
-      const allowed = allowedOrigins.some((o) =>
-        typeof o === 'string' ? o === origin : o.test(origin)
-      );
-      if (allowed) return callback(null, true);
-      callback(new Error(`CORS: origin '${origin}' not allowed`));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    maxAge: 3600,
+  cors((req, callback) => {
+    const origin = req.headers.origin;
+    // No origin (server-to-server, native HTTP clients) or same-origin (the SPA
+    // and API share a host on Vercel / the app's server.url) are always fine.
+    const sameHost = !!origin && !!req.headers.host && origin.replace(/^https?:\/\//, '') === req.headers.host;
+    const allowed = !origin || sameHost || allowedOrigins.some((o) =>
+      typeof o === 'string' ? o === origin : o.test(origin)
+    );
+    if (allowed) return callback(null, { ...corsBase, origin: true });
+    callback(new Error(`CORS: origin '${origin}' not allowed`));
   })
 );
 app.use(compression());
@@ -148,6 +154,11 @@ app.use('/api', (req, res, next) => {
 // it works regardless of where per-router auth middleware runs. This is opt-in
 // per handler and safe to mount globally (see middleware/tenantContext.ts).
 app.use(tenantContext);
+
+// Plan features: one gate for every module API (see FEATURE_PREFIXES). Locked
+// features are refused; read-only ones (held on an earlier plan or trial)
+// allow reads only. No-op for core modules and unauthenticated requests.
+app.use('/api/v1', planFeatureGate);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
@@ -215,6 +226,7 @@ app.use('/api/v1/auth', authRoutes);
 // MUST be mounted BEFORE any blanket `app.use('/api/v1', router)` whose router
 // applies `authenticate` at the top (e.g. phase10DashboardRoutes) — otherwise
 // that middleware runs for every /api/v1/* path and 401s this public route.
+app.use('/api/v1/public/plans', planRoutes);
 app.use('/api/v1/public', publicVerifyRoutes);
 app.use('/api/v1/public/admissions', publicAdmissionRoutes);
 
@@ -317,6 +329,11 @@ app.use('/api/v1/cron', financeCronRouter);
 // School operating expenses + fees-vs-expenses summary (staff-only)
 app.use('/api/v1/finance', schoolExpenseRoutes);
 
+// SMS & WhatsApp provider webhooks (PUBLIC, signature-verified). MUST stay
+// above the Phase 9 router: it applies router-wide `authenticate` on /api/v1,
+// which would 401 every provider callback mounted after it.
+app.use('/api/v1/sms-whatsapp/webhooks', smsWhatsAppWebhooks);
+
 // Notification System Routes (Phase 9)
 app.use('/api/v1', phase9NotificationRoutes);
 
@@ -385,8 +402,7 @@ app.use('/api/v1/promotions', promotionRoutes);
 app.use('/api/v1/discipline', disciplineRoutes);
 
 // SMS & WhatsApp Routes (Phase 2.4: SMS & WhatsApp Integration)
-// Webhooks (public) - mount before authenticated routes
-app.use('/api/v1/sms-whatsapp/webhooks', smsWhatsAppWebhooks);
+// Webhooks (public) are mounted above, before the Phase 9 router.
 // Authenticated SMS & WhatsApp routes
 app.use('/api/v1/sms-whatsapp', smsWhatsAppRoutes);
 
