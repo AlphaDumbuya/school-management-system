@@ -81,7 +81,7 @@ export const LandingPage: React.FC = () => {
                 Start Free Trial
                 <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
               </button>
-              {/* App download (shows once VITE_APK_DOWNLOAD_URL / VITE_PLAY_STORE_URL are set) */}
+              {/* Android app download (always shown; Play badge once VITE_PLAY_STORE_URL is set) */}
               <AppDownloadButtons variant="hero" />
             </div>
             <ul className="mt-8 space-y-2.5">
