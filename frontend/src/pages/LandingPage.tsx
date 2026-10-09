@@ -122,7 +122,7 @@ export const LandingPage: React.FC = () => {
         <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-xl border border-[#e5e9f2] grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-[#eef1f7]">
           {[
             { value: '10+', label: 'Modules included' },
-            { value: '100%', label: 'Free core plan' },
+            { value: 'Free', label: 'Trial for new schools' },
             { value: '2 min', label: 'To get started' },
             { value: '99.9%', label: 'Uptime target' },
           ].map((s) => (
@@ -212,15 +212,15 @@ export const LandingPage: React.FC = () => {
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
-              { label: 'Student Directory', icon: Users, badge: 'v1 Free' },
-              { label: 'Daily Attendance', icon: CalendarCheck, badge: 'v1 Free' },
-              { label: 'Classes & Timetables', icon: GraduationCap, badge: 'v1 Free' },
-              { label: 'ID Cards & Batch PDF', icon: CreditCard, badge: 'v1 Free' },
-              { label: 'Staff & Teachers', icon: Users, badge: 'v1 Free' },
-              { label: 'Admissions Pipeline', icon: ClipboardCheck, badge: 'v1 Free' },
-              { label: 'Gradebook & Report Cards', icon: BarChart3, badge: 'v1 Free' },
-              { label: 'Fees & Payments', icon: Wallet, badge: 'v1 Free' },
-              { label: 'SMS & WhatsApp Alerts', icon: Megaphone, badge: 'Coming v2' },
+              { label: 'Student Directory', icon: Users, badge: 'Available' },
+              { label: 'Daily Attendance', icon: CalendarCheck, badge: 'Available' },
+              { label: 'Classes & Timetables', icon: GraduationCap, badge: 'Available' },
+              { label: 'ID Cards & Batch PDF', icon: CreditCard, badge: 'Available' },
+              { label: 'Staff & Teachers', icon: Users, badge: 'Available' },
+              { label: 'Admissions Pipeline', icon: ClipboardCheck, badge: 'Available' },
+              { label: 'Gradebook & Report Cards', icon: BarChart3, badge: 'Available' },
+              { label: 'Fees & Payments', icon: Wallet, badge: 'Available' },
+              { label: 'Announcements & In-app Alerts', icon: Megaphone, badge: 'Available' },
             ].map((f) => (
               <div key={f.label} className="bg-white border border-[#e5e9f2] rounded-2xl p-4 flex items-center gap-3 shadow-sm hover:shadow-md hover:border-blue-200 transition-all">
                 <span className="w-11 h-11 rounded-xl bg-blue-50 text-[#1d4ed8] flex items-center justify-center shrink-0">
@@ -230,7 +230,7 @@ export const LandingPage: React.FC = () => {
                   <p className="text-sm text-slate-800 font-semibold truncate">{f.label}</p>
                   <span
                     className={`inline-block mt-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      f.badge === 'v1 Free' ? 'bg-blue-100 text-[#1d4ed8]' : 'bg-amber-100 text-amber-700'
+                      f.badge === 'Available' ? 'bg-blue-100 text-[#1d4ed8]' : 'bg-amber-100 text-amber-700'
                     }`}
                   >
                     {f.badge}
@@ -259,9 +259,9 @@ export const LandingPage: React.FC = () => {
               { icon: ShieldCheck, title: 'Be Protected', desc: 'Strong encryption secures all student and staff data, with full audit trails.', card: 'bg-blue-50 border-blue-100', chip: 'bg-blue-100', ic: 'text-[#1d4ed8]' },
               { icon: Users, title: 'Know Your Students', desc: 'Complete 360° profiles — academics, attendance, behaviour and health.', card: 'bg-amber-50 border-amber-100', chip: 'bg-amber-100', ic: 'text-amber-600' },
               { icon: TrendingUp, title: 'Data-Driven Decisions', desc: 'Analytics surface trends in performance, attendance and finances early.', card: 'bg-emerald-50 border-emerald-100', chip: 'bg-emerald-100', ic: 'text-emerald-600' },
-              { icon: Zap, title: 'Instant Communication', desc: 'SMS, email and in-app notifications keep everyone connected in real time.', card: 'bg-purple-50 border-purple-100', chip: 'bg-purple-100', ic: 'text-purple-600' },
+              { icon: Zap, title: 'Instant Communication', desc: 'Announcements, in-app notifications and email keep staff, parents and students connected.', card: 'bg-purple-50 border-purple-100', chip: 'bg-purple-100', ic: 'text-purple-600' },
               { icon: Globe, title: 'Access Anywhere', desc: 'Cloud-based and mobile-optimised — manage your school from any device.', card: 'bg-sky-50 border-sky-100', chip: 'bg-sky-100', ic: 'text-sky-600' },
-              { icon: RefreshCw, title: 'Seamless Integration', desc: 'Connect payment gateways and SMS providers without disrupting workflows.', card: 'bg-rose-50 border-rose-100', chip: 'bg-rose-100', ic: 'text-rose-600' },
+              { icon: RefreshCw, title: 'Seamless Integration', desc: 'Online fee payments by mobile money and card through Monime, built in. No extra setup.', card: 'bg-rose-50 border-rose-100', chip: 'bg-rose-100', ic: 'text-rose-600' },
             ].map((b) => (
               <div key={b.title} className={`${b.card} border rounded-2xl p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-300`}>
                 <div className={`w-12 h-12 rounded-2xl ${b.chip} ${b.ic} flex items-center justify-center mb-4`}>
