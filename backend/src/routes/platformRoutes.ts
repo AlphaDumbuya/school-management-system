@@ -639,9 +639,12 @@ router.get('/settings/trial', authenticate, authorize(UserRole.SUPER_ADMIN), asy
  */
 router.put('/settings/trial', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
   try {
-    const { enabled, plan_type, duration_days } = req.body as {
-      enabled?: boolean; plan_type?: string; duration_days?: number;
+    const { enabled, plan_type, duration_days, after_trial } = req.body as {
+      enabled?: boolean; plan_type?: string; duration_days?: number; after_trial?: string;
     };
+    if (after_trial !== undefined && !['downgrade', 'require_payment'].includes(after_trial)) {
+      throw new AppError("after_trial must be 'downgrade' or 'require_payment'", 400, 'VALIDATION_ERROR');
+    }
     if (plan_type !== undefined && !['freetong', 'combra', 'bintumani'].includes(plan_type)) {
       throw new AppError('plan_type must be freetong, combra, or bintumani', 400, 'VALIDATION_ERROR');
     }
@@ -653,6 +656,7 @@ router.put('/settings/trial', authenticate, authorize(UserRole.SUPER_ADMIN), asy
         enabled,
         planType: plan_type as any,
         durationDays: duration_days !== undefined ? Number(duration_days) : undefined,
+        afterTrial: after_trial as any,
       },
       req.auth!.userId
     );

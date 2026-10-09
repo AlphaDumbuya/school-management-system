@@ -231,19 +231,20 @@ const esc = (t: string) => String(t).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '
 export async function emailFamily(tenantId: string, to: string, toName: string, subject: string, message: string): Promise<boolean> {
   try {
     const { default: emailService } = await import('@services/emailService');
-    const { resolveTenantBranding } = await import('@services/email/emailBranding');
-    const { renderEmail } = await import('@services/email/emailLayout');
+    const { resolveTenantBranding, appLink } = await import('@services/email/emailBranding');
+    const { renderEmail, emailButton } = await import('@services/email/emailLayout');
     const branding: any = await resolveTenantBranding(tenantId);
-    const appUrl = String(process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '');
-    const link = appUrl ? `<p><a href="${appUrl}/finance/my-fees">Open Fees &amp; Payments</a></p>` : '<p>Open <strong>Fees &amp; Payments</strong> in the school portal for the details.</p>';
+    const contact = branding?.contactEmail
+      ? `<p style="color:#6b7280;font-size:13px;">Questions about this? Reply to this email or contact the school office at <a href="mailto:${esc(branding.contactEmail)}">${esc(branding.contactEmail)}</a>${branding.contactPhone ? ` or ${esc(branding.contactPhone)}` : ''}.</p>`
+      : '';
     const res: any = await (emailService as any).sendEmail({
       ...(emailService as any).senderFromBranding?.(branding),
       to, subject: `${subject} — ${branding?.name || 'School'}`,
       body: renderEmail({ branding, eyebrow: 'School fees', heading: subject, preheader: message.slice(0, 120),
-        bodyHtml: `<p>Dear ${esc(toName || 'Parent')},</p><p>${esc(message)}</p>${link}` } as any),
+        bodyHtml: `<p>Dear ${esc(toName || 'Parent')},</p><p>${esc(message)}</p>${emailButton('Open Fees & Payments', appLink('/finance/my-fees'))}${contact}` } as any),
       isHtml: true,
     });
-    return res?.success !== false;
+    return res?.status === 'sent' || res?.status === 'disabled';
   } catch { return false; }
 }
 

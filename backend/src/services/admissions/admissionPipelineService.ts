@@ -172,17 +172,20 @@ export async function notifyAdmissionsStaff(tenantId: string, n: { subject: stri
 const esc = (t: string) => String(t).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' } as any)[c]);
 
 /** A short branded admissions email (interview invitation, enrolment). Best-effort. */
-async function emailApplicant(tenantId: string, to: string, toName: string, subject: string, lines: string[]): Promise<boolean> {
+async function emailApplicant(tenantId: string, to: string, toName: string, subject: string, lines: string[], cta?: { label: string; path: string }): Promise<boolean> {
   try {
     const { default: emailService } = await import('@services/emailService');
-    const { resolveTenantBranding } = await import('@services/email/emailBranding');
-    const { renderEmail } = await import('@services/email/emailLayout');
+    const { resolveTenantBranding, appLink } = await import('@services/email/emailBranding');
+    const { renderEmail, emailButton } = await import('@services/email/emailLayout');
     const branding: any = await resolveTenantBranding(tenantId);
+    const contact = branding?.contactEmail
+      ? `<p style="color:#6b7280;font-size:13px;">Questions? Reply to this email or contact the admissions office at <a href="mailto:${esc(branding.contactEmail)}">${esc(branding.contactEmail)}</a>${branding.contactPhone ? ` or ${esc(branding.contactPhone)}` : ''}.</p>`
+      : '';
     const res: any = await (emailService as any).sendEmail({
       ...(emailService as any).senderFromBranding?.(branding),
       to, subject: `${subject} — ${branding?.name || 'School'}`,
       body: renderEmail({ branding, eyebrow: 'Admissions', heading: subject, preheader: lines[0]?.slice(0, 120),
-        bodyHtml: `<p>Dear ${esc(toName)},</p>${lines.map((l) => `<p>${esc(l)}</p>`).join('')}` } as any),
+        bodyHtml: `<p>Dear ${esc(toName)},</p>${lines.map((l) => `<p>${esc(l)}</p>`).join('')}${cta ? emailButton(cta.label, appLink(cta.path)) : ''}${contact}` } as any),
       isHtml: true,
     });
     return res?.success !== false;
@@ -515,7 +518,7 @@ export const admissionPipelineService = {
       const ok = await emailApplicant(tenantId, to, guardianName(app), 'Enrolment confirmed', [
         `${name(app)} is now enrolled in ${cls.name} for ${yearString}. Student number: ${student.student_id}.`,
         accounts?.parentEmail ? `Your parent portal sign-in is ${accounts.parentEmail}. The school office will give you the password.` : 'The school office will give you the parent portal sign-in details.',
-      ]);
+      ], { label: 'Open the parent portal', path: '/login' });
       if (ok) await event(db, tenantId, app.id, { kind: 'email', to: 'enrolled', note: `Email sent to ${to}`, by: user.id });
     }
     await notifyAdmissionsStaff(tenantId, {

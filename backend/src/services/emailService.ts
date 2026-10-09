@@ -928,7 +928,7 @@ class EmailService {
     return this.sendEmail({
       ...this.platformSender('info'),
       to: toEmail,
-      subject: `Welcome to WiSkul — ${data.schoolName} is ready 🎉`,
+      subject: `Welcome to WiSkul — ${data.schoolName} is ready`,
       body: renderEmail({ branding, eyebrow: 'Onboarding', heading: `Welcome, ${data.schoolName}!`, bodyHtml, preheader: `Your WiSkul workspace is ready — here's how to get started.` }),
       isHtml: true,
     });
@@ -948,7 +948,7 @@ class EmailService {
     return this.sendEmail({
       ...this.platformSender('sales'),
       to: toEmail,
-      subject: 'Welcome to the WiSkul newsletter 🎉',
+      subject: 'Welcome to the WiSkul newsletter',
       body: renderEmail({
         branding,
         eyebrow: 'Newsletter',
@@ -1044,6 +1044,8 @@ class EmailService {
       amount?: number;
       billingCycle?: 'monthly' | 'yearly';
       readOnlyFeatures?: string[];
+      /** Trial ends with payment required (school becomes read-only until paid). */
+      paymentRequired?: boolean;
     }
   ): Promise<EmailResponse> {
     const branding = platformBranding();
@@ -1068,9 +1070,22 @@ class EmailService {
       bodyHtml = `
         <p>Hello,</p>
         <p>The free <strong>${plan}</strong> trial for <strong>${school}</strong> ends ${escapeHtml(dayText)}${end ? ` (${escapeHtml(end)})` : ''}.</p>
-        ${calloutBlock('Nothing is deleted when the trial ends. Your school moves to the base plan, and records from features outside it stay visible in read-only mode until you upgrade.', 'info')}
+        ${data.paymentRequired
+          ? calloutBlock('To keep adding and changing records after that date, choose a plan and pay before the trial ends. If you don’t, everyone can still sign in and view everything, but changes are paused until a plan is paid. Nothing is deleted.', 'warn')
+          : calloutBlock('Nothing is deleted when the trial ends. Your school moves to the base plan, and records from features outside it stay visible in read-only mode until you upgrade.', 'info')}
         ${emailButton('Choose a plan', billingUrl)}
         <p style="color:#64748b;font-size:13px;">Questions about plans? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
+    } else if (data.kind === 'trial_ended' && data.paymentRequired) {
+      heading = 'Your free trial has ended';
+      subject = `Action required: choose a plan for ${data.schoolName}`;
+      preheader = 'Your records are safe. Choose a plan to keep making changes.';
+      bodyHtml = `
+        <p>Hello,</p>
+        <p>The free <strong>${plan}</strong> trial for <strong>${school}</strong> has ended.</p>
+        ${calloutBlock('Everyone can still sign in and view all records, but adding or changing anything is paused until a plan is paid. Nothing has been deleted.', 'warn')}
+        <p>The principal can choose a plan and pay by mobile money in a few minutes. Access to every change is restored as soon as the payment is confirmed.</p>
+        ${emailButton('Choose a plan', billingUrl)}
+        <p style="color:#64748b;font-size:13px;">Questions? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
     } else if (data.kind === 'trial_ended') {
       const newPlan = escapeHtml(data.newPlanName || 'the base plan');
       const ro = (data.readOnlyFeatures || []).slice(0, 12);
@@ -1345,7 +1360,7 @@ class EmailService {
     return this.sendEmail({
       ...this.senderFromBranding(branding),
       to: toEmail,
-      subject: `${isAccepted ? '🎉 ' : ''}Admission ${this.titleCase(decision)} — ${branding.name}`,
+      subject: `Admission ${this.titleCase(decision)} — ${branding.name}`,
       body: renderEmail({ branding, eyebrow, heading, bodyHtml, preheader: `Admissions decision for ${data.studentName}.` }),
       isHtml: true,
     });
@@ -2141,7 +2156,7 @@ export async function sendContactEmail(data: {
     ${detailsCard(rows)}
     <p style="font-weight:700;color:#1a1a2e;margin:18px 0 6px;">Message</p>
     <div style="background:#f8fafc;border-left:4px solid #7c3aed;border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.6;color:#334155;white-space:pre-wrap;">${escapeHtml(data.message)}</div>
-    ${emailButton('Reply to ' + escapeHtml(data.name), `mailto:${data.email}`)}
+    ${emailButton('Reply to ' + data.name, `mailto:${encodeURIComponent(String(data.email || '')).replace(/%40/g, '@')}`)}
     ${calloutBlock('Please respond within 24 hours.', 'warn')}`;
 
   const emailService = new EmailService();
@@ -2171,12 +2186,12 @@ export async function sendAutoResponse(email: string, name: string): Promise<Ema
     <p>Hi ${escapeHtml(name)},</p>
     <p>Thanks for reaching out to <strong>WiSkul</strong>. We've received your message and a member of our team will get back to you within <strong>24 hours</strong>.</p>
     ${calloutBlock('While you wait, here are a few links you might find useful.', 'info')}
-    <p style="font-size:14px;line-height:1.9;">
-      🔎 <a href="${base}/features" target="_blank" style="color:#00d4aa;text-decoration:none;font-weight:600;">Explore Features</a><br/>
-      💡 <a href="${base}/why" target="_blank" style="color:#00d4aa;text-decoration:none;font-weight:600;">Why WiSkul</a><br/>
-      🎯 <a href="${base}/benefits" target="_blank" style="color:#00d4aa;text-decoration:none;font-weight:600;">Benefits for your school</a><br/>
-      💳 <a href="${base}/pricing" target="_blank" style="color:#00d4aa;text-decoration:none;font-weight:600;">Pricing</a>
-    </p>
+    <ul style="margin:0 0 14px;padding-left:20px;font-size:14px;line-height:26px;">
+      <li><a href="${base}/features" target="_blank" style="color:#1e40af;font-weight:600;">Features</a></li>
+      <li><a href="${base}/why" target="_blank" style="color:#1e40af;font-weight:600;">Why WiSkul</a></li>
+      <li><a href="${base}/benefits" target="_blank" style="color:#1e40af;font-weight:600;">Benefits for your school</a></li>
+      <li><a href="${base}/pricing" target="_blank" style="color:#1e40af;font-weight:600;">Pricing</a></li>
+    </ul>
     ${emailButton('Explore WiSkul', `${base}/features`)}
     <p style="color:#64748b;font-size:13px;">If your enquiry is urgent, just reply to this email and we'll prioritise it.</p>`;
 
@@ -2235,7 +2250,7 @@ export async function sendSchoolWelcomeEmail(data: {
   return emailService.sendEmail({
     ...emailService.platformSenderFor('info'),
     to: data.toEmail,
-    subject: `Welcome to WiSkul — ${data.schoolName} is ready 🎉`,
+    subject: `Welcome to WiSkul — ${data.schoolName} is ready`,
     body: renderEmail({
       branding,
       eyebrow: 'Welcome Aboard',

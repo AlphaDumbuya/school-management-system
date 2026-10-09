@@ -64,29 +64,24 @@ export class SubscriptionService {
       // PAID subscriptions expire and lock the tenant.
       if (subscription && subscription.status === 'active' && subscription.end_date && new Date(subscription.end_date) < new Date()) {
         if (subscription.is_trial || subscription.is_comp) {
-          logger.info(`${subscription.is_comp ? 'Comp' : 'Trial'} ${subscription.id} for tenant ${tenantId} ended — downgrading to Freetong.`);
           const ended = { id: subscription.id, plan_type: subscription.plan_type };
-          const downgraded = await this.downgradeExpiredTrial(tenantId);
+          const outcome = await this.endTrialOrComp(tenantId, subscription);
           // "Your trial has ended" (claimed once per subscription; best-effort).
           void import('../jobs/subscriptionJobs.js').then((m) => m.notifyTrialEnded(tenantId, ended)).catch(() => undefined);
-          return {
-            ...downgraded,
-            features: await PlanCatalog.featuresFor('freetong'),
-          } as any;
+          if (outcome === 'payment_required') {
+            subscription.status = 'expired';
+          } else {
+            return {
+              ...(await db('subscriptions').where({ tenant_id: tenantId, status: 'active' }).orderBy('created_at', 'desc').first()),
+              features: await PlanCatalog.featuresFor('freetong'),
+            } as any;
+          }
+        } else {
+          logger.info(`Subscription ${subscription.id} for tenant ${tenantId} has expired. Updating database status.`);
+          await db('subscriptions').where({ id: subscription.id }).update({ status: 'expired', updated_at: db.fn.now() });
+          await db('tenants').where({ id: tenantId }).update({ status: 'expired', updated_at: db.fn.now() });
+          subscription.status = 'expired';
         }
-
-        logger.info(`Subscription ${subscription.id} for tenant ${tenantId} has expired. Updating database status.`);
-
-        await db('subscriptions')
-          .where({ id: subscription.id })
-          .update({ status: 'expired', updated_at: db.fn.now() });
-
-        await db('tenants')
-          .where({ id: tenantId })
-          .update({ status: 'expired', updated_at: db.fn.now() });
-
-        // Set status locally
-        subscription.status = 'expired';
       }
 
       if (!subscription) {
@@ -166,6 +161,30 @@ export class SubscriptionService {
       .update({ subscription_id: subscription.id });
 
     return subscription;
+  }
+
+  /**
+   * A trial or time-boxed comp reached its end date. Comps always fall back to
+   * Freetong. Trials follow the platform setting (Platform → Subscriptions):
+   *  - 'downgrade'       → Freetong, keeps working.
+   *  - 'require_payment' → the trial row is marked expired but the SCHOOL stays
+   *    active: everyone can sign in and view, every change is refused
+   *    (planFeatureGate) until a plan is paid. Nothing is deleted.
+   */
+  static async endTrialOrComp(tenantId: string, sub: { id: string; is_trial?: boolean; is_comp?: boolean }): Promise<'downgraded' | 'payment_required'> {
+    if (sub.is_trial && !sub.is_comp) {
+      const { PlatformSettingsService } = await import('./platformSettingsService.js');
+      const cfg = await PlatformSettingsService.getTrialConfig();
+      if (cfg.afterTrial === 'require_payment') {
+        await db('subscriptions').where({ id: sub.id }).update({ status: 'expired', updated_at: db.fn.now() });
+        EntitlementService.clear(tenantId);
+        logger.info(`Trial ${sub.id} for tenant ${tenantId} ended — payment required (school is read-only until paid).`);
+        return 'payment_required';
+      }
+    }
+    logger.info(`${sub.is_comp ? 'Comp' : 'Trial'} ${sub.id} for tenant ${tenantId} ended — downgrading to Freetong.`);
+    await this.downgradeExpiredTrial(tenantId);
+    return 'downgraded';
   }
 
   /**

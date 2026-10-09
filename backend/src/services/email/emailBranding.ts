@@ -27,6 +27,8 @@ export interface EmailBranding {
   website?: string;
   /** Optional logo URL rendered in the header (falls back to a text logo). */
   logoUrl?: string;
+  /** Optional school motto, shown under the name in the header. */
+  motto?: string;
   /** The app URL used to build working action links. */
   appUrl: string;
   /** True for platform-level (WiSkul) emails. */
@@ -43,9 +45,41 @@ export interface EmailBranding {
   fromAddress?: string;
 }
 
-/** Trim trailing slash so we can safely concatenate paths. */
-function appBaseUrl(): string {
-  return (process.env.FRONTEND_URL || 'https://www.wiskulsl.com').replace(/\/$/, '');
+/**
+ * The public app origin every email link is built on. FRONTEND_URL may hold a
+ * comma-separated CORS list, so only its first entry is used; PUBLIC_APP_URL
+ * wins when set. Never ends with a slash.
+ */
+export function appBaseUrl(): string {
+  const first = (v?: string) => String(v || '').split(',')[0].trim();
+  const base = first(process.env.PUBLIC_APP_URL) || first(process.env.APP_URL) || first(process.env.FRONTEND_URL) || 'https://www.wiskulsl.com';
+  return base.replace(/\/+$/, '');
+}
+
+/** Absolute link into the app (path must start with '/'). */
+export function appLink(path: string): string {
+  return `${appBaseUrl()}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+/** Where the API is publicly reachable (same origin as the app on Vercel). */
+function apiBaseUrl(): string {
+  return (String(process.env.PUBLIC_API_URL || '').split(',')[0].trim() || appBaseUrl()).replace(/\/+$/, '');
+}
+
+/** Small stable hash so a new logo gets a new (cache-busting) URL. */
+function shortHash(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * Email-safe logo URL for a school: always the public branding endpoint, which
+ * serves the logo from wherever it is stored (S3, data: URL, local disk).
+ */
+export function tenantLogoEmailUrl(tenantId: string, storedLogo?: string | null): string | undefined {
+  if (!tenantId || !storedLogo) return undefined;
+  return `${apiBaseUrl()}/api/v1/public/branding/${encodeURIComponent(tenantId)}/logo?v=${shortHash(storedLogo)}`;
 }
 
 /** The platform (WiSkul) branding used for platform emails and as the ultimate fallback. */
@@ -82,17 +116,15 @@ export async function resolveTenantBranding(tenantId: string): Promise<EmailBran
       school?.email || tenant?.contact_email || platform.contactEmail;
     const contactPhone =
       school?.phone || tenant?.contact_phone || undefined;
-    const address =
-      school?.address || tenant?.address || undefined;
-    const website = school?.website || undefined;
-    // Normalise the logo for email use: a relative upload path (e.g.
-    // "/uploads/logos/x.png") is turned into an absolute URL so email clients
-    // can load it. base64 data: URIs are left as-is (emailLayout falls back to
-    // a text logo for those, since most clients block data: images).
+    const rawWebsite = String(school?.website || '').trim();
+    const website = rawWebsite ? (/^https?:\/\//i.test(rawWebsite) ? rawWebsite : `https://${rawWebsite}`) : undefined;
+    // The stored logo may be an expiring S3 link, a data: URL or a local path —
+    // none of which email clients can show. Use the public branding endpoint.
     const rawLogo = school?.logo_url || tenant?.logo_url || undefined;
-    const logoUrl = rawLogo && rawLogo.startsWith('/')
-      ? `${appBaseUrl().replace(/\/$/, '')}${rawLogo}`
-      : rawLogo;
+    const logoUrl = tenantLogoEmailUrl(tenantId, rawLogo);
+    const address = [school?.address || tenant?.address, school?.city, school?.country]
+      .map((v: any) => String(v || '').trim()).filter(Boolean)
+      .filter((v: string, i: number, all: string[]) => all.indexOf(v) === i).join(', ') || undefined;
 
     const senderMode: 'platform' | 'own' = school?.email_sender_mode === 'own' ? 'own' : 'platform';
     const senderVerified = !!school?.email_sender_verified;
@@ -105,6 +137,7 @@ export async function resolveTenantBranding(tenantId: string): Promise<EmailBran
       address,
       website,
       logoUrl,
+      motto: school?.motto || undefined,
       appUrl: appBaseUrl(),
       isPlatform: false,
       senderMode,

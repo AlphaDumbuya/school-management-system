@@ -69,6 +69,8 @@ export async function notifyTrialEnded(tenantId: string, endedSub: { id: string;
     await emailService.sendSubscriptionLifecycleEmail(to, {
       kind: 'trial_ended', schoolName: tenant?.name || 'your school',
       planName: await planName(endedSub.plan_type), newPlanName: ent.plan_name, readOnlyFeatures: readOnly,
+      // Trial ended with payment required: the whole school is read-only.
+      paymentRequired: ent.lapsed,
     });
   } catch (err) {
     logger.warn(`[subscriptionJobs] trial-ended notice failed for tenant ${tenantId}: ${(err as any)?.message || err}`);
@@ -88,6 +90,8 @@ export async function runSubscriptionReminders(): Promise<number> {
 
   let sent = 0;
   const { default: emailService } = await import('../services/emailService.js');
+  const { PlatformSettingsService } = await import('../services/platformSettingsService.js');
+  const paymentRequired = (await PlatformSettingsService.getTrialConfig()).afterTrial === 'require_payment';
   for (const s of soon) {
     try {
       const daysLeft = Math.max(1, Math.ceil((new Date(s.end_date).getTime() - now) / DAY));
@@ -100,7 +104,7 @@ export async function runSubscriptionReminders(): Promise<number> {
       await emailService.sendSubscriptionLifecycleEmail(to, {
         kind: s.is_trial ? 'trial_ending' : 'expiring',
         schoolName: s.school_name || 'your school', planName: await planName(s.plan_type),
-        endDate: s.end_date, daysLeft,
+        endDate: s.end_date, daysLeft, paymentRequired: s.is_trial ? paymentRequired : undefined,
       });
       sent++;
     } catch (err) {
@@ -140,7 +144,7 @@ export async function runSubscriptionExpirySweep(): Promise<number> {
     const { SubscriptionService } = await import('../services/subscriptionService.js');
     for (const s of gracefulSubs) {
       try {
-        await SubscriptionService.downgradeExpiredTrial(s.tenant_id);
+        await SubscriptionService.endTrialOrComp(s.tenant_id, s);
         await notifyTrialEnded(s.tenant_id, s);
       } catch (err) {
         logger.warn(`[subscriptionJobs] graceful downgrade failed for tenant ${s.tenant_id}`, { error: String(err) });

@@ -37,9 +37,12 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     );
   }
 
-  // Not authenticated
+  // Not authenticated: remember where they were going (email links, bookmarks)
+  // so login brings them straight back.
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    const next = `${location.pathname}${location.search}${location.hash}`;
+    const to = next && next !== '/' ? `/login?next=${encodeURIComponent(next)}` : '/login';
+    return <Navigate to={to} replace />;
   }
 
   // Check role-based access. When the user's role doesn't grant this route —
@@ -58,7 +61,8 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   if (access === 'locked') {
     return <PlanLockedNotice user={user} />;
   }
-  if (access === 'read_only') {
+  // (A lapsed subscription has its own school-wide banner in MainLayout.)
+  if (access === 'read_only' && !planAccessOf(user)?.lapsed) {
     return (
       <>
         <ReadOnlyBanner user={user} />

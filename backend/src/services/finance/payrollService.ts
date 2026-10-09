@@ -14,7 +14,7 @@ import { AppError } from '@middleware/errorHandler';
 import { tenantToday } from '@utils/schoolDate';
 import { logger } from '@utils/logger';
 import { resolveTenantBranding } from '@services/email/emailBranding';
-import { renderEmail } from '@services/email/emailLayout';
+import { renderEmail, emailButton } from '@services/email/emailLayout';
 import { round2, audit, notifyFinanceStaff, notifyUsers, cleanMoneyAccount } from './core';
 import { expenseService, yearForDate, assertOpenYear } from './expenseService';
 
@@ -423,7 +423,7 @@ export const payrollService = {
           subject: `Your payslip for ${run.period} — ${branding.name}`,
           body: renderEmail({
             branding, eyebrow: 'Payslip', heading: `Your payslip for ${run.period}`, preheader: `Net pay Le ${Number(s.net).toFixed(2)}`,
-            bodyHtml: `<p>Dear ${String(s.staff_name).replace(/[<>&]/g, '')},</p><p>Your payslip for <strong>${run.period}</strong> is attached as a PDF. Net pay: <strong>Le ${Number(s.net).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>.</p><p>You can also download it any time under <strong>My Payslips</strong> in the portal.</p>`,
+            bodyHtml: `<p>Dear ${String(s.staff_name).replace(/[<>&]/g, '')},</p><p>Your payslip for <strong>${run.period}</strong> is attached as a PDF. Net pay: <strong>Le ${Number(s.net).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>.</p><p>You can also download it any time under <strong>My Payslips</strong> in the portal.</p>${emailButton('Open My Payslips', `${branding.appUrl}/finance/my-payslips`)}`,
           }),
           isHtml: true,
           attachments: [{ name: `Payslip-${run.period}-${s.staff_number || 'staff'}.pdf`, content: pdf.toString('base64') }],

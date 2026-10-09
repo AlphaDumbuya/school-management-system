@@ -97,6 +97,32 @@ export const FEATURE_PREFIXES: Array<[string, string]> = [
   ['/api/v1/school-config/archive', 'academic_archive'],
 ];
 
+/**
+ * Writes that must keep working while a school is read-only for non-payment:
+ * signing in / security, paying for a plan (and the verification it needs),
+ * fee payments + provider webhooks, notifications, support and live sync pings.
+ */
+const LAPSE_EXEMPT_PREFIXES = [
+  '/api/v1/auth',
+  '/api/v1/school-config/subscription',
+  '/api/v1/verification',
+  '/api/v1/payments',
+  '/api/v1/public',
+  '/api/v1/cron',
+  '/api/v1/sms-whatsapp/webhooks',
+  '/api/v1/notifications',
+  '/api/v1/in-app-notifications',
+  '/api/v1/notification-preferences',
+  '/api/v1/support',
+  '/api/v1/help',
+  '/api/v1/live',
+];
+
+export function isLapseExempt(url: string): boolean {
+  const path = String(url || '').split('?')[0].replace(/\/+$/, '');
+  return LAPSE_EXEMPT_PREFIXES.some((p) => path === p || path.startsWith(p + '/'));
+}
+
 export function featureForPath(url: string): string | null {
   const path = String(url || '').split('?')[0].replace(/\/+$/, '');
   for (const [prefix, key] of FEATURE_PREFIXES) {
@@ -112,8 +138,11 @@ export function featureForPath(url: string): string | null {
  * untouched: the router's own `authenticate` rejects them as before.
  */
 export const planFeatureGate = async (req: Request, _res: Response, next: NextFunction) => {
-  const featureKey = featureForPath(req.originalUrl || req.url);
-  if (!featureKey) return next();
+  const url = req.originalUrl || req.url;
+  const featureKey = featureForPath(url);
+  const isWrite = !READ_METHODS.has(req.method.toUpperCase());
+  // Core modules: only writes matter, and only while the subscription is lapsed.
+  if (!featureKey && (!isWrite || isLapseExempt(url))) return next();
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) return next();
   let userId: string | undefined;
@@ -122,7 +151,21 @@ export const planFeatureGate = async (req: Request, _res: Response, next: NextFu
   try {
     const user = await db('users').where({ id: userId }).first('tenant_id', 'role');
     if (!user || user.role === 'super_admin' || !user.tenant_id) return next();
-    await assertFeatureAccess(user.tenant_id, featureKey, req.method);
+    if (featureKey) {
+      await assertFeatureAccess(user.tenant_id, featureKey, req.method);
+    } else {
+      // Trial ended with payment required: the whole school is read-only.
+      const ent = await EntitlementService.forTenant(user.tenant_id);
+      if (ent.lapsed) {
+        throw new AppError(
+          user.role === 'principal'
+            ? 'Your free period has ended. Choose a plan in Settings → Plan & Billing to keep adding and changing records. Everything you have is safe.'
+            : 'Your school’s free period has ended, so changes are paused. Ask your principal to choose a plan. Everything is safe and can still be viewed.',
+          403,
+          'SUBSCRIPTION_EXPIRED'
+        );
+      }
+    }
     next();
   } catch (error) {
     if (error instanceof AppError) return next(error);

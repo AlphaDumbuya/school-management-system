@@ -1,77 +1,103 @@
 /**
- * emailLayout — a shared, mobile-first, email-client-safe HTML shell.
+ * emailLayout — the shared HTML shell for every transactional email.
  *
- * Design goals:
- *  - Renders well on small screens (most parents read on phones): fluid width,
- *    generous padding that scales down on narrow viewports, large tap targets,
- *    no fixed pixel widths that overflow.
- *  - Works across email clients: table-based layout, inline-ish styles, a
- *    <style> block with a mobile media query, safe web fonts.
- *  - Branding-aware: header logo/name, accent color, and footer contacts all
- *    come from the resolved EmailBranding (school for tenant emails, WiSkul for
- *    platform emails).
- *  - Every link is absolute and working (built from branding.appUrl).
+ * Enterprise style: white document on a neutral canvas, the sender's own logo
+ * and name in the header, a thin brand rule, restrained typography, one solid
+ * call-to-action, and a footer with the sender's live contact details (the
+ * SCHOOL for tenant emails, WiSkul for platform emails).
+ *
+ * Built for real inboxes:
+ *  - Table layout with inline styles (Gmail, Outlook desktop/web, Apple Mail,
+ *    Yahoo, Android/iOS mail apps); Outlook gets a fixed 600px ghost table and
+ *    VML buttons, everything else is fluid.
+ *  - Mobile first: 100% width under 600px, stacked detail rows, 44px tap
+ *    targets, no fixed widths that overflow.
+ *  - Every link is absolute. Buttons also print their URL underneath, so the
+ *    link still works where buttons don't render.
+ *  - Light colour scheme declared so dark-mode clients don't invert the logo.
  */
 import type { EmailBranding } from './emailBranding';
 
-// Brand palette (matches the marketing pages): blue primary, amber accent, navy ink.
-const ACCENT = '#1d4ed8'; // primary blue — links & buttons
-const HEADER_TO = '#25408f'; // moderate mid-navy for the header gradient end (not bright)
-const AMBER = '#f59e0b'; // amber accent
-const INK = '#1a2b6b'; // navy
+// Neutral, accessible palette (WCAG AA on white).
+const BRAND = '#1e3a8a'; // deep navy: rule, headings accents, buttons
+const BRAND_HOVERLESS = '#1e40af';
+const TEXT = '#1f2937';
+const MUTED = '#6b7280';
+const BORDER = '#e5e7eb';
+const CANVAS = '#f3f4f6';
+const PANEL = '#f9fafb';
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
 
 function escapeHtml(s: string): string {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-/** A primary call-to-action button. `href` must be an absolute URL. */
+/** Only absolute http(s)/mailto/tel links are emitted; anything else is dropped. */
+function safeHref(href: string): string | null {
+  const h = String(href || '').trim();
+  return /^(https?:\/\/|mailto:|tel:)/i.test(h) ? h.replace(/"/g, '%22') : null;
+}
+
+/**
+ * Primary call-to-action. `href` must be absolute. Renders a bulletproof button
+ * (VML for Outlook) and the plain link underneath as a fallback.
+ */
 export function emailButton(label: string, href: string): string {
+  const url = safeHref(href);
+  if (!url) return '';
+  const text = escapeHtml(label);
   return `
-  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px auto;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0 8px;">
     <tr>
-      <td align="center" bgcolor="${ACCENT}" style="border-radius:12px;">
-        <a href="${href}" target="_blank"
-           style="display:inline-block;padding:14px 32px;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:12px;">
-          ${escapeHtml(label)}
-        </a>
+      <td align="left" style="border-radius:6px;" bgcolor="${BRAND_HOVERLESS}">
+        <!--[if mso]>
+        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${url}" style="height:46px;v-text-anchor:middle;width:260px;" arcsize="12%" stroke="f" fillcolor="${BRAND_HOVERLESS}">
+          <w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">${text}</center>
+        </v:roundrect>
+        <![endif]-->
+        <!--[if !mso]><!-- -->
+        <a href="${url}" target="_blank" rel="noopener"
+           style="display:inline-block;min-width:180px;padding:13px 28px;font-family:${FONT};font-size:15px;line-height:20px;font-weight:600;color:#ffffff;text-decoration:none;text-align:center;border-radius:6px;background:${BRAND_HOVERLESS};mso-hide:all;">${text}</a>
+        <!--<![endif]-->
       </td>
     </tr>
-  </table>`;
+  </table>
+  <p style="margin:0 0 4px;font-family:${FONT};font-size:12px;line-height:18px;color:${MUTED};">
+    Button not working? Copy this link into your browser:<br />
+    <a href="${url}" target="_blank" rel="noopener" style="color:${BRAND_HOVERLESS};text-decoration:underline;word-break:break-all;">${escapeHtml(url)}</a>
+  </p>`;
 }
 
-/** A labelled row for a details table (stacks nicely on mobile). */
+/** A labelled row for a details table. Stacks label above value on phones. */
 export function detailRow(label: string, value: string): string {
   return `
-  <tr>
-    <td style="padding:10px 0;border-bottom:1px solid #edf2f7;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;color:#64748b;vertical-align:top;width:38%;word-break:break-word;">${escapeHtml(label)}</td>
-    <td style="padding:10px 0;border-bottom:1px solid #edf2f7;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;color:${INK};font-weight:600;vertical-align:top;word-break:break-word;overflow-wrap:anywhere;">${value}</td>
+  <tr class="stack">
+    <td class="detail-label" style="padding:11px 16px;border-top:1px solid ${BORDER};font-family:${FONT};font-size:13px;line-height:18px;color:${MUTED};vertical-align:top;width:38%;">${escapeHtml(label)}</td>
+    <td class="detail-value" style="padding:11px 16px;border-top:1px solid ${BORDER};font-family:${FONT};font-size:14px;line-height:20px;color:${TEXT};font-weight:600;vertical-align:top;word-break:break-word;">${value}</td>
   </tr>`;
 }
 
-/** Wrap a set of detailRow()s in a card table. */
+/** Wrap a set of detailRow()s in a bordered summary table. */
 export function detailsCard(rows: string): string {
   return `
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-         style="background:#f8fafc;border-radius:12px;padding:8px 18px;margin:8px 0 4px;">
-    ${rows}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="width:100%;border:1px solid ${BORDER};border-radius:6px;border-collapse:separate;margin:18px 0;overflow:hidden;">
+    ${/* no rule above the first row (label + value cell) */ rows.replace(`border-top:1px solid ${BORDER};`, 'border-top:0;').replace(`border-top:1px solid ${BORDER};`, 'border-top:0;')}
   </table>`;
 }
 
-/** A soft info/callout block. tone: 'info' | 'warn' | 'success'. */
+/** A neutral note with a coloured rule. tone: 'info' | 'warn' | 'success'. */
 export function calloutBlock(html: string, tone: 'info' | 'warn' | 'success' = 'info'): string {
-  const styles = {
-    info: { bg: '#eff6ff', border: '#3b82f6', color: '#1e3a8a' },
-    warn: { bg: '#fff7ed', border: '#f97316', color: '#7c2d12' },
-    success: { bg: '#ecfdf5', border: '#10b981', color: '#065f46' },
-  }[tone];
+  const rule = { info: '#2563eb', warn: '#d97706', success: '#059669' }[tone];
   return `
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:18px 0;">
     <tr>
-      <td style="background:${styles.bg};border-left:4px solid ${styles.border};border-radius:8px;padding:14px 16px;font-family:'Segoe UI',Arial,sans-serif;font-size:13px;line-height:1.6;color:${styles.color};">
+      <td style="background:${PANEL};border:1px solid ${BORDER};border-left:3px solid ${rule};border-radius:4px;padding:14px 16px;font-family:${FONT};font-size:14px;line-height:21px;color:${TEXT};">
         ${html}
       </td>
     </tr>
@@ -80,15 +106,27 @@ export function calloutBlock(html: string, tone: 'info' | 'warn' | 'success' = '
 
 export interface RenderOptions {
   branding: EmailBranding;
-  /** Small kicker/eyebrow above the heading, e.g. "Discipline Notice". */
+  /** Small label above the heading, e.g. "Admissions". */
   eyebrow?: string;
   heading: string;
   /** Main body HTML (paragraphs, cards, buttons via the helpers above). */
   bodyHtml: string;
-  /** Optional preheader text (hidden preview snippet in the inbox). */
+  /** Inbox preview text. */
   preheader?: string;
   /** Marketing emails: a token-based unsubscribe URL rendered in the footer. */
   unsubscribeUrl?: string;
+}
+
+/** Normalise the body's legacy inline styles to the enterprise palette. */
+function tidyBody(html: string): string {
+  return String(html || '')
+    // old brand colours used inside bodies
+    .replace(/#00d4aa/gi, BRAND_HOVERLESS)
+    .replace(/color:#1d4ed8/gi, `color:${BRAND_HOVERLESS}`)
+    .replace(/color:#64748b/gi, `color:${MUTED}`)
+    .replace(/color:#334155/gi, `color:${TEXT}`)
+    // paragraphs get consistent spacing
+    .replace(/<p>/g, `<p style="margin:0 0 14px;">`);
 }
 
 /**
@@ -96,107 +134,152 @@ export interface RenderOptions {
  */
 export function renderEmail({ branding, eyebrow, heading, bodyHtml, preheader, unsubscribeUrl }: RenderOptions): string {
   const brandName = escapeHtml(branding.name);
+  // Schools often save their website without a scheme ("myschool.edu.sl").
+  const site = branding.website && !/^https?:\/\//i.test(branding.website) && /^[\w.-]+\.[a-z]{2,}(\/\S*)?$/i.test(branding.website.trim())
+    ? `https://${branding.website.trim()}`
+    : branding.website;
+  branding = { ...branding, website: site };
+  const home = safeHref(branding.website || branding.appUrl) || safeHref(branding.appUrl);
 
-  // Header logo: use an image only when it's an absolute http(s) URL. Many email
-  // clients (Gmail/Outlook) block `data:` base64 images, so those fall back to a
-  // clean text logo rather than showing a broken image. The mark always sits on
-  // a white rounded chip so it stays crisp and professional over the dark header.
-  const isHostedLogo = !!branding.logoUrl && /^https?:\/\//i.test(branding.logoUrl);
-  const logoInner = isHostedLogo
-    ? `<img src="${branding.logoUrl}" alt="${brandName}" height="40" style="height:40px;max-width:200px;width:auto;display:block;border:0;" />`
-    : `<div style="font-size:22px;font-weight:800;color:${INK};letter-spacing:-0.5px;line-height:1;">${brandName}</div>`;
-  const headerLogo = `
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
-      <tr>
-        <td align="center" bgcolor="#ffffff" style="background:#ffffff;border-radius:14px;padding:12px 20px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
-          ${logoInner}
-        </td>
-      </tr>
-    </table>`;
+  // Header: the sender's logo (hosted, absolute) + name. Falls back to a
+  // monogram tile when there is no usable logo.
+  const logo = branding.logoUrl && /^https?:\/\//i.test(branding.logoUrl)
+    ? `<img src="${branding.logoUrl.replace(/"/g, '%22')}" alt="${brandName}" width="48" height="48"
+           style="display:block;width:48px;height:48px;max-width:48px;object-fit:contain;border:0;outline:none;text-decoration:none;border-radius:6px;" />`
+    : `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+         <td width="48" height="48" align="center" valign="middle" bgcolor="${BRAND}"
+             style="width:48px;height:48px;border-radius:6px;font-family:${FONT};font-size:18px;font-weight:700;color:#ffffff;">${escapeHtml(initials(branding.name))}</td>
+       </tr></table>`;
+  const logoLinked = home ? `<a href="${home}" target="_blank" rel="noopener" style="text-decoration:none;">${logo}</a>` : logo;
 
-  // Footer contact lines — only render what exists.
-  const footerLines: string[] = [];
-  const contactBits: string[] = [];
+  // Footer contacts: only what the sender has filled in, all clickable.
+  const contact: string[] = [];
   if (branding.contactEmail) {
-    contactBits.push(`<a href="mailto:${branding.contactEmail}" style="color:#94a3b8;text-decoration:none;">${escapeHtml(branding.contactEmail)}</a>`);
+    contact.push(`<a href="mailto:${escapeHtml(branding.contactEmail)}" style="color:${BRAND_HOVERLESS};text-decoration:none;">${escapeHtml(branding.contactEmail)}</a>`);
   }
-  if (branding.contactPhone) contactBits.push(escapeHtml(branding.contactPhone));
-  if (contactBits.length) footerLines.push(contactBits.join('&nbsp;&nbsp;•&nbsp;&nbsp;'));
-  if (branding.address) footerLines.push(escapeHtml(branding.address));
-  if (branding.website) {
-    footerLines.push(`<a href="${branding.website}" target="_blank" style="color:#94a3b8;text-decoration:none;">${escapeHtml(branding.website.replace(/^https?:\/\//, ''))}</a>`);
+  if (branding.contactPhone) {
+    const tel = String(branding.contactPhone).replace(/[^\d+]/g, '');
+    contact.push(tel ? `<a href="tel:${tel}" style="color:${BRAND_HOVERLESS};text-decoration:none;">${escapeHtml(branding.contactPhone)}</a>` : escapeHtml(branding.contactPhone));
   }
-  // Tenant emails get a small "powered by WiSkul" line; platform emails don't.
+  const website = branding.website && safeHref(branding.website)
+    ? `<a href="${safeHref(branding.website)}" target="_blank" rel="noopener" style="color:${BRAND_HOVERLESS};text-decoration:none;">${escapeHtml(branding.website.replace(/^https?:\/\//i, '').replace(/\/$/, ''))}</a>`
+    : '';
+
+  const footerRows = [
+    `<p style="margin:0 0 6px;font-size:14px;line-height:20px;font-weight:700;color:${TEXT};">${brandName}</p>`,
+    branding.address ? `<p style="margin:0 0 4px;font-size:12px;line-height:18px;color:${MUTED};">${escapeHtml(branding.address)}</p>` : '',
+    contact.length ? `<p style="margin:0 0 4px;font-size:12px;line-height:18px;color:${MUTED};">${contact.join('&nbsp;&nbsp;|&nbsp;&nbsp;')}</p>` : '',
+    website ? `<p style="margin:0 0 4px;font-size:12px;line-height:18px;color:${MUTED};">${website}</p>` : '',
+  ].join('');
+
+  const notice = branding.isPlatform
+    ? `You are receiving this email because of your WiSkul account or a request made on our website.`
+    : `You are receiving this email because you are connected to ${brandName}. Replies go to the school.`;
   const poweredBy = branding.isPlatform
     ? ''
-    : `<p style="margin:14px 0 0;font-size:11px;color:#64748b;">Powered by <a href="https://www.wiskulsl.com" target="_blank" style="color:${AMBER};text-decoration:none;font-weight:600;">WiSkul</a></p>`;
+    : ` &nbsp;·&nbsp; Sent with <a href="https://www.wiskulsl.com" target="_blank" rel="noopener" style="color:${MUTED};text-decoration:underline;">WiSkul</a>`;
+  const unsub = unsubscribeUrl && safeHref(unsubscribeUrl)
+    ? ` &nbsp;·&nbsp; <a href="${safeHref(unsubscribeUrl)}" target="_blank" rel="noopener" style="color:${MUTED};text-decoration:underline;">Unsubscribe</a>`
+    : '';
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="x-apple-disable-message-reformatting" />
+  <meta name="format-detection" content="telephone=no,address=no,email=no,date=no" />
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
   <title>${escapeHtml(heading)}</title>
+  <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
   <style>
-    body { margin:0; padding:0; background:#eef1f6; -webkit-text-size-adjust:100%; }
-    img { border:0; line-height:100%; outline:none; text-decoration:none; }
-    a { color:${ACCENT}; }
-    /* Mobile: reduce side padding so content isn't tight, keep tap targets big */
-    @media only screen and (max-width:600px) {
-      .email-container { width:100% !important; }
-      .email-pad { padding-left:20px !important; padding-right:20px !important; }
-      .email-head { padding:26px 20px !important; }
-      .email-heading { font-size:20px !important; }
-      .stack td { display:block !important; width:100% !important; }
+    :root { color-scheme: light; supported-color-schemes: light; }
+    body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+    table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
+    img { -ms-interpolation-mode:bicubic; border:0; outline:none; text-decoration:none; }
+    body { margin:0 !important; padding:0 !important; width:100% !important; background:${CANVAS}; }
+    a[x-apple-data-detectors] { color:inherit !important; text-decoration:none !important; }
+    @media only screen and (max-width:620px) {
+      .container { width:100% !important; max-width:100% !important; border-radius:0 !important; border-left:0 !important; border-right:0 !important; }
+      .outer { padding:0 !important; }
+      .pad { padding-left:20px !important; padding-right:20px !important; }
+      .heading { font-size:20px !important; line-height:28px !important; }
+      .stack .detail-label, .stack .detail-value { display:block !important; width:auto !important; }
+      .stack .detail-label { padding-bottom:2px !important; }
+      .stack .detail-value { border-top:0 !important; padding-top:0 !important; }
+      .hide-sm { display:none !important; }
     }
   </style>
 </head>
-<body>
-  <!-- Hidden preheader -->
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(preheader || heading)}</div>
+<body style="margin:0;padding:0;background:${CANVAS};">
+  <div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">${escapeHtml(preheader || heading)}&#8203;&nbsp;&#8203;&nbsp;&#8203;&nbsp;&#8203;&nbsp;&#8203;&nbsp;&#8203;&nbsp;</div>
 
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;padding:16px 12px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${CANVAS};">
     <tr>
-      <td align="center">
-        <table role="presentation" class="email-container" width="600" cellpadding="0" cellspacing="0"
-               style="width:600px;max-width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 6px 24px rgba(16,24,40,0.08);">
+      <td class="outer" align="center" style="padding:32px 12px;">
+        <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
+        <table role="presentation" class="container" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="width:100%;max-width:600px;background:#ffffff;border:1px solid ${BORDER};border-radius:8px;border-collapse:separate;overflow:hidden;">
 
-          <!-- Header -->
+          <!-- Brand rule -->
+          <tr><td style="height:4px;line-height:4px;font-size:0;background:${BRAND};" bgcolor="${BRAND}">&nbsp;</td></tr>
+
+          <!-- Header: logo + sender name -->
           <tr>
-            <td class="email-head" align="center" bgcolor="${INK}"
-                style="background:${INK};background:linear-gradient(135deg, ${INK} 0%, ${HEADER_TO} 100%);padding:32px 30px;">
-              ${headerLogo}
-              ${eyebrow ? `<div style="margin-top:10px;font-family:'Segoe UI',Arial,sans-serif;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,0.85);font-weight:600;">${escapeHtml(eyebrow)}</div>` : ''}
+            <td class="pad" style="padding:22px 32px;border-bottom:1px solid ${BORDER};">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td width="48" valign="middle" style="width:48px;padding-right:14px;">${logoLinked}</td>
+                  <td valign="middle" style="font-family:${FONT};">
+                    <div style="font-size:16px;line-height:22px;font-weight:700;color:${TEXT};">${brandName}</div>
+                    ${branding.motto ? `<div style="font-size:12px;line-height:18px;color:${MUTED};">${escapeHtml(branding.motto)}</div>` : ''}
+                  </td>
+                  ${eyebrow ? `<td class="hide-sm" align="right" valign="middle" style="font-family:${FONT};font-size:11px;line-height:16px;letter-spacing:0.08em;text-transform:uppercase;color:${MUTED};font-weight:600;white-space:nowrap;">${escapeHtml(eyebrow)}</td>` : ''}
+                </tr>
+              </table>
             </td>
           </tr>
 
           <!-- Body -->
           <tr>
-            <td class="email-pad" style="padding:32px 36px;font-family:'Segoe UI',Arial,sans-serif;">
-              <h1 class="email-heading" style="margin:0 0 16px;font-size:23px;line-height:1.3;color:${INK};font-weight:800;">${escapeHtml(heading)}</h1>
-              <div style="font-size:15px;line-height:1.65;color:#334155;">
-                ${bodyHtml}
+            <td class="pad" style="padding:30px 32px 32px;font-family:${FONT};">
+              <h1 class="heading" style="margin:0 0 18px;font-family:${FONT};font-size:22px;line-height:30px;font-weight:700;color:${TEXT};">${escapeHtml(heading)}</h1>
+              <div style="font-family:${FONT};font-size:15px;line-height:24px;color:${TEXT};">
+                ${tidyBody(bodyHtml)}
               </div>
             </td>
           </tr>
 
-          <!-- Footer -->
+          <!-- Footer: sender's contact details -->
           <tr>
-            <td align="center" style="background:${INK};padding:26px 24px;font-family:'Segoe UI',Arial,sans-serif;">
-              <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#ffffff;">${brandName}</p>
-              ${footerLines.map((l) => `<p style="margin:3px 0;font-size:12px;color:#94a3b8;">${l}</p>`).join('')}
-              ${poweredBy}
-              ${unsubscribeUrl ? `<p style="margin:14px 0 0;font-size:11px;color:#64748b;">Don't want these emails? <a href="${unsubscribeUrl}" target="_blank" style="color:#94a3b8;text-decoration:underline;">Unsubscribe</a></p>` : ''}
+            <td class="pad" style="padding:22px 32px;background:${PANEL};border-top:1px solid ${BORDER};font-family:${FONT};" bgcolor="${PANEL}">
+              ${footerRows}
             </td>
           </tr>
+        </table>
+        <!--[if mso]></td></tr></table><![endif]-->
 
+        <!-- Legal line -->
+        <table role="presentation" class="container" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">
+          <tr>
+            <td class="pad" align="center" style="padding:16px 32px 0;font-family:${FONT};font-size:11px;line-height:17px;color:${MUTED};">
+              ${notice}${poweredBy}${unsub}
+            </td>
+          </tr>
         </table>
       </td>
     </tr>
   </table>
 </body>
 </html>`;
+}
+
+function initials(name: string): string {
+  const words = String(name || '').trim().split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w));
+  const s = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || 'S').slice(0, 2));
+  return s.toUpperCase();
 }
 
 export { escapeHtml };

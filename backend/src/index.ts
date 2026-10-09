@@ -26,6 +26,7 @@ import uploadRoutes from '@routes/uploadRoutes';
 import admissionsNewRoutes from '@routes/admissionsRoutes';
 import publicAdmissionRoutes from '@routes/publicAdmissionRoutes';
 import planRoutes from '@routes/planRoutes';
+import brandingRoutes from '@routes/brandingRoutes';
 import { planFeatureGate } from '@middleware/subscriptionGuard';
 import enrollmentRoutes from '@routes/enrollmentRoutes';
 import enrollmentWorkflowRoutes from '@routes/enrollmentWorkflowRoutes';
@@ -227,6 +228,8 @@ app.use('/api/v1/auth', authRoutes);
 // applies `authenticate` at the top (e.g. phase10DashboardRoutes) — otherwise
 // that middleware runs for every /api/v1/* path and 401s this public route.
 app.use('/api/v1/public/plans', planRoutes);
+// School logos for emails (stable absolute URL, whatever the storage).
+app.use('/api/v1/public/branding', brandingRoutes);
 app.use('/api/v1/public', publicVerifyRoutes);
 app.use('/api/v1/public/admissions', publicAdmissionRoutes);
 
