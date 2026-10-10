@@ -4,6 +4,7 @@ import { authenticate, authorize, attachUserContext } from '@middleware/authMidd
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { PasswordService } from '../services/passwordService';
+import { assertPortalAllowed, portalAllowed } from '../services/entitlementService';
 
 const router = Router();
 router.use(authenticate);
@@ -134,7 +135,10 @@ router.post('/:studentId/guardians', authenticate, authorize('admin', 'principal
     // actually sign in.
     let parentUser = await db('users').where({ tenant_id: tenantId, email: guardianEmail }).first();
     let generatedParentPassword: string | null = null;
-    if (!parentUser) {
+    // Parent logins only on plans with the parent portal; the guardian's
+    // contact record is saved either way.
+    const parentPortal = await portalAllowed(tenantId, 'parent').catch(() => true);
+    if (!parentUser && parentPortal) {
       const pwd = PasswordService.generateTemporaryPassword();
       const [created] = await db('users').insert({
         tenant_id: tenantId,
@@ -390,6 +394,7 @@ router.post('/:studentId/parent-account', authenticate, authorize('principal', '
     if (!targetEmail) {
       throw new AppError('Parent email is required to create an account', 400, 'VALIDATION_ERROR');
     }
+    await assertPortalAllowed(tenantId, 'parent', { forAccountCreation: true });
 
     // Check if user already exists (tenant-scoped).
     let user = await db('users').where({ tenant_id: tenantId, email: targetEmail }).first();

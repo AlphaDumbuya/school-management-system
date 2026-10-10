@@ -420,6 +420,12 @@ export class AuthService {
     if (!tenant) {
       throw new AppError('Your school account is unavailable. Contact support.', 403, 'TENANT_UNAVAILABLE');
     }
+    if (tenant.status === 'active') {
+      // Portals the school's plan doesn't include can't sign in at all.
+      const { assertPortalAllowed } = await import('./entitlementService.js');
+      await assertPortalAllowed(user.tenant_id, user.role);
+      return;
+    }
     if (tenant.status !== 'active') {
       // The account owner (principal) can act on this — point them to support.
       // Everyone else can't resolve it, so direct them to their school admin.
@@ -882,6 +888,9 @@ export class AuthService {
         throw new AppError('Cannot resolve tenant for the creating user', 400, 'TENANT_REQUIRED');
       }
       const tenantId = creator.tenant_id;
+      // Only roles whose portal is in the school's plan.
+      const { assertPortalAllowed } = await import('./entitlementService.js');
+      await assertPortalAllowed(tenantId, String(payload.role), { forAccountCreation: true });
 
       // Create user
       const [userRow] = await this.db('users').insert({

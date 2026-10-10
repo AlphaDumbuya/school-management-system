@@ -9,6 +9,7 @@ import { logger } from '@utils/logger';
 import { generateNextId } from '@utils/idGenerator';
 import { sendExport } from '@utils/exportResponse';
 import { parseDuties, sanitizeDuties } from '@utils/staffDuties';
+import { assertPortalAllowed } from '@services/entitlementService';
 
 const router = Router();
 
@@ -511,6 +512,9 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
     const teaches = initialRole === 'teacher' || initialRole === 'principal';
     // A teacher can also hold Bursar / Admissions duties (extra portals).
     const duties = initialRole === 'teacher' ? sanitizeDuties(staff_duties) : [];
+    // Accounts / duties only for portals the school's plan includes.
+    await assertPortalAllowed(tenantId, initialRole, { forAccountCreation: true });
+    for (const d of duties) await assertPortalAllowed(tenantId, d, { forAccountCreation: true });
 
     const [insertedUser] = await trx('users').insert({
       tenant_id: tenantId,
@@ -733,6 +737,10 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
     if (effectiveRole !== 'teacher') nextDuties = [];
     else if (staff_duties !== undefined) nextDuties = sanitizeDuties(staff_duties);
     const dutiesChanged = JSON.stringify([...nextDuties].sort()) !== JSON.stringify([...prevDuties].sort());
+    // New duties / a move to a portal role need that portal in the plan.
+    const portalTenant = (req as any).user?.tenant_id || teacher.tenant_id;
+    for (const d of nextDuties.filter((x) => !prevDuties.includes(x))) await assertPortalAllowed(portalTenant, d, { forAccountCreation: true });
+    if (userUpdate.role && userUpdate.role !== teacher.user_role) await assertPortalAllowed(portalTenant, userUpdate.role, { forAccountCreation: true });
     if (dutiesChanged) userUpdate.staff_duties = JSON.stringify(nextDuties);
 
     userUpdate.updated_at = new Date();

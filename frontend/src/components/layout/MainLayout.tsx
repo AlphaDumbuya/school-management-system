@@ -24,6 +24,44 @@ import { showToast } from '@utils/toast';
  * School-wide notice when the trial / plan has ended and payment is required:
  * everything stays viewable, changes are paused until a plan is paid.
  */
+/**
+ * Principal-only notice after a downgrade (e.g. the trial ended): which
+ * portals are switched off and which features are now read-only. Dismissible;
+ * it comes back if the plan's restrictions change.
+ */
+const PLAN_DISMISS_KEY = 'wiskul.planNotice.dismissed';
+const PlanRestrictionsBanner: React.FC = () => {
+  const user = useAuthStore((s) => s.user);
+  const pa = user?.role === 'principal' ? user.planAccess : null;
+  const entries = Object.entries(pa?.features || {});
+  const portalsOff = entries.filter(([k, v]) => k.startsWith('portal_') && v === 'locked').map(([k]) => k);
+  const readOnly = entries.filter(([k, v]) => !k.startsWith('portal_') && v === 'read_only').map(([k]) => k);
+  const signature = `${pa?.plan}|${readOnly.sort().join(',')}`;
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem(PLAN_DISMISS_KEY) === signature; } catch { return false; }
+  });
+  // Only worth showing when something the school used is now restricted.
+  if (!pa || pa.lapsed || !readOnly.length || dismissed) return null;
+  const names: Record<string, string> = {
+    portal_parent: 'Parent', portal_admissions: 'Admissions Officer', portal_bursar: 'Bursar',
+  };
+  return (
+    <div role="status" className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950 flex flex-wrap items-start gap-x-4 gap-y-2">
+      <span className="flex-1 min-w-[14rem]">
+        <strong className="font-semibold">You're on the {pa.planName} plan.</strong>{' '}
+        {readOnly.length} feature{readOnly.length === 1 ? '' : 's'} you used before {readOnly.length === 1 ? 'is' : 'are'} now read-only (marked with a lock in the menu).
+        {portalsOff.length > 0 && <> The {portalsOff.map((k) => names[k] || k).join(', ')} portal{portalsOff.length === 1 ? ' is' : 's are'} switched off.</>}
+        {' '}Nothing has been deleted.
+      </span>
+      <span className="flex items-center gap-3">
+        <a href="/settings?tab=billing" className="font-semibold underline underline-offset-2 hover:no-underline">See what's included</a>
+        <button type="button" onClick={() => { try { localStorage.setItem(PLAN_DISMISS_KEY, signature); } catch { /* ignore */ } setDismissed(true); }}
+          className="text-blue-800/70 hover:text-blue-950" aria-label="Dismiss plan notice">Dismiss</button>
+      </span>
+    </div>
+  );
+};
+
 const SubscriptionLapsedBanner: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   const pa = user && user.role !== 'super_admin' ? user.planAccess : null;
@@ -223,6 +261,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         >
           <div className="px-2 py-3 sm:p-6 animate-page-enter">
             <SubscriptionLapsedBanner />
+            <PlanRestrictionsBanner />
             <PromotionWelcomeBanner />
             {children}
           </div>

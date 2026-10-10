@@ -32,6 +32,7 @@ export const ROUTE_FEATURES: Array<[string, string]> = [
   ['/finance/accounts', 'accounting'],
   ['/finance/bank-reconciliation', 'accounting'],
   ['/finance/audit-log', 'accounting'],
+  ['/accountant/dashboard', 'portal_bursar'],
   ['/reports/academic', 'academic_archive'],
 ];
 

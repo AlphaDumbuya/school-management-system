@@ -179,7 +179,18 @@ axiosInstance.interceptors.response.use(
       // scattered 403s. Any authenticated request can carry this.
       const code = (error.response?.data as any)?.error?.code
         || (error.response?.data as any)?.code;
-      if (code === 'TENANT_SUSPENDED' || code === 'TENANT_UNAVAILABLE' || code === 'ACCOUNT_INACTIVE') {
+      if (code === 'PORTAL_NOT_IN_PLAN' && !String(error.config?.url || '').includes('/auth/')) {
+        // This user's portal isn't in the school's plan any more: sign out
+        // with an explanation instead of a page of errors.
+        try {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
+        } catch { /* ignore */ }
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.assign('/login?portal=off');
+        }
+      } else if (code === 'TENANT_SUSPENDED' || code === 'TENANT_UNAVAILABLE' || code === 'ACCOUNT_INACTIVE') {
         // Either the whole school was suspended, or THIS user's own account was
         // deactivated / suspended / dismissed mid-session. Cut the session off
         // immediately rather than leaving a half-working stale session.

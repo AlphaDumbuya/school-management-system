@@ -59,6 +59,7 @@ import {
 import { showToast } from '@utils/toast';
 import { apiClient } from '@lib/apiClient';
 import { usePublicPlans, fmtLimit, fmtPrice, planAdds, PlanDef } from '@services/planService';
+import { PlanAccessSummary } from '@components/billing/PlanAccessSummary';
 
 /** Keep in sync with backend PasswordService.validatePasswordPolicy. */
 const PASSWORD_RULES: { label: string; test: (p: string) => boolean }[] = [
@@ -768,9 +769,20 @@ export const SettingsPage: React.FC = () => {
     combra: { ring: 'border-purple-500 bg-purple-50/10 shadow-sm', chip: 'bg-purple-100 text-purple-800', check: 'text-purple-500', button: 'bg-purple-600 hover:bg-purple-700 text-white' },
     bintumani: { ring: 'border-amber-500 bg-amber-50/10', chip: 'bg-amber-100 text-amber-800', check: 'text-amber-500', button: 'bg-amber-500 hover:bg-amber-600 text-white' },
   };
-  const readOnlyFeatures = planCatalog && subscription?.entitlements
-    ? planCatalog.features.filter((f) => !f.soon && subscription.entitlements?.features?.[f.key] === 'read_only').map((f) => f.label)
-    : [];
+  /** What a move from the current plan to `target` takes away (for the downgrade warning). */
+  const planLosses = (target: string) => {
+    const cur = catalogPlans.find((p) => p.id === currentPlan);
+    const next = catalogPlans.find((p) => p.id === target);
+    if (!planCatalog || !cur || !next) return { portals: [] as string[], features: [] as string[] };
+    const lost = planCatalog.features.filter((f) => !f.core && !f.soon && cur.features[f.key] && !next.features[f.key]);
+    return {
+      portals: lost.filter((f) => f.key.startsWith('portal_')).map((f) => {
+        const users = subscription?.portals?.[f.key as 'portal_parent']?.users || 0;
+        return users ? `${f.label} (${users} account${users === 1 ? '' : 's'} can't sign in)` : f.label;
+      }),
+      features: lost.filter((f) => !f.key.startsWith('portal_')).map((f) => f.label),
+    };
+  };
 
   const currentPlan = (subscription?.subscription?.plan_type || 'freetong') as 'freetong' | 'combra' | 'bintumani';
   const planButtonLabel = (target: 'freetong' | 'combra' | 'bintumani'): string => {
@@ -779,6 +791,18 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleUpgradePlan = async (planType: 'freetong' | 'combra' | 'bintumani') => {
+    // Downgrade: say exactly what changes before anything is charged.
+    if ((PLAN_RANK[planType] ?? 0) < (PLAN_RANK[currentPlan] ?? 0)) {
+      const { portals, features } = planLosses(planType);
+      const target = catalogPlans.find((p) => p.id === planType)?.name || planType;
+      const lines = [
+        `Move to ${target}?`,
+        portals.length ? `\nThese portals will switch off (their users can't sign in):\n• ${portals.join('\n• ')}` : '',
+        features.length ? `\nThese become read-only (records are kept, nothing new can be added):\n• ${features.join('\n• ')}` : '',
+        '\nNothing is deleted, and everything comes back if you upgrade again.',
+      ].filter(Boolean).join('\n');
+      if (!window.confirm(lines)) return;
+    }
     setSaving(true);
     try {
       // Plan changes are PAID (subscription revenue → the platform's own Monime
@@ -2466,9 +2490,14 @@ export const SettingsPage: React.FC = () => {
                         </div>
                       </CardHeader>
                       <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {readOnlyFeatures.length > 0 && (
-                          <div role="status" className="md:col-span-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-                            <strong>Read-only on your current plan:</strong> {readOnlyFeatures.join(', ')}. Your records there are kept and can be viewed; upgrade to add or change them.
+                        {planCatalog && subscription?.entitlements && (
+                          <div className="md:col-span-3">
+                            <PlanAccessSummary
+                              planName={subscription.entitlements.plan_name}
+                              features={planCatalog.features}
+                              access={subscription.entitlements.features}
+                              portals={subscription.portals}
+                            />
                           </div>
                         )}
                         {!planCatalog && (

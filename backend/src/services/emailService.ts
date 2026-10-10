@@ -187,6 +187,25 @@ export interface EmailResponse {
   timestamp: string;
 }
 
+/**
+ * "What changes on your plan" lists for lifecycle emails: features that turn
+ * read-only (records kept) and portals that switch off (users can't sign in).
+ */
+function planChangeLists(readOnly: string[] = [], portals: string[] = [], when: 'now' | 'future'): string {
+  const ul = (items: string[]) =>
+    `<ul style="font-size:14px;line-height:24px;padding-left:20px;margin:6px 0 14px;">${items.slice(0, 14).map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`;
+  let html = '';
+  if (portals.length) {
+    html += `<p style="font-weight:600;margin:16px 0 4px;">${when === 'now' ? 'Switched off' : 'Will switch off'}</p>
+      <p style="margin:0;">${when === 'now' ? 'Users of these portals can no longer sign in' : 'Users of these portals won’t be able to sign in'}. Their accounts and records are kept and return when you upgrade:</p>${ul(portals)}`;
+  }
+  if (readOnly.length) {
+    html += `<p style="font-weight:600;margin:16px 0 4px;">${when === 'now' ? 'Now read-only' : 'Will become read-only'}</p>
+      <p style="margin:0;">Your records here stay visible, but nothing new can be added or changed until you upgrade:</p>${ul(readOnly)}`;
+  }
+  return html;
+}
+
 class EmailService {
   private brevoClient: AxiosInstance;
   private readonly BREVO_API_URL = 'https://api.brevo.com/v3';
@@ -1044,6 +1063,8 @@ class EmailService {
       amount?: number;
       billingCycle?: 'monthly' | 'yearly';
       readOnlyFeatures?: string[];
+      /** Portals (and their users) that switch off: e.g. "Parent portal". */
+      disabledPortals?: string[];
       /** Trial ends with payment required (school becomes read-only until paid). */
       paymentRequired?: boolean;
     }
@@ -1072,7 +1093,8 @@ class EmailService {
         <p>The free <strong>${plan}</strong> trial for <strong>${school}</strong> ends ${escapeHtml(dayText)}${end ? ` (${escapeHtml(end)})` : ''}.</p>
         ${data.paymentRequired
           ? calloutBlock('To keep adding and changing records after that date, choose a plan and pay before the trial ends. If you don’t, everyone can still sign in and view everything, but changes are paused until a plan is paid. Nothing is deleted.', 'warn')
-          : calloutBlock('Nothing is deleted when the trial ends. Your school moves to the base plan, and records from features outside it stay visible in read-only mode until you upgrade.', 'info')}
+          : calloutBlock(`Nothing is deleted when the trial ends. Your school moves to ${escapeHtml(data.newPlanName || 'the base plan')} unless you choose a plan.`, 'info')}
+        ${!data.paymentRequired ? planChangeLists(data.readOnlyFeatures, data.disabledPortals, 'future') : ''}
         ${emailButton('Choose a plan', billingUrl)}
         <p style="color:#64748b;font-size:13px;">Questions about plans? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
     } else if (data.kind === 'trial_ended' && data.paymentRequired) {
@@ -1088,16 +1110,13 @@ class EmailService {
         <p style="color:#64748b;font-size:13px;">Questions? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
     } else if (data.kind === 'trial_ended') {
       const newPlan = escapeHtml(data.newPlanName || 'the base plan');
-      const ro = (data.readOnlyFeatures || []).slice(0, 12);
       heading = 'Your trial has ended';
       subject = `${data.schoolName} is now on ${data.newPlanName || 'the base plan'}`;
       preheader = `Your data is safe. Upgrade any time to unlock everything again.`;
       bodyHtml = `
         <p>Hello,</p>
-        <p>The <strong>${plan}</strong> trial for <strong>${school}</strong> has ended, and the school is now on <strong>${newPlan}</strong>. Everyone can keep signing in as usual.</p>
-        ${ro.length ? `<p style="font-weight:600;margin-top:16px;">Now read-only</p>
-        <p>Your records in these areas are kept and can still be viewed. Upgrade to add or change them:</p>
-        <ul style="color:#334155;font-size:14px;line-height:1.7;padding-left:20px;margin:8px 0;">${ro.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>` : ''}
+        <p>The <strong>${plan}</strong> trial for <strong>${school}</strong> has ended, and the school is now on <strong>${newPlan}</strong>. You, your teachers and students can keep signing in as usual.</p>
+        ${planChangeLists(data.readOnlyFeatures, data.disabledPortals, 'now')}
         ${emailButton('Upgrade plan', billingUrl)}
         <p style="color:#64748b;font-size:13px;">Questions? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
     } else if (data.kind === 'expiring') {
