@@ -13,6 +13,7 @@
  */
 import { db } from '@utils/database.js';
 import { logger } from '@utils/logger.js';
+import { publicAppUrl, publicApiUrl } from '@utils/publicUrl.js';
 
 export interface EmailBranding {
   /** Display name used as the "from" name and in the header/footer. */
@@ -51,9 +52,8 @@ export interface EmailBranding {
  * wins when set. Never ends with a slash.
  */
 export function appBaseUrl(): string {
-  const first = (v?: string) => String(v || '').split(',')[0].trim();
-  const base = first(process.env.PUBLIC_APP_URL) || first(process.env.APP_URL) || first(process.env.FRONTEND_URL) || 'https://www.wiskulsl.com';
-  return base.replace(/\/+$/, '');
+  // Never localhost in production (see utils/publicUrl).
+  return publicAppUrl();
 }
 
 /** Absolute link into the app (path must start with '/'). */
@@ -63,7 +63,7 @@ export function appLink(path: string): string {
 
 /** Where the API is publicly reachable (same origin as the app on Vercel). */
 function apiBaseUrl(): string {
-  return (String(process.env.PUBLIC_API_URL || '').split(',')[0].trim() || appBaseUrl()).replace(/\/+$/, '');
+  return publicApiUrl();
 }
 
 /** Small stable hash so a new logo gets a new (cache-busting) URL. */
@@ -91,7 +91,7 @@ export function platformBranding(): EmailBranding {
     address: process.env.SUPPORT_ADDRESS || '75 Main Road, Kossoh Town, Sierra Leone',
     website: appBaseUrl(),
     // Platform emails show the hosted WiSkul logo (falls back to a text logo if unset).
-    logoUrl: process.env.PLATFORM_LOGO_URL || `${appBaseUrl()}/logo.png`,
+    logoUrl: (process.env.PLATFORM_LOGO_URL && /^https:\/\//i.test(process.env.PLATFORM_LOGO_URL) ? process.env.PLATFORM_LOGO_URL : '') || `${appBaseUrl()}/logo.png`,
     appUrl: appBaseUrl(),
     isPlatform: true,
   };
@@ -121,7 +121,13 @@ export async function resolveTenantBranding(tenantId: string): Promise<EmailBran
     // The stored logo may be an expiring S3 link, a data: URL or a local path —
     // none of which email clients can show. Use the public branding endpoint.
     const rawLogo = school?.logo_url || tenant?.logo_url || undefined;
-    const logoUrl = tenantLogoEmailUrl(tenantId, rawLogo);
+    // Only embed the logo if the server can actually serve it; otherwise the
+    // email shows the school's monogram instead of a broken image.
+    let logoUrl: string | undefined;
+    if (rawLogo) {
+      const { tenantLogoAvailable } = await import('../../routes/brandingRoutes.js');
+      if (await tenantLogoAvailable(tenantId, rawLogo).catch(() => false)) logoUrl = tenantLogoEmailUrl(tenantId, rawLogo);
+    }
     const address = [school?.address || tenant?.address, school?.city, school?.country]
       .map((v: any) => String(v || '').trim()).filter(Boolean)
       .filter((v: string, i: number, all: string[]) => all.indexOf(v) === i).join(', ') || undefined;

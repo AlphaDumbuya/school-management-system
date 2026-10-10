@@ -27,6 +27,7 @@ import admissionsNewRoutes from '@routes/admissionsRoutes';
 import publicAdmissionRoutes from '@routes/publicAdmissionRoutes';
 import planRoutes from '@routes/planRoutes';
 import brandingRoutes from '@routes/brandingRoutes';
+import { rememberRequestOrigin } from '@utils/publicUrl';
 import { planFeatureGate } from '@middleware/subscriptionGuard';
 import enrollmentRoutes from '@routes/enrollmentRoutes';
 import enrollmentWorkflowRoutes from '@routes/enrollmentWorkflowRoutes';
@@ -155,6 +156,9 @@ app.use('/api', (req, res, next) => {
 // it works regardless of where per-router auth middleware runs. This is opt-in
 // per handler and safe to mount globally (see middleware/tenantContext.ts).
 app.use(tenantContext);
+
+// Learn the public host browsers use (for email/QR links when no URL env is set).
+app.use((req, _res, next) => { rememberRequestOrigin(req.headers as any); next(); });
 
 // Plan features: one gate for every module API (see FEATURE_PREFIXES). Locked
 // features are refused; read-only ones (held on an earlier plan or trial)

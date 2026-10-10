@@ -18,6 +18,7 @@
 import db from '../utils/database.js';
 import crypto from 'crypto';
 import { logger } from '../utils/logger.js';
+import { publicAppUrl } from '../utils/publicUrl.js';
 import promotionService from './promotionService.js';
 import { getTenantGradingScale, computeGradeWithScale } from '../utils/gradingScaleHelper.js';
 
@@ -1769,7 +1770,7 @@ export class SLReportCardService {
     classId: string,
     academicYear: string,
   ): string {
-    const verifyBase = (process.env.REPORT_CARD_VERIFY_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '');
+    const verifyBase = (process.env.REPORT_CARD_VERIFY_URL || publicAppUrl()).replace(/\/+$/, '');
     const path = `/verify-report-card/${code}`;
     const qs = `?s=${studentId}&c=${classId}&y=${encodeURIComponent(academicYear)}`;
     return verifyBase ? `${verifyBase}${path}${qs}` : `${path}${qs}`;

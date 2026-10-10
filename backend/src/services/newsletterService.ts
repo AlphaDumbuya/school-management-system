@@ -12,6 +12,7 @@ import { AppError } from '../middleware/errorHandler';
 import emailService from './emailService';
 import { platformBranding } from './email/emailBranding';
 import { renderEmail, emailButton, escapeHtml } from './email/emailLayout';
+import { appUrl } from '../utils/publicUrl';
 
 type Segment = 'all' | 'tenants' | 'prospects';
 
@@ -87,9 +88,7 @@ export class NewsletterService {
 
   /** Absolute unsubscribe URL for a subscriber token. */
   static unsubscribeUrl(token: string): string {
-    // First entry only: FRONTEND_URL can be a comma-separated CORS list.
-    const base = (String(process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || '').split(',')[0].trim() || 'https://www.wiskulsl.com').replace(/\/+$/, '');
-    return `${base}/newsletter/unsubscribe?token=${encodeURIComponent(token)}`;
+    return appUrl(`/newsletter/unsubscribe?token=${encodeURIComponent(token)}`);
   }
 
   static async unsubscribeByToken(token: string): Promise<boolean> {

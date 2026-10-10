@@ -23,6 +23,7 @@
  */
 
 import QRCode from 'qrcode';
+import { publicAppUrl } from '../utils/publicUrl.js';
 import {
   AFFECTIVE_TRAITS, PSYCHOMOTOR_SKILLS, SL_TERMS,
 } from './slReportCardService.js';
@@ -301,7 +302,7 @@ export async function renderReportCardHtml(
   // The verify_url is pre-computed by slReportCardService.getReportCard() and
   // contains a unique verification code stored in the DB — each report card
   // generation produces a new code, so every printed copy has a unique QR.
-  const verificationBaseUrl = (process.env.REPORT_CARD_VERIFY_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '');
+  const verificationBaseUrl = (process.env.REPORT_CARD_VERIFY_URL || publicAppUrl()).replace(/\/+$/, '');
   const verifyUrl = card.verify_url
     ? (card.verify_url.startsWith('http')
       ? card.verify_url
@@ -792,7 +793,7 @@ export async function renderTermResultSheetHtml(
   }).join('');
 
   // Verification QR — build a data URL server-side (same as the booklet).
-  const verificationBaseUrl = (process.env.REPORT_CARD_VERIFY_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '');
+  const verificationBaseUrl = (process.env.REPORT_CARD_VERIFY_URL || publicAppUrl()).replace(/\/+$/, '');
   const verifyUrl = card.verify_url
     ? (card.verify_url.startsWith('http') ? card.verify_url : verificationBaseUrl + card.verify_url)
     : '';

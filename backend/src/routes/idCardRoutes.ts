@@ -4,6 +4,7 @@ import { requirePlanFeature } from '../middleware/subscriptionGuard.js';
 import { UserRole } from '../types/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
+import { publicAppUrl } from '../utils/publicUrl.js';
 import { db } from '../utils/database.js';
 import { IdCardService } from '../services/idCardService.js';
 import { TemplateService } from '../services/templateService.js';
@@ -36,10 +37,10 @@ function resolveRequestOrigin(req: Request): string | undefined {
     return bodyBase.replace(/\/+$/, '');
   }
 
-  // 2) A non-localhost env override (canonical production URL).
-  const envBase = process.env.PUBLIC_APP_URL || process.env.APP_URL || process.env.FRONTEND_URL;
+  // 2) The canonical public URL (any non-localhost entry of the URL env vars).
+  const envBase = publicAppUrl();
   if (envBase && !/localhost|127\.0\.0\.1/.test(envBase)) {
-    return envBase.replace(/\/+$/, '');
+    return envBase;
   }
 
   // 3) The request's forwarded host (works behind Vercel/proxies).
