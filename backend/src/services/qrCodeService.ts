@@ -2,6 +2,7 @@ import { Knex } from 'knex';
 import * as QRCode from 'qrcode';
 import * as crypto from 'crypto';
 import { logger } from '../utils/logger.js';
+import { publicAppUrl } from '../utils/publicUrl.js';
 
 /**
  * QR Code Service
@@ -575,13 +576,7 @@ export class QrCodeService {
   private buildVerificationUrl(qrId: string, baseUrl?: string): string {
     // Prefer an explicitly-provided origin (derived from the request, so the QR
     // points to wherever the app is actually served). Fall back to env config.
-    const base = (
-      baseUrl ||
-      process.env.PUBLIC_APP_URL ||
-      process.env.APP_URL ||
-      process.env.FRONTEND_URL ||
-      ''
-    ).replace(/\/+$/, '');
+    const base = (baseUrl || publicAppUrl()).replace(/\/+$/, '');
     const path = `/verify-id?c=${qrId}`;
     return base ? `${base}${path}` : path;
   }

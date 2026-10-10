@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { authenticate, attachUserContext } from '../middleware/authMiddleware.js';
 import { db } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
+import { publicAppUrl } from '../utils/publicUrl.js';
 import { monimeService } from '../services/monimeService.js';
 import { applyAmount } from '../services/paymentApplication.js';
 
@@ -32,12 +33,12 @@ const router = Router();
 
 // Resolve the public app origin for building success/cancel URLs.
 function appOrigin(req: Request): string {
-  const envBase = process.env.PUBLIC_APP_URL || process.env.APP_URL || process.env.FRONTEND_URL;
-  if (envBase && !/localhost|127\.0\.0\.1/.test(envBase)) return envBase.replace(/\/+$/, '');
+  // The host the payer is actually on (preview/production) wins; otherwise the
+  // canonical public URL (never localhost in production).
   const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim() || req.protocol || 'https';
   const host = (req.headers['x-forwarded-host'] as string)?.split(',')[0]?.trim() || req.get('host');
   if (host && !/localhost|127\.0\.0\.1/.test(host)) return `${proto}://${host}`;
-  return (envBase || '').replace(/\/+$/, '') || `${proto}://${host}`;
+  return publicAppUrl();
 }
 
 // ── Online-payment availability (so portals can hide the pay action) ──────────

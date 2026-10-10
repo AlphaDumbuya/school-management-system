@@ -18,8 +18,8 @@ router.get('/share-link', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, Us
     if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     const school = await db('tenants').where({ id: tenantId, status: 'active' }).select('name', 'slug').first();
     if (!school) throw new AppError('School is not available for online applications', 404, 'SCHOOL_NOT_FOUND');
-    const configuredUrl = process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL?.split(',')[0]?.trim();
-    const publicBaseUrl = configuredUrl && /^https?:\/\//i.test(configuredUrl) ? configuredUrl : null;
+    const { publicAppUrl } = await import('../utils/publicUrl.js');
+    const publicBaseUrl = publicAppUrl();
     res.json({ success: true, data: { path: `/apply/${encodeURIComponent(school.slug)}`, school_name: school.name, public_base_url: publicBaseUrl } });
   } catch (error) {
     next(error);

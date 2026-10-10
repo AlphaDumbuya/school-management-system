@@ -53,6 +53,21 @@ function ownStorageKey(raw: string): string | null {
 }
 
 async function loadLogo(tenantId: string, raw: string): Promise<{ body: Buffer; type: string } | null> {
+  // 0) Legacy Settings upload saved on the API server's disk (uploads/logos).
+  const legacy = /^\/(?:storage\/)?uploads\/logos\/([^/?#]+)$/.exec(raw.split('?')[0]);
+  if (legacy) {
+    const name = legacy[1];
+    if (!name.startsWith(`logo-${tenantId}-`) || name.includes('..')) return null;
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const body = await fs.readFile(path.join(process.cwd(), 'uploads', 'logos', name));
+      return body.length <= MAX_BYTES ? { body, type: typeFromKey(name) } : null;
+    } catch {
+      return null; // file not on this server (e.g. serverless redeploy)
+    }
+  }
+
   // 1) Inline data: URL (upload fallback).
   const m = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(raw);
   if (m) {
@@ -94,15 +109,41 @@ async function loadLogo(tenantId: string, raw: string): Promise<{ body: Buffer; 
   }
 }
 
+/** The school's current logo bytes, or null (with the reason logged). */
+export async function readTenantLogo(tenantId: string, rawLogo?: string | null): Promise<{ body: Buffer; type: string } | null> {
+  if (!UUIDISH.test(String(tenantId || ''))) return null;
+  let raw = String(rawLogo || '').trim();
+  if (!raw) {
+    const school = await db('schools').where({ tenant_id: tenantId }).first('logo_url');
+    const tenant = school?.logo_url ? null : await db('tenants').where({ id: tenantId }).first('logo_url');
+    raw = String(school?.logo_url || tenant?.logo_url || '').trim();
+  }
+  if (!raw) return null;
+  const logo = await loadLogo(tenantId, raw);
+  if (!logo) logger.warn(`School logo for tenant ${tenantId} could not be loaded (${raw.slice(0, 60)}${raw.length > 60 ? '…' : ''}). Re-upload it in Settings → School Info.`);
+  return logo;
+}
+
+/**
+ * Is the logo servable? Cached for 10 minutes so sending many emails doesn't
+ * re-read it each time. Emails only embed the logo when this is true, so a
+ * missing file shows the clean monogram instead of a broken image.
+ */
+const availability = new Map<string, { at: number; ok: boolean }>();
+export async function tenantLogoAvailable(tenantId: string, rawLogo?: string | null): Promise<boolean> {
+  const key = `${tenantId}|${String(rawLogo || '').slice(0, 200)}`;
+  const hit = availability.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.ok;
+  const ok = !!(await readTenantLogo(tenantId, rawLogo).catch(() => null));
+  availability.set(key, { at: Date.now(), ok });
+  return ok;
+}
+
 router.get('/:tenantId/logo', async (req: Request, res: Response) => {
   const { tenantId } = req.params;
   if (!UUIDISH.test(tenantId)) return res.status(404).end();
   try {
-    const school = await db('schools').where({ tenant_id: tenantId }).first('logo_url');
-    const tenant = school?.logo_url ? null : await db('tenants').where({ id: tenantId }).first('logo_url');
-    const raw = String(school?.logo_url || tenant?.logo_url || '').trim();
-    if (!raw) return res.status(404).end();
-    const logo = await loadLogo(tenantId, raw.startsWith('/uploads/') ? `/storage${raw}` : raw);
+    const logo = await readTenantLogo(tenantId);
     if (!logo) return res.status(404).end();
     res.set({
       'Content-Type': logo.type,

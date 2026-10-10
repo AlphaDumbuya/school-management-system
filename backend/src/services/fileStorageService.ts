@@ -19,6 +19,7 @@ import crypto from 'crypto';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { logger } from '../utils/logger';
+import { publicApiUrl } from '../utils/publicUrl';
 
 interface UploadOptions {
   folder?: string;
@@ -51,7 +52,9 @@ class FileStorageService {
     // Determine storage provider from environment
     this.provider = (process.env.STORAGE_PROVIDER as StorageProvider) || StorageProvider.LOCAL;
     this.localStoragePath = process.env.LOCAL_STORAGE_PATH || './storage';
-    this.publicUrl = process.env.PUBLIC_URL || 'http://localhost:3000';
+    // Base for locally stored files' URLs. Never localhost in production.
+    this.publicUrl = (process.env.PUBLIC_URL
+      || ((process.env.NODE_ENV === 'production' || process.env.VERCEL) ? publicApiUrl() : 'http://localhost:3000')).replace(/\/+$/, '');
 
     // Initialize S3 client if using S3
     if (this.provider === StorageProvider.S3) {
