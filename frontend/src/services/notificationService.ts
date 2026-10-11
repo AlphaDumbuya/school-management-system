@@ -26,12 +26,13 @@ export interface NotificationListResponse {
 
 const notificationService = {
   /** List notifications (most recent first). Optionally only unread. */
-  list: async (opts?: { unreadOnly?: boolean; limit?: number; offset?: number }) => {
+  list: async (opts?: { unreadOnly?: boolean; type?: string; limit?: number; offset?: number }) => {
     const params: Record<string, any> = {
       limit: opts?.limit ?? 20,
       offset: opts?.offset ?? 0,
     };
     if (opts?.unreadOnly) params.isRead = 'false';
+    if (opts?.type) params.notificationType = opts.type;
     // apiClient.get already returns the parsed JSON body. The endpoint responds
     // { data: [...], total }, but be defensive about every shape so the caller
     // ALWAYS receives an array.
