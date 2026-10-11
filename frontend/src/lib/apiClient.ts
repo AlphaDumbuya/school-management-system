@@ -9,6 +9,8 @@ import { API_CONFIG, getAuthHeaders } from '@config/api.config';
 import { ApiResponse } from '@appTypes/index';
 import { enqueueRequest } from './offlineQueue';
 
+let lastDemoToast = 0;
+
 /**
  * Master switch for the offline write-queue. Disabled for now: it was
  * intercepting failed mutations (including school registration) and returning a
@@ -179,7 +181,14 @@ axiosInstance.interceptors.response.use(
       // scattered 403s. Any authenticated request can carry this.
       const code = (error.response?.data as any)?.error?.code
         || (error.response?.data as any)?.code;
-      if (code === 'PORTAL_NOT_IN_PLAN' && !String(error.config?.url || '').includes('/auth/')) {
+      if (code === 'DEMO_READ_ONLY') {
+        // Demo school: one friendly toast, however many requests were refused.
+        const now = Date.now();
+        if (now - lastDemoToast > 4000) {
+          lastDemoToast = now;
+          void import('@utils/toast').then(({ showToast }) => showToast.info('This is the demo school, so changes are switched off. Start a free trial to try it with your own school.')).catch(() => undefined);
+        }
+      } else if (code === 'PORTAL_NOT_IN_PLAN' && !String(error.config?.url || '').includes('/auth/')) {
         // This user's portal isn't in the school's plan any more: sign out
         // with an explanation instead of a page of errors.
         try {

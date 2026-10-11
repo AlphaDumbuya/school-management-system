@@ -36,7 +36,7 @@ export class AuditService {
     const entityId = entry.entity_id ?? entry.entityId;
     const performedBy = entry.performed_by ?? entry.performedBy;
     const newValues = entry.new_values ?? entry.details;
-    const [auditId] = await this.db('audit_logs').insert({
+    const [inserted] = await this.db('audit_logs').insert({
       entity_type: entry.entity_type ?? entry.entityType ?? 'unknown',
       // Synthetic ids like "bulk-invoice-123" aren't UUIDs; keep them in the values.
       entity_id: isUuid(entityId) ? entityId : null,
@@ -53,9 +53,10 @@ export class AuditService {
       ip_address: entry.ip_address,
       user_agent: entry.user_agent,
       created_at: entry.timestamp || new Date(),
-    });
+    }).returning('id');
 
-    return auditId;
+    // Postgres only returns rows with RETURNING; without it this destructure threw.
+    return (inserted as any)?.id ?? inserted;
   }
 
   /**

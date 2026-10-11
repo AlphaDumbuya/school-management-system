@@ -232,11 +232,15 @@ export class AuthService {
       try {
         const hasAcademicSessions = await this.db.schema.hasTable('academic_sessions');
         if (hasAcademicSessions) {
+          // The school year starting this September (from August on, the
+          // coming one), not a fixed year.
+          const now = new Date();
+          const sy = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
           await this.db('academic_sessions').insert({
             tenant_id: tenantId,
-            name: '2026/2027 Academic Year',
-            start_date: '2026-09-01',
-            end_date: '2027-07-31',
+            name: `${sy}/${sy + 1} Academic Year`,
+            start_date: `${sy}-09-01`,
+            end_date: `${sy + 1}-07-31`,
             // The academic_sessions column is `is_active` (migration 001), NOT
             // `is_current`. Using the wrong name silently failed the insert
             // (it's in a try/catch), so new self-serve schools got NO active

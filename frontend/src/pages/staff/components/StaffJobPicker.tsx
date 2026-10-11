@@ -11,6 +11,8 @@
 import React from 'react';
 import type { UseFormRegister } from 'react-hook-form';
 import * as z from 'zod';
+import useAuthStore from '@store/authStore';
+import { featureAccess } from '@lib/planFeatures';
 
 export type StaffJob = 'teacher' | 'accountant' | 'admissions_officer';
 
@@ -68,9 +70,9 @@ export function describeJobs(v: JobValues): string {
 }
 
 const JOBS = [
-  { key: 'teaches' as const, label: 'Teaching', hint: 'Classes, registers, scores' },
-  { key: 'duty_accountant' as const, label: 'Accountant (Bursar)', hint: 'Fees, invoices, payments' },
-  { key: 'duty_admissions' as const, label: 'Admissions Officer', hint: 'Applications, enrolment' },
+  { key: 'teaches' as const, label: 'Teaching', hint: 'Classes, registers, scores', portal: null },
+  { key: 'duty_accountant' as const, label: 'Accountant (Bursar)', hint: 'Fees, invoices, payments', portal: 'portal_bursar' },
+  { key: 'duty_admissions' as const, label: 'Admissions Officer', hint: 'Applications, enrolment', portal: 'portal_admissions' },
 ];
 
 interface StaffJobPickerProps {
@@ -87,14 +89,21 @@ export const StaffJobPicker: React.FC<StaffJobPickerProps> = ({
   error,
   title = 'Job at the School',
   description = 'Tick every job this person does. A form or subject teacher can also keep the fees or run admissions; they keep their classes and get those pages too.',
-}) => (
+}) => {
+  // Jobs whose portal isn't in the school's plan aren't offered (the server
+  // refuses them too). A job the person already holds stays visible so it
+  // can be unticked.
+  const { user } = useAuthStore();
+  const jobs = JOBS.filter((j) => !j.portal || featureAccess(user, j.portal) === 'enabled' || !!values[j.key]);
+  const hidden = JOBS.filter((j) => !jobs.includes(j));
+  return (
   <fieldset className="space-y-3">
     <legend className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider border-b pb-1 w-full">
       {title}
     </legend>
     <p className="text-[11px] text-gray-500 dark:text-gray-400">{description}</p>
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-      {JOBS.map((j) => {
+    <div className={`grid grid-cols-1 gap-2 ${jobs.length === 3 ? 'sm:grid-cols-3' : jobs.length === 2 ? 'sm:grid-cols-2' : ''}`}>
+      {jobs.map((j) => {
         const on = !!values[j.key];
         return (
           <label
@@ -112,8 +121,14 @@ export const StaffJobPicker: React.FC<StaffJobPickerProps> = ({
         );
       })}
     </div>
+    {hidden.length > 0 && (
+      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+        {hidden.map((j) => j.label).join(' and ')} {hidden.length === 1 ? 'is' : 'are'} available on a higher plan. See Settings → Plan &amp; Billing.
+      </p>
+    )}
     {error && <p role="alert" className="text-xs font-semibold text-red-600">{error}</p>}
   </fieldset>
-);
+  );
+};
 
 export default StaffJobPicker;

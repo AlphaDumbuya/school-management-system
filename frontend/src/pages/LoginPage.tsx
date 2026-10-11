@@ -5,7 +5,7 @@
  * are redirected straight to their dashboard.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,6 +19,7 @@ import authService from '@services/authService';
 import { isAppMode } from '@lib/appMode';
 import { PLATFORM_SUPPORT, platformSupportTel } from '@config/platform.config';
 import CyberBackground from '@components/auth/CyberBackground';
+import { demoAccount, DEMO_PASSWORD } from '@lib/demo';
 
 /**
  * Where to go after signing in: the page the user was sent here from (an email
@@ -142,20 +143,38 @@ export const LoginPage: React.FC = () => {
     };
   }, []);
 
+  // "Try the live demo" (marketing site): /login?demo=<portal> signs in to the
+  // demo school as that portal, switching account if another one is open.
+  const demoAcc = useMemo(() => demoAccount(new URLSearchParams(window.location.search).get('demo')), []);
+  const demoStarted = useRef(false);
+
   useEffect(() => {
+    if (demoAcc) return; // the demo sign-in below navigates itself
     if (isInitialized && isAuthenticated && user) {
       navigate(afterLoginPath(user.role), { replace: true });
     }
-  }, [isInitialized, isAuthenticated, user, navigate]);
+  }, [isInitialized, isAuthenticated, user, navigate, demoAcc]);
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: '', password: '', rememberMe: false },
   });
+
+  useEffect(() => {
+    if (!demoAcc || !isInitialized || demoStarted.current) return;
+    demoStarted.current = true;
+    void (async () => {
+      if (useAuthStore.getState().isAuthenticated) await useAuthStore.getState().logout().catch(() => undefined);
+      setValue('email', demoAcc.identifier);
+      setValue('password', DEMO_PASSWORD);
+      await login(demoAcc.identifier, DEMO_PASSWORD);
+    })();
+  }, [demoAcc, isInitialized, login, setValue]);
 
   const onSubmit = async (data: LoginFormValues) => {
     const result = await login(data.email, data.password);
@@ -366,6 +385,12 @@ export const LoginPage: React.FC = () => {
             </form>
           ) : (
             <>
+              {demoAcc && (
+                <div role="status" className="max-w-3xl mx-auto mb-5 bg-blue-500/15 border border-blue-300/40 rounded-xl px-4 py-3 text-blue-50 text-sm">
+                  <p className="font-bold">{isLoading ? `Opening the demo ${demoAcc.portal} portal…` : `Demo ${demoAcc.portal} portal`}</p>
+                  <p className="text-xs text-blue-100/90 mt-1">You're signing in as {demoAcc.person} at WiSkul Demo Academy. Everything is sample data and changes are switched off.</p>
+                </div>
+              )}
               {portalOffNotice && (
                 <div role="alert" className="max-w-3xl mx-auto mb-5 bg-amber-500/15 border border-amber-400/40 rounded-xl px-4 py-3 text-amber-50 text-sm">
                   <p className="font-bold">This portal isn't part of your school's plan</p>

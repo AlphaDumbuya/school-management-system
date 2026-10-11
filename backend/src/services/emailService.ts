@@ -12,6 +12,7 @@ import {
 } from './email/emailLayout.js';
 import { polishReason } from './email/reasonPolish.js';
 import { mintRestoreToken } from './restoreAccessService.js';
+import { isDemoEmail } from '../utils/demo.js';
 
 /**
  * Smart, category-specific suspension resolution guidance.
@@ -318,6 +319,10 @@ class EmailService {
    */
   async sendEmail(emailRequest: EmailRequest, retryCount: number = 0): Promise<EmailResponse> {
     try {
+      // Demo-school addresses have no mailbox: never send to them.
+      if (isDemoEmail(emailRequest.to)) {
+        return { messageId: 'demo-' + Date.now(), status: 'disabled', timestamp: new Date().toISOString() };
+      }
       if (!this.BREVO_API_KEY) {
         logger.warn(`Email sending disabled for ${emailRequest.to}`);
         return {

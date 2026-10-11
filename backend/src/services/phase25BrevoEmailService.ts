@@ -121,6 +121,10 @@ export class BrevoEmailService {
   async sendEmail(config: EmailConfig): Promise<EmailResponse> {
     try {
       this.validateEmailConfig(config);
+      // Demo-school addresses have no mailbox: never send to them.
+      if (String(config.to || '').trim().toLowerCase().endsWith('@demo.wiskulsl.com')) {
+        return { messageId: `demo-${Date.now()}`, timestamp: new Date(), status: 'sent' };
+      }
 
       const payload = {
         sender: {

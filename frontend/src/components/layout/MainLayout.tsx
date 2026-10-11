@@ -19,6 +19,7 @@ import useInactivityLock from '@hooks/useInactivityLock';
 import VerifyIntroModal from '@components/verification/VerifyIntroModal';
 import { ResultReleasePopup } from '@components/results/ResultReleasePopup';
 import { showToast } from '@utils/toast';
+import { isDemoUser } from '@lib/demo';
 
 /**
  * School-wide notice when the trial / plan has ended and payment is required:
@@ -29,6 +30,22 @@ import { showToast } from '@utils/toast';
  * portals are switched off and which features are now read-only. Dismissible;
  * it comes back if the plan's restrictions change.
  */
+/** Signed in to the public demo school: sample data, changes switched off. */
+const DemoSchoolBanner: React.FC = () => {
+  const user = useAuthStore((s) => s.user);
+  if (!isDemoUser(user)) return null;
+  return (
+    <div role="status" className="mb-4 rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-900 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+      <p className="text-blue-900 dark:text-blue-100 flex-1 min-w-[220px]">
+        <span className="font-bold">You're exploring the WiSkul demo school.</span>{' '}
+        Everything here is sample data, and changes are switched off.
+      </p>
+      <a href="/#demo" className="font-semibold text-blue-700 dark:text-blue-300 hover:underline">Try another portal</a>
+      <a href="/register" className="font-bold text-white bg-[#f59e0b] hover:bg-[#d97706] rounded-lg px-3 py-1.5">Start your free trial</a>
+    </div>
+  );
+};
+
 const PLAN_DISMISS_KEY = 'wiskul.planNotice.dismissed';
 const PlanRestrictionsBanner: React.FC = () => {
   const user = useAuthStore((s) => s.user);
@@ -260,6 +277,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           }}
         >
           <div className="px-2 py-3 sm:p-6 animate-page-enter">
+            <DemoSchoolBanner />
             <SubscriptionLapsedBanner />
             <PlanRestrictionsBanner />
             <PromotionWelcomeBanner />
