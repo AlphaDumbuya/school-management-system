@@ -1,5 +1,6 @@
 import { logger } from '@utils/logger';
 import db from '@utils/database';
+import { resolveActiveYear } from '@utils/academicYear';
 
 /**
  * Resolve the tenant's configured minimum-attendance WARNING threshold (percent)
@@ -209,8 +210,9 @@ class DashboardService {
       // Average grade — prefer the SL report-card results (sl_subject_results.mean),
       // which is the active grading system. Fall back to the legacy grades table
       // for tenants/data not yet migrated to the SL booklet.
+      const { yearString: activeYear } = await resolveActiveYear(tenantId);
       const slAvg = await db('sl_subject_results')
-        .where({ tenant_id: tenantId })
+        .where({ tenant_id: tenantId, academic_year: activeYear })
         .whereNotNull('mean')
         .avg('mean as avg')
         .first();
@@ -644,9 +646,11 @@ class DashboardService {
     try {
       // Prefer SL report-card results (the active grading system): average
       // subject mean per class.
+      const { yearString: perfYear } = await resolveActiveYear(tenantId);
       let performance = await db('sl_subject_results')
         .join('classes', 'sl_subject_results.class_id', 'classes.id')
         .where('sl_subject_results.tenant_id', tenantId)
+        .where('sl_subject_results.academic_year', perfYear)
         .whereNotNull('sl_subject_results.mean')
         .select('classes.name')
         .avg('sl_subject_results.mean as average_grade')
@@ -833,6 +837,8 @@ class DashboardService {
       // Tenant-configurable thresholds (Settings → Attendance Rules).
       const warnPct = await getAttendanceWarningThreshold(tenantId);
       const critPct = await getAttendanceCriticalThreshold(tenantId);
+      // This year's results only (last year's grades say nothing about now).
+      const { yearString: riskYear } = await resolveActiveYear(tenantId);
       const atRiskStudents = await db.raw(`
         WITH current_enrollments AS (
           SELECT DISTINCT ON (student_id) student_id, class_id
@@ -855,7 +861,7 @@ class DashboardService {
           -- Prefer SL report-card means; fall back to legacy grades per student.
           SELECT student_id, AVG(mean) as average_grade
           FROM sl_subject_results
-          WHERE mean IS NOT NULL
+          WHERE mean IS NOT NULL AND tenant_id = ? AND academic_year = ?
           GROUP BY student_id
           UNION ALL
           SELECT g.student_id, AVG(g.grade_value) as average_grade
@@ -882,7 +888,7 @@ class DashboardService {
           AND (grade_stats.average_grade < 40 OR attendance_stats.attendance_rate < ?)
         ORDER BY grade_stats.average_grade ASC NULLS LAST, attendance_stats.attendance_rate ASC NULLS LAST
         LIMIT ?
-      `, [tenantId, warnPct, limit]);
+      `, [tenantId, riskYear, tenantId, warnPct, limit]);
 
       return (atRiskStudents.rows || []).map((student: any) => {
         const riskFactors: string[] = [];

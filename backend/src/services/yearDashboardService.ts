@@ -12,6 +12,7 @@
  */
 import db from '@utils/database';
 import dashboardService from '@services/dashboardService';
+import { normalizeAcademicYear } from '@utils/academicYear';
 
 const startYear = (name?: string | null) => {
   const m = /^(\d{4})\//.exec(String(name || ''));
@@ -31,7 +32,11 @@ interface YearScope {
 class YearDashboardService {
   private async tenantSessions(tenantId: string) {
     const rows = await db('academic_sessions').where({ tenant_id: tenantId }).select('id', 'name', 'is_active');
-    return rows.sort((a: any, b: any) => startYear(b.name) - startYear(a.name));
+    // Year keys are the canonical "YYYY/YYYY" (the session may be called
+    // "2026/2027 Academic Year"); results and fees are stored under that.
+    return rows
+      .map((r: any) => ({ ...r, name: normalizeAcademicYear(r.name) || r.name }))
+      .sort((a: any, b: any) => startYear(b.name) - startYear(a.name));
   }
 
   /** Classes of a session (plus legacy no-session classes for the active year). */
@@ -244,7 +249,8 @@ class YearDashboardService {
   async getDashboard(tenantId: string, requestedYear?: string) {
     const sessions = await this.tenantSessions(tenantId);
     const active = sessions.find((s: any) => s.is_active) || null;
-    const chosen = (requestedYear && sessions.find((s: any) => s.name === requestedYear)) || active || sessions[0] || null;
+    const wanted = normalizeAcademicYear(requestedYear || null);
+    const chosen = (wanted && sessions.find((s: any) => s.name === wanted)) || active || sessions[0] || null;
     const isActive = !chosen || chosen.id === active?.id;
     const cur = await this.scope(tenantId, chosen, isActive);
 
@@ -288,7 +294,7 @@ class YearDashboardService {
         isActive,
         activeYear: active?.name ?? null,
         previousYear: prevSession?.name ?? null,
-        years: sessions.map((s: any) => s.name),
+        years: Array.from(new Set(sessions.map((s: any) => s.name))),
         pendingCarryForward,
       },
       metrics: {

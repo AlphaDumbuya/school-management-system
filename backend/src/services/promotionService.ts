@@ -14,6 +14,7 @@
  */
 
 import db from '../utils/database.js';
+import { normalizeAcademicYear } from '../utils/academicYear.js';
 import { logger } from '../utils/logger.js';
 
 function round1(n: number): number {
@@ -90,6 +91,7 @@ class PromotionService {
     academicYear: string,
   ): Promise<{ class_size: number; candidates: PromotionCandidate[] }> {
     await this.assertClassInTenant(classId, tenantId);
+    academicYear = normalizeAcademicYear(academicYear) || academicYear;
 
     // Roster: all actively enrolled students in the class (with names).
     const roster = await db('enrollments')
@@ -223,6 +225,8 @@ class PromotionService {
     },
   ): Promise<{ promoted: number; repeated: number; graduated: number; skipped: number }> {
     await this.assertClassInTenant(payload.from_class_id, tenantId);
+    // One spelling of the year, so "already promoted this year" always matches.
+    payload = { ...payload, academic_year: normalizeAcademicYear(payload.academic_year) || payload.academic_year };
 
     // Sierra Leone stages: Nursery 3 → Class 1, Class 6 → JSS 1 and JSS 3 →
     // SSS 1 are STAGE graduations. The child stays in the school and moves up
@@ -514,7 +518,7 @@ class PromotionService {
       .orderBy('sp.created_at', 'desc');
 
     if (filters.class_id) q = q.where('sp.from_class_id', filters.class_id);
-    if (filters.academic_year) q = q.where('sp.academic_year', filters.academic_year);
+    if (filters.academic_year) q = q.where('sp.academic_year', normalizeAcademicYear(filters.academic_year) || filters.academic_year);
 
     return q;
   }

@@ -14,6 +14,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { logger } from '../utils/logger.js';
 import slReportCardService from '../services/slReportCardService.js';
+import { normalizeAcademicYear } from '../utils/academicYear.js';
 import db from '../utils/database.js';
 
 const router = Router();
@@ -32,7 +33,7 @@ router.get('/verify-report-card/:hash', async (req: Request, res: Response, next
     const { hash: code } = req.params;
     const studentId = req.query.s as string;
     const classId = (req.query.c as string) || '';
-    const academicYear = req.query.y as string;
+    const academicYear = normalizeAcademicYear(req.query.y as string) as string;
 
     if (!code || !studentId || !academicYear) {
       return res.status(400).json({
@@ -58,7 +59,10 @@ router.get('/verify-report-card/:hash', async (req: Request, res: Response, next
 
     // ── Helper: build the full verification response ──
     const buildResponse = async (cId: string) => {
-      const card = await slReportCardService.getReportCard(tenantId, studentId, cId, academicYear);
+      // A public link: released terms only, exactly what a parent can see.
+      const card = slReportCardService.redactUnreleased(
+        await slReportCardService.getReportCard(tenantId, studentId, cId, academicYear), 'parent',
+      );
       const school = await db('schools')
         .where({ tenant_id: tenantId })
         .select('name', 'short_name', 'logo_url', 'address', 'motto', 'phone', 'email', 'website')
@@ -121,12 +125,10 @@ router.get('/verify-report-card/:hash', async (req: Request, res: Response, next
     }
 
     if (allowStringFallback) {
-      // Look up the student's class from enrollments for this academic year
-      const enrollment = await db('enrollments')
-        .where({ student_id: studentId, academic_year: academicYear })
-        .select('class_id')
-        .orderBy('updated_at', 'desc')
-        .first();
+      // The student's class that academic year (enrollments are keyed by the
+      // class's session; they have no academic_year column).
+      const legacyClassId = await slReportCardService.classForStudentYear(studentId, academicYear);
+      const enrollment = legacyClassId ? { class_id: legacyClassId } : null;
 
       if (!enrollment) {
         return res.status(404).json({

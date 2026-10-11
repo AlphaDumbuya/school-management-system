@@ -37,7 +37,7 @@ export const requireVerifiedSchool = async (req: Request, res: Response, next: N
     }
 
     throw new AppError(
-      'This action requires school verification. Please verify your school to continue.',
+      'Verify your school before changing your plan. It takes about two minutes.',
       403,
       'SCHOOL_VERIFICATION_REQUIRED'
     );

@@ -929,6 +929,16 @@ router.put('/users/:id', authenticate, async (req: Request, res: Response, next:
     const updatePayload: any = {};
     if (first_name !== undefined) updatePayload.first_name = String(first_name).trim().slice(0, 100);
     if (last_name !== undefined) updatePayload.last_name = String(last_name).trim().slice(0, 100);
+    // A verified owner's name is the one confirmed against their ID: it stays
+    // as verified (WiSkul support can change it). Super admins may change it.
+    if ((updatePayload.first_name !== undefined || updatePayload.last_name !== undefined) && currentUserRole !== UserRole.SUPER_ADMIN) {
+      const target = await db('users').where({ id }).first('first_name', 'last_name', 'verification_status');
+      const changed = (updatePayload.first_name !== undefined && updatePayload.first_name !== target?.first_name)
+        || (updatePayload.last_name !== undefined && updatePayload.last_name !== target?.last_name);
+      if (target?.verification_status === 'verified' && changed) {
+        throw new AppError("Your name was confirmed when you verified your school, so it can't be changed here. Contact WiSkul support if it needs correcting.", 409, 'VERIFIED_NAME_LOCKED');
+      }
+    }
     if (email !== undefined) updatePayload.email = email;
     if (role !== undefined) updatePayload.role = role;
     if (status !== undefined) updatePayload.status = status;

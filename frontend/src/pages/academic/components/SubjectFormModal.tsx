@@ -82,12 +82,21 @@ const schema = z.object({
   name: z.string().min(1, 'Subject name is required').max(100, 'Max 100 characters'),
   description: z.string().max(1000, 'Max 1000 characters').optional().or(z.literal('')),
   category: z.string().optional().or(z.literal('')),
+  // Kept in the schema so it is actually saved (zod drops unknown keys).
+  level: z.string().optional().or(z.literal('')),
   department: z.string().optional().or(z.literal('')),
-  max_marks: z.coerce.number().min(1, 'Min 1').max(1000, 'Max 1000'),
-  pass_marks: z.coerce.number().min(0, 'Min 0').max(999, 'Max 999'),
+  max_marks: z.coerce.number().min(1, 'Min 1%').max(100, 'Max 100%'),
+  pass_marks: z.coerce.number().min(0, 'Min 0%').max(100, 'Max 100%'),
   credit_points: z.coerce.number().min(0, 'Min 0').max(20, 'Max 20'),
   is_elective: z.boolean(),
+}).refine((v) => v.pass_marks <= v.max_marks, {
+  path: ['pass_marks'],
+  message: 'Pass mark cannot be higher than the maximum',
 });
+
+/** Departments apply to SSS only; anything else is offered to all of them. */
+export const ALL_DEPARTMENTS = 'All';
+const SSS_DEPARTMENTS = [ALL_DEPARTMENTS, ...DEPARTMENTS_BY_LEVEL.sss];
 
 type FormValues = z.infer<typeof schema>;
 
@@ -138,9 +147,10 @@ export const SubjectFormModal: React.FC<SubjectFormModalProps> = ({
       name: '',
       description: '',
       category: 'core',
-      department: 'Sciences & Mathematics',
+      level: 'all',
+      department: ALL_DEPARTMENTS,
       max_marks: 100,
-      pass_marks: 40,
+      pass_marks: 50,
       credit_points: 3,
       is_elective: false,
     },
@@ -150,14 +160,13 @@ export const SubjectFormModal: React.FC<SubjectFormModalProps> = ({
   const watchedDescription = watch('description') || '';
   const watchedLevel = watch('level') || 'all';
 
-  const activeDepartments = React.useMemo(() => {
-    if (watchedLevel.includes('sss')) return DEPARTMENTS_BY_LEVEL.sss;
-    if (watchedLevel.includes('jss')) return DEPARTMENTS_BY_LEVEL.jss;
-    if (watchedLevel.includes('primary')) return DEPARTMENTS_BY_LEVEL.primary;
-    if (watchedLevel.includes('nursery')) return DEPARTMENTS_BY_LEVEL.nursery;
-    if (watchedLevel.includes('technical')) return DEPARTMENTS_BY_LEVEL.technical;
-    return DEPARTMENTS_BY_LEVEL.default;
-  }, [watchedLevel]);
+  // Only an SSS-only subject belongs to one department. A subject taught at
+  // other levels too (e.g. English from Primary to SSS) is for all departments.
+  const sssOnly = watchedLevel === 'sss';
+  const activeDepartments = React.useMemo(
+    () => (sssOnly ? SSS_DEPARTMENTS : [ALL_DEPARTMENTS]),
+    [sssOnly],
+  );
 
   // Toggle multi-level pill selection
   const toggleLevel = (levelVal: string) => {
@@ -172,13 +181,6 @@ export const SubjectFormModal: React.FC<SubjectFormModalProps> = ({
       updated = [...selectedLevels, levelVal];
     }
     setSelectedLevels(updated);
-
-    // Smart default pass mark logic based on Sierra Leone educational standards
-    if (updated.includes('sss') && !updated.includes('primary') && !updated.includes('nursery')) {
-      setValue('pass_marks', 40); // WAEC WASSCE Pass threshold (40%)
-    } else if (updated.includes('jss') || updated.includes('primary') || updated.includes('nursery')) {
-      setValue('pass_marks', 50); // BECE / NPSE Pass threshold (50%)
-    }
   };
 
   // Select all levels
@@ -186,22 +188,14 @@ export const SubjectFormModal: React.FC<SubjectFormModalProps> = ({
     setSelectedLevels(LEVEL_OPTIONS.map((l) => l.value));
   };
 
-  // Sync default department when activeDepartments list changes
+  // Keep the department valid for the level (non-SSS → All).
+  // The pass mark is left as typed: it no longer resets when the level changes.
   useEffect(() => {
     const currentDept = watch('department');
     if (!currentDept || !activeDepartments.includes(currentDept)) {
-      setValue('department', activeDepartments[0] || 'Sciences');
+      setValue('department', ALL_DEPARTMENTS);
     }
   }, [activeDepartments, watch, setValue]);
-
-  // Smart default pass mark logic (Nursery = 40, all other levels = 50)
-  useEffect(() => {
-    if (watchedLevel === 'nursery') {
-      setValue('pass_marks', 40);
-    } else {
-      setValue('pass_marks', 50);
-    }
-  }, [watchedLevel, setValue]);
 
   // Auto-generate code from name
   useEffect(() => {
@@ -221,9 +215,9 @@ export const SubjectFormModal: React.FC<SubjectFormModalProps> = ({
         description: editingSubject.description ?? '',
         category: editingSubject.category ?? 'core',
         level: editingSubject.level ?? 'all',
-        department: editingSubject.department ?? activeDepartments[0] ?? 'Sciences',
-        max_marks: editingSubject.max_marks ?? 100,
-        pass_marks: editingSubject.pass_marks ?? 50,
+        department: editingSubject.level === 'sss' && editingSubject.department ? editingSubject.department : ALL_DEPARTMENTS,
+        max_marks: Math.min(Number(editingSubject.max_marks ?? 100), 100),
+        pass_marks: Math.min(Number(editingSubject.pass_marks ?? 50), 100),
         credit_points: editingSubject.credit_points ?? 3,
         is_elective: editingSubject.is_elective ?? false,
       });
@@ -234,7 +228,7 @@ export const SubjectFormModal: React.FC<SubjectFormModalProps> = ({
         description: '',
         category: 'core',
         level: 'all',
-        department: activeDepartments[0] ?? 'Sciences',
+        department: ALL_DEPARTMENTS,
         max_marks: 100,
         pass_marks: 50,
         credit_points: 3,
@@ -261,7 +255,7 @@ export const SubjectFormModal: React.FC<SubjectFormModalProps> = ({
         code: values.code.toUpperCase(),
         name: values.name,
         description: values.description || undefined,
-        department: values.department || activeDepartments[0],
+        department: (values.level === 'sss' && values.department) || ALL_DEPARTMENTS,
         max_marks: values.max_marks,
         pass_marks: values.pass_marks,
         credit_points: values.credit_points,
@@ -462,31 +456,36 @@ export const SubjectFormModal: React.FC<SubjectFormModalProps> = ({
                 {...register('level')}
                 className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               >
-                <option value="all">All Levels</option>
-                <option value="nursery">Nursery / Early Childhood (Pre-School)</option>
-                <option value="primary">Primary School (Class 1–6)</option>
-                <option value="nursery,primary">Nursery & Primary School (Combined)</option>
-                <option value="jss">Junior Secondary School (JSS 1–3)</option>
-                <option value="sss">Senior Secondary School (SSS 1–3)</option>
-                <option value="jss,sss">Secondary School (JSS & SSS)</option>
-                <option value="primary,jss,sss">Primary & Secondary (Full K-12)</option>
-                <option value="technical">Technical & Vocational Institute</option>
+                <option value="all">All Levels (Nursery to SSS)</option>
+                <option value="nursery">Nursery only</option>
+                <option value="primary">Primary only (Class 1–6)</option>
+                <option value="jss">JSS only (JSS 1–3)</option>
+                <option value="sss">SSS only (SSS 1–3)</option>
+                <option value="nursery,primary">Nursery & Primary</option>
+                <option value="primary,jss">Primary & JSS</option>
+                <option value="jss,sss">JSS & SSS</option>
+                <option value="primary,jss,sss">Primary, JSS & SSS</option>
+                <option value="technical">Technical & Vocational</option>
               </select>
             </div>
 
-            {/* Department Select (Dynamic based on selected level) */}
+            {/* Department: SSS-only subjects pick one; everything else is All */}
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 Department
               </label>
               <select
                 {...register('department')}
-                className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                disabled={!sssOnly}
+                className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {activeDepartments.map((d) => (
-                  <option key={d} value={d}>{d}</option>
+                  <option key={d} value={d}>{d === ALL_DEPARTMENTS ? 'All departments' : d}</option>
                 ))}
               </select>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                {sssOnly ? 'Pick a department, or All if every SSS stream takes it.' : 'Departments are for SSS only, so this subject is for all departments.'}
+              </p>
             </div>
           </div>
         </div>
@@ -504,17 +503,23 @@ export const SubjectFormModal: React.FC<SubjectFormModalProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <FormField
-              label="Maximum Marks"
+              label="Maximum Mark (%)"
               type="number"
+              min={1}
+              max={100}
               placeholder="100"
               required
+              helperText="Up to 100%"
               error={errors.max_marks?.message}
               {...register('max_marks')}
             />
             <FormField
-              label="Pass Marks"
+              label="Pass Mark (%)"
               type="number"
-              placeholder="40"
+              min={0}
+              max={100}
+              placeholder="50"
+              helperText="Up to 100%"
               required
               error={errors.pass_marks?.message}
               {...register('pass_marks')}

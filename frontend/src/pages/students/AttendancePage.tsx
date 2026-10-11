@@ -44,6 +44,7 @@ import { SearchBar } from '@components/admin/table/SearchBar';
 import { rosterRepo } from '../../offline/repositories/rosterRepo';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { YearFilter } from '@components/common/YearFilter';
+import { TermFilter, type TermValue } from '@components/common/TermFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import { TeacherAttendancePanel } from '@components/attendance/TeacherAttendancePanel';
 import { AttendanceTimeDetails, TimedAttendanceRecord } from '@components/attendance/AttendanceTimeDetails';
@@ -158,6 +159,8 @@ export const AttendancePage: React.FC = () => {
   // analytics, export and class pickers are all scoped to it.
   const year = pickedYear || activeYear;
   const viewingPast = !!year && !!activeYear && year !== activeYear;
+  // One term (report-card dates) or the whole year, for logs, analytics and export.
+  const [term, setTerm] = useState<TermValue>('');
 
   // ── Log tab state ─────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
@@ -198,7 +201,7 @@ export const AttendancePage: React.FC = () => {
 
   // 1. Attendance log
   const { data: logsData, isLoading: logsLoading, isFetching: logsFetching, refetch: refetchLogs } = useQuery({
-    queryKey: ['att-logs', { search, classFilter, statusFilter, dateFilter, page, year }],
+    queryKey: ['att-logs', { search, classFilter, statusFilter, dateFilter, page, year, term }],
     queryFn: () =>
       attendanceService.listAttendance({
         page,
@@ -208,6 +211,7 @@ export const AttendancePage: React.FC = () => {
         date: dateFilter || undefined,
         search: search || undefined,
         academic_year: year,
+        term: term || undefined,
       }),
     // Office staff (bursar, admissions) only sign themselves in here.
     enabled: !!year && !staffSelfOnly,
@@ -295,8 +299,8 @@ export const AttendancePage: React.FC = () => {
 
   // 5. Analytics: server-computed (scales past the browser's row limits).
   const { data: analyticsData, isLoading: analyticsLoading, isFetching: analyticsFetching } = useQuery({
-    queryKey: ['att-analytics', classFilter, year],
-    queryFn: () => attendanceService.getAnalytics(classFilter || undefined, year),
+    queryKey: ['att-analytics', classFilter, year, term],
+    queryFn: () => attendanceService.getAnalytics(classFilter || undefined, year, term || undefined),
     enabled: activeTab === 'analytics' && !!year,
     staleTime: 60_000,
   });
@@ -584,10 +588,11 @@ export const AttendancePage: React.FC = () => {
           activeTab !== 'teachers' && (
             <div className="flex items-center gap-2 sm:gap-3">
               <YearFilter value={year} onChange={changeYear} noAutoSelect />
+              {activeTab !== 'register' && <TermFilter value={term} onChange={(t) => { setTerm(t); setPage(1); }} />}
               <ExportButton
                 endpoint="/api/v1/attendance/export"
                 filename="attendance"
-                params={{ date: dateFilter || undefined, classId: classFilter || undefined, academic_year: year || undefined }}
+                params={{ date: dateFilter || undefined, classId: classFilter || undefined, academic_year: year || undefined, term: term || undefined }}
               />
             </div>
           )
@@ -1606,10 +1611,11 @@ const StudentAttendanceView: React.FC = () => {
   const year = pickedYear || activeYear;
   const changeYear = (y: string) => setPickedYear(!y || y === activeYear ? '' : y);
   const viewingPast = !!year && !!activeYear && year !== activeYear;
+  const [term, setTerm] = useState<TermValue>('');
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
-    queryKey: ['my-attendance', year],
-    queryFn: () => attendanceService.getMyAttendance(year),
+    queryKey: ['my-attendance', year, term],
+    queryFn: () => attendanceService.getMyAttendance(year, term || undefined),
     enabled: !!year,
     staleTime: 60_000,
   });
@@ -1636,7 +1642,7 @@ const StudentAttendanceView: React.FC = () => {
         subtitle={yearClasses.length ? `${[...yearClasses].reverse().join(' → ')} · ${year}` : 'Your daily attendance record'}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        actions={<YearFilter value={year} onChange={changeYear} noAutoSelect />}
+        actions={<div className="flex items-center gap-2"><YearFilter value={year} onChange={changeYear} noAutoSelect /><TermFilter value={term} onChange={setTerm} /></div>}
       >
         {viewingPast && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
@@ -1807,6 +1813,7 @@ const ParentAttendanceView: React.FC = () => {
   const year = pickedYear || activeYear;
   const viewingPast = !!year && !!activeYear && year !== activeYear;
   const changeYear = (y: string) => setPickedYear(!y || y === activeYear ? '' : y);
+  const [term, setTerm] = useState<TermValue>('');
 
   const { data: dashResp } = useQuery({
     queryKey: ['parent-dashboard', year],
@@ -1819,8 +1826,8 @@ const ParentAttendanceView: React.FC = () => {
   const childFirst = String(children.find((c: any) => String(c.id) === String(currentId))?.name || 'Your child').split(' ')[0];
 
   const { data: childResp, isLoading, isFetching } = useQuery({
-    queryKey: ['parent-child-detail', currentId, year],
-    queryFn: () => parentDashboardService.getChildDetail(currentId, year),
+    queryKey: ['parent-child-detail', currentId, year, term],
+    queryFn: () => parentDashboardService.getChildDetail(currentId, year, term || undefined),
     enabled: !!currentId && !!year,
     // Keep the today banner reasonably live so a check-in/out reflects quickly.
     staleTime: 30_000,
@@ -1844,10 +1851,10 @@ const ParentAttendanceView: React.FC = () => {
       <PageShell
         title="Children's Attendance"
         subtitle={yearClasses.length ? `${childFirst} · ${[...yearClasses].reverse().join(' → ')} · ${year}` : `Your children's attendance · ${year}`}
-        actions={<YearFilter value={year} onChange={changeYear} noAutoSelect />}
+        actions={<div className="flex items-center gap-2"><YearFilter value={year} onChange={changeYear} noAutoSelect /><TermFilter value={term} onChange={setTerm} /></div>}
         onRefresh={() => Promise.all([
           queryClient.refetchQueries({ queryKey: ['parent-dashboard', year], type: 'active' }, { throwOnError: true }),
-          queryClient.refetchQueries({ queryKey: ['parent-child-detail', currentId, year], type: 'active' }, { throwOnError: true }),
+          queryClient.refetchQueries({ queryKey: ['parent-child-detail', currentId, year, term], type: 'active' }, { throwOnError: true }),
         ])}
         isRefreshing={isFetching}
       >

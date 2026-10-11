@@ -271,7 +271,52 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
     ],
-    related: ['first-setup', 'id-cards-issue'],
+    related: ['first-setup', 'id-cards-issue', 'verify-school'],
+  },
+  {
+    id: 'verify-school',
+    collection: 'settings',
+    title: 'Verify your school',
+    summary: "Confirm your school's EMIS code and your ID as the account owner.",
+    roles: ['principal'],
+    route: '/verify-school',
+    routeLabel: 'Verify your school',
+    keywords: ['verification', 'verify', 'emis', 'account owner', 'id', 'badge'],
+    sections: [
+      {
+        id: 'what',
+        heading: 'What verification is',
+        blocks: [
+          p(["The account owner (the principal who registered the school) confirms the school's EMIS code and their own government ID, and declares that the details are true. It takes about two minutes and is done at once."]),
+          p(["You'll need it before changing your subscription plan. Everything else works without it."]),
+        ],
+      },
+      {
+        id: 'how',
+        heading: 'How to verify',
+        blocks: [
+          steps([
+            { title: 'Have your details ready', body: [["Your school's EMIS code (or MBSSE registration number) and your national ID, passport or driver's licence."]] },
+            { title: 'Check your account name', body: [['The name on your ID must match your account name. If it doesn\'t, correct it first in ', link('Settings → Profile', '/settings?tab=profile'), '.']] },
+            { title: 'Fill in the form', body: [['Open ', link('Verify your school', '/verify-school'), ', enter the details, tick the declaration and choose Verify my school.']] },
+          ]),
+        ],
+      },
+      {
+        id: 'checks',
+        heading: 'What we check and store',
+        blocks: [
+          list([
+            ['The EMIS code and ID number must be in a valid format.'],
+            ['The name on your ID must match your account name (middle names and word order don\'t matter).'],
+            ['Each EMIS code can be verified by one school only.'],
+            ['Your ID number is encrypted; only its last 4 characters are shown, to you and to WiSkul support. Parents, staff and other schools never see these details.'],
+          ]),
+          note(["After verifying, your name is locked to the name on your ID. Contact WiSkul support if it needs correcting, or if another school is using your EMIS code."]),
+        ],
+      },
+    ],
+    related: ['school-info', 'first-setup'],
   },
   {
     id: 'academic-config',

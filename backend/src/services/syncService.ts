@@ -166,6 +166,13 @@ export class SyncService {
         .whereIn('status', ['enrolled', 'active'])
         .first();
       if (!enrollment) return { result: 'rejected', reason: 'Student is not enrolled in this class' };
+      // Same rules as the website: only this academic year's classes and dates.
+      const cls = await db('classes').leftJoin('academic_sessions as s', 'classes.academic_session_id', 's.id')
+        .where('classes.id', payload.class_id).first('s.id as session_id', 's.is_active');
+      if (cls?.session_id && cls.is_active === false) return { result: 'rejected', reason: "This class belongs to a past academic year; its attendance is read-only" };
+      const { attendanceDateProblem } = await import('../utils/termWindows.js');
+      const dateProblem = await attendanceDateProblem(scope.tenantId, payload.date);
+      if (dateProblem) return { result: 'rejected', reason: dateProblem.message };
       const existing = await db('attendance').where({ client_id: clientId, student_id: payload.student_id, class_id: payload.class_id }).first();
       if (existing) return { result: 'duplicate', serverId: existing.id };
 

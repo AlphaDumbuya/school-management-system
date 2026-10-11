@@ -20,9 +20,14 @@ import crypto from 'crypto';
 import { logger } from '../utils/logger.js';
 import { publicAppUrl } from '../utils/publicUrl.js';
 import promotionService from './promotionService.js';
+import { normalizeAcademicYear, resolveYearScope } from '../utils/academicYear.js';
+import { resolveTermWindows } from '../utils/termWindows.js';
 import { getTenantGradingScale, computeGradeWithScale } from '../utils/gradingScaleHelper.js';
 
 export const SL_TERMS = ['first_term', 'second_term', 'third_term'] as const;
+type TermWindows = Record<SLTerm, { start: string | null; end: string | null }> & { year: { start: string | null; end: string | null } };
+/** Roles that only ever see RELEASED results. */
+export const PUBLISH_GATED_ROLES = ['student', 'parent', 'guardian', 'accountant', 'admissions_officer'];
 export type SLTerm = (typeof SL_TERMS)[number];
 
 // Fixed legend (matches the booklet back cover). Index is 1-based.
@@ -131,6 +136,31 @@ export class SLReportCardService {
     return past
       ? ['enrolled', 'active', 'completed', 'promoted', 'repeated', 'graduated']
       : ['enrolled', 'active'];
+  }
+
+  /**
+   * Results are written for the year the CLASS belongs to. A 2025/2026 class
+   * can't receive 2026/2027 scores (they'd mix into that year's rankings).
+   * A past year's results are read-only for teachers; the principal can still
+   * make corrections. Returns the canonical year string.
+   */
+  private async assertClassYear(classId: string, academicYear: string, role: string): Promise<string> {
+    const year = normalizeAcademicYear(academicYear);
+    if (!year || !/^\d{4}\/\d{4}$/.test(year)) throw new Error('Invalid academic year');
+    const r = await db('classes')
+      .leftJoin('academic_sessions as s', 'classes.academic_session_id', 's.id')
+      .where('classes.id', classId)
+      .first('s.name', 's.is_active');
+    if (r?.name) {
+      const classYear = normalizeAcademicYear(r.name);
+      if (classYear && classYear !== year) {
+        throw new Error(`Invalid academic year: this class belongs to ${classYear}, not ${year}`);
+      }
+      if (r.is_active === false && !['principal', 'super_admin'].includes(role)) {
+        throw new Error(`${year} is a past academic year, so its results are locked. Ask the principal to make corrections.`);
+      }
+    }
+    return year;
   }
 
   async assertClassInTenant(classId: string, tenantId: string): Promise<void> {
@@ -299,14 +329,16 @@ export class SLReportCardService {
     userId: string,
     payload: { class_id: string; subject_id: string; term: string; academic_year: string; locked: boolean },
   ): Promise<{ updated: number }> {
+    if (!SL_TERMS.includes(payload.term as SLTerm)) throw new Error('Invalid term');
     await this.assertClassInTenant(payload.class_id, tenantId);
+    const academicYear = await this.assertClassYear(payload.class_id, payload.academic_year, 'principal');
     const updated = await db('sl_subject_results')
       .where({
         tenant_id: tenantId,
         class_id: payload.class_id,
         subject_id: payload.subject_id,
         term: payload.term,
-        academic_year: payload.academic_year,
+        academic_year: academicYear,
       })
       .update({
         is_locked: payload.locked,
@@ -327,7 +359,12 @@ export class SLReportCardService {
     payload: { class_id: string; academic_year: string; term?: string | null; published: boolean; reason?: string | null },
   ): Promise<{ auto_promotion?: { ran: boolean; reason?: string; promoted: number; repeated: number; graduated: number; skipped: number } }> {
     await this.assertClassInTenant(payload.class_id, tenantId);
-    const term = payload.term ?? null;
+    payload = { ...payload, academic_year: await this.assertClassYear(payload.class_id, payload.academic_year, 'principal') };
+    // No term / 'full' = the whole year. Anything else must be a real term: a
+    // stray value would create a release that never matches anything.
+    const rawTerm = payload.term == null || payload.term === '' || payload.term === 'full' ? null : String(payload.term);
+    if (rawTerm && !SL_TERMS.includes(rawTerm as SLTerm)) throw new Error('Invalid term');
+    const term = rawTerm;
     // Only meaningful when unreleasing; trimmed and capped for safety.
     const reason = !payload.published && payload.reason
       ? String(payload.reason).trim().slice(0, 500) || null
@@ -419,7 +456,8 @@ export class SLReportCardService {
     const students = await db('enrollments')
       .join('students', 'enrollments.student_id', 'students.id')
       .where('enrollments.class_id', classId)
-      .where('enrollments.status', 'active')
+      // A past year's class: everyone who was in it that year, not just active.
+      .whereIn('enrollments.status', await this.rosterStatuses(classId))
       .where('students.tenant_id', tenantId)
       .select(
         'students.id as student_id',
@@ -598,7 +636,8 @@ export class SLReportCardService {
     const students = await db('enrollments')
       .join('students', 'enrollments.student_id', 'students.id')
       .where('enrollments.class_id', classId)
-      .where('enrollments.status', 'active')
+      // A past year's class: everyone who was in it that year, not just active.
+      .whereIn('enrollments.status', await this.rosterStatuses(classId))
       .where('students.tenant_id', tenantId)
       .select(
         'students.id as student_id',
@@ -736,6 +775,19 @@ export class SLReportCardService {
     classId: string,
     hint?: string | null,
   ): Promise<string | null> {
+    // 0. The year asked for, when this class has results or releases under it
+    //    (otherwise a legacy class with no session showed the newest year).
+    const wanted = normalizeAcademicYear(hint || null);
+    if (wanted && /^\d{4}\/\d{4}$/.test(wanted)) {
+      const hit = await db('sl_report_publications').where({ tenant_id: tenantId, class_id: classId, academic_year: wanted }).first('id').catch(() => null)
+        || await db('sl_subject_results').where({ tenant_id: tenantId, class_id: classId, academic_year: wanted }).first('id').catch(() => null);
+      if (hit) return wanted;
+      // A class that belongs to a session is always that session's year.
+      const cls = await db('classes').leftJoin('academic_sessions as s', 'classes.academic_session_id', 's.id')
+        .where('classes.id', classId).first('s.name').catch(() => null);
+      const own = normalizeAcademicYear(cls?.name || null);
+      if (own && /^\d{4}\/\d{4}$/.test(own)) return own;
+    }
     // 1. Most recent publication for this class.
     const pub = await db('sl_report_publications')
       .where({ tenant_id: tenantId, class_id: classId })
@@ -967,15 +1019,16 @@ export class SLReportCardService {
     payload: BulkSubjectScoresPayload,
     ctx?: { role?: string },
   ): Promise<{ saved: number }> {
-    const { class_id, subject_id, academic_year, term, scores } = payload;
+    const { class_id, subject_id, term, scores } = payload;
     const role = ctx?.role ?? 'principal';
 
-    if (!class_id || !subject_id || !academic_year || !term || !Array.isArray(scores)) {
+    if (!class_id || !subject_id || !payload.academic_year || !term || !Array.isArray(scores)) {
       throw new Error('class_id, subject_id, academic_year, term and scores[] are required');
     }
     if (!SL_TERMS.includes(term)) throw new Error('Invalid term');
 
     await this.assertClassInTenant(class_id, tenantId);
+    const academic_year = await this.assertClassYear(class_id, payload.academic_year, role);
     // Teacher scoping — must be assigned to this class + subject
     await this.assertTeacherScope(userId, tenantId, role, class_id, subject_id);
 
@@ -1193,11 +1246,12 @@ export class SLReportCardService {
     },
     ctx?: { role?: string },
   ): Promise<{ saved: number }> {
-    const { student_id, class_id, academic_year, term, affective, psychomotor } = payload;
+    const { student_id, class_id, term, affective, psychomotor } = payload;
     const role = ctx?.role ?? 'principal';
 
     await this.assertStudentInTenant(student_id, tenantId);
     await this.assertClassInTenant(class_id, tenantId);
+    const academic_year = await this.assertClassYear(class_id, payload.academic_year, role);
     // Ratings are a class-level responsibility (class teacher / assigned teacher)
     await this.assertTeacherScope(userId, tenantId, role, class_id);
     if (!SL_TERMS.includes(term)) throw new Error('Invalid term');
@@ -1276,10 +1330,12 @@ export class SLReportCardService {
     },
     ctx?: { role?: string },
   ): Promise<void> {
-    const { student_id, class_id, academic_year, term } = payload;
+    const { student_id, class_id, term } = payload;
     const role = ctx?.role ?? 'principal';
+    if (!SL_TERMS.includes(term)) throw new Error('Invalid term');
     await this.assertStudentInTenant(student_id, tenantId);
     await this.assertClassInTenant(class_id, tenantId);
+    const academic_year = await this.assertClassYear(class_id, payload.academic_year, role);
     await this.assertTeacherScope(userId, tenantId, role, class_id);
 
     const existing = await db('sl_term_summaries')
@@ -1318,9 +1374,10 @@ export class SLReportCardService {
       average_age?: string;
     },
   ): Promise<void> {
-    const { student_id, class_id, academic_year } = payload;
+    const { student_id, class_id } = payload;
     await this.assertStudentInTenant(student_id, tenantId);
     await this.assertClassInTenant(class_id, tenantId);
+    const academic_year = await this.assertClassYear(class_id, payload.academic_year, 'principal');
 
     const existing = await db('sl_report_card_meta')
       .where({ tenant_id: tenantId, student_id, class_id, academic_year })
@@ -1363,51 +1420,17 @@ export class SLReportCardService {
   private async getTermDateWindows(
     tenantId: string,
     academicYear: string,
-  ): Promise<Record<SLTerm, { start: Date | null; end: Date | null }> | null> {
-    // A tenant may have more than one session row for the same academic year
-    // (e.g. duplicates, or a re-configured calendar). Use the WIDEST span
-    // across all matching rows so no attendance falls outside the window set.
-    const span = await db('academic_sessions')
-      .where('tenant_id', tenantId)
-      .where('name', 'ilike', `%${academicYear}%`)
-      .whereNotNull('start_date')
-      .whereNotNull('end_date')
-      .min('start_date as start')
-      .max('end_date as end')
-      .first();
-
-    if (span?.start && span?.end) {
-      const start = new Date(span.start as any);
-      const end = new Date(span.end as any);
-      const totalMs = end.getTime() - start.getTime();
-      if (totalMs > 0) {
-        const third = totalMs / 3;
-        const t1End = new Date(start.getTime() + third);
-        const t2End = new Date(start.getTime() + third * 2);
-        return {
-          // Term 1 open at the start, Term 3 open at the end (see doc comment).
-          first_term: { start: null, end: t1End },
-          second_term: { start: t1End, end: t2End },
-          third_term: { start: t2End, end: null },
-        };
-      }
-    }
-
-    // FALLBACK: no configured session (academic_sessions may be empty). Derive
-    // term windows from the academic-year string (e.g. "2026/2027") using the
-    // standard Sierra Leone 3-term calendar so per-term attendance is accurate
-    // and each term counts only its OWN dates (previously a null window counted
-    // the whole year for every term, which looked wrong).
-    const m = String(academicYear).match(/(\d{4})/);
-    if (!m) return null;
-    const y1 = parseInt(m[1], 10);       // start year (Sept of y1)
-    const y2 = y1 + 1;                    // end year (Jul of y2)
-    // Term 1: … – 31 Dec y1 · Term 2: 01 Jan y2 – 15 Apr y2 · Term 3: 16 Apr y2 – …
-    // Outer edges are open (see doc comment) so early/late attendance is kept.
+  ): Promise<TermWindows | null> {
+    // Shared with the attendance pages (utils/termWindows) so the numbers agree.
+    const w = await resolveTermWindows(tenantId, academicYear);
+    if (!w) return null;
+    // Attendance saved without a class counts for the year it falls in, using
+    // the same window every attendance page uses (resolveYearScope).
+    const scope = await resolveYearScope(tenantId, academicYear);
+    const ymd = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
     return {
-      first_term: { start: null, end: new Date(Date.UTC(y1, 11, 31)) },
-      second_term: { start: new Date(Date.UTC(y2, 0, 1)), end: new Date(Date.UTC(y2, 3, 15)) },
-      third_term: { start: new Date(Date.UTC(y2, 3, 16)), end: null },
+      first_term: w.first_term, second_term: w.second_term, third_term: w.third_term,
+      year: { start: ymd(scope?.from ?? null), end: ymd(scope?.to ?? null) },
     };
   }
 
@@ -1420,27 +1443,30 @@ export class SLReportCardService {
     tenantId: string,
     studentId: string,
     classId: string,
-    window: { start: Date | null; end: Date | null } | null,
+    window: { start: string | null; end: string | null } | null,
+    yearWindow: { start: string | null; end: string | null } | null,
   ): Promise<{ on_time: number; late: number; absent: number }> {
     let q = db('attendance')
       .join('students', 'attendance.student_id', 'students.id')
       .where('attendance.student_id', studentId)
       .where('students.tenant_id', tenantId)
       // Attendance may be recorded with the class_id or with a null class_id
-      // (class_id is nullable). Match this class OR unscoped rows so counts
-      // aren't silently zero when the marker didn't attach a class.
+      // (class_id is nullable). Match this class, or unscoped rows dated
+      // inside THIS academic year (never another year's class-less rows).
       .where(function (this: any) {
-        this.where('attendance.class_id', classId).orWhereNull('attendance.class_id');
+        this.where('attendance.class_id', classId).orWhere(function (this: any) {
+          this.whereNull('attendance.class_id');
+          // Same rule as applyYearScope: [this year's start, next year's start).
+          if (yearWindow?.start) this.where('attendance.attendance_date', '>=', yearWindow.start);
+          if (yearWindow?.end) this.where('attendance.attendance_date', '<', yearWindow.end);
+        });
       });
 
     // Apply each bound independently so an open-ended edge (null) does not
     // constrain the query — Term 1 has no lower bound, Term 3 no upper bound.
-    if (window?.start) {
-      q = q.where('attendance.attendance_date', '>=', window.start.toISOString().slice(0, 10));
-    }
-    if (window?.end) {
-      q = q.where('attendance.attendance_date', '<=', window.end.toISOString().slice(0, 10));
-    }
+    // The end is exclusive (it is the next term's start).
+    if (window?.start) q = q.where('attendance.attendance_date', '>=', window.start);
+    if (window?.end) q = q.where('attendance.attendance_date', '<', window.end);
 
     // Count DISTINCT DAYS (not sessions) so multiple daily sessions
     // (morning/afternoon) count as ONE day. Each day is classified by its BEST
@@ -1478,7 +1504,7 @@ export class SLReportCardService {
     const result = {} as Record<SLTerm, { on_time: number; late: number; absent: number }>;
     for (const term of SL_TERMS) {
       const win = windows ? windows[term] : null;
-      result[term] = await this.countAttendance(tenantId, studentId, classId, win);
+      result[term] = await this.countAttendance(tenantId, studentId, classId, win, windows?.year ?? null);
     }
     return result;
   }
@@ -1493,8 +1519,10 @@ export class SLReportCardService {
     tenantId: string,
     studentId: string,
     classId: string,
+    academicYear?: string,
   ): Promise<{ on_time: number; late: number; absent: number }> {
-    return this.countAttendance(tenantId, studentId, classId, null);
+    const windows = academicYear ? await this.getTermDateWindows(tenantId, academicYear) : null;
+    return this.countAttendance(tenantId, studentId, classId, null, windows?.year ?? null);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1724,16 +1752,12 @@ export class SLReportCardService {
     // The code in the URL path IS the old hash, so compare directly:
     // (handled by the verify route, which calls this with code = hash)
     if (code.length === 24 && code === oldHash) {
-      // Look up the class from enrollments for the old format
-      const enrollment = await db('enrollments')
-        .where({ student_id: studentId, academic_year: academicYear })
-        .select('class_id')
-        .orderBy('updated_at', 'desc')
-        .first();
-      if (!enrollment) return null;
+      // Look up the class the student was in that year for the old format
+      const classId = await this.classForStudentYear(studentId, academicYear);
+      if (!classId) return null;
       return {
         tenant_id: student.tenant_id,
-        class_id: enrollment.class_id,
+        class_id: classId,
         student_id: studentId,
         academic_year: academicYear,
       };
@@ -1744,21 +1768,36 @@ export class SLReportCardService {
       .update(`${student.tenant_id}:${studentId}:${academicYear}`)
       .digest('hex').slice(0, 16);
     if (code.length === 16 && code === oldHash16) {
-      const enrollment = await db('enrollments')
-        .where({ student_id: studentId, academic_year: academicYear })
-        .select('class_id')
-        .orderBy('updated_at', 'desc')
-        .first();
-      if (!enrollment) return null;
+      const classId = await this.classForStudentYear(studentId, academicYear);
+      if (!classId) return null;
       return {
         tenant_id: student.tenant_id,
-        class_id: enrollment.class_id,
+        class_id: classId,
         student_id: studentId,
         academic_year: academicYear,
       };
     }
 
     return null;
+  }
+
+  /**
+   * The class a student was in during an academic year: their enrollment in a
+   * class of that year's session (enrollments have no academic_year column),
+   * else the class their results that year were recorded under.
+   */
+  async classForStudentYear(studentId: string, academicYear: string): Promise<string | null> {
+    const year = normalizeAcademicYear(academicYear);
+    const rows = await db('enrollments as e')
+      .join('classes as c', 'e.class_id', 'c.id')
+      .leftJoin('academic_sessions as s', 'c.academic_session_id', 's.id')
+      .where('e.student_id', studentId)
+      .orderBy('e.updated_at', 'desc')
+      .select('e.class_id', 's.name');
+    const hit = rows.find((r: any) => r.name && normalizeAcademicYear(r.name) === year);
+    if (hit) return hit.class_id;
+    const res = await db('sl_subject_results').where({ student_id: studentId, academic_year: year }).orderBy('updated_at', 'desc').first('class_id');
+    return res?.class_id ?? null;
   }
 
   /**
@@ -2067,6 +2106,40 @@ export class SLReportCardService {
       conduct_legend: CONDUCT_LEGEND,
       meta: meta ?? null,
     };
+  }
+
+
+  /**
+   * Remove everything not yet released from a report card for a publish-gated
+   * viewer: unreleased terms' scores, summaries, ratings and attendance, and
+   * (until the whole year is released) the yearly figures and promotion. The
+   * UI used to hide these; now they never leave the server.
+   */
+  redactUnreleased(card: any, role: string): any {
+    if (!PUBLISH_GATED_ROLES.includes(role) || !card) return card;
+    if (card.year_released) return card;
+    const released = new Set<string>(card.published_terms || []);
+    const hidden = SL_TERMS.filter((t) => !released.has(t));
+    const out = { ...card };
+    out.subjects = (card.subjects || []).map((s: any) => {
+      const terms = { ...(s.terms || {}) };
+      for (const t of hidden) delete terms[t];
+      const means = SL_TERMS.map((t) => terms[t]?.mean).filter((m: any) => m != null) as number[];
+      return { ...s, terms, yearly_mean: null, yearly_rank: null, released_mean: means.length ? round1(means.reduce((a, b) => a + b, 0) / means.length) : null };
+    });
+    out.term_summaries = { ...(card.term_summaries || {}) };
+    for (const t of hidden) out.term_summaries[t] = null;
+    out.domain_ratings = Object.fromEntries(Object.entries(card.domain_ratings || {}).map(([domain, traits]: [string, any]) => [
+      domain,
+      Object.fromEntries(Object.entries(traits || {}).map(([idx, tr]: [string, any]) => {
+        const terms = { ...(tr?.terms || {}) };
+        for (const t of hidden) delete terms[t];
+        return [idx, { ...tr, terms, yearly_mean: null, yearly_rank: null }];
+      })),
+    ]));
+    out.yearly_summary = null;
+    out.meta = card.meta ? { ...card.meta, promotion_status: null } : card.meta;
+    return out;
   }
 
   /**

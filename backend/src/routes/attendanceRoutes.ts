@@ -6,7 +6,8 @@ import { logger } from '@utils/logger';
 import { db } from '@utils/database';
 import { sendExport } from '@utils/exportResponse';
 import teacherAttendanceRoutes from './teacherAttendanceRoutes';
-import { resolveYearScope, applyYearScope } from '../utils/academicYear.js';
+import { resolveYearScope, applyYearScope, normalizeAcademicYear, resolveActiveYear } from '../utils/academicYear.js';
+import { normalizeTerm, resolveTermWindows, applyDateWindow, attendanceDateProblem, DAY_RANK_SQL, summarizeDayRanks, summarizeAttendanceRows, type DateWindow } from '../utils/termWindows.js';
 import { studentYearScope } from '../utils/studentScope.js';
 import { notifyGuardiansOfAbsence } from '@services/attendanceNotifications';
 
@@ -23,6 +24,36 @@ router.use('/teachers', teacherAttendanceRoutes);
  */
 function scopeAttendanceToYear(q: any, scope: Awaited<ReturnType<typeof resolveYearScope>>) {
   return applyYearScope(q, scope, 'attendance.class_id', 'attendance.attendance_date');
+}
+
+/**
+ * ?term=first_term|second_term|third_term → that term's dates, using the SAME
+ * windows as the report card (utils/termWindows). null = the whole year.
+ */
+async function termWindowFor(tenantId: string, academicYear: unknown, term: unknown): Promise<DateWindow | null> {
+  const t = normalizeTerm(term);
+  if (!t) return null;
+  const year = normalizeAcademicYear(typeof academicYear === 'string' ? academicYear : null) || (await resolveActiveYear(tenantId)).yearString;
+  const w = await resolveTermWindows(tenantId, year);
+  return w ? w[t] : null;
+}
+
+/** Attendance is written for the active year only (409 / 400 otherwise). */
+async function assertDateInActiveYear(tenantId: string, date: unknown) {
+  const problem = await attendanceDateProblem(tenantId, String(date ?? ''));
+  if (problem) throw new AppError(problem.message, problem.code === 'PAST_YEAR_READ_ONLY' ? 409 : 400, problem.code);
+}
+
+/**
+ * Day-based summary over a scoped attendance query: one row per student per
+ * day, best status that day (present > excused > late > absent). Same rule as
+ * the report card, so a student's rate is identical everywhere.
+ */
+function dayRanks(q: any) {
+  return q.clone()
+    .clearSelect().clearOrder()
+    .groupBy('attendance.student_id', 'attendance.attendance_date')
+    .select('attendance.student_id', db.raw(`${DAY_RANK_SQL()} as r`));
 }
 
 /** A past academic year's attendance is read-only history (409). */
@@ -185,6 +216,7 @@ router.get('/export', authenticate, attachUserContext, authorize(UserRole.SUPER_
     }
 
     query = scopeAttendanceToYear(query, await resolveYearScope(tenantId, req.query.academic_year));
+    applyDateWindow(query, 'attendance.attendance_date', await termWindowFor(tenantId, req.query.academic_year, req.query.term));
     if (date) query = query.where('attendance.attendance_date', date);
     if (classId) query = query.where('attendance.class_id', classId);
 
@@ -255,6 +287,10 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
     if (!tenantId) {
       throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
     }
+
+    // Only the active academic year's dates (a back-dated row would land in
+    // last year's report card).
+    await assertDateInActiveYear(tenantId, date);
 
     // Verify student exists and belongs to this tenant
     const student = await db('students').where('id', student_id).andWhere('tenant_id', tenantId).first();
@@ -397,8 +433,10 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN,
       query = query.whereIn('attendance.class_id', classIds);
     }
 
-    // Academic-year scope (that year's classes, else that year's dates).
+    // Academic-year scope (that year's classes, else that year's dates), and
+    // optionally one term (same dates as the report card).
     query = scopeAttendanceToYear(query, await resolveYearScope(tenantId, req.query.academic_year));
+    applyDateWindow(query, 'attendance.attendance_date', await termWindowFor(tenantId, req.query.academic_year, req.query.term));
 
     if (studentId) {
       query = query.where('attendance.student_id', studentId);
@@ -427,14 +465,17 @@ router.get('/', authenticate, attachUserContext, authorize(UserRole.SUPER_ADMIN,
     const totalResult = await query.clone().count('attendance.id as count').first();
     const total = Number(totalResult?.count ?? 0);
 
-    // KPI counts over the WHOLE filtered set (not just this page).
-    const statusRows = await query.clone().groupBy('attendance.status').select('attendance.status').count('attendance.id as count');
-    const counts: Record<string, number> = { present: 0, late: 0, absent: 0, excused: 0 };
-    statusRows.forEach((r: any) => { if (r.status in counts) counts[r.status] = Number(r.count) || 0; });
+    // KPI counts over the WHOLE filtered set (not just this page), per student
+    // per day like the report card (several sessions on one day = one day).
+    const days = summarizeDayRanks((await dayRanks(query)).map((r: any) => Number(r.r)));
     const stats = {
       total,
-      ...counts,
-      rate: total > 0 ? Math.round(((counts.present + counts.late) / total) * 100) : 0,
+      days: days.days,
+      present: days.present,
+      late: days.late,
+      absent: days.absent,
+      excused: days.excused,
+      rate: days.rate,
     };
 
     const records = await query
@@ -490,6 +531,7 @@ router.get('/analytics', authenticate, attachUserContext, authorize(UserRole.SUP
     const classId = req.query.classId as string | undefined;
     // Academic-year scope (that year's classes, else that year's dates).
     const yearScope = await resolveYearScope(tenantId, req.query.academic_year);
+    const termWindow = await termWindowFor(tenantId, req.query.academic_year, req.query.term);
 
     // Base scope shared by every aggregate.
     const scoped = () => {
@@ -498,6 +540,7 @@ router.get('/analytics', authenticate, attachUserContext, authorize(UserRole.SUP
         .leftJoin('classes', 'attendance.class_id', 'classes.id')
         .where('students.tenant_id', tenantId);
       q = applyYearScope(q, yearScope, 'attendance.class_id', 'attendance.attendance_date');
+      applyDateWindow(q, 'attendance.attendance_date', termWindow);
       if (classId) q = q.where('attendance.class_id', classId);
       return q;
     };
@@ -512,47 +555,57 @@ router.get('/analytics', authenticate, attachUserContext, authorize(UserRole.SUP
     }
     const applyTeacher = (q: any) => (teacherClasses ? q.whereIn('attendance.class_id', teacherClasses) : q);
 
-    // Status totals in one grouped query.
-    const statusRows = await applyTeacher(scoped()).groupBy('attendance.status').select('attendance.status').count('attendance.id as count');
-    const counts: Record<string, number> = { present: 0, late: 0, absent: 0, excused: 0 };
-    statusRows.forEach((r: any) => { counts[r.status] = Number(r.count) || 0; });
-    const total = counts.present + counts.late + counts.absent + counts.excused;
-    // Present + late count as "in attendance" for the rate.
-    const rate = total > 0 ? Math.round(((counts.present + counts.late) / total) * 1000) / 10 : 0;
+    // Everything is counted per student per DAY, best status that day (as on
+    // the report card): r = 4 present, 3 excused, 2 late, 1 absent. Present,
+    // excused and late are "in attendance".
+    const days = () => applyTeacher(scoped())
+      .groupBy('attendance.student_id', 'attendance.class_id', 'attendance.attendance_date')
+      .select('attendance.student_id', 'attendance.class_id', db.raw(`${DAY_RANK_SQL()} as r`));
+    const agg = (q: any, by: string[]) => db.from(q.as('d')).groupBy(by).select(
+      ...by,
+      db.raw('COUNT(*)::int as total'),
+      db.raw('COUNT(*) FILTER (WHERE r = 4)::int as present'),
+      db.raw('COUNT(*) FILTER (WHERE r = 3)::int as excused'),
+      db.raw('COUNT(*) FILTER (WHERE r = 2)::int as late'),
+      db.raw('COUNT(*) FILTER (WHERE r = 1)::int as absent'),
+    );
 
-    // Per-student presence rate → at-risk (< 75%).
-    const perStudent = await applyTeacher(scoped())
-      .groupBy('students.id', 'students.first_name', 'students.last_name', 'students.student_id')
-      .select(
-        'students.id',
-        db.raw("students.first_name || ' ' || students.last_name as name"),
-        'students.student_id as admission_no',
-        db.raw('COUNT(attendance.id) as total'),
-        db.raw("COUNT(CASE WHEN attendance.status IN ('present','late') THEN 1 END) as present"),
-      );
-    const atRisk = perStudent
-      .map((s: any) => {
-        const t = Number(s.total) || 0; const p = Number(s.present) || 0;
-        return { name: s.name, admissionNo: s.admission_no, rate: t > 0 ? Math.round((p / t) * 100) : 0, total: t, p };
-      })
+    // Totals: a student-day once, even if marked in two classes that day.
+    const totalsRow: any = await db.from(
+      applyTeacher(scoped()).groupBy('attendance.student_id', 'attendance.attendance_date')
+        .select(db.raw(`${DAY_RANK_SQL()} as r`)).as('d'),
+    ).first(
+      db.raw('COUNT(*)::int as total'),
+      db.raw('COUNT(*) FILTER (WHERE r = 4)::int as present'),
+      db.raw('COUNT(*) FILTER (WHERE r = 3)::int as excused'),
+      db.raw('COUNT(*) FILTER (WHERE r = 2)::int as late'),
+      db.raw('COUNT(*) FILTER (WHERE r = 1)::int as absent'),
+    );
+    const counts = { present: Number(totalsRow?.present) || 0, excused: Number(totalsRow?.excused) || 0, late: Number(totalsRow?.late) || 0, absent: Number(totalsRow?.absent) || 0 };
+    const total = Number(totalsRow?.total) || 0;
+    const rate = total > 0 ? Math.round(((counts.present + counts.excused + counts.late) / total) * 1000) / 10 : 0;
+    const pct = (r: any) => { const t = Number(r.total) || 0; return t > 0 ? Math.round(((Number(r.present) + Number(r.excused) + Number(r.late)) / t) * 100) : 0; };
+
+    // Per-student rate → at-risk (< 75%).
+    const perStudentRows = await agg(
+      applyTeacher(scoped()).groupBy('attendance.student_id', 'attendance.attendance_date')
+        .select('attendance.student_id', db.raw(`${DAY_RANK_SQL()} as r`)),
+      ['student_id'],
+    );
+    const people = new Map<string, any>((await db('students').whereIn('id', perStudentRows.map((r: any) => r.student_id))
+      .select('id', db.raw("students.first_name || ' ' || students.last_name as name"), 'student_id as admission_no')).map((s: any) => [s.id, s]));
+    const atRisk = perStudentRows
+      .map((r: any) => ({ name: people.get(r.student_id)?.name, admissionNo: people.get(r.student_id)?.admission_no, rate: pct(r), total: Number(r.total) || 0 }))
       .filter((s: any) => s.total > 0 && s.rate < 75)
       .sort((a: any, b: any) => a.rate - b.rate)
       .slice(0, 50);
 
-    // Per-class presence rate.
-    const perClass = await applyTeacher(scoped())
-      .whereNotNull('classes.name')
-      .groupBy('classes.name')
-      .select(
-        'classes.name',
-        db.raw('COUNT(attendance.id) as total'),
-        db.raw("COUNT(CASE WHEN attendance.status IN ('present','late') THEN 1 END) as present"),
-      );
-    const classRates = perClass
-      .map((c: any) => {
-        const t = Number(c.total) || 0; const p = Number(c.present) || 0;
-        return { name: c.name, rate: t > 0 ? Math.round((p / t) * 100) : 0, total: t };
-      })
+    // Per-class rate.
+    const perClassRows = await agg(days(), ['class_id']);
+    const classNames = new Map<string, string>((await db('classes').whereIn('id', perClassRows.map((r: any) => r.class_id).filter(Boolean)).select('id', 'name')).map((c: any) => [c.id, c.name]));
+    const classRates = perClassRows
+      .filter((r: any) => r.class_id && classNames.get(r.class_id))
+      .map((r: any) => ({ name: classNames.get(r.class_id), rate: pct(r), total: Number(r.total) || 0 }))
       .sort((a: any, b: any) => b.rate - a.rate);
 
     res.json({ success: true, data: { total, present: counts.present, late: counts.late, absent: counts.absent, excused: counts.excused, rate, atRisk, classRates } });
@@ -591,8 +644,9 @@ router.get('/my', authenticate, attachUserContext, authorize(UserRole.STUDENT), 
     // new year opened on last year's absences.
     const scope = await studentYearScope(tenantId, student.id, (req.query.academic_year as string) || null);
     const yearScope = scope.session ? await resolveYearScope(tenantId, scope.academicYear) : null;
+    const myTerm = await termWindowFor(tenantId, scope.academicYear, req.query.term);
     const attendance: any[] = scope.session
-      ? await applyYearScope(db('attendance').where('student_id', student.id), yearScope, 'class_id', 'attendance_date')
+      ? await applyDateWindow(applyYearScope(db('attendance').where('student_id', student.id), yearScope, 'class_id', 'attendance_date'), 'attendance_date', myTerm)
           .select('id', 'class_id', 'attendance_date as date', 'status', 'session_type', 'check_in_time', 'check_out_time', 'marked_at', 'remarks')
           .orderBy('attendance_date', 'desc')
           .orderBy('session_type', 'asc')
@@ -690,11 +744,6 @@ router.get('/student/:studentId', authenticate, attachUserContext, authorize(Use
     // legacy classes with no session only count for the active year. Omitting
     // the year returns the student's full lifetime attendance.
     const academicYear = req.query.academic_year as string | undefined;
-    let yearClassIds: string[] | undefined;
-    if (academicYear) {
-      const scope = await resolveYearScope(tenantId, academicYear);
-      yearClassIds = scope ? scope.classIds.map(String) : undefined;
-    }
 
     let attendanceQuery = db('attendance')
       .select('id', 'class_id', 'attendance_date as date', 'status', 'session_type', 'check_in_time', 'check_out_time', 'marked_at', 'remarks')
@@ -702,21 +751,19 @@ router.get('/student/:studentId', authenticate, attachUserContext, authorize(Use
       .orderBy('attendance_date', 'desc')
       .orderBy('session_type', 'asc');
     if (allowedClassIds) attendanceQuery = attendanceQuery.whereIn('class_id', allowedClassIds);
-    if (yearClassIds) {
-      // No matching classes for that year → no rows.
-      attendanceQuery = yearClassIds.length
-        ? attendanceQuery.whereIn('class_id', yearClassIds)
-        : attendanceQuery.whereRaw('1 = 0');
+    if (academicYear) {
+      // That year's classes, plus class-less rows dated inside the year (the
+      // same rule as every other attendance view and the report card).
+      attendanceQuery = applyYearScope(attendanceQuery, await resolveYearScope(tenantId, academicYear), 'class_id', 'attendance_date');
+      applyDateWindow(attendanceQuery, 'attendance_date', await termWindowFor(tenantId, academicYear, req.query.term));
     }
     const attendance = await attendanceQuery;
 
-    const total = attendance.length;
-    const present = attendance.filter((a: any) => a.status === 'present').length;
-    const late = attendance.filter((a: any) => a.status === 'late').length;
-    const absent = attendance.filter((a: any) => a.status === 'absent').length;
-    const excused = attendance.filter((a: any) => a.status === 'excused').length;
-
-    const attendancePercentage = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
+    // Per DAY, best status that day (as on the report card).
+    const s = summarizeAttendanceRows(attendance);
+    const total = s.days;
+    const { present, late, absent, excused } = s;
+    const attendancePercentage = s.rate;
 
     res.json({
       student_id: student.student_id,
@@ -765,6 +812,10 @@ router.put('/:attendanceId', authenticate, attachUserContext, authorize(UserRole
       throw new AppError('You are not assigned to this class', 403, 'FORBIDDEN');
     }
     await assertClassCurrentYear(attendance.class_id);
+    // Also for rows saved without a class: a past year's day stays read-only.
+    await assertDateInActiveYear(tenantId, attendance.attendance_date instanceof Date
+      ? `${attendance.attendance_date.getFullYear()}-${String(attendance.attendance_date.getMonth() + 1).padStart(2, '0')}-${String(attendance.attendance_date.getDate()).padStart(2, '0')}`
+      : String(attendance.attendance_date).slice(0, 10));
 
     const updateData: any = {};
     
@@ -918,6 +969,7 @@ router.post('/bulk', authenticate, attachUserContext, authorize(UserRole.PRINCIP
     if (!validSessions.includes(sessionTypeValue)) {
       throw new AppError(`Session type must be one of: ${validSessions.join(', ')}`, 400, 'VALIDATION_ERROR');
     }
+    await assertDateInActiveYear(tenantId, date);
 
     // Teachers must mark attendance for a specific class they teach/lead —
     // they cannot use the all-students (no class_id) bulk mode.

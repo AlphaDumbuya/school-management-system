@@ -106,7 +106,8 @@ export const ParentResultsView: React.FC = () => {
     const order = ['first_term', 'second_term', 'third_term'] as const;
     const present = new Set(grades.filter((g) => !rankClass || g.class_id === rankClass.id).map((g) => g.term));
     const terms = order.filter((t) => present.has(t)) as Array<'first_term' | 'second_term' | 'third_term' | 'full'>;
-    if (terms.length === 3) terms.push('full');
+    // The whole-year ranking only once the school has released the full year.
+    if (grades.some((g: any) => g.year_released && (!rankClass || g.class_id === rankClass.id))) terms.push('full');
     return terms;
   }, [grades, rankClass]);
 

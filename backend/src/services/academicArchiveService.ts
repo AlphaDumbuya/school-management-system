@@ -14,6 +14,7 @@ import financeLedgerService from './financeLedgerService.js';
 import slReportCardService from './slReportCardService.js';
 import promotionService from './promotionService.js';
 import { resolveYearScope, applyYearScope } from '../utils/academicYear.js';
+import { DAY_RANK_SQL, summarizeDayRanks } from '../utils/termWindows.js';
 
 const TERM_ORDER = ['first_term', 'second_term', 'third_term'];
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -215,19 +216,11 @@ class AcademicArchiveService {
           .join('students', 'attendance.student_id', 'students.id')
           .where('students.tenant_id', tenantId);
         applyYearScope(q, scope, 'attendance.class_id', 'attendance.attendance_date');
-        const rows = await q.select('attendance.status').catch(() => []);
-        let present = 0, late = 0, absent = 0, excused = 0;
-        for (const r of rows as any[]) {
-          const s = String(r.status || '').toLowerCase();
-          if (s === 'present') present++;
-          else if (s === 'late') late++;
-          else if (s === 'excused') excused++;
-          else if (s === 'absent') absent++;
-        }
-        const total = present + late + absent + excused;
-        // Rate = present-or-excused-or-late over total marked.
-        const rate = total > 0 ? Math.round(((present + excused + late) / total) * 100) : 0;
-        attendance = total > 0 ? { present, late, absent, excused, rate } : null;
+        // Per student per DAY, best status that day (same as the report card).
+        const rows = await q.groupBy('attendance.student_id', 'attendance.attendance_date')
+          .select(db.raw(`${DAY_RANK_SQL()} as r`)).catch(() => []);
+        const s = summarizeDayRanks((rows as any[]).map((r) => Number(r.r)));
+        attendance = s.days > 0 ? { present: s.present, late: s.late, absent: s.absent, excused: s.excused, rate: s.rate } : null;
       } catch (e) {
         logger.warn(`Archive attendance failed for ${academicYear}: ${(e as any)?.message || e}`);
       }
