@@ -16,16 +16,27 @@ import slReportCardService, {
   PSYCHOMOTOR_SKILLS,
   CONDUCT_LEGEND,
   SL_TERMS,
+  PUBLISH_GATED_ROLES,
 } from '../services/slReportCardService.js';
 import { renderReportCardHtml, renderTermResultSheetHtml, imposeBooklet, type BorderStyleConfig } from '../services/slReportCardHtml.js';
 import { htmlToPdf } from '../utils/pdfBrowser.js';
 import { getTenantGradingScale } from '../utils/gradingScaleHelper.js';
 import db from '../utils/database.js';
+import { normalizeAcademicYear, resolveActiveYear } from '../utils/academicYear.js';
 
 const router = Router();
 
 router.use(authenticate);
 router.use(attachUserContext);
+// One spelling of the year everywhere ("2026/2027"), however the page sent it
+// ("2026/2027 Academic Year", "2026-2027"…). Otherwise one year's scores could
+// be saved under two keys and split rankings, positions and publication.
+router.use((req: Request, _res: Response, next: NextFunction) => {
+  if (req.body && typeof req.body.academic_year === 'string') req.body.academic_year = normalizeAcademicYear(req.body.academic_year);
+  if (typeof req.query.academic_year === 'string') (req.query as any).academic_year = normalizeAcademicYear(req.query.academic_year as string);
+  if (typeof req.query.y === 'string') (req.query as any).y = normalizeAcademicYear(req.query.y as string);
+  next();
+});
 
 function tenant(req: Request): string {
   const t = req.user?.tenant_id;
@@ -131,7 +142,7 @@ router.post(
       if (
         error.message?.includes('between') || error.message?.includes('Invalid') ||
         error.message?.includes('not found') || error.message?.includes('assigned') ||
-        error.message?.includes('authorized')
+        error.message?.includes('authorized') || error.message?.includes('locked')
       ) {
         return res.status(403).json({ success: false, error: error.message });
       }
@@ -153,7 +164,7 @@ router.post(
       res.json({ success: true, message: 'Term record saved' });
     } catch (error: any) {
       logger.error('Error saving SL term record:', error);
-      if (error.message?.includes('assigned') || error.message?.includes('authorized')) {
+      if (error.message?.includes('assigned') || error.message?.includes('authorized') || error.message?.includes('Invalid') || error.message?.includes('locked')) {
         return res.status(403).json({ success: false, error: error.message });
       }
       next(error);
@@ -170,8 +181,9 @@ router.post(
     try {
       await slReportCardService.saveReportMeta(tenant(req), req.user!.id, req.body);
       res.json({ success: true, message: 'Report meta saved' });
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Error saving SL report meta:', error);
+      if (error.message?.includes('Invalid')) return res.status(400).json({ success: false, error: error.message });
       next(error);
     }
   },
@@ -232,8 +244,9 @@ router.post(
     try {
       const result = await slReportCardService.setScoreLock(tenant(req), req.user!.id, req.body);
       res.json({ success: true, message: req.body.locked ? 'Scores locked' : 'Scores unlocked', data: result });
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Error locking SL scores:', error);
+      if (error.message?.includes('Invalid')) return res.status(400).json({ success: false, error: error.message });
       next(error);
     }
   },
@@ -255,8 +268,9 @@ router.post(
         message += ' — auto-promotion skipped: set a "next class" on this class first';
       }
       res.json({ success: true, message, auto_promotion: ap ?? null });
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Error publishing SL results:', error);
+      if (error.message?.includes('Invalid')) return res.status(400).json({ success: false, error: error.message });
       next(error);
     }
   },
@@ -394,18 +408,24 @@ router.get('/:studentId/pdf', async (req: Request, res: Response, next: NextFunc
       tenantId, req.user!.id, req.user!.role,
       req.params.studentId, class_id as string, academic_year as string, termParam,
     );
+    // The full-year booklet (no term) needs the WHOLE year released for
+    // students, parents and finance/admissions staff, not just one term.
+    if (!termParam && PUBLISH_GATED_ROLES.includes(req.user!.role)
+      && !(await slReportCardService.isPublished(tenantId, class_id as string, academic_year as string, null))) {
+      return res.status(403).json({ success: false, error: "The full year's report card has not been released yet" });
+    }
 
     // Trigger a NEW verification code on every report card generation
     await slReportCardService.generateVerificationCode(
       tenantId, req.params.studentId, class_id as string, academic_year as string, req.user!.id,
     );
 
-    const card = await slReportCardService.getReportCard(
+    const card = slReportCardService.redactUnreleased(await slReportCardService.getReportCard(
       tenantId,
       req.params.studentId,
       class_id as string,
       academic_year as string,
-    );
+    ), req.user!.role);
 
     // School branding for the front cover (motto is now a column on schools)
     const schoolInfo = await db('schools').where({ tenant_id: tenantId }).first().catch(() => null) || {};
@@ -503,7 +523,8 @@ router.get('/:studentId', async (req: Request, res: Response, next: NextFunction
       class_id as string,
       academic_year as string,
     );
-    res.json({ success: true, data: card });
+    // Students, parents and finance/admissions staff get released terms only.
+    res.json({ success: true, data: slReportCardService.redactUnreleased(card, req.user!.role) });
   } catch (error: any) {
     logger.error('Error getting SL report card:', error);
     if (
@@ -531,7 +552,7 @@ router.get('/:studentId/qr', async (req: Request, res: Response, next: NextFunct
     const tenantId = tenant(req);
     const { studentId } = req.params;
     const classId = req.query.class_id as string;
-    const academicYear = (req.query.academic_year as string) || new Date().getFullYear().toString();
+    const academicYear = (req.query.academic_year as string) || (await resolveActiveYear(tenantId)).yearString;
 
     if (!classId) {
       return res.status(400).json({ success: false, error: 'class_id is required' });
@@ -630,7 +651,9 @@ router.get('/verify/:hash', async (req: Request, res: Response, next: NextFuncti
     }
 
     // Fetch the full report card data
-    const card = await slReportCardService.getReportCard(student.tenant_id, studentId, resolvedClassId, academicYear);
+    const card = slReportCardService.redactUnreleased(
+      await slReportCardService.getReportCard(student.tenant_id, studentId, resolvedClassId, academicYear), req.user!.role,
+    );
 
     const school = await db('schools')
       .where({ tenant_id: student.tenant_id })

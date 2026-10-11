@@ -58,7 +58,7 @@ class StudentDashboardService {
     userId: string,
     tenantId: string,
     requestedYear?: string | null,
-    opts: { studentId?: string; fullAttendance?: boolean } = {},
+    opts: { studentId?: string; fullAttendance?: boolean; term?: string | null } = {},
   ): Promise<any> {
     try {
       const { yearString: activeYear } = await resolveActiveYear(tenantId);
@@ -109,7 +109,7 @@ class StudentDashboardService {
         const { default: slReportCardService } = await import('./slReportCardService.js');
         for (const cls of yearClasses) {
           const clsYear = await slReportCardService
-            .resolveClassAcademicYear(tenantId, cls.id, session?.name ?? wanted)
+            .resolveClassAcademicYear(tenantId, cls.id, wanted)
             .catch(() => wanted);
           if (cls.id === classId) academicYear = clsYear;
           const { terms: releasedTerms, wholeYear } = await slReportCardService
@@ -132,7 +132,7 @@ class StudentDashboardService {
             .catch(() => []);
           // class_id + class_year let the Results page rank within the class
           // the result was actually recorded in (a year can hold several).
-          grades.push(...(rows as any[]).map((r) => ({ ...r, class_id: cls.id, class_name: cls.name, class_year: clsYear || wanted })));
+          grades.push(...(rows as any[]).map((r) => ({ ...r, class_id: cls.id, class_name: cls.name, class_year: clsYear || wanted, year_released: wholeYear })));
         }
         // Term order, then subject.
         const TERM_ORDER: Record<string, number> = { first_term: 1, second_term: 2, third_term: 3 };
@@ -144,11 +144,15 @@ class StudentDashboardService {
       // ── Attendance for the selected year ─────────────────────────────────
       // That year's classes (else class-less rows dated inside the year).
       const yearScope = session ? await resolveYearScope(tenantId, wanted) : null;
+      // Optional single term (same dates as the report card).
+      const { normalizeTerm, resolveTermWindows, applyDateWindow } = await import('../utils/termWindows.js');
+      const termKey = normalizeTerm(opts.term);
+      const termWindow = termKey ? (await resolveTermWindows(tenantId, wanted))?.[termKey] ?? null : null;
       const attendanceRows = session
-        ? await applyYearScope(
+        ? await applyDateWindow(applyYearScope(
             db('attendance').where('student_id', student.id),
             yearScope, 'class_id', 'attendance_date',
-          )
+          ), 'attendance_date', termWindow)
             .orderBy('attendance_date', 'desc')
             .select('id', 'attendance_date', 'status', 'class_id', 'session_type', 'check_in_time', 'check_out_time', 'marked_at', 'remarks')
             .catch(() => [])

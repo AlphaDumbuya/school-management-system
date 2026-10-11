@@ -491,7 +491,7 @@ router.get('/dashboards/parent/child/:studentId', authenticate, async (req: Requ
       return res.status(400).json({ error: 'Tenant context is required' });
     }
 
-    const data = await parentDashboardService.getChildDetail(req.user!.id, tenantId, req.params.studentId, (req.query.academic_year as string) || null);
+    const data = await parentDashboardService.getChildDetail(req.user!.id, tenantId, req.params.studentId, (req.query.academic_year as string) || null, (req.query.term as string) || null);
     res.json({ success: true, data });
   } catch (error: any) {
     const msg = error?.message || 'Failed to fetch child details';

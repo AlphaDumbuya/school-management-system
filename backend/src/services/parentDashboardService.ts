@@ -75,9 +75,9 @@ class ParentDashboardService {
    * different classes, one promoted mid-year, one graduated, one not yet moved
    * into the new year.
    */
-  private async childYear(student: any, tenantId: string, year?: string | null, fullAttendance = false): Promise<any> {
+  private async childYear(student: any, tenantId: string, year?: string | null, fullAttendance = false, term?: string | null): Promise<any> {
     const { default: studentDashboardService } = await import('./studentDashboardService.js');
-    return studentDashboardService.getDashboard('', tenantId, year ?? null, { studentId: student.id, fullAttendance });
+    return studentDashboardService.getDashboard('', tenantId, year ?? null, { studentId: student.id, fullAttendance, term });
   }
 
   /** Summary card for one child in one year. */
@@ -174,14 +174,14 @@ class ParentDashboardService {
    * data as the child's own student portal, plus `schedule` / `profile.name`
    * for the parent page.
    */
-  async getChildDetail(userId: string, tenantId: string, studentId: string, requestedYear?: string | null): Promise<any> {
+  async getChildDetail(userId: string, tenantId: string, studentId: string, requestedYear?: string | null, term?: string | null): Promise<any> {
     // Verify the child belongs to this parent (tenant + linkage).
     const students = await this.resolveChildren(userId, tenantId);
     const student = students.find((s) => String(s.id) === String(studentId));
     if (!student) {
       throw new Error('You can only view your own child\'s records');
     }
-    const d = await this.childYear(student, tenantId, requestedYear, true);
+    const d = await this.childYear(student, tenantId, requestedYear, true, term);
     return {
       ...d,
       profile: { ...(d?.profile ?? {}), name: d?.profile?.full_name ?? `${student.first_name || ''} ${student.last_name || ''}`.trim() },

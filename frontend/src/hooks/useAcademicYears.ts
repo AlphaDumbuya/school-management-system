@@ -20,6 +20,10 @@ export function normalizeYear(value: string | null | undefined): string | null {
   if (h) return `${h[1]}/${h[2]}`;
   const one = /^(\d{4})$/.exec(s);
   if (one) { const y = Number(one[1]); return `${y}/${y + 1}`; }
+  // A span inside a longer name ("2026/2027 Academic Year", what new schools
+  // get at sign-up): same rule as the server's normalizeAcademicYear.
+  const e = /(\d{4})\s*[/-]\s*(\d{4})/.exec(s);
+  if (e && Number(e[2]) === Number(e[1]) + 1) return `${e[1]}/${e[2]}`;
   return s;
 }
 

@@ -67,9 +67,9 @@ export const parentDashboardService = {
       params: { academic_year: academicYear || undefined },
     }),
 
-  getChildDetail: (studentId: string, academicYear?: string) =>
+  getChildDetail: (studentId: string, academicYear?: string, term?: string) =>
     apiClient.get<ParentChildDetail>(`/api/v1/dashboards/parent/child/${studentId}`, {
-      params: { academic_year: academicYear || undefined },
+      params: { academic_year: academicYear || undefined, term: term || undefined },
     }),
 };
 
