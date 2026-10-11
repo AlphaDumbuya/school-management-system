@@ -7,6 +7,21 @@ import { UserRole } from '../types/auth';
 import { studentIdForUser, childIdForParent, studentYearScope } from '../utils/studentScope.js';
 
 const router = Router();
+
+/** Marks are percentages: max 1–100, pass 0–100 and never above max. */
+function assertMarks(max: any, pass: any): void {
+  const m = max === undefined || max === null || max === '' ? undefined : Number(max);
+  const p = pass === undefined || pass === null || pass === '' ? undefined : Number(pass);
+  if (m !== undefined && (!Number.isFinite(m) || m < 1 || m > 100)) {
+    throw new AppError('Maximum mark must be between 1 and 100%', 400, 'VALIDATION_ERROR');
+  }
+  if (p !== undefined && (!Number.isFinite(p) || p < 0 || p > 100)) {
+    throw new AppError('Pass mark must be between 0 and 100%', 400, 'VALIDATION_ERROR');
+  }
+  if (m !== undefined && p !== undefined && p > m) {
+    throw new AppError('Pass mark cannot be higher than the maximum mark', 400, 'VALIDATION_ERROR');
+  }
+}
 router.use(authenticate);
 router.use(attachUserContext);
 
@@ -52,9 +67,7 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       throw new AppError('Missing required fields: code, name', 400, 'VALIDATION_ERROR');
     }
 
-    if (max_marks !== undefined && pass_marks !== undefined && max_marks <= pass_marks) {
-      throw new AppError('Max marks must be greater than pass marks', 400, 'VALIDATION_ERROR');
-    }
+    assertMarks(max_marks, pass_marks);
 
     // Check code uniqueness within this tenant (scope by the real tenant_id,
     // with a legacy fallback for rows created before tenant_id existed).
@@ -77,8 +90,8 @@ router.post('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMI
       name: name.trim(),
       description: description || null,
       credits: credit_points || 0,
-      max_marks: max_marks || 100,
-      pass_marks: pass_marks || 40,
+      max_marks: max_marks != null && max_marks !== '' ? Number(max_marks) : 100,
+      pass_marks: pass_marks != null && pass_marks !== '' ? Number(pass_marks) : 50,
       category: category || null,
       level: level || 'all',
       department: department || null,
@@ -340,11 +353,9 @@ router.put('/:subjectId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.S
     if (description !== undefined) updateData.description = description || null;
     if (credit_points !== undefined) updateData.credits = credit_points;
     if (max_marks !== undefined && pass_marks !== undefined) {
-      if (max_marks <= pass_marks) {
-        throw new AppError('Max marks must be greater than pass marks', 400, 'VALIDATION_ERROR');
-      }
-      updateData.max_marks = max_marks;
-      updateData.pass_marks = pass_marks;
+      assertMarks(max_marks, pass_marks);
+      updateData.max_marks = Number(max_marks);
+      updateData.pass_marks = Number(pass_marks);
     }
     if (status) updateData.status = status;
     if (category !== undefined) updateData.category = category || null;
