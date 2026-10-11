@@ -62,6 +62,28 @@ const EDITABLE = [
 ] as const;
 const BOOLS = new Set(['takes_medication', 'has_allergies', 'has_chronic_illness', 'allow_first_aid']);
 
+/** ~2 MB image once base64-encoded (the form caps uploads at 2 MB). */
+const MAX_PHOTO_CHARS = 3_000_000;
+
+/**
+ * Normalise one form field. Text is trimmed to 500 characters, but the photo
+ * is a whole image (a data: URL or a link) and must never be cut, or it is
+ * saved broken and the profile shows no picture.
+ */
+function cleanField(k: string, v: any): any {
+  if (BOOLS.has(k)) return v === true;
+  if (v === '' || v === null) return null;
+  if (k === 'child_photo_url') {
+    const s = String(v).trim();
+    if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(s) && !/^https:\/\//i.test(s)) {
+      throw new AppError('The photo must be a PNG, JPG or WEBP image.', 400, 'VALIDATION_ERROR');
+    }
+    if (s.length > MAX_PHOTO_CHARS) throw new AppError('The photo is too large. Use an image under 2 MB.', 400, 'VALIDATION_ERROR');
+    return s;
+  }
+  return typeof v === 'string' ? v.trim().slice(0, 500) : v;
+}
+
 const name = (a: any) => [a.child_first_name || a.first_name, a.child_last_name || a.last_name].filter(Boolean).join(' ').trim();
 const guardianName = (a: any) => [a.guardian_first_name, a.guardian_last_name].filter(Boolean).join(' ').trim() || a.parent_name || 'Parent/Guardian';
 const today = () => new Date().toISOString().slice(0, 10);
@@ -261,7 +283,7 @@ export const admissionPipelineService = {
       if (!ok) throw new AppError(`Choose a class from ${year}.`, 400, 'INVALID_CLASS');
     }
     const row: Record<string, any> = {};
-    for (const k of EDITABLE) if (body?.[k] !== undefined) row[k] = BOOLS.has(k) ? body[k] === true : (body[k] === '' ? null : typeof body[k] === 'string' ? body[k].trim().slice(0, 500) : body[k]);
+    for (const k of EDITABLE) if (body?.[k] !== undefined) row[k] = cleanField(k, body[k]);
     const docs = cleanDocs(body?.documents);
     let created: any;
     await db.transaction(async (trx) => {
@@ -290,7 +312,7 @@ export const admissionPipelineService = {
     const a = await getApp(db, tenantId, id);
     if (a.status === 'enrolled') throw new AppError('This applicant is already a student. Edit their record in Student Profiles.', 409, 'ALREADY_ENROLLED');
     const patch: Record<string, any> = {};
-    for (const k of EDITABLE) if (body?.[k] !== undefined) patch[k] = BOOLS.has(k) ? body[k] === true : (body[k] === '' ? null : typeof body[k] === 'string' ? body[k].trim().slice(0, 500) : body[k]);
+    for (const k of EDITABLE) if (body?.[k] !== undefined) patch[k] = cleanField(k, body[k]);
     if (patch.child_dob && (!/^\d{4}-\d{2}-\d{2}$/.test(patch.child_dob) || patch.child_dob > today())) throw new AppError('Enter a valid date of birth.', 400, 'VALIDATION_ERROR');
     if (patch.guardian_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patch.guardian_email)) throw new AppError('Enter a valid email address.', 400, 'VALIDATION_ERROR');
     if (patch.class_applying_for && patch.class_applying_for !== a.class_applying_for) {

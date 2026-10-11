@@ -37,6 +37,7 @@ import {
 import { createPortal } from 'react-dom';
 import useAuthStore from '@store/authStore';
 import schoolConfigService, { SchoolInfo, GradeScale, BillingInvoice, SubscriptionDetails } from '../services/schoolConfigService';
+import { GRADING_PRESETS, scaleFromPreset } from '@lib/gradingPresets';
 import { formatCurrency } from '@utils/formatting';
 import authService from '../services/authService';
 import { FileUploader } from '@components/admin/forms/FileUploader';
@@ -242,22 +243,15 @@ export const SettingsPage: React.FC = () => {
   });
 
   const [gradingScales, setGradingScales] = useState<GradeScale[]>([]);
-  const [newGradeScale, setNewGradeScale] = useState<GradeScale>({
-    name: '',
-    description: '',
-    scale_type: 'letter',
-    min_value: 0,
-    max_value: 100,
-    is_default: true,
-    is_active: true,
-    grades: [
-      { grade: 'A', min_score: 90, max_score: 100, grade_points: 4.0, description: 'Excellent' },
-      { grade: 'B', min_score: 80, max_score: 89, grade_points: 3.0, description: 'Very Good' },
-      { grade: 'C', min_score: 70, max_score: 79, grade_points: 2.0, description: 'Good' },
-      { grade: 'D', min_score: 50, max_score: 69, grade_points: 1.0, description: 'Satisfactory' },
-      { grade: 'F', min_score: 0, max_score: 49, grade_points: 0.0, description: 'Fail' },
-    ],
-  });
+  // New scales start from a standard (WASSCE / BECE / NPSE) or a custom one.
+  const [gradePreset, setGradePreset] = useState<string>('wassce');
+  const [newGradeScale, setNewGradeScale] = useState<GradeScale>(() => scaleFromPreset('wassce', true));
+  const pickGradePreset = (id: string) => {
+    setGradePreset(id);
+    setNewGradeScale((cur) => scaleFromPreset(id, cur.is_default));
+  };
+  const updateBand = (i: number, patch: Partial<GradeScale['grades'][number]>) =>
+    setNewGradeScale((cur) => ({ ...cur, grades: cur.grades.map((g, j) => (j === i ? { ...g, ...patch } : g)) }));
 
   const [subscription, setSubscription] = useState<SubscriptionDetails | null>(null);
   const [billingHistory, setBillingHistory] = useState<BillingInvoice[]>([]);
@@ -696,22 +690,8 @@ export const SettingsPage: React.FC = () => {
         showToast.success('Grading scale created!');
         fetchInitialData();
         // Reset scale form
-        setNewGradeScale({
-          name: '',
-          description: '',
-          scale_type: 'letter',
-          min_value: 0,
-          max_value: 100,
-          is_default: false,
-          is_active: true,
-          grades: [
-            { grade: 'A', min_score: 90, max_score: 100, grade_points: 4.0, description: 'Excellent' },
-            { grade: 'B', min_score: 80, max_score: 89, grade_points: 3.0, description: 'Very Good' },
-            { grade: 'C', min_score: 70, max_score: 79, grade_points: 2.0, description: 'Good' },
-            { grade: 'D', min_score: 50, max_score: 69, grade_points: 1.0, description: 'Satisfactory' },
-            { grade: 'F', min_score: 0, max_score: 49, grade_points: 0.0, description: 'Fail' },
-          ],
-        });
+        setGradePreset('wassce');
+        setNewGradeScale(scaleFromPreset('wassce', false));
       } else {
         throw new Error(res.error || 'Failed to save grading scale');
       }
@@ -2049,12 +2029,32 @@ export const SettingsPage: React.FC = () => {
                       </CardHeader>
                       <CardContent>
                         <form onSubmit={handleSaveGradingScale} className="space-y-4">
+                          {/* Standard to start from */}
+                          <div>
+                            <span className="text-xs font-semibold text-gray-500 block mb-1.5">Start from a standard</span>
+                            <div role="radiogroup" aria-label="Grading standard" className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                              {GRADING_PRESETS.map((p) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={gradePreset === p.id}
+                                  onClick={() => pickGradePreset(p.id)}
+                                  className={`text-left rounded-xl border px-3 py-2.5 transition ${gradePreset === p.id ? 'border-violet-500 bg-violet-50 ring-2 ring-violet-500/20' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+                                >
+                                  <span className="block text-sm font-bold text-gray-900">{p.id === 'custom' ? 'Custom' : p.id.toUpperCase()}</span>
+                                  <span className="block text-[11px] text-gray-500">{p.level}{p.id !== 'custom' ? ` · ${p.grades[0].grade}–${p.grades[p.grades.length - 1].grade}` : ' · your own bands'}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                               <label className="text-xs font-semibold text-gray-500 block mb-1">Scale Name</label>
                               <input
                                 type="text"
-                                placeholder="WASSCE standard, Cambridge A-F, etc."
+                                placeholder="e.g. Our JSS scale"
                                 value={newGradeScale.name}
                                 onChange={(e) => setNewGradeScale({ ...newGradeScale, name: e.target.value })}
                                 required
@@ -2070,9 +2070,65 @@ export const SettingsPage: React.FC = () => {
                               >
                                 <option value="letter">Letter Grades (A-F)</option>
                                 <option value="percentage">Percentages (0-100)</option>
-                                <option value="numeric">Numeric Points (1-9)</option>
+                                <option value="numeric">Numeric Grades (1-9)</option>
                               </select>
                             </div>
+                          </div>
+
+                          {/* Grade bands (editable) */}
+                          <div className="rounded-xl border border-gray-200 overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-gray-50 text-[11px] uppercase tracking-wider text-gray-500">
+                                <tr>
+                                  <th scope="col" className="px-3 py-2 text-left">Grade</th>
+                                  <th scope="col" className="px-3 py-2 text-left">From %</th>
+                                  <th scope="col" className="px-3 py-2 text-left">To %</th>
+                                  <th scope="col" className="px-3 py-2 text-left">Remark</th>
+                                  <th scope="col" className="px-3 py-2"><span className="sr-only">Remove</span></th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {newGradeScale.grades.map((g, i) => (
+                                  <tr key={i}>
+                                    <td className="px-3 py-1.5">
+                                      <input aria-label={`Grade ${i + 1}`} value={g.grade} onChange={(e) => updateBand(i, { grade: e.target.value })} className="w-16 px-2 py-1 border border-gray-300 rounded-md font-bold" />
+                                    </td>
+                                    <td className="px-3 py-1.5">
+                                      <input aria-label={`Grade ${g.grade} from`} type="number" min={0} max={100} value={g.min_score} onChange={(e) => updateBand(i, { min_score: Number(e.target.value) })} className="w-20 px-2 py-1 border border-gray-300 rounded-md" />
+                                    </td>
+                                    <td className="px-3 py-1.5">
+                                      <input aria-label={`Grade ${g.grade} to`} type="number" min={0} max={100} value={g.max_score} onChange={(e) => updateBand(i, { max_score: Number(e.target.value) })} className="w-20 px-2 py-1 border border-gray-300 rounded-md" />
+                                    </td>
+                                    <td className="px-3 py-1.5">
+                                      <input aria-label={`Grade ${g.grade} remark`} value={g.description || ''} onChange={(e) => updateBand(i, { description: e.target.value })} className="w-full min-w-[110px] px-2 py-1 border border-gray-300 rounded-md" />
+                                    </td>
+                                    <td className="px-3 py-1.5 text-right">
+                                      <button
+                                        type="button"
+                                        aria-label={`Remove grade ${g.grade}`}
+                                        onClick={() => setNewGradeScale((cur) => ({ ...cur, grades: cur.grades.filter((_, j) => j !== i) }))}
+                                        className="p-1.5 rounded-md text-rose-600 hover:bg-rose-50"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setNewGradeScale((cur) => ({ ...cur, grades: [...cur.grades, { grade: '', min_score: 0, max_score: 0, grade_points: 0, description: '' }] }))}
+                              className="text-xs font-semibold text-violet-700 hover:underline"
+                            >
+                              + Add grade
+                            </button>
+                            <label className="flex items-center gap-2 text-xs text-gray-600">
+                              <input type="checkbox" checked={newGradeScale.is_default} onChange={(e) => setNewGradeScale({ ...newGradeScale, is_default: e.target.checked })} />
+                              Make this the default scale
+                            </label>
                           </div>
 
                           <div className="flex justify-end pt-4">
