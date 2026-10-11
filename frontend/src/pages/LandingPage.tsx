@@ -11,10 +11,11 @@ import {
   ShieldCheck, BarChart3, Lock, Sparkles, Users, GraduationCap,
   Wallet, CreditCard, CalendarCheck, Megaphone, ArrowRight, Check,
   TrendingUp, Zap, Globe, RefreshCw, UserPlus, ClipboardCheck, Send,
-  Gavel, Calculator, CalendarDays,
+  Gavel, Calculator, CalendarDays, PlayCircle,
 } from 'lucide-react';
 import PublicNavbar, { PublicFooter } from '@components/public';
 import AppDownloadButtons from '@components/public/AppDownloadButtons';
+import LiveDemoSection from '@components/public/LiveDemoSection';
 
 // Theme tokens — see docs/THEME_GUIDE.md
 const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
@@ -81,6 +82,12 @@ export const LandingPage: React.FC = () => {
                 Start Free Trial
                 <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
               </button>
+              <a
+                href="#demo"
+                className="w-full sm:w-auto border border-white/30 hover:border-white/60 hover:bg-white/10 text-white font-bold text-sm px-8 py-3.5 rounded-lg transition-all duration-300 flex items-center justify-center gap-2"
+              >
+                <PlayCircle size={16} className="text-amber-400" aria-hidden="true" /> Get a live demo
+              </a>
               {/* Android app download (always shown; Play badge once VITE_PLAY_STORE_URL is set) */}
               <AppDownloadButtons variant="hero" />
             </div>
@@ -134,6 +141,10 @@ export const LandingPage: React.FC = () => {
           ))}
         </div>
       </section>
+
+      {/* ═══ LIVE DEMO (one card per portal) ═══ */}
+      <div className="h-16" aria-hidden="true" />
+      <LiveDemoSection />
 
       {/* ═══ FEATURES (light) ═══ */}
       <section id="why" className="px-6 sm:px-10 py-20 sm:py-24">
@@ -319,10 +330,10 @@ export const LandingPage: React.FC = () => {
                 START YOUR FREE TRIAL <ArrowRight size={16} />
               </button>
               <button
-                onClick={() => navigate('/contact')}
+                onClick={() => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' })}
                 className="w-full sm:w-auto border border-white/25 hover:border-white/50 text-white font-bold text-sm px-8 py-4 rounded-xl transition-all duration-300"
               >
-                Contact Support
+                Get a live demo
               </button>
             </div>
           </div>

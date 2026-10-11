@@ -131,6 +131,11 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
       if (actingRole) {
         req.auth.role = actingRole as any;
       }
+    } else {
+      // A valid token for an account that no longer exists (removed user, or
+      // the demo school was refreshed). Without this, handlers ran with no
+      // req.user and failed with "reading 'tenant_id'".
+      throw new AppError('Your session has ended. Please sign in again.', 401, 'SESSION_INVALID');
     }
     next();
   } catch (error) {

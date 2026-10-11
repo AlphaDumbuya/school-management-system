@@ -661,7 +661,9 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
     }
 
     if (!user) {
-      throw new AppError('User not found', 404, 'NOT_FOUND');
+      // The account behind this token no longer exists (e.g. removed, or the
+      // demo school was refreshed): end the session so the app signs out.
+      throw new AppError('Your session has ended. Please sign in again.', 401, 'SESSION_INVALID');
     }
 
     // One-time promotion welcome: hand it to the portal, then clear it so the

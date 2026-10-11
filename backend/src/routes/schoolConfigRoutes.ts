@@ -380,14 +380,28 @@ router.get('/subscription/active', authenticate, attachUserContext, async (req: 
     // Fetch limits usage counts
     const studentsLimit = await SubscriptionService.checkLimit(tenantId, 'students');
     const staffLimit = await SubscriptionService.checkLimit(tenantId, 'staff');
-    const { EntitlementService } = await import('../services/entitlementService.js');
+    const { EntitlementService, ROLE_PORTAL } = await import('../services/entitlementService.js');
     const entitlements = await EntitlementService.forTenant(tenantId);
+    // Accounts per gated portal (incl. teachers holding the duty), so the
+    // principal can see who a switched-off portal affects.
+    const roleCounts = await db('users').where({ tenant_id: tenantId, status: 'active' })
+      .whereIn('role', ['parent', 'accountant', 'admissions_officer']).groupBy('role')
+      .select('role').count({ n: '*' }).catch(() => [] as any[]);
+    const dutyCount = async (duty: string) => Number((await db('users').where({ tenant_id: tenantId, status: 'active', role: 'teacher' })
+      .whereRaw("COALESCE(staff_duties, '[]'::jsonb) \\? ?", [duty]).count({ n: '*' }).first().catch(() => null) as any)?.n) || 0;
+    const byRole = Object.fromEntries((roleCounts as any[]).map((r) => [r.role, Number(r.n) || 0]));
+    const portals = {
+      portal_parent: { access: entitlements.features[ROLE_PORTAL.parent], users: byRole.parent || 0 },
+      portal_admissions: { access: entitlements.features[ROLE_PORTAL.admissions_officer], users: (byRole.admissions_officer || 0) + await dutyCount('admissions_officer') },
+      portal_bursar: { access: entitlements.features[ROLE_PORTAL.accountant], users: (byRole.accountant || 0) + await dutyCount('accountant') },
+    };
 
     res.json({
       success: true,
       data: {
         subscription,
         entitlements,
+        portals,
         usage: {
           students: { current: studentsLimit.current, max: studentsLimit.max },
           staff: { current: staffLimit.current, max: staffLimit.max },

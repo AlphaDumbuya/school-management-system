@@ -133,6 +133,8 @@ const V2Route: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 import RegisterPage from '@pages/RegisterPage';
+import DemoStartPage from '@pages/DemoStartPage';
+import PlatformDemoRequestsPage from '@pages/PlatformDemoRequestsPage';
 import WelcomePage, { hasOnboarded } from '@pages/WelcomePage';
 import VerificationPage from '@pages/VerificationPage';
 import VerifyReportCardPage from '@pages/VerifyReportCardPage';
@@ -174,6 +176,8 @@ const router = createBrowserRouter(
         // One-time app onboarding guide (app mode only; web redirects to home).
         { path: 'welcome', element: APP_MODE ? <WelcomePage /> : <Navigate to="/" replace /> },
         { path: 'login', element: <LoginPage /> },
+        // Personal sign-in links from the demo email (web + app).
+        { path: 'demo/start', element: <DemoStartPage /> },
         // Payment return landing (after Monime hosted checkout). PUBLIC so it
         // resolves on the hard browser redirect back from Monime even before
         // auth state rehydrates — the page only needs the ?session query param.
@@ -513,6 +517,10 @@ const router = createBrowserRouter(
         {
           path: 'platform/communications',
           element: <P requiredRoles={['super_admin']}><G feature="Communications"><PlatformCommunicationPage /></G></P>,
+        },
+        {
+          path: 'platform/demo-requests',
+          element: <P requiredRoles={['super_admin']}><G feature="Demo requests"><PlatformDemoRequestsPage /></G></P>,
         },
         {
           path: 'platform/support',

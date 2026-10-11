@@ -55,6 +55,14 @@ async function findSchool(slug: string) {
   if (!/^[a-z0-9-]{1,100}$/i.test(slug)) return null;
   const tenant = await db('tenants').where({ slug, status: 'active' }).select('id', 'name', 'logo_url').first();
   if (!tenant) return null;
+  // The public application form is part of the Admissions feature (Combra+).
+  try {
+    const { EntitlementService } = await import('../services/entitlementService.js');
+    const { access } = await EntitlementService.access(tenant.id, 'admissions');
+    if (access !== 'enabled') {
+      throw new AppError('This school is not taking online applications. Please contact the school directly.', 404, 'APPLICATIONS_CLOSED');
+    }
+  } catch (e) { if (e instanceof AppError) throw e; }
   // The principal-uploaded logo lives on the `schools` table (Settings writes
   // there). Prefer that; fall back to the tenant's logo, then the tenant name.
   const school = await db('schools')

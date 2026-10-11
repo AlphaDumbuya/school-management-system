@@ -77,6 +77,8 @@ export const LoginPage: React.FC = () => {
   // Distinct notice for when THIS user's own account (not the whole school) was
   // deactivated / suspended / dismissed mid-session (`?disabled=1`).
   const [disabledNotice, setDisabledNotice] = useState(false);
+  // Signed out because the school's plan no longer includes this portal.
+  const [portalOffNotice, setPortalOffNotice] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
@@ -89,6 +91,11 @@ export const LoginPage: React.FC = () => {
     if (params.get('disabled') === '1') {
       setDisabledNotice(true);
       params.delete('disabled');
+      changed = true;
+    }
+    if (params.get('portal') === 'off') {
+      setPortalOffNotice(true);
+      params.delete('portal');
       changed = true;
     }
     if (changed) {
@@ -359,6 +366,12 @@ export const LoginPage: React.FC = () => {
             </form>
           ) : (
             <>
+              {portalOffNotice && (
+                <div role="alert" className="max-w-3xl mx-auto mb-5 bg-amber-500/15 border border-amber-400/40 rounded-xl px-4 py-3 text-amber-50 text-sm">
+                  <p className="font-bold">This portal isn't part of your school's plan</p>
+                  <p className="text-xs text-amber-100/90 mt-1">Your account and records are safe. Please contact your school; access returns as soon as the school's plan includes this portal again.</p>
+                </div>
+              )}
               {(suspendedNotice || isSuspensionError) && (
                 <div className="max-w-3xl mx-auto mb-5 bg-red-500/15 border border-red-400/40 rounded-xl px-4 py-4 text-red-50">
                   <div className="flex items-start gap-2">

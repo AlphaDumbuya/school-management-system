@@ -1401,6 +1401,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           p(['If your school used a feature during its free trial (or on a higher plan) and your current plan doesn’t include it, nothing is deleted. The page stays in the menu with a lock icon: you can open it and view your records, but you can’t add or change anything until you upgrade.']),
           p(['Features your school has never had are hidden from the menu.']),
+          p(['Portals work differently: the Parent, Admissions Officer and Bursar portals are part of Combra and Bintumani. When a plan doesn’t include a portal, its users can’t sign in (their accounts are kept), and new accounts for that portal can’t be created. Plan & Billing shows exactly what your plan includes and how many accounts each portal affects.']),
         ],
       },
       {

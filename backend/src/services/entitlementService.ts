@@ -62,7 +62,8 @@ export const EntitlementService = {
     const features: Record<string, FeatureAccess> = {};
     for (const f of FEATURES) {
       if (current[f.key]) features[f.key] = lapsed ? 'read_only' : 'enabled';
-      else if (held[f.key]) features[f.key] = 'read_only';
+      // Portals outside the plan are fully disabled, even if held on a trial.
+      else if (held[f.key] && !f.key.startsWith('portal_')) features[f.key] = 'read_only';
       else features[f.key] = 'locked';
     }
 
@@ -93,6 +94,45 @@ export const EntitlementService = {
     else cache.clear();
   },
 };
+
+/** Which plan feature each role's (or staff duty's) portal needs. */
+export const ROLE_PORTAL: Record<string, string> = {
+  parent: 'portal_parent',
+  guardian: 'portal_parent',
+  admissions_officer: 'portal_admissions',
+  accountant: 'portal_bursar',
+};
+
+const PORTAL_NAMES: Record<string, string> = {
+  portal_parent: 'parent portal',
+  portal_admissions: 'Admissions Officer portal',
+  portal_bursar: 'Bursar / Accountant portal',
+};
+
+/** Is this role's portal included in the school's plan? Core roles always are. */
+export async function portalAllowed(tenantId: string | null | undefined, role: string): Promise<boolean> {
+  const key = ROLE_PORTAL[String(role || '')];
+  if (!key || !tenantId) return true;
+  const { access } = await EntitlementService.access(tenantId, key);
+  return access !== 'locked';
+}
+
+/**
+ * Refuse sign-in / requests / new accounts for a portal the plan doesn't
+ * include. `forAccountCreation` words the message for the person adding users.
+ */
+export async function assertPortalAllowed(tenantId: string | null | undefined, role: string, opts: { forAccountCreation?: boolean } = {}): Promise<void> {
+  if (await portalAllowed(tenantId, role)) return;
+  const name = PORTAL_NAMES[ROLE_PORTAL[role]] || 'portal';
+  const { AppError } = await import('../middleware/errorHandler.js');
+  throw new AppError(
+    opts.forAccountCreation
+      ? `Your school's plan doesn't include the ${name}. Upgrade in Settings → Plan & Billing to add these accounts.`
+      : `Your school's plan doesn't include the ${name}, so this account can't sign in. Please contact your school.`,
+    403,
+    'PORTAL_NOT_IN_PLAN'
+  );
+}
 
 /** Safe wrapper for payloads (/me): never fails the caller. */
 export async function entitlementsOrNull(tenantId?: string | null): Promise<Entitlements | null> {

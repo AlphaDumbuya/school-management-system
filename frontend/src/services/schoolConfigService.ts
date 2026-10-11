@@ -116,6 +116,8 @@ export interface SubscriptionInfo {
 export interface SubscriptionDetails {
   subscription: SubscriptionInfo;
   /** Per-feature access on the current plan (enabled / read_only / locked). */
+  /** Plan-gated portals: access + how many active accounts use each. */
+  portals?: Record<'portal_parent' | 'portal_admissions' | 'portal_bursar', { access: 'enabled' | 'read_only' | 'locked'; users: number }>;
   entitlements?: {
     plan_type: string;
     plan_name: string;

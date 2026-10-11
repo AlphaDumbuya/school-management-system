@@ -25,7 +25,7 @@ export interface FeatureDef {
   key: string;
   label: string;
   description: string;
-  group: 'Core' | 'Students' | 'Academic' | 'Finance' | 'Identity' | 'Events' | 'Communication' | 'Platform';
+  group: 'Core' | 'Portals' | 'Students' | 'Academic' | 'Finance' | 'Identity' | 'Events' | 'Communication' | 'Platform';
   /** Core features are part of every plan and can't be switched off. */
   core?: boolean;
   /** Not shipped yet: shown on plans as "Coming soon", never enforced. */
@@ -43,15 +43,22 @@ export const FEATURES: FeatureDef[] = [
   { key: 'directory_profiles', label: 'Student & guardian directory', description: 'Student directory, profiles and parent links.', group: 'Core', core: true },
   { key: 'attendance_basic', label: 'Attendance', description: 'Daily student register and staff sign-in.', group: 'Core', core: true },
   { key: 'gradebook', label: 'Assignments, results & report cards', description: 'Assignments, gradebook, results and report cards.', group: 'Core', core: true },
-  { key: 'fee_collection', label: 'Fees, invoices & online payments', description: 'Fee structures, invoices, receipts and online payments.', group: 'Core', core: true },
+  { key: 'fee_collection', label: 'Fee structures, invoices & receipts', description: 'Fee structures, invoices, recording payments and PDF receipts.', group: 'Core', core: true },
   { key: 'announcements', label: 'Announcements & in-app notifications', description: 'Announcements to the whole school or a class, the in-app notification bell, and optional email copies.', group: 'Core', core: true },
-  { key: 'portals', label: 'Student & parent portals', description: 'Logins for students, parents and staff, plus the mobile app.', group: 'Core', core: true },
+  { key: 'portals', label: 'Principal, teacher & student portals', description: 'Logins for the principal, teachers and students, plus the Android app.', group: 'Core', core: true },
   { key: 'dashboards', label: 'Role dashboards', description: 'Live dashboards for the principal, teachers, bursar, admissions, parents and students.', group: 'Core', core: true },
   { key: 'exports', label: 'Excel, PDF & CSV exports', description: 'Export lists, registers and reports from every module you have.', group: 'Core', core: true },
   { key: 'school_branding', label: 'Your school branding', description: 'Your logo, name, motto and contacts on report cards, receipts and emails.', group: 'Core', core: true },
   { key: 'support', label: 'Help centre & support tickets', description: 'Built-in guides and direct support from the WiSkul team.', group: 'Core', core: true },
 
+  // Portals: a portal not in the plan is fully disabled (its users can't sign
+  // in and no new accounts can be made for it). Never read-only.
+  { key: 'portal_parent', label: 'Parent portal', description: "Parents follow their children's attendance, results and fees, and pay online.", group: 'Portals' },
+  { key: 'portal_admissions', label: 'Admissions Officer portal', description: 'A dedicated admissions office login (and the Admissions duty for teachers).', group: 'Portals' },
+  { key: 'portal_bursar', label: 'Bursar / Accountant portal', description: "The school finance office's own login (and the Bursar duty for teachers).", group: 'Portals' },
+
   // Switchable per plan
+  { key: 'online_payments', label: 'Online fee payments', description: 'Parents and students pay fees by mobile money or card through Monime.', group: 'Finance' },
   { key: 'admissions', label: 'Admissions & online applications', description: 'Admissions pipeline, interviews, enrolment and the public application form.', group: 'Students' },
   { key: 'promotions', label: 'Student promotions', description: 'End-of-year promotion of classes into the new year.', group: 'Academic' },
   { key: 'discipline', label: 'Discipline & conduct', description: 'Infractions, detentions, conduct reports and appeals.', group: 'Students' },
@@ -96,30 +103,35 @@ const on = (...keys: string[]) => Object.fromEntries(keys.map((k) => [k, true]))
 
 /** Defaults: match what billing charged and enforced before the catalog existed. */
 const DEFAULT_PLANS: Record<PlanId, PlanDef> = {
+  // Freetong: run the classroom. Combra: run the school community (parents,
+  // admissions, identity, events, online payments). Bintumani: run the whole
+  // school office (bursar portal + every finance tool).
   freetong: {
-    id: 'freetong', name: 'Freetong', tagline: 'Everything a school needs to run day to day.', badge: 'Starter',
-    monthly_price: 400, yearly_price: 4000,
+    id: 'freetong', name: 'Freetong', tagline: 'Classes, results and fees for a small school.', badge: 'Starter',
+    monthly_price: 250, yearly_price: 2500,
     max_students: 200, max_staff: 15, max_users: 15, max_storage_gb: 5,
-    features: on('admissions', 'promotions', 'fee_management', 'academic_archive'),
+    features: on('promotions', 'academic_archive'),
     highlights: ['Email support'], is_public: true, featured: false, sort: 0,
   },
   combra: {
-    id: 'combra', name: 'Combra', tagline: 'For growing schools that want more tools.', badge: 'Most popular',
-    monthly_price: 900, yearly_price: 9000,
-    max_students: 500, max_staff: 40, max_users: 45, max_storage_gb: 20,
-    features: on('admissions', 'promotions', 'fee_management', 'academic_archive', 'discipline', 'id_cards', 'events', 'expenses'),
+    id: 'combra', name: 'Combra', tagline: 'Bring parents, admissions and online payments on board.', badge: 'Most popular',
+    monthly_price: 600, yearly_price: 6000,
+    max_students: 600, max_staff: 50, max_users: 55, max_storage_gb: 20,
+    features: on('promotions', 'academic_archive', 'portal_parent', 'portal_admissions', 'online_payments', 'admissions', 'discipline', 'id_cards', 'events'),
     highlights: ['Priority email support'], is_public: true, featured: true, sort: 1,
   },
   bintumani: {
-    id: 'bintumani', name: 'Bintumani', tagline: 'The complete platform with full accounting.', badge: 'Complete',
-    monthly_price: 1750, yearly_price: 17500,
+    id: 'bintumani', name: 'Bintumani', tagline: 'The complete school office, with a full finance department.', badge: 'Complete',
+    monthly_price: 1200, yearly_price: 12000,
     max_students: UNLIMITED, max_staff: UNLIMITED, max_users: UNLIMITED, max_storage_gb: 100,
     features: on(...FEATURES.filter((f) => !f.core).map((f) => f.key)),
     highlights: ['Dedicated onboarding', 'Priority phone support'], is_public: true, featured: false, sort: 2,
   },
 };
 
-const CATALOG_KEY = 'plan_catalog';
+// v2 (October 2026): tiered portals + finance in Bintumani + introductory
+// prices. Edits saved under the old key are intentionally not carried over.
+const CATALOG_KEY = 'plan_catalog_v2';
 const CACHE_MS = 30_000;
 let cache: { at: number; plans: Record<PlanId, PlanDef> } | null = null;
 
@@ -141,7 +153,8 @@ function normalizePlan(id: PlanId, raw: any): PlanDef {
   const srcFeatures = r.features && typeof r.features === 'object' ? r.features : d.features;
   for (const f of FEATURES) {
     if (f.core) continue;
-    features[f.key] = srcFeatures[f.key] === true;
+    // A feature added after the plan was saved takes the plan's default.
+    features[f.key] = f.key in srcFeatures ? srcFeatures[f.key] === true : d.features[f.key] === true;
   }
   const highlights = Array.isArray(r.highlights)
     ? r.highlights.filter((h: any) => typeof h === 'string' && h.trim()).map((h: string) => h.trim().slice(0, 120)).slice(0, 12)

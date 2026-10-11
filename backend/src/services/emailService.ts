@@ -12,6 +12,7 @@ import {
 } from './email/emailLayout.js';
 import { polishReason } from './email/reasonPolish.js';
 import { mintRestoreToken } from './restoreAccessService.js';
+import { isDemoEmail } from '../utils/demo.js';
 
 /**
  * Smart, category-specific suspension resolution guidance.
@@ -187,6 +188,25 @@ export interface EmailResponse {
   timestamp: string;
 }
 
+/**
+ * "What changes on your plan" lists for lifecycle emails: features that turn
+ * read-only (records kept) and portals that switch off (users can't sign in).
+ */
+function planChangeLists(readOnly: string[] = [], portals: string[] = [], when: 'now' | 'future'): string {
+  const ul = (items: string[]) =>
+    `<ul style="font-size:14px;line-height:24px;padding-left:20px;margin:6px 0 14px;">${items.slice(0, 14).map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`;
+  let html = '';
+  if (portals.length) {
+    html += `<p style="font-weight:600;margin:16px 0 4px;">${when === 'now' ? 'Switched off' : 'Will switch off'}</p>
+      <p style="margin:0;">${when === 'now' ? 'Users of these portals can no longer sign in' : 'Users of these portals won’t be able to sign in'}. Their accounts and records are kept and return when you upgrade:</p>${ul(portals)}`;
+  }
+  if (readOnly.length) {
+    html += `<p style="font-weight:600;margin:16px 0 4px;">${when === 'now' ? 'Now read-only' : 'Will become read-only'}</p>
+      <p style="margin:0;">Your records here stay visible, but nothing new can be added or changed until you upgrade:</p>${ul(readOnly)}`;
+  }
+  return html;
+}
+
 class EmailService {
   private brevoClient: AxiosInstance;
   private readonly BREVO_API_URL = 'https://api.brevo.com/v3';
@@ -299,6 +319,10 @@ class EmailService {
    */
   async sendEmail(emailRequest: EmailRequest, retryCount: number = 0): Promise<EmailResponse> {
     try {
+      // Demo-school addresses have no mailbox: never send to them.
+      if (isDemoEmail(emailRequest.to)) {
+        return { messageId: 'demo-' + Date.now(), status: 'disabled', timestamp: new Date().toISOString() };
+      }
       if (!this.BREVO_API_KEY) {
         logger.warn(`Email sending disabled for ${emailRequest.to}`);
         return {
@@ -1044,6 +1068,8 @@ class EmailService {
       amount?: number;
       billingCycle?: 'monthly' | 'yearly';
       readOnlyFeatures?: string[];
+      /** Portals (and their users) that switch off: e.g. "Parent portal". */
+      disabledPortals?: string[];
       /** Trial ends with payment required (school becomes read-only until paid). */
       paymentRequired?: boolean;
     }
@@ -1072,7 +1098,8 @@ class EmailService {
         <p>The free <strong>${plan}</strong> trial for <strong>${school}</strong> ends ${escapeHtml(dayText)}${end ? ` (${escapeHtml(end)})` : ''}.</p>
         ${data.paymentRequired
           ? calloutBlock('To keep adding and changing records after that date, choose a plan and pay before the trial ends. If you don’t, everyone can still sign in and view everything, but changes are paused until a plan is paid. Nothing is deleted.', 'warn')
-          : calloutBlock('Nothing is deleted when the trial ends. Your school moves to the base plan, and records from features outside it stay visible in read-only mode until you upgrade.', 'info')}
+          : calloutBlock(`Nothing is deleted when the trial ends. Your school moves to ${escapeHtml(data.newPlanName || 'the base plan')} unless you choose a plan.`, 'info')}
+        ${!data.paymentRequired ? planChangeLists(data.readOnlyFeatures, data.disabledPortals, 'future') : ''}
         ${emailButton('Choose a plan', billingUrl)}
         <p style="color:#64748b;font-size:13px;">Questions about plans? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
     } else if (data.kind === 'trial_ended' && data.paymentRequired) {
@@ -1088,16 +1115,13 @@ class EmailService {
         <p style="color:#64748b;font-size:13px;">Questions? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
     } else if (data.kind === 'trial_ended') {
       const newPlan = escapeHtml(data.newPlanName || 'the base plan');
-      const ro = (data.readOnlyFeatures || []).slice(0, 12);
       heading = 'Your trial has ended';
       subject = `${data.schoolName} is now on ${data.newPlanName || 'the base plan'}`;
       preheader = `Your data is safe. Upgrade any time to unlock everything again.`;
       bodyHtml = `
         <p>Hello,</p>
-        <p>The <strong>${plan}</strong> trial for <strong>${school}</strong> has ended, and the school is now on <strong>${newPlan}</strong>. Everyone can keep signing in as usual.</p>
-        ${ro.length ? `<p style="font-weight:600;margin-top:16px;">Now read-only</p>
-        <p>Your records in these areas are kept and can still be viewed. Upgrade to add or change them:</p>
-        <ul style="color:#334155;font-size:14px;line-height:1.7;padding-left:20px;margin:8px 0;">${ro.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>` : ''}
+        <p>The <strong>${plan}</strong> trial for <strong>${school}</strong> has ended, and the school is now on <strong>${newPlan}</strong>. You, your teachers and students can keep signing in as usual.</p>
+        ${planChangeLists(data.readOnlyFeatures, data.disabledPortals, 'now')}
         ${emailButton('Upgrade plan', billingUrl)}
         <p style="color:#64748b;font-size:13px;">Questions? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
     } else if (data.kind === 'expiring') {
@@ -2258,6 +2282,78 @@ export async function sendSchoolWelcomeEmail(data: {
       bodyHtml,
       preheader: `${data.schoolName} is set up on WiSkul — here's how to get started.`,
     }),
+    isHtml: true,
+  });
+}
+
+/**
+ * "Your WiSkul demo": personal one-click links into each portal of the demo
+ * school, plus the sign-in for the Android app. Platform-branded.
+ */
+export async function sendDemoAccessEmail(data: {
+  toEmail: string;
+  name: string;
+  links: Array<{ portal: string; person: string; url: string; identifier: string }>;
+  password: string | null;
+  expiresAt: Date;
+}): Promise<EmailResponse> {
+  const branding = platformBranding();
+  const first = data.name.split(' ')[0] || data.name;
+  const until = data.expiresAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const buttons = data.links.map((l) => `
+    <tr><td style="padding:6px 0;">
+      <a href="${escapeHtml(l.url)}" style="display:block;text-decoration:none;border:1px solid #dbe3f0;border-radius:8px;padding:12px 14px;color:#0f172a;">
+        <span style="display:block;font-weight:700;font-size:15px;color:#1d4ed8;">Open the ${escapeHtml(l.portal)} portal &rarr;</span>
+        <span style="display:block;font-size:13px;color:#64748b;margin-top:2px;">${escapeHtml(l.person)}</span>
+      </a>
+    </td></tr>`).join('');
+  const appRows = data.password
+    ? data.links.map((l) => detailRow(l.portal, `<span style="font-family:monospace;">${escapeHtml(l.identifier)}</span>`)).join('') +
+      detailRow('Password (all)', `<span style="font-family:monospace;">${escapeHtml(data.password)}</span>`)
+    : '';
+  const bodyHtml = `
+    <p>Hello ${escapeHtml(first)},</p>
+    <p>Thank you for your interest in WiSkul. Your demo of <strong>WiSkul Demo Academy</strong> is ready: a full school with 72 students, a term of attendance and results, fees, payroll and admissions.</p>
+    <p>Choose a portal to see WiSkul the way each person at a school sees it. Each link signs you in straight away.</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:12px 0 18px;">${buttons}</table>
+    ${calloutBlock(`These links are personal to you and work until <strong>${escapeHtml(until)}</strong>. The demo uses sample data and changes are switched off.`, 'info')}
+    ${appRows ? `<p style="font-weight:700;color:#1a1a2e;margin:22px 0 6px;">Using the WiSkul Android app?</p>
+    <p style="font-size:14px;color:#334155;margin-top:0;">Sign in with one of these:</p>${detailsCard(appRows)}` : ''}
+    <p>When you're ready, you can set up your own school in a few minutes. New schools start with a free trial.</p>
+    ${emailButton('Start your free trial', `${branding.appUrl}/register`)}
+    <p style="color:#64748b;font-size:13px;">Questions, or want a guided tour for your team? Just reply to this email.</p>`;
+  const emailService = new EmailService();
+  return emailService.sendEmail({
+    ...emailService.platformSenderFor('info'),
+    to: data.toEmail,
+    subject: 'Your WiSkul demo is ready',
+    body: renderEmail({ branding, eyebrow: 'Live demo', heading: 'Your WiSkul demo is ready', bodyHtml, preheader: 'One click into the principal, teacher, student, parent, bursar and admissions portals.' }),
+    isHtml: true,
+  });
+}
+
+/** A follow-up written by the super admin to someone who tried the demo. */
+export async function sendDemoFollowUpEmail(data: {
+  toEmail: string;
+  name: string;
+  subject: string;
+  message: string;
+  demoUrl?: string | null;
+}): Promise<EmailResponse> {
+  const branding = platformBranding();
+  const first = data.name.split(' ')[0] || data.name;
+  const paragraphs = String(data.message).replace(/\{name\}/g, first).split(/\n{2,}/)
+    .map((p) => `<p>${escapeHtml(p.trim()).replace(/\n/g, '<br>')}</p>`).join('');
+  const bodyHtml = `
+    ${paragraphs}
+    ${emailButton('Start your free trial', `${branding.appUrl}/register`)}
+    ${data.demoUrl ? `<p style="font-size:14px;text-align:center;"><a href="${escapeHtml(data.demoUrl)}" style="color:#1d4ed8;">Open the demo again</a></p>` : ''}`;
+  const emailService = new EmailService();
+  return emailService.sendEmail({
+    ...emailService.platformSenderFor('info'),
+    to: data.toEmail,
+    subject: data.subject,
+    body: renderEmail({ branding, eyebrow: 'WiSkul', heading: data.subject, bodyHtml, preheader: String(data.message).slice(0, 120) }),
     isHtml: true,
   });
 }

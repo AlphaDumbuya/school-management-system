@@ -47,8 +47,11 @@ function appOrigin(req: Request): string {
 // its own Monime credentials (Settings → Payments).
 router.get('/monime/status', authenticate, attachUserContext, async (req: Request, res: Response) => {
   const tenantId = (req as any).user?.tenant_id;
-  const tenantCreds = tenantId ? await monimeService.resolveTenantCredentials(tenantId) : null;
-  return res.json({ success: true, data: { online_payments_enabled: !!tenantCreds } });
+  // Needs the school's own Monime account AND a plan with online payments.
+  const { EntitlementService } = await import('../services/entitlementService.js');
+  const inPlan = tenantId ? (await EntitlementService.access(tenantId, 'online_payments').catch(() => ({ access: 'enabled' }))).access === 'enabled' : false;
+  const tenantCreds = tenantId && inPlan ? await monimeService.resolveTenantCredentials(tenantId) : null;
+  return res.json({ success: true, data: { online_payments_enabled: !!tenantCreds, in_plan: inPlan } });
 });
 
 // ── Initiate a checkout ───────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { SubscriptionService } from '../services/subscriptionService';
-import { EntitlementService } from '../services/entitlementService';
+import { EntitlementService, ROLE_PORTAL, portalAllowed, assertPortalAllowed } from '../services/entitlementService';
+import { dutyForPath, parseDuties } from '../utils/staffDuties';
 import { FEATURES } from '../services/planCatalogService';
 import { JWTService } from '../services/jwtService';
 import { db } from '../utils/database';
@@ -71,6 +72,8 @@ export const requirePlanFeature = (featureKey: string) => {
  * Core modules (classes, students, attendance, fees, …) are not listed.
  */
 export const FEATURE_PREFIXES: Array<[string, string]> = [
+  ['/api/v1/payments/monime/checkout', 'online_payments'],
+  ['/api/v1/payments/monime/payment-code', 'online_payments'],
   ['/api/v1/admissions', 'admissions'],
   ['/api/v1/dashboards/admissions', 'admissions'],
   ['/api/v1/promotions', 'promotions'],
@@ -141,16 +144,41 @@ export const planFeatureGate = async (req: Request, _res: Response, next: NextFu
   const url = req.originalUrl || req.url;
   const featureKey = featureForPath(url);
   const isWrite = !READ_METHODS.has(req.method.toUpperCase());
-  // Core modules: only writes matter, and only while the subscription is lapsed.
-  if (!featureKey && (!isWrite || isLapseExempt(url))) return next();
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) return next();
-  let userId: string | undefined;
-  try { userId = JWTService.verifyAccessToken(header.substring(7))?.userId; } catch { return next(); }
+  let payload: any;
+  try { payload = JWTService.verifyAccessToken(header.substring(7)); } catch { return next(); }
+  const userId: string | undefined = payload?.userId;
   if (!userId) return next();
+  // Who needs a DB look-up: users of plan-gated portals (every request), a
+  // teacher on a staff-duty module, gated features, and core-module writes.
+  const tokenRole = String(payload?.role || '');
+  const dutyPath = tokenRole === 'teacher' ? dutyForPath(url, ['accountant', 'admissions_officer'] as any) : null;
+  const portalRole = !!ROLE_PORTAL[tokenRole];
+  if (!portalRole && !dutyPath && !featureKey && (!isWrite || isLapseExempt(url))) return next();
   try {
-    const user = await db('users').where({ id: userId }).first('tenant_id', 'role');
+    const user = await db('users').where({ id: userId }).first('tenant_id', 'role', 'staff_duties');
     if (!user || user.role === 'super_admin' || !user.tenant_id) return next();
+    // Portal not in the plan: fully disabled (sign-out and the auth endpoints
+    // still answer so the app can explain it and log out cleanly).
+    if (ROLE_PORTAL[user.role] && !url.startsWith('/api/v1/auth')) {
+      await assertPortalAllowed(user.tenant_id, user.role);
+    }
+    // A teacher's extra duty works only when the plan includes that portal.
+    if (user.role === 'teacher' && dutyPath) {
+      const duties = parseDuties(user.staff_duties);
+      const duty = dutyForPath(url, duties);
+      if (duty && !(await portalAllowed(user.tenant_id, duty))) {
+        // Different code from PORTAL_NOT_IN_PLAN: the teacher keeps their own
+        // portal; only the duty is unavailable.
+        throw new AppError(
+          `Your school's plan doesn't include the ${duty === 'accountant' ? 'Bursar' : 'Admissions Officer'} duty. Ask your principal about upgrading the plan.`,
+          403,
+          'PLAN_LIMIT_REACHED'
+        );
+      }
+    }
+    if (!featureKey && (!isWrite || isLapseExempt(url))) return next();
     if (featureKey) {
       await assertFeatureAccess(user.tenant_id, featureKey, req.method);
     } else {

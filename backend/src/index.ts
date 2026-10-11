@@ -1,5 +1,6 @@
 import './utils/env.js';
 import express, { Express, Request, Response, NextFunction } from 'express';
+import { forwardAsyncRouteErrors } from './utils/asyncRouteErrors.js';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -29,6 +30,8 @@ import planRoutes from '@routes/planRoutes';
 import brandingRoutes from '@routes/brandingRoutes';
 import { rememberRequestOrigin } from '@utils/publicUrl';
 import { planFeatureGate } from '@middleware/subscriptionGuard';
+import { demoReadOnly } from '@middleware/demoReadOnly';
+import { publicDemoRouter, platformDemoRouter } from '@routes/demoAccessRoutes';
 import enrollmentRoutes from '@routes/enrollmentRoutes';
 import enrollmentWorkflowRoutes from '@routes/enrollmentWorkflowRoutes';
 import gradeRoutes from '@routes/gradeRoutes';
@@ -86,6 +89,17 @@ import { startSubscriptionJobs } from './jobs/subscriptionJobs.js';
 
 // Load environment variables
 dotenv.config();
+
+// An error in an async route answers that request instead of crashing the server.
+forwardAsyncRouteErrors();
+// Last line of defence: a stray rejected promise (fire-and-forget work) is
+// logged, never allowed to stop the API for every school.
+if (!(globalThis as any).__wiskulRejectionGuard) {
+  (globalThis as any).__wiskulRejectionGuard = true;
+  process.on('unhandledRejection', (reason: any) => {
+    logger.error(`Unhandled promise rejection: ${reason?.stack || reason?.message || reason}`);
+  });
+}
 
 const app: Express = express();
 const PORT = process.env.PORT || 3000;
@@ -163,6 +177,8 @@ app.use((req, _res, next) => { rememberRequestOrigin(req.headers as any); next()
 // Plan features: one gate for every module API (see FEATURE_PREFIXES). Locked
 // features are refused; read-only ones (held on an earlier plan or trial)
 // allow reads only. No-op for core modules and unauthenticated requests.
+// The public demo school is read-only (its logins are published).
+app.use('/api/v1', demoReadOnly);
 app.use('/api/v1', planFeatureGate);
 
 // Health check endpoint
@@ -232,6 +248,9 @@ app.use('/api/v1/auth', authRoutes);
 // applies `authenticate` at the top (e.g. phase10DashboardRoutes) — otherwise
 // that middleware runs for every /api/v1/* path and 401s this public route.
 app.use('/api/v1/public/plans', planRoutes);
+// "Book a live demo" + emailed demo links (public), and the super admin list.
+app.use('/api/v1/public/demo', publicDemoRouter);
+app.use('/api/v1/platform/demo-requests', platformDemoRouter);
 // School logos for emails (stable absolute URL, whatever the storage).
 app.use('/api/v1/public/branding', brandingRoutes);
 app.use('/api/v1/public', publicVerifyRoutes);

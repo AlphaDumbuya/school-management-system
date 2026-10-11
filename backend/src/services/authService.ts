@@ -232,11 +232,15 @@ export class AuthService {
       try {
         const hasAcademicSessions = await this.db.schema.hasTable('academic_sessions');
         if (hasAcademicSessions) {
+          // The school year starting this September (from August on, the
+          // coming one), not a fixed year.
+          const now = new Date();
+          const sy = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
           await this.db('academic_sessions').insert({
             tenant_id: tenantId,
-            name: '2026/2027 Academic Year',
-            start_date: '2026-09-01',
-            end_date: '2027-07-31',
+            name: `${sy}/${sy + 1} Academic Year`,
+            start_date: `${sy}-09-01`,
+            end_date: `${sy + 1}-07-31`,
             // The academic_sessions column is `is_active` (migration 001), NOT
             // `is_current`. Using the wrong name silently failed the insert
             // (it's in a try/catch), so new self-serve schools got NO active
@@ -420,6 +424,12 @@ export class AuthService {
     if (!tenant) {
       throw new AppError('Your school account is unavailable. Contact support.', 403, 'TENANT_UNAVAILABLE');
     }
+    if (tenant.status === 'active') {
+      // Portals the school's plan doesn't include can't sign in at all.
+      const { assertPortalAllowed } = await import('./entitlementService.js');
+      await assertPortalAllowed(user.tenant_id, user.role);
+      return;
+    }
     if (tenant.status !== 'active') {
       // The account owner (principal) can act on this — point them to support.
       // Everyone else can't resolve it, so direct them to their school admin.
@@ -437,6 +447,17 @@ export class AuthService {
         'TENANT_SUSPENDED_USER'
       );
     }
+  }
+
+  /**
+   * Start a session for a known user id without a password. Only for callers
+   * that have already proven the right to it (e.g. an emailed demo link for
+   * the read-only demo school). Same checks as every other sign-in path.
+   */
+  async issueSessionForUserId(userId: string): Promise<{ access_token: string; refresh_token: string; user: UserResponse }> {
+    const user = await this.db('users').where({ id: userId }).first();
+    if (!user) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+    return this.issueSessionForUser(user);
   }
 
   private async issueSessionForUser(
@@ -882,6 +903,9 @@ export class AuthService {
         throw new AppError('Cannot resolve tenant for the creating user', 400, 'TENANT_REQUIRED');
       }
       const tenantId = creator.tenant_id;
+      // Only roles whose portal is in the school's plan.
+      const { assertPortalAllowed } = await import('./entitlementService.js');
+      await assertPortalAllowed(tenantId, String(payload.role), { forAccountCreation: true });
 
       // Create user
       const [userRow] = await this.db('users').insert({

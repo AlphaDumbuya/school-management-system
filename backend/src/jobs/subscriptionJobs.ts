@@ -43,6 +43,20 @@ async function claim(tenantId: string, key: string): Promise<boolean> {
   return claimNotice(tenantId, key);
 }
 
+/**
+ * What a school loses moving from one plan to another: features (they become
+ * read-only, records kept) and portals (switched off, users can't sign in).
+ */
+export async function planDiff(fromPlan: string, toPlan: string): Promise<{ readOnly: string[]; portals: string[] }> {
+  const { PlanCatalog, FEATURES } = await import('../services/planCatalogService.js');
+  const [from, to] = await Promise.all([PlanCatalog.featuresFor(fromPlan), PlanCatalog.featuresFor(toPlan)]);
+  const lost = FEATURES.filter((f) => !f.core && !f.soon && from[f.key] && !to[f.key]);
+  return {
+    readOnly: lost.filter((f) => !f.key.startsWith('portal_') && f.key !== 'online_payments').map((f) => f.label),
+    portals: lost.filter((f) => f.key.startsWith('portal_')).map((f) => f.label),
+  };
+}
+
 async function planName(planType: string): Promise<string> {
   const { PlanCatalog } = await import('../services/planCatalogService.js');
   return PlanCatalog.isPlanId(planType) ? (await PlanCatalog.get(planType)).name : String(planType || '');
@@ -65,10 +79,12 @@ export async function notifyTrialEnded(tenantId: string, endedSub: { id: string;
     EntitlementService.clear(tenantId);
     const ent = await EntitlementService.forTenant(tenantId);
     const readOnly = FEATURES.filter((f) => !f.soon && ent.features[f.key] === 'read_only').map((f) => f.label);
+    const diff = await planDiff(endedSub.plan_type, String(ent.plan_type));
     const { default: emailService } = await import('../services/emailService.js');
     await emailService.sendSubscriptionLifecycleEmail(to, {
       kind: 'trial_ended', schoolName: tenant?.name || 'your school',
       planName: await planName(endedSub.plan_type), newPlanName: ent.plan_name, readOnlyFeatures: readOnly,
+      disabledPortals: diff.portals,
       // Trial ended with payment required: the whole school is read-only.
       paymentRequired: ent.lapsed,
     });
@@ -105,6 +121,11 @@ export async function runSubscriptionReminders(): Promise<number> {
         kind: s.is_trial ? 'trial_ending' : 'expiring',
         schoolName: s.school_name || 'your school', planName: await planName(s.plan_type),
         endDate: s.end_date, daysLeft, paymentRequired: s.is_trial ? paymentRequired : undefined,
+        // Trial ending → what moving to Freetong would take away.
+        ...(s.is_trial && !paymentRequired ? await (async () => {
+          const d = await planDiff(s.plan_type, 'freetong');
+          return { newPlanName: await planName('freetong'), readOnlyFeatures: d.readOnly, disabledPortals: d.portals };
+        })() : {}),
       });
       sent++;
     } catch (err) {

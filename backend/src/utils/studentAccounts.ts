@@ -114,6 +114,12 @@ export async function provisionStudentAccounts(
 
   // ── Parent user account ─────────────────────────────────────────────────
   const parentEmail = (info.guardian_email || `${reg}@parent.school.com`).toLowerCase().trim();
+  // No parent login on plans without the parent portal (guardian contact
+  // details are still kept on the student).
+  const { portalAllowed } = await import('../services/entitlementService.js');
+  if (!(await portalAllowed(tenantId, 'parent').catch(() => true))) {
+    return { studentUserId, parentUserId: null, studentUsername: studentUsername || null, parentEmail: '', studentPassword, parentPassword: null };
+  }
   try {
     let pu = await db('users').where({ tenant_id: tenantId, email: parentEmail }).first();
     const gName = (info.guardian_name || '').trim();

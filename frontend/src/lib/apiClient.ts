@@ -9,6 +9,12 @@ import { API_CONFIG, getAuthHeaders } from '@config/api.config';
 import { ApiResponse } from '@appTypes/index';
 import { enqueueRequest } from './offlineQueue';
 
+let lastDemoToast = 0;
+
+/** Marketing / public pages: a dead session is dropped quietly, no redirect. */
+const isPublicPath = (path: string) =>
+  path === '/' || /^\/(features|pricing|why|benefits|contact|register|privacy-policy|demo|login|apply|verify|forgot-password|reset-password|newsletter|restore-access|request-reactivation)(\/|$)/.test(path);
+
 /**
  * Master switch for the offline write-queue. Disabled for now: it was
  * intercepting failed mutations (including school registration) and returning a
@@ -121,8 +127,11 @@ axiosInstance.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) {
-          // No refresh token at all → genuine unauthenticated state.
-          window.location.href = '/login';
+          // No refresh token at all → genuine unauthenticated state. Public
+          // pages stay put; app pages go to sign-in.
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('user');
+          if (!isPublicPath(window.location.pathname)) window.location.href = '/login';
           return Promise.reject(error);
         }
 
@@ -167,7 +176,10 @@ axiosInstance.interceptors.response.use(
         // Online and the server rejected the refresh token → genuine logout.
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
-        window.location.href = '/login';
+        localStorage.removeItem('user');
+        // On public pages (homepage, demo form, pricing…) just drop the dead
+        // session; only app pages need to go to the sign-in screen.
+        if (!isPublicPath(window.location.pathname)) window.location.href = '/login';
         return Promise.reject(refreshError);
       }
     }
@@ -179,7 +191,25 @@ axiosInstance.interceptors.response.use(
       // scattered 403s. Any authenticated request can carry this.
       const code = (error.response?.data as any)?.error?.code
         || (error.response?.data as any)?.code;
-      if (code === 'TENANT_SUSPENDED' || code === 'TENANT_UNAVAILABLE' || code === 'ACCOUNT_INACTIVE') {
+      if (code === 'DEMO_READ_ONLY') {
+        // Demo school: one friendly toast, however many requests were refused.
+        const now = Date.now();
+        if (now - lastDemoToast > 4000) {
+          lastDemoToast = now;
+          void import('@utils/toast').then(({ showToast }) => showToast.info('This is the demo school, so changes are switched off. Start a free trial to try it with your own school.')).catch(() => undefined);
+        }
+      } else if (code === 'PORTAL_NOT_IN_PLAN' && !String(error.config?.url || '').includes('/auth/')) {
+        // This user's portal isn't in the school's plan any more: sign out
+        // with an explanation instead of a page of errors.
+        try {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
+        } catch { /* ignore */ }
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.assign('/login?portal=off');
+        }
+      } else if (code === 'TENANT_SUSPENDED' || code === 'TENANT_UNAVAILABLE' || code === 'ACCOUNT_INACTIVE') {
         // Either the whole school was suspended, or THIS user's own account was
         // deactivated / suspended / dismissed mid-session. Cut the session off
         // immediately rather than leaving a half-working stale session.
