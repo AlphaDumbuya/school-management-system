@@ -44,7 +44,8 @@ import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
 import { StorageSettings } from '@components/settings/StorageSettings';
 import { PaymentSettings } from '@components/settings/PaymentSettings';
 import { OfflineStorageSettings } from '@components/offline/OfflineStorageSettings';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { isVerifiedUser } from '@services/verificationService';
 import { useQueryClient } from '@tanstack/react-query';
 import { BookletContent, PHOTO_FRAME_OPTIONS, type PhotoFrameStyle } from './academic/components/BookletContent';
 import { ReportSettingsPanel } from './academic/components/ReportSettingsPanel';
@@ -72,6 +73,7 @@ const PASSWORD_RULES: { label: string; test: (p: string) => boolean }[] = [
 
 export const SettingsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const navigateTo = useNavigate();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
@@ -827,10 +829,10 @@ export const SettingsPage: React.FC = () => {
         showToast.success(`Your plan is now ${planType.toUpperCase()}.`);
         fetchInitialData();
       } else {
-        // Verification gate: guide the owner to verify instead of a raw error.
-        if ((res as any).statusCode === 403 || /verification/i.test(res.error || '')) {
-          showToast.error('Verify your school to change your billing plan.');
-          window.location.assign('/verify-school');
+        // Verification gate (only that error): guide the owner to verify.
+        if ((res as any).code === 'SCHOOL_VERIFICATION_REQUIRED') {
+          showToast.info('Verify your school first. It takes about two minutes, then come back to change your plan.');
+          navigateTo('/verify-school');
           return;
         }
         throw new Error(res.error || 'Upgrade failed');
@@ -1124,6 +1126,24 @@ export const SettingsPage: React.FC = () => {
                 {/* ── PROFILE TAB ── */}
                 {activeTab === 'profile' && (
                   <div className="space-y-6">
+                    {user?.role === 'principal' && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-5 py-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <ShieldCheck size={20} className={isVerifiedUser(user) ? 'text-emerald-600' : 'text-[#1d4ed8]'} aria-hidden="true" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-gray-900 dark:text-white">School verification</p>
+                            <p className="text-xs text-gray-500">
+                              {isVerifiedUser(user)
+                                ? 'Your school is verified. Your name is locked to the name on your ID.'
+                                : "Not verified yet. You'll need it before changing your subscription plan."}
+                            </p>
+                          </div>
+                        </div>
+                        <Link to="/verify-school" className="text-sm font-semibold text-[#1d4ed8] hover:underline whitespace-nowrap">
+                          {isVerifiedUser(user) ? 'View details' : 'Verify now'}
+                        </Link>
+                      </div>
+                    )}
                     {/* Personal Details Form */}
                     <Card>
                       <CardHeader>

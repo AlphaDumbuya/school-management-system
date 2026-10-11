@@ -6,9 +6,15 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { db } from '@utils/database';
-import verificationService from '@services/verificationService';
+import verificationService, { SCHOOL_LEVELS, SL_DISTRICTS } from '@services/verificationService';
+import { otpLimiter } from '@middleware/rateLimit';
 
 const router = Router();
+
+/** GET /api/v1/verification/options — lists for the form's dropdowns. */
+router.get('/options', authenticate, (_req: Request, res: Response) => {
+  res.json({ success: true, data: { school_levels: SCHOOL_LEVELS, districts: SL_DISTRICTS } });
+});
 
 async function resolveTenantId(userId: string): Promise<string> {
   const user = await db('users').select('tenant_id').where({ id: userId }).first();
@@ -29,13 +35,14 @@ router.get('/status', authenticate, async (req: Request, res: Response, next: Ne
 });
 
 /** POST /api/v1/verification/verify */
-router.post('/verify', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+// A few attempts an hour (guessing names/IDs is pointless, but cap it anyway).
+router.post('/verify', authenticate, otpLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).auth.userId;
     const tenantId = await resolveTenantId(userId);
-    const { legalName, emisCode, idType, idNumber, idName, schoolLevel, district, yearEstablished } = req.body;
+    const { emisCode, idType, idNumber, idName, schoolLevel, district, yearEstablished, declaration } = req.body;
     const result = await verificationService.verify(userId, tenantId, {
-      legalName,
+      declaration: declaration === true,
       emisCode,
       idType,
       idNumber,
