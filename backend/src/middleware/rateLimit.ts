@@ -163,6 +163,21 @@ export const publicFormLimiter = makeLimiter({
   message: { success: false, error: 'Too many applications from this connection. Please wait a few minutes and try again.' },
 });
 
+// "Book a live demo" form (the service also caps per email and per IP in the
+// database, which holds across serverless instances).
+export const demoRequestLimiter = makeLimiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 6,
+  keyGenerator: (req) => `demo-request:${clientIp(req)}`,
+  message: { success: false, error: 'Too many demo requests from this connection. Please try again in an hour.' },
+});
+// Opening the demo from an emailed link.
+export const demoSessionLimiter = makeLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  keyGenerator: (req) => `demo-session:${clientIp(req)}`,
+  message: { success: false, error: 'Too many attempts. Please wait a few minutes and try again.' },
+});
 // Passkey registration / authentication.
 export const passkeyLimiter = makeLimiter({
   windowMs: 15 * 60 * 1000,

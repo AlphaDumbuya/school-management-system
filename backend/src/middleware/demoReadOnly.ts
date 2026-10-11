@@ -20,6 +20,7 @@ const ALLOWED = [
   '/api/v1/auth/refresh',
   '/api/v1/auth/refresh-token',
   '/api/v1/live',
+  '/api/v1/public', // unauthenticated forms and links (incl. switching demo portal)
 ];
 
 /** Marking the bell as read is harmless and keeps the UI quiet. */

@@ -86,7 +86,7 @@ export const LandingPage: React.FC = () => {
                 href="#demo"
                 className="w-full sm:w-auto border border-white/30 hover:border-white/60 hover:bg-white/10 text-white font-bold text-sm px-8 py-3.5 rounded-lg transition-all duration-300 flex items-center justify-center gap-2"
               >
-                <PlayCircle size={16} className="text-amber-400" aria-hidden="true" /> Try the live demo
+                <PlayCircle size={16} className="text-amber-400" aria-hidden="true" /> Get a live demo
               </a>
               {/* Android app download (always shown; Play badge once VITE_PLAY_STORE_URL is set) */}
               <AppDownloadButtons variant="hero" />
@@ -330,10 +330,10 @@ export const LandingPage: React.FC = () => {
                 START YOUR FREE TRIAL <ArrowRight size={16} />
               </button>
               <button
-                onClick={() => navigate('/login?demo=principal')}
+                onClick={() => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' })}
                 className="w-full sm:w-auto border border-white/25 hover:border-white/50 text-white font-bold text-sm px-8 py-4 rounded-xl transition-all duration-300"
               >
-                Explore the demo school
+                Get a live demo
               </button>
             </div>
           </div>

@@ -2286,4 +2286,76 @@ export async function sendSchoolWelcomeEmail(data: {
   });
 }
 
+/**
+ * "Your WiSkul demo": personal one-click links into each portal of the demo
+ * school, plus the sign-in for the Android app. Platform-branded.
+ */
+export async function sendDemoAccessEmail(data: {
+  toEmail: string;
+  name: string;
+  links: Array<{ portal: string; person: string; url: string; identifier: string }>;
+  password: string | null;
+  expiresAt: Date;
+}): Promise<EmailResponse> {
+  const branding = platformBranding();
+  const first = data.name.split(' ')[0] || data.name;
+  const until = data.expiresAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const buttons = data.links.map((l) => `
+    <tr><td style="padding:6px 0;">
+      <a href="${escapeHtml(l.url)}" style="display:block;text-decoration:none;border:1px solid #dbe3f0;border-radius:8px;padding:12px 14px;color:#0f172a;">
+        <span style="display:block;font-weight:700;font-size:15px;color:#1d4ed8;">Open the ${escapeHtml(l.portal)} portal &rarr;</span>
+        <span style="display:block;font-size:13px;color:#64748b;margin-top:2px;">${escapeHtml(l.person)}</span>
+      </a>
+    </td></tr>`).join('');
+  const appRows = data.password
+    ? data.links.map((l) => detailRow(l.portal, `<span style="font-family:monospace;">${escapeHtml(l.identifier)}</span>`)).join('') +
+      detailRow('Password (all)', `<span style="font-family:monospace;">${escapeHtml(data.password)}</span>`)
+    : '';
+  const bodyHtml = `
+    <p>Hello ${escapeHtml(first)},</p>
+    <p>Thank you for your interest in WiSkul. Your demo of <strong>WiSkul Demo Academy</strong> is ready: a full school with 72 students, a term of attendance and results, fees, payroll and admissions.</p>
+    <p>Choose a portal to see WiSkul the way each person at a school sees it. Each link signs you in straight away.</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:12px 0 18px;">${buttons}</table>
+    ${calloutBlock(`These links are personal to you and work until <strong>${escapeHtml(until)}</strong>. The demo uses sample data and changes are switched off.`, 'info')}
+    ${appRows ? `<p style="font-weight:700;color:#1a1a2e;margin:22px 0 6px;">Using the WiSkul Android app?</p>
+    <p style="font-size:14px;color:#334155;margin-top:0;">Sign in with one of these:</p>${detailsCard(appRows)}` : ''}
+    <p>When you're ready, you can set up your own school in a few minutes. New schools start with a free trial.</p>
+    ${emailButton('Start your free trial', `${branding.appUrl}/register`)}
+    <p style="color:#64748b;font-size:13px;">Questions, or want a guided tour for your team? Just reply to this email.</p>`;
+  const emailService = new EmailService();
+  return emailService.sendEmail({
+    ...emailService.platformSenderFor('info'),
+    to: data.toEmail,
+    subject: 'Your WiSkul demo is ready',
+    body: renderEmail({ branding, eyebrow: 'Live demo', heading: 'Your WiSkul demo is ready', bodyHtml, preheader: 'One click into the principal, teacher, student, parent, bursar and admissions portals.' }),
+    isHtml: true,
+  });
+}
+
+/** A follow-up written by the super admin to someone who tried the demo. */
+export async function sendDemoFollowUpEmail(data: {
+  toEmail: string;
+  name: string;
+  subject: string;
+  message: string;
+  demoUrl?: string | null;
+}): Promise<EmailResponse> {
+  const branding = platformBranding();
+  const first = data.name.split(' ')[0] || data.name;
+  const paragraphs = String(data.message).replace(/\{name\}/g, first).split(/\n{2,}/)
+    .map((p) => `<p>${escapeHtml(p.trim()).replace(/\n/g, '<br>')}</p>`).join('');
+  const bodyHtml = `
+    ${paragraphs}
+    ${emailButton('Start your free trial', `${branding.appUrl}/register`)}
+    ${data.demoUrl ? `<p style="font-size:14px;text-align:center;"><a href="${escapeHtml(data.demoUrl)}" style="color:#1d4ed8;">Open the demo again</a></p>` : ''}`;
+  const emailService = new EmailService();
+  return emailService.sendEmail({
+    ...emailService.platformSenderFor('info'),
+    to: data.toEmail,
+    subject: data.subject,
+    body: renderEmail({ branding, eyebrow: 'WiSkul', heading: data.subject, bodyHtml, preheader: String(data.message).slice(0, 120) }),
+    isHtml: true,
+  });
+}
+
 export default new EmailService();

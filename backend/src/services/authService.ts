@@ -449,6 +449,17 @@ export class AuthService {
     }
   }
 
+  /**
+   * Start a session for a known user id without a password. Only for callers
+   * that have already proven the right to it (e.g. an emailed demo link for
+   * the read-only demo school). Same checks as every other sign-in path.
+   */
+  async issueSessionForUserId(userId: string): Promise<{ access_token: string; refresh_token: string; user: UserResponse }> {
+    const user = await this.db('users').where({ id: userId }).first();
+    if (!user) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+    return this.issueSessionForUser(user);
+  }
+
   private async issueSessionForUser(
     user: any
   ): Promise<{ access_token: string; refresh_token: string; user: UserResponse }> {

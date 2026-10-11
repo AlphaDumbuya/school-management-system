@@ -30,6 +30,7 @@ import brandingRoutes from '@routes/brandingRoutes';
 import { rememberRequestOrigin } from '@utils/publicUrl';
 import { planFeatureGate } from '@middleware/subscriptionGuard';
 import { demoReadOnly } from '@middleware/demoReadOnly';
+import { publicDemoRouter, platformDemoRouter } from '@routes/demoAccessRoutes';
 import enrollmentRoutes from '@routes/enrollmentRoutes';
 import enrollmentWorkflowRoutes from '@routes/enrollmentWorkflowRoutes';
 import gradeRoutes from '@routes/gradeRoutes';
@@ -235,6 +236,9 @@ app.use('/api/v1/auth', authRoutes);
 // applies `authenticate` at the top (e.g. phase10DashboardRoutes) — otherwise
 // that middleware runs for every /api/v1/* path and 401s this public route.
 app.use('/api/v1/public/plans', planRoutes);
+// "Book a live demo" + emailed demo links (public), and the super admin list.
+app.use('/api/v1/public/demo', publicDemoRouter);
+app.use('/api/v1/platform/demo-requests', platformDemoRouter);
 // School logos for emails (stable absolute URL, whatever the storage).
 app.use('/api/v1/public/branding', brandingRoutes);
 app.use('/api/v1/public', publicVerifyRoutes);

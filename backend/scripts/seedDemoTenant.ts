@@ -23,8 +23,16 @@ import { PasswordService } from '../src/services/passwordService';
 import { PlanCatalog } from '../src/services/planCatalogService';
 import { DEMO_EMAIL_DOMAIN, DEMO_TENANT_SLUG } from '../src/utils/demo';
 
-/** Shared with frontend/src/lib/demo.ts (the marketing page signs in with it). */
-const DEMO_PASSWORD = 'WiSkulDemo#2026';
+/**
+ * Shared password of the demo accounts (for the Android app; the website uses
+ * personal emailed links). New on every run unless DEMO_PASSWORD is set, and
+ * kept in tenants.settings.demo_password so the demo email can include it.
+ */
+const DEMO_PASSWORD = process.env.DEMO_PASSWORD || (() => {
+  const letters = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+  const pickC = () => letters[crypto.randomInt(letters.length)];
+  return `Demo-${pickC()}${pickC()}${pickC()}${pickC()}-${crypto.randomInt(10, 99)}`;
+})();
 const SCHOOL_NAME = 'WiSkul Demo Academy';
 const mail = (local: string) => `${local}@${DEMO_EMAIL_DOMAIN}`;
 
@@ -279,7 +287,7 @@ async function seedDemo() {
     description: 'Public demo school for the WiSkul marketing site. Read-only.',
     contact_email: mail('office'), contact_phone: '+232 76 000 000', address: '12 Wilkinson Road, Freetown',
     timezone: 'Africa/Freetown', currency: 'SLE', language: 'en', max_users: 100000,
-    settings: JSON.stringify({ demo: true }),
+    settings: JSON.stringify({ demo: true, demo_password: DEMO_PASSWORD }),
   }).returning('*');
   const tid: string = tenant.id;
 
@@ -1241,7 +1249,7 @@ async function main() {
       await new Promise((r) => setTimeout(r, attempt * 10_000));
     }
   }
-  console.log(`\nDone in ${Math.round((Date.now() - started) / 1000)}s. Demo sign-ins (password ${DEMO_PASSWORD}):`);
+  console.log(`\nDone in ${Math.round((Date.now() - started) / 1000)}s. Demo sign-ins for the app (password ${DEMO_PASSWORD}, also in every demo email):`);
   console.log(`  Principal   ${mail('principal')}\n  Teacher     ${mail('teacher')}\n  Bursar      ${mail('bursar')}\n  Admissions  ${mail('admissions')}\n  Parent      ${mail('parent')}\n  Student     DEMO-0001`);
 }
 

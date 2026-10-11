@@ -19,7 +19,7 @@ import useInactivityLock from '@hooks/useInactivityLock';
 import VerifyIntroModal from '@components/verification/VerifyIntroModal';
 import { ResultReleasePopup } from '@components/results/ResultReleasePopup';
 import { showToast } from '@utils/toast';
-import { isDemoUser } from '@lib/demo';
+import { isDemoUser, demoToken, demoStartPath, DEMO_PORTALS } from '@lib/demo';
 
 /**
  * School-wide notice when the trial / plan has ended and payment is required:
@@ -34,14 +34,28 @@ import { isDemoUser } from '@lib/demo';
 const DemoSchoolBanner: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   if (!isDemoUser(user)) return null;
+  const token = demoToken.get();
   return (
     <div role="status" className="mb-4 rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-900 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-      <p className="text-blue-900 dark:text-blue-100 flex-1 min-w-[220px]">
+      <p className="text-blue-900 dark:text-blue-100 flex-1 min-w-[200px]">
         <span className="font-bold">You're exploring the WiSkul demo school.</span>{' '}
         Everything here is sample data, and changes are switched off.
       </p>
-      <a href="/#demo" className="font-semibold text-blue-700 dark:text-blue-300 hover:underline">Try another portal</a>
-      <a href="/register" className="font-bold text-white bg-[#f59e0b] hover:bg-[#d97706] rounded-lg px-3 py-1.5">Start your free trial</a>
+      {token && (
+        <label className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
+          <span className="font-semibold whitespace-nowrap">Switch portal</span>
+          <select
+            aria-label="Switch demo portal"
+            defaultValue=""
+            onChange={(e) => { if (e.target.value) window.location.assign(demoStartPath(token, e.target.value)); }}
+            className="rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm"
+          >
+            <option value="">Choose…</option>
+            {DEMO_PORTALS.map((p) => <option key={p.key} value={p.key}>{p.portal}</option>)}
+          </select>
+        </label>
+      )}
+      <a href="/register" className="font-bold text-white bg-[#f59e0b] hover:bg-[#d97706] rounded-lg px-3 py-1.5 whitespace-nowrap">Start your free trial</a>
     </div>
   );
 };
