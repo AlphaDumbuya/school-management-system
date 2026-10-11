@@ -586,9 +586,10 @@ export class Phase15GradingConfigService {
 
     // Check grade points range
     grades.forEach((grade) => {
-      if (grade.grade_points < 0 || grade.grade_points > 4.0) {
+      // 0–9: GPA-style scales use 0–4, WASSCE uses 1–9 and BECE 1–7.
+      if (grade.grade_points < 0 || grade.grade_points > 9) {
         throw new AppError(
-          `Grade points must be between 0 and 4.0 for grade ${grade.grade}`,
+          `Grade points must be between 0 and 9 for grade ${grade.grade}`,
           400,
           'VALIDATION_ERROR'
         );
