@@ -961,6 +961,10 @@ export const ReportCardsPage: React.FC = () => {
                 schoolAddress={schoolAddress}
                 schoolLogo={schoolLogo}
                 shortName={shortName}
+                showStudentPhoto={showStudentPhoto}
+                showWatermark={showWatermark}
+                stampUrl={stampUrl}
+                signatureUrl={signatureUrl}
               />
             ) : (
               <BookletContent
@@ -1007,6 +1011,10 @@ export const ReportCardsPage: React.FC = () => {
                     schoolAddress={schoolAddress}
                     schoolLogo={schoolLogo}
                     shortName={shortName}
+                    showStudentPhoto={showStudentPhoto}
+                    showWatermark={showWatermark}
+                    stampUrl={stampUrl}
+                    signatureUrl={signatureUrl}
                   />
                 ) : (
                   <BookletContent
