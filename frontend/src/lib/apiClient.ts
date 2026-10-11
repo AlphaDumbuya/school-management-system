@@ -11,6 +11,10 @@ import { enqueueRequest } from './offlineQueue';
 
 let lastDemoToast = 0;
 
+/** Marketing / public pages: a dead session is dropped quietly, no redirect. */
+const isPublicPath = (path: string) =>
+  path === '/' || /^\/(features|pricing|why|benefits|contact|register|privacy-policy|demo|login|apply|verify|forgot-password|reset-password|newsletter|restore-access|request-reactivation)(\/|$)/.test(path);
+
 /**
  * Master switch for the offline write-queue. Disabled for now: it was
  * intercepting failed mutations (including school registration) and returning a
@@ -123,8 +127,11 @@ axiosInstance.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) {
-          // No refresh token at all → genuine unauthenticated state.
-          window.location.href = '/login';
+          // No refresh token at all → genuine unauthenticated state. Public
+          // pages stay put; app pages go to sign-in.
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('user');
+          if (!isPublicPath(window.location.pathname)) window.location.href = '/login';
           return Promise.reject(error);
         }
 
@@ -169,7 +176,10 @@ axiosInstance.interceptors.response.use(
         // Online and the server rejected the refresh token → genuine logout.
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
-        window.location.href = '/login';
+        localStorage.removeItem('user');
+        // On public pages (homepage, demo form, pricing…) just drop the dead
+        // session; only app pages need to go to the sign-in screen.
+        if (!isPublicPath(window.location.pathname)) window.location.href = '/login';
         return Promise.reject(refreshError);
       }
     }

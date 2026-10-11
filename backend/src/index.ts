@@ -1,5 +1,6 @@
 import './utils/env.js';
 import express, { Express, Request, Response, NextFunction } from 'express';
+import { forwardAsyncRouteErrors } from './utils/asyncRouteErrors.js';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -88,6 +89,17 @@ import { startSubscriptionJobs } from './jobs/subscriptionJobs.js';
 
 // Load environment variables
 dotenv.config();
+
+// An error in an async route answers that request instead of crashing the server.
+forwardAsyncRouteErrors();
+// Last line of defence: a stray rejected promise (fire-and-forget work) is
+// logged, never allowed to stop the API for every school.
+if (!(globalThis as any).__wiskulRejectionGuard) {
+  (globalThis as any).__wiskulRejectionGuard = true;
+  process.on('unhandledRejection', (reason: any) => {
+    logger.error(`Unhandled promise rejection: ${reason?.stack || reason?.message || reason}`);
+  });
+}
 
 const app: Express = express();
 const PORT = process.env.PORT || 3000;
