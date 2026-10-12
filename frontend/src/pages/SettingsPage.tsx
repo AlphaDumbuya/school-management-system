@@ -1,3 +1,4 @@
+import { isTeachingUser } from '@lib/staffJobs';
 import React, { useState, useEffect } from 'react';
 import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -80,13 +81,13 @@ export const SettingsPage: React.FC = () => {
   const setUser = useAuthStore((s) => s.setUser);
   const logout = useAuthStore((s) => s.logout);
   const isSuperAdmin = user?.role === 'super_admin';
-  const isTeacher = user?.role === 'teacher';
-  // The bursar: an accountant, or a teacher holding the Bursar duty. They work
+  const isTeacher = isTeachingUser(user as any);
+  // The bursar: an accountant (main job or on top of another job). They work
   // under the school's payment policy, so they get a read-only view of it.
-  const isBursar = user?.role === 'accountant' || (isTeacher && ((user as any)?.staffDuties ?? []).includes('accountant'));
-  // The admissions office (or a teacher holding the Admissions duty) works under
-  // the school's ID format and admissions rules: a read-only view of them.
-  const isOffice = user?.role === 'admissions_officer' || (isTeacher && ((user as any)?.staffDuties ?? []).includes('admissions_officer'));
+  const isBursar = user?.role === 'accountant' || ((user as any)?.staffDuties ?? []).includes('accountant');
+  // The admissions office (main job or on top of another) works under the
+  // school's ID format and admissions rules: a read-only view of them.
+  const isOffice = user?.role === 'admissions_officer' || ((user as any)?.staffDuties ?? []).includes('admissions_officer');
   const [officeLink, setOfficeLink] = useState<string>('');
   // A tenant/school admin (principal) manages the school-config tabs. The super
   // admin is the PLATFORM operator and has no school to configure — they only

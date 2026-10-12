@@ -3,6 +3,7 @@
  * Wraps /api/v1/assignments endpoints.
  */
 
+import { isTeachingUser } from '@lib/staffJobs';
 import { apiClient } from '@lib/apiClient';
 import useAuthStore from '@store/authStore';
 import { assignmentsRepo } from '../offline/repositories/assignmentsRepo';
@@ -105,7 +106,7 @@ export const assignmentsService = {
   async createAssignment(data: AssignmentFormData) {
     // Offline-first: teachers with no connectivity queue locally + sync later.
     const user = useAuthStore.getState().user;
-    if (!navigator.onLine && user?.role === 'teacher') {
+    if (!navigator.onLine && user && isTeachingUser(user as any)) {
       await assignmentsRepo.create(user.id, {
         classId: data.class_id,
         subjectId: data.subject_id,

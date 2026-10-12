@@ -24,6 +24,7 @@
  * Attendance (On Time / Late / Absent) is sourced live from the attendance system.
  */
 
+import { isTeachingUser } from '@lib/staffJobs';
 import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -811,7 +812,7 @@ export const ReportCardsPage: React.FC = () => {
             <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-amber-500 text-white text-xs font-bold">!</span>
             <span>
               <strong>Draft — not yet released.</strong>{' '}
-              {user?.role === 'teacher' || user?.role === 'admissions_officer'
+              {isTeachingUser(user as any) || user?.role === 'admissions_officer'
                 ? "Parents and students can't see this report until the principal publishes the results."
                 : <>Parents and students can't see this report until you publish it in Settings → Grading &amp; Results.</>}
             </span>
@@ -842,7 +843,7 @@ export const ReportCardsPage: React.FC = () => {
                         ? ((selfResp as any)?.error || 'Could not load the report card. Please refresh.')
                         : 'Select a child. The report card appears once results are released.')
                 : classesData && classes.length === 0
-                  ? (user?.role === 'teacher'
+                  ? (isTeachingUser(user as any)
                       ? (viewingPast ? `You didn't teach any classes in ${academicYear}.` : `You have no classes assigned for ${activeYear} yet.`)
                       : `There are no classes in ${academicYear}.`)
                   : 'Choose a class, student and academic year to generate the report booklet.'}

@@ -4,6 +4,7 @@
  * Features Searchable Filter Popovers with embedded search bars inside filters.
  */
 
+import { isTeachingUser } from '@lib/staffJobs';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
@@ -267,7 +268,7 @@ export const AssignmentsPage: React.FC = () => {
   const { canAccess, user } = useAuth();
   // Students (and other non-staff) get a read-only view of their class assignments.
   const canManage = canAccess(['principal', 'super_admin', 'teacher']);
-  const isTeacherRole = user?.role === 'teacher';
+  const isTeacherRole = isTeachingUser(user as any);
   const isStudentRole = user?.role === 'student';
   // 'guardian' is a legacy alias for parent (not in UserRole, but the column is free text).
   const isParentRole = user?.role === 'parent' || (user?.role as string | undefined) === 'guardian';

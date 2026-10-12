@@ -5,6 +5,7 @@
  * timer, and a custom `wiskul:sync` event (fired after a local write). Runs are
  * serialized + backed off inside syncEngine so this hook can fire liberally.
  */
+import { isTeachingUser } from '@lib/staffJobs';
 import { useEffect } from 'react';
 import useAuthStore from '@store/authStore';
 import { runSync } from './syncEngine';
@@ -21,7 +22,7 @@ export function useSyncEngine() {
   const user = useAuthStore((s) => s.user);
   const userId = user?.id || null;
   // Only teachers use the offline sync path.
-  const isTeacher = user?.role === 'teacher';
+  const isTeacher = isTeachingUser(user as any);
 
   useEffect(() => {
     if (!userId || !isTeacher) return;

@@ -41,7 +41,7 @@ export interface TeacherRecord {
   assignments?: TeacherAssignment[];
   /** System role: teacher | principal | accountant | admissions_officer. */
   user_role?: string;
-  /** A teacher's extra jobs: accountant and/or admissions_officer. */
+  /** Extra jobs on top of the main role: teacher, accountant and/or admissions_officer. */
   staff_duties?: string[] | string | null;
 }
 
@@ -52,7 +52,7 @@ export function staffJobs(t: Pick<TeacherRecord, 'user_role' | 'staff_duties'>):
   try { duties = Array.isArray(raw) ? raw : raw ? JSON.parse(raw) : []; } catch { duties = []; }
   const jobs: string[] = [];
   if (t.user_role === 'principal') jobs.push('Leadership');
-  if (!t.user_role || t.user_role === 'teacher' || t.user_role === 'principal') jobs.push('Teaching');
+  if (!t.user_role || t.user_role === 'teacher' || t.user_role === 'principal' || duties.includes('teacher')) jobs.push('Teaching');
   if (t.user_role === 'accountant' || duties.includes('accountant')) jobs.push('Accountant');
   if (t.user_role === 'admissions_officer' || duties.includes('admissions_officer')) jobs.push('Admissions');
   return jobs;

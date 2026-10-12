@@ -5,7 +5,7 @@
  * announcements addressed to 'all' or to their specific role.
  */
 import { db } from '@utils/database';
-import { parseDuties } from '@utils/staffDuties';
+import { effectiveDuties } from '@utils/staffDuties';
 import { logger } from '@utils/logger';
 import { AppError } from '@middleware/errorHandler';
 import { applyYearScope, type YearScope } from '@utils/academicYear';
@@ -199,9 +199,9 @@ export class AnnouncementService {
    */
   /** Staff duties of a teacher viewer (users.staff_duties): extra audiences they receive. */
   private async viewerDuties(viewerId?: string, viewerRole?: string): Promise<string[]> {
-    if (!viewerId || viewerRole !== 'teacher') return [];
-    const row = await db('users').where('id', viewerId).first('staff_duties').catch(() => null);
-    return parseDuties(row?.staff_duties);
+    if (!viewerId) return [];
+    const row = await db('users').where('id', viewerId).first('role', 'staff_duties').catch(() => null);
+    return effectiveDuties(row?.role, row?.staff_duties);
   }
 
   private applyAudienceFilter(

@@ -201,7 +201,7 @@ export const TeacherPromotionModal: React.FC<TeacherPromotionModalProps> = ({
         form_class_id: teaches ? values.form_class_id || null : null,
         assigned_classes: teaches ? values.assigned_classes : [],
         assigned_subjects: teaches ? values.assigned_subjects : [],
-        ...jobsToPayload(values),
+        ...jobsToPayload(values, { currentRole: (teacher as any)?.user_role, designation: values.designation }),
       };
 
       const res = await teachersService.updateTeacher(teacher.id, payload as any);

@@ -4,7 +4,7 @@ import { AppError } from './errorHandler';
 import { logger } from '../utils/logger';
 import { AuthContext, UserRole } from '../types/auth';
 import { db } from '../utils/database';
-import { parseDuties, dutyForPath } from '../utils/staffDuties';
+import { effectiveDuties, dutyForPath } from '../utils/staffDuties';
 
 // Extend Express Request to include auth context
 declare global {
@@ -20,7 +20,7 @@ declare global {
         role: string;
         /** The user's main role (users.role). */
         primary_role?: string;
-        /** Extra duties a teacher holds (accountant / admissions_officer). */
+        /** Extra jobs held on top of the main one (teacher / accountant / admissions_officer). */
         staff_duties?: string[];
       };
     }
@@ -109,9 +109,10 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
         }
       }
 
-      // Staff duties (teacher + Bursar / Admissions): on the duty's own module
-      // the request acts as that role; everywhere else the main role applies.
-      const duties = user.role === 'teacher' ? parseDuties(user.staff_duties) : [];
+      // Staff jobs (main job + extra jobs: teacher / Bursar / Admissions): on a
+      // job's own module the request acts as that job; everywhere else the main
+      // job applies.
+      const duties = effectiveDuties(user.role, user.staff_duties);
       const actingRole = dutyForPath(req.originalUrl || req.url, duties) || user.role;
 
       req.user = {
@@ -175,26 +176,29 @@ export const authorize = (...allowedRoles: Array<UserRole | UserRole[]>) => {
       // change (promotion, demotion, portal move), so read it from the DB.
       let role = req.auth.role;
       let duties: string[] = req.user?.staff_duties ?? [];
+      let primary: string | undefined = req.user?.primary_role;
       if (!req.user || String(req.user.id) !== String(req.auth.userId)) {
         const row = await db('users').where('id', req.auth.userId).first('*').catch(() => null);
         if (row && row.status && String(row.status).trim().toLowerCase() !== 'active') {
           throw new AppError(`Your account is ${row.status}. Please contact your school administrator.`, 403, 'ACCOUNT_INACTIVE');
         }
         if (row?.role) {
-          duties = row.role === 'teacher' ? parseDuties(row.staff_duties) : [];
+          primary = row.role;
+          duties = effectiveDuties(row.role, row.staff_duties);
           role = (dutyForPath(req.originalUrl || req.url, duties as any) || row.role) as any;
         }
         req.auth.role = role;
       }
 
-      // A teacher with a staff duty (Bursar / Admissions) may use a route the
-      // duty allows; the request then acts as that duty from here on.
+      // Someone with more than one job may use a route that one of their other
+      // jobs allows (their main job first, then the extra jobs); the request
+      // then acts as that job from here on.
       if (!flatRoles.includes(role)) {
-        const duty = duties.find((d) => flatRoles.includes(d as UserRole));
-        if (duty) {
-          role = duty as UserRole;
+        const other = [primary, ...duties].find((j) => !!j && flatRoles.includes(j as UserRole));
+        if (other) {
+          role = other as UserRole;
           req.auth.role = role;
-          if (req.user) req.user.role = duty;
+          if (req.user) req.user.role = other;
         }
       }
 

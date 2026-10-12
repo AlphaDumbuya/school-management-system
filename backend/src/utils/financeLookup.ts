@@ -7,7 +7,7 @@
  */
 import type { Request } from 'express';
 import { db } from './database';
-import { parseDuties } from './staffDuties';
+import { holdsJob } from './staffDuties';
 
 const FINANCE_ROLES = ['accountant', 'principal', 'super_admin'];
 
@@ -15,7 +15,9 @@ export async function isFinanceLookup(req: Request): Promise<boolean> {
   if (String((req.query as any)?.scope || '') !== 'finance') return false;
   const role = String(req.user?.role || '');
   if (FINANCE_ROLES.includes(role)) return true;
-  if (role !== 'teacher' || !req.user?.id) return false;
+  if (!req.user?.id) return false;
+  // Acting as a teacher on /classes or /students, but holding the Bursar job
+  // (as the main job or on top of teaching / admissions).
   const row = await db('users').where('id', req.user.id).first('role', 'staff_duties').catch(() => null);
-  return row?.role === 'teacher' && parseDuties(row?.staff_duties).includes('accountant');
+  return holdsJob(row?.role, row?.staff_duties, 'accountant');
 }

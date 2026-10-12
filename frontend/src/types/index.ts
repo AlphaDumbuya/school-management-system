@@ -29,8 +29,8 @@ export interface AuthUser {
   /** One-time promotion welcome payload — set right after a role change, then
    *  cleared server-side once delivered. Drives a dismissible welcome banner. */
   promotionWelcome?: { role?: string; label?: string; at?: string } | null;
-  /** A teacher's extra jobs (e.g. form teacher who is also the Bursar). */
-  staffDuties?: Array<'accountant' | 'admissions_officer'>;
+  /** Extra jobs held on top of the main role (e.g. a Bursar who also teaches). */
+  staffDuties?: Array<'teacher' | 'accountant' | 'admissions_officer'>;
   /** The school's plan features (from /auth/me). null for super admins. */
   planAccess?: PlanAccess | null;
 }

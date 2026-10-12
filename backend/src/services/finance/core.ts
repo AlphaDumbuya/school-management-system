@@ -277,7 +277,7 @@ export async function notifyFinanceStaff(
     const rows = await db('users').where({ tenant_id: tenantId }).where('status', 'active')
       .where((q) => {
         q.whereIn('role', to);
-        if (to.includes('accountant')) q.orWhere((q2) => q2.where('role', 'teacher').whereRaw("staff_duties::jsonb @> '[\"accountant\"]'::jsonb"));
+        if (to.includes('accountant')) q.orWhereRaw("COALESCE(staff_duties, '[]'::jsonb) @> '[\"accountant\"]'::jsonb");
       })
       .select('id');
     const ids = rows.map((r: any) => r.id).filter((id: string) => id !== n.exceptUserId);

@@ -178,7 +178,7 @@ export async function notifyAdmissionsStaff(tenantId: string, n: { subject: stri
   try {
     const rows = await db('users').where({ tenant_id: tenantId, status: 'active' })
       .where((q) => q.whereIn('role', ['admissions_officer', 'principal'])
-        .orWhere((q2) => q2.where('role', 'teacher').whereRaw("staff_duties::jsonb @> '[\"admissions_officer\"]'::jsonb")))
+        .orWhereRaw("COALESCE(staff_duties, '[]'::jsonb) @> '[\"admissions_officer\"]'::jsonb"))
       .select('id');
     const { default: notificationService } = await import('@services/notificationService');
     for (const r of rows) {

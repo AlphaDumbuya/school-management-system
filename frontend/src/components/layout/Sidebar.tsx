@@ -186,7 +186,7 @@ const navItems: NavItem[] = [
     version: 'v1',
   },
 
-  // ── EXTRA DUTIES (a teacher who is also Bursar / Admissions Officer) ──
+  // ── EXTRA JOBS (Bursar / Admissions Officer / Teaching held on top of the main job) ──
   {
     label: 'Finance Overview',
     icon: <FaMoneyBill className="w-4 sm:w-5 h-4 sm:h-5" />,
@@ -194,6 +194,16 @@ const navItems: NavItem[] = [
     roles: ['accountant'],
     module: 'Financial Management',
     group: 'Finance',
+    version: 'v1',
+    dutyOnly: true,
+  },
+  {
+    label: 'Teaching Overview',
+    icon: <FaBook className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/teacher/dashboard',
+    roles: ['teacher'],
+    module: 'Academic Management',
+    group: 'Academic',
     version: 'v1',
     dutyOnly: true,
   },

@@ -2,72 +2,25 @@
  * Staff jobs: Teaching / Accountant (Bursar) / Admissions Officer.
  *
  * Shared by Add/Edit Staff Member and Promote & Assign, so both follow the same
- * rules as the server (teacherRoutes POST/PUT):
- *  - Teaching ticked → main role teacher; any other job ticked is an extra duty
- *    (users.staff_duties), so a form teacher can also keep the fees.
- *  - Teaching not ticked → exactly one job, which becomes the main role
- *    (accountant → Bursar, admissions_officer → Administrator), no classes.
+ * rules as the server (teacherRoutes POST/PUT): tick every job the person does.
+ *  - One job is their main job (users.role). The others are extra jobs
+ *    (users.staff_duties), so a Bursar can also teach and lead a class, an
+ *    Admissions Officer can also be a form teacher, a form teacher can also
+ *    keep the fees.
+ *  - Their main job is kept when they still do it; for someone new it is the
+ *    managing job (Accountant, then Admissions Officer) before Teaching.
+ *  - Classes and subjects apply whenever Teaching is ticked, whatever the main job.
  */
 import React from 'react';
 import type { UseFormRegister } from 'react-hook-form';
-import * as z from 'zod';
+import type { JobValues } from '@lib/staffJobRules';
 import useAuthStore from '@store/authStore';
 import { featureAccess } from '@lib/planFeatures';
 
-export type StaffJob = 'teacher' | 'accountant' | 'admissions_officer';
-
-export interface JobValues {
-  teaches: boolean;
-  duty_accountant: boolean;
-  duty_admissions: boolean;
-}
-
-export const jobFieldsSchema = {
-  teaches: z.boolean().default(true),
-  duty_accountant: z.boolean().default(false),
-  duty_admissions: z.boolean().default(false),
-};
-
-/** Add to a schema's superRefine: at least one job; one main job without teaching. */
-export function refineJobs(v: JobValues, ctx: z.RefinementCtx) {
-  if (!v.teaches && !v.duty_accountant && !v.duty_admissions) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['teaches'], message: 'Choose at least one job.' });
-  }
-  if (!v.teaches && v.duty_accountant && v.duty_admissions) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['duty_admissions'], message: 'Without teaching, choose one main job: Accountant or Admissions Officer.' });
-  }
-}
-
-/** The job checkboxes for an existing record (or a new one starting as `job`). */
-export function jobsFromRecord(details: any, job: StaffJob = 'teacher'): JobValues {
-  if (!details) {
-    return { teaches: job === 'teacher', duty_accountant: job === 'accountant', duty_admissions: job === 'admissions_officer' };
-  }
-  const role = String(details.user_role || '');
-  let duties: string[] = [];
-  const raw = details.staff_duties;
-  try { duties = Array.isArray(raw) ? raw : raw ? JSON.parse(raw) : []; } catch { duties = []; }
-  const teaches = role === '' || role === 'teacher' || role === 'principal';
-  return {
-    teaches,
-    duty_accountant: role === 'accountant' || duties.includes('accountant'),
-    duty_admissions: role === 'admissions_officer' || duties.includes('admissions_officer'),
-  };
-}
-
-/** Map the job checkboxes to the API payload (`primary_role` + `staff_duties`). */
-export function jobsToPayload(v: JobValues): { primary_role: string; staff_duties: string[] } {
-  const duties = [v.duty_accountant ? 'accountant' : null, v.duty_admissions ? 'admissions_officer' : null].filter(Boolean) as string[];
-  if (v.teaches) return { primary_role: 'teacher', staff_duties: duties };
-  return { primary_role: duties[0], staff_duties: [] };
-}
-
-/** A short human summary of the jobs ("Teaching + Accountant (Bursar)"). */
-export function describeJobs(v: JobValues): string {
-  const extra = [v.duty_accountant ? 'Accountant (Bursar)' : null, v.duty_admissions ? 'Admissions Officer' : null].filter(Boolean);
-  if (v.teaches) return ['Teaching', ...extra].join(' + ');
-  return extra[0] || '';
-}
+export {
+  jobFieldsSchema, refineJobs, jobsFromRecord, jobsToPayload, describeJobs,
+  type StaffJob, type JobValues,
+} from '@lib/staffJobRules';
 
 const JOBS = [
   { key: 'teaches' as const, label: 'Teaching', hint: 'Classes, registers, scores', portal: null },
@@ -88,7 +41,7 @@ export const StaffJobPicker: React.FC<StaffJobPickerProps> = ({
   values,
   error,
   title = 'Job at the School',
-  description = 'Tick every job this person does. A form or subject teacher can also keep the fees or run admissions; they keep their classes and get those pages too.',
+  description = 'Tick every job this person does. A Bursar or Admissions Officer can also teach and lead a class, and a teacher can also keep the fees or run admissions. Each job shows its own pages and its own data.',
 }) => {
   // Jobs whose portal isn't in the school's plan aren't offered (the server
   // refuses them too). A job the person already holds stays visible so it

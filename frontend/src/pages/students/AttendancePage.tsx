@@ -6,6 +6,7 @@
  *  • Analytics tab        – at-risk students, class summaries, presence rates
  */
 
+import { isTeachingUser } from '@lib/staffJobs';
 import React, { useState, useMemo, useCallback } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -552,8 +553,8 @@ export const AttendancePage: React.FC = () => {
     { id: 'logs',      label: 'Attendance Logs',  icon: <ClipboardList size={16} /> },
     { id: 'register',  label: 'Class Register',    icon: <UserCheck size={16} /> },
     { id: 'analytics', label: 'Analytics',         icon: <BarChart2 size={16} /> },
-    ...(user?.role === 'principal' || user?.role === 'super_admin' || user?.role === 'teacher'
-      ? [{ id: 'teachers', label: user.role === 'teacher' ? 'My Attendance' : 'Teacher Attendance', icon: <Users size={16} /> }]
+    ...(user?.role === 'principal' || user?.role === 'super_admin' || isTeachingUser(user as any)
+      ? [{ id: 'teachers', label: isTeachingUser(user as any) && user?.role !== 'principal' && user?.role !== 'super_admin' ? 'My Attendance' : 'Teacher Attendance', icon: <Users size={16} /> }]
       : []),
   ] as const;
 
@@ -775,7 +776,7 @@ export const AttendancePage: React.FC = () => {
                     <p className="text-sm text-gray-400 max-w-xs mx-auto">
                       {viewingPast
                         ? `No attendance records from ${year} match your filters.`
-                        : classes.length === 0 && user?.role === 'teacher'
+                        : classes.length === 0 && isTeachingUser(user as any)
                           ? `You aren't assigned to any class in ${year} yet. Your classes' attendance will show here once the principal assigns you.`
                           : 'No attendance records match your filters. Try adjusting the date, class or status, or switch to the Class Register tab to mark attendance.'}
                     </p>

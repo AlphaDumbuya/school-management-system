@@ -387,7 +387,7 @@ router.get('/subscription/active', authenticate, attachUserContext, async (req: 
     const roleCounts = await db('users').where({ tenant_id: tenantId, status: 'active' })
       .whereIn('role', ['parent', 'accountant', 'admissions_officer']).groupBy('role')
       .select('role').count({ n: '*' }).catch(() => [] as any[]);
-    const dutyCount = async (duty: string) => Number((await db('users').where({ tenant_id: tenantId, status: 'active', role: 'teacher' })
+    const dutyCount = async (duty: string) => Number((await db('users').where({ tenant_id: tenantId, status: 'active' }).whereNot('role', duty)
       .whereRaw("COALESCE(staff_duties, '[]'::jsonb) \\? ?", [duty]).count({ n: '*' }).first().catch(() => null) as any)?.n) || 0;
     const byRole = Object.fromEntries((roleCounts as any[]).map((r) => [r.role, Number(r.n) || 0]));
     const portals = {

@@ -4,6 +4,7 @@
  * Includes level filter to narrow down classes.
  */
 
+import { isTeachingUser } from '@lib/staffJobs';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -146,7 +147,7 @@ export const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
   });
   const teachers = (teachersData as any)?.data ?? [];
   // A teacher can only create assignments as themselves — lock the selector.
-  const isTeacher = user?.role === 'teacher';
+  const isTeacher = isTeachingUser(user as any);
   const ownTeacherId = useMemo(() => {
     if (!isTeacher) return '';
     const me = teachers.find((t: any) => String(t.user_id) === String(user?.id));
