@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import PublicNavbar, { PublicFooter } from '@components/public';
 import AppDownloadButtons from '@components/public/AppDownloadButtons';
-import LiveDemoSection from '@components/public/LiveDemoSection';
+import LiveDemoModal, { openLiveDemo } from '@components/public/LiveDemoModal';
 
 // Theme tokens — see docs/THEME_GUIDE.md
 const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
@@ -74,23 +74,25 @@ export const LandingPage: React.FC = () => {
               ID cards and announcements into one platform, with a portal for
               principals, teachers, bursars, admissions officers, parents and students.
             </p>
-            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4">
+            {/* Two equal primary actions side by side. The app download sits on its own row below. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-w-[30rem]">
               <button
                 onClick={() => navigate('/register')}
-                className="group w-full sm:w-auto bg-[#f59e0b] hover:bg-[#d97706] text-white font-bold text-sm px-8 py-3.5 rounded-lg transition-all duration-300 shadow-lg shadow-amber-500/30 active:scale-95 flex items-center justify-center gap-2"
+                className="group w-full bg-[#f59e0b] hover:bg-[#d97706] text-white font-bold text-sm px-6 py-3.5 rounded-lg transition-all duration-300 shadow-lg shadow-amber-500/30 active:scale-95 flex items-center justify-center gap-2"
               >
                 Start Free Trial
                 <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
               </button>
-              <a
-                href="#demo"
-                className="w-full sm:w-auto border border-white/30 hover:border-white/60 hover:bg-white/10 text-white font-bold text-sm px-8 py-3.5 rounded-lg transition-all duration-300 flex items-center justify-center gap-2"
+              <button
+                type="button"
+                onClick={openLiveDemo}
+                className="w-full border border-white/30 hover:border-white/60 hover:bg-white/10 text-white font-bold text-sm px-6 py-3.5 rounded-lg transition-all duration-300 flex items-center justify-center gap-2"
               >
                 <PlayCircle size={16} className="text-amber-400" aria-hidden="true" /> Get a live demo
-              </a>
-              {/* Android app download (always shown; Play badge once VITE_PLAY_STORE_URL is set) */}
-              <AppDownloadButtons variant="hero" />
+              </button>
             </div>
+            {/* Android app download (always shown; Play badge once VITE_PLAY_STORE_URL is set) */}
+            <AppDownloadButtons variant="hero" className="mt-5 max-w-[30rem]" />
             <ul className="mt-8 space-y-2.5">
               {['Admissions, attendance & grading', 'ID cards & online fee payments', 'Report cards with QR verification', 'Two-factor sign-in & passkeys'].map((t) => (
                 <li key={t} className="flex items-center gap-2.5 text-sm text-blue-50">
@@ -142,9 +144,8 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ═══ LIVE DEMO (one card per portal) ═══ */}
-      <div className="h-16" aria-hidden="true" />
-      <LiveDemoSection />
+      {/* Live demo popup (opened by the "Get a live demo" buttons) */}
+      <LiveDemoModal />
 
       {/* ═══ FEATURES (light) ═══ */}
       <section id="why" className="px-6 sm:px-10 py-20 sm:py-24">
@@ -330,7 +331,7 @@ export const LandingPage: React.FC = () => {
                 START YOUR FREE TRIAL <ArrowRight size={16} />
               </button>
               <button
-                onClick={() => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' })}
+                onClick={openLiveDemo}
                 className="w-full sm:w-auto border border-white/25 hover:border-white/50 text-white font-bold text-sm px-8 py-4 rounded-xl transition-all duration-300"
               >
                 Get a live demo

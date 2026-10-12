@@ -51,7 +51,7 @@ export const DemoStartPage: React.FC = () => {
             <AlertTriangle size={40} className="mx-auto text-amber-500" aria-hidden="true" />
             <h1 className="mt-4 text-xl font-black text-slate-900">{error.title}</h1>
             <p className="mt-2 text-sm text-slate-600">{error.text}</p>
-            <a href="/#demo" className="mt-6 inline-flex w-full justify-center rounded-lg bg-[#f59e0b] hover:bg-[#d97706] px-5 py-3 text-sm font-bold text-white">
+            <a href="/?demo=1" className="mt-6 inline-flex w-full justify-center rounded-lg bg-[#f59e0b] hover:bg-[#d97706] px-5 py-3 text-sm font-bold text-white">
               Get a new demo link
             </a>
           </div>
