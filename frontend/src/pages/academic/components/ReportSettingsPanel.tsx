@@ -7,6 +7,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Lock, Eye, GraduationCap, ShieldCheck, Loader2, Send, CheckCircle2, History, XCircle, Undo2 } from 'lucide-react';
 import { Button } from '@components/ui/button';
@@ -352,12 +353,24 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
       </div>
 
       {/* ── Unrelease reason modal ── */}
-      {unreleaseTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      {/* Portaled to <body>: the Settings tab sits in an animated (transformed)
+          container, which would otherwise pin a "fixed" overlay to the panel
+          instead of the screen and push the dialog to the bottom. */}
+      {unreleaseTarget && createPortal(
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="unrelease-title"
+          onClick={() => { if (!publishing) { setUnreleaseTarget(null); setUnreleaseReason(''); } }}
+        >
+          <div
+            className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
               <Undo2 size={16} className="text-amber-500" />
-              <h4 className="text-sm font-bold text-gray-900 dark:text-white">Unrelease results</h4>
+              <h4 id="unrelease-title" className="text-sm font-bold text-gray-900 dark:text-white">Unrelease results</h4>
             </div>
             <div className="p-5 space-y-3">
               <p className="text-sm text-gray-600 dark:text-gray-300">
@@ -365,10 +378,12 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
                 will no longer see these results and will be notified.
               </p>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                <label htmlFor="unrelease-reason" className="text-xs font-semibold text-gray-700 dark:text-gray-300">
                   Reason <span className="font-normal text-gray-400">(optional — shared with parents & students)</span>
                 </label>
                 <textarea
+                  id="unrelease-reason"
+                  autoFocus
                   value={unreleaseReason}
                   onChange={(e) => setUnreleaseReason(e.target.value)}
                   rows={3}
@@ -392,7 +407,8 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
               </Button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

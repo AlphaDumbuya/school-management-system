@@ -1838,7 +1838,9 @@ export class SLReportCardService {
         'students.id',
         'students.student_id as admission_no',
         'students.date_of_birth',
-        db.raw("COALESCE(students.photo_url, users.photo_url) as photo_url"),
+        'students.gender',
+        // Empty strings count as "no photo" so the account photo can be used.
+        db.raw("COALESCE(NULLIF(students.photo_url, ''), NULLIF(users.photo_url, ''), NULLIF(users.profile_photo_url, '')) as photo_url"),
         db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.student_id) as name"),
       )
       .first();

@@ -3,6 +3,7 @@
  * Wraps /api/v1/attendance endpoints with session support
  */
 
+import { isTeachingUser } from '@lib/staffJobs';
 import { apiClient } from '@lib/apiClient';
 import useAuthStore from '@store/authStore';
 import { attendanceRepo } from '../offline/repositories/attendanceRepo';
@@ -94,7 +95,7 @@ export const attendanceService = {
     // Offline-first: for teachers with no connectivity, queue each mark locally
     // (Dexie + outbox) and report success. The sync engine flushes on reconnect.
     const user = useAuthStore.getState().user;
-    if (!navigator.onLine && user?.role === 'teacher') {
+    if (!navigator.onLine && user && isTeachingUser(user as any)) {
       for (const rec of payload.records) {
         await attendanceRepo.mark(user.id, {
           studentId: rec.student_id,

@@ -4,6 +4,7 @@
  * Tabbed interface: Dashboard | Infractions | Actions | Appeals | Notes
  */
 
+import { isTeachingUser } from '@lib/staffJobs';
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -114,7 +115,7 @@ export const DisciplinePage: React.FC = () => {
   const viewingPast = !!year && !!activeYear && year !== activeYear;
   const setYear = (y: string) => setPickedYear(!y || y === activeYear ? '' : y);
   const { user } = useAuth();
-  const isTeacher = user?.role === 'teacher';
+  const isTeacher = isTeachingUser(user as any);
 
   // Search & filter state shared across tabs
   const [search, setSearch] = useState('');

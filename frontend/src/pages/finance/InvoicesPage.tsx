@@ -22,6 +22,8 @@ import { ExportButton } from '@components/admin/common/ExportButton';
 import { YearFilter } from '@components/common/YearFilter';
 import { usePaged, TablePager } from '@components/admin/table/TablePager';
 import { useAcademicYears } from '@hooks/useAcademicYears';
+import { ChartCard } from '@components/admin/charts/ChartCard';
+import { fmtLeShort, fmtCount, prettyLabel, NO_SERIES } from '@lib/chartFormat';
 
 const TERMS = ['First Term', 'Second Term', 'Third Term'];
 
@@ -65,6 +67,31 @@ export const InvoicesPage: React.FC = () => {
     return matchSearch && (!levelFilter || i.class_level === levelFilter);
   });
   const pg = usePaged(filtered, [year, search, statusFilter, levelFilter]);
+
+  // Charts from the invoices loaded for this year (void invoices left out of amounts).
+  const STATUS_ORDER = ['paid', 'partial', 'pending', 'overdue', 'cancelled'];
+  const STATUS_NAME: Record<string, string> = { paid: 'Paid', partial: 'Part paid', pending: 'Unpaid', overdue: 'Overdue', cancelled: 'Void' };
+  const statusChart = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const i of invoices) { const s = String(i.status || 'pending').toLowerCase(); counts.set(s, (counts.get(s) || 0) + 1); }
+    const keys = [...STATUS_ORDER.filter((s) => counts.has(s)), ...Array.from(counts.keys()).filter((s) => !STATUS_ORDER.includes(s))];
+    return keys.length ? { labels: keys.map((s) => STATUS_NAME[s] || prettyLabel(s)), series: [{ name: 'Invoices', data: keys.map((s) => counts.get(s) || 0) }] } : NO_SERIES;
+  }, [invoices]); // eslint-disable-line react-hooks/exhaustive-deps
+  const levelChart = useMemo(() => {
+    const m = new Map<string, { amt: number; bal: number }>();
+    for (const i of invoices) {
+      if (String(i.status).toLowerCase() === 'cancelled' || !i.class_level) continue;
+      const cur = m.get(i.class_level) || { amt: 0, bal: 0 };
+      cur.amt += Number(i.total_amount ?? i.amount) || 0;
+      cur.bal += Number(i.balance) || 0;
+      m.set(i.class_level, cur);
+    }
+    const keys = Array.from(m.keys()).sort();
+    return keys.length ? {
+      labels: keys,
+      series: [{ name: 'Invoiced', data: keys.map((k) => m.get(k)!.amt) }, { name: 'Still owed', data: keys.map((k) => m.get(k)!.bal) }],
+    } : NO_SERIES;
+  }, [invoices]);
 
   const refetchAll = async () => {
     await Promise.all([refetch(), refetchOv()]);
@@ -129,6 +156,20 @@ export const InvoicesPage: React.FC = () => {
         )}
 
         <FinanceOverviewCards overview={overview} loading={ovLoading} />
+
+        {!listError && invoices.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+            <ChartCard title="Invoices by status" subtitle={`${invoices.length} invoice${invoices.length === 1 ? '' : 's'}${statusFilter ? ' (filtered)' : ''}`} type="donut" height={250}
+              colors={['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#9ca3af']} valueFormatter={fmtCount}
+              {...statusChart} />
+            <div className="lg:col-span-2">
+              <ChartCard title="Invoiced vs still owed" subtitle="By class level" type="bar" height={250}
+                colors={['#3b82f6', '#ef4444']} valueFormatter={fmtLeShort}
+                emptyState={{ message: 'No level data', description: 'Invoices without a class are not shown here.' }}
+                {...levelChart} />
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center mb-4">
           <SearchBar placeholder="Search by invoice # or student…" onSearch={setSearch} isLoading={isLoading} resultCount={search ? filtered.length : undefined} defaultValue={search} className="w-full sm:max-w-md" />

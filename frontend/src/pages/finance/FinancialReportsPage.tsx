@@ -14,6 +14,20 @@ import { usePaged, TablePager } from '@components/admin/table/TablePager';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import { bursarC, type GLAccount } from '@services/bursarService';
 import { unwrap, PeriodPicker, periodQuery, AccountSelect, Money, CheckBadge, todayLocal, type Period } from '@components/finance/AccountingUi';
+import { ChartCard } from '@components/admin/charts/ChartCard';
+import { fmtLeShort, NO_SERIES } from '@lib/chartFormat';
+
+/** Top-N accounts by amount, the rest grouped as "Other" (donut stays readable). */
+function topSlices(rows: { name: string; amount: number }[], n = 6) {
+  const pos = rows.filter((r) => Number(r.amount) > 0).sort((a, b) => Number(b.amount) - Number(a.amount));
+  if (!pos.length) return NO_SERIES;
+  const top = pos.slice(0, n);
+  const rest = pos.slice(n).reduce((s, r) => s + Number(r.amount), 0);
+  return {
+    labels: [...top.map((r) => r.name), ...(rest > 0 ? ['Other'] : [])],
+    series: [{ name: 'Le', data: [...top.map((r) => Number(r.amount)), ...(rest > 0 ? [rest] : [])] }],
+  };
+}
 
 const TABS = [
   ['trial-balance', 'Trial balance'], ['income-statement', 'Income statement'], ['balance-sheet', 'Balance sheet'],
@@ -96,6 +110,47 @@ export const FinancialReportsPage: React.FC = () => {
                 </table>
                 {!d.lines.length && <p className="p-4 text-sm text-gray-500">Nothing posted in this period.</p>}
               </Card>
+            )}
+
+            {tab === 'income-statement' && (Number(d.total_income) > 0 || Number(d.total_expenses) > 0) && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+                <ChartCard title="Income vs expenses" subtitle={d.range.label} type="bar" height={260}
+                  colors={['#10b981', '#ef4444', '#3b82f6']} valueFormatter={fmtLeShort}
+                  labels={['Income', 'Expenses', d.surplus >= 0 ? 'Surplus' : 'Deficit']}
+                  series={[{ name: 'Le', data: [Number(d.total_income) || 0, Number(d.total_expenses) || 0, Math.abs(Number(d.surplus) || 0)] }]} />
+                <ChartCard title="Where income comes from" type="donut" height={260} valueFormatter={fmtLeShort}
+                  emptyState={{ message: 'No income in this period' }} {...topSlices(d.income)} />
+                <ChartCard title="Where the money goes" type="donut" height={260} valueFormatter={fmtLeShort}
+                  emptyState={{ message: 'No expenses in this period' }} {...topSlices(d.expenses)} />
+              </div>
+            )}
+
+            {tab === 'balance-sheet' && (Number(d.total_assets) > 0 || Number(d.total_liabilities) > 0) && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+                <div className="lg:col-span-2">
+                  <ChartCard title="What the school has and owes" subtitle={`As at ${d.as_at}`} type="bar" height={260}
+                    colors={['#3b82f6', '#f59e0b', '#10b981']} valueFormatter={fmtLeShort}
+                    labels={['Assets', 'Liabilities', 'Equity']}
+                    series={[{ name: 'Le', data: [Number(d.total_assets) || 0, Number(d.total_liabilities) || 0, Number(d.total_equity) || 0] }]} />
+                </div>
+                <ChartCard title="Assets" subtitle="By account" type="donut" height={260} valueFormatter={fmtLeShort}
+                  emptyState={{ message: 'No assets recorded' }} {...topSlices(d.assets)} />
+              </div>
+            )}
+
+            {tab === 'cash-flow' && (
+              Number(d.net_operating) !== 0 || Number(d.net_investing) !== 0 || Number(d.net_financing) !== 0 || Number(d.opening_cash) !== 0 || Number(d.closing_cash) !== 0
+            ) && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                <ChartCard title="Cash movement" subtitle={`Net cash by activity · ${d.range.label}`} type="bar" height={260}
+                  colors={['#3b82f6']} valueFormatter={fmtLeShort}
+                  labels={['Operating', 'Investing', 'Financing']}
+                  series={[{ name: 'Net cash', data: [Number(d.net_operating) || 0, Number(d.net_investing) || 0, Number(d.net_financing) || 0] }]} />
+                <ChartCard title="Opening to closing cash" subtitle="Where the school's cash started and ended" type="bar" height={260}
+                  colors={['#10b981']} valueFormatter={fmtLeShort}
+                  labels={['Opening', 'Closing']}
+                  series={[{ name: 'Cash', data: [Number(d.opening_cash) || 0, Number(d.closing_cash) || 0] }]} />
+              </div>
             )}
 
             {tab === 'income-statement' && (

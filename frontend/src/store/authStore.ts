@@ -4,6 +4,7 @@
  * Phase 11: Frontend Dashboard Implementation
  */
 
+import { isTeachingUser } from '@lib/staffJobs';
 import { create } from 'zustand';
 import { AuthUser, UserRole } from '@appTypes/index';
 import authService from '@services/authService';
@@ -238,7 +239,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       // Best-effort: flush any pending offline writes while we (maybe) still
       // have connectivity, so a teacher's queued work isn't lost on logout.
-      if (userId && user?.role === 'teacher' && navigator.onLine) {
+      if (userId && isTeachingUser(user as any) && navigator.onLine) {
         await runSync(userId).catch(() => undefined);
       }
       await authService.logout();

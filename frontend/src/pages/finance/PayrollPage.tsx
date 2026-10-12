@@ -21,6 +21,8 @@ import useAuthStore from '@store/authStore';
 import { bursarB, type PayRun, type PayStaff, type PayLine } from '@services/bursarService';
 import { le, Pill } from '@components/finance/StudentAccount';
 import { usePaged, TablePager } from '@components/admin/table/TablePager';
+import { ChartCard } from '@components/admin/charts/ChartCard';
+import { fmtLeShort, NO_SERIES } from '@lib/chartFormat';
 
 const input = 'w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm';
 const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
@@ -252,6 +254,30 @@ export const PayrollPage: React.FC = () => {
   const missing = (staff.data || []).filter((s) => s.active && !(s.profile && Number(s.profile.basic_salary) > 0));
   const staffRows = (staff.data || []).filter((s) => !search || `${s.name} ${s.staff_number || ''} ${s.designation || ''}`.toLowerCase().includes(search.toLowerCase()));
   const runPg = usePaged(runs.data || [], []);
+  // Last 12 pay periods, oldest first (periods are "YYYY-MM").
+  const payrollChart = (() => {
+    const live = (runs.data || []).filter((r) => r.status !== 'cancelled');
+    const byPeriod = new Map<string, { net: number; paye: number; nassit: number }>();
+    for (const r of live) {
+      const k = String(r.period);
+      const cur = byPeriod.get(k) || { net: 0, paye: 0, nassit: 0 };
+      cur.net += Number(r.net) || 0;
+      cur.paye += Number(r.paye) || 0;
+      cur.nassit += (Number(r.nassit_employee) || 0) + (Number(r.nassit_employer) || 0);
+      byPeriod.set(k, cur);
+    }
+    const keys = Array.from(byPeriod.keys()).sort().slice(-12);
+    if (!keys.length) return NO_SERIES;
+    const label = (p: string) => { const m = /^(\d{4})-(\d{2})/.exec(p); return m ? new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : p; };
+    return {
+      labels: keys.map(label),
+      series: [
+        { name: 'Net pay', data: keys.map((k) => byPeriod.get(k)!.net) },
+        { name: 'PAYE', data: keys.map((k) => byPeriod.get(k)!.paye) },
+        { name: 'NASSIT', data: keys.map((k) => byPeriod.get(k)!.nassit) },
+      ],
+    };
+  })();
   const staffPg = usePaged(staffRows, [search]);
 
   return (
@@ -268,6 +294,12 @@ export const PayrollPage: React.FC = () => {
           : runs.isLoading ? <div className="py-12 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div>
           : (runs.data || []).length === 0 ? <EmptyState message="No pay runs yet" description="Set each staff member's salary under Staff pay, then start a pay run for the month." action={{ label: 'Staff pay', onClick: () => setTab('staff') }} />
           : (
+            <>
+            <div className="mb-4">
+              <ChartCard title="Payroll cost by month" subtitle="Net pay to staff, PAYE and NASSIT (cancelled runs left out)" type="bar" height={260}
+                colors={['#3b82f6', '#f59e0b', '#8b5cf6']} valueFormatter={fmtLeShort}
+                {...payrollChart} />
+            </div>
             <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-gray-900/40 text-xs text-gray-500"><tr><th className="px-3 py-3 text-left">Month</th><th className="px-3 py-3 text-left">Status</th><th className="px-3 py-3 text-right">Staff</th><th className="px-3 py-3 text-right">Gross</th><th className="px-3 py-3 text-right">PAYE</th><th className="px-3 py-3 text-right">NASSIT (5% + 10%)</th><th className="px-3 py-3 text-right">Net</th><th className="px-3 py-3" /></tr></thead>
@@ -287,6 +319,7 @@ export const PayrollPage: React.FC = () => {
               </table>
               <TablePager {...runPg.pager} label="pay runs" />
             </div>
+            </>
           ))}
 
         {tab === 'staff' && (

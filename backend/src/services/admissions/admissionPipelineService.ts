@@ -178,7 +178,7 @@ export async function notifyAdmissionsStaff(tenantId: string, n: { subject: stri
   try {
     const rows = await db('users').where({ tenant_id: tenantId, status: 'active' })
       .where((q) => q.whereIn('role', ['admissions_officer', 'principal'])
-        .orWhere((q2) => q2.where('role', 'teacher').whereRaw("staff_duties::jsonb @> '[\"admissions_officer\"]'::jsonb")))
+        .orWhereRaw("COALESCE(staff_duties, '[]'::jsonb) @> '[\"admissions_officer\"]'::jsonb"))
       .select('id');
     const { default: notificationService } = await import('@services/notificationService');
     for (const r of rows) {
@@ -589,6 +589,25 @@ export const admissionPipelineService = {
         db.raw('COUNT(*)::int as applications'), db.raw("COUNT(*) FILTER (WHERE a.status = 'enrolled')::int as enrolled"),
         db.raw("COUNT(*) FILTER (WHERE a.status IN ('pending','under_review','interview_scheduled','waitlist'))::int as open"))
       .orderBy('applications', 'desc');
+    // Applications received per calendar month (online vs office), zero-filled
+    // from the first to the last month so the chart line has no gaps.
+    const monthRows = await scoped()
+      .select(db.raw("to_char(date_trunc('month', created_at), 'YYYY-MM') as ym"),
+        db.raw('COUNT(*)::int as total'),
+        db.raw("COUNT(*) FILTER (WHERE application_source = 'online')::int as online"))
+      .groupByRaw("date_trunc('month', created_at)").orderByRaw("date_trunc('month', created_at)") as any[];
+    const monthMap = new Map<string, { total: number; online: number }>(monthRows.map((r) => [String(r.ym), { total: Number(r.total), online: Number(r.online) }]));
+    const byMonth: { month: string; total: number; online: number; office: number }[] = [];
+    if (monthRows.length) {
+      let [y, m] = String(monthRows[0].ym).split('-').map(Number);
+      const [ly, lm] = String(monthRows[monthRows.length - 1].ym).split('-').map(Number);
+      while (y < ly || (y === ly && m <= lm)) {
+        const key = `${y}-${String(m).padStart(2, '0')}`;
+        const v = monthMap.get(key) || { total: 0, online: 0 };
+        byMonth.push({ month: key, total: v.total, online: v.online, office: v.total - v.online });
+        if (m === 12) { y += 1; m = 1; } else m += 1;
+      }
+    }
     const recent = await db('admission_applications as a').leftJoin('classes as c', 'c.id', 'a.class_applying_for')
       .where('a.tenant_id', tenantId).modify((q) => { if (year) q.where('a.academic_year', year); })
       .select('a.id', 'a.application_number', 'a.child_first_name', 'a.child_last_name', 'a.guardian_first_name', 'a.guardian_last_name',
@@ -597,7 +616,7 @@ export const admissionPipelineService = {
     return {
       academicYear: year, totalApplications: total, thisMonth, online, acceptanceRate, enrollmentRate, byStatus,
       upcomingInterviews: upcoming.map((u: any) => ({ id: u.id, applicationNumber: u.application_number, studentName: [u.child_first_name, u.child_last_name].filter(Boolean).join(' '), at: u.interview_date, location: u.interview_location })),
-      byClass,
+      byClass, byMonth,
       applications: recent.map((a: any) => ({
         id: a.id, applicationNumber: a.application_number, studentName: [a.child_first_name, a.child_last_name].filter(Boolean).join(' ') || '—',
         parentName: [a.guardian_first_name, a.guardian_last_name].filter(Boolean).join(' ') || '—', className: a.class_name || '—', status: a.status, applicationDate: a.created_at,

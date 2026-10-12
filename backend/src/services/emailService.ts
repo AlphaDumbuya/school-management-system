@@ -1072,9 +1072,14 @@ class EmailService {
       disabledPortals?: string[];
       /** Trial ends with payment required (school becomes read-only until paid). */
       paymentRequired?: boolean;
+      /** payment_received: stable receipt number, provider reference and payment time for the PDF receipt. */
+      receiptNumber?: string;
+      reference?: string;
+      paidAt?: Date | string;
     }
   ): Promise<EmailResponse> {
     const branding = platformBranding();
+    let attachments: { name: string; content: string }[] | undefined;
     const supportEmail = process.env.SUPPORT_EMAIL || 'support@wiskulsl.com';
     const billingUrl = `${branding.appUrl}/settings?tab=billing`;
     const school = escapeHtml(data.schoolName);
@@ -1145,12 +1150,49 @@ class EmailService {
         (data.billingCycle ? detailRow('Billing', data.billingCycle === 'yearly' ? 'Yearly' : 'Monthly') : '') +
         (data.amount != null ? detailRow('Amount paid', escapeHtml(this.fmtMoney(data.amount, 'NLe'))) : '') +
         (end ? detailRow('Active until', escapeHtml(end)) : '');
+      // The official PDF receipt, issued by WiSkul to the school (one retry).
+      const paidAt = data.paidAt ? new Date(data.paidAt) : new Date();
+      const receiptNumber = data.receiptNumber || `SUB-${paidAt.getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
+      if (data.amount != null) {
+        for (let attempt = 1; attempt <= 2 && !attachments; attempt++) {
+          try {
+            const { generateReceiptPdfBase64 } = await import('./email/receiptPdf.js');
+            const cycle = data.billingCycle === 'yearly' ? 'Yearly' : data.billingCycle === 'monthly' ? 'Monthly' : '';
+            const { base64 } = await generateReceiptPdfBase64('', {
+              issuer: 'platform',
+              receiptNumber,
+              payerName: data.schoolName,
+              amount: Number(data.amount),
+              currency: 'NLe',
+              method: 'Mobile money (Monime)',
+              reference: data.reference,
+              date: paidAt,
+              receivedBy: 'WiSkul Billing',
+              status: 'paid',
+              fields: [
+                { label: 'Billed to', value: data.schoolName, bold: true },
+                { label: 'Payment method', value: 'Mobile money (Monime)' },
+                { label: 'Plan', value: `${data.planName}${cycle ? ` (${cycle})` : ''}`, bold: true },
+                { label: 'Reference', value: data.reference },
+                { label: 'Active until', value: end || undefined },
+                { label: 'Payment date', value: this.fmtDate(paidAt) },
+              ],
+              items: [{ label: `WiSkul ${data.planName} plan${cycle ? ` · ${cycle} subscription` : ''}`, amount: Number(data.amount) }],
+            });
+            attachments = [{ name: `Receipt-${receiptNumber}.pdf`, content: base64 }];
+          } catch (err) {
+            logger.warn(`Subscription receipt PDF failed (attempt ${attempt}) for ${receiptNumber}: ${err}`);
+          }
+        }
+      }
       bodyHtml = `
         <p>Hello,</p>
         <p>We received your payment. The new plan is active immediately for everyone at <strong>${school}</strong>.</p>
-        ${detailsCard(rows)}
+        ${detailsCard(detailRow('Receipt No.', `<strong>${escapeHtml(receiptNumber)}</strong>`) + rows)}
         ${emailButton('Open Plan & Billing', billingUrl)}
-        <p style="color:#64748b;font-size:13px;">Keep this email as your receipt. Billing history is also in Settings → Plan &amp; Billing.</p>`;
+        <p style="color:#64748b;font-size:13px;">${attachments
+          ? 'Your official PDF receipt is attached. Billing history is also in Settings → Plan &amp; Billing.'
+          : 'Keep this email as your receipt. Billing history is also in Settings → Plan &amp; Billing.'}</p>`;
     }
 
     return this.sendEmail({
@@ -1159,6 +1201,7 @@ class EmailService {
       subject,
       body: renderEmail({ branding, eyebrow, heading, bodyHtml, preheader }),
       isHtml: true,
+      attachments,
     });
   }
 
@@ -1399,67 +1442,142 @@ class EmailService {
     data: {
       payerName: string;
       studentName?: string;
+      admissionNo?: string;
+      className?: string;
+      academicYear?: string;
+      receivedBy?: string;
       amount: number | string;
       currency?: string;
       method?: string;
       reference?: string;
       receiptNumber?: string;
       date?: Date | string;
-      balanceRemaining?: number | string;
+      balanceRemaining?: number | string | null;
       items?: Array<{ label: string; amount: number }>;
+      status?: 'paid' | 'refunded' | 'part_refunded';
+      /** 'refund' switches the wording to a refund confirmation. */
+      kind?: 'payment' | 'refund';
+      refundReason?: string;
     }
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
     const portalUrl = `${branding.appUrl}/finance/my-fees`;
     const currency = data.currency || 'Le';
+    const isRefund = data.kind === 'refund';
+    const amountText = this.fmtMoney(data.amount, currency);
 
     // Stable, unique receipt number — prefer the caller-supplied one.
     const receiptNumber = data.receiptNumber || data.reference || `RCPT-${Date.now()}`;
 
+    const balance = data.balanceRemaining != null && Number.isFinite(Number(data.balanceRemaining))
+      ? Number(data.balanceRemaining)
+      : null;
+
+    // Generate the branded PDF first (one retry) so the body never claims an
+    // attachment that is not there.
+    let attachments: { name: string; content: string }[] | undefined;
+    for (let attempt = 1; attempt <= 2 && !attachments; attempt++) {
+      try {
+        const { generateReceiptPdfBase64 } = await import('./email/receiptPdf.js');
+        const { base64 } = await generateReceiptPdfBase64(tenantId, {
+          receiptNumber,
+          payerName: data.payerName,
+          studentName: data.studentName,
+          admissionNo: data.admissionNo,
+          className: data.className,
+          academicYear: data.academicYear,
+          receivedBy: data.receivedBy,
+          amount: Number(data.amount),
+          currency,
+          method: data.method,
+          reference: data.reference,
+          date: data.date ? new Date(data.date) : new Date(),
+          balanceRemaining: balance ?? undefined,
+          status: data.status ?? (isRefund ? 'refunded' : 'paid'),
+          items: data.items,
+        });
+        attachments = [{ name: `${isRefund ? 'Refund-Receipt' : 'Receipt'}-${receiptNumber}.pdf`, content: base64 }];
+      } catch (err) {
+        logger.warn(`Receipt PDF generation failed (attempt ${attempt}) for ${receiptNumber}: ${err}`);
+      }
+    }
+
     const rows =
       detailRow('Receipt No.', `<strong>${escapeHtml(receiptNumber)}</strong>`) +
-      (data.studentName ? detailRow('Student', escapeHtml(data.studentName)) : '') +
-      detailRow('Amount Paid', `<strong style="color:#059669;">${escapeHtml(this.fmtMoney(data.amount, currency))}</strong>`) +
+      (data.studentName
+        ? detailRow('Student', escapeHtml(data.studentName + (data.admissionNo ? ` (${data.admissionNo})` : '')))
+        : '') +
+      (data.className ? detailRow('Class', escapeHtml(data.className)) : '') +
+      (data.academicYear ? detailRow('Academic Year', escapeHtml(data.academicYear)) : '') +
+      detailRow(
+        isRefund ? 'Amount Refunded' : 'Amount Paid',
+        `<strong style="color:${isRefund ? '#b91c1c' : '#059669'};">${escapeHtml(amountText)}</strong>`
+      ) +
       (data.method ? detailRow('Payment Method', escapeHtml(this.titleCase(data.method))) : '') +
       (data.reference ? detailRow('Reference', escapeHtml(data.reference)) : '') +
+      (isRefund && data.refundReason ? detailRow('Reason', escapeHtml(data.refundReason)) : '') +
       detailRow('Date', escapeHtml(this.fmtDate(data.date || new Date()))) +
-      (data.balanceRemaining != null
-        ? detailRow('Balance Remaining', escapeHtml(this.fmtMoney(data.balanceRemaining, currency)))
+      (balance != null
+        ? detailRow(
+            'Balance Remaining',
+            balance > 0.005
+              ? `<strong style="color:#b45309;">${escapeHtml(this.fmtMoney(balance, currency))}</strong>`
+              : '<strong style="color:#059669;">Fully paid</strong>'
+          )
         : '');
+
+    const items = (data.items || []).filter((i) => i && i.label);
+    const itemsTable = items.length && !isRefund
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;font-size:14px;">
+          <tr>
+            <td style="padding:8px 10px;background:#f1f5f9;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Paid for</td>
+            <td align="right" style="padding:8px 10px;background:#f1f5f9;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Amount</td>
+          </tr>
+          ${items
+            .map(
+              (i) => `<tr>
+            <td style="padding:8px 10px;color:#0f172a;border-bottom:1px solid #eef2f7;">${escapeHtml(i.label)}</td>
+            <td align="right" style="padding:8px 10px;color:#0f172a;border-bottom:1px solid #eef2f7;white-space:nowrap;">${escapeHtml(this.fmtMoney(i.amount, currency))}</td>
+          </tr>`
+            )
+            .join('')}
+        </table>`
+      : '';
+
+    const attachedLine = attachments
+      ? `Your official ${isRefund ? 'refund receipt' : 'receipt'} is attached to this email as a PDF.`
+      : `Your official ${isRefund ? 'refund receipt' : 'receipt'} could not be attached to this email. You can download it any time from your payment history in the portal.`;
+
+    const intro = isRefund
+      ? `A refund has been processed by <strong>${escapeHtml(branding.name)}</strong>.`
+      : `Thank you — we've received your payment to <strong>${escapeHtml(branding.name)}</strong>.`;
 
     const bodyHtml = `
       <p>Dear ${escapeHtml(data.payerName)},</p>
-      <p>Thank you — we've received your payment to <strong>${escapeHtml(branding.name)}</strong>. Your official receipt is attached to this email as a PDF.</p>
+      <p>${intro} ${attachedLine}</p>
       ${detailsCard(rows)}
-      ${calloutBlock('Please keep the attached PDF receipt for your records. You can also view your full payment history in your portal.', 'success')}
+      ${itemsTable}
+      ${calloutBlock(
+        attachments
+          ? 'Please keep the attached PDF receipt for your records. You can also view your full payment history in your portal.'
+          : 'You can view and download every receipt from your payment history in the portal.',
+        isRefund ? 'info' : 'success'
+      )}
       ${emailButton('View Payment History', portalUrl)}`;
-
-    // Generate a professional, tenant-branded PDF receipt to attach.
-    let attachments: { name: string; content: string }[] | undefined;
-    try {
-      const { generateReceiptPdfBase64 } = await import('./email/receiptPdf.js');
-      const { base64 } = await generateReceiptPdfBase64(tenantId, {
-        receiptNumber,
-        payerName: data.payerName,
-        studentName: data.studentName,
-        amount: Number(data.amount),
-        currency,
-        method: data.method,
-        reference: data.reference,
-        date: data.date ? new Date(data.date) : new Date(),
-        balanceRemaining: data.balanceRemaining != null ? Number(data.balanceRemaining) : undefined,
-        items: data.items,
-      });
-      attachments = [{ name: `Receipt-${receiptNumber}.pdf`, content: base64 }];
-    } catch (err) {
-      logger.warn(`Could not generate PDF receipt; sending email without attachment: ${err}`);
-    }
 
     return this.sendEmail({
       ...this.senderFromBranding(branding),
       to: toEmail,
-      subject: `Payment Receipt — ${this.fmtMoney(data.amount, currency)} to ${branding.name}`,
-      body: renderEmail({ branding, eyebrow: 'Payment Receipt', heading: 'Payment Received — Thank You', bodyHtml, preheader: `Receipt for your ${this.fmtMoney(data.amount, currency)} payment.` }),
+      subject: isRefund
+        ? `Refund Receipt ${receiptNumber} — ${amountText} · ${branding.name}`
+        : `Payment Receipt ${receiptNumber} — ${amountText} · ${branding.name}`,
+      body: renderEmail({
+        branding,
+        eyebrow: isRefund ? 'Refund Receipt' : 'Payment Receipt',
+        heading: isRefund ? 'Refund Processed' : 'Payment Received — Thank You',
+        bodyHtml,
+        preheader: isRefund ? `Refund of ${amountText} processed.` : `Receipt for your ${amountText} payment.`,
+      }),
       isHtml: true,
       attachments,
     });
@@ -1862,6 +1980,94 @@ class EmailService {
       to: toEmail,
       subject: `${data.studentName} was marked absent — ${branding.name}`,
       body: renderEmail({ branding, eyebrow: 'Attendance', heading: 'Absence Recorded', bodyHtml, preheader: `${data.studentName} was marked absent${data.date ? ` on ${this.fmtDate(data.date)}` : ' today'}.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Weekly attendance digest → parent/guardian. One email per family, one block
+   * per child with Mon–Fri status and a short summary.
+   */
+  async sendWeeklyAttendanceEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      recipientName: string;
+      weekStart: string;
+      weekEnd: string;
+      children: Array<{
+        name: string;
+        className?: string;
+        days: Array<{ date: string; label: string; status: 'present' | 'late' | 'excused' | 'absent' | 'none' }>;
+        summary: { present: number; late: number; excused: number; absent: number; recorded: number; rate: number };
+      }>;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const portalUrl = `${branding.appUrl}/students/attendance`;
+    const range = `${this.fmtDate(data.weekStart)} to ${this.fmtDate(data.weekEnd)}`;
+
+    const STYLE: Record<string, { bg: string; fg: string; text: string }> = {
+      present: { bg: '#dcfce7', fg: '#166534', text: 'Present' },
+      late: { bg: '#fef3c7', fg: '#92400e', text: 'Late' },
+      excused: { bg: '#dbeafe', fg: '#1e40af', text: 'Excused' },
+      absent: { bg: '#fee2e2', fg: '#991b1b', text: 'Absent' },
+      none: { bg: '#f1f5f9', fg: '#64748b', text: 'No register' },
+    };
+
+    const childBlock = (c: (typeof data.children)[number]) => {
+      const cells = c.days
+        .map((d) => {
+          const st = STYLE[d.status] || STYLE.none;
+          return `<td align="center" style="padding:4px;">
+            <div style="font-size:11px;color:#64748b;margin-bottom:4px;">${escapeHtml(d.label)}</div>
+            <div style="background:${st.bg};color:${st.fg};border-radius:6px;padding:8px 2px;font-size:11px;font-weight:600;">${st.text}</div>
+          </td>`;
+        })
+        .join('');
+      const s = c.summary;
+      const parts = [`${s.present} present`];
+      if (s.late) parts.push(`${s.late} late`);
+      if (s.excused) parts.push(`${s.excused} excused`);
+      parts.push(`${s.absent} absent`);
+      const concern = s.absent > 0;
+      return `
+        <div style="margin:18px 0;padding:14px 16px;border:1px solid #e2e8f0;border-radius:10px;">
+          <div style="font-size:16px;font-weight:700;color:#0f172a;">${escapeHtml(c.name)}</div>
+          ${c.className ? `<div style="font-size:13px;color:#64748b;margin-bottom:8px;">${escapeHtml(c.className)}</div>` : ''}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:8px 0;"><tr>${cells}</tr></table>
+          <div style="font-size:14px;color:#334155;">
+            ${escapeHtml(parts.join(' · '))} &nbsp;|&nbsp;
+            <strong style="color:${concern ? '#b45309' : '#059669'};">${s.recorded ? `${s.rate}% attendance` : 'No days recorded'}</strong>
+          </div>
+        </div>`;
+    };
+
+    const anyAbsent = data.children.some((c) => c.summary.absent > 0);
+    const names = data.children.map((c) => c.name);
+    const bodyHtml = `
+      <p>Dear ${escapeHtml(data.recipientName)},</p>
+      <p>Here is the attendance summary for the week of <strong>${escapeHtml(range)}</strong> at <strong>${escapeHtml(branding.name)}</strong>.</p>
+      ${data.children.map(childBlock).join('')}
+      ${calloutBlock(
+        anyAbsent
+          ? 'If an absence was unexpected or you need to explain it, please contact the school office.'
+          : 'Regular attendance helps every child learn. Thank you for your support.',
+        anyAbsent ? 'warn' : 'success'
+      )}
+      ${emailButton('View Attendance', portalUrl)}`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: `Weekly attendance: ${names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' & ')} · ${branding.name}`,
+      body: renderEmail({
+        branding,
+        eyebrow: 'Weekly Attendance',
+        heading: 'Attendance this week',
+        bodyHtml,
+        preheader: `Attendance for ${names.join(', ')}, ${range}.`,
+      }),
       isHtml: true,
     });
   }

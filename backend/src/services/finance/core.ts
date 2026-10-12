@@ -158,6 +158,36 @@ export async function familyContact(studentId: string): Promise<{ email: string 
   return { email: stu?.uemail || stu?.email || null, name: (await studentLabel(studentId)).name, userIds };
 }
 
+/**
+ * Everyone in a student's family who should get a copy of a money email:
+ * each linked parent/guardian (their login email, or the email on the
+ * guardian record) and the student's own email. De-duplicated, in that order.
+ */
+export async function familyContacts(studentId: string): Promise<Array<{ email: string; name: string }>> {
+  const out: Array<{ email: string; name: string }> = [];
+  const seen = new Set<string>();
+  const add = (email: unknown, name: string) => {
+    const e = String(email || '').trim().toLowerCase();
+    if (!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) || seen.has(e)) return;
+    seen.add(e);
+    out.push({ email: String(email).trim(), name });
+  };
+  const guardians = await db('guardians').leftJoin('users', 'users.id', 'guardians.user_id').where('guardians.student_id', studentId)
+    .select('users.email as user_email', 'users.first_name as uf', 'users.last_name as ul', 'guardians.email as g_email', 'guardians.first_name as gf', 'guardians.last_name as gl')
+    .catch(() => [] as any[]);
+  for (const g of guardians) {
+    const name = [g.uf || g.gf, g.ul || g.gl].filter(Boolean).join(' ') || 'Parent/Guardian';
+    add(g.user_email, name);
+    add(g.g_email, name);
+  }
+  const stu = await db('students').leftJoin('users', 'users.id', 'students.user_id').where('students.id', studentId)
+    .select('users.email as uemail', 'students.email').first().catch(() => null);
+  const sname = (await studentLabel(studentId)).name;
+  add(stu?.uemail, sname);
+  add(stu?.email, sname);
+  return out;
+}
+
 /** In-app notification (bell) to specific users. Best-effort. */
 export async function notifyUsers(ids: string[], n: { subject: string; message: string; url: string; sourceType?: string; sourceId?: string }): Promise<void> {
   try {
@@ -277,7 +307,7 @@ export async function notifyFinanceStaff(
     const rows = await db('users').where({ tenant_id: tenantId }).where('status', 'active')
       .where((q) => {
         q.whereIn('role', to);
-        if (to.includes('accountant')) q.orWhere((q2) => q2.where('role', 'teacher').whereRaw("staff_duties::jsonb @> '[\"accountant\"]'::jsonb"));
+        if (to.includes('accountant')) q.orWhereRaw("COALESCE(staff_duties, '[]'::jsonb) @> '[\"accountant\"]'::jsonb");
       })
       .select('id');
     const ids = rows.map((r: any) => r.id).filter((id: string) => id !== n.exceptUserId);

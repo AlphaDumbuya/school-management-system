@@ -39,6 +39,7 @@ import {
 import { FaRightFromBracket, FaAnglesLeft, FaAnglesRight, FaCircleCheck } from 'react-icons/fa6';
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
 import { routeAccess } from '@lib/planFeatures';
+import { isDemoUser } from '@lib/demo';
 import clsx from 'clsx';
 
 interface NavItem {
@@ -186,7 +187,7 @@ const navItems: NavItem[] = [
     version: 'v1',
   },
 
-  // ── EXTRA DUTIES (a teacher who is also Bursar / Admissions Officer) ──
+  // ── EXTRA JOBS (Bursar / Admissions Officer / Teaching held on top of the main job) ──
   {
     label: 'Finance Overview',
     icon: <FaMoneyBill className="w-4 sm:w-5 h-4 sm:h-5" />,
@@ -194,6 +195,16 @@ const navItems: NavItem[] = [
     roles: ['accountant'],
     module: 'Financial Management',
     group: 'Finance',
+    version: 'v1',
+    dutyOnly: true,
+  },
+  {
+    label: 'Teaching Overview',
+    icon: <FaBook className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/teacher/dashboard',
+    roles: ['teacher'],
+    module: 'Academic Management',
+    group: 'Academic',
     version: 'v1',
     dutyOnly: true,
   },
@@ -747,7 +758,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                 </>
               ) : (
                 <>
-                  {user?.schoolLogoUrl ? (
+                  {isDemoUser(user) ? (
+                    // The public demo school wears the WiSkul logo, like the platform itself.
+                    <img src="/logo.png" alt="WiSkul" className="w-9 sm:w-10 h-9 sm:h-10 rounded-lg object-contain bg-white p-1 border border-gray-700 flex-shrink-0" />
+                  ) : user?.schoolLogoUrl ? (
                     <img
                       src={user.schoolLogoUrl}
                       alt={user.schoolName || 'School Logo'}

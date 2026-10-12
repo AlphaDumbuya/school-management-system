@@ -6,7 +6,7 @@ import { AppError } from '@middleware/errorHandler';
 import { authenticate, authorize, attachUserContext, rateLimitLogin, clearLoginAttempts } from '@middleware/authMiddleware';
 import { loginLimiter, otpLimiter, passkeyLimiter, publicFormLimiter } from '@middleware/rateLimit';
 import { logger } from '@utils/logger';
-import { parseDuties } from '@utils/staffDuties';
+import { effectiveDuties } from '@utils/staffDuties';
 import { UserRole, UserStatus } from '@types/auth';
 import emailService from '@services/emailService';
 
@@ -752,7 +752,7 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
       createdAt: user.created_at,
       promotionWelcome,
       // Extra portals for a teacher who is also Bursar / Admissions Officer.
-      staffDuties: user.role === 'teacher' ? parseDuties((user as any).staff_duties) : [],
+      staffDuties: effectiveDuties(user.role, (user as any).staff_duties),
       // The school's plan features (enabled / read_only / locked): drives the
       // sidebar and route gating. null for super admins / no tenant.
       planAccess: user.role === 'super_admin' ? null : await (async () => {

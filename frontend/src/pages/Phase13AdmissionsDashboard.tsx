@@ -18,6 +18,7 @@ import { useAcademicYears } from '@hooks/useAcademicYears';
 import useAuthStore from '@store/authStore';
 import { admissionsService, type AdmissionStatus, type AdmissionsOverview } from '@services/admissionsService';
 import { StatusPill, ADM_LABEL } from './students/components/ApplicationDetailModal';
+import { AdmissionsCharts } from './students/components/AdmissionsCharts';
 
 const PIPELINE: AdmissionStatus[] = ['pending', 'under_review', 'interview_scheduled', 'approved', 'waitlist', 'enrolled'];
 const DOT: Record<string, string> = {
@@ -92,6 +93,11 @@ export const Phase13AdmissionsDashboard: React.FC = () => {
               </button>
             ))}
           </div>
+        )}
+
+        {/* Charts */}
+        {!error && (isLoading || (data?.totalApplications ?? 0) > 0) && (
+          <div className="mb-6"><AdmissionsCharts data={data} loading={isLoading} year={year} /></div>
         )}
 
         {/* Work waiting */}

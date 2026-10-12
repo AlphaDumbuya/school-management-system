@@ -271,7 +271,7 @@ export const TeacherFormModal: React.FC<TeacherFormModalProps> = ({
         assigned_classes: values.teaches ? values.assigned_classes : [],
         assigned_subjects: values.teaches ? values.assigned_subjects : [],
         // Main job + extra duties (see jobsToPayload).
-        ...jobsToPayload(values),
+        ...jobsToPayload(values, { currentRole: (editingTeacher as any)?.user_role, designation: values.designation }),
       };
       // Status is only set at CREATE (defaults to active). On edit it is never
       // sent from this form — status changes go through the dedicated

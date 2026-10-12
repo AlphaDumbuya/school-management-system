@@ -1,3 +1,4 @@
+import { isTeachingUser } from '@lib/staffJobs';
 import React, { useState, useEffect } from 'react';
 import { MainLayout } from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -80,13 +81,13 @@ export const SettingsPage: React.FC = () => {
   const setUser = useAuthStore((s) => s.setUser);
   const logout = useAuthStore((s) => s.logout);
   const isSuperAdmin = user?.role === 'super_admin';
-  const isTeacher = user?.role === 'teacher';
-  // The bursar: an accountant, or a teacher holding the Bursar duty. They work
+  const isTeacher = isTeachingUser(user as any);
+  // The bursar: an accountant (main job or on top of another job). They work
   // under the school's payment policy, so they get a read-only view of it.
-  const isBursar = user?.role === 'accountant' || (isTeacher && ((user as any)?.staffDuties ?? []).includes('accountant'));
-  // The admissions office (or a teacher holding the Admissions duty) works under
-  // the school's ID format and admissions rules: a read-only view of them.
-  const isOffice = user?.role === 'admissions_officer' || (isTeacher && ((user as any)?.staffDuties ?? []).includes('admissions_officer'));
+  const isBursar = user?.role === 'accountant' || ((user as any)?.staffDuties ?? []).includes('accountant');
+  // The admissions office (main job or on top of another) works under the
+  // school's ID format and admissions rules: a read-only view of them.
+  const isOffice = user?.role === 'admissions_officer' || ((user as any)?.staffDuties ?? []).includes('admissions_officer');
   const [officeLink, setOfficeLink] = useState<string>('');
   // A tenant/school admin (principal) manages the school-config tabs. The super
   // admin is the PLATFORM operator and has no school to configure — they only
@@ -220,6 +221,7 @@ export const SettingsPage: React.FC = () => {
     min_attendance_critical: 60,
     late_cutoff_time: '08:30',
     staff_signin_closes_at: '18:00',
+    attendance_notify_mode: 'weekly',
     currency: 'SLE',
     // School-wide (general) payment policy. Each fee structure may override any
     // of these per class; when a structure leaves a field blank, this applies.
@@ -549,7 +551,7 @@ export const SettingsPage: React.FC = () => {
     profile: (k) => ['language', 'date_format'].includes(k),
     academic: (k) => k === 'term_count' || /^term_\d_(start|end)$/.test(k),
     'id-format': (k) => k.startsWith('id_'),
-    attendance: (k) => ['min_attendance_warning', 'min_attendance_critical', 'late_cutoff_time', 'staff_signin_closes_at'].includes(k),
+    attendance: (k) => ['min_attendance_warning', 'min_attendance_critical', 'late_cutoff_time', 'staff_signin_closes_at', 'attendance_notify_mode'].includes(k),
     financial: (k) => k.startsWith('fin_'),
   };
 
@@ -2195,6 +2197,22 @@ export const SettingsPage: React.FC = () => {
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
                           />
                           <p className="text-[10px] text-gray-400 mt-1">Staff sign themselves in for today only, until this time. After it, you record their attendance.</p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label htmlFor="attendance-notify-mode" className="text-xs font-semibold text-gray-500 block mb-1">Attendance updates to parents</label>
+                          <select
+                            id="attendance-notify-mode"
+                            value={settings.attendance_notify_mode || 'weekly'}
+                            onChange={(e) => setSettings({ ...settings, attendance_notify_mode: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                          >
+                            <option value="weekly">Weekly summary (every Friday)</option>
+                            <option value="daily">Every time attendance is marked</option>
+                            <option value="off">Don't send attendance messages</option>
+                          </select>
+                          <p className="text-[10px] text-gray-400 mt-1">
+                            Weekly sends one email per family on Friday evening, covering the whole week for all their children.
+                          </p>
                         </div>
                       </div>
 

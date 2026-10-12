@@ -181,7 +181,7 @@ const StudentPhoto: React.FC<{ photoUrl?: string | null; name: string; frame: Ph
   );
 
   const caption = (
-    <div className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 whitespace-nowrap shadow ${circle ? 'hidden' : ''}`}>
+    <div className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 whitespace-nowrap shadow ${circle ? 'hidden' : ''}`}>
       Student
     </div>
   );
@@ -367,7 +367,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
         {schoolAddress && <p className="text-[14px] font-semibold text-gray-600">{schoolAddress}</p>}
         {school?.motto && <p className="text-[14px] italic font-semibold text-gray-600">Motto: {school.motto}</p>}
         {(school?.phone || school?.email || school?.website) && (
-          <p className="text-[12px] text-gray-500">
+          <p className="text-[13px] text-gray-500">
             {[school?.phone, school?.email, school?.website].filter(Boolean).join(' · ')}
           </p>
         )}
@@ -389,7 +389,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
         {/* Official Stamp — when an image is uploaded it fills the box and the
             placeholder seal is hidden; otherwise show the dashed placeholder. */}
         <div className={`h-28 flex flex-col p-2 ${stampUrl ? 'border-2 border-gray-200' : 'border-2 border-dashed border-gray-400'}`}>
-          <span className="text-[12px] font-bold text-gray-500 uppercase flex-shrink-0">Official Stamp</span>
+          <span className="text-[13px] font-bold text-gray-500 uppercase flex-shrink-0">Official Stamp</span>
           {stampUrl ? (
             <div className="flex-1 min-h-0 flex items-center justify-center mt-1 overflow-hidden">
               <img src={stampUrl} alt="Official school stamp" className="w-full h-full object-contain" style={{ transform: `scale(${stampScale})` }} />
@@ -404,7 +404,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
             BOTH the placeholder name and the "Date:" line are hidden; otherwise
             show the placeholder name and a Date line. */}
         <div className={`h-28 flex flex-col p-2 ${signatureUrl ? 'border-2 border-gray-200' : 'border-2 border-dashed border-gray-400'}`}>
-          <span className="text-[12px] font-bold text-gray-500 uppercase flex-shrink-0">Principal's Signature</span>
+          <span className="text-[13px] font-bold text-gray-500 uppercase flex-shrink-0">Principal's Signature</span>
           {signatureUrl ? (
             <div className="flex-1 min-h-0 flex items-center justify-center mt-1 overflow-hidden">
               <img src={signatureUrl} alt="Principal's signature" className="w-full h-full object-contain" style={{ transform: `scale(${signatureScale})` }} />
@@ -414,7 +414,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
               <div className="flex-1 flex items-center justify-center">
                 {school?.principal_name && <span className="italic font-bold font-serif text-lg text-blue-900/40 text-center">{school.principal_name}</span>}
               </div>
-              <div className="border-b border-gray-500 pb-0.5 flex-shrink-0"><span className="text-[11px] text-gray-500 uppercase">Date:</span></div>
+              <div className="border-b border-gray-500 pb-0.5 flex-shrink-0"><span className="text-[13px] text-gray-500 uppercase">Date:</span></div>
             </div>
           )}
         </div>
@@ -463,7 +463,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
             <div key={c.code} className="flex items-baseline text-[15px]">
               <span className="whitespace-nowrap font-bold w-12 text-center bg-gray-100 rounded px-1 py-0.5">{c.code}</span>
               <span className="flex-1 border-b border-dotted border-gray-400 mx-2 mb-1" />
-              <span className="whitespace-nowrap text-[14px]">{c.meaning}</span>
+              <span className="whitespace-nowrap text-[15px]">{c.meaning}</span>
             </div>
           ))}
         </div>
@@ -476,7 +476,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
           {attendanceCodes.map((a) => (
             <div key={a.code} className="border border-gray-300 rounded p-3 text-center">
               <p className="font-bold text-[15px]">{a.code}</p>
-              <p className="text-[13px] text-gray-600 leading-tight mt-1">{a.meaning}</p>
+              <p className="text-[14px] text-gray-600 leading-tight mt-1">{a.meaning}</p>
             </div>
           ))}
         </div>
@@ -490,8 +490,8 @@ export const BookletContent: React.FC<BookletContentProps> = ({
           ) : (
             <div className="w-24 h-24 border border-gray-300 flex items-center justify-center text-[10px] text-gray-400 flex-shrink-0">QR</div>
           )}
-          <div className="text-[14px] text-left flex-1">
-            <p className="font-extrabold uppercase text-[16px]">Digital Verification System</p>
+          <div className="text-[15px] text-left flex-1">
+            <p className="font-extrabold uppercase text-[17px]">Digital Verification System</p>
             <p className="text-gray-700 leading-snug mt-1">Scan with a smartphone to verify this report card online and view the digital copy.</p>
             <div className="flex gap-6 mt-1.5">
               <p className="text-gray-500">Year: <span className="font-bold text-gray-700">{card.academic_year}</span></p>
@@ -499,7 +499,7 @@ export const BookletContent: React.FC<BookletContentProps> = ({
             </div>
           </div>
         </div>
-        <p className="text-center italic text-[14px] text-gray-700 border-t border-gray-300 pt-2">
+        <p className="text-center italic text-[15px] text-gray-700 border-t border-gray-300 pt-2">
           This progress report is not valid unless it is signed by Principal and carries the official school stamp.
         </p>
       </div>
@@ -555,7 +555,7 @@ const ResultsFullSpread: React.FC<{
       {/* Content sits above the watermark */}
       <div className="relative flex flex-col h-full" style={{ zIndex: 1 }}>
       {/* Header row */}
-      <div className="grid grid-cols-3 gap-2 text-[12px] border-b-2 border-gray-900 pb-2 mb-2 flex-shrink-0">
+      <div className="grid grid-cols-3 gap-2 text-[15px] border-b-2 border-gray-900 pb-2 mb-2 flex-shrink-0">
         <div className="space-y-1">
           <div><span className="font-bold">Name:</span> {card.student.name}</div>
           <div><span className="font-bold">No. in Form:</span> {card.student.number_in_form ?? card.yearly_summary?.class_size ?? '—'}</div>
@@ -572,19 +572,32 @@ const ResultsFullSpread: React.FC<{
 
       {/* One continuous table: Subject | Cognitive | Affective | Psychomotor */}
       <div className="flex-1 overflow-hidden">
-        <table className="w-full h-full border-collapse text-[11px]" style={{ tableLayout: 'fixed' }}>
+        <table className="w-full h-full border-collapse text-[14px]" style={{ tableLayout: 'fixed' }}>
+          {/* Explicit widths: ratings (1–5) need little room, so the score
+              columns get the space and the larger print size still fits. */}
+          <colgroup>
+            <col style={{ width: 140 }} />
+            {Array.from({ length: 14 }).map((_, i) => <col key={`cc${i}`} />)}
+            {[0, 1].map((d) => (
+              <React.Fragment key={`dg${d}`}>
+                <col style={{ width: 20 }} />
+                {Array.from({ length: 10 }).map((_, i) => <col key={`dc${d}${i}`} style={{ width: 26 }} />)}
+                <col style={{ width: 36 }} />
+              </React.Fragment>
+            ))}
+          </colgroup>
           <thead>
             {/* Row 1: section banners */}
             <tr className="text-center font-bold uppercase">
-              <th rowSpan={3} className="border border-gray-900 p-0.5 align-bottom text-left" style={{ width: '90px' }}>Subject</th>
+              <th rowSpan={3} className="border border-gray-900 p-0.5 align-bottom text-left">Subject</th>
               <th colSpan={14} className="border border-gray-900 p-0.5 bg-blue-50">* Cognitive</th>
-              <th rowSpan={3} className="border border-gray-900 p-0.5 align-bottom" style={{ width: '14px' }}>#</th>
+              <th rowSpan={3} className="border border-gray-900 p-0.5 align-bottom">#</th>
               <th colSpan={11} className="border border-gray-900 p-0.5 bg-purple-50">* Affective</th>
-              <th rowSpan={3} className="border border-gray-900 p-0.5 align-bottom" style={{ width: '14px' }}>#</th>
+              <th rowSpan={3} className="border border-gray-900 p-0.5 align-bottom">#</th>
               <th colSpan={11} className="border border-gray-900 p-0.5 bg-green-50">* Psychomotor</th>
             </tr>
             {/* Row 2: term group headers */}
-            <tr className="text-center font-bold text-[10px]">
+            <tr className="text-center font-bold text-[12px]">
               {TERM_KEYS.map((t) => <th key={`c${t}`} colSpan={4} className="border border-gray-900 p-0.5 bg-blue-50/60">{TERM_SHORT[t]}</th>)}
               <th colSpan={2} className="border border-gray-900 p-0.5 bg-amber-50">YEARLY</th>
               {['T1', 'T2', 'T3'].map((t) => <th key={`a${t}`} colSpan={3} className="border border-gray-900 p-0.5 bg-purple-50/60">{t}</th>)}
@@ -593,7 +606,7 @@ const ResultsFullSpread: React.FC<{
               <th colSpan={2} className="border border-gray-900 p-0.5 bg-amber-50">YEARLY</th>
             </tr>
             {/* Row 3: column sub-headers */}
-            <tr className="text-center font-semibold text-[10px]">
+            <tr className="text-center font-semibold text-[12px]">
               {TERM_KEYS.map((t) => (
                 <React.Fragment key={`ch${t}`}>
                   <th className="border border-gray-700 p-0.5">1</th>
@@ -666,17 +679,15 @@ const ResultsFullSpread: React.FC<{
               const renderSummaryRow = (label: string, termVal: (t: SLTerm) => React.ReactNode, yearlyVal: React.ReactNode, bgClass: string) => (
                 <tr className={`text-center font-bold ${bgClass}`}>
                   <td className="border border-gray-900 p-px text-left">{label}</td>
+                  {/* Totals span the Mn + Rnk cells so "12th/45" fits at print size */}
                   {TERM_KEYS.map((t) => (
                     <React.Fragment key={t}>
                       <td className="border border-gray-700 p-px" />
                       <td className="border border-gray-700 p-px" />
-                      <td className="border border-gray-700 p-px bg-blue-100/40">{termVal(t)}</td>
-                      <td className="border border-gray-700 p-px" />
+                      <td colSpan={2} className="border border-gray-700 p-px bg-blue-100/40 whitespace-nowrap">{termVal(t)}</td>
                     </React.Fragment>
                   ))}
-                  <td className="border border-gray-700 p-px bg-amber-100/40">{yearlyVal}</td>
-                  {/* Cog blank Rnk */}
-                  <td className="border border-gray-700 p-px" />
+                  <td colSpan={2} className="border border-gray-700 p-px bg-amber-100/40 whitespace-nowrap">{yearlyVal}</td>
                   {/* Affective blank: 1 hash + 9 term + 2 yearly = 12 */}
                   {blankCells(12, [10])}
                   {/* Psychomotor blank: 1 hash + 9 term + 2 yearly = 12 */}
@@ -705,7 +716,7 @@ const ResultsFullSpread: React.FC<{
       </div>
 
       {/* Footer block */}
-      <div className="border-t-2 border-gray-900 mt-2 pt-2 grid grid-cols-12 gap-x-4 text-[12px] flex-shrink-0">
+      <div className="border-t-2 border-gray-900 mt-2 pt-2 grid grid-cols-12 gap-x-4 text-[14px] flex-shrink-0">
         <div className="col-span-7">
           <div className="grid grid-cols-3 gap-x-3">
             {TERM_KEYS.map((t) => {
@@ -716,7 +727,7 @@ const ResultsFullSpread: React.FC<{
                   <div>Late: <b className="text-amber-600">{sm?.late ?? 0}</b></div>
                   <div>Absent: <b className="text-red-600">{sm?.absent ?? 0}</b></div>
                   <div className="pt-1 border-b border-dotted border-gray-500 h-5" />
-                  <div className="text-[11px] text-gray-600">Teacher's Sign and Date</div>
+                  <div className="text-[13px] text-gray-600">Teacher's Sign and Date</div>
                   <div>CONDUCT: <b>{sm?.conduct || '............'}</b></div>
                 </div>
               );
@@ -734,9 +745,9 @@ const ResultsFullSpread: React.FC<{
         </div>
         <div className="col-span-3 space-y-1 border-l border-gray-300 pl-3">
           <div className="border-b border-dotted border-gray-500 h-5" />
-          <div className="text-[11px] text-gray-600">Principal's Signature and date</div>
-          <div className="font-bold uppercase text-[11px] pt-1">Terms</div>
-          <div className="text-[11px] space-y-0.5">
+          <div className="text-[13px] text-gray-600">Principal's Signature and date</div>
+          <div className="font-bold uppercase text-[13px] pt-1">Terms</div>
+          <div className="text-[13px] space-y-0.5">
             <div>Term 1 <span className="border-b border-dotted border-gray-500 inline-block w-20" /></div>
             <div>Term 2 <span className="border-b border-dotted border-gray-500 inline-block w-20" /></div>
             <div>Term 3 <span className="border-b border-dotted border-gray-500 inline-block w-20" /></div>
@@ -745,7 +756,7 @@ const ResultsFullSpread: React.FC<{
             <span className="italic">Principal's End of Year Comments:</span>
             <span className="border-b border-dotted border-gray-500 italic px-1">{card.meta?.principal_comment || ''}</span>
           </div>
-          <div className="pt-1 font-bold uppercase text-[12px]">
+          <div className="pt-1 font-bold uppercase text-[14px]">
             Promoted to / to repeat:
             {(() => {
               const auto = card.yearly_summary?.promotion_recommendation;
@@ -756,20 +767,20 @@ const ResultsFullSpread: React.FC<{
             })()}
           </div>
           {card.yearly_summary?.percentage != null && (
-            <div className="text-[11px] text-gray-500 normal-case">Yearly: {card.yearly_summary.percentage}% · Position {ordinal(card.yearly_summary.position)}/{card.yearly_summary.class_size}</div>
+            <div className="text-[13px] text-gray-500 normal-case">Yearly: {card.yearly_summary.percentage}% · Position {ordinal(card.yearly_summary.position)}/{card.yearly_summary.class_size}</div>
           )}
         </div>
         <div className="col-span-2 space-y-1 border-l border-gray-300 pl-3">
           <div className="border-b border-dotted border-gray-500 h-5" />
-          <div className="text-[11px] text-gray-600">Parent's Signature and date</div>
-          <div className="font-bold uppercase text-[11px] pt-1">Terms</div>
-          <div className="text-[11px] space-y-0.5">
+          <div className="text-[13px] text-gray-600">Parent's Signature and date</div>
+          <div className="font-bold uppercase text-[13px] pt-1">Terms</div>
+          <div className="text-[13px] space-y-0.5">
             <div>Term 1 <span className="border-b border-dotted border-gray-500 inline-block w-16" /></div>
             <div>Term 2 <span className="border-b border-dotted border-gray-500 inline-block w-16" /></div>
           </div>
         </div>
       </div>
-      <p className="text-[9px] italic text-gray-400 mt-1 flex-shrink-0">*See key at the back.</p>
+      <p className="text-[11px] italic text-gray-400 mt-1 flex-shrink-0">*See key at the back.</p>
       </div>{/* /watermark content wrapper */}
     </div>
   );

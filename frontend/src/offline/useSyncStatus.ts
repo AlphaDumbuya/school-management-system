@@ -6,6 +6,7 @@
  * Exposes a `syncNow` action that runs the engine on demand. Polls lightly so
  * badges stay fresh as offline edits accrue.
  */
+import { isTeachingUser } from '@lib/staffJobs';
 import { useCallback, useEffect, useState } from 'react';
 import useAuthStore from '@store/authStore';
 import { getOfflineDb } from './db';
@@ -23,7 +24,7 @@ export interface SyncState {
 export function useSyncStatus() {
   const user = useAuthStore((s) => s.user);
   const userId = user?.id || null;
-  const isTeacher = user?.role === 'teacher';
+  const isTeacher = isTeachingUser(user as any);
 
   const [state, setState] = useState<SyncState>({
     online: navigator.onLine, pending: 0, failed: 0, lastPulledAt: undefined, syncing: false,

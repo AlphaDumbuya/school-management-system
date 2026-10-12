@@ -130,6 +130,9 @@ router.post('/settings', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
     if ('staff_signin_closes_at' in updates && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(updates.staff_signin_closes_at || ''))) {
       throw new AppError('Staff sign-in closing time must be a time like 18:00', 400, 'VALIDATION_ERROR');
     }
+    if ('attendance_notify_mode' in updates && !['weekly', 'daily', 'off'].includes(String(updates.attendance_notify_mode))) {
+      throw new AppError('attendance_notify_mode must be weekly, daily or off', 400, 'VALIDATION_ERROR');
+    }
     if ('academic_year' in updates && updates.academic_year && !/^\d{4}\/\d{4}$/.test(String(updates.academic_year).trim())) {
       throw new AppError('academic_year must be in the format YYYY/YYYY', 400, 'VALIDATION_ERROR');
     }
@@ -387,7 +390,7 @@ router.get('/subscription/active', authenticate, attachUserContext, async (req: 
     const roleCounts = await db('users').where({ tenant_id: tenantId, status: 'active' })
       .whereIn('role', ['parent', 'accountant', 'admissions_officer']).groupBy('role')
       .select('role').count({ n: '*' }).catch(() => [] as any[]);
-    const dutyCount = async (duty: string) => Number((await db('users').where({ tenant_id: tenantId, status: 'active', role: 'teacher' })
+    const dutyCount = async (duty: string) => Number((await db('users').where({ tenant_id: tenantId, status: 'active' }).whereNot('role', duty)
       .whereRaw("COALESCE(staff_duties, '[]'::jsonb) \\? ?", [duty]).count({ n: '*' }).first().catch(() => null) as any)?.n) || 0;
     const byRole = Object.fromEntries((roleCounts as any[]).map((r) => [r.role, Number(r.n) || 0]));
     const portals = {

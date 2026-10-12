@@ -24,6 +24,7 @@
 
 import QRCode from 'qrcode';
 import { publicAppUrl } from '../utils/publicUrl.js';
+import { TERM_SHEET_CSS, TERM_SHEET_FIT_JS, termSheetRowSizing, termSheetRef, TERM_NAME } from './termSheetLayout.js';
 import {
   AFFECTIVE_TRAITS, PSYCHOMOTOR_SKILLS, SL_TERMS,
 } from './slReportCardService.js';
@@ -106,6 +107,8 @@ interface SchoolInfo {
 }
 
 export interface GradingMethodEntry {
+  /** The school's own grade label (A1, B2, 1, A…). Derived when absent. */
+  grade?: string;
   remark: string;
   min: number;
   max: number;
@@ -266,6 +269,9 @@ export interface ReportDisplayOptions {
   watermark_size?: number;   // px (matches the on-screen preview scale)
   show_student_photo?: boolean;
   photo_frame?: 'none' | 'classic' | 'gold' | 'navy' | 'rounded' | 'circle';
+  /** Uploaded official stamp and principal's signature images (optional). */
+  stamp_url?: string;
+  signature_url?: string;
 }
 
 export async function renderReportCardHtml(
@@ -416,8 +422,8 @@ export async function renderReportCardHtml(
 
   const combRow = (label: string, valueFor: (t: string) => string, yearly: string, cls: string) => `
     <tr class="${cls}"><td class="subj">${label}</td>
-      ${SL_TERMS.map((t) => `<td></td><td></td><td class="mn">${valueFor(t)}</td><td></td>`).join('')}
-      <td class="mn-y">${yearly}</td><td></td></tr>`;
+      ${SL_TERMS.map((t) => `<td></td><td></td><td class="mn" colspan="2" style="white-space:nowrap">${valueFor(t)}</td>`).join('')}
+      <td class="mn-y" colspan="2" style="white-space:nowrap">${yearly}</td></tr>`;
 
   const combRowL = combRow('Comb. Scores', (t) => esc(card.term_summaries[t]?.combined_score ?? ''), esc(ys.combined_score ?? ''), 'sum');
   const pctRowL = combRow('Percentages', (t) => card.term_summaries[t]?.percentage != null ? `${card.term_summaries[t].percentage}%` : '', ys.percentage != null ? `${ys.percentage}%` : '', 'sum');
@@ -579,14 +585,14 @@ export async function renderReportCardHtml(
   .cover-front h1 { font-size: 18px; font-weight: 800; text-transform: uppercase; margin: 4px 0 2px; line-height: 1.15; }
   .cover-front .addr { font-size: 12px; font-weight: 600; color: #4b5563; }
   .cover-front .motto { font-size: 12px; font-style: italic; color: #4b5563; }
-  .cover-front .contact { font-size: 11px; color: #6b7280; margin-top: 2px; }
+  .cover-front .contact { font-size: 12px; color: #6b7280; margin-top: 2px; }
   .cover-front .rc-badge { display: inline-block; background: #111827; color: #fff; font-weight: 700; padding: 4px 14px; font-size: 14px; text-transform: uppercase; margin: 4px 0; }
   .cover-front .lvl { font-size: 13px; font-weight: 700; color: #374151; text-transform: uppercase; }
   /* Framed passport portrait — style varies by .pf-* modifier */
   .cover-front .photo-wrap { position: relative; display: flex; justify-content: center; margin: 6px 0 12px; }
   .cover-front .photo { width: 26mm; height: 34mm; object-fit: cover; display: block; background: #fff; }
-  .cover-front .photo.ph { display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f9fafb; color: #9ca3af; font-size: 9px; font-weight: 700; text-transform: uppercase; }
-  .cover-front .photo-cap { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); background: #111827; color: #fff; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 2px 8px; }
+  .cover-front .photo.ph { display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f9fafb; color: #9ca3af; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .cover-front .photo-cap { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); background: #111827; color: #fff; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 2px 8px; }
   .cover-front .photo-frame { box-shadow: 0 4px 14px rgba(0,0,0,0.18); background: #fff; }
   /* gold: navy gradient + gold inner rule */
   .cover-front .pf-gold .photo-frame { padding: 3px; background: linear-gradient(135deg,#1e3a8a,#3b82f6); }
@@ -613,8 +619,8 @@ export async function renderReportCardHtml(
   .cover-front .prow span { font-weight: 700; color: #4b5563; }
   .cover-front .sigrow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; }
   .cover-front .sigbox { border: 1px dashed #9ca3af; height: 22mm; display: flex; flex-direction: column; justify-content: space-between; padding: 4px; }
-  .cover-front .sigbox span { font-size: 10px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
-  .cover-front .seal { width: 14mm; height: 14mm; border: 2px solid #1e40af; border-radius: 50%; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: 700; color: #1e3a8a; text-transform: uppercase; transform: rotate(-12deg); opacity: .7; }
+  .cover-front .sigbox span { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
+  .cover-front .seal { width: 14mm; height: 14mm; border: 2px solid #1e40af; border-radius: 50%; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: #1e3a8a; text-transform: uppercase; transform: rotate(-12deg); opacity: .7; }
   .cover-front .sig { font-style: italic; font-family: Georgia, serif; font-weight: 700; color: #1e40af; font-size: 14px; }
 
   /* ── Grading system ── */
@@ -654,19 +660,19 @@ export async function renderReportCardHtml(
   .parents { border: 1px solid #6b7280; border-radius: 4px; padding: 6px; margin-top: 4px; }
 
   /* ── Results pages ── */
-  .results { font-size: 11px; line-height: 1.3; }
+  .results { font-size: 13px; line-height: 1.3; }
   .results-left { padding: 5mm; }
   .results-right { padding: 5mm; justify-content: flex-start; }
-  .hdr { display: grid; grid-template-columns: 1fr 1fr 1fr; font-size: 11px; border-bottom: 2px solid #111827; padding-bottom: 4px; margin-bottom: 4px; }
+  .hdr { display: grid; grid-template-columns: 1fr 1fr 1fr; font-size: 13px; border-bottom: 2px solid #111827; padding-bottom: 4px; margin-bottom: 4px; }
   .hdr .c { text-align: center; } .hdr .r { text-align: right; }
   .hdr > div > div { margin: 2px 0; }
-  table.grid { width: 100%; border-collapse: collapse; font-size: 10px; flex: 1; table-layout: fixed; }
-  table.grid th, table.grid td { border: 0.5px solid #374151; padding: 2px; text-align: center; overflow: hidden; }
+  table.grid { width: 100%; border-collapse: collapse; font-size: 12px; flex: 1; table-layout: fixed; }
+  table.grid th, table.grid td { border: 0.5px solid #374151; padding: 1px; text-align: center; overflow: hidden; }
   table.grid thead th { font-weight: 700; }
   .banner th { text-transform: uppercase; }
   .subj-h { text-align: left; width: 30mm; }
   .hh { width: 5mm; }
-  .grp, .sub { font-size: 10px; }
+  .grp, .sub { font-size: 12px; }
   .subj { text-align: left; font-weight: 600; word-break: break-word; white-space: normal; line-height: 1.15; }
   td.mn, th.mn { background: #dbeafe80; }
   td.mn-p, th.mn-p { background: #f3e8ff80; }
@@ -684,24 +690,24 @@ export async function renderReportCardHtml(
   td.fill { background: #f9fafb99; }
 
   /* Footer */
-  .footer { display: grid; grid-template-columns: 7fr 3fr 2fr; gap: 0 10px; border-top: 2px solid #111827; margin-top: 4px; padding-top: 4px; font-size: 10px; }
+  .footer { display: grid; grid-template-columns: 7fr 3fr 2fr; gap: 0 10px; border-top: 2px solid #111827; margin-top: 4px; padding-top: 4px; font-size: 12px; }
   .att-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 8px; }
   .att > div { margin: 2px 0; }
   .dot { border-bottom: 1px dotted #6b7280; height: 14px; margin-top: 4px; }
-  .mini { font-size: 9px; color: #4b5563; }
+  .mini { font-size: 11px; color: #4b5563; }
   .amber { color: #d97706; } .red { color: #dc2626; }
   .guid { margin-top: 4px; border-top: 1px solid #d1d5db; padding-top: 3px; }
   .gtitle { font-style: italic; font-weight: 600; }
   .gline { display: flex; gap: 3px; align-items: baseline; }
   .gval { flex: 1; border-bottom: 1px dotted #6b7280; font-style: italic; padding: 0 4px; }
   .fm, .fr { border-left: 1px solid #d1d5db; padding-left: 8px; }
-  .terms-t { font-weight: 700; text-transform: uppercase; font-size: 9px; padding-top: 4px; }
+  .terms-t { font-weight: 700; text-transform: uppercase; font-size: 11px; padding-top: 4px; }
   .uline { display: inline-block; width: 50px; border-bottom: 1px dotted #6b7280; }
   .uline.sm { width: 36px; }
   .pcom { padding-top: 4px; } .pcom i { font-style: italic; }
-  .promo { padding-top: 4px; font-weight: 700; text-transform: uppercase; font-size: 9px; }
-  .ysum { font-size: 8px; color: #6b7280; }
-  .seekey { font-size: 8px; font-style: italic; color: #9ca3af; margin-top: 3px; }
+  .promo { padding-top: 4px; font-weight: 700; text-transform: uppercase; font-size: 11px; }
+  .ysum { font-size: 10px; color: #6b7280; }
+  .seekey { font-size: 10px; font-style: italic; color: #9ca3af; margin-top: 3px; }
 
   /* ── Back cover (sheet 1 — clean, NO decorative frame; has watermark) ── */
   .cover-back { font-size: 14px; line-height: 1.5; border: none; padding: 10mm; border-radius: 0; position: relative; }
@@ -739,13 +745,13 @@ export async function renderReportCardHtml(
 }
 
 /**
- * renderTermResultSheetHtml — a single portrait A4 "terminal result sheet" for
- * ONE term (Term 1 / Term 2). WAEC/WASSCE-styled, authentic and official:
- * school header, student meta, a clean subjects table (Test1 · Test2 · Mean ·
- * Grade · Remark · Position), a summary block (total, average, class position,
- * attendance, conduct), class-teacher & principal comment lines, grading key,
- * signatures, and the verification QR. Full year uses the folded booklet
- * instead (Term 3 / promotional).
+ * renderTermResultSheetHtml — the single-term result sheet (Term 1 / Term 2):
+ * one fixed A4 portrait page with the school letterhead, the student's photo,
+ * a document reference, the subjects table (tests, average, grade, remark,
+ * subject position), performance and attendance summaries, the class teacher's
+ * and principal's remarks with signatures, the grading key, the official stamp
+ * and a verification QR. The full year uses the folded booklet instead.
+ * Layout lives in termSheetLayout.ts (shared with the web preview).
  */
 export async function renderTermResultSheetHtml(
   card: ReportCardData,
@@ -753,182 +759,165 @@ export async function renderTermResultSheetHtml(
   gradingMethod: GradingMethodEntry[] | undefined,
   term: string,
   _borderStyle?: BorderStyleConfig,
-  _display?: ReportDisplayOptions,
+  display?: ReportDisplayOptions,
 ): Promise<string> {
-  const gm = gradingMethod?.length ? gradingMethod : GRADING_METHOD;
+  const gm: GradingMethodEntry[] = gradingMethod?.length ? gradingMethod : GRADING_METHOD;
   const schoolName = school?.name || 'SCHOOL NAME';
   const schoolAddress = [school?.address, school?.city, school?.state, school?.country].filter(Boolean).join(', ');
+  const contact = [school?.phone, school?.email, school?.website].filter(Boolean).join('  ·  ');
   const shortName = school?.short_name || schoolName.split(' ').map((w) => w[0]).join('').slice(0, 4).toUpperCase();
   const logo = school?.logo_url;
-  const termLabel = TERM_SHORT[term] || term.replace('_', ' ').toUpperCase();
   const s = card.student || {};
   const sm = card.term_summaries?.[term] || {};
+  const showPhoto = display?.show_student_photo !== false;
+  const showWatermark = display?.show_watermark !== false;
+  const stampUrl = typeof display?.stamp_url === 'string' && display.stamp_url ? display.stamp_url : '';
+  const signatureUrl = typeof display?.signature_url === 'string' && display.signature_url ? display.signature_url : '';
 
-  // Grade + remark for a mean score, from the tenant grading method.
+  // Grade + remark for a mean score, from the school's grading scale.
   const gradeFor = (mean: number | null | undefined): { grade: string; remark: string; fail: boolean } => {
     if (mean == null) return { grade: '—', remark: '', fail: false };
-    const g = gm.find((x) => mean >= x.min && mean <= x.max) || gm[gm.length - 1];
-    // Derive a short letter from the remark's ordering (A1..F9-ish) — use position.
-    const idx = gm.indexOf(g);
-    const letter = String.fromCharCode(65 + Math.min(idx, 5)); // A..F
-    return { grade: letter, remark: g.remark, fail: g.isFail || mean < 50 };
+    const idx = Math.max(0, gm.findIndex((x) => mean >= x.min && mean <= x.max));
+    const g = gm.findIndex((x) => mean >= x.min && mean <= x.max) >= 0 ? gm[idx] : gm[gm.length - 1];
+    const grade = g.grade || String.fromCharCode(65 + Math.min(gm.indexOf(g), 5));
+    return { grade, remark: g.remark, fail: g.isFail || mean < 50 };
   };
 
-  // Rows: each subject's Test1/Test2/Mean/Grade/Remark/Position for THIS term.
-  const rows = (card.subjects || []).map((subj: any, i: number) => {
+  const subjects = card.subjects || [];
+  const { rowH, rowFs, remarkH } = termSheetRowSizing(subjects.length);
+  const rows = subjects.map((subj: any, i: number) => {
     const t = subj.terms?.[term] || {};
     const mean = t.mean ?? null;
     const g = gradeFor(mean);
-    const fail = g.fail;
     return `<tr>
-      <td class="idx">${i + 1}</td>
-      <td class="subj">${esc(subj.subject_name)}</td>
+      <td class="n">${i + 1}</td>
+      <td class="l s">${esc(subj.subject_name)}</td>
       <td>${t.test1 ?? '—'}</td>
       <td>${t.test2 ?? '—'}</td>
-      <td class="mean ${fail ? 'fail' : ''}">${mean ?? '—'}</td>
-      <td class="${fail ? 'fail' : ''}">${g.grade}</td>
-      <td class="rem">${esc(g.remark)}</td>
+      <td class="m ${g.fail ? 'fail' : ''}">${mean ?? '—'}</td>
+      <td><span class="gb ${g.fail ? 'fail' : ''}">${esc(g.grade)}</span></td>
+      <td class="l rm">${esc(g.remark)}</td>
       <td>${t.rank ? ordinal(t.rank) : '—'}</td>
     </tr>`;
   }).join('');
 
-  // Verification QR — build a data URL server-side (same as the booklet).
+  // Verification QR (same link as the booklet).
   const verificationBaseUrl = (process.env.REPORT_CARD_VERIFY_URL || publicAppUrl()).replace(/\/+$/, '');
   const verifyUrl = card.verify_url
     ? (card.verify_url.startsWith('http') ? card.verify_url : verificationBaseUrl + card.verify_url)
     : '';
   const qrDataUrl = verifyUrl
-    ? await QRCode.toDataURL(verifyUrl, { width: 200, margin: 1, color: { dark: '#111827', light: '#ffffff' } }).catch(() => '')
+    ? await QRCode.toDataURL(verifyUrl, { width: 240, margin: 0, color: { dark: '#0f2a5c', light: '#ffffff' } }).catch(() => '')
     : '';
 
-  const gradeKey = gm.map((g) =>
-    `<span class="gk ${g.isFail ? 'fail' : ''}">${esc(g.remark)}: ${g.min}–${g.max}</span>`).join('');
+  const ref = termSheetRef(shortName, card.academic_year, term, s.admission_no || '');
+  const issued = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const termName = TERM_NAME[term] || term;
+  const gender = s.gender ? String(s.gender).charAt(0).toUpperCase() + String(s.gender).slice(1).toLowerCase() : '—';
+  const classSize = sm.class_size ?? s.number_in_form ?? null;
+  const pctFail = sm.percentage != null && Number(sm.percentage) < 50;
 
-  const attendance = `On Time <b>${sm.on_time ?? 0}</b> &nbsp;·&nbsp; Late <b>${sm.late ?? 0}</b> &nbsp;·&nbsp; Absent <b>${sm.absent ?? 0}</b>`;
+  const gradeKey = gm.map((g, i) =>
+    `<span class="g ${g.isFail ? 'fail' : ''}"><b>${esc(g.grade || String.fromCharCode(65 + Math.min(i, 5)))}</b> ${g.min}–${g.max} ${esc(g.remark)}</span>`).join('');
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>${esc(s.name || 'Student')} — ${esc(termName)} Result</title>
 <style>
   @page { size: A4 portrait; margin: 0; }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; font-family: 'Times New Roman', Georgia, serif; color: #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .sheet { width: 210mm; min-height: 297mm; padding: 12mm 12mm 10mm; position: relative; }
-  .frame { border: 3px double #1e3a8a; padding: 8mm 8mm 7mm; min-height: 273mm; position: relative; display: flex; flex-direction: column; }
-  .spacer { flex: 1 1 auto; min-height: 6mm; }
-  /* Header */
-  .head { display: flex; align-items: center; gap: 10px; border-bottom: 2px solid #1e3a8a; padding-bottom: 8px; }
-  .head .logo { width: 22mm; height: 22mm; object-fit: contain; }
-  .head .logo-fb { width: 22mm; height: 22mm; border-radius: 50%; background: #1e3a8a; color: #fff; font-weight: 800; font-size: 20px; display: flex; align-items: center; justify-content: center; }
-  .head .ht { flex: 1; text-align: center; }
-  .head h1 { margin: 0; font-size: 22px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: #1e3a8a; }
-  .head .addr { font-size: 11px; color: #374151; margin-top: 2px; }
-  .head .motto { font-size: 11px; font-style: italic; color: #6b7280; }
-  .title { text-align: center; margin: 16px 0 6px; }
-  .title .band { display: inline-block; background: #1e3a8a; color: #fff; font-weight: 700; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; padding: 6px 18px; }
-  .title .yr { font-size: 12px; color: #374151; margin-top: 5px; }
-  /* Student meta */
-  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 12px; margin: 14px 0; padding: 10px 0; border-top: 1px solid #d1d5db; border-bottom: 1px solid #d1d5db; }
-  .meta div { padding: 1px 0; }
-  .meta b { display: inline-block; min-width: 92px; color: #374151; }
-  /* Subjects table */
-  table.res { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
-  table.res th, table.res td { border: 1px solid #374151; padding: 7px 5px; text-align: center; }
-  table.res th { background: #1e3a8a; color: #fff; font-size: 11px; text-transform: uppercase; }
-  table.res td.subj { text-align: left; font-weight: 600; }
-  table.res td.idx { width: 22px; color: #6b7280; }
-  table.res td.mean { font-weight: 700; }
-  table.res td.rem { text-align: left; font-size: 11px; color: #374151; }
-  table.res td.fail, table.res td.mean.fail { color: #b91c1c; font-weight: 700; }
-  table.res tbody tr:nth-child(even) td { background: #f8fafc; }
-  /* Summary */
-  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
-  .summary .box { border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px; text-align: center; }
-  .summary .box .v { font-size: 18px; font-weight: 800; color: #1e3a8a; }
-  .summary .box .l { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; }
-  .att { font-size: 12px; text-align: center; margin: 4px 0 8px; color: #374151; }
-  /* Comments */
-  .comments { font-size: 12px; margin-top: 6px; }
-  .comments .row { display: flex; gap: 6px; align-items: baseline; margin-bottom: 6px; }
-  .comments .row span.lab { font-weight: 700; white-space: nowrap; color: #374151; }
-  .comments .row span.val { flex: 1; border-bottom: 1px dotted #6b7280; font-style: italic; padding: 0 4px; min-height: 15px; }
-  /* Grade key */
-  .key { margin-top: 8px; font-size: 10px; }
-  .key .kt { font-weight: 700; text-transform: uppercase; color: #374151; margin-bottom: 3px; }
-  .key .gk { display: inline-block; border: 1px solid #d1d5db; border-radius: 10px; padding: 1px 8px; margin: 0 4px 4px 0; }
-  .key .gk.fail { color: #b91c1c; border-color: #fca5a5; }
-  /* Footer: signatures + QR */
-  .foot { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 12px; }
-  .sig { text-align: center; font-size: 11px; }
-  .sig .line { border-top: 1px solid #374151; width: 42mm; margin: 0 auto 3px; padding-top: 3px; }
-  .qr { text-align: center; font-size: 9px; color: #6b7280; }
-  .qr img { width: 22mm; height: 22mm; display: block; margin: 0 auto 2px; }
-  .note { text-align: center; font-size: 10px; font-style: italic; color: #6b7280; margin-top: 8px; border-top: 1px solid #e5e7eb; padding-top: 5px; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  ${TERM_SHEET_CSS}
 </style></head>
 <body>
-  <div class="sheet"><div class="frame">
-    <div class="head">
-      ${logo ? `<img class="logo" src="${esc(logo)}" alt=""/>` : `<div class="logo-fb">${esc(shortName)}</div>`}
+<div class="trs" style="--rowh:${rowH};--rowfs:${rowFs};--rmkh:${remarkH}">
+  <div class="topbar"><i></i></div>
+  ${showWatermark ? `<div class="wm">${logo ? `<img src="${esc(logo)}" alt=""/>` : `<span>${esc(shortName)}</span>`}</div>` : ''}
+  <div class="c">
+    <header class="head">
+      <div>${logo ? `<img class="logo" src="${esc(logo)}" alt=""/>` : `<div class="logo-fb">${esc(shortName)}</div>`}</div>
       <div class="ht">
         <h1>${esc(schoolName)}</h1>
-        ${schoolAddress ? `<div class="addr">${esc(schoolAddress)}</div>` : ''}
-        ${school?.motto ? `<div class="motto">Motto: ${esc(school.motto)}</div>` : ''}
+        ${schoolAddress ? `<div class="sub">${esc(schoolAddress)}</div>` : ''}
+        ${contact ? `<div class="sub">${esc(contact)}</div>` : ''}
+        ${school?.motto ? `<div class="motto">“${esc(school.motto)}”</div>` : ''}
       </div>
-      ${logo ? `<div style="width:22mm"></div>` : ''}
+      <div>${showPhoto ? `<div class="photo">${s.photo_url ? `<img src="${esc(s.photo_url)}" alt=""/>` : '<div class="ph">Student<br/>photo</div>'}</div>` : ''}</div>
+    </header>
+    <div class="rule"></div>
+
+    <div class="titlebar">
+      <div>
+        <div class="doc">Terminal Report</div>
+        <div class="term">${esc(termName)} &nbsp;·&nbsp; ${esc(card.academic_year)} Academic Year</div>
+      </div>
+      <div class="ref">Ref: <b>${esc(ref)}</b><br/>Issued: ${esc(issued)}</div>
     </div>
 
-    <div class="title">
-      <span class="band">${esc(termLabel)} Terminal Result</span>
-      <div class="yr">Academic Year ${esc(card.academic_year)}</div>
-    </div>
+    <section class="info">
+      <div><span class="lab">Student name</span><span class="val">${esc(s.name || '—')}</span></div>
+      <div><span class="lab">Admission no.</span><span class="val">${esc(s.admission_no || '—')}</span></div>
+      <div><span class="lab">Class</span><span class="val">${esc(s.class_name || '—')}</span></div>
+      <div><span class="lab">No. in class</span><span class="val">${esc(classSize ?? '—')}</span></div>
+      <div><span class="lab">Class teacher</span><span class="val">${esc(s.form_teacher_name || '—')}</span></div>
+      <div><span class="lab">Gender</span><span class="val">${esc(gender)}</span></div>
+      <div><span class="lab">Age</span><span class="val">${s.pupil_age != null ? `${esc(s.pupil_age)} yrs` : '—'}</span></div>
+      <div><span class="lab">Conduct</span><span class="val">${esc(sm.conduct || '—')}</span></div>
+    </section>
 
-    <div class="meta">
-      <div><b>Name:</b> ${esc(s.name)}</div>
-      <div><b>Admission No:</b> ${esc(s.admission_no)}</div>
-      <div><b>Class / Form:</b> ${esc(s.class_name || '—')}</div>
-      <div><b>No. in Class:</b> ${esc(s.number_in_form ?? sm.class_size ?? '—')}</div>
-      <div><b>Class Teacher:</b> ${esc(s.form_teacher_name || '—')}</div>
-      <div><b>Term Position:</b> ${sm.position ? `${ordinal(sm.position)}${sm.class_size ? ` of ${sm.class_size}` : ''}` : '—'}</div>
-    </div>
-
+    <div class="sec">Academic performance</div>
     <table class="res">
-      <thead>
-        <tr>
-          <th>#</th><th style="text-align:left">Subject</th><th>Test 1</th><th>Test 2</th><th>Mean</th><th>Grade</th><th style="text-align:left">Remark</th><th>Pos.</th>
-        </tr>
-      </thead>
-      <tbody>${rows || '<tr><td colspan="8" style="padding:12px;color:#9ca3af">No subject scores recorded for this term.</td></tr>'}</tbody>
+      <thead><tr>
+        <th>S/N</th><th class="l">Subject</th><th>1st Test</th><th>2nd Test</th><th>Average</th><th>Grade</th><th class="l">Remark</th><th>Position</th>
+      </tr></thead>
+      <tbody>${rows || '<tr><td colspan="8" class="empty">No subject scores recorded for this term.</td></tr>'}</tbody>
     </table>
 
-    <div class="summary">
-      <div class="box"><div class="v">${sm.combined_score ?? '—'}</div><div class="l">Total Score</div></div>
-      <div class="box"><div class="v">${sm.percentage != null ? `${sm.percentage}%` : '—'}</div><div class="l">Average</div></div>
-      <div class="box"><div class="v">${sm.position ? ordinal(sm.position) : '—'}</div><div class="l">Position</div></div>
-      <div class="box"><div class="v">${esc(sm.conduct || '—')}</div><div class="l">Conduct</div></div>
+    <div class="panels">
+      <div class="panel">
+        <div class="ptitle">Performance summary</div>
+        <div class="stats">
+          <div class="stat"><div class="v">${sm.combined_score ?? '—'}</div><div class="k">Total score</div></div>
+          <div class="stat"><div class="v ${pctFail ? 'red' : ''}">${sm.percentage != null ? `${sm.percentage}%` : '—'}</div><div class="k">Average</div></div>
+          <div class="stat"><div class="v">${sm.position ? ordinal(sm.position) : '—'}${sm.position && classSize ? ` <small>of ${esc(classSize)}</small>` : ''}</div><div class="k">Class position</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ptitle">Attendance</div>
+        <div class="stats">
+          <div class="stat"><div class="v">${sm.on_time ?? 0}</div><div class="k">On time</div></div>
+          <div class="stat"><div class="v">${sm.late ?? 0}</div><div class="k">Late</div></div>
+          <div class="stat"><div class="v ${Number(sm.absent) > 0 ? 'red' : ''}">${sm.absent ?? 0}</div><div class="k">Absent</div></div>
+        </div>
+      </div>
     </div>
-    <div class="att">Attendance — ${attendance}</div>
 
-    <div class="comments">
-      <div class="row"><span class="lab">Class Teacher's Remark:</span><span class="val">${esc(sm.teacher_comment || '')}</span></div>
-      <div class="row"><span class="lab">Principal's Remark:</span><span class="val">${esc(card.meta?.principal_comment || '')}</span></div>
+    <div class="remarks">
+      <div class="rmk">
+        <div class="ptitle">Class teacher's remark</div>
+        <p>${esc(sm.teacher_comment || '')}</p>
+        <div class="by"><span>${s.form_teacher_name ? `<b>${esc(s.form_teacher_name)}</b> · ` : ''}Class Teacher</span><span class="sg"><span class="sign"></span><span class="cap">Signature &amp; date</span></span></div>
+      </div>
+      <div class="rmk">
+        <div class="ptitle">Principal's remark</div>
+        <p>${esc(card.meta?.principal_comment || '')}</p>
+        <div class="by"><span>${school?.principal_name ? `<b>${esc(school.principal_name)}</b> · ` : ''}Principal</span><span class="sg"><span class="sign">${signatureUrl ? `<img src="${esc(signatureUrl)}" alt="Principal's signature"/>` : ''}</span><span class="cap">Signature &amp; date</span></span></div>
+      </div>
     </div>
 
-    <div class="key">
-      <div class="kt">Grading Key</div>
-      ${gradeKey}
-    </div>
+    <div class="key"><span class="kt">Grading key</span>${gradeKey}</div>
 
     <div class="spacer"></div>
 
-    <div class="foot">
-      <div class="sig"><div class="line"></div>Class Teacher's Signature</div>
-      <div class="qr">
-        ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR"/>` : ''}
-        Scan to verify
+    <footer class="foot">
+      <div class="verify">
+        ${qrDataUrl ? `<img src="${qrDataUrl}" alt="Verification QR code"/>` : ''}
+        <div class="t"><b>Verify this result</b>Scan the code with a phone camera to confirm this result is genuine.<br/>Reference ${esc(ref)}</div>
       </div>
-      <div class="sig"><div class="line">${esc(school?.principal_name || '')}</div>Principal's Signature</div>
-    </div>
-
-    <div class="note">This is an official single-term result. The complete report booklet is issued at the end of the academic year.</div>
-  </div></div>
+      <div class="stampbox"><div class="stamp ${stampUrl ? 'has' : ''}">${stampUrl ? `<img src="${esc(stampUrl)}" alt="Official stamp"/>` : 'Official stamp'}</div></div>
+    </footer>
+    <div class="fine">Official result of ${esc(schoolName)} for the ${esc(termName.toLowerCase())}. Not valid without the school stamp and the principal's signature. The full report booklet is issued at the end of the academic year.</div>
+  </div>
+</div>
+<script>${TERM_SHEET_FIT_JS}</script>
 </body></html>`;
 }
 

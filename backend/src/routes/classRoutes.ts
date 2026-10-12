@@ -6,6 +6,7 @@ import { logger } from '@utils/logger';
 import { UserRole } from '../types/auth';
 import { normalizeAcademicYear } from '../utils/academicYear.js';
 import { isFinanceLookup } from '../utils/financeLookup.js';
+import { teachesFor } from '../utils/staffDuties.js';
 
 const router = Router();
 router.use(authenticate);
@@ -49,15 +50,26 @@ async function classInTenant(classId: string, tenantId: string): Promise<boolean
 }
 
 /** Validate that a class_teacher_id (if provided) is a teacher in this tenant. */
-async function assertTeacherInTenant(teacherId: string | null | undefined, tenantId: string): Promise<void> {
+async function assertTeacherInTenant(teacherId: string | null | undefined, tenantId: string, opts: { unchangedFrom?: string | null } = {}): Promise<void> {
   if (!teacherId) return;
   const t = await db('teachers')
     .join('users', 'teachers.user_id', 'users.id')
     .where('teachers.id', teacherId)
     .where('users.tenant_id', tenantId)
-    .first()
+    .first('teachers.id', 'users.role as user_role', 'users.staff_duties', 'users.first_name', 'users.last_name')
     .catch(() => null);
   if (!t) throw new AppError('Selected class teacher does not belong to this school', 400, 'INVALID_TEACHER');
+  // A class can only be led by someone with a teaching job. An Accountant or
+  // Admissions Officer needs "Teaching" added to their jobs first (Staff page),
+  // otherwise they are named class teacher but cannot open the class data.
+  // (Skipped when the class keeps the teacher it already has.)
+  if (String(opts.unchangedFrom || "") !== String(teacherId) && !teachesFor(t.user_role, t.staff_duties)) {
+    throw new AppError(
+      `${[t.first_name, t.last_name].filter(Boolean).join(' ') || 'This staff member'} does not have a teaching job. Add "Teaching" to their jobs on the Staff page first.`,
+      400,
+      'NOT_A_TEACHER',
+    );
+  }
 }
 
 /** Validate that a next_class_id (if provided) is a class in this tenant. */
@@ -559,7 +571,7 @@ router.put('/:classId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUP
     if (await isPastYearClass(classData.academic_session_id)) throw PAST_YEAR_ERROR();
 
     // Cross-tenant reference guards on update too.
-    await assertTeacherInTenant(class_teacher_id, tenantId);
+    await assertTeacherInTenant(class_teacher_id, tenantId, { unchangedFrom: classData.class_teacher_id });
     await assertNextClassInTenant(next_class_id, tenantId);
     // A class can't promote into itself (would loop forever at year-end).
     if (next_class_id && String(next_class_id) === String(classId)) {

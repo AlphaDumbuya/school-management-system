@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { SubscriptionService } from '../services/subscriptionService';
 import { EntitlementService, ROLE_PORTAL, portalAllowed, assertPortalAllowed } from '../services/entitlementService';
-import { dutyForPath, parseDuties } from '../utils/staffDuties';
+import { dutyForPath, effectiveDuties } from '../utils/staffDuties';
 import { FEATURES } from '../services/planCatalogService';
 import { JWTService } from '../services/jwtService';
 import { db } from '../utils/database';
@@ -153,7 +153,8 @@ export const planFeatureGate = async (req: Request, _res: Response, next: NextFu
   // Who needs a DB look-up: users of plan-gated portals (every request), a
   // teacher on a staff-duty module, gated features, and core-module writes.
   const tokenRole = String(payload?.role || '');
-  const dutyPath = tokenRole === 'teacher' ? dutyForPath(url, ['accountant', 'admissions_officer'] as any) : null;
+  const dutyPath = ['teacher', 'accountant', 'admissions_officer'].includes(tokenRole)
+    ? dutyForPath(url, ['accountant', 'admissions_officer'] as any) : null;
   const portalRole = !!ROLE_PORTAL[tokenRole];
   if (!portalRole && !dutyPath && !featureKey && (!isWrite || isLapseExempt(url))) return next();
   try {
@@ -164,11 +165,11 @@ export const planFeatureGate = async (req: Request, _res: Response, next: NextFu
     if (ROLE_PORTAL[user.role] && !url.startsWith('/api/v1/auth')) {
       await assertPortalAllowed(user.tenant_id, user.role);
     }
-    // A teacher's extra duty works only when the plan includes that portal.
-    if (user.role === 'teacher' && dutyPath) {
-      const duties = parseDuties(user.staff_duties);
+    // An extra Bursar / Admissions job works only when the plan includes that portal.
+    if (dutyPath) {
+      const duties = effectiveDuties(user.role, user.staff_duties);
       const duty = dutyForPath(url, duties);
-      if (duty && !(await portalAllowed(user.tenant_id, duty))) {
+      if ((duty === 'accountant' || duty === 'admissions_officer') && !(await portalAllowed(user.tenant_id, duty))) {
         // Different code from PORTAL_NOT_IN_PLAN: the teacher keeps their own
         // portal; only the duty is unavailable.
         throw new AppError(

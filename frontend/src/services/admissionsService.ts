@@ -139,6 +139,8 @@ export interface AdmissionsOverview {
   enrollmentRate: number;
   upcomingInterviews: { id: string; applicationNumber: string; studentName: string; at: string; location?: string | null }[];
   byClass: { class_name: string; applications: number; enrolled: number; open: number }[];
+  /** Applications received per month (YYYY-MM), online vs office, zero-filled. */
+  byMonth?: { month: string; total: number; online: number; office: number }[];
   byStatus: Record<AdmissionStatus, number>;
   applications: {
     id: string;

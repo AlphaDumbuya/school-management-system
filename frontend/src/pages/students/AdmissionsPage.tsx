@@ -15,7 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   BookOpen, Calendar, CalendarClock, ClipboardCheck, Copy, ExternalLink, Globe, GraduationCap,
-  LayoutGrid, Link as LinkIcon, List, Phone, Share2, User, Users, Inbox,
+  LayoutGrid, Link as LinkIcon, List, Phone, Share2, User, Users, Inbox, BarChart3,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -31,8 +31,9 @@ import { useAcademicYears } from '@hooks/useAcademicYears';
 import { Button } from '@components/ui/button';
 import { cardTint } from '@lib/cardTint';
 import { showToast } from '@utils/toast';
-import { admissionsService, type AdmissionRecord, type AdmissionStatus, type EnrolResult } from '@services/admissionsService';
+import { admissionsService, type AdmissionRecord, type AdmissionStatus, type EnrolResult, type AdmissionsOverview } from '@services/admissionsService';
 import { AdmissionFormModal } from './components/AdmissionFormModal';
+import { AdmissionsCharts } from './components/AdmissionsCharts';
 import { ApplicationDetailModal, EnrolCredentials, EnrolDialog, StatusPill, ADM_LABEL } from './components/ApplicationDetailModal';
 
 const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
@@ -105,6 +106,15 @@ export const AdmissionsPage: React.FC = () => {
     queryFn: async () => { const r: any = await admissionsService.listApplications(filters); if (r?.success === false) throw new Error(r.error || 'Could not load applications'); return r; },
     enabled: pickedYear !== null || !!activeYear,
     staleTime: 30_000,
+  });
+  // Charts for the chosen intake year (server overview; not narrowed by search/class/source).
+  const [showCharts, setShowCharts] = useState<boolean>(() => { try { return localStorage.getItem('wiskul.admissions.charts') !== '0'; } catch { return true; } });
+  const toggleCharts = () => setShowCharts((v) => { const n = !v; try { localStorage.setItem('wiskul.admissions.charts', n ? '1' : '0'); } catch { /* ignore */ } return n; });
+  const overviewQ = useQuery({
+    queryKey: ['admissions-overview', year || 'all'],
+    queryFn: async () => { const r: any = await admissionsService.getOverview(year || 'all'); if (r?.success === false) throw new Error(r.error || 'Could not load the charts'); return r.data as AdmissionsOverview; },
+    enabled: showCharts && (pickedYear !== null || !!activeYear),
+    staleTime: 60_000,
   });
   const applications: AdmissionRecord[] = data?.data ?? [];
   const total = Number(data?.pagination?.total ?? 0);
@@ -239,6 +249,21 @@ export const AdmissionsPage: React.FC = () => {
               <div className="text-[11px] text-gray-500">{k.hint}</div>
             </button>
           ))}
+        </div>
+
+        {/* Charts (collapsible, remembered) */}
+        <div className="mb-5">
+          <button type="button" onClick={toggleCharts} aria-expanded={showCharts}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:border-blue-300">
+            <BarChart3 size={14} /> {showCharts ? 'Hide charts' : 'Show charts'}
+          </button>
+          {showCharts && (
+            <div className="mt-3">
+              {overviewQ.error
+                ? <p role="alert" className="text-sm text-red-600">{(overviewQ.error as Error).message} <button type="button" className="font-bold underline" onClick={() => overviewQ.refetch()}>Retry</button></p>
+                : <AdmissionsCharts data={overviewQ.data} loading={overviewQ.isLoading} year={year || 'all years'} />}
+            </div>
+          )}
         </div>
 
         {/* Stage chips */}

@@ -433,6 +433,7 @@ router.get('/:studentId/pdf', async (req: Request, res: Response, next: NextFunc
     // Fetch tenant's configured grading scale
     const gradingScale = await getTenantGradingScale(tenantId);
     const gradingMethod = gradingScale.grades.map((g) => ({
+      grade: g.grade,
       remark: g.description || g.grade,
       min: g.min_score,
       max: g.max_score,

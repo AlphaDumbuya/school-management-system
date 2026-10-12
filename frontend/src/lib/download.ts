@@ -43,19 +43,16 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 /**
- * Open a saved file in the OS default viewer (native only). Uses the
- * file-opener plugin, which handles Android's FileProvider so a content URI is
- * exposed safely. Silent on failure — the file is already saved regardless.
+ * Confirm a finished native download. The file is already saved, so this must
+ * never throw (a failure here must not trigger the Share-sheet fallback).
  */
-async function openSavedFile(uri: string | undefined, filename: string): Promise<void> {
-  if (!uri) return;
+async function announceSaved(uri: string | undefined, filename: string): Promise<void> {
+  let notified = false;
   try {
-    const { FileOpener } = await import('@capacitor-community/file-opener');
-    await FileOpener.open({ filePath: uri, contentType: guessMime(filename) });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('openSavedFile failed (file still saved)', err);
-  }
+    const { notifyDownloadComplete } = await import('./nativeNotifications');
+    notified = await notifyDownloadComplete({ filename, uri, mime: guessMime(filename), folder: 'Documents' });
+  } catch { /* fall back to the in-app message */ }
+  if (!notified) await toast(`Saved to Documents: ${filename}`);
 }
 
 /** Best-effort MIME → file behaviour. */
@@ -98,9 +95,11 @@ async function toast(message: string, kind: 'success' | 'error' = 'success') {
  * Save a generated Blob as a file.
  *  - Web: triggers a normal browser download.
  *  - Native: writes the file DIRECTLY into the device's Documents folder (a
- *    user-visible location, browsable via Files) and shows a confirmation toast.
- *    No Share sheet — the file is saved straight to the device. If the direct
- *    write fails, it falls back to the Share sheet so the action never dies.
+ *    user-visible location, browsable via Files) and posts ONE phone
+ *    notification, "Download complete", that opens the file when tapped. No
+ *    viewer or chooser pops up by itself. If notifications are unavailable a
+ *    single in-app message is shown instead. If the direct write fails, it falls
+ *    back to the Share sheet so the action never dies.
  */
 export async function saveBlob(blob: Blob, filename: string): Promise<void> {
   if (!isAppMode()) {
@@ -118,11 +117,11 @@ export async function saveBlob(blob: Blob, filename: string): Promise<void> {
       directory: Directory.Documents,
       recursive: true,
     });
-    await toast(`Saved to Documents: ${filename}`);
-    // Then try to OPEN it in the device's default viewer (PDF/Excel/etc.) so the
-    // user sees their download immediately. Best-effort — saving already
-    // succeeded, so a failed open is non-fatal.
-    await openSavedFile(write.uri, filename);
+    // One confirmation only: a phone notification ("Download complete", tap to
+    // open). No viewer is forced open and no second pop-up appears. If the phone
+    // can't show notifications (permission refused / older APK), a single
+    // in-app message is shown instead so the user is never left guessing.
+    await announceSaved(write.uri, filename);
   } catch (err) {
     // Fallback 1: write to app storage + open the Share sheet so the user can
     // still get the file (some devices restrict Documents writes).
