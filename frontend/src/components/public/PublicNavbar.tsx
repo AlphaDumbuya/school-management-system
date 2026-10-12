@@ -77,13 +77,6 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
     }
   };
 
-  /** "Live Demo": the demo section lives on the home page. */
-  const goDemo = () => {
-    setOpen(false);
-    const scroll = () => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    if (location.pathname === '/') scroll();
-    else { navigate('/'); setTimeout(scroll, 350); }
-  };
   const isCtaSignIn = ctaText.toLowerCase().includes('sign in') || ctaText.toLowerCase().includes('login');
 
   return (
@@ -205,20 +198,6 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
                 </Link>
               );
             })}
-            <button
-              type="button"
-              onClick={goDemo}
-              style={{
-                display:'inline-flex', alignItems:'center', gap:'0.4rem',
-                padding:'0.4rem 0.95rem', borderRadius:'999px', cursor:'pointer',
-                fontSize:'0.85rem', fontWeight:700, whiteSpace:'nowrap',
-                color:'#92400e', background:'rgba(245,158,11,0.14)',
-                border:'1px solid rgba(245,158,11,0.45)',
-              }}
-            >
-              <span aria-hidden="true" style={{ width:'7px', height:'7px', borderRadius:'50%', background:'#f59e0b' }} />
-              Live Demo
-            </button>
           </div>
 
           {/* Desktop actions */}
@@ -335,20 +314,6 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
               );
             })}
 
-            <button
-              type="button"
-              onClick={goDemo}
-              style={{
-                display:'flex', alignItems:'center', gap:'0.5rem', width:'100%',
-                padding:'0.75rem 0.9rem', borderRadius:'9px', marginBottom:'2px', cursor:'pointer',
-                fontSize:'0.95rem', fontWeight:700, textAlign:'left',
-                color:'#92400e', background:'rgba(245,158,11,0.12)',
-                border:'none', borderLeft:'3px solid #f59e0b',
-              }}
-            >
-              <span aria-hidden="true" style={{ width:'7px', height:'7px', borderRadius:'50%', background:'#f59e0b' }} />
-              Live Demo
-            </button>
             {/* Divider */}
             <div style={{ margin:'0.75rem 0', height:'1px', background:'rgba(15,23,42,0.08)' }}/>
 
