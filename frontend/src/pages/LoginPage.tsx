@@ -57,6 +57,8 @@ export const LoginPage: React.FC = () => {
   const mfaToken = useAuthStore((s) => s.mfaToken);
   const loginErrorCode = useAuthStore((s) => s.loginErrorCode);
   const loginErrorContact = useAuthStore((s) => s.loginErrorContact);
+  // Why the school is blocked, from the server (the exact reason only reaches the school owner).
+  const loginErrorSuspension = useAuthStore((s) => s.loginErrorSuspension);
   // Passkey support detection.
   //
   // Passkeys are a WEB/PWA-only feature here. They are intentionally NOT offered
@@ -379,16 +381,24 @@ export const LoginPage: React.FC = () => {
                     {(suspendedNotice || isOwnerSuspension) ? (
                       // Account OWNER (or generic redirect): show resolution steps + support contacts.
                       <div className="space-y-2">
-                        <p className="text-sm font-bold">Your school account is suspended or inactive</p>
+                        <p className="text-sm font-bold">{loginErrorSuspension?.headline || 'Your school account is suspended or inactive'}</p>
+                        {loginErrorSuspension?.reason ? (
+                          <div className="rounded-lg bg-black/20 border border-white/15 px-3 py-2.5">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-red-100/70">
+                              Reason{loginErrorSuspension.suspendedAt ? ` · suspended ${new Date(loginErrorSuspension.suspendedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                            </p>
+                            <p className="text-sm font-semibold mt-0.5">{loginErrorSuspension.reason}</p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-red-100/90 leading-relaxed">
+                            Access has been paused by WiSkul. This is usually due to an overdue
+                            subscription or a pending review.
+                          </p>
+                        )}
                         <p className="text-xs text-red-100/90 leading-relaxed">
-                          Access has been paused by WiSkul. This is usually due to an overdue
-                          subscription or a pending review. To restore access:
+                          {loginErrorSuspension?.nextStep || 'To restore access, check your email for the secure link we sent the account owner, or contact WiSkul support below with your school name.'}
                         </p>
-                        <ul className="text-xs text-red-100/90 list-disc pl-4 space-y-1">
-                          <li>Check your email — we sent the account owner a secure link to resolve this (pay to restore, or request reactivation).</li>
-                          <li>Or contact WiSkul support below with your school name.</li>
-                          <li>Once resolved, sign in again — access is restored right away.</li>
-                        </ul>
+                        <p className="text-xs text-red-100/80">Once resolved, sign in again. Access returns right away.</p>
                         <div className="flex flex-wrap gap-2 pt-1">
                           <a
                             href={`mailto:${PLATFORM_SUPPORT.email}?subject=Account%20suspended%20-%20restore%20access`}
@@ -407,11 +417,12 @@ export const LoginPage: React.FC = () => {
                     ) : (
                       // Regular user: can't resolve it — point them to their school admin.
                       <div className="space-y-2">
-                        <p className="text-sm font-bold">Your school account is currently suspended</p>
+                        <p className="text-sm font-bold">{loginErrorSuspension?.headline || 'Your school account is currently suspended'}</p>
                         <p className="text-xs text-red-100/90 leading-relaxed">
-                          Access to your school portal has been paused. You can't restore this
-                          yourself — please contact your school administrator, who received an email
-                          with a link to resolve it. Your data is safe and nothing has been lost.
+                          {loginErrorSuspension?.summary ? `${loginErrorSuspension.summary} ` : ''}
+                          Access to your school portal is paused. You can't restore this
+                          yourself, so please contact your school administrator, who has been
+                          told how to resolve it. Your data is safe and nothing has been lost.
                         </p>
                         <p className="text-xs text-red-100/90 leading-relaxed">
                           Still need help? Reach WiSkul support:

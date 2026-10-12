@@ -239,7 +239,7 @@ export const PlatformTenantsPage: React.FC = () => {
     try {
       const res = await platformService.activateTenant(tenant.id);
       if (res.success) {
-        showToast.success(`Tenant "${tenant.name}" has been activated.`);
+        showToast.success(res.message || `Tenant "${tenant.name}" has been activated.`);
         fetchData();
       }
     } catch (err: any) {
@@ -293,7 +293,7 @@ export const PlatformTenantsPage: React.FC = () => {
     try {
       const res = await platformService.suspendTenant(selectedTenant.id, suspensionReason, suspensionCategory, override);
       if (res.success) {
-        showToast.success(`Tenant "${selectedTenant.name}" has been suspended.`);
+        showToast.success(res.message || `Tenant "${selectedTenant.name}" has been suspended.`);
         setIsSuspendOpen(false);
         onCategoryChange('payment');
         setSelectedTenant(null);

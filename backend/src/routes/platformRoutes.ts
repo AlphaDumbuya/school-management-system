@@ -47,6 +47,61 @@ function notify(promise: Promise<any>, context: string) {
   promise.catch((err) => logger.warn(`[platform email] ${context} failed: ${err?.message || err}`));
 }
 
+/**
+ * Everyone who should hear about a change to a school's account: the school's
+ * contact email, its school-profile email and its active principals. De-duplicated.
+ */
+async function noticeRecipients(tenantId: string): Promise<string[]> {
+  const found: string[] = [];
+  const t = await db('tenants').where({ id: tenantId }).first('contact_email').catch(() => null);
+  if (t?.contact_email) found.push(t.contact_email);
+  const school = await db('schools').where({ tenant_id: tenantId }).first('email').catch(() => null);
+  if (school?.email) found.push(school.email);
+  const principals = await db('users').where({ tenant_id: tenantId, role: 'principal', status: 'active' }).pluck('email').catch(() => [] as string[]);
+  found.push(...principals);
+  const seen = new Set<string>();
+  return found.map((e) => String(e || '').trim()).filter((e) => {
+    const k = e.toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/**
+ * Send a school-status email to all recipients and WAIT for the outcome (up to
+ * 15 s). On serverless the function is frozen once the response is sent, so a
+ * fire-and-forget email is often never delivered. Returns a sentence the super
+ * admin sees, saying exactly who was emailed (or why nobody was).
+ */
+async function sendStatusNotice(
+  tenantId: string,
+  context: string,
+  build: (to: string) => Promise<{ status?: string } | undefined>,
+): Promise<{ sentTo: string[]; text: string }> {
+  const recipients = await noticeRecipients(tenantId);
+  if (!recipients.length) {
+    logger.warn(`[platform email] ${context}: no email address on file for tenant ${tenantId}`);
+    return { sentTo: [], text: 'No contact email is on file for this school, so no notice was sent.' };
+  }
+  const work = Promise.allSettled(recipients.map((to) => build(to)));
+  const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 15_000));
+  const outcome = await Promise.race([work, timeout]);
+  if (outcome === 'timeout') {
+    logger.warn(`[platform email] ${context}: still sending after 15s for tenant ${tenantId}`);
+    return { sentTo: [], text: 'The notice email is taking longer than expected and may arrive shortly.' };
+  }
+  const sentTo = recipients.filter((_, i) => {
+    const r = outcome[i];
+    return r.status === 'fulfilled' && (r.value as any)?.status === 'sent';
+  });
+  outcome.forEach((r, i) => {
+    if (r.status === 'rejected') logger.warn(`[platform email] ${context} to ${recipients[i]} failed: ${(r.reason as any)?.message || r.reason}`);
+  });
+  if (sentTo.length) return { sentTo, text: `Notice emailed to ${sentTo.join(', ')}.` };
+  return { sentTo: [], text: 'The notice email could not be sent. Check the email settings, or tell the school directly.' };
+}
+
 const PLAN_LABELS: Record<string, string> = {
   freetong: 'Freetong (Basic Trial)',
   combra: 'Combra (Standard)',
@@ -235,9 +290,8 @@ router.post('/tenants/:id/activate', authenticate, authorize(UserRole.SUPER_ADMI
     const { id } = req.params;
     const tenant = await TenantService.activateTenant(id, req.auth!.userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.activate' });
-    const to = await tenantContactEmail(id);
-    if (to) notify(emailService.sendTenantStatusEmail(to, { schoolName: tenant.name, status: 'activated' }), 'tenant activate');
-    res.json({ success: true, data: tenant, message: 'Tenant activated successfully' });
+    const notice = await sendStatusNotice(id, 'tenant activate', (to) => emailService.sendTenantStatusEmail(to, { schoolName: tenant.name, status: 'activated' }));
+    res.json({ success: true, data: tenant, notice: { emailed: notice.sentTo }, message: `Tenant activated successfully. ${notice.text}` });
   } catch (error) {
     next(error);
   }
@@ -259,9 +313,8 @@ router.post('/tenants/:id/suspend', authenticate, authorize(UserRole.SUPER_ADMIN
 
     const tenant = await TenantService.suspendTenant(id, reason, req.auth!.userId, category, !!override);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.suspend', changes: { reason, category, override: !!override } });
-    const to = await tenantContactEmail(id);
-    if (to) notify(emailService.sendTenantStatusEmail(to, { schoolName: tenant.name, status: 'suspended', reason, category, tenantId: id }), 'tenant suspend');
-    res.json({ success: true, data: tenant, message: 'Tenant suspended successfully' });
+    const notice = await sendStatusNotice(id, 'tenant suspend', (to) => emailService.sendTenantStatusEmail(to, { schoolName: tenant.name, status: 'suspended', reason, category, tenantId: id }));
+    res.json({ success: true, data: tenant, notice: { emailed: notice.sentTo }, message: `Tenant suspended successfully. ${notice.text}` });
   } catch (error) {
     next(error);
   }
@@ -387,9 +440,8 @@ router.post('/tenants/:id/restore', authenticate, authorize(UserRole.SUPER_ADMIN
     const { id } = req.params;
     const tenant = await TenantService.restoreTenant(id, req.auth!.userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'tenant.restore' });
-    const to = await tenantContactEmail(id);
-    if (to) notify(emailService.sendTenantStatusEmail(to, { schoolName: tenant.name, status: 'restored' }), 'tenant restore');
-    res.json({ success: true, data: tenant, message: 'Tenant restored successfully' });
+    const notice = await sendStatusNotice(id, 'tenant restore', (to) => emailService.sendTenantStatusEmail(to, { schoolName: tenant.name, status: 'restored' }));
+    res.json({ success: true, data: tenant, notice: { emailed: notice.sentTo }, message: `Tenant restored successfully. ${notice.text}` });
   } catch (error) {
     next(error);
   }

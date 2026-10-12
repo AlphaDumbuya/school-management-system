@@ -174,6 +174,7 @@ router.post('/login', loginLimiter, rateLimitLogin, async (req: Request, res: Re
             path: req.path,
             method: req.method,
             schoolContact: contact, // { schoolName, email, phone } | null
+            suspension: (error as any)?.suspension || undefined, // why the school is blocked (see utils/tenantBlock)
           },
         });
       } catch { /* fall through to default handler */ }

@@ -370,16 +370,16 @@ export const TenantDetailPage: React.FC = () => {
     try {
       if (confirm === 'suspend') {
         const res = await platformService.suspendTenant(tenantId, suspendReason || 'Suspended by platform admin', suspendCategory, suspendOverride);
-        if (res.success) showToast.success('Tenant suspended');
+        if (res.success) showToast.success(res.message || 'Tenant suspended');
       } else if (confirm === 'activate') {
         const res = await platformService.activateTenant(tenantId);
-        if (res.success) showToast.success('Tenant activated');
+        if (res.success) showToast.success(res.message || 'Tenant activated');
       } else if (confirm === 'delete') {
         const res = await platformService.deleteTenant(tenantId);
         if (res.success) { showToast.success('Tenant deleted'); navigate('/platform/tenants'); return; }
       } else if (confirm === 'restore') {
         const res = await platformService.restoreTenant(tenantId);
-        if (res.success) showToast.success('Tenant restored');
+        if (res.success) showToast.success(res.message || 'Tenant restored');
       }
       load();
     } catch (e: any) {

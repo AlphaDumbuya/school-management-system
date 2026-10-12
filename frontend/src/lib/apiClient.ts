@@ -352,6 +352,17 @@ interface ErrorResponse {
   code?: string;
   /** School's own support contact, attached on access-denied login errors. */
   schoolContact?: { schoolName: string | null; email: string | null; phone: string | null } | null;
+  /** Why the school is blocked (reason shown to the owner only), on suspended-school login errors. */
+  suspension?: SuspensionDetails | null;
+}
+export interface SuspensionDetails {
+  status: string;
+  category: 'payment' | 'policy' | 'abuse' | 'review' | 'security' | 'other';
+  headline: string;
+  summary: string;
+  reason?: string;
+  nextStep?: string;
+  suspendedAt?: string;
 }
 
 const handleError = (error: unknown): ErrorResponse => {
@@ -415,6 +426,7 @@ const handleError = (error: unknown): ErrorResponse => {
 
     const code = (typeof errorField === 'object' && errorField !== null) ? errorField.code : undefined;
     const schoolContact = (typeof errorField === 'object' && errorField !== null) ? errorField.schoolContact : undefined;
+    const suspension = (typeof errorField === 'object' && errorField !== null) ? errorField.suspension : undefined;
 
     return {
       success: false,
@@ -422,6 +434,7 @@ const handleError = (error: unknown): ErrorResponse => {
       statusCode: status,
       code,
       schoolContact,
+      suspension,
     };
   }
 

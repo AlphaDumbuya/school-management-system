@@ -420,7 +420,7 @@ export class AuthService {
   private async assertTenantActive(user: any): Promise<void> {
     if (user.role === 'super_admin') return; // platform operator — no tenant gate
     if (!user.tenant_id) return;
-    const tenant = await this.db('tenants').select('status').where({ id: user.tenant_id }).first();
+    const tenant = await this.db('tenants').select('status', 'settings').where({ id: user.tenant_id }).first();
     if (!tenant) {
       throw new AppError('Your school account is unavailable. Contact support.', 403, 'TENANT_UNAVAILABLE');
     }
@@ -430,23 +430,14 @@ export class AuthService {
       await assertPortalAllowed(user.tenant_id, user.role);
       return;
     }
-    if (tenant.status !== 'active') {
-      // The account owner (principal) can act on this — point them to support.
-      // Everyone else can't resolve it, so direct them to their school admin.
-      const isOwner = user.role === 'principal';
-      if (isOwner) {
-        throw new AppError(
-          'Your school account has been suspended or is inactive. Please contact WiSkul support to restore access.',
-          403,
-          'TENANT_SUSPENDED'
-        );
-      }
-      throw new AppError(
-        'Your school account is currently suspended. Please contact your school administrator — they can restore access.',
-        403,
-        'TENANT_SUSPENDED_USER'
-      );
-    }
+    // Not active: say WHY, from what the platform owner recorded. The account
+    // owner (principal) gets the exact reason and next step; everyone else a
+    // neutral summary and a pointer to their school administrator.
+    const { describeTenantBlock } = await import('../utils/tenantBlock.js');
+    const info = describeTenantBlock(tenant, user.role === 'principal');
+    const err = new AppError(info.message, 403, info.code);
+    (err as any).suspension = info.suspension;
+    throw err;
   }
 
   /**

@@ -99,13 +99,12 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
       // (already-issued tokens stop working). Super admins are platform-level
       // and exempt.
       if (user.role !== 'super_admin' && user.tenant_id) {
-        const tenant = await db('tenants').select('status').where({ id: user.tenant_id }).first();
+        const tenant = await db('tenants').select('status', 'settings').where({ id: user.tenant_id }).first();
         if (!tenant || tenant.status !== 'active') {
-          throw new AppError(
-            'Your school account has been suspended or is inactive. Please contact WiSkul support.',
-            403,
-            'TENANT_SUSPENDED'
-          );
+          const { describeTenantBlock } = await import('../utils/tenantBlock.js');
+          const info = describeTenantBlock(tenant || { status: 'unavailable' }, user.role === 'principal');
+          // Keep the code the app already reacts to (it signs the person out and shows the login banner).
+          throw new AppError(info.message, 403, 'TENANT_SUSPENDED');
         }
       }
 

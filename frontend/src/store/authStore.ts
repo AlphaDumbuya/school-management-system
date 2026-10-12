@@ -22,6 +22,8 @@ interface AuthStore {
   loginErrorCode: string | null;
   /** School support contact attached to an access-denied login error. */
   loginErrorContact: { schoolName: string | null; email: string | null; phone: string | null } | null;
+  /** Why the school is blocked, from the server (reason is only sent to the school owner). */
+  loginErrorSuspension: import('@lib/apiClient').SuspensionDetails | null;
   accessToken: string | null;
   isInitialized: boolean;
   /** Short-lived token issued when a login needs a 2FA code. */
@@ -61,6 +63,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   error: null,
   loginErrorCode: null,
   loginErrorContact: null,
+  loginErrorSuspension: null,
   accessToken: authService.getAccessToken(),
   isInitialized: false,
   mfaToken: null,
@@ -148,7 +151,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
     setIsLoading(true);
     setError(null);
-    set({ loginErrorCode: null, loginErrorContact: null });
+    set({ loginErrorCode: null, loginErrorContact: null, loginErrorSuspension: null });
 
     try {
       const response = await authService.login({ email, password });
@@ -184,6 +187,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         set({
           loginErrorCode: (response as any)?.code ?? null,
           loginErrorContact: (response as any)?.schoolContact ?? null,
+          loginErrorSuspension: (response as any)?.suspension ?? null,
         });
         return false;
       }
