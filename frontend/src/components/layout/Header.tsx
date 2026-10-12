@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             {isSuperAdmin ? (
               <>
-                <div className="w-8 h-8 rounded-xl overflow-hidden bg-[#0f2a5e] flex items-center justify-center flex-shrink-0 shadow-md">
+                <div className="w-8 h-8 rounded-xl overflow-hidden bg-white border border-gray-200 flex items-center justify-center flex-shrink-0 shadow-sm">
                   <img src="/logo.png" alt="WiSkul" className="w-full h-full object-contain p-1" />
                 </div>
                 <div className="hidden sm:block leading-tight min-w-0">
@@ -85,7 +85,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
               </>
             ) : (
               <>
-                <div className="w-8 h-8 rounded-xl overflow-hidden bg-[#0f2a5e] flex items-center justify-center flex-shrink-0 shadow-md">
+                <div className="w-8 h-8 rounded-xl overflow-hidden bg-white border border-gray-200 flex items-center justify-center flex-shrink-0 shadow-sm">
                   {user?.schoolLogoUrl
                     ? <img src={user.schoolLogoUrl} alt={user.schoolName || 'School'} className="w-full h-full object-contain p-0.5" />
                     : <img src="/logo.png" alt="WiSkul" className="w-full h-full object-contain p-1" />
