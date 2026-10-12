@@ -66,17 +66,81 @@ async function ensurePermission(): Promise<boolean> {
   return permission === 'granted';
 }
 
-/** Tapping a notification opens its page inside the app. */
-async function ensureTapListener(navigate: (url: string) => void) {
+/** Latest in-app navigate function (the tap listener is registered once). */
+let navigateTo: ((url: string) => void) | null = null;
+
+/**
+ * Tapping a notification opens its page inside the app, or, for a finished
+ * download, the saved file in the phone's viewer.
+ */
+async function ensureTapListener(navigate?: (url: string) => void) {
+  if (navigate) navigateTo = navigate;
   if (listenerAdded) return;
   listenerAdded = true;
   try {
     const LN = await plugin();
     await LN.addListener('localNotificationActionPerformed', (ev: any) => {
-      const url = ev?.notification?.extra?.url;
-      if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')) navigate(url);
+      const extra = ev?.notification?.extra || {};
+      if (typeof extra.fileUri === 'string' && extra.fileUri) {
+        void openDownloadedFile(extra.fileUri, String(extra.mime || 'application/octet-stream'));
+        return;
+      }
+      const url = extra.url;
+      if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') && navigateTo) navigateTo(url);
     });
   } catch { listenerAdded = false; }
+}
+
+async function openDownloadedFile(uri: string, mime: string) {
+  try {
+    const { FileOpener } = await import('@capacitor-community/file-opener');
+    await FileOpener.open({ filePath: uri, contentType: mime });
+  } catch {
+    // No app can open this file type: the file is still in Documents.
+    try {
+      const { showToast } = await import('@utils/toast');
+      showToast.info('Find this file in your Documents folder.');
+    } catch { /* ignore */ }
+  }
+}
+
+const DOWNLOAD_CHANNEL = 'downloads';
+
+/**
+ * Tell the user, in the phone's notification shade, that a file has finished
+ * downloading. Tapping it opens the file. Returns false when a system
+ * notification could not be shown (web, old APK, permission refused) so the
+ * caller can fall back to an in-app message.
+ */
+export async function notifyDownloadComplete(file: { filename: string; uri?: string; mime: string; folder?: string }): Promise<boolean> {
+  if (!nativeNotificationsAvailable()) return false;
+  if (!(await ensurePermission())) return false;
+  try {
+    const LN = await plugin();
+    await ensureTapListener();
+    // Its own channel so the user can tune download alerts separately.
+    await LN.createChannel({
+      id: DOWNLOAD_CHANNEL,
+      name: 'Downloads',
+      description: 'Confirms when an exported file has been saved to your phone',
+      importance: 4,
+      visibility: 1,
+    }).catch(() => {});
+    await LN.schedule({
+      notifications: [{
+        id: numericId(`dl:${file.filename}:${Date.now()}`),
+        title: 'Download complete',
+        body: `${file.filename} was saved to ${file.folder || 'Documents'}.${file.uri ? ' Tap to open.' : ''}`,
+        channelId: DOWNLOAD_CHANNEL,
+        smallIcon: 'ic_stat_notify',
+        iconColor: '#1d4ed8',
+        extra: file.uri ? { fileUri: file.uri, mime: file.mime } : {},
+      }],
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
