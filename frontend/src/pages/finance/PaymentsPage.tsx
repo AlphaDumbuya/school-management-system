@@ -9,6 +9,7 @@
  *  - Record manual payments, view receipts, filter & export the full ledger
  * Online (Monime) payments auto-record here and settle fees/invoices.
  */
+import { initialQuery, useQuerySearch } from '@hooks/useQuerySearch';
 import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -65,7 +66,8 @@ const methodMeta = (m?: string) => {
 type BreakdownTab = 'term' | 'level' | 'class';
 
 export const PaymentsPage: React.FC = () => {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialQuery());
+  useQuerySearch(setSearch);
   const [sectionFilter, setSectionFilter] = useState('');
   const [classFilter, setClassFilter] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
@@ -179,6 +181,7 @@ export const PaymentsPage: React.FC = () => {
       || (p.reference_number || '').toLowerCase().includes(t)
       || (p.provider_reference || '').toLowerCase().includes(t)
       || (p.transaction_reference || '').toLowerCase().includes(t)
+      || (p.receipt_number || '').toLowerCase().includes(t)
       || (p.class_name || '').toLowerCase().includes(t);
     const matchSection = !sectionFilter || sectionForLevel(p.class_level) === sectionFilter;
     const matchClass = !classFilter || p.class_name === classFilter;

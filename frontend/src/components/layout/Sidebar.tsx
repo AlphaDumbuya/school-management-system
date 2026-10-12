@@ -42,7 +42,7 @@ import { routeAccess } from '@lib/planFeatures';
 import { isDemoUser } from '@lib/demo';
 import clsx from 'clsx';
 
-interface NavItem {
+export interface NavItem {
   label: string;
   icon: React.ReactNode;
   path: string;
@@ -65,7 +65,7 @@ interface SidebarProps {
   onToggleCollapse?: () => void;
 }
 
-const navItems: NavItem[] = [
+export const navItems: NavItem[] = [
   // ── ACADEMIC MANAGEMENT ─────────────────────────────────────────────
   {
     label: 'Classes & Streams',

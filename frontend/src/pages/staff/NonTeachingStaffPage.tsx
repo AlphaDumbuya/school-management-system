@@ -5,6 +5,7 @@
  * Professional staff (teachers, accountants, admissions officers) are onboarded
  * in full under Staff → Teaching & Admin Staff.
  */
+import { initialQuery, useQuerySearch } from '@hooks/useQuerySearch';
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
@@ -31,7 +32,8 @@ const fmtDate = (d?: string | null) => {
 
 export const NonTeachingStaffPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialQuery());
+  useQuerySearch(setSearch);
   const [jobFilter, setJobFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [formOpen, setFormOpen] = useState(false);

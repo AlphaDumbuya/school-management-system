@@ -9,6 +9,7 @@
  *  - Online application link to share with families.
  * Deep links: ?status=pending opens on a stage, ?open=<id> opens one application.
  */
+import { initialQuery, useQuerySearch } from '@hooks/useQuerySearch';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -46,7 +47,8 @@ export const AdmissionsPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialQuery());
+  useQuerySearch(setSearch);
   const [statusFilter, setStatusFilter] = useState<string>(params.get('status') || '');
   const [classFilter, setClassFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'' | 'online' | 'office'>('');

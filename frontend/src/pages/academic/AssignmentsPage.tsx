@@ -4,6 +4,7 @@
  * Features Searchable Filter Popovers with embedded search bars inside filters.
  */
 
+import { initialQuery, useQuerySearch } from '@hooks/useQuerySearch';
 import { isTeachingUser } from '@lib/staffJobs';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -274,7 +275,8 @@ export const AssignmentsPage: React.FC = () => {
   const isParentRole = user?.role === 'parent' || (user?.role as string | undefined) === 'guardian';
 
   // Filter state
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialQuery());
+  useQuerySearch(setSearch);
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const isViewerOnly = !canManage && (isStudentRole || isParentRole);

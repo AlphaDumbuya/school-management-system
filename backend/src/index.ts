@@ -81,6 +81,7 @@ import schoolConfigRoutes from '@routes/schoolConfigRoutes';
 import liveSyncRoutes from '@routes/liveSyncRoutes';
 import { liveSyncMiddleware } from '@utils/liveSync';
 import announcementRoutes from '@routes/announcementRoutes';
+import searchRoutes from '@routes/searchRoutes';
 import appStatsRoutes from '@routes/appStatsRoutes';
 import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
 import { startEventManagementJobs } from './jobs/eventManagementJobs.js';
@@ -449,6 +450,8 @@ app.use('/api/v1/school-config', schoolConfigRoutes);
 
 // Announcements Routes (Communication)
 app.use('/api/v1/announcements', announcementRoutes);
+// Header search (students, staff, finance, … scoped to the caller's role)
+app.use('/api/v1/search', searchRoutes);
 
 // Offline sync Routes (teacher offline-first: pull/push)
 app.use('/api/v1/sync', syncRoutes);
