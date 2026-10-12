@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Profile picture">
+  <rect width="128" height="128" fill="#fed7aa"/>
+  <rect x="36" y="46" width="9" height="52" rx="4.5" fill="#14100e"/><rect x="83" y="46" width="9" height="52" rx="4.5" fill="#14100e"/>
+      <g stroke="#00000033" stroke-width="1"><path d="M36 60h9M36 70h9M36 80h9M36 90h9M83 60h9M83 70h9M83 80h9M83 90h9"/></g>
+  <path d="M10 128 C10 102 36 94 64 94 C92 94 118 102 118 128Z" fill="#b45309"/>
+      <path d="M50 94 Q64 112 78 94 Q64 100 50 94Z" fill="#513419"/>
+  <rect x="55" y="80" width="18" height="20" rx="6" fill="#513419"/>
+  
+  <ellipse cx="64" cy="58" rx="23" ry="27" fill="#654321"/>
+  <circle cx="41.5" cy="60" r="5" fill="#654321"/><circle cx="86.5" cy="60" r="5" fill="#654321"/>
+  <ellipse cx="53" cy="58" rx="2.7" ry="3.2" fill="#1a1110"/><ellipse cx="75" cy="58" rx="2.7" ry="3.2" fill="#1a1110"/>
+  <circle cx="53.9" cy="57" r=".9" fill="#fff"/><circle cx="75.9" cy="57" r=".9" fill="#fff"/>
+  <path d="M47.5 50 Q53 47 58.5 50" fill="none" stroke="#1a1110" stroke-width="2" stroke-linecap="round"/>
+  <path d="M69.5 50 Q75 47 80.5 50" fill="none" stroke="#1a1110" stroke-width="2" stroke-linecap="round"/>
+  <path d="M62.5 62 Q64 67 66 63" fill="none" stroke="#513419" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M55 71 Q64 79 73 71" fill="none" stroke="#5b1f1f" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M40 56 C38 26 90 26 88 56 C84 42 74 36 64 36 C54 36 44 42 40 56Z" fill="#14100e"/>
+</svg>

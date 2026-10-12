@@ -22,6 +22,7 @@ import { db } from '../src/utils/database';
 import { PasswordService } from '../src/services/passwordService';
 import { PlanCatalog } from '../src/services/planCatalogService';
 import { DEMO_EMAIL_DOMAIN, DEMO_TENANT_SLUG } from '../src/utils/demo';
+import { applyDemoExtras } from './lib/demoExtras';
 
 /**
  * Shared password of the demo accounts (for the Android app; the website uses
@@ -1242,6 +1243,8 @@ async function main() {
       await seedAcademics(ctx);
       await seedFinance(ctx);
       await seedCommunity(ctx);
+      // Profile pictures, exam timetable, help-desk tickets and a bank statement.
+      await applyDemoExtras(ctx.tid);
       break;
     } catch (e: any) {
       if (attempt >= 4 || !transient(e)) throw e;

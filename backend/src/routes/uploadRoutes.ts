@@ -48,6 +48,23 @@ router.post('/', authenticate, attachUserContext, upload.single('file'), async (
     const tenantId = (req as any).user?.tenant_id || 'shared';
     const ext = path.extname(req.file.originalname) || '';
 
+    // Local-disk storage is not shared or durable (see fileStorageService.isLocal),
+    // so a stored "http://localhost:3000/storage/..." photo breaks everywhere else.
+    // Keep images inline (the uploader already shrinks them to ~100 KB) and only
+    // use disk for documents.
+    if (fileStorageService.isLocal() && req.file.mimetype.startsWith('image/')) {
+      return res.json({
+        message: 'File uploaded (inline)',
+        data: {
+          filename: `inline${ext}`,
+          originalName: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+          url: `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`,
+        },
+      });
+    }
+
     try {
       const result = await fileStorageService.uploadFile(req.file.buffer, {
         // Tenant-scoped folder keeps each school's uploads separate.
@@ -101,6 +118,9 @@ router.post('/multiple', authenticate, attachUserContext, upload.array('files', 
     const tenantId = (req as any).user?.tenant_id || 'shared';
 
     const uploadedFiles = await Promise.all(files.map(async (f) => {
+      if (fileStorageService.isLocal() && f.mimetype.startsWith('image/')) {
+        return { filename: 'inline', originalName: f.originalname, mimetype: f.mimetype, size: f.size, url: `data:${f.mimetype};base64,${f.buffer.toString('base64')}` };
+      }
       try {
         const result = await fileStorageService.uploadFile(f.buffer, {
           folder: `tenants/${tenantId}/${folderFor(f.mimetype)}`,

@@ -220,6 +220,17 @@ class FileStorageService {
   /**
    * Generate signed URL for temporary access (S3 only)
    */
+  /**
+   * True when files go to this machine's disk. That is never shared or durable:
+   * the URL it returns points at one computer, so a photo saved that way breaks
+   * for everyone else (a developer's laptop writing to the shared database; a
+   * serverless function whose disk disappears). Callers keep small images inline
+   * instead.
+   */
+  isLocal(): boolean {
+    return this.provider === StorageProvider.LOCAL;
+  }
+
   async generateSignedUrl(filePath: string, expiresIn: number = 3600): Promise<string> {
     if (this.provider === StorageProvider.S3 && this.s3Client && this.s3Bucket) {
       try {

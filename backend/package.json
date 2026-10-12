@@ -17,6 +17,7 @@
     "db:seed": "knex seed:run",
     "create:superadmin": "tsx scripts/createSuperAdmin.ts",
     "demo:seed": "tsx scripts/seedDemoTenant.ts",
+    "demo:topup": "tsx scripts/topUpDemoTenant.ts",
     "verify:brevo": "tsx scripts/verifyBrevoApiKey.ts",
     "refactor:admin-to-principal": "tsx scripts/refactorAdminToPrincipal.ts"
   },

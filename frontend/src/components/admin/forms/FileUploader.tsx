@@ -38,9 +38,22 @@ async function uploadToServer(blob: Blob, filename: string, fallbackDataUrl: str
     // "localhost" URL opened on a phone, storage down) would save a broken
     // photo. Keep the image inline instead so it shows everywhere.
     if (url.startsWith('data:')) return url;
+    // A link to this computer or a private network only works here, so it would
+    // show a broken photo to everyone else: keep the image inline instead.
+    if (isPrivateUrl(url)) return fallbackDataUrl;
     return (await imageLoads(url)) ? url : fallbackDataUrl;
   } catch {
     return fallbackDataUrl;
+  }
+}
+
+/** localhost, loopback or private-network address: reachable only from this machine/network. */
+function isPrivateUrl(url: string): boolean {
+  try {
+    const h = new URL(url, window.location.origin).hostname.toLowerCase();
+    return h === 'localhost' || h === '::1' || h === '[::1]' || /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || h.endsWith('.local');
+  } catch {
+    return false;
   }
 }
 
@@ -200,8 +213,11 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         // preserve transparency; otherwise JPEG for smaller size. Background
         // removal forces PNG + inline so the cut-out renders everywhere.
         const keepPng = removeBackground || (inlineImage && file.type === 'image/png');
+        // Photos kept inline are shrunk harder (about 35 KB), because lists such as the
+        // student directory carry every photo in one response. Stamps and signatures keep detail.
+        const inlineOnly = inlineImage || removeBackground;
         const compressedDataUrl = await compressImage(
-          file, 800, 0.9, keepPng ? 'image/png' : 'image/jpeg', removeBackground,
+          file, inlineOnly ? 800 : 480, inlineOnly ? 0.9 : 0.82, keepPng ? 'image/png' : 'image/jpeg', removeBackground,
         );
         if (inlineImage || removeBackground) {
           // Store inline — renders reliably everywhere with no /storage dependency.
