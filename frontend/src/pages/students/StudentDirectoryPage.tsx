@@ -4,6 +4,7 @@
  * Supports grid / list view toggle (same pattern as ClassesPage).
  */
 
+import { initialQuery, useQuerySearch } from '@hooks/useQuerySearch';
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -72,7 +73,8 @@ export const StudentDirectoryPage: React.FC = () => {
   const canManage = canAccess(['principal', 'super_admin', 'admissions_officer']);
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialQuery());
+  useQuerySearch(setSearch);
   const [statusFilter, setStatusFilter] = useState('');
   // Academic-year scope. Empty = current roster (all active). Choosing a past
   // year shows that year's enrolled roster (historical). Real sessions only.

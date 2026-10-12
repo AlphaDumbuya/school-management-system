@@ -241,9 +241,16 @@ export class AnnouncementService {
    */
   async list(
     tenantId: string,
-    opts: { viewerRole?: string; viewerId?: string; limit?: number; offset?: number; yearScope?: YearScope | null } = {}
+    opts: { viewerRole?: string; viewerId?: string; limit?: number; offset?: number; yearScope?: YearScope | null; search?: string } = {}
   ) {
     if (!tenantId) throw new AppError('Tenant context is required', 400, 'TENANT_REQUIRED');
+    // Optional text search over title and body (wildcards in the term are literal).
+    const term = String(opts.search || '').trim();
+    const like = term ? `%${term.replace(/[%_\\]/g, (c) => `\\${c}`)}%` : '';
+    const applySearch = (qb: any) => {
+      if (like) qb.where((w: any) => w.whereILike('announcements.title', like).orWhereILike('announcements.body', like));
+      return qb;
+    };
     const limit = Math.min(opts.limit ?? 20, 100);
     const offset = opts.offset ?? 0;
 
@@ -256,6 +263,7 @@ export class AnnouncementService {
     // Total (for pagination)
     const countQ = this.applyAudienceFilter(db('announcements'), tenantId, opts.viewerRole, ctx);
     applyYearScope(countQ, yearScope, null, 'announcements.created_at');
+    applySearch(countQ);
     const countRow: any = await countQ.count('announcements.id as count').first();
     const total = Number(countRow?.count ?? 0);
 
@@ -265,6 +273,7 @@ export class AnnouncementService {
       .leftJoin('classes as ac', 'announcements.class_id', 'ac.id');
     this.applyAudienceFilter(q, tenantId, opts.viewerRole, ctx);
     applyYearScope(q, yearScope, null, 'announcements.created_at');
+    applySearch(q);
 
     // Join read receipts for the viewer so we can flag is_read.
     if (viewerId) {

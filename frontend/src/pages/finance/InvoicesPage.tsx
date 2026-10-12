@@ -4,6 +4,7 @@
  * class/level/term, inspect invoice line items & payment history, send
  * reminders to defaulters, and pay online (Monime).
  */
+import { initialQuery, useQuerySearch } from '@hooks/useQuerySearch';
 import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, FileStack, Eye, Bell, X, Loader2, Ban } from 'lucide-react';
@@ -29,7 +30,8 @@ const TERMS = ['First Term', 'Second Term', 'Third Term'];
 
 export const InvoicesPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialQuery());
+  useQuerySearch(setSearch);
   const [statusFilter, setStatusFilter] = useState('');
   const [levelFilter, setLevelFilter] = useState('');
   const [genOpen, setGenOpen] = useState(false);

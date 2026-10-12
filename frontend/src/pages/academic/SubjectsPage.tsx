@@ -3,6 +3,7 @@
  * Full CRUD for school subjects and curriculum.
  */
 
+import { initialQuery, useQuerySearch } from '@hooks/useQuerySearch';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
@@ -184,7 +185,8 @@ export const SubjectsPage: React.FC = () => {
   const activeChildId = selectedChildId || parentChildren[0]?.id || '';
 
   // Filter state
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialQuery());
+  useQuerySearch(setSearch);
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [page, setPage] = useState(1);

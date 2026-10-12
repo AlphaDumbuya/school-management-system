@@ -3,6 +3,7 @@
  * Fully functional directory of all teachers in the system with CRUD operations.
  */
 
+import { initialQuery, useQuerySearch } from '@hooks/useQuerySearch';
 import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
@@ -169,7 +170,8 @@ export const TeachersPage: React.FC = () => {
   const { canAccess } = useAuth();
   const hasWriteAccess = canAccess(['principal', 'super_admin']);
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialQuery());
+  useQuerySearch(setSearch);
   const [statusFilter, setStatusFilter] = useState('');
   // teaching | accountant | admissions_officer | leadership ('' = everyone).
   const [typeFilter, setTypeFilter] = useState('');

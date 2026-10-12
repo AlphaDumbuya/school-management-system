@@ -3,6 +3,7 @@
  * Full CRUD for school classes and streams.
  */
 
+import { initialQuery, useQuerySearch } from '@hooks/useQuerySearch';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
@@ -255,7 +256,8 @@ export const ClassesPage: React.FC = () => {
   const canManage = canAccess(['principal', 'super_admin']);
 
   // Filter state
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialQuery());
+  useQuerySearch(setSearch);
   const [levelFilter, setLevelFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   // Academic year filter (managers browse any year; defaults to active). Classes
