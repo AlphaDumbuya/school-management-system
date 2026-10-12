@@ -81,16 +81,39 @@ if ('serviceWorker' in navigator) {
         if (navigator.serviceWorker.controller) triggerFlush();
         navigator.serviceWorker.addEventListener('controllerchange', triggerFlush);
 
-        // Notify when a new version is ready. autoUpdate skips waiting, so we
-        // just log; the useServiceWorker hook drives any in-app "refresh" UI.
+        // A new version waits until it is activated. Signed-in users get an
+        // "Update available" prompt (so nobody is reloaded mid-task). Visitors who
+        // are NOT signed in (the public site, login, the demo) have nothing to
+        // lose, so they move to the new version straight away. Without this, anyone
+        // who had visited before kept seeing the old site (and missed new pages
+        // such as the Live Demo button) until they closed every tab.
+        const signedIn = () => !!(localStorage.getItem('accessToken') || localStorage.getItem('token'));
+        const takeNewVersionIfSafe = (worker?: ServiceWorker | null) => {
+          if (!worker || signedIn()) return;
+          // Never loop: reload at most once per half minute.
+          const last = Number(sessionStorage.getItem('wiskul.sw.autoreload') || 0);
+          if (Date.now() - last < 30_000) return;
+          let reloaded = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (reloaded) return;
+            reloaded = true;
+            sessionStorage.setItem('wiskul.sw.autoreload', String(Date.now()));
+            window.location.reload();
+          });
+          worker.postMessage({ type: 'SKIP_WAITING' });
+        };
+        if (navigator.serviceWorker.controller && reg.waiting) takeNewVersionIfSafe(reg.waiting);
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           newWorker?.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
               console.log('[WiSkul SW] new version available');
+              takeNewVersionIfSafe(reg.waiting || newWorker);
             }
           });
         });
+        // Look for a new version right away rather than waiting for the browser's own schedule.
+        reg.update().catch(() => undefined);
       })
       .catch((err) => console.warn('[WiSkul SW] registration failed:', err));
   });
