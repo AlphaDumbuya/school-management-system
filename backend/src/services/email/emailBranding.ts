@@ -14,6 +14,7 @@
 import { db } from '@utils/database.js';
 import { logger } from '@utils/logger.js';
 import { publicAppUrl, publicApiUrl } from '@utils/publicUrl.js';
+import { PLATFORM_LOGO_PNG_BASE64 } from '../../assets/platformLogo.js';
 
 export interface EmailBranding {
   /** Display name used as the "from" name and in the header/footer. */
@@ -82,6 +83,10 @@ export function tenantLogoEmailUrl(tenantId: string, storedLogo?: string | null)
   return `${apiBaseUrl()}/api/v1/public/branding/${encodeURIComponent(tenantId)}/logo?v=${shortHash(storedLogo)}`;
 }
 
+/** Email-safe URL of the WiSkul logo (see GET /api/v1/public/branding/platform/logo.png). */
+export function platformLogoEmailUrl(): string {
+  return `${apiBaseUrl()}/api/v1/public/branding/platform/logo.png?v=${shortHash(PLATFORM_LOGO_PNG_BASE64)}`;
+}
 /** The platform (WiSkul) branding used for platform emails and as the ultimate fallback. */
 export function platformBranding(): EmailBranding {
   return {
@@ -90,8 +95,10 @@ export function platformBranding(): EmailBranding {
     contactPhone: process.env.SUPPORT_PHONE || '+232 78 261 892',
     address: process.env.SUPPORT_ADDRESS || '75 Main Road, Kossoh Town, Sierra Leone',
     website: appBaseUrl(),
-    // Platform emails show the hosted WiSkul logo (falls back to a text logo if unset).
-    logoUrl: (process.env.PLATFORM_LOGO_URL && /^https:\/\//i.test(process.env.PLATFORM_LOGO_URL) ? process.env.PLATFORM_LOGO_URL : '') || `${appBaseUrl()}/logo.png`,
+    // Platform emails show the WiSkul logo from the same public branding
+    // endpoint school logos use (an embedded, email-sized image), so it always
+    // loads: no dependence on a static file, a redirect or PLATFORM_LOGO_URL.
+    logoUrl: platformLogoEmailUrl(),
     appUrl: appBaseUrl(),
     isPlatform: true,
   };

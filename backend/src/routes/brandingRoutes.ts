@@ -15,8 +15,11 @@
 import express, { Request, Response } from 'express';
 import { db } from '../utils/database';
 import { logger } from '../utils/logger';
+import { PLATFORM_LOGO_PNG_BASE64 } from '../assets/platformLogo';
 
 const router = express.Router();
+let platformLogo: Buffer | null = null;
+const platformLogoBuffer = () => (platformLogo ??= Buffer.from(PLATFORM_LOGO_PNG_BASE64, 'base64'));
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const UUIDISH = /^[0-9a-f-]{8,64}$/i;
@@ -139,6 +142,23 @@ export async function tenantLogoAvailable(tenantId: string, rawLogo?: string | n
   return ok;
 }
 
+/**
+ * The WiSkul logo for PLATFORM emails (password reset, welcome, billing,
+ * newsletters…). Served from the API like school logos, from a small embedded
+ * image, so it doesn't depend on a static file or an environment variable.
+ * The ?v= hash in the URL changes if the logo ever does.
+ */
+router.get('/platform/logo.png', (_req: Request, res: Response) => {
+  const body = platformLogoBuffer();
+  res.set({
+    'Content-Type': 'image/png',
+    'Content-Length': String(body.length),
+    'Cache-Control': 'public, max-age=86400, immutable',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  return res.end(body);
+});
 router.get('/:tenantId/logo', async (req: Request, res: Response) => {
   const { tenantId } = req.params;
   if (!UUIDISH.test(tenantId)) return res.status(404).end();
