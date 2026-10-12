@@ -1,7 +1,10 @@
 import type { Knex } from 'knex';
 import bcryptjs from 'bcryptjs';
+import { assertDestructiveAllowed } from '../../utils/dbSafety.js';
 
 export async function seed(knex: Knex): Promise<void> {
+  // This seed first deletes payments, fees, attendance, roles... : never on a real database.
+  assertDestructiveAllowed('run the initial seed (it deletes existing payments, fees, attendance and roles)');
   // Delete existing entries in correct order (foreign keys first)
   await knex('role_permissions').del();
   await knex('permissions').del();

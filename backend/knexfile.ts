@@ -18,6 +18,44 @@ dotenv.config({ path: envPath3 });
 
 // Debug: log what we loaded
 console.log('DATABASE_URL available:', !!process.env.DATABASE_URL);
+// SAFETY: several tests build their own connection from this file. Under the test
+// runner it may only ever point at a local database (same rule as src/utils/dbSafety.ts;
+// inlined because the knex CLI loads this file without the app's module resolution).
+if ((process.env.VITEST || process.env.NODE_ENV === 'test') && process.env.DATABASE_URL) {
+  let host = '';
+  try { host = new URL(process.env.DATABASE_URL).hostname.toLowerCase(); } catch { /* unparseable: remote */ }
+  const local = !!host && (['localhost', '127.0.0.1', '::1', '[::1]', 'host.docker.internal'].includes(host) || !host.includes('.'));
+  if (!local) {
+    throw new Error(
+      'BLOCKED: the test runner is pointed at a remote database (' + (host || 'unknown') + '). Tests must not run against real school data. ' +
+      'Set TEST_DATABASE_URL to a local or throw-away database.',
+    );
+  }
+}
+
+// SAFETY: rolling back migrations or running the seeds can delete real data.
+// Refuse on a remote database unless a person typed the exact override
+// (ALLOW_DESTRUCTIVE_DB=<host>/<database>). `migrate:latest` is unaffected.
+(() => {
+  const cmd = process.argv.find((a) => /^(migrate:rollback|migrate:down|seed:run)$/.test(a));
+  if (!cmd || !process.env.DATABASE_URL) return;
+  let host = '';
+  let name = '';
+  try {
+    const u = new URL(process.env.DATABASE_URL);
+    host = u.hostname.toLowerCase();
+    name = decodeURIComponent(u.pathname.replace(/^\//, ''));
+  } catch { /* unparseable: treated as remote */ }
+  const local = !!host && (['localhost', '127.0.0.1', '::1', '[::1]', 'host.docker.internal'].includes(host) || !host.includes('.'));
+  const label = `${host || 'unknown'}/${name || 'unknown'}`;
+  if (local || process.env.ALLOW_DESTRUCTIVE_DB === label) return;
+  console.error(
+    `BLOCKED: "${cmd}" could delete real data on the REMOTE database ${label}.\n` +
+    `  If you truly mean it (and have a Neon restore point), run it again with:  ALLOW_DESTRUCTIVE_DB=${label}`,
+  );
+  process.exit(1);
+})();
+
 
 // Determine connection method: use DATABASE_URL if available, otherwise use individual credentials
 const getConnection = () => {

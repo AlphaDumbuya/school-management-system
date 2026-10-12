@@ -1,6 +1,20 @@
 import knex from 'knex';
 import knexConfig from './knexfile.js';
 
+// SAFETY: this script writes test data. Run it only against a local database,
+// or a remote one with the exact override ALLOW_DESTRUCTIVE_DB=<host>/<database>.
+{
+  let host = '';
+  let name = '';
+  try { const u = new URL(process.env.DATABASE_URL || ''); host = u.hostname.toLowerCase(); name = u.pathname.replace(/^\//, ''); } catch { /* none */ }
+  const local = !process.env.DATABASE_URL || ['localhost', '127.0.0.1', '::1'].includes(host) || !host.includes('.');
+  if (!local && process.env.ALLOW_DESTRUCTIVE_DB !== `${host}/${name}`) {
+    console.error(`BLOCKED: this script writes test data and the database is REMOTE (${host}/${name}). Use a local database, or set ALLOW_DESTRUCTIVE_DB=${host}/${name} if you really mean it.`);
+    process.exit(1);
+  }
+}
+
+
 const env = process.env.NODE_ENV || 'development';
 const db = knex(knexConfig[env]);
 

@@ -1,3 +1,4 @@
+import { assertDestructiveAllowed } from '../../utils/dbSafety';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { StudentService } from '../studentService';
 import knex from 'knex';
@@ -22,6 +23,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   // Clear students table before each test
+  assertDestructiveAllowed('delete every student');
   await db('students').del();
 });
 

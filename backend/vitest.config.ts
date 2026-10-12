@@ -5,7 +5,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    setupFiles: [],
+    // Swaps in TEST_DATABASE_URL and clears any destructive override.
+    setupFiles: ['./src/test/setupSafety.ts'],
   },
   resolve: {
     alias: {
