@@ -363,7 +363,7 @@ export const ChartCard: React.FC<ChartCardProps> = ({
 
   // ── Card wrapper ─────────────────────────────────────────────────────────
   return (
-    <div className="relative bg-white rounded-2xl ring-1 ring-gray-200/80 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden">
+    <div className="relative bg-white dark:bg-gray-800 rounded-2xl ring-1 ring-gray-200/80 dark:ring-gray-700 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden">
       {/* Top accent — brand colours */}
       <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-[#315B8C] via-[#8b5cf6] to-[#3b82f6]" />
 
@@ -372,10 +372,10 @@ export const ChartCard: React.FC<ChartCardProps> = ({
         <div className="flex items-start justify-between mb-4 sm:mb-5 gap-2 sm:gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center flex-shrink-0">
                 <TrendingUp size={12} className="text-blue-600" />
               </div>
-              <h3 className="text-xs sm:text-[0.9rem] font-bold text-gray-900 tracking-tight truncate">{title}</h3>
+              <h3 className="text-xs sm:text-[0.9rem] font-bold text-gray-900 dark:text-white tracking-tight truncate">{title}</h3>
             </div>
             {subtitle && <p className="text-[11px] text-gray-400 mt-1.5 ml-8 truncate">{subtitle}</p>}
           </div>
@@ -384,7 +384,7 @@ export const ChartCard: React.FC<ChartCardProps> = ({
             <button
               onClick={handleExport}
               aria-label="Export chart"
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gray-50 hover:bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
             >
               <Download size={12} />
             </button>

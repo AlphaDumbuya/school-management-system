@@ -22,6 +22,8 @@ import { useAcademicYears } from '@hooks/useAcademicYears';
 import { financeService } from '@services/financeService';
 import { bursarService, bursarB } from '@services/bursarService';
 import { routeAccess } from '@lib/planFeatures';
+import { ChartCard } from '@components/admin/charts/ChartCard';
+import { fmtLeShort, prettyLabel, NO_SERIES } from '@lib/chartFormat';
 
 const fmtLe = (v: number | string | null | undefined) =>
   `Le ${(Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -92,6 +94,27 @@ export const Phase13AccountantDashboard: React.FC = () => {
   const loadError = (overviewQ.error || analyticsQ.error) as Error | null;
   const retry = () => { void overviewQ.refetch(); void analyticsQ.refetch(); };
 
+  // Chart series from the analytics already loaded for this year.
+  const trendChart = analytics?.trend?.length
+    ? { labels: analytics.trend.map((t: any) => t.label), series: [{ name: 'Collected', data: analytics.trend.map((t: any) => t.total) }] }
+    : NO_SERIES;
+  const healthChart = totals && (totals.paid > 0 || totals.outstanding > 0)
+    ? { labels: ['Collected', 'Outstanding'], series: [{ name: 'Le', data: [totals.paid, totals.outstanding] }] }
+    : NO_SERIES;
+  const levelChart = analytics?.byLevel?.length
+    ? {
+      labels: analytics.byLevel.map((l: any) => l.level),
+      series: [
+        { name: 'Billed', data: analytics.byLevel.map((l: any) => l.billed) },
+        { name: 'Collected', data: analytics.byLevel.map((l: any) => l.collected) },
+        { name: 'Outstanding', data: analytics.byLevel.map((l: any) => l.outstanding) },
+      ],
+    }
+    : NO_SERIES;
+  const methodChart = analytics?.byMethod?.length
+    ? { labels: analytics.byMethod.map((m: any) => prettyLabel(m.method)), series: [{ name: 'Amount', data: analytics.byMethod.map((m: any) => m.total) }] }
+    : NO_SERIES;
+
   const kpis = [
     { label: `Collected · ${year || '…'}`, value: fmtLe(overview?.totalPaid), icon: <Banknote size={20} />, tint: 'text-emerald-600 bg-emerald-500/10' },
     { label: 'Total Billed', value: fmtLe(overview?.totalBilled), icon: <Wallet size={20} />, tint: 'text-blue-600 bg-blue-500/10' },
@@ -147,6 +170,33 @@ export const Phase13AccountantDashboard: React.FC = () => {
             </div>
           ))}
         </div>
+
+        {/* Charts: trend, collection health, by level, by method */}
+        {!loadError && (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+              <div className="lg:col-span-2">
+                <ChartCard title="Collections" subtitle="Fees received over the last 6 months" type="line" height={260}
+                  isLoading={loading} colors={['#10b981']} valueFormatter={fmtLeShort}
+                  emptyState={{ message: 'No collections yet', description: 'Recorded payments will chart here.' }} {...trendChart} />
+              </div>
+              <ChartCard title="Collection health" subtitle={`Collected vs still owed · ${year || ''}`} type="donut" height={260}
+                isLoading={loading} colors={['#10b981', '#ef4444']} valueFormatter={fmtLeShort}
+                donutCenterLabel={totals ? `${Math.round(totals.collectionRate)}%` : undefined}
+                emptyState={{ message: 'Nothing billed yet', description: 'Bill a term on the Fees page.' }} {...healthChart} />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+              <div className="lg:col-span-2">
+                <ChartCard title="Billed, collected and owed" subtitle="By class level" type="bar" height={280}
+                  isLoading={loading} colors={['#3b82f6', '#10b981', '#ef4444']} valueFormatter={fmtLeShort}
+                  emptyState={{ message: 'No billing data yet', description: 'Bill a term on the Fees page to populate this.' }} {...levelChart} />
+              </div>
+              <ChartCard title="How families pay" subtitle="Amount by payment method" type="donut" height={280}
+                isLoading={loading} valueFormatter={fmtLeShort}
+                emptyState={{ message: 'No payments yet', description: 'Payment methods will break down here.' }} {...methodChart} />
+            </div>
+          </>
+        )}
 
         {/* Cash position, overdue, discounts */}
         {!loadError && (

@@ -20,6 +20,8 @@ import { financeService } from '@services/financeService';
 import { bursarService, BUCKET_LABEL, type Bucket } from '@services/bursarService';
 import { StudentAccountModal, le, Pill } from '@components/finance/StudentAccount';
 import { usePaged, TablePager } from '@components/admin/table/TablePager';
+import { ChartCard } from '@components/admin/charts/ChartCard';
+import { fmtLeShort, NO_SERIES } from '@lib/chartFormat';
 
 const BUCKETS: Bucket[] = ['not_due', 'd1_30', 'd31_60', 'd61_90', 'd90_plus'];
 const TONE: Record<Bucket, string> = {
@@ -83,6 +85,37 @@ export const AgingPage: React.FC = () => {
             <div className="text-[11px] font-semibold text-white/70">{data ? `${data.totals.students} students owe` : 'Total owed'}</div>
           </div>
         </div>
+
+        {!q.error && (
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-5">
+            <div className="lg:col-span-2">
+              <ChartCard title="Owed by age" subtitle="How long balances have been unpaid" type="bar" height={260}
+                isLoading={q.isLoading} colors={['#ef4444']} valueFormatter={fmtLeShort}
+                emptyState={{ message: 'Nothing owed', description: 'All fees in this view are paid.' }}
+                {...(data && data.totals.total > 0
+                  ? { labels: BUCKETS.map((b) => BUCKET_LABEL[b]), series: [{ name: 'Owed', data: BUCKETS.map((b) => Number(data.totals[b]) || 0) }] }
+                  : NO_SERIES)} />
+            </div>
+            <div className="lg:col-span-3">
+              <ChartCard title="Owed by class" subtitle="Classes with the largest balances (top 10)" type="bar" height={260}
+                isLoading={q.isLoading} colors={['#f59e0b', '#ef4444']} valueFormatter={fmtLeShort}
+                emptyState={{ message: 'No class balances', description: 'Classes with unpaid fees will show here.' }}
+                {...(() => {
+                  const top = [...(data?.by_class || [])].filter((c: any) => Number(c.total) > 0)
+                    .sort((x: any, y: any) => Number(y.total) - Number(x.total)).slice(0, 10);
+                  if (!top.length) return NO_SERIES;
+                  const overdue = (c: any) => Number(c.total) - (Number(c.buckets?.not_due) || 0);
+                  return {
+                    labels: top.map((c: any) => c.class_name || 'No class'),
+                    series: [
+                      { name: 'Not yet due', data: top.map((c: any) => Number(c.buckets?.not_due) || 0) },
+                      { name: 'Overdue', data: top.map(overdue) },
+                    ],
+                  };
+                })()} />
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col lg:flex-row gap-2 mb-3 lg:items-center">
           <SearchBar placeholder="Search student or class…" onSearch={setSearch} className="w-full lg:max-w-sm" />

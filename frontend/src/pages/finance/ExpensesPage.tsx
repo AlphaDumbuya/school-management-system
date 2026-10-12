@@ -23,6 +23,8 @@ import { bursarB, EXPENSE_CATEGORIES, EXPENSE_METHODS, type Expense } from '@ser
 import { le, Pill } from '@components/finance/StudentAccount';
 import { CategorySelect } from '@components/finance/CategorySelect';
 import { usePaged, TablePager } from '@components/admin/table/TablePager';
+import { ChartCard } from '@components/admin/charts/ChartCard';
+import { fmtLeShort, monthlyTotals, NO_SERIES } from '@lib/chartFormat';
 
 const TERMS = [{ value: '', label: 'Whole year' }, { value: 'first_term', label: 'First Term' }, { value: 'second_term', label: 'Second Term' }, { value: 'third_term', label: 'Third Term' }];
 const SOURCE_LABEL: Record<string, string> = { manual: 'Recorded', petty_cash: 'Petty cash', payroll: 'Payroll' };
@@ -96,6 +98,21 @@ export const ExpensesPage: React.FC = () => {
   const refresh = () => qc.invalidateQueries({ predicate: (x) => String(x.queryKey[0]).startsWith('fin-') });
   const rows: Expense[] = useMemo(() => (q.data?.rows || []).filter((e: Expense) => !search || `${e.category} ${e.description || ''} ${e.vendor || ''} ${e.reference || ''}`.toLowerCase().includes(search.toLowerCase())), [q.data, search]);
   const pg = usePaged(rows, [year, search, category, source, term, showVoided]);
+  // Charts use every non-void expense in the year/filters (not the search box).
+  const monthlyChart = useMemo(() => {
+    const m = monthlyTotals((q.data?.rows || []).filter((e: Expense) => !e.voided_at), (e: Expense) => e.expense_date, (e: Expense) => Number(e.amount));
+    return m.labels.length ? { labels: m.labels, series: [{ name: 'Spent', data: m.data }] } : NO_SERIES;
+  }, [q.data]);
+  const categoryChart = useMemo(() => {
+    const cats = ((q.data?.by_category || []) as any[]).filter((c) => Number(c.total) > 0);
+    if (!cats.length) return NO_SERIES;
+    // Top 6 categories, the rest grouped as "Other" so the donut stays readable.
+    const top = cats.slice(0, 6);
+    const rest = cats.slice(6).reduce((s, c) => s + Number(c.total), 0);
+    const labels = [...top.map((c) => c.category), ...(rest > 0 ? ['Other'] : [])];
+    const data = [...top.map((c) => Number(c.total)), ...(rest > 0 ? [rest] : [])];
+    return { labels, series: [{ name: 'Spent', data }] };
+  }, [q.data]);
   const budgetFor = (cat: string) => (budget.data?.lines || []).filter((l: any) => l.category === cat).reduce((s: number, l: any) => s + l.amount, 0);
 
   return (
@@ -119,6 +136,29 @@ export const ExpensesPage: React.FC = () => {
             </div>
           ))}
         </div>
+
+        {!q.error && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+            <div className="lg:col-span-2">
+              <ChartCard title="Spending by month" subtitle={`What the school paid out · ${year}`} type="line" height={260}
+                isLoading={q.isLoading} colors={['#ef4444']} valueFormatter={fmtLeShort}
+                emptyState={{ message: 'No spending yet', description: 'Recorded expenses will chart here by month.' }}
+                {...monthlyChart} />
+            </div>
+            <ChartCard title="Where the money goes" subtitle="Spending by category" type="donut" height={260}
+              isLoading={q.isLoading} valueFormatter={fmtLeShort}
+              emptyState={{ message: 'No spending yet', description: 'Categories will break down here.' }}
+              {...categoryChart} />
+          </div>
+        )}
+        {!fve.error && fve.data && (Number(fve.data.collected) > 0 || Number(q.data?.total) > 0) && (
+          <div className="mb-5">
+            <ChartCard title="Fees collected vs spent" subtitle={`Money in against money out · ${year}`} type="bar" height={220}
+              colors={['#10b981', '#ef4444', '#3b82f6']} valueFormatter={fmtLeShort}
+              labels={['Collected', 'Spent', 'Net']}
+              series={[{ name: 'Le', data: [Number(fve.data.collected) || 0, Number(q.data?.total) || 0, Math.max(0, (Number(fve.data.collected) || 0) - (Number(q.data?.total) || 0))] }]} />
+          </div>
+        )}
 
         {(q.data?.by_category || []).length > 0 && (
           <div className="mb-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">

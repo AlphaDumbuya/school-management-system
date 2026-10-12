@@ -16,6 +16,8 @@ import useAuthStore from '@store/authStore';
 import { bursarB, EXPENSE_CATEGORIES } from '@services/bursarService';
 import { le, Pill } from '@components/finance/StudentAccount';
 import { CategorySelect } from '@components/finance/CategorySelect';
+import { ChartCard } from '@components/admin/charts/ChartCard';
+import { fmtLeShort, NO_SERIES } from '@lib/chartFormat';
 
 type L = { category: string; department: string; amount: string; notes: string };
 
@@ -69,6 +71,27 @@ export const BudgetsPage: React.FC = () => {
                 <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"><div className={`text-lg font-black ${(d?.total_budget || 0) - (d?.total_spent || 0) < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{le((d?.total_budget || 0) - (d?.total_spent || 0))}</div><div className="text-xs text-gray-500">Remaining</div></div>
                 <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"><div className="mt-1">{status ? <Pill s={status === 'approved' ? 'approved' : 'pending'} label={status === 'approved' ? 'Approved' : 'Draft · needs approval'} /> : <span className="text-sm text-gray-500">No budget yet</span>}</div><div className="text-xs text-gray-500 mt-1">{d?.budget?.approved_by_name ? `by ${d.budget.approved_by_name}` : 'Status'}</div></div>
               </div>
+
+              {!editing && (d?.lines || []).length > 0 && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+                  <div className="lg:col-span-2">
+                    <ChartCard title="Budget vs spent" subtitle={`Per budget line · ${year}`} type="bar" height={280}
+                      colors={['#3b82f6', '#ef4444']} valueFormatter={fmtLeShort}
+                      labels={d.lines.slice(0, 12).map((l: any) => (l.department ? `${l.category} · ${l.department}` : l.category))}
+                      series={[
+                        { name: 'Budget', data: d.lines.slice(0, 12).map((l: any) => Number(l.amount) || 0) },
+                        { name: 'Spent', data: d.lines.slice(0, 12).map((l: any) => Number(l.spent) || 0) },
+                      ]} />
+                  </div>
+                  <ChartCard title="Budget used" subtitle="Spent vs what is left" type="donut" height={280}
+                    colors={['#ef4444', '#10b981']} valueFormatter={fmtLeShort}
+                    donutCenterLabel={d.total_budget > 0 ? `${Math.round((Number(d.total_spent) / Number(d.total_budget)) * 100)}%` : undefined}
+                    emptyState={{ message: 'Nothing budgeted', description: 'Add budget amounts to see usage.' }}
+                    {...(Number(d.total_budget) > 0
+                      ? { labels: ['Spent', 'Remaining'], series: [{ name: 'Le', data: [Number(d.total_spent) || 0, Math.max(0, Number(d.total_budget) - Number(d.total_spent))] }] }
+                      : NO_SERIES)} />
+                </div>
+              )}
 
               {editing ? (
                 <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 space-y-2">
