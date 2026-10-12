@@ -32,7 +32,46 @@ export const AppDownloadButtons: React.FC<Props> = ({ variant = 'light', classNa
   if (!APK_URL && !PLAY_URL) return null;
 
   const isHero = variant === 'hero';
-  const onDark = variant === 'hero' || variant === 'light';
+
+  // Hero: one tidy card on its own row, under the two main actions.
+  if (isHero) {
+    return (
+      <div className={`flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-white/15 bg-white/5 px-4 py-3 ${className}`}>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <span className="w-10 h-10 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center flex-shrink-0" aria-hidden="true">
+            <Smartphone size={18} className="text-amber-400" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-white leading-tight">Get the Android app</p>
+            <p className="text-[11px] text-white/60 leading-snug">
+              {PLAY_URL ? 'Download from Google Play or install the APK.' : 'Android only. Allow installs from your browser if asked.'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 sm:flex-shrink-0">
+          {PLAY_URL && (
+            <a
+              href={PLAY_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-black hover:bg-gray-900 text-white rounded-lg px-4 py-2.5 text-xs font-bold transition-colors"
+            >
+              Google Play
+            </a>
+          )}
+          {APK_URL && (
+            <a
+              href={APK_DOWNLOAD_HREF || APK_URL}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-white hover:bg-blue-50 text-[#1a2b6b] rounded-lg px-4 py-2.5 text-xs font-bold transition-colors"
+            >
+              <Download size={15} aria-hidden="true" /> Download
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
+  const onDark = variant !== 'dark';
 
   // Hero matches the primary button footprint; light/dark are compact secondary.
   const sizing = isHero ? 'px-6 py-3.5 text-sm font-bold' : 'px-4 py-2.5 text-xs font-semibold';
