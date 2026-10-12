@@ -8,7 +8,7 @@ import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { generateNextId } from '@utils/idGenerator';
 import { sendExport } from '@utils/exportResponse';
-import { parseDuties, effectiveDuties } from '@utils/staffDuties';
+import { parseDuties, effectiveDuties, resolveMainJob } from '@utils/staffDuties';
 import { assertPortalAllowed } from '@services/entitlementService';
 
 const router = Router();
@@ -506,7 +506,13 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
     // job: teacher (the designation then decides teacher vs leadership), or a
     // full-time accountant (Bursar) / admissions officer, who gets the same
     // profile, staff ID and credentials but no classes.
-    const primary = ['teacher', 'accountant', 'admissions_officer'].includes(String(primary_role)) ? String(primary_role) : null;
+    const requestedPrimary = ['teacher', 'accountant', 'admissions_officer'].includes(String(primary_role)) ? String(primary_role) : null;
+    // The managing job always wins: Accountant + Teaching → Accountant main
+    // (teaching on top), Admissions Officer + Teaching → Admissions Officer
+    // main. A leadership title (head teacher, principal…) stays leadership.
+    const leaderTitle = DESIGNATION_TO_ROLE[String(designation)] === 'principal';
+    const jobPlan = leaderTitle ? { main: requestedPrimary, duties: [] as string[] } : resolveMainJob(requestedPrimary, staff_duties);
+    const primary = jobPlan.main;
     const effDesignation = primary === 'accountant' ? 'bursar'
       : primary === 'admissions_officer' ? 'administrator'
       : designation;
@@ -515,7 +521,7 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
       : (DESIGNATION_TO_ROLE[String(effDesignation)] || 'teacher');
     // Any main job (teacher, accountant, admissions officer) can carry the
     // other jobs on top: e.g. a Bursar who also teaches and leads a class.
-    const duties = effectiveDuties(initialRole, staff_duties);
+    const duties = effectiveDuties(initialRole, jobPlan.duties);
     const teaches = initialRole === 'teacher' || initialRole === 'principal' || duties.includes('teacher');
     // Accounts / duties only for portals the school's plan includes.
     await assertPortalAllowed(tenantId, initialRole, { forAccountCreation: true });
@@ -656,13 +662,16 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
     } = req.body;
     // Main job change (teacher ↔ full-time accountant / admissions officer)
     // maps onto the designation the rest of this handler already understands.
-    const primaryJob = ['teacher', 'accountant', 'admissions_officer'].includes(String(primary_role)) ? String(primary_role) : null;
-    if (primaryJob === 'accountant') designation = 'bursar';
-    else if (primaryJob === 'admissions_officer') designation = 'administrator';
-    else if (primaryJob === 'teacher' && (designation === 'bursar' || designation === 'administrator')) {
-      // Back to teaching needs a teaching title.
-      designation = 'subject_teacher';
-    }
+    let primaryJob: string | null = ['teacher', 'accountant', 'admissions_officer'].includes(String(primary_role)) ? String(primary_role) : null;
+    const titleForMainJob = () => {
+      if (primaryJob === 'accountant') designation = 'bursar';
+      else if (primaryJob === 'admissions_officer') designation = 'administrator';
+      else if (primaryJob === 'teacher' && (designation === 'bursar' || designation === 'administrator')) {
+        // Back to teaching needs a teaching title.
+        designation = 'subject_teacher';
+      }
+    };
+    titleForMainJob();
 
     // Validate the status transition against a server-side whitelist so a bad
     // client value can never be persisted.
@@ -685,6 +694,20 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
       .first();
     if (!teacher) {
       throw new AppError('Teacher not found', 404, 'NOT_FOUND');
+    }
+    // The managing job always wins: Accountant + Teaching → Accountant main
+    // (teaching on top), Admissions Officer + Teaching → Admissions Officer
+    // main. Leaders (principal, head teacher…) are left alone. Only applies when
+    // the request touches the person's jobs.
+    const staffJobList = ['teacher', 'accountant', 'admissions_officer'];
+    const isLeader = teacher.user_role === 'principal' || DESIGNATION_TO_ROLE[String(designation ?? teacher.designation)] === 'principal';
+    let jobPlan: { main: string | null; duties: string[] } | null = null;
+    if (!isLeader && (primaryJob !== null || staff_duties !== undefined)) {
+      jobPlan = resolveMainJob(
+        primaryJob ?? (staffJobList.includes(teacher.user_role) ? teacher.user_role : null),
+        staff_duties !== undefined ? staff_duties : parseDuties(teacher.staff_duties),
+      );
+      if (jobPlan.main) { primaryJob = jobPlan.main; titleForMainJob(); }
     }
     // A full-time accountant / admissions officer moving to teaching with no
     // title chosen starts as Subject Teacher.
@@ -739,7 +762,7 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
     // already has access to everything, and a job can't be its own extra job.
     const effectiveRole = userUpdate.role ?? teacher.user_role;
     const prevDuties = parseDuties(teacher.staff_duties);
-    const nextDuties = effectiveDuties(effectiveRole, staff_duties !== undefined ? staff_duties : prevDuties);
+    const nextDuties = effectiveDuties(effectiveRole, jobPlan ? jobPlan.duties : prevDuties);
     const dutiesChanged = JSON.stringify([...nextDuties].sort()) !== JSON.stringify([...prevDuties].sort());
     // Does this person still teach? Then classes and subjects apply; if not,
     // any classes they led or taught this year are released below.

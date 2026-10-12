@@ -7,8 +7,9 @@
  *    (users.staff_duties), so a Bursar can also teach and lead a class, an
  *    Admissions Officer can also be a form teacher, a form teacher can also
  *    keep the fees.
- *  - Their main job is kept when they still do it; for someone new it is the
- *    managing job (Accountant, then Admissions Officer) before Teaching.
+ *  - The managing job is always the main one: Accountant + Teaching → Accountant,
+ *    Admissions Officer + Teaching → Admissions Officer (Accountant first when
+ *    both). Teaching is the main job only when it is the only job.
  *  - Classes and subjects apply whenever Teaching is ticked, whatever the main job.
  */
 import React from 'react';
@@ -41,7 +42,7 @@ export const StaffJobPicker: React.FC<StaffJobPickerProps> = ({
   values,
   error,
   title = 'Job at the School',
-  description = 'Tick every job this person does. A Bursar or Admissions Officer can also teach and lead a class, and a teacher can also keep the fees or run admissions. Each job shows its own pages and its own data.',
+  description = 'Tick every job this person does. If you tick Accountant or Admissions Officer together with Teaching, the Accountant or Admissions Officer is their main role and teaching is added on top. Each job shows its own pages and its own data.',
 }) => {
   // Jobs whose portal isn't in the school's plan aren't offered (the server
   // refuses them too). A job the person already holds stays visible so it

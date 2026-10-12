@@ -56,6 +56,22 @@ export function effectiveDuties(role: unknown, raw: unknown): StaffDuty[] {
   return parseDuties(raw).filter((d) => d !== r);
 }
 
+/**
+ * Which job is the MAIN one when a person holds several. The managing jobs win
+ * over teaching: Accountant first, then Admissions Officer, then Teacher. So a
+ * Bursar who also teaches has the Accountant role (and lands on the finance
+ * portal), with teaching as the extra job. The rest become extra jobs.
+ *
+ * \`requested\` is whatever the caller proposes as the main job (may be null);
+ * \`duties\` is the list of other jobs sent with it.
+ */
+export function resolveMainJob(requested: unknown, duties: unknown): { main: StaffDuty | null; duties: StaffDuty[] } {
+  const jobs = new Set<StaffDuty>(parseDuties(duties));
+  if (isStaffDuty(requested)) jobs.add(requested);
+  const main = (['accountant', 'admissions_officer', 'teacher'] as const).find((j) => jobs.has(j)) ?? null;
+  return { main, duties: Array.from(jobs).filter((j) => j !== main) };
+}
+
 /** True when the user does teacher work (main job teacher/principal, or a teacher duty). */
 export function teachesFor(role: unknown, raw: unknown): boolean {
   const r = String(role || '');

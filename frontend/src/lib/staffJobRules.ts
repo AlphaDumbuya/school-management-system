@@ -48,8 +48,10 @@ const LEADERSHIP_TITLES = ['head_teacher', 'vice_head_teacher', 'principal', 'vi
 
 /**
  * Map the job checkboxes to the API payload (`primary_role` + `staff_duties`).
- *  - `currentRole`: their main role today, kept when they still do that job so
- *    editing someone never silently changes their portal.
+ *  - The managing job is always the main one: Accountant + Teaching → Accountant
+ *    (teaching on top); Admissions Officer + Teaching → Admissions Officer;
+ *    Accountant + Admissions Officer → Accountant first. Teacher is the main
+ *    job only when it is the only job. The server applies the same rule.
  *  - A leadership title (head teacher, principal…) stays on 'teacher' so the
  *    server maps it to the principal role; leaders already see everything.
  */
@@ -63,9 +65,7 @@ export function jobsToPayload(
     ...(v.teaches ? ['teacher' as const] : []),
   ];
   const leader = opts.currentRole === 'principal' || LEADERSHIP_TITLES.includes(String(opts.designation || ''));
-  const main: StaffJob = leader && v.teaches
-    ? 'teacher'
-    : held.includes(opts.currentRole as StaffJob) ? (opts.currentRole as StaffJob) : held[0];
+  const main: StaffJob = leader && v.teaches ? 'teacher' : held[0];
   return { primary_role: main, staff_duties: held.filter((j) => j !== main) };
 }
 
