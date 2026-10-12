@@ -530,12 +530,14 @@ export class PaymentService {
         const { notifyFamily, leFmt } = await import('./finance/core.js');
         // In-app notice only; the email is the refund receipt below (with the
         // REFUNDED PDF attached) so the family gets one message, not two.
+        const hasReceipt = !!(payment.receipt_number && payment.tenant_id);
         await notifyFamily(payment.student_id, {
           subject: 'Payment refunded',
           message: `${leFmt(Number(payment.amount))}${payment.receipt_number ? ` (receipt ${payment.receipt_number})` : ''} for {student} was refunded. The fees show it as owed again.`,
           sourceType: 'payment', sourceId: paymentId,
-        });
-        if (payment.receipt_number && payment.tenant_id) {
+        // Older payments have no receipt to attach: keep the plain email for those.
+        }, hasReceipt ? undefined : { emailTenantId: payment.tenant_id });
+        if (hasReceipt) {
           const { receiptService } = await import('./finance/receiptService.js');
           await receiptService.emailQuietly(payment.tenant_id, payment.receipt_number, {
             kind: 'refund', reason, amount: Number(payment.amount),

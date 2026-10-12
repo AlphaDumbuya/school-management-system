@@ -1072,9 +1072,14 @@ class EmailService {
       disabledPortals?: string[];
       /** Trial ends with payment required (school becomes read-only until paid). */
       paymentRequired?: boolean;
+      /** payment_received: stable receipt number, provider reference and payment time for the PDF receipt. */
+      receiptNumber?: string;
+      reference?: string;
+      paidAt?: Date | string;
     }
   ): Promise<EmailResponse> {
     const branding = platformBranding();
+    let attachments: { name: string; content: string }[] | undefined;
     const supportEmail = process.env.SUPPORT_EMAIL || 'support@wiskulsl.com';
     const billingUrl = `${branding.appUrl}/settings?tab=billing`;
     const school = escapeHtml(data.schoolName);
@@ -1145,12 +1150,49 @@ class EmailService {
         (data.billingCycle ? detailRow('Billing', data.billingCycle === 'yearly' ? 'Yearly' : 'Monthly') : '') +
         (data.amount != null ? detailRow('Amount paid', escapeHtml(this.fmtMoney(data.amount, 'NLe'))) : '') +
         (end ? detailRow('Active until', escapeHtml(end)) : '');
+      // The official PDF receipt, issued by WiSkul to the school (one retry).
+      const paidAt = data.paidAt ? new Date(data.paidAt) : new Date();
+      const receiptNumber = data.receiptNumber || `SUB-${paidAt.getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
+      if (data.amount != null) {
+        for (let attempt = 1; attempt <= 2 && !attachments; attempt++) {
+          try {
+            const { generateReceiptPdfBase64 } = await import('./email/receiptPdf.js');
+            const cycle = data.billingCycle === 'yearly' ? 'Yearly' : data.billingCycle === 'monthly' ? 'Monthly' : '';
+            const { base64 } = await generateReceiptPdfBase64('', {
+              issuer: 'platform',
+              receiptNumber,
+              payerName: data.schoolName,
+              amount: Number(data.amount),
+              currency: 'NLe',
+              method: 'Mobile money (Monime)',
+              reference: data.reference,
+              date: paidAt,
+              receivedBy: 'WiSkul Billing',
+              status: 'paid',
+              fields: [
+                { label: 'Billed to', value: data.schoolName, bold: true },
+                { label: 'Payment method', value: 'Mobile money (Monime)' },
+                { label: 'Plan', value: `${data.planName}${cycle ? ` (${cycle})` : ''}`, bold: true },
+                { label: 'Reference', value: data.reference },
+                { label: 'Active until', value: end || undefined },
+                { label: 'Payment date', value: this.fmtDate(paidAt) },
+              ],
+              items: [{ label: `WiSkul ${data.planName} plan${cycle ? ` · ${cycle} subscription` : ''}`, amount: Number(data.amount) }],
+            });
+            attachments = [{ name: `Receipt-${receiptNumber}.pdf`, content: base64 }];
+          } catch (err) {
+            logger.warn(`Subscription receipt PDF failed (attempt ${attempt}) for ${receiptNumber}: ${err}`);
+          }
+        }
+      }
       bodyHtml = `
         <p>Hello,</p>
         <p>We received your payment. The new plan is active immediately for everyone at <strong>${school}</strong>.</p>
-        ${detailsCard(rows)}
+        ${detailsCard(detailRow('Receipt No.', `<strong>${escapeHtml(receiptNumber)}</strong>`) + rows)}
         ${emailButton('Open Plan & Billing', billingUrl)}
-        <p style="color:#64748b;font-size:13px;">Keep this email as your receipt. Billing history is also in Settings → Plan &amp; Billing.</p>`;
+        <p style="color:#64748b;font-size:13px;">${attachments
+          ? 'Your official PDF receipt is attached. Billing history is also in Settings → Plan &amp; Billing.'
+          : 'Keep this email as your receipt. Billing history is also in Settings → Plan &amp; Billing.'}</p>`;
     }
 
     return this.sendEmail({
@@ -1159,6 +1201,7 @@ class EmailService {
       subject,
       body: renderEmail({ branding, eyebrow, heading, bodyHtml, preheader }),
       isHtml: true,
+      attachments,
     });
   }
 

@@ -16,7 +16,7 @@
  * the Latin-1 set (no tick marks or other glyphs that print as boxes).
  */
 import PDFDocument from 'pdfkit';
-import { resolveTenantBranding, type EmailBranding } from './emailBranding.js';
+import { resolveTenantBranding, platformBranding, type EmailBranding } from './emailBranding.js';
 import { logger } from '@utils/logger';
 
 const NAVY = '#14284b';
@@ -50,6 +50,13 @@ export interface ReceiptData {
   status?: 'paid' | 'refunded' | 'part_refunded';
   /** What the payment covered (charge labels). */
   items?: Array<{ label: string; amount: number }>;
+  /**
+   * 'platform' issues the receipt from WiSkul itself (a school paying for its
+   * plan) instead of from a school, with WiSkul's letterhead and logo.
+   */
+  issuer?: 'platform';
+  /** Replaces the standard pupil / class / year grid with these label-value pairs (two per row). */
+  fields?: Array<{ label: string; value?: string; bold?: boolean }>;
 }
 
 /** Latin-1 safe text: Helvetica can't draw anything else. */
@@ -114,9 +121,12 @@ export async function generateReceiptPdfBase64(
   tenantId: string,
   data: ReceiptData,
 ): Promise<{ base64: string; branding: EmailBranding }> {
-  const branding = await resolveTenantBranding(tenantId);
+  const platform = data.issuer === 'platform';
+  const branding = platform ? platformBranding() : await resolveTenantBranding(tenantId);
   const currency = data.currency || 'Le';
-  const logo = await loadLogo(tenantId);
+  const logo = platform
+    ? Buffer.from((await import('../../assets/platformLogo.js')).PLATFORM_LOGO_PNG_BASE64, 'base64')
+    : await loadLogo(tenantId);
 
   return new Promise((resolve, reject) => {
     try {
@@ -183,15 +193,23 @@ export async function generateReceiptPdfBase64(
         line(label.toUpperCase(), x, yy, w, { size: 7.5, color: MUTED, font: 'Helvetica-Bold' });
         line(value || '-', x, yy + 11, w, { size: 11, font: bold ? 'Helvetica-Bold' : 'Helvetica' });
       };
-      field('Received from', data.payerName, L, y, colW, true);
-      field('Payment method', data.method, L + colW + 24, y, colW);
-      y += 38;
-      field('Pupil', data.studentName ? `${data.studentName}${data.admissionNo ? `  (${data.admissionNo})` : ''}` : undefined, L, y, colW, true);
-      field('Reference', data.reference, L + colW + 24, y, colW);
-      y += 38;
-      field('Class', data.className, L, y, colW);
-      field('Academic year', data.academicYear, L + colW + 24, y, colW);
-      y += 44;
+      if (data.fields && data.fields.length) {
+        data.fields.forEach((f, i) => {
+          field(f.label, f.value, L + (i % 2) * (colW + 24), y, colW, f.bold);
+          if (i % 2 === 1 || i === data.fields!.length - 1) y += 38;
+        });
+        y += 6;
+      } else {
+        field('Received from', data.payerName, L, y, colW, true);
+        field('Payment method', data.method, L + colW + 24, y, colW);
+        y += 38;
+        field('Pupil', data.studentName ? `${data.studentName}${data.admissionNo ? `  (${data.admissionNo})` : ''}` : undefined, L, y, colW, true);
+        field('Reference', data.reference, L + colW + 24, y, colW);
+        y += 38;
+        field('Class', data.className, L, y, colW);
+        field('Academic year', data.academicYear, L + colW + 24, y, colW);
+        y += 44;
+      }
 
       // ── What it paid for ─────────────────────────────────────────
       const items = (data.items && data.items.length ? data.items : [{ label: 'School fees', amount: data.amount }]);
@@ -254,13 +272,18 @@ export async function generateReceiptPdfBase64(
       doc.moveTo(L, sigY).lineTo(L + sigW, sigY).lineWidth(0.75).strokeColor(MUTED).stroke();
       doc.moveTo(R - sigW, sigY).lineTo(R, sigY).stroke();
       line(data.receivedBy ? `Received by: ${data.receivedBy}` : 'Received by', L, sigY + 5, sigW, { size: 8.5, color: MUTED });
-      line('Authorised signature and school stamp', R - sigW, sigY + 5, sigW, { size: 8.5, color: MUTED });
+      line(platform ? 'Authorised signature' : 'Authorised signature and school stamp', R - sigW, sigY + 5, sigW, { size: 8.5, color: MUTED });
 
       // ── Footer ───────────────────────────────────────────────────
       const fy = H - 96;
       doc.moveTo(L, fy).lineTo(R, fy).lineWidth(0.75).strokeColor(LINE).stroke();
       line(branding.name, L, fy + 10, CW, { size: 9.5, font: 'Helvetica-Bold' });
-      line('Please keep this receipt as proof of payment. If anything on it looks wrong, contact the school office with the receipt number.', L, fy + 25, CW, { size: 8, color: MUTED });
+      line(
+        platform
+          ? 'Please keep this receipt as proof of payment. If anything on it looks wrong, contact WiSkul support with the receipt number.'
+          : 'Please keep this receipt as proof of payment. If anything on it looks wrong, contact the school office with the receipt number.',
+        L, fy + 25, CW, { size: 8, color: MUTED },
+      );
       const contacts = [branding.contactPhone, branding.contactEmail].filter(Boolean).join('   |   ');
       if (contacts) line(contacts, L, fy + 38, CW, { size: 8, color: MUTED });
       line(branding.isPlatform ? 'Generated by WiSkul' : 'Powered by WiSkul', L, fy + 54, CW, { size: 7.5, color: '#94a3b8' });

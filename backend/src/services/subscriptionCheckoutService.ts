@@ -195,6 +195,10 @@ export class SubscriptionCheckout {
         await emailService.sendSubscriptionLifecycleEmail(to, {
           kind: 'payment_received', schoolName: tenant?.name || 'your school', planName: limits.name,
           amount: Number(session.amount) || undefined, billingCycle: session.billing_cycle, endDate: sub?.end_date || null,
+          // Same receipt number on any resend: derived from the payment session.
+          receiptNumber: `SUB-${new Date().getFullYear()}-${String(session.id).replace(/-/g, '').slice(0, 8).toUpperCase()}`,
+          reference: session.provider_session_id || undefined,
+          paidAt: new Date(),
         });
       }
     } catch (mailErr: any) {
