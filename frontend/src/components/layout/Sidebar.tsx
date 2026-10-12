@@ -39,6 +39,7 @@ import {
 import { FaRightFromBracket, FaAnglesLeft, FaAnglesRight, FaCircleCheck } from 'react-icons/fa6';
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
 import { routeAccess } from '@lib/planFeatures';
+import { isDemoUser } from '@lib/demo';
 import clsx from 'clsx';
 
 interface NavItem {
@@ -757,7 +758,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                 </>
               ) : (
                 <>
-                  {user?.schoolLogoUrl ? (
+                  {isDemoUser(user) ? (
+                    // The public demo school wears the WiSkul logo, like the platform itself.
+                    <img src="/logo.png" alt="WiSkul" className="w-9 sm:w-10 h-9 sm:h-10 rounded-lg object-contain bg-white p-1 border border-gray-700 flex-shrink-0" />
+                  ) : user?.schoolLogoUrl ? (
                     <img
                       src={user.schoolLogoUrl}
                       alt={user.schoolName || 'School Logo'}

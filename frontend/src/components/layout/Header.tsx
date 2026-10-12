@@ -10,6 +10,7 @@ import { NotificationBell } from './NotificationBell';
 import { GlobalSearchBar } from './GlobalSearchBar';
 import { SyncStatusIndicator } from '@components/offline/SyncStatusIndicator';
 import clsx from 'clsx';
+import { isDemoUser } from '@lib/demo';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -86,7 +87,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
             ) : (
               <>
                 <div className="w-8 h-8 rounded-xl overflow-hidden bg-white border border-gray-200 flex items-center justify-center flex-shrink-0 shadow-sm">
-                  {user?.schoolLogoUrl
+                  {/* The demo school always wears the WiSkul logo. */}
+                  {user?.schoolLogoUrl && !isDemoUser(user)
                     ? <img src={user.schoolLogoUrl} alt={user.schoolName || 'School'} className="w-full h-full object-contain p-0.5" />
                     : <img src="/logo.png" alt="WiSkul" className="w-full h-full object-contain p-1" />
                   }
