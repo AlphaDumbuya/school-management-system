@@ -564,58 +564,15 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
   try {
     if (receiptNumber) {
       // The stored receipt (same number, items and balance as a reprint).
+      // If it can't go out now, receipt_emailed_at stays empty and the daily
+      // job sends it again.
       const { receiptService } = await import('../services/finance/receiptService.js');
-      await receiptService.email(session.tenant_id, receiptNumber, null);
-    } else {
-      await sendPaymentReceipt(session);
+      const out = await receiptService.email(session.tenant_id, receiptNumber, null);
+      if (!out.sent) logger.warn(`Receipt ${receiptNumber} not emailed yet: ${out.reason}`);
     }
   } catch (mailErr: any) {
     logger.warn(`Could not send payment receipt for session ${sessionId}: ${mailErr?.message || mailErr}`);
   }
-}
-
-/**
- * Look up the student + guardian for a completed session and email a receipt.
- */
-async function sendPaymentReceipt(session: any) {
-  const student = await db('students').where({ id: session.student_id }).first();
-  if (!student) return;
-
-  const studentName = [student.first_name, student.last_name].filter(Boolean).join(' ') || 'Student';
-
-  // Same family contact as the rest of finance: a linked parent's email,
-  // else the student's own.
-  const { familyContact } = await import('../services/finance/core.js');
-  const contact = await familyContact(session.student_id);
-  const payerEmail: string | null = contact.email || student.email || null;
-  const payerName = contact.name || studentName;
-  if (!payerEmail) return;
-
-  // Remaining outstanding balance across the student's fees. The fees table
-  // tracks the outstanding amount in `balance` (falling back to `amount`).
-  const openFees = await db('fees')
-    .where({ student_id: session.student_id })
-    .whereIn('status', ['pending', 'partial', 'overdue']);
-  const balanceRemaining = openFees.reduce(
-    (sum: number, f: any) => sum + Math.max(0, Number(f.balance ?? f.amount ?? 0)),
-    0
-  );
-
-  // Unique, human-friendly receipt number: RCPT-<year>-<8 uppercase hex>.
-  const receiptNumber = `RCPT-${new Date().getFullYear()}-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
-
-  const { default: emailService } = await import('../services/emailService');
-  await emailService.sendPaymentReceiptEmail(session.tenant_id, payerEmail, {
-    payerName,
-    studentName,
-    amount: session.amount,
-    currency: 'Le',
-    method: 'Mobile / Card (Monime)',
-    reference: session.provider_session_id || undefined,
-    receiptNumber,
-    date: new Date(),
-    balanceRemaining,
-  });
 }
 
 /**

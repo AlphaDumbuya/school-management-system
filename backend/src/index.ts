@@ -86,6 +86,7 @@ import { startIdentityManagementJobs } from './jobs/identityManagementJobs.js';
 import { startEventManagementJobs } from './jobs/eventManagementJobs.js';
 import { startSmsDeliveryJobs } from './jobs/smsDeliveryJobs.js';
 import { startSubscriptionJobs } from './jobs/subscriptionJobs.js';
+import { startAttendanceDigestJobs } from './jobs/attendanceDigestJobs.js';
 
 // Load environment variables
 dotenv.config();
@@ -492,6 +493,11 @@ try {
   logger.warn('Could not start finance jobs at startup', { error: e });
 }
 
+try {
+  startAttendanceDigestJobs();
+} catch (e) {
+  logger.warn('Could not start attendance digest jobs at startup', { error: e });
+}
 try {
   startEventManagementJobs();
 } catch (e) {

@@ -510,6 +510,9 @@ router.post(
         userId
       );
 
+      // Notify the family and email the receipt (best-effort, after commit).
+      await paymentService.announcePayment(payment);
+
       res.status(201).json({
         success: true,
         data: payment,

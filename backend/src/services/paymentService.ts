@@ -207,6 +207,12 @@ export class PaymentService {
           throw new Error(`Payment amount exceeds outstanding balance`);
         }
 
+        // Every payment gets a stored, sequential receipt number so the
+        // receipt PDF and email can be produced for it.
+        const receiptNumber = fee.tenant_id
+          ? await nextReceiptNumber(trx, fee.tenant_id, paymentDate)
+          : null;
+
         payment = {
           id: paymentId,
           // tenant_id was missing, so tenant-scoped stats skipped manual payments.
@@ -215,11 +221,14 @@ export class PaymentService {
           student_id: fee.student_id,
           amount,
           method: data.method,
+          payment_method: data.method,
           transaction_reference: data.transactionReference || null,
           notes: data.notes || null,
           payment_date: paymentDate,
           status: 'completed',
           created_by: userId,
+          recorded_by: userId,
+          receipt_number: receiptNumber,
           created_at: new Date(),
         };
 
@@ -237,6 +246,12 @@ export class PaymentService {
             status: newStatus,
             updated_at: new Date(),
           });
+
+        if (fee.tenant_id) {
+          const balanceAfter = await studentOutstanding(trx, fee.tenant_id, fee.student_id);
+          await trx('payments').where('id', paymentId).update({ balance_after: balanceAfter });
+          payment.balance_after = balanceAfter;
+        }
       });
 
       // Audit is best-effort: the payment is already committed, so a failed
@@ -513,11 +528,19 @@ export class PaymentService {
       logger.info(`Payment refund ${refundId} processed`);
       try {
         const { notifyFamily, leFmt } = await import('./finance/core.js');
+        // In-app notice only; the email is the refund receipt below (with the
+        // REFUNDED PDF attached) so the family gets one message, not two.
         await notifyFamily(payment.student_id, {
           subject: 'Payment refunded',
           message: `${leFmt(Number(payment.amount))}${payment.receipt_number ? ` (receipt ${payment.receipt_number})` : ''} for {student} was refunded. The fees show it as owed again.`,
           sourceType: 'payment', sourceId: paymentId,
-        }, { emailTenantId: payment.tenant_id });
+        });
+        if (payment.receipt_number && payment.tenant_id) {
+          const { receiptService } = await import('./finance/receiptService.js');
+          await receiptService.emailQuietly(payment.tenant_id, payment.receipt_number, {
+            kind: 'refund', reason, amount: Number(payment.amount),
+          });
+        }
       } catch { /* best-effort */ }
       return refund;
     } catch (error) {
@@ -555,6 +578,29 @@ export class PaymentService {
   }
 
   /**
+   * After a single-fee payment commits: tell the family in the app and email
+   * them the receipt (when the school has e-receipts on). Best-effort, never
+   * throws, so it can't fail a payment that is already recorded.
+   */
+  async announcePayment(payment: any): Promise<void> {
+    try {
+      if (!payment?.tenant_id || !payment?.student_id) return;
+      const { notifyFamily, leFmt, financeSettings } = await import('./finance/core');
+      void notifyFamily(payment.student_id, {
+        subject: 'Payment received',
+        message: `${leFmt(Number(payment.amount))} was received for {student}${payment.receipt_number ? ` (receipt ${payment.receipt_number})` : ''}. Thank you.`,
+        sourceType: 'payment',
+      });
+      if (payment.receipt_number && (await financeSettings(payment.tenant_id)).emailManualReceipts) {
+        const { receiptService } = await import('./finance/receiptService');
+        await receiptService.emailQuietly(payment.tenant_id, payment.receipt_number);
+      }
+    } catch (e: any) {
+      logger.warn(`Payment announcement failed: ${e?.message || e}`);
+    }
+  }
+
+  /**
    * Bulk record payments
    */
   async bulkRecordPayments(payments: PaymentData[], userId: string): Promise<any> {
@@ -573,6 +619,7 @@ export class PaymentService {
           const result = await this.recordPayment(payment, userId);
           results.created++;
           results.totalAmount += result.amount;
+          await this.announcePayment(result);
         } catch (error) {
           results.failed++;
           results.errors.push(`Failed to record payment for fee ${payment.feeId}: ${error}`);

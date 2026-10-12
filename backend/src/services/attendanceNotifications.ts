@@ -13,6 +13,28 @@
 import { db } from '@utils/database';
 import { logger } from '@utils/logger';
 
+export type AttendanceNotifyMode = 'weekly' | 'daily' | 'off';
+
+const modeCache = new Map<string, { mode: AttendanceNotifyMode; at: number }>();
+
+/**
+ * How this school tells parents about attendance (setting `attendance_notify_mode`):
+ * 'weekly' (default) = one Friday digest, 'daily' = an alert on every mark,
+ * 'off' = no parent attendance messages. Cached for a minute.
+ */
+export async function attendanceNotifyMode(tenantId: string): Promise<AttendanceNotifyMode> {
+  const hit = modeCache.get(tenantId);
+  if (hit && Date.now() - hit.at < 60_000) return hit.mode;
+  let mode: AttendanceNotifyMode = 'weekly';
+  try {
+    const row = await db('school_config_settings').where({ tenant_id: tenantId, setting_key: 'attendance_notify_mode' }).first('setting_value');
+    const v = String(row?.setting_value ?? '').replace(/"/g, '').trim().toLowerCase();
+    if (v === 'daily' || v === 'off' || v === 'weekly') mode = v;
+  } catch { /* default */ }
+  modeCache.set(tenantId, { mode, at: Date.now() });
+  return mode;
+}
+
 /** Back-filled registers (older than this) don't alert families. */
 const MAX_AGE_DAYS = 2;
 
@@ -31,6 +53,8 @@ function isRecent(dateKey: string): boolean {
 async function sendAbsenceAlert(tenantId: string, studentId: string, dateKey: string, classId?: string | null): Promise<void> {
   const student = await db('students').where({ id: studentId, tenant_id: tenantId }).first();
   if (!student) return;
+  // Per-day alerts only for schools that chose 'daily'; the rest get the weekly digest (or nothing).
+  if ((await attendanceNotifyMode(tenantId)) !== 'daily') return;
 
   // Once per student per day (the first absent mark claims the key).
   const { claimNotice } = await import('@services/finance/core');

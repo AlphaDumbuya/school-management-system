@@ -107,6 +107,10 @@ async function notifyGuardiansOfAttendance(
   attendanceDate: string,
 ): Promise<void> {
   try {
+    // Parents hear about attendance in the weekly Friday digest unless the
+    // school chose per-day alerts.
+    const { attendanceNotifyMode } = await import('@services/attendanceNotifications');
+    if ((await attendanceNotifyMode(tenantId)) !== 'daily') return;
     const student = await db('students').where({ id: studentId, tenant_id: tenantId }).first();
     if (!student) return;
     const studentName = [student.first_name, student.last_name].filter(Boolean).join(' ') || 'Your child';

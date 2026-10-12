@@ -38,6 +38,10 @@
     {
       "path": "/api/v1/cron/finance-daily",
       "schedule": "30 1 * * *"
+    },
+    {
+      "path": "/api/v1/cron/attendance-weekly",
+      "schedule": "0 18 * * 5"
     }
   ]
 }

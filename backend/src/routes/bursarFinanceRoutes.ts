@@ -192,15 +192,18 @@ export default router;
  * `Authorization: Bearer ${CRON_SECRET}`). Public path, secret-guarded.
  */
 export const financeCronRouter = Router();
+/** Constant-time check of `Authorization: Bearer ${CRON_SECRET}`. */
+function cronAuthorized(req: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  const auth = Buffer.from(String(req.headers.authorization || ''), 'utf8');
+  const expected = Buffer.from(`Bearer ${secret || ''}`, 'utf8');
+  // Length guard first: timingSafeEqual throws on mismatch.
+  return !!secret && auth.length === expected.length && timingSafeEqual(auth, expected);
+}
+
 financeCronRouter.all('/finance-daily', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const secret = process.env.CRON_SECRET;
-    const auth = Buffer.from(String(req.headers.authorization || ''), 'utf8');
-    const expected = Buffer.from(`Bearer ${secret || ''}`, 'utf8');
-    // Constant-time compare (length guard first: timingSafeEqual throws on mismatch).
-    if (!secret || auth.length !== expected.length || !timingSafeEqual(auth, expected)) {
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
-    }
+    if (!cronAuthorized(req)) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const results = await lateFeeService.runDaily();
     // Then post the day's money events to the books (schools using accounting).
     const books = await glService.syncAll().catch((e) => [{ error: String(e?.message || e) }]);
@@ -208,6 +211,23 @@ financeCronRouter.all('/finance-daily', async (req: Request, res: Response, next
     const subscriptions = await import('../jobs/subscriptionJobs.js')
       .then((m) => m.runSubscriptionDaily())
       .catch((e) => ({ error: String(e?.message || e) }));
-    res.json({ success: true, data: results, books, subscriptions });
+    // Online-payment receipts whose email didn't go out are sent again.
+    const receipts = await import('../services/finance/receiptService.js')
+      .then((m) => m.receiptService.resendMissingOnline())
+      .catch((e) => ({ error: String(e?.message || e) }));
+    // Catch-up: a school whose Friday attendance digest was missed gets it on Saturday.
+    const attendanceDigest = await import('../jobs/attendanceDigestJobs.js')
+      .then((m) => m.runSaturdayCatchUp())
+      .catch((e) => ({ error: String(e?.message || e) }));
+    res.json({ success: true, data: results, books, subscriptions, receipts, attendanceDigest });
+  } catch (e) { next(e); }
+});
+
+/** Friday-evening weekly attendance digest to parents (Vercel Cron, same secret). */
+financeCronRouter.all('/attendance-weekly', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!cronAuthorized(req)) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    const { runFridayDigest } = await import('../jobs/attendanceDigestJobs.js');
+    res.json({ success: true, data: await runFridayDigest() });
   } catch (e) { next(e); }
 });

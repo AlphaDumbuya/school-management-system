@@ -130,6 +130,9 @@ router.post('/settings', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
     if ('staff_signin_closes_at' in updates && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(updates.staff_signin_closes_at || ''))) {
       throw new AppError('Staff sign-in closing time must be a time like 18:00', 400, 'VALIDATION_ERROR');
     }
+    if ('attendance_notify_mode' in updates && !['weekly', 'daily', 'off'].includes(String(updates.attendance_notify_mode))) {
+      throw new AppError('attendance_notify_mode must be weekly, daily or off', 400, 'VALIDATION_ERROR');
+    }
     if ('academic_year' in updates && updates.academic_year && !/^\d{4}\/\d{4}$/.test(String(updates.academic_year).trim())) {
       throw new AppError('academic_year must be in the format YYYY/YYYY', 400, 'VALIDATION_ERROR');
     }
