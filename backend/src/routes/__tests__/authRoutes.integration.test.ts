@@ -1,3 +1,4 @@
+import { assertDestructiveAllowed } from '../../utils/dbSafety';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import knex from 'knex';
@@ -35,6 +36,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   // Clear users and related tables using TRUNCATE CASCADE
+  assertDestructiveAllowed('TRUNCATE users CASCADE');
   await db.raw('TRUNCATE TABLE users, refresh_tokens, password_resets CASCADE');
 });
 

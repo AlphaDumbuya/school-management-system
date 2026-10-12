@@ -3,6 +3,7 @@ import type { Knex } from 'knex';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { assertDestructiveAllowed } from '../src/utils/dbSafety.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +22,8 @@ const db = knex({
 });
 
 async function resetDatabase() {
+  // Drops every table: only ever on a local database (see src/utils/dbSafety.ts).
+  assertDestructiveAllowed('DROP every table (full database reset)');
   try {
     console.log('Starting database reset...');
 

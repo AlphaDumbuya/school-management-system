@@ -1,6 +1,7 @@
 import './env.js';
 import knex, { Knex } from 'knex';
 import dotenv from 'dotenv';
+import { assertTestsUseSafeDatabase } from './dbSafety.js';
 
 const environment = process.env.NODE_ENV || 'development';
 
@@ -103,6 +104,8 @@ const config: Record<string, Knex.Config> = {
   },
 };
 
+// The test runner may only ever connect to a local database (see dbSafety.ts).
+assertTestsUseSafeDatabase();
 export const db: Knex = knex(config[environment] || config.development);
 
 export default db;
