@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticate, requirePermission } from '@middleware/authMiddleware';
+import { authenticate, attachUserContext, authorize, requirePermission } from '@middleware/authMiddleware';
+import { UserRole } from '../types/auth';
 import { db } from '@utils/database';
 import { EnrollmentRequestService } from '@services/enrollmentRequestService';
 import { BulkImportService } from '@services/bulkImportService';
@@ -463,12 +464,14 @@ router.get(
 router.get(
   '/audit-logs/:entityType/:entityId',
   authenticate,
+  attachUserContext,
+  authorize(UserRole.PRINCIPAL),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { entityType, entityId } = req.params;
       const { action, page, limit } = req.query;
 
-      const result = await auditService.getEntityAuditTrail(entityType, entityId, {
+      const result = await auditService.getEntityAuditTrail(req.user!.tenant_id, entityType, entityId, {
         action: action as string,
         page: page ? parseInt(page as string) : 1,
         limit: limit ? parseInt(limit as string) : 50,
@@ -492,13 +495,14 @@ router.get(
 router.get(
   '/audit-logs/type/:entityType',
   authenticate,
-  requirePermission('audit:read'),
+  attachUserContext,
+  authorize(UserRole.PRINCIPAL),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { entityType } = req.params;
       const { action, page, limit } = req.query;
 
-      const result = await auditService.getAuditLogsByEntityType(entityType, {
+      const result = await auditService.getAuditLogsByEntityType(req.user!.tenant_id, entityType, {
         action: action as string,
         page: page ? parseInt(page as string) : 1,
         limit: limit ? parseInt(limit as string) : 50,
@@ -522,13 +526,14 @@ router.get(
 router.get(
   '/audit-logs/user/:userId',
   authenticate,
-  requirePermission('audit:read'),
+  attachUserContext,
+  authorize(UserRole.PRINCIPAL),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { userId } = req.params;
       const { entity_type, action, page, limit } = req.query;
 
-      const result = await auditService.getAuditLogsByUser(userId, {
+      const result = await auditService.getAuditLogsByUser(req.user!.tenant_id, userId, {
         entity_type: entity_type as string,
         action: action as string,
         page: page ? parseInt(page as string) : 1,
@@ -553,12 +558,14 @@ router.get(
 router.get(
   '/audit-logs/statistics',
   authenticate,
-  requirePermission('audit:read'),
+  attachUserContext,
+  authorize(UserRole.PRINCIPAL),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { startDate, endDate } = req.query;
 
       const stats = await auditService.getAuditStatistics(
+        req.user!.tenant_id,
         startDate as string,
         endDate as string
       );

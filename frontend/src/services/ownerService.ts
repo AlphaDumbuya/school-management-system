@@ -14,7 +14,7 @@ export interface OwnerOverview {
     principals: Array<{ id: string; name: string; email: string; status: string; isOwner: boolean; lastLogin: string | null }>;
     counts: { teachers: number; bursars: number; admissionsOfficers: number; students: number };
   };
-  activity: Array<{ id: string; action: string; at: string; by: string }>;
+  activity: Array<{ id: string; action: string; summary?: string; at: string; by: string }>;
 }
 
 export const ownerService = {

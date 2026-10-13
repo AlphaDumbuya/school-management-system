@@ -14,6 +14,7 @@ import { db } from '@utils/database';
 import authRoutes from '@routes/authRoutes';
 import verificationRoutes from '@routes/verificationRoutes';
 import ownerRoutes from '@routes/ownerRoutes';
+import auditRoutes from '@routes/auditRoutes';
 import userRoutes from '@routes/userRoutes';
 import rbacRoutes from '@routes/rbacRoutes';
 import studentRoutes from '@routes/studentRoutes';
@@ -84,6 +85,7 @@ import newsletterRoutes from '@routes/newsletterRoutes';
 import schoolConfigRoutes from '@routes/schoolConfigRoutes';
 import liveSyncRoutes from '@routes/liveSyncRoutes';
 import { liveSyncMiddleware } from '@utils/liveSync';
+import { auditCapture } from '@middleware/auditCapture';
 import announcementRoutes from '@routes/announcementRoutes';
 import searchRoutes from '@routes/searchRoutes';
 import appStatsRoutes from '@routes/appStatsRoutes';
@@ -163,6 +165,8 @@ app.use(requestLogger);
 // Live portal sync: bump the school's change counter on successful structural
 // writes (promotions, new year, roles, enrollments…) so open apps refresh.
 app.use(liveSyncMiddleware);
+// School audit trail for the main records (who changed what).
+app.use(auditCapture);
 
 // Broad per-IP rate ceiling across the whole API. Auth routes layer stricter,
 // purpose-built limiters on top (see routes/authRoutes.ts). The webhook path is
@@ -475,6 +479,9 @@ app.use('/api/v1/verification', verificationRoutes);
 
 // School owner overview (owner-only)
 app.use('/api/v1/owner', ownerRoutes);
+
+// School audit log (owner and principals)
+app.use('/api/v1/school-audit', auditRoutes);
 
 // Timetable Routes (Simplified schedule management)
 app.use('/api/v1/timetable', timetableRoutes);

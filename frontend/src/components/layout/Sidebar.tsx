@@ -570,6 +570,15 @@ export const navItems: NavItem[] = [
     version: 'v1',
   },
   {
+    label: 'Audit Log',
+    icon: <FaShieldAlt className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/audit-log',
+    roles: ['principal'],
+    module: 'Reports & Analytics',
+    group: 'Reports',
+    version: 'v1',
+  },
+  {
     label: 'Financial Reports',
     icon: <FaChartBar className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/reports/financial',

@@ -139,6 +139,7 @@ import PlatformDemoRequestsPage from '@pages/PlatformDemoRequestsPage';
 import WelcomePage, { hasOnboarded } from '@pages/WelcomePage';
 import VerificationPage from '@pages/VerificationPage';
 import OwnerPage from '@pages/OwnerPage';
+import AuditLogPage from '@pages/AuditLogPage';
 import VerifyReportCardPage from '@pages/VerifyReportCardPage';
 import UnsubscribePage from '@pages/UnsubscribePage';
 import PrivacyPolicyPage from '@pages/PrivacyPolicyPage';
@@ -542,6 +543,11 @@ const router = createBrowserRouter(
         {
           path: 'settings',
           element: <P><SettingsPage /></P>,
+        },
+        {
+          // School audit log (owner and principals; the server limits what a principal sees).
+          path: 'audit-log',
+          element: <P requiredRoles={['principal']}><AuditLogPage /></P>,
         },
         {
           // School owner overview (the page itself sends non-owner principals away).

@@ -14,18 +14,10 @@ import { AppError } from '../middleware/errorHandler';
 import { requireOwner } from '../utils/tenantOwner';
 import { SubscriptionService } from '../services/subscriptionService';
 import { db } from '../utils/database';
+import { describeAudit, whereCategory } from '../utils/auditTrail';
 
 const router = Router();
 router.use(authenticate, attachUserContext, requireOwner);
-
-/** Actions that matter to an owner. Anything else in the audit log is not shown here. */
-const OWNER_ACTIONS = [
-  'payment_settings.update',
-  'payment_settings.disable',
-  'payment_settings.stepup_failed',
-  'ownership.grant',
-  'ownership.revoke',
-];
 
 const count = async (q: PromiseLike<any>): Promise<number> => Number((await q)?.n) || 0;
 
@@ -43,13 +35,10 @@ router.get('/overview', async (req: Request, res: Response, next: NextFunction) 
         .where({ tenant_id: tenantId, role: 'principal' })
         .select('id', 'first_name', 'last_name', 'email', 'status', 'is_owner', 'last_login')
         .orderBy([{ column: 'is_owner', order: 'desc' }, { column: 'created_at', order: 'asc' }]),
-      db('audit_logs as a')
-        .join('users as u', 'u.id', 'a.performed_by')
-        .where('u.tenant_id', tenantId)
-        .whereIn('a.action', OWNER_ACTIONS)
+      whereCategory(db('audit_logs as a').where('a.tenant_id', tenantId), 'Owner & billing')
         .orderBy('a.created_at', 'desc')
         .limit(15)
-        .select('a.id', 'a.action', 'a.created_at', 'u.first_name', 'u.last_name', 'u.email'),
+        .select('a.id', 'a.action', 'a.entity_type', 'a.created_at', 'a.actor_name'),
     ]);
 
     const owner = principals.find((p: any) => p.is_owner) || principals[0];
@@ -99,8 +88,9 @@ router.get('/overview', async (req: Request, res: Response, next: NextFunction) 
         activity: activity.map((a: any) => ({
           id: a.id,
           action: a.action,
+          summary: describeAudit(a),
           at: a.created_at,
-          by: `${a.first_name || ''} ${a.last_name || ''}`.trim() || a.email,
+          by: a.actor_name || 'Unknown',
         })),
       },
     });

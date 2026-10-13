@@ -49,6 +49,8 @@ import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
 import { StorageSettings } from '@components/settings/StorageSettings';
 import { PaymentSettings } from '@components/settings/PaymentSettings';
 import { OwnershipSettings } from '@components/settings/OwnershipSettings';
+import { SchoolLevelDialog } from '@components/settings/SchoolLevelDialog';
+import { SCHOOL_LEVEL_OPTIONS, leadTitleFor } from '@lib/leadTitle';
 import { OfflineStorageSettings } from '@components/offline/OfflineStorageSettings';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { isVerifiedUser } from '@services/verificationService';
@@ -441,6 +443,24 @@ export const SettingsPage: React.FC = () => {
       return null;
     }
     return null;
+  };
+
+  // The school level decides the top leader's title and the staff titles offered.
+  const [pendingLevel, setPendingLevel] = useState<string | null>(null);
+  const handleLevelChange = (value: string) => {
+    if (!value || value === String(settings.school_type ?? '')) return;
+    setPendingLevel(value); // the dialog confirms and saves
+  };
+  const confirmLevelChange = async () => {
+    const value = pendingLevel;
+    if (!value) return;
+    const res = await schoolConfigService.updateSettings({ school_type: value });
+    if (!res.success) throw new Error((res as any).error || 'Could not change the school level');
+    setSettings((s) => ({ ...s, school_type: value }));
+    if (user) setUser({ ...user, schoolType: value, leadTitle: leadTitleFor(value) });
+    queryClient.invalidateQueries({ queryKey: ['school-info'] });
+    showToast.success('School level updated');
+    setPendingLevel(null);
   };
 
   const handleSaveSchoolInfo = async (e: React.FormEvent) => {
@@ -1366,6 +1386,37 @@ export const SettingsPage: React.FC = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="p-6">
+                      <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+                        <label htmlFor="school-level" className="text-sm font-semibold text-gray-800 block">School level</label>
+                        <p className="text-xs text-gray-500 mt-0.5 mb-2">
+                          Decides what your top leader is called (Head Teacher or Principal) and which staff titles are offered. Currently shows as <strong>{leadTitleFor(settings.school_type)}</strong>.
+                        </p>
+                        <select
+                          id="school-level"
+                          value={settings.school_type ?? ''}
+                          disabled={!isOwner}
+                          onChange={(e) => handleLevelChange(e.target.value)}
+                          className="w-full md:w-96 px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 text-sm disabled:bg-gray-100 disabled:text-gray-500"
+                        >
+                          {settings.school_type && !SCHOOL_LEVEL_OPTIONS.some((o) => o.value === settings.school_type) && (
+                            <option value={settings.school_type}>{settings.school_type}</option>
+                          )}
+                          {Array.from(new Set(SCHOOL_LEVEL_OPTIONS.map((o) => o.group))).map((g) => (
+                            <optgroup key={g} label={g}>
+                              {SCHOOL_LEVEL_OPTIONS.filter((o) => o.group === g).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </optgroup>
+                          ))}
+                        </select>
+                        {!isOwner && <p className="text-xs text-gray-500 mt-1.5">Only the school owner can change this.</p>}
+                      </div>
+                      <SchoolLevelDialog
+                        isOpen={pendingLevel !== null}
+                        from={settings.school_type ? String(settings.school_type) : null}
+                        to={pendingLevel ?? ''}
+                        onClose={() => setPendingLevel(null)}
+                        onConfirm={confirmLevelChange}
+                      />
+
                       <form onSubmit={handleSaveSchoolInfo} className="space-y-6">
                         {/* Section 1: School Basics */}
                         <div>
