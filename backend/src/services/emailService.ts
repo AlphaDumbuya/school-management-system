@@ -1324,6 +1324,63 @@ class EmailService {
     });
   }
 
+  /**
+   * Suspension / reinstatement notice for a school's own users (teachers,
+   * students, parents, staff). Neutral on purpose: it never includes the
+   * internal reason, only a summary by category, and sends people to their
+   * school administrator. The detailed email goes to the school owner.
+   */
+  async sendTenantUserNoticeEmail(
+    tenantId: string,
+    toEmail: string,
+    data: { schoolName: string; kind: 'suspended' | 'restored'; category?: string; name?: string },
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const hello = data.name ? `Hello ${escapeHtml(data.name)},` : 'Hello,';
+    const school = escapeHtml(data.schoolName);
+    const loginUrl = `${branding.appUrl}/login`;
+    const supportEmail = process.env.SUPPORT_EMAIL || 'support@wiskulsl.com';
+    let eyebrow: string, heading: string, subject: string, preheader: string, bodyHtml: string;
+
+    if (data.kind === 'suspended') {
+      const { describeTenantBlock } = await import('../utils/tenantBlock.js');
+      const summary = describeTenantBlock({ status: 'suspended', settings: { suspension_category: data.category } }, false).suspension.summary;
+      eyebrow = 'Account notice';
+      heading = `Access to ${data.schoolName} is paused`;
+      subject = `${data.schoolName}: sign-in is temporarily unavailable`;
+      preheader = 'Your school account is suspended. Your data is safe.';
+      bodyHtml = `
+        <p>${hello}</p>
+        <p>We're letting you know that <strong>${school}</strong>'s WiSkul account is <strong>temporarily suspended</strong>,
+           so you can't sign in to the website or the app right now.</p>
+        ${calloutBlock(escapeHtml(summary), 'warn')}
+        <p style="font-weight:600;margin-top:20px;">What you need to know</p>
+        <ul style="color:#334155;font-size:14px;line-height:1.7;padding-left:20px;margin:8px 0;">
+          <li>Your records, results and payments are safe. Nothing has been deleted.</li>
+          <li>Only your school administrator can sort this out, so please contact the school office.</li>
+          <li>You'll get another email as soon as access is back. You won't need to reinstall anything.</li>
+        </ul>
+        <p style="color:#64748b;font-size:13px;">Questions? Speak to your school office first. Still stuck? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
+    } else {
+      eyebrow = 'Access restored';
+      heading = `${data.schoolName} is back online`;
+      subject = `${data.schoolName}: you can sign in again`;
+      preheader = 'Your school account is active again.';
+      bodyHtml = `
+        <p>${hello}</p>
+        <p>Good news: <strong>${school}</strong>'s WiSkul account is <strong>active again</strong>. You can sign in on the website and the app as usual.</p>
+        ${calloutBlock('Your records are exactly as you left them. If sign-in still fails after a few minutes, sign out fully and try again.', 'success')}
+        ${emailButton('Sign in', loginUrl)}`;
+    }
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject,
+      body: renderEmail({ branding, eyebrow, heading, bodyHtml, preheader }),
+      isHtml: true,
+    });
+  }
+
   /** Receipt for a public online admission application. */
   async sendAdmissionSubmissionEmail(
     tenantId: string,

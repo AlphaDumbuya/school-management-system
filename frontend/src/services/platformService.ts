@@ -112,6 +112,10 @@ export const platformService = {
     return apiClient.post<{ success: boolean; data: PlatformTenant; message: string }>(`/api/v1/platform/tenants/${id}/suspend`, { reason, category, override });
   },
 
+  /** Email a school's users about its current state (suspended or back online). Safe to repeat: people already told are skipped. */
+  async notifyTenantUsers(id: string) {
+    return apiClient.post<{ success: boolean; data: { total: number; sent: number; skipped: number; failed: number; remaining: number }; message: string }>(`/api/v1/platform/tenants/${id}/notify-users`);
+  },
   async deleteTenant(id: string) {
     return apiClient.delete<{ success: boolean; message: string }>(`/api/v1/platform/tenants/${id}`);
   },

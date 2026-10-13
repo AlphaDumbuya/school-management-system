@@ -364,22 +364,36 @@ export const TenantDetailPage: React.FC = () => {
     } finally { setSaving(false); }
   };
 
+  /** Email the school's teachers, students and parents about the suspension (already-told people are skipped). */
+  const emailUsers = async () => {
+    if (!tenantId) return;
+    setSaving(true);
+    try {
+      const res = await platformService.notifyTenantUsers(tenantId);
+      if (res.success) showToast.success(res.message || 'Users emailed');
+      else showToast.error((res as any).error || 'Could not email the users');
+    } catch (e: any) {
+      showToast.error(e?.response?.data?.error?.message || 'Could not email the users');
+    } finally {
+      setSaving(false);
+    }
+  };
   const runDanger = async (suspendOverride = false) => {
     if (!tenantId || !confirm) return;
     setSaving(true);
     try {
       if (confirm === 'suspend') {
         const res = await platformService.suspendTenant(tenantId, suspendReason || 'Suspended by platform admin', suspendCategory, suspendOverride);
-        if (res.success) showToast.success('Tenant suspended');
+        if (res.success) showToast.success(res.message || 'Tenant suspended');
       } else if (confirm === 'activate') {
         const res = await platformService.activateTenant(tenantId);
-        if (res.success) showToast.success('Tenant activated');
+        if (res.success) showToast.success(res.message || 'Tenant activated');
       } else if (confirm === 'delete') {
         const res = await platformService.deleteTenant(tenantId);
         if (res.success) { showToast.success('Tenant deleted'); navigate('/platform/tenants'); return; }
       } else if (confirm === 'restore') {
         const res = await platformService.restoreTenant(tenantId);
-        if (res.success) showToast.success('Tenant restored');
+        if (res.success) showToast.success(res.message || 'Tenant restored');
       }
       load();
     } catch (e: any) {
@@ -735,9 +749,14 @@ export const TenantDetailPage: React.FC = () => {
 
                 <div className="flex flex-col sm:flex-row gap-3">
                   {tenant.status === 'suspended' ? (
-                    <Button onClick={() => setConfirm('activate')} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
-                      <Play size={15} className="mr-1.5" /> Activate Tenant
-                    </Button>
+                    <>
+                      <Button onClick={() => setConfirm('activate')} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+                        <Play size={15} className="mr-1.5" /> Activate Tenant
+                      </Button>
+                      <Button onClick={emailUsers} disabled={saving} variant="outline" className="text-gray-700">
+                        <Mail size={15} className="mr-1.5" /> Email users about suspension
+                      </Button>
+                    </>
                   ) : (
                     <Button onClick={() => setConfirm('suspend')} variant="outline" className="text-amber-700 border-amber-300 hover:bg-amber-50">
                       <Pause size={15} className="mr-1.5" /> Suspend Tenant
