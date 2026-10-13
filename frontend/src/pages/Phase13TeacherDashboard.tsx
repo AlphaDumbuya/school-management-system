@@ -21,6 +21,8 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { Button } from '@components/ui/button';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
+import { useSportBadges } from '@hooks/useSportBadges';
+import { SportBadges } from '@components/houses/SportBadge';
 import useAuthStore from '@store/authStore';
 import { teacherDashboardService, TeacherDashboardData } from '@services/teacherDashboardService';
 
@@ -50,6 +52,7 @@ function timeAgo(ts?: string): string {
 export const Phase13TeacherDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const sportBadges = useSportBadges();
 
   // Academic year: opens on the school's active year; a past year is a
   // read-only teaching record. Follows the school automatically after rollover.
@@ -122,6 +125,7 @@ export const Phase13TeacherDashboard: React.FC = () => {
           firstName={user?.firstName ?? (user as any)?.first_name}
           role="teacher"
           roleLabel="Teacher"
+          badges={<SportBadges items={sportBadges} />}
           schoolName={user?.schoolName}
           subtitle="Here are your classes and today's schedule."
         />

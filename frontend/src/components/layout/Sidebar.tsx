@@ -35,9 +35,11 @@ import {
   FaListAlt,
   FaHistory,
   FaLock,
+  FaFlag,
 } from 'react-icons/fa';
 import { FaRightFromBracket, FaAnglesLeft, FaAnglesRight, FaCircleCheck } from 'react-icons/fa6';
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
+import { useHouseAccess } from '@hooks/useHouseAccess';
 import { routeAccess } from '@lib/planFeatures';
 import { isDemoUser } from '@lib/demo';
 import clsx from 'clsx';
@@ -54,6 +56,8 @@ export interface NavItem {
   /** Shown only to someone who holds the role as an extra duty (their main
    *  Dashboard button already covers people whose main job it is). */
   dutyOnly?: boolean;
+  /** Shown only to a teacher the principal / admissions officer gave access to. */
+  needsHouseAccess?: boolean;
 }
 
 interface SidebarProps {
@@ -158,6 +162,25 @@ export const navItems: NavItem[] = [
     module: 'Student Management',
     group: 'Students',
     version: 'v1',
+  },
+  {
+    label: 'Sport House',
+    icon: <FaFlag className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/students/houses',
+    roles: ['super_admin', 'principal', 'admissions_officer'],
+    module: 'Student Management',
+    group: 'Students',
+    version: 'v1',
+  },
+  {
+    label: 'My Sport House',
+    icon: <FaFlag className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/students/houses',
+    roles: ['teacher'],
+    module: 'Student Management',
+    group: 'Students',
+    version: 'v1',
+    needsHouseAccess: true,
   },
   {
     label: 'Student Profiles',
@@ -673,12 +696,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
   const ENABLE_V2_FEATURES = false;
 
   const isSuperAdmin = user?.role === 'super_admin';
+  // A teacher sees "My House" only after being given access to it.
+  const houseAccess = useHouseAccess(user?.role);
 
   // Memoize so filteredNavItems has a stable reference — required for groupedNav
   // useMemo and the auto-open useEffect to not fire on every render.
   const filteredNavItems = React.useMemo(() => navItems.filter((item) => {
     if (!ENABLE_V2_FEATURES && item.version === 'v2') return false;
     if (isSuperAdmin) return item.group === 'Platform';
+    if (item.needsHouseAccess && !houseAccess.hasAccess) return false;
     if (item.dutyOnly) {
       // Only for a teacher holding this as an extra duty.
       const duties = ((user as any)?.staffDuties ?? []) as string[];
@@ -691,7 +717,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
     // Re-filter when the role, duties or plan change (live role sync after a
     // promotion, a new Bursar duty, an upgrade), not only on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [isSuperAdmin, user?.role, JSON.stringify((user as any)?.staffDuties ?? []), JSON.stringify(user?.planAccess?.features ?? null)]);
+  }), [isSuperAdmin, user?.role, houseAccess.hasAccess, JSON.stringify((user as any)?.staffDuties ?? []), JSON.stringify(user?.planAccess?.features ?? null)]);
 
   // Group the filtered items.
   const groupedNav = React.useMemo(() => {

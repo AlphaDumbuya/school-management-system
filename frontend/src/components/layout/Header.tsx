@@ -11,6 +11,8 @@ import { GlobalSearchBar } from './GlobalSearchBar';
 import { SyncStatusIndicator } from '@components/offline/SyncStatusIndicator';
 import clsx from 'clsx';
 import { isDemoUser } from '@lib/demo';
+import { SportBadges } from '@components/houses/SportBadge';
+import { useSportBadges } from '@hooks/useSportBadges';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -25,6 +27,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
   const canSeeAlerts = user?.role === 'principal' || user?.role === 'super_admin';
   const isSuperAdmin = user?.role === 'super_admin';
+  // Sport-house badge(s): own house (student), children's houses (parent), house post (teacher).
+  const sportBadges = useSportBadges({ enabled: !!user && !isSuperAdmin });
 
   useEffect(() => {
     if (!isSuperAdmin && user && (!user.schoolName || !user.schoolLogoUrl)) {
@@ -181,6 +185,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                       <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#315B8C] text-white capitalize">
                         {roleLabel}
                       </span>
+                      <SportBadges items={sportBadges} size="sm" className="mt-1.5" />
                     </div>
                   </div>
 

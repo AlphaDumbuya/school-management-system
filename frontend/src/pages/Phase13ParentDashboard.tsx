@@ -27,6 +27,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card';
 import { parentDashboardService, type ParentChildSummary } from '@services/parentDashboardService';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
+import { useSportBadges } from '@hooks/useSportBadges';
+import { SportBadge, SportBadges } from '@components/houses/SportBadge';
 import { PayFeesButton } from '@components/finance/PayFeesButton';
 import { StudentLedgerView } from '@components/finance/StudentLedgerView';
 import { AttendanceTimeDetails } from '@components/attendance/AttendanceTimeDetails';
@@ -67,6 +69,7 @@ type TabType = 'overview' | 'grades' | 'attendance' | 'schedule' | 'fees';
 
 export const Phase13ParentDashboard: React.FC = () => {
   const user = useAuthStore((s) => s.user);
+  const sportBadges = useSportBadges();
   const navigate = useNavigate();
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -228,6 +231,7 @@ export const Phase13ParentDashboard: React.FC = () => {
           firstName={user?.firstName ?? (user as any)?.first_name}
           role="parent"
           roleLabel="Parent"
+          badges={<SportBadges items={sportBadges} />}
           subtitle="Follow your children's attendance, grades and fees in one place."
         />
         {children.length === 0 ? (
@@ -333,6 +337,10 @@ export const Phase13ParentDashboard: React.FC = () => {
                     : <UserCircle2 className="w-6 h-6" />}
                   <span className="font-medium">{c.name}</span>
                   <span className="text-xs text-gray-400">· {childStatus(c)}</span>
+                  {(() => {
+                    const hb = sportBadges.find((b) => b.kind === 'child' && b.student_id === c.id);
+                    return hb ? <SportBadge name={hb.house.name} color={hb.house.color} size="sm" /> : null;
+                  })()}
                 </button>
               ))}
             </div>

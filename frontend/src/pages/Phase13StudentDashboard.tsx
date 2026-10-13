@@ -30,6 +30,8 @@ import { StudentLedgerView } from '@components/finance/StudentLedgerView';
 import { AttendanceTimeDetails } from '@components/attendance/AttendanceTimeDetails';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
+import { useSportBadges } from '@hooks/useSportBadges';
+import { SportBadges } from '@components/houses/SportBadge';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -57,6 +59,7 @@ type TabType = 'overview' | 'grades' | 'attendance' | 'schedule' | 'fees';
 
 export const Phase13StudentDashboard: React.FC = () => {
   const { user } = useAuthStore();
+  const sportBadges = useSportBadges();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
@@ -187,6 +190,7 @@ export const Phase13StudentDashboard: React.FC = () => {
           firstName={displayName.split(' ')[0]}
           role="student"
           roleLabel="Student"
+          badges={<SportBadges items={sportBadges} />}
           subtitle={`${classLabel}${profile?.admission_no ? ` • ${profile.admission_no}` : ''}${profile?.academic_year ? ` • ${profile.academic_year}` : ''}`}
         />
         {profile == null && (

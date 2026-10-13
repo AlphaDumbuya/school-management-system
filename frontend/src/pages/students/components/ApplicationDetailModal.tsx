@@ -18,6 +18,7 @@ import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialo
 import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import useAuthStore from '@store/authStore';
+import { HouseChip } from './houses/houseUi';
 import {
   admissionsService, type AdmissionDetail, type AdmissionStatus, type AdmissionsMeta, type EnrolResult,
 } from '@services/admissionsService';
@@ -71,6 +72,9 @@ export const EnrolCredentials: React.FC<{ result: EnrolResult; childLabel: strin
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-900 p-3 text-sm text-emerald-900 dark:text-emerald-200">
         {result.already ? 'Already enrolled' : 'Enrolled'}: <strong>{childLabel}</strong> is student <strong>{result.student.student_id}</strong>{result.class ? <> in <strong>{result.class.name}</strong></> : null}.
       </div>
+      {result.house && (
+        <p className="text-sm text-gray-700 dark:text-gray-300">House: <HouseChip name={result.house.name} color={result.house.color} /></p>
+      )}
       {a && (a.student_password || a.parent_password) ? (
         <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-sm space-y-1.5">
           <p className="text-xs font-semibold text-gray-500">Portal sign-in (give these to the family; they are shown once here and again in Student Profiles)</p>

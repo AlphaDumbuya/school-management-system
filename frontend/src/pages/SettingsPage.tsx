@@ -7,6 +7,8 @@ import { Button } from '@components/ui/button';
 import { YearTransitionDialog } from '@components/academic/YearTransitionDialog';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { useAcademicYears } from '@hooks/useAcademicYears';
+import { useSportBadges } from '@hooks/useSportBadges';
+import { SportBadges } from '@components/houses/SportBadge';
 import {
   Settings as SettingsIcon,
   Building,
@@ -81,6 +83,8 @@ export const SettingsPage: React.FC = () => {
   const setUser = useAuthStore((s) => s.setUser);
   const logout = useAuthStore((s) => s.logout);
   const isSuperAdmin = user?.role === 'super_admin';
+  // Sport-house badge(s) for this person (own house, children's houses, or house post).
+  const sportBadges = useSportBadges({ enabled: !!user && !isSuperAdmin });
   const isTeacher = isTeachingUser(user as any);
   // The bursar: an accountant (main job or on top of another job). They work
   // under the school's payment policy, so they get a read-only view of it.
@@ -1124,6 +1128,13 @@ export const SettingsPage: React.FC = () => {
                         <Link to="/verify-school" className="text-sm font-semibold text-[#1d4ed8] hover:underline whitespace-nowrap">
                           {isVerifiedUser(user) ? 'View details' : 'Verify now'}
                         </Link>
+                      </div>
+                    )}
+                    {sportBadges.length > 0 && (
+                      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-5 py-4">
+                        <p className="text-sm font-bold text-gray-900 dark:text-white">Sport house</p>
+                        <p className="mb-2 text-xs text-gray-500">The house you represent in school sports and competitions.</p>
+                        <SportBadges items={sportBadges} />
                       </div>
                     )}
                     {/* Personal Details Form */}

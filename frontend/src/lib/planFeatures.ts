@@ -14,6 +14,7 @@ import type { AuthUser, FeatureAccess, PlanAccess } from '@appTypes/index';
 /** App route prefix → plan feature key. Core pages are not listed. */
 export const ROUTE_FEATURES: Array<[string, string]> = [
   ['/students/admissions', 'admissions'],
+  ['/students/houses', 'admissions'],
   ['/admissions/dashboard', 'admissions'],
   ['/academic/promotions', 'promotions'],
   ['/discipline', 'discipline'],

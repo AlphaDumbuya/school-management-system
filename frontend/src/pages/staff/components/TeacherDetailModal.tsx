@@ -10,6 +10,8 @@ import { teachersService, TeacherRecord } from '@services/teachersService';
 import { studentsService } from '@services/studentsService';
 import { sanitizeMarkup } from '@lib/sanitizeHtml';
 import { showToast } from '@utils/toast';
+import { SportBadges } from '@components/houses/SportBadge';
+import { useSportBadges } from '@hooks/useSportBadges';
 import { User, Mail, Phone, Calendar, KeyRound, ShieldAlert, Loader2, MapPin, Award, GraduationCap, ShieldCheck, Building, Briefcase, BookOpen, RotateCcw, Eye, EyeOff } from 'lucide-react';
 
 interface TeacherDetailModalProps {
@@ -111,6 +113,8 @@ export const TeacherDetailModal: React.FC<TeacherDetailModalProps> = ({
     }
   }, [isOpen, teacher]);
 
+  // House master / house teacher post, if the school put this teacher on a house.
+  const houseBadges = useSportBadges({ userId: (teacher as any)?.user_id, enabled: isOpen && !!(teacher as any)?.user_id });
   const handleResetPassword = async () => {
     const uid = (currentTeacher as any)?.user_id;
     if (!uid) { showToast.error('No login account found for this staff member.'); return; }
@@ -211,6 +215,7 @@ export const TeacherDetailModal: React.FC<TeacherDetailModalProps> = ({
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-mono font-semibold">Staff ID: {currentTeacher.teacher_id}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <StatusBadge status={currentTeacher.status} showDot />
+                <SportBadges items={houseBadges} size="sm" />
                 {['suspended', 'dismissed', 'inactive'].includes(currentTeacher.status) && (() => {
                   const label = formatStatusSince(currentTeacher.updated_at || currentTeacher.created_at);
                   if (!label) return null;

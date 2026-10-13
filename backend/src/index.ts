@@ -25,6 +25,9 @@ import examinationRoutes from '@routes/examinationRoutes';
 import resultsRoutes from '@routes/resultsRoutes';
 import uploadRoutes from '@routes/uploadRoutes';
 import admissionsNewRoutes from '@routes/admissionsRoutes';
+import houseRoutes from '@routes/houseRoutes';
+import teacherHouseRoutes from '@routes/teacherHouseRoutes';
+import houseBadgeRoutes from '@routes/houseBadgeRoutes';
 import publicAdmissionRoutes from '@routes/publicAdmissionRoutes';
 import planRoutes from '@routes/planRoutes';
 import brandingRoutes from '@routes/brandingRoutes';
@@ -300,6 +303,13 @@ app.use('/api/v1/results', resultsRoutes);
 
 // File Upload Routes
 app.use('/api/v1/uploads', uploadRoutes);
+
+// Houses and the house ballot (mounted before admissions so '/houses' isn't read as an application id)
+app.use('/api/v1/admissions/houses', houseRoutes);
+// Houses for teachers (their own house list; drawing only when permitted)
+app.use('/api/v1/houses', teacherHouseRoutes);
+// Sport-house badge shown on profiles (students, parents, house masters and teachers)
+app.use('/api/v1/sport-badge', houseBadgeRoutes);
 
 // Admissions Routes
 app.use('/api/v1/admissions', admissionsNewRoutes);

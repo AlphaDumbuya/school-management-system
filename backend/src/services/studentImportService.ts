@@ -13,6 +13,7 @@ import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { generateNextId } from '../utils/idGenerator';
 import { linkGuardianForStudent } from '../utils/guardianLinking';
+import { houseService } from './houseService';
 import { SubscriptionService } from './subscriptionService';
 
 /** The columns the template exposes → the student field they map to. */
@@ -186,6 +187,7 @@ export async function importStudents(
   }
 
   let imported = 0;
+  const importedIds: string[] = [];
   if (toImport.length) {
     await db.transaction(async (trx) => {
       for (const item of toImport) {
@@ -239,8 +241,13 @@ export async function importStudents(
         }
 
         imported += 1;
+        if (inserted?.id) importedIds.push(inserted.id);
       }
     });
+    // Sport house (only if the school draws automatically). A big import is left for the live ballot instead.
+    if (importedIds.length > 0 && importedIds.length <= 25) {
+      for (const id of importedIds) await houseService.autoAssignOnEnrol(tenantId, createdBy ?? null, id);
+    }
   }
 
   if (limitSkipped > 0) {

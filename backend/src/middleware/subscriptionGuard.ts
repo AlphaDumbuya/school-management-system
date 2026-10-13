@@ -75,6 +75,7 @@ export const FEATURE_PREFIXES: Array<[string, string]> = [
   ['/api/v1/payments/monime/checkout', 'online_payments'],
   ['/api/v1/payments/monime/payment-code', 'online_payments'],
   ['/api/v1/admissions', 'admissions'],
+  ['/api/v1/houses', 'admissions'],
   ['/api/v1/dashboards/admissions', 'admissions'],
   ['/api/v1/promotions', 'promotions'],
   ['/api/v1/discipline', 'discipline'],

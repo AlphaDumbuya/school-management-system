@@ -96,6 +96,8 @@ export interface EnrolResult {
   already: boolean;
   student: { id: string; student_id: string };
   class?: { id: string; name: string };
+  /** Set when the school draws houses automatically on enrolment. */
+  house?: { id: string; name: string; color: string; motto: string | null } | null;
   warnings?: string[];
   fees?: { billed: string[]; amount: number; not_billed: string[] };
   accounts: { student_username: string | null; student_password: string | null; parent_email: string | null; parent_password: string | null } | null;
