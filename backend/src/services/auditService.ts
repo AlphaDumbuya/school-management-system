@@ -25,6 +25,13 @@ export interface AuditLogEntry {
   user_agent?: string;
 }
 
+/** jsonb columns arrive already parsed; older text values may still be strings. */
+const parseJson = (v: any) => {
+  if (v === null || v === undefined) return null;
+  if (typeof v !== 'string') return v;
+  try { return JSON.parse(v); } catch { return v; }
+};
+
 export class AuditService {
   constructor(private db: Knex) {}
 
@@ -141,6 +148,7 @@ export class AuditService {
    * Get audit trail for an entity
    */
   async getEntityAuditTrail(
+    tenantId: string,
     entityType: string,
     entityId: string,
     filters?: { action?: string; page?: number; limit?: number }
@@ -150,6 +158,7 @@ export class AuditService {
     const offset = (page - 1) * limit;
 
     let query = this.db('audit_logs')
+      .where('tenant_id', tenantId)
       .where('entity_type', entityType)
       .where('entity_id', entityId);
 
@@ -168,9 +177,9 @@ export class AuditService {
     // Parse JSON fields
     const parsedLogs = logs.map((log) => ({
       ...log,
-      old_values: log.old_values ? JSON.parse(log.old_values) : null,
-      new_values: log.new_values ? JSON.parse(log.new_values) : null,
-      changes: log.changes ? JSON.parse(log.changes) : null,
+      old_values: parseJson(log.old_values),
+      new_values: parseJson(log.new_values),
+      changes: parseJson(log.changes),
     }));
 
     return {
@@ -183,6 +192,7 @@ export class AuditService {
    * Get audit logs by entity type
    */
   async getAuditLogsByEntityType(
+    tenantId: string,
     entityType: string,
     filters?: { action?: string; page?: number; limit?: number }
   ): Promise<any> {
@@ -190,7 +200,7 @@ export class AuditService {
     const limit = Math.min(filters?.limit || 50, 100);
     const offset = (page - 1) * limit;
 
-    let query = this.db('audit_logs').where('entity_type', entityType);
+    let query = this.db('audit_logs').where('tenant_id', tenantId).where('entity_type', entityType);
 
     if (filters?.action) {
       query = query.where('action', filters.action);
@@ -206,9 +216,9 @@ export class AuditService {
 
     const parsedLogs = logs.map((log) => ({
       ...log,
-      old_values: log.old_values ? JSON.parse(log.old_values) : null,
-      new_values: log.new_values ? JSON.parse(log.new_values) : null,
-      changes: log.changes ? JSON.parse(log.changes) : null,
+      old_values: parseJson(log.old_values),
+      new_values: parseJson(log.new_values),
+      changes: parseJson(log.changes),
     }));
 
     return {
@@ -221,6 +231,7 @@ export class AuditService {
    * Get audit logs by user
    */
   async getAuditLogsByUser(
+    tenantId: string,
     userId: string,
     filters?: { entity_type?: string; action?: string; page?: number; limit?: number }
   ): Promise<any> {
@@ -228,7 +239,7 @@ export class AuditService {
     const limit = Math.min(filters?.limit || 50, 100);
     const offset = (page - 1) * limit;
 
-    let query = this.db('audit_logs').where('performed_by', userId);
+    let query = this.db('audit_logs').where('tenant_id', tenantId).where('performed_by', userId);
 
     if (filters?.entity_type) {
       query = query.where('entity_type', filters.entity_type);
@@ -248,9 +259,9 @@ export class AuditService {
 
     const parsedLogs = logs.map((log) => ({
       ...log,
-      old_values: log.old_values ? JSON.parse(log.old_values) : null,
-      new_values: log.new_values ? JSON.parse(log.new_values) : null,
-      changes: log.changes ? JSON.parse(log.changes) : null,
+      old_values: parseJson(log.old_values),
+      new_values: parseJson(log.new_values),
+      changes: parseJson(log.changes),
     }));
 
     return {
@@ -263,6 +274,7 @@ export class AuditService {
    * Get audit logs within date range
    */
   async getAuditLogsByDateRange(
+    tenantId: string,
     startDate: string,
     endDate: string,
     filters?: { entity_type?: string; action?: string; page?: number; limit?: number }
@@ -272,6 +284,7 @@ export class AuditService {
     const offset = (page - 1) * limit;
 
     let query = this.db('audit_logs')
+      .where('tenant_id', tenantId)
       .where('created_at', '>=', startDate)
       .where('created_at', '<=', endDate);
 
@@ -293,9 +306,9 @@ export class AuditService {
 
     const parsedLogs = logs.map((log) => ({
       ...log,
-      old_values: log.old_values ? JSON.parse(log.old_values) : null,
-      new_values: log.new_values ? JSON.parse(log.new_values) : null,
-      changes: log.changes ? JSON.parse(log.changes) : null,
+      old_values: parseJson(log.old_values),
+      new_values: parseJson(log.new_values),
+      changes: parseJson(log.changes),
     }));
 
     return {
@@ -307,8 +320,8 @@ export class AuditService {
   /**
    * Get audit statistics
    */
-  async getAuditStatistics(startDate?: string, endDate?: string): Promise<any> {
-    let query = this.db('audit_logs');
+  async getAuditStatistics(tenantId: string, startDate?: string, endDate?: string): Promise<any> {
+    let query = this.db('audit_logs').where('tenant_id', tenantId);
 
     if (startDate) {
       query = query.where('created_at', '>=', startDate);
@@ -372,11 +385,12 @@ export class AuditService {
   /**
    * Archive old audit logs (for data management)
    */
-  async archiveOldLogs(daysToKeep: number = 90): Promise<number> {
+  async archiveOldLogs(tenantId: string, daysToKeep: number = 90): Promise<number> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
 
     const result = await this.db('audit_logs')
+      .where('tenant_id', tenantId)
       .where('created_at', '<', cutoffDate)
       .del();
 
@@ -388,10 +402,11 @@ export class AuditService {
    * Export audit trail as CSV
    */
   async exportAuditTrailAsCSV(
+    tenantId: string,
     entityType: string,
     entityId: string
   ): Promise<string> {
-    const result = await this.getEntityAuditTrail(entityType, entityId, { limit: 10000 });
+    const result = await this.getEntityAuditTrail(tenantId, entityType, entityId, { limit: 10000 });
     const logs = result.data;
 
     if (logs.length === 0) {

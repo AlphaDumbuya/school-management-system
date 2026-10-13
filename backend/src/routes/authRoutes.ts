@@ -9,6 +9,7 @@ import { logger } from '@utils/logger';
 import { effectiveDuties } from '@utils/staffDuties';
 import { leadTitle, schoolTypeFor } from '@utils/schoolLevels';
 import { isTenantOwner } from '@utils/tenantOwner';
+import { recordAudit } from '@utils/auditTrail';
 import { UserRole, UserStatus } from '@types/auth';
 import emailService from '@services/emailService';
 
@@ -149,6 +150,8 @@ router.post('/login', loginLimiter, rateLimitLogin, async (req: Request, res: Re
       return;
     }
 
+    // Sign-in trail for the school's audit log.
+    await recordAudit({ req, userId: (result.user as any)?.id, action: 'auth.login', entityType: 'session', newValues: { method: 'password' } });
     // Set secure cookie for refresh token (optional)
     res.cookie('refreshToken', result.refresh_token, {
       httpOnly: true,
@@ -174,6 +177,18 @@ router.post('/login', loginLimiter, rateLimitLogin, async (req: Request, res: Re
     // attach the SCHOOL's own support contact so the login screen can show the
     // right people to reach — dynamic per tenant, not a hardcoded address.
     const code = (error as any)?.code;
+    // A wrong password for a real account is worth showing the school's owner.
+    if (code === 'INVALID_CREDENTIALS') {
+      try {
+        const ident = String(req.body?.email || '').trim().toLowerCase();
+        const who = ident
+          ? (ident.includes('@')
+              ? await db('users').where({ email: ident }).first('id')
+              : await db('users').whereRaw('lower(username) = ?', [ident]).first('id'))
+          : null;
+        if (who?.id) await recordAudit({ req, userId: who.id, action: 'auth.login_failed', entityType: 'session', newValues: { reason: 'wrong password' } });
+      } catch { /* never block the sign-in answer */ }
+    }
     if (code === 'TENANT_SUSPENDED' || code === 'TENANT_SUSPENDED_USER' || code === 'TENANT_UNAVAILABLE' || code === 'ACCOUNT_INACTIVE') {
       try {
         const contact = await resolveSchoolSupportContact(String(req.body?.email || ''));

@@ -11,7 +11,9 @@ import { db } from '../utils/database';
 import { encryptSecret } from '../utils/encryption';
 import { paymentSettingsLimiter, clientIp } from '../middleware/rateLimit';
 import { requireVerifiedSchool } from '../middleware/requireVerifiedSchool';
-import { requireOwner } from '../utils/tenantOwner';
+import { requireOwner, isTenantOwner } from '../utils/tenantOwner';
+import { SCHOOL_LEVEL_VALUES, schoolTypeFor } from '../utils/schoolLevels';
+import { recordAudit } from '../utils/auditTrail';
 
 const router = Router();
 
@@ -153,6 +155,23 @@ router.post('/settings', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SU
     if ('academic_year' in updates) {
       if (active?.name) updates.academic_year = active.name;
       else delete updates.academic_year;
+    }
+    // The school level decides what the top leader is called (Head Teacher / Principal)
+    // and which titles are offered, so only the school owner changes it, and it is audited.
+    if ('school_type' in updates) {
+      const next = String(updates.school_type ?? '').trim();
+      if (!SCHOOL_LEVEL_VALUES.includes(next)) {
+        throw new AppError('Choose one of the listed school levels.', 400, 'VALIDATION_ERROR');
+      }
+      const prev = await schoolTypeFor(db, tenantId);
+      if (prev !== next) {
+        const actor = await db('users').where({ id: userId }).first('id', 'role', 'tenant_id', 'is_owner');
+        if (!(await isTenantOwner(actor))) {
+          throw new AppError('Only the school owner can change the school level.', 403, 'OWNER_ONLY');
+        }
+        await recordAudit({ req, userId, action: 'school_settings.level_change', entityType: 'school_settings', oldValues: { school_type: prev }, newValues: { school_type: next } });
+      }
+      updates.school_type = next;
     }
     // Term dates saved on the Academic tab define the ACTIVE year's span.
     const termCount = Number(updates.term_count ?? 3);

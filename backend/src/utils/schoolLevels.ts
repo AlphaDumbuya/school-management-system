@@ -12,6 +12,14 @@
  */
 import type { Knex } from 'knex';
 
+/** The school levels a school can choose (same list as the registration form). */
+export const SCHOOL_LEVEL_VALUES = [
+  'Nursery / Early Childhood', 'Primary', 'Junior Secondary', 'Senior Secondary',
+  'Nursery & Primary', 'Primary & Junior Secondary', 'Secondary (JSS & SSS)',
+  'Nursery, Primary & Junior Secondary', 'Primary, Junior & Senior Secondary', 'Primary & Secondary',
+  'Technical & Vocational',
+];
+
 export function schoolLevels(schoolType?: string | null): { primary: boolean; secondary: boolean } {
   const t = (schoolType || '').toLowerCase();
   if (!t) return { primary: true, secondary: true };

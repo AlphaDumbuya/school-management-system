@@ -5,17 +5,11 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { Crown, CreditCard, Wallet, ShieldCheck, Users, History, Loader2, ArrowRight, AlertCircle } from 'lucide-react';
+import { CreditCard, Wallet, ShieldCheck, Users, History, Loader2, ArrowRight, AlertCircle } from 'lucide-react';
 import useAuthStore from '@store/authStore';
+import MainLayout from '@components/layout/MainLayout';
+import { PageShell } from '@components/admin/layout/PageShell';
 import ownerService, { OwnerOverview } from '@services/ownerService';
-
-const ACTION_LABEL: Record<string, string> = {
-  'payment_settings.update': 'Changed the school payment settings',
-  'payment_settings.disable': 'Turned off online fee payments',
-  'payment_settings.stepup_failed': 'Wrong password while changing payment settings',
-  'ownership.grant': 'Named a school owner',
-  'ownership.revoke': 'Removed a school owner',
-};
 
 const PLAN_NAME: Record<string, string> = { freetong: 'Freetong', combra: 'Combra', bintumani: 'Bintumani' };
 
@@ -71,15 +65,9 @@ export const OwnerPage: React.FC = () => {
   if ((user as any)?.isOwner === false) return <Navigate to="/dashboard" replace />;
 
   return (
+    <MainLayout>
+    <PageShell title="School Owner" subtitle={`${data?.schoolName ? `${data.schoolName}: ` : ''}the items only you can see and change`}>
     <div className="space-y-5">
-      <header>
-        <h1 className="flex items-center gap-2 text-xl sm:text-2xl font-bold text-gray-900">
-          <Crown size={22} className="text-amber-500" aria-hidden="true" /> School Owner
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {data?.schoolName ? `${data.schoolName}: ` : ''}the items only you can see and change.
-        </p>
-      </header>
 
       {!data && !error && (
         <div className="py-16 flex justify-center text-gray-400" role="status" aria-label="Loading">
@@ -159,14 +147,14 @@ export const OwnerPage: React.FC = () => {
             </Card>
           </div>
 
-          <Card icon={<History size={16} className="text-gray-600" />} title="Recent sensitive changes">
+          <Card icon={<History size={16} className="text-gray-600" />} title="Recent sensitive changes" to="/audit-log" linkLabel="Open the full audit log">
             {data.activity.length === 0 ? (
               <p className="text-gray-500">Nothing yet. Changes to payment settings and ownership will show here.</p>
             ) : (
               <ul className="divide-y divide-gray-100">
                 {data.activity.map((a) => (
                   <li key={a.id} className="py-1.5 flex flex-wrap items-baseline gap-x-2">
-                    <span className="font-medium">{ACTION_LABEL[a.action] || a.action}</span>
+                    <span className="font-medium">{a.summary || a.action}</span>
                     <span className="text-xs text-gray-500">by {a.by} · {fmtDateTime(a.at)}</span>
                   </li>
                 ))}
@@ -176,6 +164,8 @@ export const OwnerPage: React.FC = () => {
         </>
       )}
     </div>
+    </PageShell>
+    </MainLayout>
   );
 };
 
