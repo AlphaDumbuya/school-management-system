@@ -427,6 +427,13 @@ router.get('/:studentId/pdf', async (req: Request, res: Response, next: NextFunc
       academic_year as string,
     ), req.user!.role);
 
+    // The PDF is drawn on the server, so a photo kept as a site path (the demo school's
+    // /demo-avatars/...) must become a full address or the picture frame stays empty.
+    const stuPhoto = (card.student as any)?.photo_url;
+    if (typeof stuPhoto === 'string' && stuPhoto.startsWith('/') && !stuPhoto.startsWith('//')) {
+      const { appLink } = await import('../services/email/emailBranding');
+      (card.student as any).photo_url = appLink(stuPhoto);
+    }
     // School branding for the front cover (motto is now a column on schools)
     const schoolInfo = await db('schools').where({ tenant_id: tenantId }).first().catch(() => null) || {};
 
