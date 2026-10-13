@@ -576,13 +576,25 @@ const ResultsFullSpread: React.FC<{
           {/* Explicit widths: ratings (1–5) need little room, so the score
               columns get the space and the larger print size still fits. */}
           <colgroup>
-            <col style={{ width: 140 }} />
-            {Array.from({ length: 14 }).map((_, i) => <col key={`cc${i}`} />)}
+            <col style={{ width: 150 }} />
+            {/* Cognitive: per term Test 1, Test 2, Mean, Rank; then Yearly Mean and Rank.
+                Mean and Rank are wider than the test marks so "67.5" and "10th" never touch. */}
+            {[0, 1, 2].map((t) => (
+              <React.Fragment key={`cg${t}`}>
+                <col style={{ width: 32 }} /><col style={{ width: 32 }} /><col style={{ width: 46 }} /><col style={{ width: 42 }} />
+              </React.Fragment>
+            ))}
+            <col style={{ width: 50 }} /><col style={{ width: 46 }} />
+            {/* Affective, then Psychomotor: #, three terms of (1, 2, Mean), Yearly Mean and Rank. */}
             {[0, 1].map((d) => (
               <React.Fragment key={`dg${d}`}>
-                <col style={{ width: 20 }} />
-                {Array.from({ length: 10 }).map((_, i) => <col key={`dc${d}${i}`} style={{ width: 26 }} />)}
-                <col style={{ width: 36 }} />
+                <col style={{ width: 24 }} />
+                {[0, 1, 2].map((t) => (
+                  <React.Fragment key={`dt${d}${t}`}>
+                    <col style={{ width: 24 }} /><col style={{ width: 24 }} /><col style={{ width: 28 }} />
+                  </React.Fragment>
+                ))}
+                <col style={{ width: 32 }} /><col style={{ width: 40 }} />
               </React.Fragment>
             ))}
           </colgroup>

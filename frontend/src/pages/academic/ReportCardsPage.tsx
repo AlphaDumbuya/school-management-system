@@ -46,8 +46,8 @@ import { useAuth } from '@hooks/useAuth';
 import { BookletContent } from './components/BookletContent';
 import { TermResultSheet } from './components/TermResultSheet';
 import type { SLTerm } from '@services/reportCardService';
-import { Printer, Download, Users } from 'lucide-react';
-import { saveBlob, previewBlob } from '@lib/download';
+import { Printer, Download, Users, X } from 'lucide-react';
+import { saveBlob, previewBlob, isAppMode } from '@lib/download';
 
 type ViewTerm = SLTerm | 'full';
 
@@ -277,10 +277,14 @@ export const ReportCardsPage: React.FC = () => {
   const batchRef = useRef<HTMLDivElement>(null);
   const [batchCard, setBatchCard] = useState<ReportCard | null>(null);
   const [batchRunning, setBatchRunning] = useState(false);
+  const classPdfCancel = useRef(false);
+  const batchFontCss = useRef<string | null>(null);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
   // Roster of students in the selected class (staff only), used by the batch.
   const batchRoster = useMemo(
-    () => (isStudent || isParent ? [] : students),
+    () => (isStudent || isParent ? [] : [...students].sort((a: any, b: any) =>
+      String(a.last_name || a.name || '').localeCompare(String(b.last_name || b.name || '')) ||
+      String(a.first_name || '').localeCompare(String(b.first_name || '')))),
     [isStudent, isParent, students],
   );
 
@@ -467,17 +471,19 @@ export const ReportCardsPage: React.FC = () => {
    * one full A4-landscape PDF page. Reused for both single-student and
    * whole-class batch export. Returns the number of sheets captured.
    */
-  const appendBookletSheetsToPdf = async (root: HTMLElement, pdf: any, isFirst: boolean): Promise<number> => {
-    const { toPng } = await import('html-to-image');
+  const appendBookletSheetsToPdf = async (root: HTMLElement, pdf: any, isFirst: boolean, opts: { batch?: boolean } = {}): Promise<number> => {
+    const { toPng, toJpeg, getFontEmbedCSS } = await import('html-to-image');
+    // A whole class holds many sheets: keep each lighter (JPEG, 2x) so the browser doesn't run out of memory.
+    const batch = !!opts.batch;
 
     const sheets = Array.from(root.querySelectorAll<HTMLElement>('.booklet-sheet'));
     if (sheets.length === 0) return 0;
 
-    // Each sheet is rendered at A4-landscape dimensions on screen
-    const SHEET_W = 1123;
-    const SHEET_H = 794;
-
-    const sheetImages: string[] = [];
+    // The booklet is DESIGNED at 1404 x 993 (see BookletContent PAGE_W / PAGE_H, an A4-landscape
+    // ratio); capture at that size so the columns keep the room they were laid out with.
+    const SHEET_W = 1404;
+    const SHEET_H = 993;
+    const sheetImages: Array<{ url: string; fmt: 'PNG' | 'JPEG' }> = [];
     for (let i = 0; i < sheets.length; i++) {
       const node = sheets[i];
 
@@ -509,20 +515,17 @@ export const ReportCardsPage: React.FC = () => {
 
       const MAX_SIDE = 16000;
       const MAX_AREA = 260_000_000;
-      let pixelRatio = 3;
+      let pixelRatio = batch ? 2 : 3;
       const wouldExceed = (r: number) =>
         fullW * r > MAX_SIDE || fullH * r > MAX_SIDE || fullW * r * fullH * r > MAX_AREA;
       while (pixelRatio > 1 && wouldExceed(pixelRatio)) pixelRatio -= 0.5;
 
       let dataUrl: string;
       try {
-        dataUrl = await toPng(node, {
-          cacheBust: true,
-          pixelRatio,
-          backgroundColor: '#ffffff',
-          width: fullW,
-          height: fullH,
-        });
+        if (batch && batchFontCss.current === null) batchFontCss.current = await getFontEmbedCSS(node).catch(() => '');
+        const captureOpts: any = { cacheBust: !batch, pixelRatio, backgroundColor: '#ffffff', width: fullW, height: fullH };
+        if (batch && batchFontCss.current) captureOpts.fontEmbedCSS = batchFontCss.current;
+        dataUrl = batch ? await toJpeg(node, { ...captureOpts, quality: 0.92 }) : await toPng(node, captureOpts);
       } finally {
         node.style.width = prev.width;
         node.style.maxWidth = prev.maxWidth;
@@ -533,7 +536,7 @@ export const ReportCardsPage: React.FC = () => {
         node.style.margin = prev.margin;
         node.style.overflow = prev.overflow;
       }
-      sheetImages.push(dataUrl);
+      sheetImages.push({ url: dataUrl, fmt: batch ? 'JPEG' : 'PNG' });
     }
 
     const sheetW = pdf.internal.pageSize.getWidth();   // 297mm
@@ -541,7 +544,7 @@ export const ReportCardsPage: React.FC = () => {
 
     for (let i = 0; i < sheetImages.length; i++) {
       if (!(isFirst && i === 0)) pdf.addPage('a4', 'landscape');
-      pdf.addImage(sheetImages[i], 'PNG', 0, 0, sheetW, sheetH, undefined, 'FAST');
+      pdf.addImage(sheetImages[i].url, sheetImages[i].fmt, 0, 0, sheetW, sheetH, undefined, 'FAST');
     }
 
     return sheetImages.length;
@@ -552,10 +555,11 @@ export const ReportCardsPage: React.FC = () => {
    * booklet (2 landscape pages each). Fetches each student's report card,
    * renders it into a hidden off-screen node, captures it, and appends.
    */
-  const handleClassBatch = async () => {
-    if (!classId) { showToast.error('Select a class first'); return; }
-    if (batchRoster.length === 0) { showToast.error('No students found in this class'); return; }
+  const handleClassBatchCanvas = async (mode: 'print' | 'download' = 'download', printTab: Window | null = null) => {
+    if (!classId) { printTab?.close(); showToast.error('Select a class first'); return; }
+    if (batchRoster.length === 0) { printTab?.close(); showToast.error('No students found in this class'); return; }
 
+    batchFontCss.current = null;
     setBatchRunning(true);
     setBatchProgress({ done: 0, total: batchRoster.length });
     const { jsPDF } = await import('jspdf');
@@ -566,6 +570,7 @@ export const ReportCardsPage: React.FC = () => {
     try {
       const className = classOptions.find((c: any) => String(c.value) === String(classId))?.label || 'Class';
       for (let idx = 0; idx < batchRoster.length; idx++) {
+        if (classPdfCancel.current) break;
         const stu = batchRoster[idx];
         try {
           const resp: any = await reportCardService.getReportCard(String(stu.id), { class_id: classId, academic_year: academicYear });
@@ -576,7 +581,7 @@ export const ReportCardsPage: React.FC = () => {
             await new Promise((r) => setTimeout(r, 250));
             const node = batchRef.current;
             if (node) {
-              const added = await appendBookletSheetsToPdf(node, pdf, first);
+              const added = await appendBookletSheetsToPdf(node, pdf, first, { batch: true });
               if (added > 0) { first = false; ok++; }
             }
           }
@@ -584,12 +589,105 @@ export const ReportCardsPage: React.FC = () => {
         setBatchProgress({ done: idx + 1, total: batchRoster.length });
       }
 
-      if (ok === 0) { showToast.error('No report cards could be generated for this class'); return; }
+      if (classPdfCancel.current) { printTab?.close(); showToast.info('Cancelled'); return; }
+      if (ok === 0) { printTab?.close(); showToast.error('No report cards could be generated for this class'); return; }
       const blob = pdf.output('blob');
-      await saveBlob(blob, `Report_Cards_${className.replace(/\s+/g, '_')}_${academicYear.replace('/', '-')}.pdf`);
+      const fname = `Report_Cards_${className.replace(/\s+/g, '_')}_${academicYear.replace('/', '-')}.pdf`;
+      if (mode === 'print') {
+        if (printTab) printTab.location.href = URL.createObjectURL(blob);
+        else await previewBlob(blob, fname);
+      } else {
+        await saveBlob(blob, fname);
+      }
       showToast.success(`Generated ${ok} of ${batchRoster.length} report card${batchRoster.length === 1 ? '' : 's'}`);
     } finally {
       setBatchCard(null);
+      setBatchRunning(false);
+    }
+  };
+
+  /**
+   * WHOLE CLASS, print or download. Builds each pupil's PDF on the server (the
+   * same crisp, chrome-free PDF as the single-student Print) and joins them
+   * into ONE document, in class-list order:
+   *  - "All terms" view  -> every pupil's full booklet
+   *  - a single-term view -> every pupil's one-page result sheet for that term
+   * Each PDF is a separate request, so a big class never hits a time limit, and
+   * the server still checks that every report card may be seen/is released.
+   */
+  const handleClassPdf = async (mode: 'print' | 'download') => {
+    if (!classId) { showToast.error('Select a class first'); return; }
+    if (batchRoster.length === 0) { showToast.error('No students found in this class'); return; }
+    classPdfCancel.current = false;
+    // Open the print tab now, inside the click, so the browser doesn't block it after the wait.
+    const printTab = mode === 'print' && !isAppMode() ? window.open('', '_blank') : null;
+    if (printTab) {
+      printTab.document.write('<title>Preparing report cards</title><p style="font:16px system-ui,sans-serif;padding:32px;color:#334155">Preparing the class report cards. Keep this tab open; they appear here when ready.</p>');
+    }
+    const roster = batchRoster;
+    const nameOf = (st: any) => [st.first_name, st.last_name].filter(Boolean).join(' ') || st.name || 'a student';
+    const term = isSingleTerm ? (viewTerm as string) : undefined;
+    const className = classOptions.find((c: any) => String(c.value) === String(classId))?.label || 'Class';
+    if (!term) {
+      // Full booklets: same page capture as the single-student Print, so the class set looks identical.
+      await handleClassBatchCanvas(mode, printTab);
+      return;
+    }
+    setBatchRunning(true);
+    setBatchProgress({ done: 0, total: roster.length });
+    try {
+      const buffers: Array<ArrayBuffer | null> = new Array(roster.length).fill(null);
+      let next = 0;
+      let done = 0;
+      const worker = async () => {
+        while (!classPdfCancel.current) {
+          const i = next++;
+          if (i >= roster.length) return;
+          try {
+            const blob = await reportCardService.downloadPdf(String(roster[i].id), { class_id: classId, academic_year: academicYear, ...(term ? { term } : {}) });
+            if (blob) buffers[i] = await blob.arrayBuffer();
+          } catch { /* a pupil without a report card is skipped below */ }
+          done++;
+          setBatchProgress({ done, total: roster.length });
+        }
+      };
+      await Promise.all([worker(), worker()]); // two at a time keeps the server happy and the wait short
+      if (classPdfCancel.current) { printTab?.close(); showToast.info('Cancelled'); return; }
+
+      const { PDFDocument } = await import('pdf-lib');
+      const merged = await PDFDocument.create();
+      const missed: string[] = [];
+      let ok = 0;
+      for (let i = 0; i < roster.length; i++) {
+        const buf = buffers[i];
+        if (!buf) { missed.push(nameOf(roster[i])); continue; }
+        try {
+          const src = await PDFDocument.load(buf);
+          (await merged.copyPages(src, src.getPageIndices())).forEach((p) => merged.addPage(p));
+          ok++;
+        } catch { missed.push(nameOf(roster[i])); }
+      }
+      if (ok === 0) {
+        printTab?.close();
+        showToast.error('No result sheets could be generated for this class. Check that the results have been released.');
+        return;
+      }
+      const blob = new Blob([(await merged.save()) as unknown as BlobPart], { type: 'application/pdf' });
+      const year = academicYear.replace('/', '-');
+      const fname = term
+        ? `Results_${className.replace(/\s+/g, '_')}_${term.replace('_term', 'T')}_${year}.pdf`
+        : `Report_Cards_${className.replace(/\s+/g, '_')}_${year}.pdf`;
+      if (mode === 'print') {
+        if (printTab) printTab.location.href = URL.createObjectURL(blob);
+        else await previewBlob(blob, fname);
+      } else {
+        await saveBlob(blob, fname);
+      }
+      showToast.success(`${ok} of ${roster.length} ${term ? 'result sheet' : 'report card'}${roster.length === 1 ? '' : 's'} ready${missed.length ? `. Left out (no released results): ${missed.slice(0, 4).join(', ')}${missed.length > 4 ? ` and ${missed.length - 4} more` : ''}` : ''}`);
+    } catch (err: any) {
+      printTab?.close();
+      showToast.error(err?.message || 'Could not prepare the class report cards');
+    } finally {
       setBatchRunning(false);
     }
   };
@@ -605,21 +703,39 @@ export const ReportCardsPage: React.FC = () => {
         breadcrumbs={[{ label: 'Report Cards' }]}
         actions={
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Whole-class batch — staff only, once a class is selected. */}
+            {/* Whole class — staff only, once a class is selected. Follows the view: all terms = full booklets, one term = result sheets. */}
             {!isStudent && !isParent && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClassBatch}
-                disabled={!classId || batchRoster.length === 0 || batchRunning || exporting}
-                className="px-2 sm:px-3"
-                title="Generate a single PDF with every student's report card in this class"
-              >
-                <Users size={15} className="sm:mr-1.5" />
-                <span className="hidden sm:inline">
-                  {batchRunning ? `Generating ${batchProgress.done}/${batchProgress.total}…` : 'Download Whole Class'}
-                </span>
-              </Button>
+              batchRunning ? (
+                <Button variant="outline" size="sm" onClick={() => { classPdfCancel.current = true; }} className="px-2 sm:px-3" title="Stop preparing the class report cards">
+                  <X size={15} className="sm:mr-1.5" />
+                  <span className="hidden sm:inline">Cancel ({batchProgress.done}/{batchProgress.total})</span>
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleClassPdf('print')}
+                    disabled={!classId || batchRoster.length === 0 || exporting}
+                    className="px-2 sm:px-3"
+                    title={`Print ${isSingleTerm ? 'the result sheets' : 'the report cards'} of every student in this class`}
+                  >
+                    <Users size={15} className="sm:mr-1.5" />
+                    <span className="hidden sm:inline">Print Class</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleClassPdf('download')}
+                    disabled={!classId || batchRoster.length === 0 || exporting}
+                    className="px-2 sm:px-3"
+                    title={`Download one PDF with ${isSingleTerm ? 'the result sheets' : 'the report cards'} of every student in this class`}
+                  >
+                    <Download size={15} className="sm:mr-1.5" />
+                    <span className="hidden sm:inline">Download Class</span>
+                  </Button>
+                </>
+              )
             )}
             <Button variant="outline" size="sm" onClick={handleExportPdf} disabled={!card || exporting || batchRunning} className="px-2 sm:px-3">
               <Download size={15} className="sm:mr-1.5" />
