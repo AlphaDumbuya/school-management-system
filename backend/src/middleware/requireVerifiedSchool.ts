@@ -29,7 +29,7 @@ export const requireVerifiedSchool = async (req: Request, res: Response, next: N
     // The tenant owner (principal) carries the verification_status for the tenant.
     const owner = await db('users')
       .where({ tenant_id: user.tenant_id, role: 'principal' })
-      .orderBy('created_at', 'asc')
+      .orderBy([{ column: 'is_owner', order: 'desc' }, { column: 'created_at', order: 'asc' }])
       .first();
 
     if (owner?.verification_status === 'verified') {

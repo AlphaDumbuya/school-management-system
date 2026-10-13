@@ -5,6 +5,8 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Sun, Sunrise, Moon, Sparkles } from 'lucide-react';
+import useAuthStore from '@store/authStore';
+import { roleDisplayName } from '@lib/leadTitle';
 
 export interface WelcomeHeroProps {
   firstName?: string;
@@ -50,7 +52,9 @@ export const WelcomeHero: React.FC<WelcomeHeroProps> = ({
 }) => {
   const { text: greeting, Icon } = timeGreeting();
   const theme = ROLE_THEME[role] ?? ROLE_THEME.principal;
-  const label = roleLabel ?? prettyRole(role);
+  // The school's top leader is a "Head Teacher" in a primary-only school, a "Principal" otherwise.
+  const authUser = useAuthStore((st) => st.user);
+  const label = roleLabel ?? (role === 'principal' ? roleDisplayName(authUser) : prettyRole(role));
 
   const [now, setNow] = useState(new Date());
   useEffect(() => {

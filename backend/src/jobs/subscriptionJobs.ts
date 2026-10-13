@@ -34,7 +34,7 @@ export async function tenantContactEmail(tenantId: string): Promise<string | nul
   if (tenant?.contact_email) return tenant.contact_email;
   const school = await db('schools').where({ tenant_id: tenantId }).first('email').catch(() => null);
   if (school?.email) return school.email;
-  const principal = await db('users').where({ tenant_id: tenantId, role: 'principal', status: 'active' }).first('email');
+  const principal = await db('users').where({ tenant_id: tenantId, role: 'principal', status: 'active' }).orderBy('is_owner', 'desc').first('email');
   return principal?.email || null;
 }
 

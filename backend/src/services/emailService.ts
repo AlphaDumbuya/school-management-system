@@ -1714,6 +1714,38 @@ class EmailService {
   }
 
   /**
+   * Security alert → principals, school contact and the person who made it, when a
+   * school's payment settings (where fee payments are paid into) are changed.
+   * Never contains the token; only what changed, who, when and from where.
+   */
+  async sendPaymentSettingsChangedEmail(
+    tenantId: string,
+    toEmail: string,
+    data: { actorName: string; what: string; when: Date; ip?: string; userAgent?: string }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const settingsUrl = `${branding.appUrl}/settings?tab=payments`;
+    const when = data.when.toUTCString();
+    const bodyHtml = `
+      <p>Hello,</p>
+      <p>The payment settings for <strong>${escapeHtml(branding.name || 'your school')}</strong> were just changed.</p>
+      ${calloutBlock(`<strong>${escapeHtml(data.what)}.</strong>`, 'warn')}
+      <p style="margin:0 0 4px 0;">Changed by: <strong>${escapeHtml(data.actorName)}</strong></p>
+      <p style="margin:0 0 4px 0;">Time: ${escapeHtml(when)}</p>
+      ${data.ip ? `<p style="margin:0 0 4px 0;">From: ${escapeHtml(data.ip)}</p>` : ''}
+      ${calloutBlock("If you did not make this change, someone may have access to your account. Change your password right away, then open Payment settings and turn off online payments until you have checked them.", 'info')}
+      ${emailButton('Review Payment Settings', settingsUrl)}`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject: 'Security alert: payment settings changed',
+      body: renderEmail({ branding, eyebrow: 'Account Security', heading: 'Payment Settings Changed', bodyHtml, preheader: 'Your school\'s payment settings were changed.' }),
+      isHtml: true,
+    });
+  }
+
+  /**
    * Security notice → user, when a passkey is added to / removed from their
    * account. Tenant-branded when the user belongs to a school; platform-branded
    * (support sender) for platform users with no tenant (e.g. super admins).

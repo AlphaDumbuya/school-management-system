@@ -153,6 +153,15 @@ export const otpLimiter = makeLimiter({
   message: { success: false, error: 'Too many attempts. Please try again later.' },
 });
 
+// Changing where a school's fee payments are paid into: rare, so a low ceiling.
+// (The password check inside the route has its own database-backed lock-out.)
+export const paymentSettingsLimiter = makeLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  keyGenerator: (req) => `paysettings:${clientIp(req)}`,
+  message: { success: false, error: 'Too many attempts. Please wait a few minutes and try again.' },
+});
+
 // Public admission form: per IP + school. Shares the Redis store when
 // REDIS_URL is set; the route also applies database caps that hold across
 // serverless instances either way.

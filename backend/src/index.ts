@@ -13,6 +13,7 @@ import { tenantContext } from '@middleware/tenantContext';
 import { db } from '@utils/database';
 import authRoutes from '@routes/authRoutes';
 import verificationRoutes from '@routes/verificationRoutes';
+import ownerRoutes from '@routes/ownerRoutes';
 import userRoutes from '@routes/userRoutes';
 import rbacRoutes from '@routes/rbacRoutes';
 import studentRoutes from '@routes/studentRoutes';
@@ -471,6 +472,9 @@ app.use('/api/v1/live', liveSyncRoutes);
 
 // School verification Routes (account-owner instant verification)
 app.use('/api/v1/verification', verificationRoutes);
+
+// School owner overview (owner-only)
+app.use('/api/v1/owner', ownerRoutes);
 
 // Timetable Routes (Simplified schedule management)
 app.use('/api/v1/timetable', timetableRoutes);

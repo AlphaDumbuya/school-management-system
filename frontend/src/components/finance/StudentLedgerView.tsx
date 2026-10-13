@@ -40,9 +40,13 @@ interface Props {
   /** When true, the Pay button navigates to /finance/my-fees instead of paying
    *  inline (used on dashboards to centralise payment). */
   redirectToPay?: boolean;
+  /** Open the Pay wizard as soon as the ledger is shown (arriving from a dashboard Pay click). */
+  autoStartPay?: boolean;
+  /** Called once the wizard has been opened, so it is not opened again. */
+  onAutoStartPay?: () => void;
 }
 
-export const StudentLedgerView: React.FC<Props> = ({ studentId, academicYear, canPay = true, redirectToPay = false }) => {
+export const StudentLedgerView: React.FC<Props> = ({ studentId, academicYear, canPay = true, redirectToPay = false, autoStartPay = false, onAutoStartPay }) => {
   const navigate = useNavigate();
   const { data, isLoading, error } = useQuery({
     queryKey: ['student-ledger', studentId ?? 'me'],
@@ -187,12 +191,14 @@ export const StudentLedgerView: React.FC<Props> = ({ studentId, academicYear, ca
   const seen = new Set<string>();
   const uniqueScopes = scopes.filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)));
 
-  const PayAction = () => {
+  // A plain function (not a component) so the Pay wizard keeps its state when this view re-renders.
+  const renderPayAction = () => {
     if (!canPay || ledger.totals.outstanding <= 0) return null;
     if (redirectToPay) {
       return (
         <button
-          onClick={() => navigate(studentId ? `/finance/my-fees?child=${studentId}` : '/finance/my-fees')}
+          // Go to the fees page and open the Pay wizard there: the click is not lost by the redirect.
+          onClick={() => navigate(studentId ? `/finance/my-fees?child=${studentId}` : '/finance/my-fees', { state: { autoPay: { studentId: studentId || undefined } } })}
           className="inline-flex items-center justify-center gap-2 font-semibold rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm hover:shadow-md transition-all px-4 py-2.5 text-sm w-full sm:w-auto"
         >
           <CreditCard size={16} /> Pay Fees
@@ -200,7 +206,7 @@ export const StudentLedgerView: React.FC<Props> = ({ studentId, academicYear, ca
       );
     }
     return (
-      <PayFeesButton studentId={sid} amount={ledger.totals.outstanding} label="School Fees" scopes={uniqueScopes} showHint>
+      <PayFeesButton studentId={sid} amount={ledger.totals.outstanding} label="School Fees" scopes={uniqueScopes} showHint autoStart={autoStartPay} onAutoStarted={onAutoStartPay}>
         Pay Fees
       </PayFeesButton>
     );
@@ -236,7 +242,7 @@ export const StudentLedgerView: React.FC<Props> = ({ studentId, academicYear, ca
 
         {/* Single Pay action */}
         <div className="mt-4 flex justify-end">
-          <PayAction />
+          {renderPayAction()}
         </div>
       </div>
 

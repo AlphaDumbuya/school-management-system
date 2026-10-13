@@ -12,6 +12,7 @@ import { SubscriptionService } from '../services/subscriptionService';
 import { PlatformSettingsService } from '../services/platformSettingsService';
 import { TenantUserService } from '../services/tenantUserService';
 import { ImpersonationService } from '../services/impersonationService';
+import { stripSecretColumns } from '../utils/redact';
 import { PlatformAuditService } from '../services/platformAuditService';
 import { PlatformCommunicationService } from '../services/platformCommunicationService';
 import { NewsletterService } from '../services/newsletterService';
@@ -39,7 +40,7 @@ async function tenantContactEmail(tenantId: string): Promise<string | null> {
   if (tenant?.contact_email) return tenant.contact_email;
   const school = await db('schools').where({ tenant_id: tenantId }).first();
   if (school?.email) return school.email;
-  const principal = await db('users').where({ tenant_id: tenantId, role: 'principal' }).first();
+  const principal = await db('users').where({ tenant_id: tenantId, role: 'principal' }).orderBy('is_owner', 'desc').first();
   return principal?.email || null;
 }
 
@@ -58,7 +59,7 @@ async function noticeRecipients(tenantId: string): Promise<string[]> {
   if (t?.contact_email) found.push(t.contact_email);
   const school = await db('schools').where({ tenant_id: tenantId }).first('email').catch(() => null);
   if (school?.email) found.push(school.email);
-  const principals = await db('users').where({ tenant_id: tenantId, role: 'principal', status: 'active' }).pluck('email').catch(() => [] as string[]);
+  const principals = await db('users').where({ tenant_id: tenantId, role: 'principal', status: 'active' }).orderBy('is_owner', 'desc').pluck('email').catch(() => [] as string[]);
   found.push(...principals);
   const seen = new Set<string>();
   return found.map((e) => String(e || '').trim()).filter((e) => {
@@ -223,6 +224,8 @@ router.post('/tenants', authenticate, authorize(UserRole.SUPER_ADMIN), async (re
         first_name: adminFirstName,
         last_name: adminLastName,
         role: 'principal',
+        // The administrator the platform sets up for a school is its owner.
+        is_owner: true,
         status: 'active',
         created_at: new Date(),
         updated_at: new Date(),
@@ -551,7 +554,8 @@ router.put('/tenants/:id/school-profile', authenticate, authorize(UserRole.SUPER
 router.get('/tenants/:id/school-profile', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
   try {
     const school = await db('schools').where({ tenant_id: req.params.id }).first();
-    res.json({ success: true, data: school || null });
+    // Never send the school's stored secrets (payment / storage tokens) to the browser.
+    res.json({ success: true, data: school ? stripSecretColumns(school) : null });
   } catch (error) {
     next(error);
   }

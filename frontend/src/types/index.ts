@@ -25,6 +25,14 @@ export interface AuthUser {
   tenantId?: string;
   schoolLogoUrl?: string;
   schoolName?: string;
+  /** The school level the school chose (for example "Nursery & Primary"). */
+  schoolType?: string | null;
+  /** What the school's top leader is called: "Head Teacher" or "Principal". */
+  leadTitle?: string;
+  /** True for the school owner: billing, payment settings, verification, principal accounts. */
+  isOwner?: boolean;
+  /** True when this account is a named school owner (shows the "School Owner" title). */
+  isNamedOwner?: boolean;
   lastLogin?: string;
   /** One-time promotion welcome payload — set right after a role change, then
    *  cleared server-side once delivered. Drives a dismissible welcome banner. */

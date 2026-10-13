@@ -16,6 +16,7 @@
     "db:migrate": "knex migrate:latest",
     "db:seed": "knex seed:run",
     "create:superadmin": "tsx scripts/createSuperAdmin.ts",
+    "set:owner": "tsx scripts/setSchoolOwner.ts",
     "demo:seed": "tsx scripts/seedDemoTenant.ts",
     "demo:topup": "tsx scripts/topUpDemoTenant.ts",
     "verify:brevo": "tsx scripts/verifyBrevoApiKey.ts",

@@ -36,12 +36,15 @@ import {
   FaHistory,
   FaLock,
   FaFlag,
+  FaTimes,
+  FaCrown,
 } from 'react-icons/fa';
 import { FaRightFromBracket, FaAnglesLeft, FaAnglesRight, FaCircleCheck } from 'react-icons/fa6';
 import useAuth, { getDashboardPath } from '@hooks/useAuth';
 import { useHouseAccess } from '@hooks/useHouseAccess';
 import { routeAccess } from '@lib/planFeatures';
 import { isDemoUser } from '@lib/demo';
+import { roleDisplayName } from '@lib/leadTitle';
 import clsx from 'clsx';
 
 export interface NavItem {
@@ -58,6 +61,8 @@ export interface NavItem {
   dutyOnly?: boolean;
   /** Shown only to a teacher the principal / admissions officer gave access to. */
   needsHouseAccess?: boolean;
+  /** Shown only to an account named as a school owner. */
+  namedOwnerOnly?: boolean;
 }
 
 interface SidebarProps {
@@ -70,6 +75,17 @@ interface SidebarProps {
 }
 
 export const navItems: NavItem[] = [
+  // ── SCHOOL OWNER ────────────────────────────────────────────────────
+  {
+    label: 'Owner Overview',
+    icon: <FaCrown className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/owner',
+    roles: ['principal'],
+    module: 'School Owner',
+    group: 'Owner',
+    version: 'v1',
+    namedOwnerOnly: true,
+  },
   // ── ACADEMIC MANAGEMENT ─────────────────────────────────────────────
   {
     label: 'Classes & Streams',
@@ -661,7 +677,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
   // Preserve the sidebar's own scroll position across route changes so the
   // active item doesn't jump out of view when navigating.
   const navScrollRef = React.useRef<HTMLElement | null>(null);
-  const SCROLL_KEY = 'wiskul.sidebar.scrollTop';
+  const activeItemRef = React.useRef<HTMLButtonElement | null>(null);
+  // Per person: a position saved in another portal (or another account on this device) must
+  // never be applied to this one.
+  const SCROLL_KEY = `wiskul.sidebar.scrollTop.${user?.id ?? 'anon'}`;
 
   const rememberScroll = () => {
     try {
@@ -682,6 +701,31 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
+  // Keep the sidebar ON the active item: after a page change, once the right group is
+  // open (and whenever the drawer is opened), scroll the highlighted item into view if
+  // it is hidden. Each page mounts its own layout, so this runs on every navigation.
+  React.useEffect(() => {
+    const el = activeItemRef.current;
+    const nav = navScrollRef.current;
+    if (!nav) return;
+    // On the dashboard (the first link) the list sits at the top, with the active link in view.
+    const onDashboard = (location.pathname.replace(/\/+$/, '') || '/') === dashboardPath;
+    if (onDashboard && !el) {
+      nav.scrollTop = 0;
+      try { sessionStorage.setItem(SCROLL_KEY, '0'); } catch { /* ignore */ }
+      return;
+    }
+    if (!el) return;
+    const id = window.requestAnimationFrame(() => {
+      const n = nav.getBoundingClientRect();
+      const e = el.getBoundingClientRect();
+      if (e.height === 0) return; // drawer is closed / hidden
+      if (e.top < n.top + 8 || e.bottom > n.bottom - 8) {
+        nav.scrollTop += e.top - n.top - n.height / 2 + e.height / 2;
+      }
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [location.pathname, openGroup, isOpen]);
   const handleLogout = async () => {
     await logout();
   };
@@ -705,6 +749,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
     if (!ENABLE_V2_FEATURES && item.version === 'v2') return false;
     if (isSuperAdmin) return item.group === 'Platform';
     if (item.needsHouseAccess && !houseAccess.hasAccess) return false;
+    if (item.namedOwnerOnly && !(user as any)?.isNamedOwner) return false;
     if (item.dutyOnly) {
       // Only for a teacher holding this as an extra duty.
       const duties = ((user as any)?.staffDuties ?? []) as string[];
@@ -717,7 +762,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
     // Re-filter when the role, duties or plan change (live role sync after a
     // promotion, a new Bursar duty, an upgrade), not only on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [isSuperAdmin, user?.role, houseAccess.hasAccess, JSON.stringify((user as any)?.staffDuties ?? []), JSON.stringify(user?.planAccess?.features ?? null)]);
+  }), [isSuperAdmin, user?.role, (user as any)?.isNamedOwner, houseAccess.hasAccess, JSON.stringify((user as any)?.staffDuties ?? []), JSON.stringify(user?.planAccess?.features ?? null)]);
 
   // Group the filtered items.
   const groupedNav = React.useMemo(() => {
@@ -755,15 +800,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
       {/* Overlay for mobile */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-[45] lg:hidden"
           onClick={onClose}
+          aria-hidden="true"
         />
       )}
 
       {/* Sidebar */}
       <aside
         className={clsx(
-          'fixed lg:static top-16 lg:top-auto bottom-0 lg:inset-y-0 left-0 bg-gray-900 text-white transition-all duration-300 ease-in-out z-40 overflow-hidden',
+          // Phone / small screens: a full-height drawer ABOVE the header (so it never overlaps it
+          // part-way), kept clear of the status bar and gesture bar with the safe-area insets.
+          'fixed lg:static inset-y-0 left-0 bg-gray-900 text-white transition-all duration-300 ease-in-out z-50 lg:z-40 overflow-hidden pt-[env(safe-area-inset-top)] lg:pt-0',
           // Mobile is always full 16rem; desktop width depends on collapsed state.
           collapsed ? 'w-64 lg:w-[76px]' : 'w-64',
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
@@ -800,9 +848,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                   )}
                   <div className={clsx('min-w-0 flex-1', collapsed && 'lg:hidden')}>
                     <h2 className="font-bold text-sm sm:text-lg truncate">{user?.schoolName || 'School Management'}</h2>
-                    <p className="text-gray-400 text-xs truncate capitalize">{user?.role?.replace('_', ' ')}</p>
+                    <p className="text-gray-400 text-xs truncate">{roleDisplayName(user)}</p>
                   </div>
                 </>
+              )}
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close menu"
+                  className="lg:hidden ml-auto flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                >
+                  <FaTimes className="h-4 w-4" aria-hidden="true" />
+                </button>
               )}
             </div>
           </div>
@@ -870,6 +928,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                       return (
                         <button
                           key={item.path}
+                          ref={isActive ? activeItemRef : undefined}
                           onClick={() => handleNavigation(item.path)}
                           title={collapsed ? `${item.label}${readOnly ? ' (read-only)' : ''}` : readOnly ? 'Read-only on your current plan' : undefined}
                           aria-label={readOnly ? `${item.label}, read-only` : undefined}
@@ -984,7 +1043,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                   <span className="block text-sm font-semibold text-white truncate">
                     {[user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Account'}
                   </span>
-                  <span className="block text-[11px] text-gray-400 truncate capitalize">{user?.role?.replace('_', ' ')}</span>
+                  <span className="block text-[11px] text-gray-400 truncate">{roleDisplayName(user)}</span>
                 </span>
                 {footerOpen ? (
                   <FaChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" />

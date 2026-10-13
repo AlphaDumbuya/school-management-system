@@ -12,9 +12,11 @@
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <!-- Brand-blue window background so the WebView paints on blue (not a
-             white flash) between the native launch screen and the HTML splash. -->
-        <item name="android:background">@color/splashBackground</item>
+        <!-- Brand-blue WINDOW background so the WebView paints on blue (not a
+             white flash) between the native launch screen and the HTML splash.
+             Do NOT set android:background here: in a theme it becomes the default
+             background of EVERY view that has none, which painted the native
+             <select> dropdown dialog (and its list) solid blue. -->
         <item name="android:windowBackground">@color/splashBackground</item>
     </style>
 

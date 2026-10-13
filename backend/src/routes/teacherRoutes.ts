@@ -2,6 +2,7 @@ import { db } from '../utils/database.js';
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize, attachUserContext } from '@middleware/authMiddleware';
 import { checkSubscriptionLimit } from '@middleware/subscriptionGuard';
+import { assertOwnerManagesLeadership } from '../utils/tenantOwner';
 import { UserRole } from '../types/auth';
 import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
@@ -523,6 +524,8 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
     // other jobs on top: e.g. a Bursar who also teaches and leads a class.
     const duties = effectiveDuties(initialRole, jobPlan.duties);
     const teaches = initialRole === 'teacher' || initialRole === 'principal' || duties.includes('teacher');
+    // A principal account is the school owner's to create.
+    await assertOwnerManagesLeadership((req as any).user.id, { newRole: initialRole });
     // Accounts / duties only for portals the school's plan includes.
     await assertPortalAllowed(tenantId, initialRole, { forAccountCreation: true });
     for (const d of duties.filter((x) => x !== 'teacher')) await assertPortalAllowed(tenantId, d, { forAccountCreation: true });
@@ -756,6 +759,9 @@ router.put('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL
         userUpdate.role = targetRole;
       }
     }
+
+    // Principal accounts (and moving someone into or out of that role) are the school owner's.
+    await assertOwnerManagesLeadership((req as any).user.id, { targetId: teacher.user_id, targetRole: teacher.user_role, newRole: userUpdate.role, allowSelf: true });
 
     // Extra jobs (teaching / Bursar / Admissions) sit on top of the main job.
     // They apply to teachers, accountants and admissions officers; a principal
@@ -1098,6 +1104,7 @@ router.delete('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCI
       .where('users.tenant_id', tenantId)
       .select(
         'teachers.*',
+        'users.role as user_role',
         'users.email as user_email',
         db.raw("TRIM(CONCAT_WS(' ', users.first_name, users.last_name)) as user_name"),
       )
@@ -1105,6 +1112,8 @@ router.delete('/:id', authenticate, attachUserContext, authorize(UserRole.PRINCI
     if (!teacher) {
       throw new AppError('Teacher not found', 404, 'NOT_FOUND');
     }
+
+    await assertOwnerManagesLeadership((req as any).user.id, { targetId: teacher.user_id, targetRole: teacher.user_role });
 
     await trx('users').where('id', teacher.user_id).update({
       status: 'inactive',

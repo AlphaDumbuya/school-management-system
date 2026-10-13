@@ -40,7 +40,7 @@ export const VerificationPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [showPhotoStep, setShowPhotoStep] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const isOwner = (user as any)?.role === 'principal';
+  const isOwner = (user as any)?.role === 'principal' && (user as any)?.isOwner !== false;
 
   const [form, setForm] = useState({
     emisCode: '',

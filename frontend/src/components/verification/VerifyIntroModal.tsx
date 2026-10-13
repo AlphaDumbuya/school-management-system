@@ -21,7 +21,7 @@ export const VerifyIntroModal: React.FC = () => {
   const lastFocus = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (role !== 'principal' || !userId || isVerifiedUser(user)) return;
+    if (role !== 'principal' || (user as any)?.isOwner === false || !userId || isVerifiedUser(user)) return;
     // Only once per browser session (survives route changes, resets on a new visit).
     try {
       if (sessionStorage.getItem(SESSION_KEY) === '1') return;

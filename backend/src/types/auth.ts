@@ -31,6 +31,14 @@ export interface UserResponse {
   staffDuties?: string[];
   schoolLogoUrl?: string | null;
   schoolName?: string | null;
+  /** The school level the school chose (for example "Nursery & Primary"). */
+  schoolType?: string | null;
+  /** What the school's top leader is called: "Head Teacher" or "Principal". */
+  leadTitle?: string;
+  /** True for the school owner (billing, payment settings, verification, principal accounts). */
+  isOwner?: boolean;
+  /** True only when this account is named as a school owner (drives the "School Owner" title). */
+  isNamedOwner?: boolean;
   profilePhotoUrl?: string | null;
   verificationStatus?: string | null;
   hasOnboarded?: boolean;

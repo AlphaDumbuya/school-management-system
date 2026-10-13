@@ -95,7 +95,7 @@ export const App: React.FC = () => {
       {/* draggable={false}: disables swipe-to-dismiss, which avoids react-toastify's
           "Unable to preventDefault inside passive event listener" console warning
           on touch devices (the native app). Toasts still auto-dismiss + close button. */}
-      <ToastContainer position="top-right" closeButton={true} draggable={false} aria-live="polite" style={{ zIndex: 2147483647 }} />
+      <ToastContainer position="top-right" limit={3} autoClose={3500} pauseOnFocusLoss={false} closeButton={true} draggable={false} aria-live="polite" style={{ zIndex: 2147483647 }} />
     </QueryClientProvider>
   );
 };

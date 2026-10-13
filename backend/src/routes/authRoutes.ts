@@ -7,6 +7,8 @@ import { authenticate, authorize, attachUserContext, rateLimitLogin, clearLoginA
 import { loginLimiter, otpLimiter, passkeyLimiter, publicFormLimiter } from '@middleware/rateLimit';
 import { logger } from '@utils/logger';
 import { effectiveDuties } from '@utils/staffDuties';
+import { leadTitle, schoolTypeFor } from '@utils/schoolLevels';
+import { isTenantOwner } from '@utils/tenantOwner';
 import { UserRole, UserStatus } from '@types/auth';
 import emailService from '@services/emailService';
 
@@ -64,10 +66,21 @@ router.post('/register-school', publicFormLimiter, async (req: Request, res: Res
       admin_first_name,
       admin_last_name,
       password,
+      is_school_owner,
     } = req.body;
 
     if (!school_name || !contact_email || !admin_first_name || !admin_last_name || !password) {
       throw new AppError('School name, contact email, admin name, and password are required', 400, 'VALIDATION_ERROR');
+    }
+
+    // Only the school owner can register a school. Principals and staff receive
+    // their login from the owner; they do not register the school themselves.
+    if (is_school_owner !== true) {
+      throw new AppError(
+        'Only the school owner can register a school. If you are a principal or staff member, ask the school owner to register the school and create your account.',
+        400,
+        'OWNER_REQUIRED'
+      );
     }
 
     const result = await authService.registerSchool({
@@ -746,6 +759,13 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
       tenantId: user.tenant_id,
       schoolLogoUrl,
       schoolName,
+      // What the school's top leader is called (Head Teacher for a primary-only school).
+      schoolType: await schoolTypeFor(db, user.tenant_id),
+      leadTitle: leadTitle(await schoolTypeFor(db, user.tenant_id)),
+      // The school owner holds billing, payment settings, verification and principal accounts.
+      isOwner: user.role === 'principal' ? await isTenantOwner(user) : false,
+      // True only for an account named as owner (shows "School Owner"); a school with no owner account has none.
+      isNamedOwner: user.role === 'principal' && (user as any).is_owner === true,
       profilePhotoUrl,
       verificationStatus: user.verification_status || 'unverified',
       hasOnboarded: !!user.onboarded_at,

@@ -15,7 +15,6 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import useAuthStore from '@store/authStore';
 import { StudentLedgerView } from '@components/finance/StudentLedgerView';
 import { FamilyAccountExtras } from '@components/finance/FamilyAccountExtras';
-import { PayFeesButton } from '@components/finance/PayFeesButton';
 import { parentDashboardService } from '@services/parentDashboardService';
 import { financeLedgerService } from '@services/financeLedgerService';
 import { YearFilter } from '@components/common/YearFilter';
@@ -41,20 +40,8 @@ const StudentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: (
       <div className="px-1">
         <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 dark:text-white"><Wallet className="w-4 h-4" /> My Fees</h2>
       </div>
-      {/* Auto-pay trigger (only when arriving from a dashboard "Pay" click). The
-          visible Pay button lives inside the ledger below. */}
-      {autoPay && outstanding > 0 && ledger?.student_id && (
-        <div className="hidden">
-          <PayFeesButton
-            studentId={ledger.student_id}
-            amount={autoPay.amount || outstanding}
-            label={autoPay.label || 'School Fees'}
-            autoStart
-            onAutoStarted={onAutoConsumed}
-          />
-        </div>
-      )}
-      <StudentLedgerView academicYear={year || undefined} />
+      {/* Arriving from a dashboard "Pay" click: the ledger's own Pay wizard opens by itself. */}
+      <StudentLedgerView academicYear={year || undefined} autoStartPay={!!autoPay} onAutoStartPay={onAutoConsumed} />
       {ledger?.student_id && <FamilyAccountExtras studentId={ledger.student_id} label="my-account" year={year || undefined} />}
     </div>
   );
@@ -132,19 +119,15 @@ const ParentFees: React.FC<{ autoPay?: AutoPayIntent | null; onAutoConsumed?: ()
       <div className="px-1">
         <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 dark:text-white"><Wallet className="w-4 h-4" /> Fees</h2>
       </div>
-      {/* Auto-pay trigger for the selected child (from a dashboard "Pay" click). */}
-      {autoPay && outstanding > 0 && currentId && (autoPay.studentId ? autoPay.studentId === currentId : true) && (
-        <div className="hidden">
-          <PayFeesButton
-            studentId={currentId}
-            amount={autoPay.amount || outstanding}
-            label={autoPay.label || 'School Fees'}
-            autoStart
-            onAutoStarted={onAutoConsumed}
-          />
-        </div>
+      {/* Arriving from a dashboard "Pay" click: the selected child's Pay wizard opens by itself. */}
+      {currentId && (
+        <StudentLedgerView
+          studentId={currentId}
+          academicYear={year || undefined}
+          autoStartPay={!!autoPay && (autoPay.studentId ? autoPay.studentId === currentId : true)}
+          onAutoStartPay={onAutoConsumed}
+        />
       )}
-      {currentId && <StudentLedgerView studentId={currentId} academicYear={year || undefined} />}
       {currentId && <FamilyAccountExtras studentId={currentId} label={(children.find((c: any) => c.id === currentId)?.name || 'child').replace(/\s+/g, '-')} year={year || undefined} />}
     </div>
   );

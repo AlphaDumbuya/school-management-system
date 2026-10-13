@@ -11,6 +11,7 @@
 import ExcelJS from 'exceljs';
 import { db } from '../utils/database';
 import { logger } from '../utils/logger';
+import { isSecretColumn } from '../utils/redact';
 
 /** Tables included in a tenant backup. Each is filtered by tenant_id where the
  *  column exists; child tables are scoped through their tenant-owned parent. */
@@ -44,7 +45,8 @@ async function addSheet(wb: ExcelJS.Workbook, table: string, rows: any[]) {
     ws.addRow(['(no rows)']);
     return;
   }
-  const headers = Object.keys(rows[0]);
+  // Secrets (payment tokens, password hashes, 2FA seeds) never go into a downloadable backup.
+  const headers = Object.keys(rows[0]).filter((h) => !isSecretColumn(h));
   const headerRow = ws.addRow(headers);
   headerRow.font = { bold: true };
   rows.forEach((r) => ws.addRow(headers.map((h) => toCell(r[h]))));

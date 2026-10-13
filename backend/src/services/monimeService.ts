@@ -73,13 +73,29 @@ export class MonimeService {
   async resolveTenantCredentials(tenantId: string): Promise<MonimeCredentials | null> {
     try {
       const { db } = await import('../utils/database.js');
-      const { decryptSecret } = await import('../utils/encryption.js');
+      const { decryptSecret, encryptSecret, isBoundSecret } = await import('../utils/encryption.js');
+      const { monimeContext } = await import('./paymentSettingsSecurity.js');
       const school = await db('schools')
         .where({ tenant_id: tenantId })
         .select('monime_access_token', 'monime_space_id', 'monime_configured')
         .first();
       if (school?.monime_configured && school?.monime_access_token && school?.monime_space_id) {
-        return { token: decryptSecret(school.monime_access_token), spaceId: school.monime_space_id };
+        // The token is bound to this school and this space: a value copied from
+        // another school, or a changed space id, will not decrypt (we then refuse
+        // to collect rather than send money somewhere unexpected).
+        const context = monimeContext(tenantId, school.monime_space_id);
+        let token: string;
+        try {
+          token = decryptSecret(school.monime_access_token, context);
+        } catch (e) {
+          logger.error(`SECURITY: the stored Monime credentials for tenant ${tenantId} failed their integrity check; online payments are refused until a principal saves them again. ${e instanceof Error ? e.message : e}`);
+          return null;
+        }
+        // Older saves were not bound: bind them now (best-effort).
+        if (!isBoundSecret(school.monime_access_token)) {
+          await db('schools').where({ tenant_id: tenantId }).update({ monime_access_token: encryptSecret(token, context) }).catch(() => undefined);
+        }
+        return { token, spaceId: school.monime_space_id };
       }
     } catch (err) {
       logger.warn(`Could not resolve tenant Monime creds for ${tenantId}: ${err instanceof Error ? err.message : err}`);

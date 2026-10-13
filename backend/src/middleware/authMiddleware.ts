@@ -22,6 +22,8 @@ declare global {
         primary_role?: string;
         /** Extra jobs held on top of the main one (teacher / accountant / admissions_officer). */
         staff_duties?: string[];
+        /** True when the user is a named school owner (users.is_owner). */
+        is_owner?: boolean;
       };
     }
   }
@@ -102,7 +104,8 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
         const tenant = await db('tenants').select('status', 'settings').where({ id: user.tenant_id }).first();
         if (!tenant || tenant.status !== 'active') {
           const { describeTenantBlock } = await import('../utils/tenantBlock.js');
-          const info = describeTenantBlock(tenant || { status: 'unavailable' }, user.role === 'principal');
+          const { isTenantOwner } = await import('../utils/tenantOwner.js');
+          const info = describeTenantBlock(tenant || { status: 'unavailable' }, await isTenantOwner(user));
           // Keep the code the app already reacts to (it signs the person out and shows the login banner).
           throw new AppError(info.message, 403, 'TENANT_SUSPENDED');
         }
@@ -122,6 +125,7 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
         role: actingRole,
         primary_role: user.role,
         staff_duties: duties,
+        is_owner: user.is_owner === true,
       };
       req.auth.tenantId = user.tenant_id;
       // Trust the LIVE role from the DB over whatever the (possibly stale) JWT
