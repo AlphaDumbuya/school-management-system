@@ -29,6 +29,7 @@ import { classesService } from '@services/classesService';
 import { reportCardService } from '@services/reportCardService';
 import { disciplineService } from '@services/disciplineService';
 import { showToast } from '@utils/toast';
+import { SportBadge } from '@components/houses/SportBadge';
 import { AttendanceTimeDetails } from '@components/attendance/AttendanceTimeDetails';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
@@ -668,6 +669,7 @@ export const StudentProfilesPage: React.FC = () => {
                       <span className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-lg border border-indigo-200 dark:border-indigo-800/30">
                         <BookOpen size={11} /> {student.class_name || 'Unassigned'}
                       </span>
+                      {student.house_name && <SportBadge name={student.house_name} color={student.house_color || '#6b7280'} size="sm" />}
                       <StatusBadge status={student.status} showDot />
                     </div>
                   </div>

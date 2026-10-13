@@ -18,6 +18,7 @@ import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { generateNextId } from '@utils/idGenerator';
 import { linkGuardianForStudent } from '@utils/guardianLinking';
+import { houseService } from '../houseService.js';
 import { normalizeAcademicYear, resolveActiveYear } from '@utils/academicYear';
 import { tenantTimezone } from '@utils/schoolDate';
 
@@ -489,6 +490,9 @@ export const admissionPipelineService = {
         guardian_occupation: app.guardian_occupation || null,
       }, user.id);
     } catch (e) { warnings.push('Parent could not be linked automatically. Link them in Student Profiles.'); logger.warn(`Guardian link failed: ${(e as any)?.message || e}`); }
+    // House: drawn now only when the school switched on "draw automatically on enrolment"
+    // (after the parent is linked, so a sibling joins their brother's or sister's house).
+    const house = await houseService.autoAssignOnEnrol(tenantId, user.id, student.id);
     let accounts: any = null;
     try {
       const { provisionStudentAccounts } = await import('@utils/studentAccounts');
@@ -548,7 +552,7 @@ export const admissionPipelineService = {
       url: '/students/directory', sourceId: app.id, exceptUserId: user.id,
     });
     return {
-      already: false, student: { id: student.id, student_id: student.student_id }, class: { id: cls.id, name: cls.name }, warnings, fees: { ...fees, not_billed: notBilled },
+      already: false, student: { id: student.id, student_id: student.student_id }, class: { id: cls.id, name: cls.name }, house, warnings, fees: { ...fees, not_billed: notBilled },
       accounts: accounts ? { student_username: accounts.studentUsername, student_password: accounts.studentPassword, parent_email: accounts.parentEmail, parent_password: accounts.parentPassword } : null,
       application: await this.get(tenantId, id),
     };

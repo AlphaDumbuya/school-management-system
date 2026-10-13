@@ -35,6 +35,9 @@ export interface StudentRecord {
   previous_school?: string;
   medical_conditions?: string;
   class_name?: string;
+  /** The student's house (name and colour), when they have been given one. */
+  house_name?: string | null;
+  house_color?: string | null;
   class_level?: string;
   created_at: string;
 }

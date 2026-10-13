@@ -33,6 +33,12 @@ export const Modal: React.FC<ModalProps> = ({
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<Element | null>(null);
+  // Callers usually pass an inline onClose, which is a new function on every
+  // render of the page behind the modal. The focus/Escape effect below must
+  // not re-run for that, or each re-render pulls focus out of the field being
+  // typed in (the dialog is focused again on every run).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -46,7 +52,7 @@ export const Modal: React.FC<ModalProps> = ({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -91,7 +97,7 @@ export const Modal: React.FC<ModalProps> = ({
         (previousFocusRef.current as HTMLElement).focus();
       }
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

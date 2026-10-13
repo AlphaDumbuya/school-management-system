@@ -12,6 +12,8 @@ export interface WelcomeHeroProps {
   schoolName?: string;
   subtitle?: string;
   actions?: React.ReactNode;
+  /** Shown under the greeting, e.g. the sport-house badge. */
+  badges?: React.ReactNode;
   role?: string;
 }
 
@@ -43,6 +45,7 @@ export const WelcomeHero: React.FC<WelcomeHeroProps> = ({
   schoolName,
   subtitle,
   actions,
+  badges,
   role = 'principal',
 }) => {
   const { text: greeting, Icon } = timeGreeting();
@@ -112,6 +115,7 @@ export const WelcomeHero: React.FC<WelcomeHeroProps> = ({
               </>
             )}
           </p>
+          {badges && <div className="mt-2">{badges}</div>}
         </div>
 
         {/* Right: date + time pill + actions */}

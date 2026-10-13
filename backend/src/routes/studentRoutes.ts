@@ -8,6 +8,7 @@ import { logger } from '@utils/logger';
 import { PasswordService } from '@services/passwordService';
 import { generateNextId } from '@utils/idGenerator';
 import { linkGuardianForStudent } from '@utils/guardianLinking';
+import { houseService } from '../services/houseService.js';
 import { provisionStudentAccounts } from '@utils/studentAccounts';
 import { sendExport } from '@utils/exportResponse';
 import { importStudents } from '@services/studentImportService';
@@ -174,13 +175,15 @@ router.post('/', authenticate, attachUserContext, authorize('principal', 'super_
         guardian_phone,
       });
     }
-
+    // Sport house: drawn now only when the school switched on "draw automatically when a student is enrolled".
+    const house = inserted.id ? await houseService.autoAssignOnEnrol(tenantId, createdBy ?? null, inserted.id) : null;
     res.status(201).json({
       message: linkedParent
         ? `Student created and linked to existing parent ${linkedParent.name}`
         : 'Student created successfully',
       student: inserted,
       linked_parent: linkedParent,
+      house,
     });
 
     logger.info(`Student created: ${inserted.student_id} (${first_name} ${last_name})`);
@@ -376,6 +379,11 @@ router.get('/', authenticate, authorize('admin', 'principal', 'super_admin', 'te
     } else if (requestedTenantId && requestedTenantId !== 'all') {
       query = query.where('students.tenant_id', requestedTenantId);
     }
+
+    // The student's house (name and colour) for the profile and lists.
+    query = query
+      .leftJoin('houses', 'students.house_id', 'houses.id')
+      .select('houses.name as house_name', 'houses.color as house_color');
 
     if (teacherStudentIds) query = query.whereIn('students.id', teacherStudentIds);
 
@@ -706,13 +714,16 @@ router.get('/:studentId', authenticate, async (req: Request, res: Response, next
       .select(
         'students.*',
         'classes.name as class_name',
-        'classes.level as class_level'
+        'classes.level as class_level',
+        'houses.name as house_name',
+        'houses.color as house_color'
       )
       .leftJoin('enrollments', function () {
         this.on('students.id', '=', 'enrollments.student_id')
           .andOnIn('enrollments.status', ['enrolled', 'active']);
       })
-      .leftJoin('classes', 'enrollments.class_id', 'classes.id');
+      .leftJoin('classes', 'enrollments.class_id', 'classes.id')
+      .leftJoin('houses', 'students.house_id', 'houses.id');
 
     if (userRole !== 'super_admin') {
       studentQuery = studentQuery.where('students.tenant_id', tenantId);

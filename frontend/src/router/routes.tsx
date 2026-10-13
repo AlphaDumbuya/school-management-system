@@ -48,6 +48,7 @@ import ReportCardsPage from '@pages/academic/ReportCardsPage';
 import PromotionsPage from '@pages/academic/PromotionsPage';
 import StudentDirectoryPage from '@pages/students/StudentDirectoryPage';
 import AdmissionsPage from '@pages/students/AdmissionsPage';
+import HousesPage from '@pages/students/HousesPage';
 import PublicAdmissionPage from '@pages/students/PublicAdmissionPage';
 import { StudentProfilesPage } from '@pages/students/StudentProfilesPage';
 import { AttendancePage } from '@pages/students/AttendancePage';
@@ -316,6 +317,11 @@ const router = createBrowserRouter(
         {
           path: 'students/admissions',
           element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><G feature="Admissions"><AdmissionsPage /></G></P>,
+        },
+        {
+          path: 'students/houses',
+          // Teachers may open it, but see only what they were given (the page checks).
+          element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer', 'teacher']}><G feature="Admissions"><HousesPage /></G></P>,
         },
         {
           path: 'students/profiles',
