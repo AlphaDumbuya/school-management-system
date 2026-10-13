@@ -14,7 +14,7 @@ export const VerifySchoolBanner: React.FC = () => {
   const role = (user as any)?.role;
   const [show, setShow] = useState(false);
   useEffect(() => {
-    if (role !== 'principal' || isVerifiedUser(user)) return;
+    if (role !== 'principal' || (user as any)?.isOwner === false || isVerifiedUser(user)) return;
     verificationService.getStatus().then((res) => {
       if (res.success && res.data?.status !== 'verified') setShow(true);
     });

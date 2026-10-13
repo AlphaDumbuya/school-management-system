@@ -86,6 +86,8 @@ export const authService = {
     id_student_start_from?: number;
     admin_first_name: string;
     admin_last_name: string;
+    /** Only the school owner can register a school. */
+    is_school_owner: boolean;
     password: string;
   }): Promise<ApiResponse<AuthResponse>> => {
     const response = await apiClient.post<AuthResponse>(

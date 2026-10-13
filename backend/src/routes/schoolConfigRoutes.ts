@@ -9,7 +9,9 @@ import { SubscriptionService } from '../services/subscriptionService';
 import { AppError } from '../middleware/errorHandler';
 import { db } from '../utils/database';
 import { encryptSecret } from '../utils/encryption';
+import { paymentSettingsLimiter, clientIp } from '../middleware/rateLimit';
 import { requireVerifiedSchool } from '../middleware/requireVerifiedSchool';
+import { requireOwner } from '../utils/tenantOwner';
 
 const router = Router();
 
@@ -430,7 +432,7 @@ router.get('/subscription/active', authenticate, attachUserContext, async (req: 
  * Up-front (pre-payment) validation still runs so the payer gets immediate
  * feedback on downgrade-over-limit before being sent to pay.
  */
-router.post('/subscription/change-plan', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, requireVerifiedSchool, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/subscription/change-plan', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, requireOwner, requireVerifiedSchool, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = getTenantId(req);
     const userId = req.auth!.userId;
@@ -473,7 +475,7 @@ router.post('/subscription/change-plan', authenticate, authorize(UserRole.PRINCI
  * page after the payer comes back from Monime). Confirms activation once the
  * webhook (or this poll) has reconciled the payment.
  */
-router.get('/subscription/checkout/:sessionId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/subscription/checkout/:sessionId', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, requireOwner, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = getTenantId(req);
     const { SubscriptionCheckout } = await import('../services/subscriptionCheckoutService');
@@ -489,7 +491,7 @@ router.get('/subscription/checkout/:sessionId', authenticate, authorize(UserRole
  * GET /api/v1/school-config/subscription/ai-analysis
  * Get AI-generated billing analysis and optimization recommendations
  */
-router.get('/subscription/ai-analysis', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/subscription/ai-analysis', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, requireOwner, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = getTenantId(req);
     const subscription = await SubscriptionService.getActiveSubscription(tenantId);
@@ -567,7 +569,7 @@ router.get('/subscription/ai-analysis', authenticate, authorize(UserRole.PRINCIP
  * GET /api/v1/school-config/subscription/billing
  * Get subscription billing and payment history
  */
-router.get('/subscription/billing', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/subscription/billing', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, requireOwner, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = getTenantId(req);
     const history = await SubscriptionService.getBillingHistory(tenantId);
@@ -586,7 +588,7 @@ router.get('/subscription/billing', authenticate, authorize(UserRole.PRINCIPAL, 
  * Read the tenant's file-storage (UploadThing) configuration. The stored token
  * is never returned in plaintext — only a masked hint and a configured flag.
  */
-router.get('/storage', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/storage', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, requireOwner, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = getTenantId(req);
     const school = await db('schools').where({ tenant_id: tenantId }).first();
@@ -610,7 +612,7 @@ router.get('/storage', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPE
  *   { provider: 'platform' | 'own', uploadthingToken?, appId? }
  * In 'own' mode the token is encrypted at rest and the tenant is marked configured.
  */
-router.post('/storage', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/storage', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, requireOwner, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = getTenantId(req);
     const { provider, uploadthingToken, appId } = req.body as {
@@ -668,22 +670,36 @@ router.post('/storage', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUP
 // platform's own env credentials, not these.
 // ============================================================================
 
+/** What the app may know about the saved payment settings. Never the token. */
+function monimeView(school: any, extra: Record<string, unknown> = {}) {
+  return {
+    configured: !!school?.monime_configured,
+    spaceId: school?.monime_space_id || null,
+    // The token is never sent back, not even in part.
+    tokenMasked: school?.monime_access_token ? '••••••••' : null,
+    ...extra,
+  };
+}
+
 /**
  * GET /api/v1/school-config/monime
  * Read the tenant's Monime configuration. The stored token is never returned
- * in plaintext — only a masked hint, the (non-secret) space id, and a flag.
+ * (not even masked from the stored value): only whether one is saved, the
+ * (non-secret) space id, whether the person must give a 2FA code to change it,
+ * and when / by whom it was last changed.
  */
-router.get('/monime', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/monime', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, requireOwner, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = getTenantId(req);
     const school = await db('schools').where({ tenant_id: tenantId }).first();
+    const { default: twoFactor } = await import('../services/twoFactorService');
+    const security = await import('../services/paymentSettingsSecurity');
     res.json({
       success: true,
-      data: {
-        configured: !!school?.monime_configured,
-        spaceId: school?.monime_space_id || null,
-        tokenMasked: maskToken(school?.monime_access_token),
-      },
+      data: monimeView(school, {
+        twoFactorRequired: await twoFactor.isEnabled(req.auth!.userId).catch(() => false),
+        lastChange: await security.lastChange(db, tenantId).catch(() => null),
+      }),
     });
   } catch (error) {
     next(error);
@@ -692,67 +708,100 @@ router.get('/monime', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER
 
 /**
  * POST /api/v1/school-config/monime
- * Configure the tenant's Monime account for collecting fee payments.
- *   { accessToken?, spaceId, enabled?: boolean }
- * The token is encrypted at rest. Sending enabled:false disables online fee
- * collection for the school without discarding the saved credentials.
+ * Configure (or turn off) the tenant's Monime account for collecting fee payments.
+ *   { accessToken?, spaceId, enabled?: boolean, currentPassword, twoFactorCode? }
+ *
+ * This decides where every fee payment goes, so it is protected like a bank
+ * account change: principal only, never from an impersonated session, the
+ * principal's password (and 2FA code) again, a lock-out after wrong answers,
+ * strict validation, a token bound to the school and space, an audit entry,
+ * and an alert to the principals and the school contact. See
+ * services/paymentSettingsSecurity.ts.
  */
-router.post('/monime', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), attachUserContext, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/monime', paymentSettingsLimiter, authenticate, authorize(UserRole.PRINCIPAL), attachUserContext, requireOwner, async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const security = await import('../services/paymentSettingsSecurity');
+    const { default: twoFactor } = await import('../services/twoFactorService');
     const tenantId = getTenantId(req);
-    const { accessToken, spaceId, enabled } = req.body as {
-      accessToken?: string; spaceId?: string; enabled?: boolean;
-    };
+    const userId = req.auth!.userId;
+    const role = String(req.auth!.role);
+    const meta = { ip: clientIp(req), userAgent: String(req.headers['user-agent'] || '').slice(0, 300) };
+
+    security.assertNotImpersonated(req);
+
+    const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+    const { accessToken, spaceId, enabled, currentPassword, twoFactorCode } = body;
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
+      throw new AppError('enabled must be true or false', 400, 'VALIDATION_ERROR');
+    }
+
+    // Prove it is really the principal, every time.
+    await security.assertStepUp(db, { userId, role, password: currentPassword, twoFactorCode, ...meta }, twoFactor);
 
     const school = await db('schools').where({ tenant_id: tenantId }).first();
     if (!school) throw new AppError('School profile not found for this tenant', 404, 'NOT_FOUND');
 
     const patch: any = { updated_at: new Date() };
+    let change: import('../services/paymentSettingsSecurity').PaymentChange;
 
-    // Explicit disable — keep saved creds but stop routing money to them.
     if (enabled === false) {
+      // Turn off, keeping the saved credentials.
+      if (!school.monime_configured) {
+        return res.json({ success: true, message: 'Online fee payments are already off.', data: monimeView(school) });
+      }
       patch.monime_configured = false;
-      await db('schools').where({ tenant_id: tenantId }).update(patch);
-      const disabled = await db('schools').where({ tenant_id: tenantId }).first();
-      return res.json({
-        success: true,
-        message: 'Online fee payments are now turned off for your school.',
-        data: {
-          configured: !!disabled.monime_configured,
-          spaceId: disabled.monime_space_id || null,
-          tokenMasked: maskToken(disabled.monime_access_token),
-        },
-      });
+      change = { kind: 'disabled', tokenChanged: false, spaceFrom: school.monime_space_id, spaceTo: school.monime_space_id };
+    } else {
+      const newSpace = security.validateSpaceId(spaceId);
+      const spaceChanged = newSpace !== (school.monime_space_id || '');
+      const hasNewToken = typeof accessToken === 'string' && accessToken.trim().length > 0;
+      const context = security.monimeContext(tenantId, newSpace);
+
+      if (hasNewToken) {
+        const token = security.validateAccessToken(accessToken);
+        patch.monime_access_token = encryptSecret(token, context);
+        change = { kind: school.monime_configured ? 'updated' : 'enabled', tokenChanged: true, tokenFingerprint: security.tokenFingerprint(token), spaceFrom: school.monime_space_id, spaceTo: newSpace };
+      } else {
+        if (!school.monime_access_token) {
+          throw new AppError('Your Monime access token is required.', 400, 'VALIDATION_ERROR');
+        }
+        // A token belongs to one space: a different space needs its own token.
+        if (spaceChanged && school.monime_space_id) {
+          throw new AppError('You changed the Space ID, so enter the matching access token too.', 400, 'VALIDATION_ERROR');
+        }
+        // Same space, token kept: make sure the stored one is bound to this school and space.
+        const { decryptSecret, isBoundSecret } = await import('../utils/encryption');
+        let kept: string;
+        try {
+          kept = decryptSecret(school.monime_access_token, security.monimeContext(tenantId, school.monime_space_id || newSpace));
+        } catch {
+          throw new AppError('The saved access token can no longer be read. Enter your Monime access token again.', 400, 'TOKEN_UNREADABLE');
+        }
+        if (!isBoundSecret(school.monime_access_token) || spaceChanged) patch.monime_access_token = encryptSecret(kept, context);
+        change = { kind: school.monime_configured ? 'updated' : 'enabled', tokenChanged: false, spaceFrom: school.monime_space_id, spaceTo: newSpace };
+      }
+      patch.monime_space_id = newSpace;
+      patch.monime_configured = true;
     }
 
-    // Space id is required to enable (it identifies the school's Monime account).
-    const trimmedSpaceId = (spaceId || '').trim();
-    if (!trimmedSpaceId) {
-      throw new AppError('Your Monime Space ID is required.', 400, 'VALIDATION_ERROR');
-    }
-    patch.monime_space_id = trimmedSpaceId;
+    // The change and its audit entry are saved together.
+    await db.transaction(async (trx) => {
+      await trx('schools').where({ tenant_id: tenantId }).update(patch);
+      await security.recordChange(trx, { userId, role, tenantId, change, ...meta });
+    });
 
-    // Keep the existing token if the caller didn't supply a new one (so a
-    // principal can update the space id without re-entering the secret).
-    const hasNewToken = accessToken && accessToken.trim().length > 0;
-    if (hasNewToken) {
-      patch.monime_access_token = encryptSecret(accessToken!.trim());
-    } else if (!school.monime_access_token) {
-      throw new AppError('Your Monime access token is required.', 400, 'VALIDATION_ERROR');
-    }
-
-    patch.monime_configured = true;
-
-    await db('schools').where({ tenant_id: tenantId }).update(patch);
     const updated = await db('schools').where({ tenant_id: tenantId }).first();
+    void security.notifyChange(db, { tenantId, actorId: userId, change, ...meta });
+
     res.json({
       success: true,
-      message: 'Fee payments will now settle into your school\'s own Monime account.',
-      data: {
-        configured: !!updated.monime_configured,
-        spaceId: updated.monime_space_id || null,
-        tokenMasked: maskToken(updated.monime_access_token),
-      },
+      message: change.kind === 'disabled'
+        ? 'Online fee payments are now turned off for your school.'
+        : 'Fee payments will now settle into your school\'s own Monime account.',
+      data: monimeView(updated, {
+        twoFactorRequired: await twoFactor.isEnabled(userId).catch(() => false),
+        lastChange: await security.lastChange(db, tenantId).catch(() => null),
+      }),
     });
   } catch (error) {
     next(error);

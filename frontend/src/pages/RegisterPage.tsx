@@ -67,7 +67,7 @@ const registerSchema = z.object({
     .regex(/[0-9]/, 'Add at least one number')
     .regex(/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/, 'Add at least one special character (e.g. ! @ # $)'),
   consent_accepted: z.boolean().refine((val) => val === true, {
-    message: 'You must accept the institutional authorization and Terms of Service to register.',
+    message: 'Only the school owner can register a school. Please confirm you are the owner and accept the Terms of Service.',
   }),
 });
 
@@ -131,7 +131,7 @@ export const RegisterPage: React.FC = () => {
         toastId: 'register-step-2',
       });
     } else if (step === 3) {
-      toast.info('Final step — Set your admin email and password, then accept the consent to finish. A welcome email will be sent to your inbox.', {
+      toast.info('Final step — Set your owner email and password, then confirm you are the school owner to finish. A welcome email will be sent to your inbox.', {
         autoClose: 10000,
         position: 'top-right',
         toastId: 'register-step-3',
@@ -164,6 +164,7 @@ export const RegisterPage: React.FC = () => {
         school_motto: values.school_motto,
         admin_first_name: values.admin_first_name,
         admin_last_name: values.admin_last_name,
+        is_school_owner: values.consent_accepted === true,
         password: values.password,
       });
 
@@ -243,7 +244,7 @@ export const RegisterPage: React.FC = () => {
                 Register your school on WiSkul
               </h1>
               <p className="text-gray-300 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto">
-                Create your school's workspace and principal account in three short steps. Your free trial starts straight away, with no card needed.
+                Create your school's workspace and your school owner account in three short steps. Your free trial starts straight away, with no card needed.
               </p>
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
                 <button
@@ -268,7 +269,7 @@ export const RegisterPage: React.FC = () => {
               <FeatureCard
                 icon={<FaBuilding className="text-amber-400" />}
                 title="Ready Straight Away"
-                desc="Your school's own workspace, an active academic year and your principal login are created as soon as you register."
+                desc="Your school's own workspace, an active academic year and your owner login are created as soon as you register. You then add your principal and staff."
               />
               <FeatureCard
                 icon={<FaGraduationCap className="text-purple-400" />}
@@ -366,7 +367,7 @@ export const RegisterPage: React.FC = () => {
                       <div className="h-[1px] flex-1 mx-3 bg-white/10" />
                       <StepIndicator current={step} step={2} label="School Profile" />
                       <div className="h-[1px] flex-1 mx-3 bg-white/10" />
-                      <StepIndicator current={step} step={3} label="Admin & Consent" />
+                      <StepIndicator current={step} step={3} label="Owner & Consent" />
                     </div>
 
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -422,16 +423,27 @@ export const RegisterPage: React.FC = () => {
                               </label>
                               <select
                                 {...register('school_type')}
-                                className="w-full bg-[#16235c] border border-white/15 focus:border-amber-400/50 rounded-xl px-4 py-3.5 text-sm text-white outline-none cursor-pointer [&>option]:bg-[#16235c] [&>option]:text-white"
+                                className="w-full bg-[#16235c] border border-white/15 focus:border-amber-400/50 rounded-xl px-4 py-3.5 text-sm text-white outline-none cursor-pointer [&_option]:bg-[#16235c] [&_option]:text-white [&_optgroup]:bg-[#16235c] [&_optgroup]:text-amber-300"
                               >
-                                <option value="Secondary (JSS & SSS)">Secondary School (JSS & SSS)</option>
-                                <option value="Primary">Primary School (Class 1 – Class 6)</option>
-                                <option value="Nursery & Primary">Nursery & Primary School (Combined)</option>
-                                <option value="Nursery / Early Childhood">Nursery / Early Childhood (Pre-School)</option>
-                                <option value="Junior Secondary">Junior Secondary School (JSS 1 – JSS 3)</option>
-                                <option value="Senior Secondary">Senior Secondary School (SSS 1 – SSS 3)</option>
-                                <option value="Primary & Secondary">Primary & Secondary (Full K-12)</option>
-                                <option value="Technical & Vocational">Technical & Vocational Institute / College</option>
+                                <optgroup label="One level">
+                                  <option value="Nursery / Early Childhood">Nursery only (Pre-School, Nursery 1 – 3)</option>
+                                  <option value="Primary">Primary only (Class 1 – Class 6)</option>
+                                  <option value="Junior Secondary">Junior Secondary only (JSS 1 – JSS 3)</option>
+                                  <option value="Senior Secondary">Senior Secondary only (SSS 1 – SSS 3)</option>
+                                </optgroup>
+                                <optgroup label="Two levels">
+                                  <option value="Nursery & Primary">Nursery &amp; Primary</option>
+                                  <option value="Primary & Junior Secondary">Primary &amp; Junior Secondary (Class 1 – JSS 3)</option>
+                                  <option value="Secondary (JSS & SSS)">Junior &amp; Senior Secondary (JSS 1 – SSS 3)</option>
+                                </optgroup>
+                                <optgroup label="Three or more levels">
+                                  <option value="Nursery, Primary & Junior Secondary">Nursery, Primary &amp; Junior Secondary</option>
+                                  <option value="Primary, Junior & Senior Secondary">Primary, Junior &amp; Senior Secondary (Class 1 – SSS 3)</option>
+                                  <option value="Primary & Secondary">Nursery, Primary, Junior &amp; Senior Secondary (all levels)</option>
+                                </optgroup>
+                                <optgroup label="Other">
+                                  <option value="Technical & Vocational">Technical &amp; Vocational Institute / College</option>
+                                </optgroup>
                               </select>
                             </div>
                           </div>
@@ -579,9 +591,9 @@ export const RegisterPage: React.FC = () => {
                           <div className="flex items-center justify-between border-b border-white/5 pb-2">
                             <div>
                               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                                <FaUserCheck className="text-amber-400" /> Step 3: Admin Credentials & Authorization
+                                <FaUserCheck className="text-amber-400" /> Step 3: School Owner Account
                               </h2>
-                              <p className="text-xs text-gray-300 mt-1">Set up your principal login details and sign legal declaration.</p>
+                              <p className="text-xs text-gray-300 mt-1">Set up the school owner's login details and sign the owner declaration.</p>
                             </div>
                             <button
                               type="button"
@@ -627,7 +639,7 @@ export const RegisterPage: React.FC = () => {
                             <input
                               type="email"
                               {...register('contact_email')}
-                              placeholder="principal@stjoseph.edu.sl"
+                              placeholder="owner@stjoseph.edu.sl"
                               className="w-full bg-white/10 border border-white/10 focus:border-amber-400/50 rounded-xl px-4 py-3.5 text-sm text-white placeholder-white/45 outline-none"
                             />
                             {errors.contact_email && <p className="mt-1 text-xs text-red-400">{errors.contact_email.message}</p>}
@@ -664,14 +676,14 @@ export const RegisterPage: React.FC = () => {
                                 type="button"
                                 role="checkbox"
                                 aria-checked={!!watchedConsent}
-                                aria-label="I confirm the authorization declaration"
+                                aria-label="I confirm that I am the school owner"
                                 onClick={() => setValue('consent_accepted', !watchedConsent, { shouldValidate: true })}
                                 className="mt-0.5 text-amber-400 hover:scale-110 transition-transform"
                               >
                                 {watchedConsent ? <FaCheckSquare size={18} /> : <FaSquare size={18} className="text-gray-400" />}
                               </button>
                               <span className="text-xs text-gray-200 leading-relaxed">
-                                <strong className="text-white">Authorization Declaration:</strong> I confirm that I am an authorized principal or legal representative of <strong>{watchedSchoolName || 'this school'}</strong>, and I agree to WiSkul's terms of use and the <Link to="/privacy-policy" className="text-amber-400 underline" target="_blank" rel="noopener">Privacy Policy</Link>.
+                                <strong className="text-white">Owner Declaration:</strong> I confirm that I am the <strong>owner</strong> of <strong>{watchedSchoolName || 'this school'}</strong>. I will add the principal and staff from inside the app. I agree to WiSkul's terms of use and the <Link to="/privacy-policy" className="text-amber-400 underline" target="_blank" rel="noopener">Privacy Policy</Link>.
                               </span>
                             </label>
                             {errors.consent_accepted && (

@@ -69,7 +69,7 @@ export const ReportCardsPage: React.FC = () => {
   // Year: staff = picked (or ?year= deep link) else the school's ACTIVE year;
   // students = the year of their own class; parents = the active year (their
   // child's current class). Never a calendar guess.
-  const { activeYear } = useAcademicYears();
+  const { activeYear, isLoading: yearsLoading } = useAcademicYears();
   const [pickedYear, setPickedYear] = useState(() => {
     const q = new URLSearchParams(window.location.search).get('year');
     return q && /^\d{4}\/\d{4}$/.test(q) ? q : '';
@@ -94,7 +94,7 @@ export const ReportCardsPage: React.FC = () => {
   // Students: auto-resolve their OWN student id, class and academic year from
   // the dashboard endpoint so no selectors are needed (and they can only ever
   // load their own report card — the backend also enforces this).
-  const { data: ownResp } = useQuery({
+  const { data: ownResp, isLoading: ownLoading } = useQuery({
     queryKey: ['report-card-self', studentYear],
     queryFn: () => studentDashboardService.getDashboard(studentYear),
     enabled: isStudent && !!studentYear,
@@ -103,7 +103,7 @@ export const ReportCardsPage: React.FC = () => {
   // Parents: the children list, then the SELECTED child's year view (same
   // payload as the student portal), so each child gets their own classes
   // that year, e.g. a sibling promoted mid-year or graduated.
-  const { data: parentResp } = useQuery({
+  const { data: parentResp, isLoading: parentLoading } = useQuery({
     queryKey: ['report-card-parent-children'],
     queryFn: () => parentDashboardService.getDashboard(),
     enabled: isParent,
@@ -112,7 +112,7 @@ export const ReportCardsPage: React.FC = () => {
   const parentChildren = ((parentResp as any)?.data ?? (parentResp as any))?.children ?? [];
   const [selectedChildId, setSelectedChildId] = useState('');
   const activeChildId = selectedChildId || parentChildren[0]?.id || '';
-  const { data: childResp } = useQuery({
+  const { data: childResp, isLoading: childLoading } = useQuery({
     queryKey: ['report-card-parent-child', activeChildId, studentYear],
     queryFn: () => parentDashboardService.getChildDetail(activeChildId, studentYear),
     enabled: isParent && !!activeChildId && !!studentYear,
@@ -227,6 +227,16 @@ export const ReportCardsPage: React.FC = () => {
   );
 
   const canLoad = !!(studentId && classId && academicYear);
+  // Students and parents: the card is found in steps (the school year, then their own record /
+  // their child's record, then the class). Until those finish, show a loading state, NOT the
+  // "Report card unavailable" message, which used to flash first and then give way to the card.
+  const selfResolving = (isStudent || isParent) && !canLoad && (
+    yearsLoading
+    || (isStudent && ownLoading)
+    || (isParent && (parentLoading || childLoading))
+    // Data is in, the ids are about to be set by the effect above.
+    || (!!selfDash && !!selfProfile?.id && selfClasses.length > 0)
+  );
   const { data: cardResp, isLoading, error } = useQuery({
     queryKey: ['report-card', studentId, classId, academicYear],
     queryFn: () => reportCardService.getReportCard(studentId, { class_id: classId, academic_year: academicYear }),
@@ -935,7 +945,10 @@ export const ReportCardsPage: React.FC = () => {
           </div>
         )}
 
-        {!canLoad && (
+        {!canLoad && selfResolving && (
+          <div role="status" aria-live="polite" aria-label="Loading your report card" className="grid gap-3"><SkeletonCard /><SkeletonCard /></div>
+        )}
+        {!canLoad && !selfResolving && (
           <EmptyState
             message={isStudent || isParent
               ? 'Report card unavailable'

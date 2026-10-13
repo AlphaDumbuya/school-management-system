@@ -142,6 +142,19 @@ export class TwoFactorService {
     return user.id;
   }
 
+  /** True when the user has 2FA switched on. */
+  async isEnabled(userId: string): Promise<boolean> {
+    const u = await db('users').where({ id: userId }).first('two_factor_enabled');
+    return !!u?.two_factor_enabled;
+  }
+
+  /** Check a TOTP or backup code for a signed-in user (used to confirm sensitive changes). */
+  async verifyCode(userId: string, code: string): Promise<boolean> {
+    const user = await db('users').where({ id: userId }).first();
+    if (!user || !user.two_factor_enabled) return false;
+    return this.verifyCodeForUser(user, code);
+  }
+
   /** Verify a code (TOTP or one backup code) against a user row. */
   private async verifyCodeForUser(user: any, code: string): Promise<boolean> {
     const totpCandidate = (code || '').replace(/[\s-]/g, '');

@@ -6,6 +6,8 @@ import { PasswordService } from '@services/passwordService';
 import { AppError } from '@middleware/errorHandler';
 import { SubscriptionService } from '@services/subscriptionService';
 import { logger } from '@utils/logger';
+import { assertOwnerManagesLeadership, requireOwner, tenantHasOwner } from '../utils/tenantOwner';
+import { clientIp } from '../middleware/rateLimit';
 
 const router = Router();
 
@@ -43,6 +45,8 @@ router.post('/', authenticate, attachUserContext, authorize(UserRole.PRINCIPAL, 
     if (!email || !first_name || !last_name || !role) {
       throw new AppError('Missing required fields', 400, 'VALIDATION_ERROR');
     }
+    // Principal accounts are the school owner's to create.
+    await assertOwnerManagesLeadership(createdBy, { newRole: String(role) });
     // Only a super admin may mint another super admin.
     if (String(role) === UserRole.SUPER_ADMIN && !isSuperAdmin((req as any).user)) {
       throw new AppError('You cannot create a super admin account', 403, 'FORBIDDEN');
@@ -141,6 +145,8 @@ router.post(
         throw new AppError('You can only reset passwords for users in your school', 403, 'FORBIDDEN');
       }
 
+      await assertOwnerManagesLeadership(actor.id, { targetId: target.id, targetRole: target.role, targetIsOwner: target.is_owner, allowSelf: true });
+
       // The admissions office hands out family logins: students and parents only.
       if (actor.role === 'admissions_officer' && !['student', 'parent', 'guardian'].includes(String(target.role))) {
         throw new AppError('Admissions can reset student and parent logins only. Ask the principal for staff accounts.', 403, 'FORBIDDEN');
@@ -203,7 +209,7 @@ router.get('/', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN
     const search = req.query.search as string;
 
     const actor = (req as any).user;
-    let query = tenantUsers(actor).select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'last_login', 'created_at');
+    let query = tenantUsers(actor).select('id', 'email', 'first_name', 'last_name', 'role', 'status', 'is_owner', 'last_login', 'created_at');
 
     if (role) {
       query = query.where('role', role);
@@ -305,8 +311,9 @@ router.put('/:id', authenticate, async (req: Request, res: Response, next: NextF
 
     // Tenant isolation + never let a principal edit a super admin.
     if (!isSelf) {
-      const target = await tenantUsers(currentUser).where('id', userId).first('id', 'role');
+      const target = await tenantUsers(currentUser).where('id', userId).first('id', 'role', 'is_owner');
       if (!target) throw new AppError('User not found', 404, 'NOT_FOUND');
+      await assertOwnerManagesLeadership(currentUser.id, { targetId: target.id, targetRole: target.role, targetIsOwner: target.is_owner });
       if (target.role === UserRole.SUPER_ADMIN && !isSuperAdmin(currentUser)) {
         throw new AppError('You cannot modify a super admin account', 403, 'FORBIDDEN');
       }
@@ -366,6 +373,7 @@ router.delete('/:id', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER
     if (user.role === UserRole.SUPER_ADMIN && !isSuperAdmin(currentUser)) {
       throw new AppError('You cannot deactivate a super admin account', 403, 'FORBIDDEN');
     }
+    await assertOwnerManagesLeadership(currentUser.id, { targetId: user.id, targetRole: user.role, targetIsOwner: user.is_owner });
 
     // Soft delete
     await db('users').where('id', userId).update({
@@ -407,6 +415,10 @@ router.put('/:id/role', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUP
     if (user.role === UserRole.SUPER_ADMIN && !isSuperAdmin(currentUser)) {
       throw new AppError('You cannot change a super admin account', 403, 'FORBIDDEN');
     }
+    await assertOwnerManagesLeadership(currentUser.id, { targetId: user.id, targetRole: user.role, targetIsOwner: user.is_owner, newRole: role });
+    if (user.is_owner && role !== 'principal') {
+      throw new AppError('This person is a school owner. Remove their ownership first.', 400, 'VALIDATION_ERROR');
+    }
 
     await db('users').where('id', userId).update({
       role,
@@ -420,6 +432,67 @@ router.put('/:id/role', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUP
     });
 
     logger.info(`User role updated: ${user.email} -> ${role}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/users/:id/ownership   { grant: boolean, currentPassword, twoFactorCode?, confirm? }
+ * Name (grant) or remove (revoke) a school owner. Owner-only, and the owner proves it
+ * is really them again (password, plus 2FA if enabled). A school always keeps at
+ * least one owner. Handing ownership to someone else when you are not yet a named
+ * owner (a school that has no owner account) needs `confirm: true`, because it
+ * moves billing, payment settings and verification away from you.
+ */
+router.post('/:id/ownership', requireOwner, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const actor = (req as any).user;
+    const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+    const { grant, currentPassword, twoFactorCode, confirm } = body;
+    if (typeof grant !== 'boolean') throw new AppError('grant must be true or false', 400, 'VALIDATION_ERROR');
+
+    const target = await tenantUsers(actor).where('id', req.params.id).first();
+    if (!target) throw new AppError('User not found', 404, 'NOT_FOUND');
+    if (target.role !== 'principal') {
+      throw new AppError('A school owner holds a principal account. Make this person a principal first.', 400, 'VALIDATION_ERROR');
+    }
+    if (grant && String(target.status || '').toLowerCase() !== 'active') {
+      throw new AppError('Only an active account can be made an owner.', 400, 'VALIDATION_ERROR');
+    }
+
+    const security = await import('../services/paymentSettingsSecurity');
+    const { default: twoFactor } = await import('../services/twoFactorService');
+    const meta = { ip: clientIp(req), userAgent: String(req.headers['user-agent'] || '').slice(0, 300) };
+    security.assertNotImpersonated(req);
+    await security.assertStepUp(db, { userId: actor.id, role: String(actor.primary_role || actor.role), password: currentPassword, twoFactorCode, ...meta }, twoFactor);
+
+    const tenantId = target.tenant_id;
+    if (grant) {
+      if (target.is_owner) throw new AppError('This person is already a school owner.', 409, 'CONFLICT');
+      const handingOver = !(await tenantHasOwner(tenantId)) && String(target.id) !== String(actor.id) && !isSuperAdmin(actor);
+      if (handingOver && confirm !== true) {
+        throw new AppError('Making someone else the owner moves billing, payment settings and verification away from you. Confirm to continue.', 409, 'OWNER_HANDOVER_CONFIRM');
+      }
+      await db('users').where({ id: target.id }).update({ is_owner: true, updated_at: new Date(), updated_by: actor.id });
+    } else {
+      if (!target.is_owner) throw new AppError('This person is not a school owner.', 409, 'CONFLICT');
+      const others: any = await db('users').where({ tenant_id: tenantId, is_owner: true }).whereNot('id', target.id).where('status', 'active').count('* as n').first();
+      if (Number(others?.n || 0) < 1) {
+        throw new AppError('A school must always have at least one owner. Name another owner first.', 400, 'LAST_OWNER');
+      }
+      await db('users').where({ id: target.id }).update({ is_owner: false, updated_at: new Date(), updated_by: actor.id });
+    }
+
+    await db('audit_logs').insert({
+      user_id: actor.id, performed_by: actor.id, performed_by_role: String(actor.primary_role || actor.role),
+      action: grant ? 'ownership.grant' : 'ownership.revoke', entity_type: 'user', entity_id: target.id,
+      new_values: JSON.stringify({ tenantId, target: target.email }),
+      ip_address: meta.ip || null, user_agent: meta.userAgent || null, source: 'api', created_at: new Date(),
+    }).catch((e: any) => logger.warn(`Could not record an ownership change: ${e?.message || e}`));
+    logger.info(`Ownership ${grant ? 'granted to' : 'removed from'} ${target.email} by ${actor.email}`);
+
+    res.json({ success: true, message: grant ? 'Owner added.' : 'Ownership removed.', data: { id: target.id, isOwner: grant } });
   } catch (error) {
     next(error);
   }

@@ -7,6 +7,8 @@ import { logger } from '../utils/logger';
 import { AuthResponse, UserResponse, UserRole, UserStatus } from '../types/auth';
 import { sendSchoolWelcomeEmail } from './emailService';
 import { effectiveDuties } from '../utils/staffDuties';
+import { leadTitle, schoolTypeFor } from '../utils/schoolLevels';
+import { isTenantOwner } from '../utils/tenantOwner';
 
 /**
  * Hash a refresh token for at-rest storage. Refresh tokens are high-entropy
@@ -114,7 +116,7 @@ export class AuthService {
 
   /**
    * Self-service School & Tenant Registration
-   * Creates tenant, default academic session, and principal admin account in one flow.
+   * Creates tenant, default academic session, and the school owner's account (a principal flagged as owner) in one flow.
    */
   async registerSchool(payload: {
     school_name: string;
@@ -267,6 +269,8 @@ export class AuthService {
           first_name: payload.admin_first_name.trim(),
           last_name: payload.admin_last_name.trim(),
           role: UserRole.PRINCIPAL,
+          // The person who registers a school is its owner.
+          is_owner: true,
           status: UserStatus.ACTIVE,
           created_at: new Date(),
           updated_at: new Date(),
@@ -434,7 +438,8 @@ export class AuthService {
     // owner (principal) gets the exact reason and next step; everyone else a
     // neutral summary and a pointer to their school administrator.
     const { describeTenantBlock } = await import('../utils/tenantBlock.js');
-    const info = describeTenantBlock(tenant, user.role === 'principal');
+    const { isTenantOwner } = await import('../utils/tenantOwner.js');
+    const info = describeTenantBlock(tenant, await isTenantOwner(user));
     const err = new AppError(info.message, 403, info.code);
     (err as any).suspension = info.suspension;
     throw err;
@@ -845,6 +850,10 @@ export class AuthService {
       tenantId: user.tenant_id,
       schoolLogoUrl,
       schoolName,
+      schoolType: await schoolTypeFor(this.db, user.tenant_id),
+      leadTitle: leadTitle(await schoolTypeFor(this.db, user.tenant_id)),
+      isOwner: user.role === 'principal' ? await isTenantOwner(user) : false,
+      isNamedOwner: user.role === 'principal' && (user as any).is_owner === true,
       profilePhotoUrl,
       verificationStatus: user.verification_status || 'unverified',
       hasOnboarded: !!user.onboarded_at,

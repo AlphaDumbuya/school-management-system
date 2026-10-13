@@ -11,6 +11,7 @@ import { GlobalSearchBar } from './GlobalSearchBar';
 import { SyncStatusIndicator } from '@components/offline/SyncStatusIndicator';
 import clsx from 'clsx';
 import { isDemoUser } from '@lib/demo';
+import { roleDisplayName } from '@lib/leadTitle';
 import { SportBadges } from '@components/houses/SportBadge';
 import { useSportBadges } from '@hooks/useSportBadges';
 
@@ -56,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
   const fullName   = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Your Account';
   const initials   = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() || (user?.email?.[0]?.toUpperCase() ?? 'U');
-  const roleLabel  = (user?.role || '').replace(/_/g, ' ');
+  const roleLabel  = roleDisplayName(user);
   const isVerified = (user as any)?.verificationStatus === 'verified';
 
   return (

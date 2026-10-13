@@ -300,13 +300,14 @@ export const schoolConfigService = {
 
   // ── Monime payment credentials (school's OWN account for fee collection) ──
   async getMonimeConfig() {
-    return apiClient.get<{ configured: boolean; spaceId: string | null; tokenMasked: string | null }>(
+    return apiClient.get<{ configured: boolean; spaceId: string | null; tokenMasked: string | null; twoFactorRequired?: boolean; lastChange?: { at: string; by: string | null } | null }>(
       '/api/v1/school-config/monime'
     );
   },
 
-  async saveMonimeConfig(payload: { accessToken?: string; spaceId?: string; enabled?: boolean }) {
-    return apiClient.post<{ message: string; data: { configured: boolean; spaceId: string | null; tokenMasked: string | null } }>(
+  /** Changing payment settings needs the principal's password (and 2FA code when on). */
+  async saveMonimeConfig(payload: { accessToken?: string; spaceId?: string; enabled?: boolean; currentPassword: string; twoFactorCode?: string }) {
+    return apiClient.post<{ message: string; data: { configured: boolean; spaceId: string | null; tokenMasked: string | null; twoFactorRequired?: boolean; lastChange?: { at: string; by: string | null } | null } }>(
       '/api/v1/school-config/monime',
       payload
     );

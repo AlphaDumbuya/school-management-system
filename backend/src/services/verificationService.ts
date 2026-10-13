@@ -60,9 +60,9 @@ export const SL_DISTRICTS = [
 const normEmis = (s: string) => s.trim().toUpperCase().replace(/\s+/g, '');
 
 class VerificationService {
-  /** The tenant's account owner: the first principal who registered the school. */
+  /** The tenant's account owner: the named owner, else the first principal who registered the school. */
   private async owner(tenantId: string) {
-    return db('users').where({ tenant_id: tenantId, role: 'principal' }).orderBy('created_at', 'asc').first();
+    return db('users').where({ tenant_id: tenantId, role: 'principal' }).orderBy([{ column: 'is_owner', order: 'desc' }, { column: 'created_at', order: 'asc' }]).first();
   }
 
   // ── Status ──────────────────────────────────────────────────────────────────
@@ -88,10 +88,10 @@ class VerificationService {
     const user = await db('users').where({ id: userId, tenant_id: tenantId }).first();
     if (!user) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
 
-    // Owner-only: the principal who registered the school.
+    // Owner-only: the school owner (or, before one is named, the principal who registered the school).
     const owner = await this.owner(tenantId);
     if (user.role !== 'principal' || !owner || owner.id !== user.id) {
-      throw new AppError('Only the school account owner (the principal who registered the school) can verify it.', 403, 'NOT_ACCOUNT_OWNER');
+      throw new AppError('Only the school owner can verify the school.', 403, 'NOT_ACCOUNT_OWNER');
     }
     if (user.verification_status === 'verified') {
       throw new AppError('Your school is already verified.', 409, 'ALREADY_VERIFIED');

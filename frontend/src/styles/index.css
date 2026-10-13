@@ -419,3 +419,54 @@ table {
 @media (prefers-reduced-motion: reduce) {
   .auth-blob-1, .auth-blob-2, .auth-blob-3 { animation: none; }
 }
+
+/*
+ * Toasts on phones and small screens (the app too).
+ * react-toastify's default is a full-width bar glued to the top edge, with a
+ * progress bar, which sits over the header and looks unfinished when two stack.
+ * Here they become compact rounded cards floating just above the bottom edge
+ * (clear of the gesture bar), without the progress bar. Desktop is unchanged.
+ */
+@media (max-width: 640px) {
+  .Toastify__toast-container.Toastify__toast-container--top-right,
+  .Toastify__toast-container.Toastify__toast-container--top-center,
+  .Toastify__toast-container.Toastify__toast-container--top-left {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    width: auto;
+    max-width: none;
+    padding: 0;
+    margin: 0;
+  }
+  .Toastify__toast-container .Toastify__toast {
+    min-height: 0;
+    margin-bottom: 8px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    font-size: 13px;
+    line-height: 1.35;
+    box-shadow: 0 10px 30px rgb(15 23 42 / 0.28);
+  }
+  .Toastify__toast-container .Toastify__toast-body {
+    margin: 0;
+    padding: 0;
+    align-items: flex-start;
+  }
+  .Toastify__toast-container .Toastify__toast-body > div:last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .Toastify__toast-container .Toastify__toast-icon {
+    width: 18px;
+    margin-inline-end: 10px;
+  }
+  .Toastify__toast-container .Toastify__close-button {
+    align-self: center;
+    margin-left: 6px;
+  }
+  .Toastify__toast-container .Toastify__progress-bar {
+    display: none;
+  }
+}

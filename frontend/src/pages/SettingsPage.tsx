@@ -36,6 +36,7 @@ import {
   Timer,
   Phone,
   XCircle,
+  Crown,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import useAuthStore from '@store/authStore';
@@ -47,6 +48,7 @@ import { FileUploader } from '@components/admin/forms/FileUploader';
 import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
 import { StorageSettings } from '@components/settings/StorageSettings';
 import { PaymentSettings } from '@components/settings/PaymentSettings';
+import { OwnershipSettings } from '@components/settings/OwnershipSettings';
 import { OfflineStorageSettings } from '@components/offline/OfflineStorageSettings';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { isVerifiedUser } from '@services/verificationService';
@@ -98,6 +100,9 @@ export const SettingsPage: React.FC = () => {
   // get Profile + Security (2FA). `isPrincipalOrSuper` gates school-config data
   // loading and school-scoped fields; the super admin must NOT trigger those.
   const isPrincipalOrSuper = user?.role === 'principal';
+  // The school owner holds billing, payment settings, file storage and owner/principal accounts.
+  // (undefined = an older saved session; the server still decides.)
+  const isOwner = user?.role === 'principal' && (user as any)?.isOwner !== false;
 
   // Profile Form States
   const [profileForm, setProfileForm] = useState({
@@ -313,8 +318,8 @@ export const SettingsPage: React.FC = () => {
           schoolConfigService.getSettings().catch(() => ({ success: false, data: {} })),
           schoolConfigService.getGradingScales().catch(() => ({ success: false, data: [] })),
           schoolConfigService.getActiveSubscription().catch(() => ({ success: false, data: null })),
-          schoolConfigService.getBillingHistory().catch(() => ({ success: false, data: [] })),
-          schoolConfigService.getSubscriptionAIAnalysis().catch(() => ({ success: false, data: null })),
+          isOwner ? schoolConfigService.getBillingHistory().catch(() => ({ success: false, data: [] })) : Promise.resolve({ success: false, data: [] as any }),
+          isOwner ? schoolConfigService.getSubscriptionAIAnalysis().catch(() => ({ success: false, data: null })) : Promise.resolve({ success: false, data: null as any }),
         ]);
 
         if (infoRes.success && infoRes.data) {
@@ -871,14 +876,16 @@ export const SettingsPage: React.FC = () => {
     { id: 'report-card', label: 'Report Card', icon: <GraduationCap size={18} />, adminOnly: true },
     // ── Finance & system (admin) ──
     { id: 'financial', label: 'Financial Info', icon: <DollarSign size={18} />, adminOnly: true },
-    { id: 'payments', label: 'Payments', icon: <CreditCard size={18} />, adminOnly: true },
-    { id: 'billing', label: 'Plan & Billing', icon: <CreditCard size={18} />, adminOnly: true },
-    { id: 'storage', label: 'File Storage', icon: <HardDrive size={18} />, adminOnly: true },
+    { id: 'payments', label: 'Payments', icon: <CreditCard size={18} />, adminOnly: true, ownerOnly: true },
+    { id: 'billing', label: 'Plan & Billing', icon: <CreditCard size={18} />, adminOnly: true, ownerOnly: true },
+    { id: 'storage', label: 'File Storage', icon: <HardDrive size={18} />, adminOnly: true, ownerOnly: true },
+    { id: 'owners', label: 'School Owners', icon: <Crown size={18} />, adminOnly: true, ownerOnly: true },
   ];
   const tabAllowed = (id: string) => {
     const t = tabs.find((x) => x.id === id);
     if (!t) return false;
     if (t.adminOnly && !isPrincipalOrSuper) return false;
+    if ((t as any).ownerOnly && !isOwner) return false;
     if ((t as any).teacherOnly && !isTeacher) return false;
     if ((t as any).bursarOnly && !isBursar) return false;
     if ((t as any).officeOnly && !isOffice) return false;
@@ -889,7 +896,7 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     if (!tabAllowed(activeTab)) setActiveTab('profile');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, isPrincipalOrSuper, isTeacher, isBursar, isOffice]);
+  }, [activeTab, isPrincipalOrSuper, isOwner, isTeacher, isBursar, isOffice]);
 
   return (
     <MainLayout>
@@ -915,6 +922,7 @@ export const SettingsPage: React.FC = () => {
               <div className="inline-flex gap-2 px-2">
                 {tabs.map((tab) => {
                   if (tab.adminOnly && !isPrincipalOrSuper) return null;
+                  if ((tab as any).ownerOnly && !isOwner) return null;
                   if ((tab as any).teacherOnly && !isTeacher) return null;
                   if ((tab as any).bursarOnly && !isBursar) return null;
                   if ((tab as any).officeOnly && !isOffice) return null;
@@ -944,6 +952,7 @@ export const SettingsPage: React.FC = () => {
               <nav className="space-y-1">
                 {tabs.map((tab) => {
                   if (tab.adminOnly && !isPrincipalOrSuper) return null;
+                  if ((tab as any).ownerOnly && !isOwner) return null;
                   if ((tab as any).teacherOnly && !isTeacher) return null;
                   if ((tab as any).bursarOnly && !isBursar) return null;
                   if ((tab as any).officeOnly && !isOffice) return null;
@@ -2420,6 +2429,19 @@ export const SettingsPage: React.FC = () => {
                     </CardHeader>
                     <CardContent>
                       <PaymentSettings />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {activeTab === 'owners' && isOwner && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2.5">
+                        <Crown size={20} className="text-amber-500" /> School Owners
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <OwnershipSettings />
                     </CardContent>
                   </Card>
                 )}
