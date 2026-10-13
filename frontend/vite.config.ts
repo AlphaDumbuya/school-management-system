@@ -24,7 +24,9 @@ export default defineConfig({
       manifest: false, // we maintain our own public/manifest.json
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // The main chunk is ~5.3 MB on Vercel (sourcemap/dev-flavoured build), over the old 5 MiB cap,
+        // which made the whole build fail. Keep headroom so growth doesn't break deploys.
+        maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
       },
       devOptions: {
         enabled: false,
