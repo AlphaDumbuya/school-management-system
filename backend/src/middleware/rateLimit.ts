@@ -187,6 +187,14 @@ export const demoSessionLimiter = makeLimiter({
   keyGenerator: (req) => `demo-session:${clientIp(req)}`,
   message: { success: false, error: 'Too many attempts. Please wait a few minutes and try again.' },
 });
+// Public receipt check: the codes are random (80 bits) so they can't be guessed,
+// but typed-in attempts are still capped per IP.
+export const receiptVerifyLimiter = makeLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  keyGenerator: (req) => `verify-receipt:${clientIp(req)}`,
+  message: { success: false, error: 'Too many checks from this connection. Please wait a few minutes and try again.' },
+});
 // Passkey registration / authentication.
 export const passkeyLimiter = makeLimiter({
   windowMs: 15 * 60 * 1000,

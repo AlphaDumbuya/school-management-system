@@ -149,7 +149,7 @@ export const BallotTab: React.FC<{
                 <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{s.first_name} {s.last_name}</p>
                 <p className="truncate text-xs text-gray-500">{s.student_number}{s.class_name ? ` · ${s.class_name}` : ''}{s.gender ? ` · ${s.gender}` : ''}</p>
               </div>
-              <Button size="sm" onClick={() => drawOne(s)} aria-label={`Draw a house for ${s.first_name} ${s.last_name}`}>
+              <Button size="sm" className="flex-shrink-0" onClick={() => drawOne(s)} aria-label={`Draw a house for ${s.first_name} ${s.last_name}`}>
                 <Shuffle size={14} className="mr-1" aria-hidden="true" /> Draw
               </Button>
             </li>

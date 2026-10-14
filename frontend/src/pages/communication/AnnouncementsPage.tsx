@@ -19,14 +19,22 @@ import { useAuth } from '@hooks/useAuth';
 import { showToast } from '@utils/toast';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
+import { leadTitleFor } from '@lib/leadTitle';
 import announcementService, {
   Announcement,
   AnnouncementAudience,
   AnnouncementPriority,
 } from '@services/announcementService';
 
-const AUDIENCES: { value: AnnouncementAudience; label: string }[] = [
+/**
+ * Audience options. The `principal` audience is named after the school's lead
+ * title ("Head Teacher" in a primary/nursery-only school, else "Principal");
+ * `owner` reaches the school owner(s).
+ */
+const audiencesFor = (lead: string): { value: AnnouncementAudience; label: string }[] => [
   { value: 'all', label: 'Everyone' },
+  { value: 'owner', label: 'School Owner(s)' },
+  { value: 'principal', label: `${lead}(s)` },
   { value: 'teacher', label: 'Teachers' },
   { value: 'student', label: 'Students' },
   { value: 'parent', label: 'Parents' },
@@ -34,7 +42,8 @@ const AUDIENCES: { value: AnnouncementAudience; label: string }[] = [
   { value: 'admissions_officer', label: 'Admissions' },
 ];
 
-const audienceLabel = (a: string) => AUDIENCES.find((x) => x.value === a)?.label ?? a;
+/** Header action buttons: ~40px tap target on phones, keep their width so the row wraps. */
+const HEADER_BTN = 'min-h-[40px] sm:min-h-0 whitespace-nowrap shrink-0';
 
 // Keep in sync with the backend caps in announcementService.ts.
 const MAX_TITLE = 200;
@@ -46,6 +55,8 @@ const AUDIENCE_THEME: Record<string, { bar: string; chip: string; badge: string 
   teacher:            { bar: 'bg-violet-500',  chip: 'bg-violet-100 text-violet-600',   badge: 'bg-violet-50 text-violet-700 border-violet-200' },
   student:            { bar: 'bg-emerald-500', chip: 'bg-emerald-100 text-emerald-600', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   parent:             { bar: 'bg-amber-500',   chip: 'bg-amber-100 text-amber-600',     badge: 'bg-amber-50 text-amber-700 border-amber-200' },
+  owner:              { bar: 'bg-indigo-500',  chip: 'bg-indigo-100 text-indigo-600',   badge: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  principal:          { bar: 'bg-sky-500',     chip: 'bg-sky-100 text-sky-600',         badge: 'bg-sky-50 text-sky-700 border-sky-200' },
   accountant:         { bar: 'bg-teal-500',    chip: 'bg-teal-100 text-teal-600',       badge: 'bg-teal-50 text-teal-700 border-teal-200' },
   admissions_officer: { bar: 'bg-rose-500',    chip: 'bg-rose-100 text-rose-600',       badge: 'bg-rose-50 text-rose-700 border-rose-200' },
 };
@@ -67,6 +78,10 @@ export const AnnouncementsPage: React.FC = () => {
   const isAdmin = role === 'principal' || role === 'super_admin';
   const isDeptStaff = role === 'accountant' || role === 'admissions_officer';
   const canPost = isAdmin || isTeacher || isDeptStaff;
+  // "Head Teacher" or "Principal" for this school.
+  const lead = user?.leadTitle || leadTitleFor(user?.schoolType);
+  const AUDIENCES = useMemo(() => audiencesFor(lead), [lead]);
+  const audienceLabel = (a: string) => AUDIENCES.find((x) => x.value === a)?.label ?? a;
 
   // Compose modal state
   const [composeOpen, setComposeOpen] = useState(false);
@@ -200,12 +215,17 @@ export const AnnouncementsPage: React.FC = () => {
         breadcrumbs={[{ label: 'Communication' }, { label: 'Announcements' }]}
         onRefresh={() => refetch()}
         isRefreshing={isLoading}
+        mobileLabels
         actions={
-          <div className="flex items-center gap-2">
+          // Wraps on phones: Refresh, year and the labelled New button share
+          // one tidy row (or two on very narrow screens), never overflowing.
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
             <YearFilter value={year} onChange={setYear} includeAllOption />
             {canPost && !viewingPast && (
-              <Button onClick={openCompose} size="sm" className="whitespace-nowrap shadow-sm">
-                <Plus size={16} className="mr-1.5" /> New Announcement
+              <Button onClick={openCompose} size="sm" className={`${HEADER_BTN} shadow-sm`} aria-label="New announcement">
+                <Plus size={16} aria-hidden="true" />
+                <span className="sm:hidden">New</span>
+                <span className="hidden sm:inline">New Announcement</span>
               </Button>
             )}
           </div>
@@ -251,7 +271,7 @@ export const AnnouncementsPage: React.FC = () => {
             description={viewingPast
               ? 'Nothing was posted during this academic year.'
               : isTeacher
-                ? (myClasses.length ? 'Post to one of your classes to reach its students and parents.' : 'You have no classes this year yet. Once the principal assigns you, you can post to them here.')
+                ? (myClasses.length ? 'Post to one of your classes to reach its students and parents.' : `You have no classes this year yet. Once the ${lead} assigns you, you can post to them here.`)
                 : canPost ? 'Create your first announcement to reach your school community.' : 'Check back later for updates.'}
             action={canPost && !viewingPast ? { label: 'New Announcement', onClick: openCompose } : undefined}
           />
@@ -415,7 +435,7 @@ export const AnnouncementsPage: React.FC = () => {
                     ))}
                   </select>
                   {myClasses.length === 0 && (
-                    <p className="mt-1 text-[11px] text-amber-600">You have no classes in {activeYear || 'this year'} yet. Ask your principal to assign you.</p>
+                    <p className="mt-1 text-[11px] text-amber-600">You have no classes in {activeYear || 'this year'} yet. Ask your {lead} to assign you.</p>
                   )}
                 </div>
               )}
@@ -434,6 +454,12 @@ export const AnnouncementsPage: React.FC = () => {
                       </option>
                     ))}
                   </select>
+                  {audience === 'owner' && (
+                    <p className="mt-1 text-[11px] text-gray-400">Goes to the school owner. If no owner is named yet, every {lead} receives it.</p>
+                  )}
+                  {audience === 'principal' && (
+                    <p className="mt-1 text-[11px] text-gray-400">Goes to every {lead} account, including the school owner.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Priority</label>

@@ -575,16 +575,18 @@ export class SLReportCardService {
         staffMap.set(r.user_id, { user_id: r.user_id, email: r.email || null, name: [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Teacher' });
       }
 
-      // Principals for this tenant (school administrators).
+      // Principals / Head Teachers (and owners) for this tenant.
       const adminRows = await db('users')
         .where('tenant_id', tenantId)
         .where('role', 'principal')
         .whereNotNull('email')
         .select('id as user_id', 'email', 'first_name', 'last_name')
         .catch(() => [] as any[]);
+      const { leadTitleFor } = await import('../utils/schoolLeaders.js');
+      const leadName = adminRows.length ? await leadTitleFor(tenantId).catch(() => 'Principal') : 'Principal';
       for (const r of adminRows) {
         if (!staffMap.has(r.user_id)) {
-          staffMap.set(r.user_id, { user_id: r.user_id, email: r.email || null, name: [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Administrator' });
+          staffMap.set(r.user_id, { user_id: r.user_id, email: r.email || null, name: [r.first_name, r.last_name].filter(Boolean).join(' ') || leadName });
         }
       }
 

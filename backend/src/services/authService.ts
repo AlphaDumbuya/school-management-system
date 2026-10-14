@@ -338,8 +338,9 @@ export class AuthService {
       // Dispatch welcome email asynchronously (non-blocking)
       sendSchoolWelcomeEmail({
         toEmail: email,
-        adminName: `${payload.admin_first_name} ${payload.admin_last_name}`,
+        ownerName: `${payload.admin_first_name} ${payload.admin_last_name}`,
         schoolName: payload.school_name,
+        leadTitle: leadTitle(payload.school_type),
       }).catch((err) => logger.warn(`Could not send welcome email to ${email}: ${err.message}`));
 
       return {
@@ -549,8 +550,20 @@ export class AuthService {
    */
   async refreshToken(refreshToken: string): Promise<{ access_token: string }> {
     try {
-      // Verify refresh token
-      const decoded = JWTService.verifyRefreshToken(refreshToken);
+      // Verify refresh token. A bad or expired token is a definite "no" (401),
+      // not a server fault: the app signs out on 401 but keeps the session on
+      // 5xx (a database blip on resume must not log an active user out).
+      let decoded: { userId: string };
+      try {
+        decoded = JWTService.verifyRefreshToken(refreshToken);
+      } catch (verifyError) {
+        const expired = verifyError instanceof Error && /expired/i.test(verifyError.message);
+        throw new AppError(
+          expired ? 'Refresh token expired' : 'Invalid refresh token',
+          401,
+          expired ? 'REFRESH_TOKEN_EXPIRED' : 'INVALID_REFRESH_TOKEN'
+        );
+      }
 
       // Look up by the token HASH (we never store the raw token).
       const tokenHash = hashRefreshToken(refreshToken);
@@ -606,12 +619,22 @@ export class AuthService {
   /**
    * Logout user
    */
-  async logout(userId: string): Promise<void> {
+  async logout(userId: string, refreshToken?: string): Promise<void> {
     try {
-      // Delete all refresh tokens for this user
-      await this.db('refresh_tokens').where({
-        user_id: userId,
-      }).del();
+      if (refreshToken) {
+        // End THIS session only. Revoking every token for the user meant an
+        // idle web tab timing out (or signing out on one phone) silently killed
+        // the user's other, still-active sessions at their next token refresh.
+        await this.db('refresh_tokens').where({
+          user_id: userId,
+          token_hash: hashRefreshToken(refreshToken),
+        }).del();
+      } else {
+        // Older clients don't send their refresh token: keep the old behaviour.
+        await this.db('refresh_tokens').where({
+          user_id: userId,
+        }).del();
+      }
 
       logger.info(`User logged out: ${userId}`);
     } catch (error) {

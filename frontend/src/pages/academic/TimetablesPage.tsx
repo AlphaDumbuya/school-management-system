@@ -20,6 +20,7 @@ import {
   timetableService,
   TimetableSlot,
   DAYS_OF_WEEK,
+  defaultSchoolDay,
   PERIOD_STRUCTURES,
   PeriodDefinition,
   getSchoolLevel,
@@ -78,8 +79,10 @@ export const TimetablesPage: React.FC = () => {
   // The current year is stored as '' so the page follows a rollover by itself.
   const changeYear = (y: string) => { setYear(y === activeYear ? '' : y); setSelectedClassId(''); };
 
-  // Mobile day tab
-  const [mobileDay, setMobileDay] = useState<string>('Monday');
+  // Mobile day tab: opens on today (or the next school day); a tab the user
+  // picks stays picked.
+  const todayName = useMemo(() => defaultSchoolDay(DAYS_OF_WEEK), []);
+  const [mobileDay, setMobileDay] = useState<string>(todayName);
 
   // Modal states
   const [slotModalOpen, setSlotModalOpen] = useState(false);
@@ -569,6 +572,8 @@ export const TimetablesPage: React.FC = () => {
               {DAYS_OF_WEEK.map((day) => (
                 <button
                   key={day}
+                  type="button"
+                  aria-pressed={mobileDay === day}
                   onClick={() => setMobileDay(day)}
                   className={`flex-shrink-0 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
                     mobileDay === day

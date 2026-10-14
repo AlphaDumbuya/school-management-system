@@ -413,13 +413,17 @@ async function reconcileRestoreSession(
   await db('restore_payment_sessions').where({ id: restoreId }).update({ status: 'completed', updated_at: new Date() });
   logger.info(`Restore payment reconciled — tenant ${session.tenant_id} reactivated (session ${restoreId})`);
 
-  // Notify the school their access is restored (best-effort).
+  // Notify the school owner(s) and billing contact that access is restored (best-effort).
   try {
     const tenant = await db('tenants').where({ id: session.tenant_id }).first();
-    const contact = tenant?.contact_email;
-    if (contact) {
+    const { billingRecipients } = await import('../utils/schoolLeaders');
+    const recipients = await billingRecipients(session.tenant_id);
+    if (recipients.length) {
       const { default: emailService } = await import('../services/emailService');
-      await emailService.sendTenantStatusEmail(contact, { schoolName: tenant.name, status: 'restored' });
+      for (const to of recipients) {
+        await emailService.sendTenantStatusEmail(to, { schoolName: tenant?.name || 'your school', status: 'restored' })
+          .catch((e: any) => logger.warn(`Restore confirmation email to ${to} failed: ${e?.message || e}`));
+      }
     }
   } catch (mailErr: any) {
     logger.warn(`Restore confirmation email failed for tenant ${session.tenant_id}: ${mailErr?.message || mailErr}`);
@@ -465,6 +469,7 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
   let applied = false;
   let receiptNumber: string | null = null;
   await db.transaction(async (trx) => {
+    let split: { applied: Array<{ fee: any; amount: number }>; leftover: number } = { applied: [], leftover: 0 };
     // Lock the session row and re-check inside the transaction so a retried or
     // duplicated webhook arriving at the same moment can't record twice.
     const locked = await trx('payment_sessions').where({ id: sessionId }).forUpdate().first();
@@ -512,7 +517,7 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
       const itemFeeIds = (await trx('invoice_items').where({ invoice_id: session.invoice_id }).select('fee_id')).map((r: any) => r.fee_id);
       if (itemFeeIds.length) {
         const linkedFees = await trx('fees').whereIn('id', itemFeeIds).orderBy('due_date', 'asc');
-        await applyAmountToFees(trx, linkedFees, Number(session.amount));
+        split = await applyAmountToFees(trx, linkedFees, Number(session.amount));
       }
     } else {
       // Ad-hoc payment (no invoice) → apply to the student's oldest outstanding fees.
@@ -521,7 +526,19 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
         .whereIn('status', ['pending', 'partial', 'overdue'])
         .orderBy('due_date', 'asc')
         .forUpdate();
-      await applyAmountToFees(trx, openFees, Number(session.amount));
+      split = await applyAmountToFees(trx, openFees, Number(session.amount));
+    }
+
+    // Keep WHAT this payment paid for (the receipt and the finance reports read it).
+    // The single payment row above has no fee of its own, so without this the
+    // split across the fees would be lost.
+    {
+      const { recordAllocations, allocationForFee, allocationForCredit } = await import('../services/finance/allocations.js');
+      const base = { tenantId: session.tenant_id, paymentId, receiptNumber };
+      const rows = split.applied.map((a) => allocationForFee(base, a.fee, a.amount));
+      // Online money above what was due: say so plainly (it is not turned into account credit here).
+      if (split.leftover > 0.005) rows.push(allocationForCredit(base, split.leftover, { feeType: 'Amount above fees due', description: 'More than the fees outstanding at the time of payment' }));
+      await recordAllocations(trx, rows);
     }
 
     // Balance right after this payment, for the receipt.
@@ -580,18 +597,24 @@ async function reconcileSession(sessionId: string, status: 'pending' | 'complete
  * balance and updating its status. Used so online payments auto-settle the
  * student's fee ledger, not just the invoice.
  */
-async function applyAmountToFees(trx: any, fees: any[], amount: number) {
+async function applyAmountToFees(
+  trx: any, fees: any[], amount: number,
+): Promise<{ applied: Array<{ fee: any; amount: number }>; leftover: number }> {
   // Delegate the arithmetic to the pure helper (unit-tested for monotonicity),
   // then persist the resulting per-fee balances.
   const feeLikes = fees.map((f: any) => ({ id: f.id, balance: Number(f.balance ?? f.amount) || 0 }));
-  const { applications } = applyAmount(feeLikes, amount);
+  const { applications, leftover } = applyAmount(feeLikes, amount);
+  const byId = new Map(fees.map((f: any) => [String(f.id), f]));
+  const applied: Array<{ fee: any; amount: number }> = [];
   for (const app of applications) {
     await trx('fees').where({ id: app.id }).update({
       balance: app.newBalance,
       status: app.status,
       updated_at: new Date(),
     });
+    applied.push({ fee: byId.get(String(app.id)) || { id: app.id }, amount: Math.round(app.applied * 100) / 100 });
   }
+  return { applied, leftover: Math.round(leftover * 100) / 100 };
 }
 
 export default router;

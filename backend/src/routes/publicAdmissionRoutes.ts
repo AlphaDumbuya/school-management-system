@@ -6,6 +6,7 @@ import { generateNextId } from '@utils/idGenerator';
 import { logger } from '@utils/logger';
 import emailService from '../services/emailService.js';
 import { resolveActiveYear } from '@utils/academicYear';
+import { schoolTypeFor, classInSchoolScope } from '@utils/schoolLevels';
 
 const router = Router();
 const submitLimiter = publicFormLimiter;
@@ -96,7 +97,9 @@ router.get('/:schoolSlug', async (req: Request, res: Response, next: NextFunctio
   try {
     const school = await findSchool(req.params.schoolSlug);
     if (!school) throw new AppError('School application page not found', 404, 'SCHOOL_NOT_FOUND');
-    const classes = await schoolClasses(school.id);
+    // Families only pick from classes within the school's level.
+    const schoolType = await schoolTypeFor(db, school.id);
+    const classes = (await schoolClasses(school.id)).filter((c: any) => classInSchoolScope(c, schoolType));
     res.json({ success: true, data: { school: { name: school.name, logo_url: school.logo_url }, classes, captcha_site_key: captchaSiteKey() } });
   } catch (error) {
     next(error);

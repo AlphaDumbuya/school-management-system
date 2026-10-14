@@ -28,6 +28,7 @@ import { ClassFormModal } from './components/ClassFormModal';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import { ClassStudentsModal } from './components/ClassStudentsModal';
+import { classInSchoolScope } from '@lib/classScope';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -321,6 +322,12 @@ export const ClassesPage: React.FC = () => {
     () => Array.from(new Set(((teacherLevelsData as any)?.data ?? []).map((c: ClassRecord) => c.level).filter(Boolean))) as string[],
     [teacherLevelsData],
   );
+  // Managers: every level the school runs (its school level setting), so a
+  // Primary school's level filter never offers JSS/SSS.
+  const schoolLevelCodes = useMemo(
+    () => LEVELS.filter((l) => classInSchoolScope({ level: l }, user?.schoolType)),
+    [user?.schoolType],
+  );
   // A level picked in one year may not exist in another — drop it so the
   // list never goes blank because of a stale filter.
   useEffect(() => {
@@ -577,7 +584,7 @@ export const ClassesPage: React.FC = () => {
               <LevelFilterPopover
                 value={levelFilter[0] || ''}
                 onChange={(val) => setLevelFilter(val ? [val] : [])}
-                availableLevels={canManage ? undefined : teacherLevels}
+                availableLevels={canManage ? schoolLevelCodes : teacherLevels}
               />
 
               {/* Status Select */}

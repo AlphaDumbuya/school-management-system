@@ -257,7 +257,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
+    // h-dvh follows the VISIBLE viewport (phone browser bars, Android app); h-screen
+    // (100vh) is the fallback and can be taller than what is on screen, which hid
+    // the bottom of every page.
+    <div className="h-screen h-dvh bg-gray-50 flex flex-col">
       {/* Support-mode banner (only while impersonating) */}
       <ImpersonationBanner />
 
@@ -290,7 +293,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             backgroundSize: '28px 28px',
           }}
         >
-          <div className="px-2 py-3 sm:p-6 animate-page-enter">
+          {/* Bottom space on phones clears the system gesture bar so the last item can
+              always be scrolled fully into view (every page, not only PageShell ones). */}
+          <div className="px-2 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+5rem)] sm:p-6 animate-page-enter">
             <DemoSchoolBanner />
             <SubscriptionLapsedBanner />
             <PlanRestrictionsBanner />

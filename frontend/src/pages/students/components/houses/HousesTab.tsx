@@ -81,7 +81,7 @@ export const HousesTab: React.FC<{ summary?: HouseSummary; onChanged: () => void
   return (
     <div className="space-y-6">
       <section aria-labelledby="houses-h">
-        <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 id="houses-h" className="text-base font-bold text-gray-900 dark:text-white">Houses</h2>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}><FileUp size={14} className="mr-1" aria-hidden="true" /> Import existing houses</Button>
@@ -100,13 +100,13 @@ export const HousesTab: React.FC<{ summary?: HouseSummary; onChanged: () => void
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {houses.map((h) => (
-              <div key={h.id} className={`overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 ${h.is_active ? '' : 'opacity-70'}`}>
+              <div key={h.id} className={`min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 ${h.is_active ? '' : 'opacity-70'}`}>
                 <div className="px-4 py-3" style={{ backgroundColor: h.color, color: textOn(h.color) }}>
-                  <p className="text-lg font-black">{h.name}</p>
-                  <p className="text-xs opacity-90">{h.is_active ? (h.motto ? `“${h.motto}”` : 'Active') : 'Switched off'}</p>
+                  <p className="text-lg font-black break-words">{h.name}</p>
+                  <p className="text-xs opacity-90 break-words">{h.is_active ? (h.motto ? `“${h.motto}”` : 'Active') : 'Switched off'}</p>
                 </div>
                 <div className="px-4 py-3">
-                  <p className="mb-2 text-xs text-gray-600 dark:text-gray-300">
+                  <p className="mb-2 text-xs text-gray-600 dark:text-gray-300 break-words">
                     {h.staff.find((s) => s.position === 'master')
                       ? <>Master / mistress: <strong>{h.staff.find((s) => s.position === 'master')!.name}</strong>{h.staff.length > 1 ? ` · ${h.staff.length - 1} more teacher${h.staff.length - 1 === 1 ? '' : 's'}` : ''}</>
                       : h.staff.length > 0 ? `${h.staff.length} teacher${h.staff.length === 1 ? '' : 's'}, no master or mistress yet` : 'No teachers assigned yet'}

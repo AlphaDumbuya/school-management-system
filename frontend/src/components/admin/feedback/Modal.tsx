@@ -48,7 +48,7 @@ export const Modal: React.FC<ModalProps> = ({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    dialogRef.current?.focus();
+    dialogRef.current?.focus({ preventScroll: true });
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -121,8 +121,11 @@ export const Modal: React.FC<ModalProps> = ({
           className={clsx(
             // Layout & sizing
             'w-full flex flex-col',
-            // Mobile: full-screen sheet
-            'h-dvh',
+            // Mobile: full-screen sheet. max-h-full caps it to the fixed
+            // wrapper even where `dvh` isn't supported (older Android
+            // WebViews), so a tall dialog can't grow past the top of the
+            // screen (items-end would push its header out of reach).
+            'h-dvh max-h-full',
             // Desktop: auto-height with max constraint, rounded corners
             'sm:h-auto sm:max-h-[88vh] sm:rounded-2xl',
             // Appearance
@@ -168,7 +171,7 @@ export const Modal: React.FC<ModalProps> = ({
 
           {/* Footer — sticky at bottom */}
           {footer && (
-            <div className="flex-shrink-0 flex items-center justify-end gap-3 px-5 sm:px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+            <div className="flex-shrink-0 flex flex-wrap items-center justify-end gap-3 px-5 sm:px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
               {footer}
             </div>
           )}

@@ -47,6 +47,25 @@ export interface PlanSchedule {
 export interface ReceiptRow {
   receipt_number: string; student_id: string; student_name: string; admission_no: string; amount: number; date: string;
   method: string; method_label: string; status: 'paid' | 'refunded' | 'part_refunded'; balance_after: number | null;
+  /** What it paid for, e.g. "Tuition, Uniform" (null when not recorded). */
+  purpose?: string | null;
+}
+/** One line of a receipt: a charge the payment settled, or money kept as account credit. */
+export interface ReceiptItem {
+  payment_id: string;
+  /** Fee type, e.g. "Tuition". */
+  label: string;
+  /** "First Term · 2026/2027", or a note for credit lines. */
+  detail: string | null;
+  kind: 'fee' | 'credit';
+  fee_type: string | null; term: string | null; academic_year: string | null;
+  amount: number; status: string;
+}
+export interface ReceiptDetail {
+  receipt_number: string; student_id: string; student_name: string; admission_no: string | null; class_name: string | null;
+  academic_year: string | null; received_by: string | null; amount: number; method: string; method_label: string;
+  reference: string | null; date: string; balance_after: number | null; status: 'paid' | 'refunded' | 'part_refunded';
+  items: ReceiptItem[];
 }
 
 /** Download an authenticated file (PDF/CSV) and save it (web + native). */
@@ -111,6 +130,7 @@ export const bursarService = {
   // Receipts
   receipts: (p: { from?: string; to?: string; class_id?: string; student_id?: string }) => apiClient.get<{ success: boolean; data: ReceiptRow[] }>(`${F}/receipts${qs(p)}`),
   studentReceipts: (studentId: string) => apiClient.get<{ success: boolean; data: ReceiptRow[] }>(`${F}/students/${studentId}/receipts`),
+  receipt: (no: string) => apiClient.get<{ success: boolean; data: ReceiptDetail; error?: string }>(`${F}/receipts/${encodeURIComponent(no)}`),
   emailReceipt: (no: string) => apiClient.post<{ success: boolean; data: { sent: boolean; to?: string }; error?: string }>(`${F}/receipts/${encodeURIComponent(no)}/email`, {}),
   bulkEmailReceipts: (b: { from: string; to: string; class_id?: string }) =>
     apiClient.post<{ success: boolean; data: { considered: number; sent: number; skipped: number; failed: number } }>(`${F}/receipts/bulk-email`, b),

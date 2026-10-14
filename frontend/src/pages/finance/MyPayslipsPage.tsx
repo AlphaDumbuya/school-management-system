@@ -16,7 +16,8 @@ export const MyPayslipsPage: React.FC = () => {
   const pg = usePaged<any>(q.data || [], [], 10);
   return (
     <MainLayout>
-      <PageShell title="My Payslips" subtitle="Your monthly payslips: pay, PAYE, NASSIT and deductions">
+      <PageShell title="My Payslips" subtitle="Your monthly payslips: pay, PAYE, NASSIT and deductions"
+        onRefresh={() => q.refetch()} isRefreshing={q.isFetching} mobileLabels>
         {q.error ? <p role="alert" className="text-sm text-red-600">{(q.error as Error).message} <button type="button" className="font-bold underline" onClick={() => q.refetch()}>Retry</button></p>
           : q.isLoading ? <div className="py-12 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div>
           : (q.data || []).length === 0 ? <EmptyState message="No payslips yet" description="Your payslip appears here once the school approves the month's payroll." />
@@ -27,13 +28,13 @@ export const MyPayslipsPage: React.FC = () => {
                 <tbody>
                   {pg.pageRows.map((s) => (
                     <tr key={s.id} className="border-t border-gray-100 dark:border-gray-800">
-                      <td className="px-4 py-3 font-semibold">{new Date(`${s.period}-01T00:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</td>
-                      <td className="px-4 py-3 text-right">{le(s.gross)}</td><td className="px-4 py-3 text-right">{le(s.paye)}</td><td className="px-4 py-3 text-right">{le(s.nassit_employee)}</td>
-                      <td className="px-4 py-3 text-right font-bold">{le(s.net)}</td>
-                      <td className="px-4 py-3"><Pill s={s.status === 'paid' ? 'approved' : 'part_paid'} label={s.status === 'paid' ? `Paid ${String(s.payment_date || '').slice(0, 10)}` : 'Approved'} /></td>
+                      <td className="px-4 py-3 font-semibold whitespace-nowrap">{new Date(`${s.period}-01T00:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{le(s.gross)}</td><td className="px-4 py-3 text-right whitespace-nowrap">{le(s.paye)}</td><td className="px-4 py-3 text-right whitespace-nowrap">{le(s.nassit_employee)}</td>
+                      <td className="px-4 py-3 text-right font-bold whitespace-nowrap">{le(s.net)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap"><Pill s={s.status === 'paid' ? 'approved' : 'part_paid'} label={s.status === 'paid' ? `Paid ${String(s.payment_date || '').slice(0, 10)}` : 'Approved'} /></td>
                       <td className="px-4 py-3 text-right"><button type="button" aria-label={`Download payslip for ${s.period}`} disabled={busy === s.id}
                         onClick={async () => { setBusy(s.id); try { await bursarB.downloadSlip(s.id, s.period); } catch (e: any) { showToast.error(e.message); } finally { setBusy(null); } }}
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"><Download size={13} /> PDF</button></td>
+                        className="inline-flex items-center gap-1 min-h-[40px] sm:min-h-0 px-2 -mx-2 whitespace-nowrap text-xs font-semibold text-blue-600 hover:underline disabled:opacity-60">{busy === s.id ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} PDF</button></td>
                     </tr>
                   ))}
                 </tbody>

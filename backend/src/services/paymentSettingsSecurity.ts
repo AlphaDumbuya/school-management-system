@@ -153,25 +153,25 @@ export async function lastChange(conn: Knex, tenantId: string): Promise<{ at: st
 }
 
 /**
- * Tell the school: the principals, the school contact and the person who made
- * the change get an email, and the principals get an in-app notice. Best-effort:
- * a mail problem never blocks the change.
+ * Tell the school: the school owner(s), the school email and the person who
+ * made the change get an email, and the owner(s) get an in-app notice. Payment
+ * settings are owner-only, so other principals are not alerted about a page
+ * they cannot open. (A school with no named owner: its principals stand in.)
+ * Best-effort: a mail problem never blocks the change.
  */
 export async function notifyChange(
   conn: Knex,
   p: { tenantId: string; actorId: string; change: PaymentChange } & RequestMeta,
 ): Promise<void> {
   try {
-    const [actor, principals, school] = await Promise.all([
+    const { schoolOwners, uniqueEmails } = await import('../utils/schoolLeaders.js');
+    const [actor, owners, school] = await Promise.all([
       conn('users').where({ id: p.actorId }).first('id', 'email', 'first_name', 'last_name'),
-      conn('users').where({ tenant_id: p.tenantId, role: 'principal', status: 'active' }).select('id', 'email'),
+      schoolOwners(p.tenantId),
       conn('schools').where({ tenant_id: p.tenantId }).first('email'),
     ]);
     const actorName = [actor?.first_name, actor?.last_name].filter(Boolean).join(' ') || actor?.email || 'A user';
-    const recipients = Array.from(new Set(
-      [actor?.email, school?.email, ...principals.map((u: any) => u.email)]
-        .filter(Boolean).map((e: string) => e.trim().toLowerCase()),
-    ));
+    const recipients = uniqueEmails([actor?.email, ...owners.map((u) => u.email), school?.email]);
 
     const what = p.change.kind === 'disabled'
       ? 'Online fee payments were turned OFF'
@@ -189,7 +189,7 @@ export async function notifyChange(
     ));
 
     const { notifyUsers } = await import('./finance/core.js');
-    await notifyUsers(principals.map((u: any) => u.id), {
+    await notifyUsers(owners.map((u) => u.id), {
       subject: 'Payment settings changed',
       message: `${what} by ${actorName}. If this was not you, change your password and turn off online payments now.`,
       url: '/settings?tab=payments', sourceType: 'payment_settings', sourceId: p.tenantId,

@@ -3,8 +3,12 @@
  */
 import { apiClient } from '@lib/apiClient';
 
+/**
+ * 'owner' = the school owner(s); 'principal' = the school's leaders, shown as
+ * "Head Teacher" or "Principal" by school level (owners are principals too).
+ */
 export type AnnouncementAudience =
-  | 'all' | 'teacher' | 'student' | 'parent' | 'accountant' | 'admissions_officer';
+  | 'all' | 'owner' | 'principal' | 'teacher' | 'student' | 'parent' | 'accountant' | 'admissions_officer';
 export type AnnouncementPriority = 'normal' | 'high';
 
 export interface Announcement {
@@ -12,9 +16,11 @@ export interface Announcement {
   tenant_id: string;
   author_id: string;
   author_name?: string;
-  /** Respectful role-based display name, e.g. "Principal Alpha Dumbuya". */
+  /** Respectful role-based display name, e.g. "Head Teacher Alpha Dumbuya" or "School Owner Alpha Dumbuya". */
   author_display?: string;
   author_role?: string;
+  /** The author is a named school owner. */
+  author_is_owner?: boolean;
   title: string;
   body: string;
   audience: AnnouncementAudience;

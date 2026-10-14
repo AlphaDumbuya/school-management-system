@@ -710,6 +710,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
+  // Accordion toggle. Opening a group closes the one that was open, and when that
+  // one sits ABOVE it the list shrinks under the scroll position, so the group the
+  // user just opened ends up above the visible area. Remember which group was
+  // opened and bring its header to the top once the new layout is in place.
+  const groupHeaderRefs = React.useRef<Map<string, HTMLButtonElement>>(new Map());
+  const scrollToGroupRef = React.useRef<string | null>(null);
+
+  const toggleGroup = (group: string) => {
+    scrollToGroupRef.current = openGroup === group ? null : group;
+    setOpenGroup((prev) => (prev === group ? null : group));
+  };
+
+  React.useLayoutEffect(() => {
+    const group = scrollToGroupRef.current;
+    scrollToGroupRef.current = null;
+    const nav = navScrollRef.current;
+    const header = group ? groupHeaderRefs.current.get(group) : null;
+    if (!nav || !header) return;
+    const n = nav.getBoundingClientRect();
+    const h = header.getBoundingClientRect();
+    if (h.height === 0) return; // drawer is closed / hidden
+    const top = Math.max(0, nav.scrollTop + (h.top - n.top) - 8);
+    const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    nav.scrollTo({ top, behavior: reduce ? 'auto' : 'smooth' });
+  }, [openGroup]);
+
   // Keep the sidebar ON the active item: after a page change, once the right group is
   // open (and whenever the drawer is opened), scroll the highlighted item into view if
   // it is hidden. Each page mounts its own layout, so this runs on every navigation.
@@ -915,7 +941,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                       <div className="hidden lg:block mx-2 my-2 border-t border-gray-800" aria-hidden />
                     ) : (
                       <button
-                        onClick={() => setOpenGroup((prev) => (prev === group ? null : group))}
+                        ref={(el) => {
+                          if (el) groupHeaderRefs.current.set(group, el);
+                          else groupHeaderRefs.current.delete(group);
+                        }}
+                        onClick={() => toggleGroup(group)}
                         className={clsx(
                           'w-full flex items-center justify-between px-2.5 sm:px-4 pt-2.5 sm:pt-4 pb-1 sm:pb-1.5 sm:pb-2 text-[11px] sm:text-xs font-semibold uppercase tracking-widest transition-colors duration-150',
                           groupHasActive ? 'text-amber-400' : 'text-gray-500 hover:text-gray-300'

@@ -14,7 +14,7 @@ export const HistoryTab: React.FC = () => {
   const rows = q.data || [];
   if (!rows.length) return <EmptyState message="Nothing here yet" description="Draws and house changes will be listed here." />;
   return (
-    <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+    <div className="max-w-full overflow-x-auto overscroll-x-contain rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
       <table className="w-full min-w-[640px] text-sm">
         <caption className="sr-only">Latest house draws and changes</caption>
         <thead>

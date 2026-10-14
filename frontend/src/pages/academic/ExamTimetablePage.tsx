@@ -9,7 +9,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Clock, BookOpen, FileText, Plus, Trash2, ChevronDown, CalendarPlus } from 'lucide-react';
+import { Calendar, Clock, BookOpen, FileText, Plus, Trash2, Edit, ChevronDown, CalendarPlus } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { KPICard } from '@components/dashboard/KPICard';
@@ -23,7 +23,7 @@ import { showToast } from '@utils/toast';
 import { classesService, ClassRecord } from '@services/classesService';
 import {
   examinationsService, ExaminationRecord, ExamTerm,
-  EXAM_TERMS, EXAM_SESSIONS, EXAM_TYPES, buildExamGrid,
+  EXAM_TERMS, EXAM_SESSIONS, EXAM_TYPES, buildExamGrid, defaultExamDate, localIsoDate,
 } from '@services/examinationsService';
 import { ExamSlotModal } from './components/ExamSlotModal';
 import { AddExamDayModal } from './components/AddExamDayModal';
@@ -63,7 +63,10 @@ export const ExamTimetablePage: React.FC = () => {
   // Only managers edit, and only the current year (teachers view their classes).
   const canEdit = canManage && !viewingPast;
   // The current year is stored as '' so the page follows a rollover by itself.
-  const setAcademicYear = (y: string) => { setPickedYear(y === activeYear ? '' : y); setSelectedClassId(''); setExtraDates([]); };
+  // Mobile date tab the user picked ('' = follow the default: today's exam
+  // day, else the next upcoming one, else the first).
+  const [pickedDate, setPickedDate] = useState('');
+  const setAcademicYear = (y: string) => { setPickedYear(y === activeYear ? '' : y); setSelectedClassId(''); setExtraDates([]); setPickedDate(''); };
 
   const [slotModalOpen, setSlotModalOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<ExaminationRecord | null>(null);
@@ -114,7 +117,8 @@ export const ExamTimetablePage: React.FC = () => {
   }, [classesData, selectedClassId, isViewerOnly]);
 
   // Manually-added empty date rows belong to one class + term only.
-  useEffect(() => { setExtraDates([]); }, [selectedClassId, term]);
+  // A picked date tab belongs to that schedule too.
+  useEffect(() => { setExtraDates([]); setPickedDate(''); }, [selectedClassId, term, activeChildId]);
 
   // Staff: one class. Students/parents: their own class(es) that year.
   const hasTarget = isViewerOnly ? (!isParent || parentDashFetched) : !!selectedClassId;
@@ -144,6 +148,11 @@ export const ExamTimetablePage: React.FC = () => {
     const set = new Set<string>([...examDates, ...extraDates]);
     return Array.from(set).sort();
   }, [examDates, extraDates]);
+
+  // Mobile date tab: the user's pick while it's still a row, else today's
+  // exam day / the next upcoming one / the first.
+  const todayIso = localIsoDate();
+  const mobileDate = pickedDate && allDates.includes(pickedDate) ? pickedDate : defaultExamDate(allDates, todayIso);
 
   const stats = useMemo(() => {
     const total = exams.length;
@@ -185,6 +194,7 @@ export const ExamTimetablePage: React.FC = () => {
 
   const handleAddDay = (d: string) => {
     setExtraDates((prev) => Array.from(new Set([...prev, d])));
+    setPickedDate(d); // show the new day on mobile
   };
 
   // ── Render a grid cell ──
@@ -420,7 +430,108 @@ export const ExamTimetablePage: React.FC = () => {
                   </EditGuard>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <>
+                {/* ── MOBILE: date tabs + the selected day's sessions ── */}
+                <div className="md:hidden">
+                  <div className="flex border-b border-gray-200 dark:border-gray-700 mb-4 overflow-x-auto">
+                    {allDates.map((date) => {
+                      const { weekday, date: dLabel } = formatDateLabel(date);
+                      const active = mobileDate === date;
+                      return (
+                        <button
+                          key={date}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => setPickedDate(date)}
+                          className={`flex-shrink-0 px-4 py-2 text-center border-b-2 transition-colors ${
+                            active
+                              ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                              : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                          }`}
+                        >
+                          <span className="block text-sm font-semibold">{date === todayIso ? 'Today' : weekday}</span>
+                          <span className="block text-[11px]">{dLabel}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="space-y-2">
+                    {EXAM_SESSIONS.map((s) => {
+                      const exam = grid[mobileDate]?.[s.key];
+                      return (
+                        <div
+                          key={s.key}
+                          className={`flex items-center gap-3 p-3 rounded-xl border shadow-sm ${
+                            exam
+                              ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30'
+                              : 'border-dashed border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'
+                          }`}
+                        >
+                          <div className="flex-shrink-0 text-center w-[64px]">
+                            <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400">{s.label}</p>
+                            <p className="text-[10px] text-gray-400 dark:text-gray-500">{s.start}–{s.end}</p>
+                          </div>
+                          {exam ? (
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-bold text-gray-900 dark:text-white truncate ${exam.status === 'cancelled' ? 'line-through opacity-60' : ''}`}>
+                                {exam.subject_name || exam.subject_code || exam.title}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                {exam.start_date?.substring(11, 16)}–{exam.end_date?.substring(11, 16) || ''}
+                                {` · ${TYPE_LABELS[exam.type] || exam.type}`}
+                                {exam.venue ? ` · ${exam.venue}` : ''}
+                              </p>
+                              {multiClass && exam.class_name && (
+                                <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 truncate">{exam.class_name}</p>
+                              )}
+                              {exam.status === 'cancelled' && (
+                                <p className="text-[11px] font-bold text-red-600 dark:text-red-400">Cancelled</p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex-1">
+                              <p className="text-xs text-gray-400 dark:text-gray-500">No exam scheduled</p>
+                            </div>
+                          )}
+                          <EditGuard>
+                            {exam ? (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => openEdit(exam)}
+                                  aria-label="Edit exam"
+                                  className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
+                                >
+                                  <Edit size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteTarget(exam)}
+                                  aria-label="Remove exam"
+                                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => openAdd(mobileDate, s.key)}
+                                aria-label="Schedule exam"
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
+                              >
+                                <Plus size={14} />
+                              </button>
+                            )}
+                          </EditGuard>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── DESKTOP: full date × session grid ── */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full border-collapse text-sm">
                     <thead>
                       <tr className="bg-gray-50 dark:bg-gray-800">
@@ -439,9 +550,12 @@ export const ExamTimetablePage: React.FC = () => {
                       {allDates.map((date) => {
                         const { weekday, date: dLabel } = formatDateLabel(date);
                         return (
-                          <tr key={date}>
+                          <tr key={date} className={date === todayIso ? 'bg-blue-50/40 dark:bg-blue-950/10' : undefined}>
                             <td className="px-3 py-2 border border-gray-100 dark:border-gray-700/50 whitespace-nowrap">
-                              <div className="text-xs font-bold text-gray-700 dark:text-gray-300">{weekday}</div>
+                              <div className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                                {weekday}
+                                {date === todayIso && <span className="ml-1.5 rounded-full bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">Today</span>}
+                              </div>
                               <div className="text-[11px] text-gray-500 dark:text-gray-400">{dLabel}</div>
                             </td>
                             {EXAM_SESSIONS.map((s) => (
@@ -455,6 +569,7 @@ export const ExamTimetablePage: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
+                </>
               )
             )}
           </>

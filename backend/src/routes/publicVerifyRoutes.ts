@@ -16,8 +16,32 @@ import { logger } from '../utils/logger.js';
 import slReportCardService from '../services/slReportCardService.js';
 import { normalizeAcademicYear } from '../utils/academicYear.js';
 import db from '../utils/database.js';
+import { receiptVerifyLimiter } from '../middleware/rateLimit.js';
 
 const router = Router();
+
+/**
+ * GET /api/v1/public/verify-receipt/:code
+ * Public (no auth): the receipt a printed/emailed receipt's code belongs to, as
+ * the school recorded it. The page compares it with the document in hand. The
+ * pupil's name is shortened ("Mariama K.") and no contact data of the family is
+ * returned. A wrong code is a plain 404, the same for "no such code" and "bad
+ * format", so the answer reveals nothing about which codes exist.
+ */
+router.get('/verify-receipt/:code', receiptVerifyLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { lookup } = await import('../services/finance/receiptVerifyService.js');
+    const found = await lookup(req.params.code);
+    res.set('Cache-Control', 'no-store');
+    if (!found) {
+      return res.status(404).json({ success: false, error: 'No receipt matches this code.' });
+    }
+    return res.json({ success: true, data: { ...found, checked_at: new Date().toISOString() } });
+  } catch (error: any) {
+    logger.error('Error verifying receipt:', error);
+    next(error);
+  }
+});
 
 /**
  * GET /api/v1/public/verify-report-card/:code?s=&c=&y=

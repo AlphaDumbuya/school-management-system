@@ -17,6 +17,8 @@ import { Button } from '@components/ui/button';
 import { FormField } from '@components/admin/forms/FormField';
 import { showToast } from '@utils/toast';
 import { classesService, ClassRecord, ClassFormData } from '@services/classesService';
+import { useAuth } from '@hooks/useAuth';
+import { schoolClassTiers } from '@lib/classScope';
 
 // ── Sierra Leone Education Structure ──────────────────────────────────────────
 
@@ -110,6 +112,7 @@ export const ClassFormModal: React.FC<ClassFormModalProps> = ({
   editingClass,
 }) => {
   const isEditing = !!editingClass;
+  const { user } = useAuth();
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [allClasses, setAllClasses] = React.useState<ClassRecord[]>([]);
@@ -244,6 +247,17 @@ export const ClassFormModal: React.FC<ClassFormModalProps> = ({
     scrollToRef(detailsRef);
   };
 
+  // Only offer the levels the school runs (its school level setting), so a
+  // Primary school can't create a JSS class that its class lists then hide.
+  // The class being edited always keeps its own level.
+  const tiers = useMemo(() => schoolClassTiers(user?.schoolType), [user?.schoolType]);
+  const editingCat = editingClass ? getCategoryFromLevel(editingClass.level) : null;
+  const editingSub = editingClass ? getSubCategoryFromLevel(editingClass.level) : null;
+  const visibleCategories = useMemo(() => CATEGORIES.filter((c) =>
+    c.value === editingCat
+    || (c.value === 'secondary' ? tiers.has('jss') || tiers.has('sss') : tiers.has(c.value))), [tiers, editingCat]);
+  const visibleSubCategories = useMemo(() => SUB_CATEGORIES.filter((s) => s.value === editingSub || tiers.has(s.value)), [tiers, editingSub]);
+
   // Available levels based on cascading state
   const availableLevels = useMemo((): Level[] => {
     if (category === 'nursery') return NURSERY_LEVELS;
@@ -369,8 +383,8 @@ export const ClassFormModal: React.FC<ClassFormModalProps> = ({
             <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
               1. School Level
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-              {CATEGORIES.map((cat) => (
+            <div className={`grid grid-cols-1 ${visibleCategories.length >= 3 ? 'sm:grid-cols-3' : visibleCategories.length === 2 ? 'sm:grid-cols-2' : ''} gap-3 sm:gap-4`}>
+              {visibleCategories.map((cat) => (
                 <button
                   key={cat.value}
                   type="button"
@@ -408,8 +422,8 @@ export const ClassFormModal: React.FC<ClassFormModalProps> = ({
               <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
                 2. Secondary Type
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                {SUB_CATEGORIES.map((sub) => (
+              <div className={`grid grid-cols-1 ${visibleSubCategories.length >= 2 ? 'sm:grid-cols-2' : ''} gap-3 sm:gap-4`}>
+                {visibleSubCategories.map((sub) => (
                   <button
                     key={sub.value}
                     type="button"

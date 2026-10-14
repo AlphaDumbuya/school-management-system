@@ -15,6 +15,21 @@ import { mintRestoreToken } from './restoreAccessService.js';
 import { isDemoEmail } from '../utils/demo.js';
 
 /**
+ * "You are the School Owner" note for the person who set the school up: what
+ * the owner alone controls, and that the school leader ("Head Teacher" in a
+ * primary school, otherwise "Principal") runs the day-to-day school.
+ */
+function ownerRoleCallout(leadTitle?: string): string {
+  const one = leadTitle ? escapeHtml(leadTitle) : 'Head Teacher or Principal';
+  const many = leadTitle ? `${escapeHtml(leadTitle)}s` : 'Head Teachers, Principals';
+  return calloutBlock(
+    `<strong>You are the School Owner.</strong> You can do everything a ${one} can, and only you can manage the plan and billing, the school's payment settings, school verification, backups, and the accounts of ${many} and other owners. ` +
+    `You can add a ${one} to run the school day to day, or name another owner, from the staff and user pages.`,
+    'info',
+  );
+}
+
+/**
  * Smart, category-specific suspension resolution guidance.
  *
  * The platform admin picks a category when suspending a school. Each category
@@ -102,8 +117,8 @@ export function suspensionGuidance(
         label: 'Security precaution',
         summary: 'Access was paused as a security precaution to protect your school’s data.',
         steps: [
-          'Do not share passwords. Review who has administrator access at your school.',
-          `Contact ${mailLink} to verify your identity as the account owner.`,
+          'Do not share passwords. Review who holds owner, Principal and Head Teacher accounts at your school.',
+          `Contact ${mailLink} to verify your identity as the school owner.`,
           'After verification, we will help you secure the account and restore access.',
         ],
         callout: `For your protection this must be verified with our team. Email ${mailLink} or call ${phoneLink}.`,
@@ -917,10 +932,13 @@ class EmailService {
   // Failures are swallowed by callers so they never block the admin action.
   // ────────────────────────────────────────────────────────────────────────
 
-  /** School onboarded → welcome + (optional) principal login details. */
+  /**
+   * School onboarded by WiSkul → welcome + (optional) login details for the
+   * School Owner account the platform created.
+   */
   async sendTenantWelcomeEmail(
     toEmail: string,
-    data: { schoolName: string; loginEmail?: string; tempPassword?: string }
+    data: { schoolName: string; loginEmail?: string; tempPassword?: string; leadTitle?: string }
   ): Promise<EmailResponse> {
     const branding = platformBranding();
     const supportEmail = process.env.SUPPORT_EMAIL || 'support@wiskulsl.com';
@@ -935,13 +953,14 @@ class EmailService {
       <p>Welcome to WiSkul! The workspace for <strong>${escapeHtml(data.schoolName)}</strong> has been created and is ready to use.
          Here's how to get your school up and running.</p>
       ${creds}
+      ${data.loginEmail ? ownerRoleCallout(data.leadTitle) : ''}
 
       <p style="font-weight:600;margin-top:20px;">Your first steps</p>
       <ol style="color:#334155;font-size:14px;line-height:1.7;padding-left:20px;margin:8px 0;">
         <li><strong>Sign in</strong> and change your temporary password.</li>
         <li><strong>Verify your school</strong> (Settings → Verify School) to earn the verified badge and unlock full trust.</li>
         <li><strong>Set up your branding</strong> — add your school logo, name and contact details so emails and ID cards look official.</li>
-        <li><strong>Add your staff</strong> — invite teachers, an accountant and admissions officers.</li>
+        <li><strong>Add your staff</strong> — your ${escapeHtml(data.leadTitle || 'Head Teacher or Principal')}, teachers, an accountant and admissions officers.</li>
         <li><strong>Enrol students</strong> individually or bulk-import a class from a spreadsheet.</li>
         <li><strong>Explore</strong> classes, timetables, attendance, grades, finance and ID cards.</li>
       </ol>
@@ -1034,7 +1053,7 @@ class EmailService {
         ${detailsCard(rows)}
         ${calloutBlock(actionCopy, tone)}
         ${emailButton('Open WiSkul', `${branding.appUrl}/login`)}
-        <p style="color:#64748b;font-size:13px;">Manage your plan anytime in Settings → Plan &amp; Billing.</p>`;
+        <p style="color:#64748b;font-size:13px;">The school owner can manage the plan anytime in Settings → Plan &amp; Billing.</p>`;
     }
 
     return this.sendEmail({
@@ -1115,7 +1134,7 @@ class EmailService {
         <p>Hello,</p>
         <p>The free <strong>${plan}</strong> trial for <strong>${school}</strong> has ended.</p>
         ${calloutBlock('Everyone can still sign in and view all records, but adding or changing anything is paused until a plan is paid. Nothing has been deleted.', 'warn')}
-        <p>The principal can choose a plan and pay by mobile money in a few minutes. Access to every change is restored as soon as the payment is confirmed.</p>
+        <p>The school owner can choose a plan and pay by mobile money in a few minutes. Access to every change is restored as soon as the payment is confirmed.</p>
         ${emailButton('Choose a plan', billingUrl)}
         <p style="color:#64748b;font-size:13px;">Questions? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
     } else if (data.kind === 'trial_ended') {
@@ -1246,8 +1265,8 @@ class EmailService {
         )}
 
         <p style="font-weight:600;margin-top:20px;">What this means</p>
-        <p>While the account is suspended, all users at your school — administrators,
-           teachers, students, parents and staff — are temporarily unable to sign in to
+        <p>While the account is suspended, everyone at your school — the owner, school leaders,
+           teachers, students, parents and staff — is temporarily unable to sign in to
            the portal or mobile app. Your data is safe and nothing has been deleted.</p>
 
         <p style="font-weight:600;margin-top:20px;">How to restore access</p>
@@ -1283,7 +1302,7 @@ class EmailService {
           }
           return `${calloutBlock(cat.callout, 'warn')}${emailButton(cat.ctaLabel, cat.ctaHref)}`;
         })()}
-        <p style="color:#64748b;font-size:13px;">This message was sent to the account owner/administrator. Individual staff, students and parents should reach out to their school administrator, not WiSkul directly.</p>`;
+        <p style="color:#64748b;font-size:13px;">This message was sent to the school owner, the school's leaders and its contact email. Staff, students and parents should contact the school office, not WiSkul directly.</p>`;
     } else {
       const restored = data.status === 'restored';
       eyebrow = restored ? 'Account Restored' : 'Access Reinstated';
@@ -1304,7 +1323,7 @@ class EmailService {
 
         <p style="font-weight:600;margin-top:20px;">What happens now</p>
         <ul style="color:#334155;font-size:14px;line-height:1.7;padding-left:20px;margin:8px 0;">
-          <li>All users — administrators, teachers, students, parents and staff — can sign in immediately on the web and mobile app.</li>
+          <li>Everyone — the owner, school leaders, teachers, students, parents and staff — can sign in immediately on the web and mobile app.</li>
           <li>Your data, settings, classes and records are exactly as you left them; nothing was lost during the suspension.</li>
           <li>No reinstall or password reset is needed — just sign in as usual.</li>
         </ul>
@@ -1328,7 +1347,7 @@ class EmailService {
    * Suspension / reinstatement notice for a school's own users (teachers,
    * students, parents, staff). Neutral on purpose: it never includes the
    * internal reason, only a summary by category, and sends people to their
-   * school administrator. The detailed email goes to the school owner.
+   * school office. The detailed email goes to the school owner and leaders.
    */
   async sendTenantUserNoticeEmail(
     tenantId: string,
@@ -1357,7 +1376,7 @@ class EmailService {
         <p style="font-weight:600;margin-top:20px;">What you need to know</p>
         <ul style="color:#334155;font-size:14px;line-height:1.7;padding-left:20px;margin:8px 0;">
           <li>Your records, results and payments are safe. Nothing has been deleted.</li>
-          <li>Only your school administrator can sort this out, so please contact the school office.</li>
+          <li>Only your school's owner or leadership can sort this out, so please contact the school office.</li>
           <li>You'll get another email as soon as access is back. You won't need to reinstall anything.</li>
         </ul>
         <p style="color:#64748b;font-size:13px;">Questions? Speak to your school office first. Still stuck? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
@@ -1510,11 +1529,16 @@ class EmailService {
       receiptNumber?: string;
       date?: Date | string;
       balanceRemaining?: number | string | null;
-      items?: Array<{ label: string; amount: number }>;
+      items?: Array<{ label: string; detail?: string; amount: number }>;
       status?: 'paid' | 'refunded' | 'part_refunded';
       /** 'refund' switches the wording to a refund confirmation. */
       kind?: 'payment' | 'refund';
       refundReason?: string;
+      /** Where the pupil's photo is stored (drawn on the PDF receipt). */
+      studentPhotoRef?: string;
+      /** The receipt's verification code (as printed) and the address its QR opens. */
+      verifyCode?: string;
+      verifyUrl?: string;
     }
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
@@ -1552,6 +1576,9 @@ class EmailService {
           balanceRemaining: balance ?? undefined,
           status: data.status ?? (isRefund ? 'refunded' : 'paid'),
           items: data.items,
+          studentPhotoRef: data.studentPhotoRef,
+          verifyCode: data.verifyCode,
+          verifyUrl: data.verifyUrl,
         });
         attachments = [{ name: `${isRefund ? 'Refund-Receipt' : 'Receipt'}-${receiptNumber}.pdf`, content: base64 }];
       } catch (err) {
@@ -1593,7 +1620,7 @@ class EmailService {
           ${items
             .map(
               (i) => `<tr>
-            <td style="padding:8px 10px;color:#0f172a;border-bottom:1px solid #eef2f7;">${escapeHtml(i.label)}</td>
+            <td style="padding:8px 10px;color:#0f172a;border-bottom:1px solid #eef2f7;"><strong>${escapeHtml(i.label)}</strong>${i.detail ? `<br><span style="color:#64748b;font-size:12px;">${escapeHtml(i.detail)}</span>` : ''}</td>
             <td align="right" style="padding:8px 10px;color:#0f172a;border-bottom:1px solid #eef2f7;white-space:nowrap;">${escapeHtml(this.fmtMoney(i.amount, currency))}</td>
           </tr>`
             )
@@ -1620,6 +1647,9 @@ class EmailService {
           : 'You can view and download every receipt from your payment history in the portal.',
         isRefund ? 'info' : 'success'
       )}
+      ${data.verifyUrl && data.verifyCode
+        ? `<p style="color:#64748b;font-size:13px;margin:12px 0 0;">This is an electronic receipt, so it needs no signature or stamp. To check that a copy is genuine, scan the QR code on the PDF or open <a href="${escapeHtml(data.verifyUrl)}" style="color:#1d4ed8;">the verification page</a> (code <strong style="font-family:monospace;">${escapeHtml(data.verifyCode)}</strong>).</p>`
+        : ''}
       ${emailButton('View Payment History', portalUrl)}`;
 
     return this.sendEmail({
@@ -1651,15 +1681,20 @@ class EmailService {
     data: {
       userName: string;
       role?: string;
+      /** The account is a School Owner (a principal flagged is_owner). */
+      isOwner?: boolean;
       tempPassword?: string;
     }
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
     const loginUrl = `${branding.appUrl}/login`;
+    // "Head Teacher" / "Principal" by school level, "School Owner (…)" for an owner.
+    const { roleLabelFor } = await import('../utils/schoolLeaders.js');
+    const roleLabel = data.role ? await roleLabelFor(tenantId, data.role, data.isOwner).catch(() => this.titleCase(data.role!)) : '';
 
     const rows =
       detailRow('Login Email', escapeHtml(toEmail)) +
-      (data.role ? detailRow('Role', escapeHtml(this.titleCase(data.role))) : '') +
+      (roleLabel ? detailRow('Role', escapeHtml(roleLabel)) : '') +
       (data.tempPassword
         ? detailRow('Temporary Password', `<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">${escapeHtml(data.tempPassword)}</code>`)
         : '');
@@ -1670,7 +1705,7 @@ class EmailService {
       ${detailsCard(rows)}
       ${data.tempPassword
         ? calloutBlock('For your security, please sign in and change this temporary password right away.', 'warn')
-        : calloutBlock('Use the password provided to you by your school. If you need help, contact your administrator.', 'info')}
+        : calloutBlock('Use the password provided to you by your school. If you need help, contact the school office.', 'info')}
       ${emailButton('Sign In to Your Portal', loginUrl)}
       <p style="color:#64748b;font-size:13px;">If you weren't expecting this, please contact your school using the details below.</p>`;
 
@@ -1701,7 +1736,7 @@ class EmailService {
       ${enabled
         ? calloutBlock('Your account is now better protected. You\'ll be asked for a code from your authenticator app each time you sign in.', 'success')
         : calloutBlock('Your account no longer requires a second verification step at sign-in. If you didn\'t make this change, secure your account immediately.', 'warn')}
-      ${calloutBlock("If you didn't make this change, reset your password right away and contact your school administrator.", 'info')}
+      ${calloutBlock("If you didn't make this change, reset your password right away and tell the school office (or WiSkul support if you run the school).", 'info')}
       ${emailButton('Review Account Security', loginUrl)}`;
 
     return this.sendEmail({
@@ -1741,6 +1776,78 @@ class EmailService {
       to: toEmail,
       subject: 'Security alert: payment settings changed',
       body: renderEmail({ branding, eyebrow: 'Account Security', heading: 'Payment Settings Changed', bodyHtml, preheader: 'Your school\'s payment settings were changed.' }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * School ownership granted / removed → the person affected, the school's other
+   * owners and the person who made the change. Ownership moves billing, payment
+   * settings, verification and leadership accounts, so everyone involved hears.
+   */
+  async sendOwnershipChangedEmail(
+    tenantId: string,
+    toEmail: string,
+    data: {
+      recipientName?: string;
+      /** The person whose ownership changed. */
+      targetName: string;
+      /** True when this email goes to that person. */
+      isTarget: boolean;
+      actorName: string;
+      granted: boolean;
+      when: Date;
+      ip?: string;
+      leadTitle?: string;
+    }
+  ): Promise<EmailResponse> {
+    const branding = await resolveTenantBranding(tenantId);
+    const school = escapeHtml(branding.name || 'your school');
+    const target = escapeHtml(data.targetName);
+    const lead = escapeHtml(data.leadTitle || 'Principal');
+    const hello = data.recipientName ? `Hello ${escapeHtml(data.recipientName)},` : 'Hello,';
+    const when = data.when.toUTCString();
+
+    const headline = data.isTarget
+      ? (data.granted
+          ? `You are now a School Owner of <strong>${school}</strong>.`
+          : `You are no longer a School Owner of <strong>${school}</strong>.`)
+      : (data.granted
+          ? `<strong>${target}</strong> is now a School Owner of <strong>${school}</strong>.`
+          : `<strong>${target}</strong> is no longer a School Owner of <strong>${school}</strong>.`);
+
+    const meaning = data.granted
+      ? (data.isTarget
+          ? `As an owner you can manage the plan and billing, the school's payment settings, school verification, backups, and the accounts of ${lead}s and other owners.`
+          : `They can now manage the plan and billing, payment settings, school verification, backups, and the accounts of ${lead}s and owners.`)
+      : (data.isTarget
+          ? `Your account stays a ${lead} account, so your day-to-day work is unchanged. Plan and billing, payment settings, verification and leadership accounts are now handled by the school's other owner(s).`
+          : `Their account stays a ${lead} account. They can no longer manage billing, payment settings, verification or leadership accounts.`);
+
+    const rows =
+      detailRow('Change', data.granted ? 'Ownership granted' : 'Ownership removed') +
+      detailRow('Person', target) +
+      detailRow('Changed by', escapeHtml(data.actorName)) +
+      detailRow('Time', escapeHtml(when)) +
+      (data.ip ? detailRow('From', escapeHtml(data.ip)) : '');
+
+    const bodyHtml = `
+      <p>${hello}</p>
+      <p>${headline}</p>
+      ${calloutBlock(meaning, data.granted ? 'success' : 'info')}
+      ${detailsCard(rows)}
+      ${calloutBlock("If you did not expect this change, someone may have access to an owner account. Change your password right away and contact WiSkul support.", 'warn')}
+      ${emailButton('Sign in to review', `${branding.appUrl}/login`)}`;
+
+    const subject = data.isTarget
+      ? (data.granted ? `You are now a School Owner of ${branding.name}` : `Your School Owner access at ${branding.name} was removed`)
+      : `Security alert: school ownership ${data.granted ? 'granted' : 'removed'} at ${branding.name}`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      subject,
+      body: renderEmail({ branding, eyebrow: 'Account Security', heading: data.granted ? 'School Owner Added' : 'School Owner Removed', bodyHtml, preheader: subject }),
       isHtml: true,
     });
   }
@@ -1787,7 +1894,7 @@ class EmailService {
   /**
    * Account status change → the affected staff member.
    *
-   * Sent when an admin suspends, dismisses, deactivates or reactivates a staff
+   * Sent when a school leader suspends, dismisses, deactivates or reactivates a staff
    * account. Tone + guidance adapt to the new status. Reactivation is positive
    * (they can sign in again); the others explain access has been paused/ended
    * and point them to the school administration.
@@ -2247,7 +2354,7 @@ class EmailService {
   }
 
   /**
-   * Results released → staff (teachers / principal / admin). Informs staff that
+   * Results released → staff (teachers and the Principal / Head Teacher). Informs staff that
    * a class's results have gone live so they know parents & students can see them.
    */
   async sendResultsReleasedStaffEmail(
@@ -2535,8 +2642,11 @@ export async function sendAutoResponse(email: string, name: string): Promise<Ema
  */
 export async function sendSchoolWelcomeEmail(data: {
   toEmail: string;
-  adminName: string;
+  /** The person who registered the school (its School Owner). */
+  ownerName: string;
   schoolName: string;
+  /** "Head Teacher" or "Principal", from the school level chosen at sign-up. */
+  leadTitle?: string;
   loginUrl?: string;
 }): Promise<EmailResponse> {
   // Platform-branded (WiSkul → the new school owner). Uses the shared
@@ -2546,14 +2656,15 @@ export async function sendSchoolWelcomeEmail(data: {
 
   const rows =
     detailRow('School', escapeHtml(data.schoolName)) +
-    detailRow('Administrator', escapeHtml(data.adminName)) +
+    detailRow('School Owner', escapeHtml(data.ownerName)) +
     detailRow('Login Email', escapeHtml(data.toEmail)) +
     detailRow('Included', 'Academics, Admissions, Attendance, Fees, ID Cards, Portals');
 
   const bodyHtml = `
-    <p>Hello ${escapeHtml(data.adminName)},</p>
-    <p>Congratulations — <strong>${escapeHtml(data.schoolName)}</strong> is now set up on WiSkul. Your school's private workspace and principal dashboard are ready to use.</p>
+    <p>Hello ${escapeHtml(data.ownerName)},</p>
+    <p>Congratulations — <strong>${escapeHtml(data.schoolName)}</strong> is now set up on WiSkul. Your school's private workspace and dashboard are ready to use.</p>
     ${detailsCard(rows)}
+    ${ownerRoleCallout(data.leadTitle)}
     ${emailButton('Go to Your Dashboard', loginUrl)}
     <p style="font-weight:700;color:#1a1a2e;margin-bottom:6px;">A few good first steps:</p>
     <ol style="font-size:14px;color:#334155;line-height:1.7;padding-left:20px;margin-top:0;">
@@ -2573,7 +2684,7 @@ export async function sendSchoolWelcomeEmail(data: {
     body: renderEmail({
       branding,
       eyebrow: 'Welcome Aboard',
-      heading: `Welcome to WiSkul, ${data.adminName}!`,
+      heading: `Welcome to WiSkul, ${data.ownerName}!`,
       bodyHtml,
       preheader: `${data.schoolName} is set up on WiSkul — here's how to get started.`,
     }),

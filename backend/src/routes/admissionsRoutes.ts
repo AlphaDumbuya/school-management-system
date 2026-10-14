@@ -6,6 +6,7 @@ import { UserRole } from '../types/auth';
 import { sendExport } from '@utils/exportResponse';
 import { admissionPipelineService as svc, currentYearClasses, STATUSES, TRANSITIONS, LABELS, DOCUMENTS } from '../services/admissions/admissionPipelineService.js';
 import { resolveActiveYear } from '@utils/academicYear';
+import { schoolTypeFor, classInSchoolScope } from '@utils/schoolLevels';
 
 const router = Router();
 router.use(authenticate);
@@ -69,7 +70,10 @@ router.get('/export', staff, wrap(async (req, res) => {
 /** GET /api/v1/admissions/meta: workflow rules, documents and current-year classes (with capacity). */
 router.get('/meta', staff, wrap(async (req, res) => {
   const { yearString } = await resolveActiveYear(T(req));
-  res.json({ success: true, data: { statuses: STATUSES, transitions: TRANSITIONS, labels: LABELS, documents: DOCUMENTS, active_year: yearString, classes: await currentYearClasses(T(req)) } });
+  // Class pickers/filters only offer classes within the school's level.
+  const schoolType = await schoolTypeFor(db, T(req));
+  const classes = (await currentYearClasses(T(req))).filter((c: any) => classInSchoolScope(c, schoolType));
+  res.json({ success: true, data: { statuses: STATUSES, transitions: TRANSITIONS, labels: LABELS, documents: DOCUMENTS, active_year: yearString, classes } });
 }));
 
 /** GET /api/v1/admissions/overview?academic_year=YYYY/YYYY|all (default: the active year). */

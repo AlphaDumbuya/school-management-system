@@ -40,6 +40,26 @@ import { ApplicationDetailModal, EnrolCredentials, EnrolDialog, StatusPill, ADM_
 const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const initials = (a: AdmissionRecord) => `${a.child_first_name?.[0] ?? ''}${a.child_last_name?.[0] ?? ''}`.toUpperCase();
 const GENDER_GRADIENT: Record<string, string> = { male: 'from-blue-400 to-blue-600', female: 'from-pink-400 to-rose-500' };
+/** The photo to show: the enrolled student's current photo, else the application's. */
+const photoOf = (a: AdmissionRecord): string | null => {
+  const p = String(a.photo_url || a.child_photo_url || '').trim();
+  return p.length > 10 ? p : null;
+};
+
+/** Round avatar: the applicant's photo, or their initials when there is none (or it fails to load). */
+const ApplicantAvatar: React.FC<{ app: AdmissionRecord; className: string; textClassName: string }> = ({ app, className, textClassName }) => {
+  const src = photoOf(app);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [src]);
+  const gradient = GENDER_GRADIENT[app.child_gender?.toLowerCase() ?? ''] ?? 'from-gray-400 to-gray-600';
+  return (
+    <div className={`${className} rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center bg-gradient-to-br ${gradient}`}>
+      {src && !failed
+        ? <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} className="w-full h-full object-cover" />
+        : <span className={`${textClassName} font-bold text-white`}>{initials(app)}</span>}
+    </div>
+  );
+};
 const STAGES: AdmissionStatus[] = ['pending', 'under_review', 'interview_scheduled', 'approved', 'waitlist', 'enrolled', 'rejected', 'withdrawn'];
 const select = 'w-full appearance-none pl-3 pr-8 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
@@ -136,9 +156,12 @@ export const AdmissionsPage: React.FC = () => {
   const columns: ColumnDef<AdmissionRecord, any>[] = [
     { id: 'application_number', header: 'App ID', cell: ({ row }) => <span className="font-mono text-xs font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">{row.original.application_number}</span> },
     { id: 'child', header: 'Child', cell: ({ row }) => (
-      <button type="button" onClick={() => setOpenId(row.original.id)} className="!flex flex-col !items-start !justify-start !p-0 text-left min-w-[130px]">
-        <p className="font-medium text-blue-700 dark:text-blue-400 hover:underline">{row.original.child_first_name} {row.original.child_last_name}</p>
-        <p className="text-[11px] text-gray-500 capitalize">{row.original.child_gender} · {fmtDate(row.original.child_dob)}</p>
+      <button type="button" onClick={() => setOpenId(row.original.id)} className="!flex !flex-row !items-center !justify-start gap-2.5 !p-0 text-left min-w-[160px]">
+        <ApplicantAvatar app={row.original} className="w-9 h-9" textClassName="text-xs" />
+        <span className="min-w-0">
+          <span className="block font-medium text-blue-700 dark:text-blue-400 hover:underline">{row.original.child_first_name} {row.original.child_last_name}</span>
+          <span className="block text-[11px] text-gray-500 capitalize">{row.original.child_gender} · {fmtDate(row.original.child_dob)}</span>
+        </span>
       </button>
     ) },
     { id: 'class', header: 'Class', cell: ({ row }) => <span className="text-xs font-semibold">{row.original.enrolled_class_name || row.original.class_name || '—'}</span> },
@@ -151,15 +174,11 @@ export const AdmissionsPage: React.FC = () => {
   ];
 
   const renderCard = (app: AdmissionRecord, idx: number) => {
-    const gradient = GENDER_GRADIENT[app.child_gender?.toLowerCase() ?? ''] ?? 'from-gray-400 to-gray-600';
-    const hasPhoto = !!app.child_photo_url && app.child_photo_url.length > 10;
     return (
       <div key={app.id} className={`group relative overflow-hidden ${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 border sm:border-gray-200/60 sm:dark:border-gray-700/60 rounded-2xl shadow-sm hover:shadow-md transition-all`}>
         <button type="button" onClick={() => setOpenId(app.id)} className="!block w-full text-left !p-5 !pb-3 !rounded-none" aria-label={`Open application of ${app.child_first_name} ${app.child_last_name}`}>
           <div className="flex items-center gap-3 mb-3">
-            <div className={`w-11 h-11 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center bg-gradient-to-br ${gradient}`}>
-              {hasPhoto ? <img src={app.child_photo_url} alt="" className="w-full h-full object-cover" /> : <span className="text-sm font-bold text-white">{initials(app)}</span>}
-            </div>
+            <ApplicantAvatar app={app} className="w-11 h-11" textClassName="text-sm" />
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600">{app.child_first_name} {app.child_last_name}</h3>
               <span className="font-mono text-[10px] font-bold text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{app.application_number}</span>

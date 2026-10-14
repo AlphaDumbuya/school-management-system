@@ -36,6 +36,16 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'history', label: 'History' },
 ];
 
+/**
+ * Keeps the tab content inside the screen width. <main> scrolls on both axes,
+ * so anything wider than the phone (a long unbroken name, a popover with a
+ * fixed min-width, a table's end-of-scroll chaining) moved the whole page
+ * sideways. `overflow-x: clip` cuts that off without making a new scroll box
+ * (vertical overflow, sticky and popovers below still work). The 4px of
+ * negative margin + padding keep focus rings at the edges from being cut.
+ */
+const CONTAIN_X = 'min-w-0 -mx-1 px-1 overflow-x-clip';
+
 const ManagerHouses: React.FC = () => {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('ballot');
@@ -60,7 +70,7 @@ const ManagerHouses: React.FC = () => {
         <p role="alert" className="mb-4 text-sm text-red-600">{(summaryQ.error as Error).message} <button type="button" className="font-bold underline" onClick={() => summaryQ.refetch()}>Retry</button></p>
       )}
 
-      <div className="mb-5 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Houses sections">
+      <div className="mb-5 flex max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-1" role="tablist" aria-label="Houses sections">
         {TABS.map((t) => (
           <button key={t.id} id={`houses-tab-${t.id}`} type="button" role="tab" aria-selected={tab === t.id} aria-controls={`houses-panel-${t.id}`} onClick={() => setTab(t.id)}
             className={`whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-semibold ${tab === t.id ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
@@ -70,7 +80,7 @@ const ManagerHouses: React.FC = () => {
         ))}
       </div>
 
-      <div id={`houses-panel-${tab}`} role="tabpanel" aria-labelledby={`houses-tab-${tab}`}>
+      <div id={`houses-panel-${tab}`} role="tabpanel" aria-labelledby={`houses-tab-${tab}`} className={CONTAIN_X}>
         {tab === 'ballot' && <BallotTab summary={summary} onChanged={refresh} onGoHouses={() => setTab('houses')} />}
         {tab === 'houses' && <HousesTab summary={summary} onChanged={refresh} onGoTeachers={() => setTab('teachers')} />}
         {tab === 'teachers' && <TeachersTab summary={summary} onChanged={refresh} />}
@@ -97,7 +107,7 @@ const TeacherHouses: React.FC = () => {
       ) : accessQ.isLoading ? (
         <p className="text-sm text-gray-500">Loading…</p>
       ) : access && access.has_access ? (
-        <TeacherHousesView access={access} />
+        <div className={CONTAIN_X}><TeacherHousesView access={access} /></div>
       ) : (
         <EmptyState message="Houses are not open to you" description="The principal or the admissions officer decides who sees this page. Ask them if you should have access." />
       )}

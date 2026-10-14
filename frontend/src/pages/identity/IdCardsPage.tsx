@@ -33,6 +33,7 @@ import type { CardPdfExporterHandle } from './components/cardExport';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import useAuthStore from '@store/authStore';
+import { leadTitleFor } from '@lib/leadTitle';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ActiveTab = 'cards' | 'expiring' | 'bulk' | 'qr';
@@ -75,6 +76,30 @@ const ROLE_COLORS: Record<string, string> = {
   accountant: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
   admissions_officer: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
 };
+
+/** Header action buttons: ~40px tap target on phones, keep their width so the row wraps. */
+const HEADER_BTN = 'min-h-[40px] sm:min-h-0 whitespace-nowrap shrink-0';
+
+// ── Grid / table switch ───────────────────────────────────────────────────────
+/** Icon-only in the desktop header; `showLabels` adds "Grid"/"Table" text (phone toolbar). */
+function ViewModeToggle({ value, onChange, showLabels = false, className = '' }: {
+  value: ViewMode; onChange: (m: ViewMode) => void; showLabels?: boolean; className?: string;
+}) {
+  return (
+    <div role="group" aria-label="Card layout" className={`items-center border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg p-0.5 shadow-sm shrink-0 ${className}`}>
+      {(['grid', 'table'] as ViewMode[]).map(m => {
+        const label = m === 'grid' ? 'Grid' : 'Table';
+        return (
+          <button key={m} type="button" onClick={() => onChange(m)} aria-pressed={value === m} aria-label={`${label} view`} title={`${label} view`}
+            className={`inline-flex items-center justify-center gap-1.5 rounded-md transition-all ${showLabels ? 'min-h-[36px] px-3 text-xs font-semibold' : 'p-2'} ${value === m ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}>
+            {m === 'grid' ? <LayoutGrid size={16} aria-hidden="true" /> : <List size={16} aria-hidden="true" />}
+            {showLabels && <span>{label}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 // ── Avatar Component ──────────────────────────────────────────────────────────
 function Avatar({ name, photoUrl, size = 'md' }: { name: string; photoUrl?: string | null; size?: 'sm' | 'md' | 'lg' }) {
@@ -367,11 +392,11 @@ function ExpiringTab({ onGenerateNew }: { onGenerateNew: () => void }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
           <span className="text-amber-600 dark:text-amber-400 font-bold">{cards.length}</span> cards expiring within 30 days
         </p>
-        <Button size="sm" onClick={onGenerateNew} className="gap-1.5"><Plus size={14} /> Generate Replacements</Button>
+        <Button size="sm" onClick={onGenerateNew} className={`${HEADER_BTN} gap-1.5`}><Plus size={14} aria-hidden="true" /> Generate Replacements</Button>
       </div>
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
         <div className="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -707,6 +732,9 @@ export const IdCardsPage: React.FC = () => {
   const queryClient = useQueryClient();
   // Deleting a card is the principal's; the office revokes or regenerates.
   const viewerRole = useAuthStore((st) => st.user?.role);
+  // "Head Teacher" or "Principal" for this school (role filter label).
+  const authUser = useAuthStore((st) => st.user);
+  const leadTitle = authUser?.leadTitle || leadTitleFor(authUser?.schoolType);
   const canDeleteCards = viewerRole === 'principal' || viewerRole === 'super_admin';
   // Admissions manage student cards only; staff cards are view/download for them.
   const cardReadOnly = (card: IdCard) => viewingPast || (viewerRole === 'admissions_officer' && String((card as any).user_role || (card as any).user?.role || 'student') !== 'student');
@@ -879,7 +907,7 @@ export const IdCardsPage: React.FC = () => {
 
   const ROLE_PILLS: { value: RoleFilter; label: string }[] = [
     { value: '', label: 'All' }, { value: 'student', label: 'Students' },
-    { value: 'teacher', label: 'Teachers' }, { value: 'principal', label: 'Principal' },
+    { value: 'teacher', label: 'Teachers' }, { value: 'principal', label: leadTitle },
   ];
 
   return (
@@ -890,21 +918,21 @@ export const IdCardsPage: React.FC = () => {
         breadcrumbs={[{ label: 'Identity' }, { label: 'ID Cards' }]}
         onRefresh={() => refetch()}
         isRefreshing={isLoading}
+        mobileLabels
         actions={
-          <div className="flex items-center gap-2">
+          // Phones: Refresh, year and a labelled Generate button wrap in one
+          // tidy row (Generate fills the row when it wraps). The grid/table
+          // switch moves into the Cards toolbar below on phones.
+          // `contents` on phones lets each control wrap on its own next to
+          // Refresh instead of the whole group dropping to a new line.
+          <div className="contents sm:flex sm:flex-wrap sm:items-center sm:gap-2 sm:min-w-0">
             {activeTab === 'cards' && (
-              <div className="flex items-center border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg p-0.5 shadow-sm">
-                {(['grid', 'table'] as ViewMode[]).map(m => (
-                  <button key={m} onClick={() => setViewMode(m)} className={`p-2 rounded-md transition-all ${viewMode === m ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}>
-                    {m === 'grid' ? <LayoutGrid size={16} /> : <List size={16} />}
-                  </button>
-                ))}
-              </div>
+              <ViewModeToggle value={viewMode} onChange={setViewMode} className="hidden sm:flex" />
             )}
             <YearFilter value={year} onChange={setYear} includeAllOption />
             {!viewingPast && (
-              <Button size="sm" onClick={() => setGenerationModalOpen(true)} className="gap-1.5 shadow-sm">
-                <Plus size={15} /> Generate Card
+              <Button size="sm" onClick={() => setGenerationModalOpen(true)} className={`${HEADER_BTN} grow sm:grow-0 gap-1.5 shadow-sm`}>
+                <Plus size={15} aria-hidden="true" /> Generate Card
               </Button>
             )}
           </div>
@@ -944,10 +972,12 @@ export const IdCardsPage: React.FC = () => {
           )}
 
           {/* Tab bar */}
-          <div className="flex items-center gap-2 bg-slate-100 dark:bg-gray-800/70 p-1.5 rounded-2xl overflow-x-auto scrollbar-none">
+          {/* Phones: a 2-column grid of tabs (no sideways scrolling, badge not
+              clipped); sm+: the original single scrolling row. */}
+          <div role="tablist" aria-label="ID card sections" className="grid grid-cols-2 gap-1.5 sm:flex sm:items-center sm:gap-2 bg-slate-100 dark:bg-gray-800/70 p-1.5 rounded-2xl sm:overflow-x-auto scrollbar-none">
             {TABS.map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`relative flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 flex-shrink-0 whitespace-nowrap ${activeTab === tab.id ? 'bg-gradient-to-r from-[#1d4ed8] to-[#3b82f6] text-white shadow-md shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:text-blue-700 hover:bg-white/70 dark:hover:bg-gray-700/50'}`}>
+              <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}
+                className={`relative flex items-center justify-center sm:justify-start gap-1.5 px-3 sm:px-4 py-2.5 sm:py-2 min-h-[40px] sm:min-h-0 rounded-xl text-sm font-semibold transition-all duration-200 flex-shrink-0 whitespace-nowrap ${activeTab === tab.id ? 'bg-gradient-to-r from-[#1d4ed8] to-[#3b82f6] text-white shadow-md shadow-blue-500/30' : 'text-gray-600 dark:text-gray-400 hover:text-blue-700 hover:bg-white/70 dark:hover:bg-gray-700/50'}`}>
                 {tab.icon} {tab.label}
                 {'badge' in tab && tab.badge ? (
                   <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{tab.badge}</span>
@@ -960,7 +990,10 @@ export const IdCardsPage: React.FC = () => {
           {activeTab === 'cards' && (
             <div className="space-y-5">
               {/* Filters */}
-              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+              {/* Phones: search on its own line, then status / layout /
+                  download wrapping in one row. sm+: the inner row uses
+                  `contents`, so the desktop toolbar is a single row as before. */}
+              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
                 <SearchBar
                   placeholder="Search card number, name or email…"
                   onSearch={(v) => { setSearch(v); setPage(1); }}
@@ -969,8 +1002,10 @@ export const IdCardsPage: React.FC = () => {
                   defaultValue={search}
                   className="w-full sm:flex-1"
                 />
+                <div className="flex flex-wrap items-center gap-2 sm:contents">
                 <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value as any); setPage(1); }}
-                  className="px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer min-w-[140px]">
+                  aria-label="Filter by card status"
+                  className="flex-1 sm:flex-none min-h-[40px] sm:min-h-0 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer min-w-[140px]">
                   <option value="">All Statuses</option>
                   <option value="active">Active</option>
                   <option value="expired">Expired</option>
@@ -978,27 +1013,33 @@ export const IdCardsPage: React.FC = () => {
                   <option value="revoked">Revoked</option>
                   <option value="suspended">Suspended</option>
                 </select>
-                <button onClick={() => refetch()} className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors" title="Refresh">
+                {/* Phones already have the labelled Refresh in the header. */}
+                <button type="button" onClick={() => refetch()} className="hidden sm:block p-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors" title="Refresh" aria-label="Refresh cards">
                   <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
                 </button>
+                {/* Grid / table switch: lives here on phones (in the header on sm+). */}
+                <ViewModeToggle value={viewMode} onChange={setViewMode} showLabels className="flex sm:hidden" />
                 {/* Bulk print/download of all visible cards */}
                 {cards.length > 0 && (
                   <div className="relative group/bulk">
                     <button
                       disabled={bulkDownloading}
-                      className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-emerald-600 disabled:opacity-50 whitespace-nowrap"
+                      type="button"
+                      className="flex items-center gap-1.5 min-h-[40px] sm:min-h-0 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-emerald-600 disabled:opacity-50 whitespace-nowrap"
                       title="Download / print all listed cards"
                     >
-                      {bulkDownloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                      <span className="hidden sm:inline">Download All</span>
+                      {bulkDownloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} aria-hidden="true" />}
+                      <span>Download All</span>
                     </button>
-                    <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-30 opacity-0 invisible group-hover/bulk:opacity-100 group-hover/bulk:visible transition-all">
+                    {/* Opens rightwards on phones so it never runs off the left edge. */}
+                    <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-1 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-30 opacity-0 invisible group-hover/bulk:opacity-100 group-hover/bulk:visible group-focus-within/bulk:opacity-100 group-focus-within/bulk:visible transition-all">
                       <button onClick={() => handleBulkDownload(cards, 'pdf')} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-lg">All as PDF</button>
                       <button onClick={() => handleBulkDownload(cards, 'png')} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">All as PNG</button>
                       <button onClick={() => handleBulkDownload(cards, 'jpg')} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 rounded-b-lg">All as JPG</button>
                     </div>
                   </div>
                 )}
+                </div>
               </div>
 
               {/* Role pills */}

@@ -529,8 +529,12 @@ router.post('/logout', authenticate, async (req: Request, res: Response, next: N
   try {
     const userId = (req as any).auth.userId;
 
-    // Delete refresh tokens
-    await authService.logout(userId);
+    // Revoke this device's refresh token (all of the user's tokens if the
+    // client didn't send one).
+    const refreshToken = typeof req.body?.refresh_token === 'string' && req.body.refresh_token
+      ? req.body.refresh_token
+      : undefined;
+    await authService.logout(userId, refreshToken);
 
     res.clearCookie('refreshToken');
     res.json({

@@ -24,6 +24,11 @@ export interface AdmissionRecord {
   previous_school?: string;
   last_grade_attained?: string;
   child_photo_url?: string;
+  /**
+   * Read-only, from the list/detail API: the photo to display. The enrolled
+   * student's current photo, else the one uploaded with the application.
+   */
+  photo_url?: string | null;
   guardian_first_name: string;
   guardian_middle_name?: string;
   guardian_last_name: string;

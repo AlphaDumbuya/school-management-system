@@ -20,7 +20,7 @@ import { useAcademicYears } from '@hooks/useAcademicYears';
 import useAuthStore from '@store/authStore';
 import { showToast } from '@utils/toast';
 import { bursarC, SOURCE_TYPE_LABEL, type GLAccount, type GLEntry, type Paged } from '@services/bursarService';
-import { unwrap, todayLocal, AccountSelect, Money } from '@components/finance/AccountingUi';
+import { unwrap, todayLocal, AccountSelect, Money, HEADER_BTN, BtnLabel } from '@components/finance/AccountingUi';
 
 const input = 'w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm';
 type Line = { account_id: string; debit: string; credit: string; memo: string };
@@ -123,28 +123,28 @@ export const JournalPage: React.FC = () => {
   return (
     <MainLayout>
       <PageShell title="Journal" subtitle="Every entry in the books: automatic from fees, payments, expenses and payroll, plus manual journals"
-        onRefresh={async () => { await bursarC.sync(); refresh(); }} isRefreshing={q.isFetching}
-        actions={<div className="flex items-center gap-2">
+        onRefresh={async () => { await bursarC.sync(); refresh(); }} isRefreshing={q.isFetching} mobileLabels
+        actions={<div className="flex flex-wrap items-center gap-2">
           <YearFilter value={y} onChange={reset((v: string) => setYear(v === activeYear ? '' : v))} noAutoSelect />
-          <Button size="sm" variant="create" disabled={!accounts.data} onClick={() => setNewOpen(true)}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">New journal</span></Button>
+          <Button size="sm" variant="create" className={HEADER_BTN} disabled={!accounts.data} onClick={() => setNewOpen(true)}><Plus size={15} /><BtnLabel>New journal</BtnLabel></Button>
         </div>}>
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm">
           <Lock size={14} className="text-gray-400" />
           {lockedUntil ? <span>Books closed up to <strong>{lockedUntil}</strong>. Nothing can be posted on or before it.</span> : <span className="text-gray-600">The books are open. The principal can close them up to a date after a period is checked.</span>}
           {isPrincipal && (lockEdit === null
-            ? <Button size="sm" variant="outline" className="ml-auto" onClick={() => setLockEdit(lockedUntil || todayLocal())}>{lockedUntil ? 'Change' : 'Close the books'}</Button>
-            : <div className="ml-auto flex items-center gap-2">
+            ? <Button size="sm" variant="outline" className={`ml-auto ${HEADER_BTN}`} onClick={() => setLockEdit(lockedUntil || todayLocal())}>{lockedUntil ? 'Change' : 'Close the books'}</Button>
+            : <div className="ml-auto flex flex-wrap items-center gap-2">
               <label htmlFor="lock-date" className="sr-only">Close up to</label>
-              <input id="lock-date" type="date" max={todayLocal()} value={lockEdit} onChange={(e) => setLockEdit(e.target.value)} className="px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" />
-              <Button size="sm" onClick={async () => { const r: any = await bursarC.setLock(lockEdit || null); if (r?.success === false) return showToast.error(r.error || 'Failed'); showToast.success(lockEdit ? `Books closed up to ${lockEdit}` : 'Books reopened'); setLockEdit(null); refresh(); }}>Save</Button>
-              {lockedUntil && <Button size="sm" variant="ghost" onClick={async () => { const r: any = await bursarC.setLock(null); if (r?.success === false) return showToast.error(r.error || 'Failed'); showToast.success('Books reopened'); setLockEdit(null); refresh(); }}>Reopen</Button>}
-              <Button size="sm" variant="ghost" onClick={() => setLockEdit(null)}>Cancel</Button>
+              <input id="lock-date" type="date" max={todayLocal()} value={lockEdit} onChange={(e) => setLockEdit(e.target.value)} className="min-h-[40px] sm:min-h-0 px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" />
+              <Button size="sm" className={HEADER_BTN} onClick={async () => { const r: any = await bursarC.setLock(lockEdit || null); if (r?.success === false) return showToast.error(r.error || 'Failed'); showToast.success(lockEdit ? `Books closed up to ${lockEdit}` : 'Books reopened'); setLockEdit(null); refresh(); }}>Save</Button>
+              {lockedUntil && <Button size="sm" variant="ghost" className={HEADER_BTN} onClick={async () => { const r: any = await bursarC.setLock(null); if (r?.success === false) return showToast.error(r.error || 'Failed'); showToast.success('Books reopened'); setLockEdit(null); refresh(); }}>Reopen</Button>}
+              <Button size="sm" variant="ghost" className={HEADER_BTN} onClick={() => setLockEdit(null)}>Cancel</Button>
             </div>)}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2 mb-3">
           <SearchBar placeholder="Search entry number or description…" onSearch={reset(setSearch)} className="w-full sm:max-w-sm" />
-          <select aria-label="Source" value={source} onChange={(e) => reset(setSource)(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm">
+          <select aria-label="Source" value={source} onChange={(e) => reset(setSource)(e.target.value)} className="min-h-[40px] sm:min-h-0 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm">
             <option value="">All sources</option>{Object.entries(SOURCE_TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </div>
@@ -153,25 +153,28 @@ export const JournalPage: React.FC = () => {
           : q.isLoading || !d ? <div className="py-12 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div>
           : d.rows.length === 0 ? <EmptyState message={`No entries in ${y}`} description="Entries appear as fees are billed, payments come in and expenses are recorded." />
           : (
-            <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-900/40 text-xs text-gray-500"><tr><th className="px-3 py-3 w-8" /><th className="px-3 py-3 text-left">Date</th><th className="px-3 py-3 text-left">Entry</th><th className="px-3 py-3 text-left">Details</th><th className="px-3 py-3 text-left">Source</th><th className="px-3 py-3 text-right">Amount</th><th className="px-3 py-3" /></tr></thead>
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+              {/* The table scrolls sideways on phones instead of squeezing the
+                  columns; dates, entry numbers, sources and amounts never wrap. */}
+              <div className="overflow-x-auto overscroll-x-contain">
+              <table className="w-full min-w-[46rem] text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-900/40 text-xs text-gray-500"><tr><th className="px-3 py-3 w-10"><span className="sr-only">Lines</span></th><th className="px-3 py-3 text-left whitespace-nowrap">Date</th><th className="px-3 py-3 text-left whitespace-nowrap">Entry</th><th className="px-3 py-3 text-left min-w-[16rem]">Details</th><th className="px-3 py-3 text-left whitespace-nowrap">Source</th><th className="px-3 py-3 text-right whitespace-nowrap">Amount</th><th className="px-3 py-3 w-12"><span className="sr-only">Actions</span></th></tr></thead>
                 <tbody>
                   {d.rows.map((e) => (
                     <React.Fragment key={e.id}>
-                      <tr className={`border-t border-gray-100 dark:border-gray-800 ${e.reversed_by_id ? 'opacity-60' : ''}`}>
-                        <td className="px-3 py-2.5"><button type="button" aria-expanded={open.has(e.id)} aria-label={`Show lines of ${e.entry_no}`} onClick={() => toggle(e.id)} className="text-gray-400 hover:text-gray-700">{open.has(e.id) ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
-                        <td className="px-3 py-2.5 whitespace-nowrap text-gray-600">{e.entry_date}</td>
+                      <tr className={`border-t border-gray-100 dark:border-gray-800 align-top ${e.reversed_by_id ? 'opacity-60' : ''}`}>
+                        <td className="px-1 py-1"><button type="button" aria-expanded={open.has(e.id)} aria-label={`Show lines of ${e.entry_no}`} onClick={() => toggle(e.id)} className="inline-flex items-center justify-center w-10 h-10 sm:w-8 sm:h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700">{open.has(e.id) ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-gray-600 tabular-nums">{e.entry_date}</td>
                         <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap">{e.entry_no}</td>
-                        <td className="px-3 py-2.5">{e.memo || '—'}{e.reversed_by_id && <span className="ml-2 text-[11px] text-red-600">reversed{e.reverse_reason ? `: ${e.reverse_reason}` : ''}</span>}{e.kind === 'manual' && e.created_by_name && <div className="text-[11px] text-gray-400">by {e.created_by_name}</div>}</td>
+                        <td className="px-3 py-2.5 min-w-[16rem] break-words">{e.memo || '—'}{e.reversed_by_id && <span className="ml-2 text-[11px] text-red-600">reversed{e.reverse_reason ? `: ${e.reverse_reason}` : ''}</span>}{e.kind === 'manual' && e.created_by_name && <div className="text-[11px] text-gray-400">by {e.created_by_name}</div>}</td>
                         <td className="px-3 py-2.5 text-xs whitespace-nowrap">{SOURCE_TYPE_LABEL[e.source_type] || e.source_type}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap"><Money v={e.total} /></td>
-                        <td className="px-3 py-2.5 text-right">{e.kind === 'manual' && !e.reversed_by_id && !e.reverses_id && <button type="button" aria-label={`Reverse ${e.entry_no}`} title="Reverse" onClick={() => { setReason(''); setRev(e); }} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600"><RotateCcw size={14} /></button>}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap tabular-nums"><Money v={e.total} /></td>
+                        <td className="px-1 py-1 text-right">{e.kind === 'manual' && !e.reversed_by_id && !e.reverses_id && <button type="button" aria-label={`Reverse ${e.entry_no}`} title="Reverse" onClick={() => { setReason(''); setRev(e); }} className="inline-flex items-center justify-center w-10 h-10 sm:w-8 sm:h-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700"><RotateCcw size={14} /></button>}</td>
                       </tr>
                       {open.has(e.id) && (
                         <tr className="bg-gray-50/60 dark:bg-gray-900/30"><td /><td colSpan={6} className="px-3 py-2">
-                          <table className="w-full text-xs"><thead className="text-gray-400"><tr><th className="text-left py-1">Account</th><th className="text-left">Note</th><th className="text-right">Debit</th><th className="text-right">Credit</th></tr></thead>
-                            <tbody>{e.lines.map((l) => <tr key={l.id}><td className="py-1"><span className="font-mono text-gray-400 mr-2">{l.code}</span>{l.name}</td><td className="text-gray-500">{l.memo || ''}</td><td className="text-right"><Money v={l.debit} zero="" /></td><td className="text-right"><Money v={l.credit} zero="" /></td></tr>)}</tbody>
+                          <table className="w-full text-xs"><thead className="text-gray-400"><tr><th className="text-left py-1 pr-3 min-w-[12rem]">Account</th><th className="text-left pr-3 min-w-[8rem]">Note</th><th className="text-right pr-3 whitespace-nowrap">Debit</th><th className="text-right whitespace-nowrap">Credit</th></tr></thead>
+                            <tbody>{e.lines.map((l) => <tr key={l.id} className="align-top"><td className="py-1 pr-3"><span className="font-mono text-gray-400 mr-2 whitespace-nowrap">{l.code}</span>{l.name}</td><td className="py-1 pr-3 text-gray-500 break-words">{l.memo || ''}</td><td className="py-1 pr-3 text-right whitespace-nowrap tabular-nums"><Money v={l.debit} zero="" /></td><td className="py-1 text-right whitespace-nowrap tabular-nums"><Money v={l.credit} zero="" /></td></tr>)}</tbody>
                           </table>
                         </td></tr>
                       )}
@@ -179,6 +182,7 @@ export const JournalPage: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+              </div>
               <TablePager page={page} pageCount={Math.max(1, Math.ceil(d.total / size))} size={size} total={d.total} onPage={setPage} onSize={(n) => { setSize(n); setPage(0); }} label="entries" />
             </div>
           )}

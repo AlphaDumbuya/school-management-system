@@ -7,6 +7,7 @@ import { UserRole } from '../types/auth';
 import { normalizeAcademicYear } from '../utils/academicYear.js';
 import { isFinanceLookup } from '../utils/financeLookup.js';
 import { teachesFor } from '../utils/staffDuties.js';
+import { schoolTypeFor, schoolClassTiers, classInSchoolScope } from '../utils/schoolLevels.js';
 
 const router = Router();
 router.use(authenticate);
@@ -324,6 +325,20 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
           .orWhere('classes.room_number', 'like', term)
           .orWhere('classes.building', 'like', term);
       });
+    }
+
+    // School-level scope: only offer classes within the school's level (a
+    // Primary school never lists JSS/SSS classes). Classes whose level can't be
+    // told are kept; an unset/"mixed" level keeps everything. Classified in JS
+    // (one shared rule) and applied before counting so totals/pages match.
+    // ?level_scope=all opts out.
+    if (req.query.level_scope !== 'all') {
+      const schoolType = await schoolTypeFor(db, tenantId);
+      if (schoolClassTiers(schoolType).size < 4) {
+        const rows = await query.clone().clearSelect().clearOrder().select('classes.id', 'classes.level', 'classes.name');
+        const outOfScope = rows.filter((r: any) => !classInSchoolScope(r, schoolType)).map((r: any) => r.id);
+        if (outOfScope.length) query = query.whereNotIn('classes.id', outOfScope);
+      }
     }
 
     const totalResult = await query.clone().clearSelect().clearOrder().count('classes.id as count').first();

@@ -141,6 +141,7 @@ import VerificationPage from '@pages/VerificationPage';
 import OwnerPage from '@pages/OwnerPage';
 import AuditLogPage from '@pages/AuditLogPage';
 import VerifyReportCardPage from '@pages/VerifyReportCardPage';
+import VerifyReceiptPage from '@pages/VerifyReceiptPage';
 import UnsubscribePage from '@pages/UnsubscribePage';
 import PrivacyPolicyPage from '@pages/PrivacyPolicyPage';
 import RestoreAccessPage from '@pages/RestoreAccessPage';
@@ -199,6 +200,9 @@ const router = createBrowserRouter(
         { path: 'verify-id', element: <VerifyIdPage /> },
         // Report card verification — reached by scanning QR on printed report card.
         { path: 'verify-report-card/:hash', element: <VerifyReportCardPage /> },
+        // Payment receipt verification — reached by scanning the QR code on a receipt (or typing its code).
+        { path: 'verify-receipt/:code', element: <VerifyReceiptPage /> },
+        { path: 'verify-receipt', element: <VerifyReceiptPage /> },
         // Aliases for older/malformed QR paths so previously-printed cards still resolve.
         { path: 'verify/id', element: <VerifyIdPage /> },
         // Old QR format: /verify?type=report-card&student=...&year=...

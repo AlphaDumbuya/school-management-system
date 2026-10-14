@@ -254,7 +254,7 @@ export const ApplicationDetailModal: React.FC<{
             {tab === 'details' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                 <section><h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Child</h4>
-                  {a.child_photo_url && <img src={a.child_photo_url} alt="" className="w-20 h-20 rounded-xl object-cover mb-2" />}
+                  {(a.photo_url || a.child_photo_url) && <img src={(a.photo_url || a.child_photo_url) as string} alt="" className="w-20 h-20 rounded-xl object-cover mb-2" />}
                   <Row k="Name" v={childName(a)} /><Row k="Date of birth" v={fmtDate(a.child_dob)} /><Row k="Sex" v={<span className="capitalize">{a.child_gender}</span>} />
                   <Row k="Nationality" v={a.child_nationality} /><Row k="Religion" v={a.child_religion} /><Row k="Place of birth" v={a.child_place_of_birth} />
                   <Row k="Address" v={a.child_address} /><Row k="Previous school" v={a.previous_school} /><Row k="Last class" v={a.last_grade_attained} />

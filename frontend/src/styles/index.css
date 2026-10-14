@@ -464,8 +464,16 @@ table {
   }
 }
 
+/*
+ * `backwards`, not `both`: a kept end state leaves `transform: translateY(0)`
+ * on the page wrapper forever, and any transform makes the element the
+ * containing block for `position: fixed` descendants. In-page overlays and
+ * menus then position against this tall wrapper inside the scrolling <main>
+ * (dialogs rendered below the page, menus at the top) instead of the screen.
+ * After the 0.4s animation the wrapper now has no transform at all.
+ */
 .animate-page-enter {
-  animation: pageEnter 0.4s ease-out both;
+  animation: pageEnter 0.4s ease-out backwards;
 }
 
 /* Respect users who prefer reduced motion */

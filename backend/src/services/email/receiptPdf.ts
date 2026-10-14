@@ -6,16 +6,24 @@
  * the bursar always see the same document.
  *
  *  - Letterhead: the school's logo (read straight from storage; a monogram if it
- *    can't be read or isn't a PNG/JPEG), name, address and contacts.
- *  - Receipt number and date, who paid, which pupil / class / academic year.
- *  - What the money paid for (itemised), total in figures and in words, the
- *    balance still owed (or "Fully paid"), and a PAID / REFUNDED stamp.
- *  - Signature and school-stamp lines, and who received the payment.
+ *    can't be read or isn't a PNG/JPEG), name, address and contacts, and a
+ *    PAID / REFUNDED chip.
+ *  - The pupil's card: photo (initials if there is none), name, admission
+ *    number, class, academic year, who paid and how.
+ *  - What the money paid for: one line per charge (fee type, term and year),
+ *    the total in figures and in words, and the balance still owed.
+ *  - An electronic-receipt block with a QR code and a verification code. The
+ *    receipt is issued automatically when the payment is recorded, so it needs
+ *    no signature or stamp: the QR opens a public page that shows the receipt as
+ *    the school recorded it, which a copied or edited receipt cannot match.
+ *  - A faint repeating school name behind the page (and a large REFUNDED mark on
+ *    refunded receipts), so a screenshot or a cut-and-paste job is easier to spot.
  *
- * Only the built-in Helvetica fonts are used, so every character is drawn from
- * the Latin-1 set (no tick marks or other glyphs that print as boxes).
+ * Only the built-in Helvetica/Courier fonts are used, so every character is drawn
+ * from the Latin-1 set (no tick marks or other glyphs that print as boxes).
  */
 import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
 import { resolveTenantBranding, platformBranding, type EmailBranding } from './emailBranding.js';
 import { logger } from '@utils/logger';
 
@@ -30,6 +38,14 @@ const INK = '#111827';
 const MUTED = '#64748b';
 const LINE = '#e2e8f0';
 const ZEBRA = '#f8fafc';
+
+export interface ReceiptItemData {
+  /** The charge, e.g. "Tuition" or "Uniform". */
+  label: string;
+  /** Term and year ("First Term · 2026/2027") or a short note. */
+  detail?: string;
+  amount: number;
+}
 
 export interface ReceiptData {
   receiptNumber: string;
@@ -46,16 +62,21 @@ export interface ReceiptData {
   reference?: string;
   date?: Date;
   balanceRemaining?: number;
-  /** 'refunded' / 'part_refunded' stamp the receipt instead of PAID. */
+  /** 'refunded' / 'part_refunded' mark the receipt instead of PAID. */
   status?: 'paid' | 'refunded' | 'part_refunded';
-  /** What the payment covered (charge labels). */
-  items?: Array<{ label: string; amount: number }>;
+  /** What the payment covered, one line per charge. */
+  items?: ReceiptItemData[];
+  /** Where the pupil's photo is stored (inline data, storage address or https link). */
+  studentPhotoRef?: string;
+  /** The receipt's verification code as printed (XXXX-XXXX-XXXX-XXXX) and the address its QR opens. */
+  verifyCode?: string;
+  verifyUrl?: string;
   /**
    * 'platform' issues the receipt from WiSkul itself (a school paying for its
    * plan) instead of from a school, with WiSkul's letterhead and logo.
    */
   issuer?: 'platform';
-  /** Replaces the standard pupil / class / year grid with these label-value pairs (two per row). */
+  /** Replaces the standard pupil card with these label-value pairs (two per row). */
   fields?: Array<{ label: string; value?: string; bold?: boolean }>;
 }
 
@@ -112,7 +133,34 @@ async function loadLogo(tenantId: string): Promise<Buffer | null> {
   }
 }
 
+/** The pupil's photo bytes (PNG/JPEG only), or null: the receipt then shows initials. */
+async function loadPhoto(tenantId: string, ref?: string): Promise<Buffer | null> {
+  if (!ref) return null;
+  try {
+    const { readTenantImage } = await import('../../routes/brandingRoutes.js');
+    const img = await readTenantImage(tenantId, ref);
+    if (!img || !/^image\/(png|jpe?g)$/i.test(img.type)) return null;
+    return img.body;
+  } catch {
+    return null;
+  }
+}
+
+/** The QR code for the verification address, as PNG bytes. */
+async function loadQr(url?: string): Promise<Buffer | null> {
+  if (!url) return null;
+  try {
+    return await QRCode.toBuffer(url, { type: 'png', margin: 0, width: 280, errorCorrectionLevel: 'M', color: { dark: '#14284b', light: '#ffffff' } });
+  } catch (e) {
+    logger.warn(`Receipt QR code failed: ${(e as Error)?.message || e}`);
+    return null;
+  }
+}
+
 const initials = (name: string) => clean(name).split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 3).toUpperCase() || 'S';
+
+/** "https://www.wiskulsl.com/verify-receipt/ABCD..." -> "www.wiskulsl.com/verify-receipt" */
+const verifyPageOf = (url?: string) => (url ? url.replace(/^https?:\/\//i, '').replace(/\/[^/]*$/, '') : '');
 
 /**
  * Build the receipt PDF and return it as base64.
@@ -124,13 +172,25 @@ export async function generateReceiptPdfBase64(
   const platform = data.issuer === 'platform';
   const branding = platform ? platformBranding() : await resolveTenantBranding(tenantId);
   const currency = data.currency || 'Le';
-  const logo = platform
-    ? Buffer.from((await import('../../assets/platformLogo.js')).PLATFORM_LOGO_PNG_BASE64, 'base64')
-    : await loadLogo(tenantId);
+  const [logo, photo, qr] = await Promise.all([
+    platform
+      ? Promise.resolve(Buffer.from((await import('../../assets/platformLogo.js')).PLATFORM_LOGO_PNG_BASE64, 'base64'))
+      : loadLogo(tenantId),
+    platform ? Promise.resolve(null) : loadPhoto(tenantId, data.studentPhotoRef),
+    platform ? Promise.resolve(null) : loadQr(data.verifyUrl),
+  ]);
 
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, left: 40, right: 40, bottom: 0 }, info: { Title: `Receipt ${clean(data.receiptNumber)}`, Author: clean(branding.name) } });
+      const doc = new PDFDocument({
+        size: 'A4',
+        margins: { top: 40, left: 40, right: 40, bottom: 0 },
+        info: {
+          Title: `Receipt ${clean(data.receiptNumber)}`,
+          Author: clean(branding.name),
+          Subject: data.verifyUrl ? `Verify at ${data.verifyUrl}` : 'Electronic payment receipt',
+        },
+      });
       const chunks: Buffer[] = [];
       doc.on('data', (c: Buffer) => chunks.push(c));
       doc.on('end', () => resolve({ base64: Buffer.concat(chunks).toString('base64'), branding }));
@@ -142,6 +202,7 @@ export async function generateReceiptPdfBase64(
       const R = W - 40;
       const CW = R - L;
       const refunded = data.status === 'refunded' || data.status === 'part_refunded';
+      const statusColor = refunded ? RED : GREEN;
 
       /** One line of text that never wraps or runs into its neighbour. */
       const line = (str: string, x: number, y: number, w: number, o: { font?: string; size?: number; color?: string; align?: 'left' | 'right' | 'center' } = {}) => {
@@ -155,6 +216,29 @@ export async function generateReceiptPdfBase64(
         }
         doc.text(s, x, y, { width: w + 1, align: o.align || 'left', lineBreak: false });
       };
+
+      /** Faint security pattern behind the page (and a big REFUNDED mark when refunded). */
+      const background = () => {
+        doc.save();
+        doc.opacity(0.045).fillColor(NAVY).font('Helvetica-Bold').fontSize(15);
+        doc.rotate(-32, { origin: [W / 2, H / 2] });
+        const tile = clean(`${branding.name}  -  ${platform ? 'OFFICIAL RECEIPT' : data.receiptNumber}   `).toUpperCase();
+        const row = tile.repeat(Math.ceil(1500 / Math.max(10, doc.widthOfString(tile))));
+        let rowIndex = 0;
+        for (let y = 20; y < 790; y += 46) {
+          doc.text(row, -260 + (rowIndex++ % 2) * 120, y, { lineBreak: false });
+        }
+        doc.restore();
+        if (refunded) {
+          doc.save();
+          doc.opacity(0.09).fillColor(RED).font('Helvetica-Bold').fontSize(96);
+          doc.rotate(-32, { origin: [W / 2, H / 2] });
+          doc.text(data.status === 'refunded' ? 'REFUNDED' : 'PART REFUNDED', 40, H / 2 - 40, { width: W - 80, align: 'center', lineBreak: false });
+          doc.restore();
+        }
+      };
+      background();
+      doc.on('pageAdded', background);
 
       // ── Letterhead ────────────────────────────────────────────────
       doc.rect(0, 0, W, 8).fill(NAVY);
@@ -183,15 +267,19 @@ export async function generateReceiptPdfBase64(
       line('OFFICIAL RECEIPT', R - 190, 30, 190, { font: 'Helvetica-Bold', size: 15, color: NAVY, align: 'right' });
       line(`No. ${data.receiptNumber}`, R - 190, 52, 190, { font: 'Helvetica-Bold', size: 11, align: 'right' });
       line(fmtDate(data.date), R - 190, 68, 190, { size: 10, color: MUTED, align: 'right' });
+      const chip = data.status === 'refunded' ? 'REFUNDED' : data.status === 'part_refunded' ? 'PART REFUNDED' : 'PAID';
+      const chipW = chip.length > 6 ? 98 : 54;
+      doc.roundedRect(R - chipW, 85, chipW, 16, 8).fill(refunded ? RED_BG : GREEN_BG);
+      line(chip, R - chipW, 89, chipW, { size: 8.5, font: 'Helvetica-Bold', color: statusColor, align: 'center' });
 
       doc.moveTo(L, 108).lineTo(R, 108).lineWidth(1.5).strokeColor(NAVY).stroke();
 
       // ── Who paid, for whom ───────────────────────────────────────
-      let y = 124;
+      let y = 122;
       const colW = (CW - 24) / 2;
-      const field = (label: string, value: string | undefined, x: number, yy: number, w: number, bold = false) => {
+      const field = (label: string, value: string | undefined, x: number, yy: number, w: number, bold = false, size = 11) => {
         line(label.toUpperCase(), x, yy, w, { size: 7.5, color: MUTED, font: 'Helvetica-Bold' });
-        line(value || '-', x, yy + 11, w, { size: 11, font: bold ? 'Helvetica-Bold' : 'Helvetica' });
+        line(value || '-', x, yy + 11, w, { size, font: bold ? 'Helvetica-Bold' : 'Helvetica' });
       };
       if (data.fields && data.fields.length) {
         data.fields.forEach((f, i) => {
@@ -200,47 +288,78 @@ export async function generateReceiptPdfBase64(
         });
         y += 6;
       } else {
-        field('Received from', data.payerName, L, y, colW, true);
-        field('Payment method', data.method, L + colW + 24, y, colW);
-        y += 38;
-        field('Pupil', data.studentName ? `${data.studentName}${data.admissionNo ? `  (${data.admissionNo})` : ''}` : undefined, L, y, colW, true);
-        field('Reference', data.reference, L + colW + 24, y, colW);
-        y += 38;
-        field('Class', data.className, L, y, colW);
-        field('Academic year', data.academicYear, L + colW + 24, y, colW);
-        y += 44;
+        // The pupil's card: photo on the left, details on the right.
+        const cardH = 104;
+        doc.roundedRect(L, y, CW, cardH, 8).lineWidth(0.75).fillAndStroke(ZEBRA, LINE);
+        const px = L + 12, py = y + 12, pw = 66, ph = 80;
+        let drewPhoto = false;
+        if (photo) {
+          try {
+            doc.save();
+            doc.roundedRect(px, py, pw, ph, 6).clip();
+            doc.image(photo, px, py, { cover: [pw, ph], align: 'center', valign: 'center' });
+            doc.restore();
+            doc.roundedRect(px, py, pw, ph, 6).lineWidth(1).strokeColor(LINE).stroke();
+            drewPhoto = true;
+          } catch {
+            doc.restore();
+          }
+        }
+        if (!drewPhoto) {
+          doc.roundedRect(px, py, pw, ph, 6).fill(NAVY);
+          line(initials(data.studentName || data.payerName), px, py + ph / 2 - 11, pw, { font: 'Helvetica-Bold', size: 22, color: '#ffffff', align: 'center' });
+        }
+        const cx = px + pw + 18;
+        const cw = R - 14 - cx;
+        const aw = cw * 0.56;
+        const bx = cx + aw + 14;
+        const bw = cw - aw - 14;
+        field('Pupil', data.studentName || data.payerName, cx, y + 11, aw, true, 13);
+        field('Received from', data.payerName, bx, y + 11, bw, true);
+        field('Admission no.', data.admissionNo, cx, y + 44, aw);
+        field('Payment method', data.method, bx, y + 44, bw);
+        field('Class  /  Academic year', [data.className, data.academicYear].filter(Boolean).join('   /   ') || undefined, cx, y + 77, aw);
+        field('Reference', data.reference, bx, y + 77, bw);
+        y += cardH + 20;
       }
 
       // ── What it paid for ─────────────────────────────────────────
-      const items = (data.items && data.items.length ? data.items : [{ label: 'School fees', amount: data.amount }]);
-      const rowH = 22;
+      const items: ReceiptItemData[] = data.items && data.items.length ? data.items : [{ label: 'School fees', amount: data.amount }];
+      line('WHAT THIS PAYMENT IS FOR', L, y, CW, { size: 8.5, font: 'Helvetica-Bold', color: NAVY });
+      y += 15;
       const tableHeader = (yy: number) => {
         doc.rect(L, yy, CW, 22).fill(NAVY);
-        line('DESCRIPTION', L + 12, yy + 7, CW * 0.65, { size: 8.5, font: 'Helvetica-Bold', color: '#ffffff' });
-        line('AMOUNT', L + CW * 0.65, yy + 7, CW * 0.35 - 12, { size: 8.5, font: 'Helvetica-Bold', color: '#ffffff', align: 'right' });
+        line('CHARGE', L + 12, yy + 7, CW * 0.7, { size: 8.5, font: 'Helvetica-Bold', color: '#ffffff' });
+        line('AMOUNT PAID', L + CW * 0.7, yy + 7, CW * 0.3 - 12, { size: 8.5, font: 'Helvetica-Bold', color: '#ffffff', align: 'right' });
         return yy + 22;
       };
       y = tableHeader(y);
       items.forEach((it, i) => {
-        if (y + rowH > H - 330 && i < items.length) {
-          // Long itemised receipts continue on the next page with the header repeated.
-          if (y + rowH > H - 150) { doc.addPage(); y = tableHeader(46); }
-        }
+        const rowH = it.detail ? 32 : 24;
+        // Long itemised receipts continue on the next page with the header repeated.
+        if (y + rowH > H - 130) { doc.addPage(); y = tableHeader(46); }
         if (i % 2 === 0) doc.rect(L, y, CW, rowH).fill(ZEBRA);
-        line(it.label, L + 12, y + 6, CW * 0.65 - 12, { size: 10 });
-        line(money(it.amount, currency), L + CW * 0.65, y + 6, CW * 0.35 - 12, { size: 10, font: 'Helvetica-Bold', align: 'right' });
+        if (it.detail) {
+          line(it.label, L + 12, y + 5, CW * 0.7 - 12, { size: 10.5, font: 'Helvetica-Bold' });
+          line(it.detail, L + 12, y + 19, CW * 0.7 - 12, { size: 8.5, color: MUTED });
+        } else {
+          line(it.label, L + 12, y + 7, CW * 0.7 - 12, { size: 10.5, font: 'Helvetica-Bold' });
+        }
+        line(money(it.amount, currency), L + CW * 0.7, y + (it.detail ? 10 : 7), CW * 0.3 - 12, { size: 10.5, font: 'Helvetica-Bold', align: 'right' });
         y += rowH;
       });
       doc.moveTo(L, y).lineTo(R, y).lineWidth(0.75).strokeColor(LINE).stroke();
 
       // ── Totals ────────────────────────────────────────────────────
-      if (y > H - 300) { doc.addPage(); y = 46; }
+      const hasBalance = data.balanceRemaining != null && Number.isFinite(Number(data.balanceRemaining)) && !refunded;
+      const verifyH = platform ? 70 : 112;
+      if (y + 14 + 66 + (hasBalance ? 46 : 0) + 18 + verifyH > H - 112) { doc.addPage(); y = 46; }
       y += 14;
       const boxW = 250;
       const boxX = R - boxW;
       doc.roundedRect(boxX, y, boxW, 52, 6).fill(refunded ? RED_BG : GREEN_BG);
-      line(refunded ? 'AMOUNT REFUNDED' : 'TOTAL PAID', boxX + 14, y + 9, boxW - 28, { size: 8, font: 'Helvetica-Bold', color: refunded ? RED : GREEN });
-      line(money(data.amount, currency), boxX + 14, y + 22, boxW - 28, { size: 19, font: 'Helvetica-Bold', color: refunded ? RED : GREEN });
+      line(refunded ? 'AMOUNT REFUNDED' : 'TOTAL PAID', boxX + 14, y + 9, boxW - 28, { size: 8, font: 'Helvetica-Bold', color: statusColor });
+      line(money(data.amount, currency), boxX + 14, y + 22, boxW - 28, { size: 19, font: 'Helvetica-Bold', color: statusColor });
 
       // Amount in words (left of the total box)
       line('AMOUNT IN WORDS', L, y + 4, CW - boxW - 16, { size: 7.5, font: 'Helvetica-Bold', color: MUTED });
@@ -248,9 +367,7 @@ export async function generateReceiptPdfBase64(
         .text(clean(amountInWords(data.amount)), L, y + 17, { width: CW - boxW - 16, height: 36, ellipsis: true });
 
       y += 66;
-      // Balance
-      const hasBalance = data.balanceRemaining != null && Number.isFinite(Number(data.balanceRemaining));
-      if (hasBalance && !refunded) {
+      if (hasBalance) {
         const owed = Number(data.balanceRemaining) > 0.005;
         doc.roundedRect(boxX, y, boxW, 34, 6).fill(owed ? AMBER_BG : GREEN_BG);
         line(owed ? 'BALANCE STILL OWED' : 'ACCOUNT STATUS', boxX + 14, y + 6, boxW - 28, { size: 7.5, font: 'Helvetica-Bold', color: owed ? AMBER : GREEN });
@@ -258,21 +375,40 @@ export async function generateReceiptPdfBase64(
         y += 46;
       }
 
-      // Status stamp
-      const stamp = data.status === 'refunded' ? 'REFUNDED' : data.status === 'part_refunded' ? 'PART REFUNDED' : 'PAID';
-      const stampW = stamp.length > 6 ? 150 : 90;
-      doc.roundedRect(L, y - 2, stampW, 30, 5).lineWidth(2).strokeColor(refunded ? RED : GREEN).stroke();
-      line(stamp, L, y + 6, stampW, { size: 14, font: 'Helvetica-Bold', color: refunded ? RED : GREEN, align: 'center' });
-      y += 52;
-
-      // ── Signatures ───────────────────────────────────────────────
-      if (y > H - 190) { doc.addPage(); y = 60; }
-      const sigY = Math.max(y + 18, H - 190);
-      const sigW = (CW - 40) / 2;
-      doc.moveTo(L, sigY).lineTo(L + sigW, sigY).lineWidth(0.75).strokeColor(MUTED).stroke();
-      doc.moveTo(R - sigW, sigY).lineTo(R, sigY).stroke();
-      line(data.receivedBy ? `Received by: ${data.receivedBy}` : 'Received by', L, sigY + 5, sigW, { size: 8.5, color: MUTED });
-      line(platform ? 'Authorised signature' : 'Authorised signature and school stamp', R - sigW, sigY + 5, sigW, { size: 8.5, color: MUTED });
+      // ── Electronic receipt + verification (replaces signature / stamp lines) ──
+      y += 8;
+      const issuedBy = platform ? 'WiSkul Billing' : clean(branding.name);
+      doc.roundedRect(L, y, CW, verifyH, 8).lineWidth(0.75).strokeColor(LINE).stroke();
+      if (!platform) {
+        const qs = 82;
+        const qx = L + 14, qy = y + (verifyH - qs) / 2;
+        if (qr) {
+          try { doc.image(qr, qx, qy, { width: qs, height: qs }); } catch { /* text code below still works */ }
+        } else {
+          doc.roundedRect(qx, qy, qs, qs, 6).lineWidth(0.75).strokeColor(LINE).stroke();
+          line('QR code', qx, qy + qs / 2 - 5, qs, { size: 8, color: MUTED, align: 'center' });
+        }
+        const tx = qx + qs + 18;
+        const tw = R - 14 - tx;
+        line('ELECTRONIC RECEIPT  -  NO SIGNATURE OR STAMP NEEDED', tx, y + 12, tw, { size: 8.5, font: 'Helvetica-Bold', color: NAVY });
+        doc.font('Helvetica').fontSize(8.2).fillColor(MUTED)
+          .text(
+            clean(`Issued automatically by ${issuedBy} when this payment was recorded${data.receivedBy ? ` by ${data.receivedBy}` : ''}. ` +
+              (data.verifyUrl
+                ? 'To check that it is genuine, scan the QR code, or go to the address below and enter the code. The page must show the same amount, date and pupil as this receipt.'
+                : 'Contact the school office with the receipt number to confirm it.')),
+            tx, y + 26, { width: tw, height: 40, lineBreak: true },
+          );
+        if (data.verifyCode) {
+          line('VERIFICATION CODE', tx, y + 70, 120, { size: 7, font: 'Helvetica-Bold', color: MUTED });
+          line(data.verifyCode, tx, y + 80, tw, { size: 13, font: 'Courier-Bold', color: NAVY });
+          if (data.verifyUrl) line(verifyPageOf(data.verifyUrl), tx, y + 97, tw, { size: 7.5, color: MUTED });
+        }
+      } else {
+        line('ELECTRONIC RECEIPT  -  NO SIGNATURE OR STAMP NEEDED', L + 14, y + 14, CW - 28, { size: 8.5, font: 'Helvetica-Bold', color: NAVY });
+        doc.font('Helvetica').fontSize(8.2).fillColor(MUTED)
+          .text(clean(`Issued automatically by ${issuedBy} when this payment was received. Questions about this receipt: contact WiSkul support with the receipt number.`), L + 14, y + 30, { width: CW - 28, height: 30 });
+      }
 
       // ── Footer ───────────────────────────────────────────────────
       const fy = H - 96;

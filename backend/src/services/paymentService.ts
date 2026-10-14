@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { logger } from '@utils/logger';
 import { AuditService } from './auditService';
 import { nextReceiptNumber, studentOutstanding } from './finance/core';
+import { recordAllocations, allocationForFee, allocationForCredit, type AllocationInput } from './finance/allocations';
 
 export interface PaymentData {
   feeId: string;
@@ -95,6 +96,7 @@ export class PaymentService {
       receiptNumber = await nextReceiptNumber(trx, input.tenantId, paymentDate);
 
       let remaining = amount;
+      const allocations: AllocationInput[] = [];
       for (const fee of fees) {
         if (remaining <= 0.005) break;
         const bal = round2(Math.max(0, Number(fee.balance) || 0));
@@ -124,6 +126,7 @@ export class PaymentService {
         if (newBalance <= 0.005) newBalance = 0;
         await trx('fees').where('id', fee.id).update({ balance: newBalance, status: newBalance === 0 ? 'paid' : 'partial', updated_at: new Date() });
         created.push(row);
+        allocations.push(allocationForFee({ tenantId: input.tenantId, paymentId: row.id, receiptNumber }, fee, pay));
         remaining = round2(remaining - pay);
       }
       // Cash above what was owed: keep it as account credit (its own payment row).
@@ -139,8 +142,11 @@ export class PaymentService {
         await trx('payments').insert(extra);
         await trx('student_credits').insert({ tenant_id: input.tenantId, student_id: studentId, kind: 'overpayment', amount: remaining, payment_id: extra.id, reason: `Overpayment on receipt ${receiptNumber}`, created_by: userId });
         created.push(extra);
+        allocations.push(allocationForCredit({ tenantId: input.tenantId, paymentId: extra.id, receiptNumber }, remaining));
         credit = remaining;
       }
+      // What this payment paid for, kept with it (read by the receipt and the reports).
+      await recordAllocations(trx, allocations);
       // The student's total balance right after this payment (for the receipt).
       balanceAfter = await studentOutstanding(trx, input.tenantId, fees[0].student_id);
       await trx('payments').whereIn('id', created.map((p) => p.id)).update({ balance_after: balanceAfter });
@@ -233,6 +239,9 @@ export class PaymentService {
         };
 
         await trx('payments').insert(payment);
+        if (fee.tenant_id) {
+          await recordAllocations(trx, [allocationForFee({ tenantId: fee.tenant_id, paymentId, receiptNumber }, fee, amount)]);
+        }
 
         // Update fee balance and status. Anything under half a cent is paid.
         let newBalance = round2(balance - amount);

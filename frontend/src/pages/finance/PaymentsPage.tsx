@@ -28,7 +28,7 @@ import { ExportButton } from '@components/admin/common/ExportButton';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
-import { StudentAccountModal } from '@components/finance/StudentAccount';
+import { StudentAccountModal, ReceiptItemLines, useReceiptDetail } from '@components/finance/StudentAccount';
 import { StudentPicker, type PickedStudent } from '@components/finance/StudentPicker';
 import { usePaged, TablePager } from '@components/admin/table/TablePager';
 import { bursarService } from '@services/bursarService';
@@ -38,6 +38,7 @@ import { classesService } from '@services/classesService';
 import { schoolConfigService } from '@services/schoolConfigService';
 import { financeLedgerService, LedgerTerm } from '@services/financeLedgerService';
 import { fmtMoney, statusPill, SwipeHint } from './FinanceOverviewCards';
+import { HEADER_BTN, HEADER_EXPORT, BtnLabel } from '@components/finance/AccountingUi';
 
 // Academic sections — the true 3-tier hierarchy used by the school:
 //   Nursery (Nursery 1–3), Primary (Class 1–6), Secondary → JSS 1–3 / SSS 1–3.
@@ -249,15 +250,17 @@ export const PaymentsPage: React.FC = () => {
         subtitle="Monitor and manage all fee collections across classes, levels and terms"
         onRefresh={refetchAll}
         isRefreshing={isLoading || anLoading}
+        mobileLabels
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <YearFilter value={year} onChange={setYear} includeAllOption />
-            <div className="relative hidden sm:block">
+            <div className="relative shrink-0">
               <select
                 value={exportStatus}
                 onChange={(e) => setExportStatus(e.target.value)}
                 title="Scope the exported fees report"
-                className="appearance-none pl-3 pr-8 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                aria-label="Report scope"
+                className="appearance-none min-h-[40px] sm:min-h-0 pl-3 pr-8 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               >
                 <option value="">Report: All students</option>
                 <option value="unpaid">Report: Unpaid only</option>
@@ -270,11 +273,12 @@ export const PaymentsPage: React.FC = () => {
               endpoint="/api/v1/finance/export"
               filename={exportStatus === 'unpaid' ? 'unpaid-students-report' : 'student-fees-report'}
               label="Export Report"
+              className={HEADER_EXPORT}
               params={{ section: sectionFilter || undefined, className: classFilter || undefined, status: exportStatus || undefined, academic_year: year || undefined }}
             />
-            <Button variant="outline" size="sm" onClick={() => setRemindOpen(true)}><Bell size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Send Reminders</span></Button>
-            <Button variant="outline" size="sm" onClick={() => setBulkOpen(true)}><Receipt size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Email receipts</span></Button>
-            <Button variant="create" size="sm" onClick={() => setRecordOpen(true)}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Record Payment</span></Button>
+            <Button variant="outline" size="sm" className={HEADER_BTN} onClick={() => setRemindOpen(true)}><Bell size={15} /><BtnLabel short="Reminders">Send Reminders</BtnLabel></Button>
+            <Button variant="outline" size="sm" className={HEADER_BTN} onClick={() => setBulkOpen(true)}><Receipt size={15} /><BtnLabel>Email receipts</BtnLabel></Button>
+            <Button variant="create" size="sm" className={HEADER_BTN} onClick={() => setRecordOpen(true)}><Plus size={15} /><BtnLabel>Record payment</BtnLabel></Button>
           </div>
         }
       >
@@ -397,6 +401,9 @@ export const PaymentsPage: React.FC = () => {
           )}
         </div>
 
+        {/* ── Collected by fee type (what the money paid for) ── */}
+        <FeeTypeCard rows={a?.byFeeType ?? []} unattributed={a?.byFeeTypeUnattributed} loading={anLoading} year={year} />
+
         {/* ── Top defaulters + recent activity ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
@@ -486,6 +493,7 @@ export const PaymentsPage: React.FC = () => {
                   <th className="px-4 py-3.5 whitespace-nowrap">Date</th>
                   <th className="px-4 py-3.5 whitespace-nowrap">Student</th>
                   <th className="px-4 py-3.5 whitespace-nowrap">Class</th>
+                  <th className="px-4 py-3.5 whitespace-nowrap">Paid for</th>
                   <th className="px-4 py-3.5 text-right whitespace-nowrap">Amount</th>
                   <th className="px-4 py-3.5 text-right whitespace-nowrap">Total Billed</th>
                   <th className="px-4 py-3.5 text-right whitespace-nowrap">Balance</th>
@@ -503,8 +511,13 @@ export const PaymentsPage: React.FC = () => {
                       <td className="px-4 py-3 whitespace-nowrap">
                         <button type="button" onClick={() => setAccount({ id: p.student_id, name: p.student_name, admissionNo: p.admission_no })} className="font-medium text-blue-700 dark:text-blue-300 hover:underline">{p.student_name}</button>
                         <div className="text-xs text-gray-400">{p.admission_no}{p.receipt_number ? <span className="ml-1 font-mono">· {p.receipt_number}</span> : null}</div>
+                        {/* On phones the table scrolls sideways, so repeat what it paid for under the name. */}
+                        {p.paid_for && <div className="sm:hidden mt-0.5 max-w-[14rem] truncate text-xs text-gray-600 dark:text-gray-300" title={p.paid_for}>{p.paid_for}</div>}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-400">{p.class_name || '—'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[16rem]">
+                        {p.paid_for ? <span className="block truncate" title={p.paid_for}>{p.paid_for}</span> : <span className="text-gray-400">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-right font-semibold whitespace-nowrap">{fmtMoney(p.amount)}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap text-gray-600 dark:text-gray-400">{fmtMoney(p.student_total_billed)}</td>
                       <td className={`px-4 py-3 text-right whitespace-nowrap font-semibold ${Number(p.student_balance) > 0 ? 'text-rose-600' : 'text-gray-400'}`}>{fmtMoney(p.student_balance)}</td>
@@ -566,6 +579,64 @@ const HubStat: React.FC<{ label: string; value: string; sub?: string; color: str
     {sub && <div className="text-[11px] text-gray-400 mt-1">{sub}</div>}
   </div>
 );
+
+// ── Collected by fee type ─────────────────────────────────────────────────────
+type FeeTypeRow = { feeType: string; amount: number; payments: number; share: number };
+const FeeTypeCard: React.FC<{ rows: FeeTypeRow[]; unattributed?: { amount: number; payments: number }; loading?: boolean; year?: string | null }> = ({ rows, unattributed, loading, year }) => {
+  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const missing = Number(unattributed?.amount) || 0;
+  return (
+    <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 mb-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <h3 className="text-sm font-bold text-gray-900 dark:text-white">Collected by fee type</h3>
+        {rows.length > 0 && <span className="text-xs text-gray-500">{fmtMoney(total)}{year ? ` · ${year}` : ' · all years'}</span>}
+      </div>
+      {loading ? (
+        <div className="h-24 rounded-xl bg-gray-100 dark:bg-gray-700/50 animate-pulse" />
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-gray-400 py-6 text-center">Fee-type totals appear for payments recorded from now on.</p>
+      ) : (
+        <>
+          <SwipeHint />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-gray-500 border-b border-gray-100 dark:border-gray-700">
+                <tr>
+                  <th className="py-2 pr-4 whitespace-nowrap">Fee type</th>
+                  <th className="py-2 px-4 text-right whitespace-nowrap">Collected</th>
+                  <th className="py-2 px-4 text-right whitespace-nowrap">Receipts</th>
+                  <th className="py-2 px-4 whitespace-nowrap w-44">Share</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
+                {rows.map((r) => (
+                  <tr key={r.feeType}>
+                    <td className="py-2.5 pr-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{r.feeType}</td>
+                    <td className="py-2.5 px-4 text-right text-emerald-600 whitespace-nowrap">{fmtMoney(r.amount)}</td>
+                    <td className="py-2.5 px-4 text-right text-gray-600 dark:text-gray-300 whitespace-nowrap">{r.payments}</td>
+                    <td className="py-2.5 px-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden min-w-[60px]" role="img" aria-label={`${r.feeType}: ${r.share}% of fee-type collections`}>
+                          <div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.min(100, Math.max(0, r.share))}%` }} />
+                        </div>
+                        <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 w-12 text-right">{r.share}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {missing > 0 && (
+            <p className="mt-3 text-[11px] text-gray-500">
+              Not included: {fmtMoney(missing)} from {unattributed?.payments} earlier payment{unattributed?.payments === 1 ? '' : 's'} (mostly online) that were recorded without a fee-type split.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
 
 const newKey = () => (globalThis.crypto as any)?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -986,6 +1057,14 @@ const ReceiptModal: React.FC<{ payment: any; school?: any; onClose: () => void }
   const balance = payment.balance_after != null ? Number(payment.balance_after) : (Number(payment.student_balance) || 0);
   const settled = balance <= 0;
 
+  // What this payment paid for: the lines of its receipt (fee type, term/year,
+  // amount). A receipt can cover several payments, so keep this payment's own
+  // lines when the receipt says which they are.
+  const detail = useReceiptDetail(payment.receipt_number);
+  const allItems = detail.data?.items || [];
+  const ownItems = allItems.filter((it) => String(it.payment_id) === String(payment.id));
+  const items = ownItems.length ? ownItems : allItems;
+
   const schoolName = school?.name || 'School';
   const schoolAddress = [school?.address, school?.city, school?.state, school?.country].filter(Boolean).join(', ');
   const schoolContacts = [school?.phone, school?.email, school?.website].filter(Boolean).join('  •  ');
@@ -1041,6 +1120,20 @@ const ReceiptModal: React.FC<{ payment: any; school?: any; onClose: () => void }
           <Row label="Method" value={meta.label} />
           <Row label="Reference" value={payment.provider_reference || payment.transaction_reference || '—'} />
         </div>
+
+        {/* What this payment paid for */}
+        {(items.length > 0 || payment.paid_for || detail.isLoading) && (
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 text-sm">
+            <div className="text-[11px] uppercase tracking-wider text-gray-400 font-bold mb-2">Paid for</div>
+            {items.length > 0 ? (
+              <div className="text-xs"><ReceiptItemLines items={items} /></div>
+            ) : detail.isLoading ? (
+              <Loader2 size={16} className="animate-spin text-gray-400" />
+            ) : (
+              <div className="font-medium text-gray-900 dark:text-white">{payment.paid_for}</div>
+            )}
+          </div>
+        )}
 
         {/* Fee account summary */}
         <div className="px-5 py-4 space-y-2.5 text-sm bg-gray-50 dark:bg-gray-900/40">
@@ -1115,6 +1208,22 @@ const ReceiptModal: React.FC<{ payment: any; school?: any; onClose: () => void }
               <tr><td>Status</td><td>{cap(payment.status || 'completed')}</td></tr>
             </tbody>
           </table>
+
+          {/* What the payment was for */}
+          {(items.length > 0 || payment.paid_for) && (
+            <>
+              <div className="rcpt-summary-title">Paid For</div>
+              <table className="rcpt-table">
+                <tbody>
+                  {items.length > 0
+                    ? items.map((it, i) => (
+                      <tr key={`${it.payment_id}-${i}`}><td>{it.label}{it.detail ? ` · ${it.detail}` : ''}</td><td>{fmtMoney(it.amount)}</td></tr>
+                    ))
+                    : <tr><td>{payment.paid_for}</td><td>{fmtMoney(payment.amount)}</td></tr>}
+                </tbody>
+              </table>
+            </>
+          )}
 
           {/* Fee account summary */}
           <div className="rcpt-summary-title">Fee Account Summary</div>

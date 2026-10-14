@@ -33,7 +33,7 @@ export const HouseChip: React.FC<{ name?: string | null; color?: string | null; 
   if (!name) return <span className="text-xs text-gray-400">No house yet</span>;
   return (
     <span
-      className={`inline-flex items-center rounded-full font-bold ${large ? 'px-4 py-1.5 text-base' : 'px-2.5 py-0.5 text-xs'}`}
+      className={`inline-flex max-w-full items-center rounded-full font-bold break-words ${large ? 'px-4 py-1.5 text-base' : 'px-2.5 py-0.5 text-xs'}`}
       style={{ backgroundColor: color || '#6b7280', color: textOn(color) }}
     >
       {name}

@@ -63,6 +63,23 @@ export interface ListSlotsParams {
 
 export const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/**
+ * The day tab to open by default: today if it's a school day, else the next
+ * school day (Saturday/Sunday → Monday), else the first day.
+ */
+export function defaultSchoolDay(days: string[] = DAYS_OF_WEEK, now: Date = new Date()): string {
+  if (days.length === 0) return '';
+  const lower = days.map((d) => d.toLowerCase());
+  for (let i = 0; i < 7; i++) {
+    const name = WEEKDAY_NAMES[(now.getDay() + i) % 7].toLowerCase();
+    const idx = lower.indexOf(name);
+    if (idx !== -1) return days[idx];
+  }
+  return days[0];
+}
+
 /** Period structure varies by school level */
 export type SchoolLevel = 'nursery' | 'primary' | 'jss' | 'sss';
 

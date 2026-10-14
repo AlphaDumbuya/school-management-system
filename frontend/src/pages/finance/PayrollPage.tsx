@@ -23,6 +23,7 @@ import { le, Pill } from '@components/finance/StudentAccount';
 import { usePaged, TablePager } from '@components/admin/table/TablePager';
 import { ChartCard } from '@components/admin/charts/ChartCard';
 import { fmtLeShort, NO_SERIES } from '@lib/chartFormat';
+import { HEADER_BTN, BtnLabel } from '@components/finance/AccountingUi';
 
 const input = 'w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm';
 const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
@@ -282,8 +283,8 @@ export const PayrollPage: React.FC = () => {
 
   return (
     <MainLayout>
-      <PageShell title="Payroll" subtitle="Monthly salaries, PAYE and NASSIT, payslips"
-        actions={tab === 'runs' ? <Button size="sm" variant="create" onClick={() => setGenOpen(true)}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">New pay run</span></Button> : undefined}>
+      <PageShell title="Payroll" subtitle="Monthly salaries, PAYE and NASSIT, payslips" mobileLabels
+        actions={tab === 'runs' ? <Button size="sm" variant="create" className={HEADER_BTN} onClick={() => setGenOpen(true)}><Plus size={15} /><BtnLabel>New pay run</BtnLabel></Button> : undefined}>
         <div role="tablist" aria-label="Payroll" className="mb-4 inline-flex gap-1 rounded-xl bg-gray-100 dark:bg-gray-900/50 p-1">
           {([['runs', 'Pay runs'], ['staff', 'Staff pay'], ['settings', 'PAYE & NASSIT']] as const).map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${tab === k ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500'}`}>{l}</button>
