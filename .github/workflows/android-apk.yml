@@ -156,7 +156,10 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.release_tag != '' && github.event.inputs.release_tag || 'android-latest' }}
           name: WiSkul Android APK
-          body: ${{ env.HAS_RELEASE_KEYSTORE == 'true' && 'Latest WiSkul Android app (release-signed). Direct download; allow "install unknown apps" for your browser if Android asks.' || 'Latest WiSkul Android app (DEBUG-signed: add the release keystore secrets). Direct download; allow "install unknown apps" if Android asks.' }}
+          # Block scalar: the text contains ": " and quotes, which break a plain
+          # YAML value (GitHub then rejects the whole workflow file).
+          body: >-
+            ${{ env.HAS_RELEASE_KEYSTORE == 'true' && 'Latest WiSkul Android app (release-signed). Direct download; allow "install unknown apps" for your browser if Android asks.' || 'Latest WiSkul Android app (DEBUG-signed: add the release keystore secrets). Direct download; allow "install unknown apps" if Android asks.' }}
           files: apk-out/wiskul.apk
           fail_on_unmatched_files: true
         env:
