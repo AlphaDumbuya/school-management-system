@@ -6,6 +6,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
+import { Modal } from '@components/admin/feedback/Modal';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@hooks/useAuth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1247,21 +1248,31 @@ export const StudentProfilesPage: React.FC = () => {
         )}
 
         {/* ── CREATE PARENT ACCOUNT MODAL ── */}
-        {parentModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-gray-850 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-150 dark:border-gray-750 relative space-y-5">
-              <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-750 pb-4">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Create Parent Portal Account</h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Link parent credentials to {student?.first_name} {student?.last_name}</p>
-                </div>
-                <button
-                  onClick={() => setParentModalOpen(false)}
-                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                >
-                  <XCircle size={20} />
-                </button>
-              </div>
+        {/* Shared Modal: portalled to <body>, so the page's animated wrapper
+            (a transform ancestor) can't turn it into an in-flow block below
+            the page. Full sheet on phones, centred card from sm up. */}
+        <Modal
+          isOpen={parentModalOpen}
+          onClose={() => setParentModalOpen(false)}
+          title="Create Parent Portal Account"
+          size="sm"
+          footer={createdCredentials ? (
+            <Button onClick={() => setParentModalOpen(false)} className="w-full sm:w-auto">
+              Done
+            </Button>
+          ) : (
+            <>
+              <Button type="button" variant="outline" onClick={() => setParentModalOpen(false)} className="flex-1 sm:flex-initial">
+                Cancel
+              </Button>
+              <Button type="submit" form="create-parent-account-form" disabled={isCreatingParent} className="flex-1 sm:flex-initial">
+                {isCreatingParent ? 'Creating...' : 'Create Account'}
+              </Button>
+            </>
+          )}
+        >
+            <div className="space-y-5">
+              <p className="text-xs text-gray-500 dark:text-gray-400 break-words">Link parent credentials to {student?.first_name} {student?.last_name}</p>
 
               {createdCredentials ? (
                 <div className="space-y-4 py-2">
@@ -1273,8 +1284,8 @@ export const StudentProfilesPage: React.FC = () => {
                       Parent can now log in using the following details:
                     </p>
                     <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 font-mono text-xs space-y-2">
-                      <p><span className="text-gray-400">Email:</span> <strong className="text-gray-900 dark:text-white">{createdCredentials.email}</strong></p>
-                      <div className="flex items-center justify-between">
+                      <p className="break-all"><span className="text-gray-400">Email:</span> <strong className="text-gray-900 dark:text-white">{createdCredentials.email}</strong></p>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <p><span className="text-gray-400">Temporary Password:</span> <strong className="text-blue-600 dark:text-blue-400 font-bold ml-1">{showModalPassword ? createdCredentials.tempPass : '••••••••'}</strong></p>
                         <button
                           type="button"
@@ -1286,12 +1297,9 @@ export const StudentProfilesPage: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  <Button onClick={() => setParentModalOpen(false)} className="w-full">
-                    Done
-                  </Button>
                 </div>
               ) : (
-                <form onSubmit={handleCreateParentAccount} className="space-y-4">
+                <form id="create-parent-account-form" onSubmit={handleCreateParentAccount} className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">Parent Email *</label>
                     <input
@@ -1359,19 +1367,10 @@ export const StudentProfilesPage: React.FC = () => {
                     />
                   </div>
 
-                  <div className="flex gap-3 pt-3 border-t border-gray-100 dark:border-gray-750">
-                    <Button type="button" variant="outline" onClick={() => setParentModalOpen(false)} className="flex-1">
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={isCreatingParent} className="flex-1">
-                      {isCreatingParent ? 'Creating...' : 'Create Account'}
-                    </Button>
-                  </div>
                 </form>
               )}
             </div>
-          </div>
-        )}
+        </Modal>
       </PageShell>
       <ConfirmationDialog
         isOpen={!!confirmReset}

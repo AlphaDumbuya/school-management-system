@@ -29,6 +29,13 @@ export interface PageShellProps {
   onRefresh?: () => void | Promise<unknown>;
   /** Drive the refresh spinner from the parent (optional). */
   isRefreshing?: boolean;
+  /**
+   * Phone-friendly header actions: the Refresh control keeps its "Refresh"
+   * text on small screens and gets a ~40px tap target, matching action
+   * buttons that also show their labels. Opt-in so other pages keep their
+   * current header until they adopt it.
+   */
+  mobileLabels?: boolean;
   children: React.ReactNode;
 }
 
@@ -53,6 +60,7 @@ export const PageShell: React.FC<PageShellProps> = ({
   tabs,
   onRefresh,
   isRefreshing,
+  mobileLabels = false,
   children,
 }) => {
   // Most data-heavy pages provide a targeted refetch through `onRefresh`.
@@ -68,7 +76,12 @@ export const PageShell: React.FC<PageShellProps> = ({
   // Wraps onto extra lines on small screens instead of overflowing.
   const headerActions = (
     <div className="flex flex-wrap items-center gap-2 min-w-0">
-      <RefreshButton onRefresh={refresh} isRefreshing={isRefreshing} />
+      <RefreshButton
+        onRefresh={refresh}
+        isRefreshing={isRefreshing}
+        labelOnMobile={mobileLabels}
+        className={mobileLabels ? 'min-h-[40px] sm:min-h-0 whitespace-nowrap shrink-0' : ''}
+      />
       {actions}
     </div>
   );
@@ -76,7 +89,7 @@ export const PageShell: React.FC<PageShellProps> = ({
     // No horizontal padding on mobile: MainLayout's <main> already provides p-3.
     // Only re-introduce inner gutters at larger breakpoints, keeping the page
     // centred with a max width. This avoids the "choked" double-padding on phones.
-    <div className="max-w-7xl mx-auto sm:px-2 lg:px-4 py-2 sm:py-4 pb-[calc(env(safe-area-inset-bottom,0px)+5rem)] sm:pb-6">
+    <div className="max-w-7xl mx-auto sm:px-2 lg:px-4 py-2 sm:py-4 pb-2 sm:pb-6">
       {/* Breadcrumb — only when breadcrumbs array is non-empty */}
       {breadcrumbs && breadcrumbs.length > 0 && (
         <Breadcrumb items={breadcrumbs} />

@@ -181,25 +181,28 @@ export class SubscriptionCheckout {
 
     logger.info(`Subscription payment reconciled — tenant ${session.tenant_id} now on ${session.plan_type} (session ${sessionId})`);
 
-    // Payment confirmation / receipt to the school contact (best-effort).
+    // Payment confirmation / receipt to the school owner(s) and billing contact (best-effort).
     try {
-      const { tenantContactEmail } = await import('../jobs/subscriptionJobs.js');
-      const to = await tenantContactEmail(session.tenant_id);
-      if (to) {
+      const { billingRecipients } = await import('../jobs/subscriptionJobs.js');
+      const recipients = await billingRecipients(session.tenant_id);
+      if (recipients.length) {
         const [tenant, sub, limits] = await Promise.all([
           db('tenants').where({ id: session.tenant_id }).first('name'),
           SubscriptionService.getActiveSubscription(session.tenant_id),
           planLimits(session.plan_type),
         ]);
         const { default: emailService } = await import('./emailService.js');
-        await emailService.sendSubscriptionLifecycleEmail(to, {
-          kind: 'payment_received', schoolName: tenant?.name || 'your school', planName: limits.name,
-          amount: Number(session.amount) || undefined, billingCycle: session.billing_cycle, endDate: sub?.end_date || null,
-          // Same receipt number on any resend: derived from the payment session.
-          receiptNumber: `SUB-${new Date().getFullYear()}-${String(session.id).replace(/-/g, '').slice(0, 8).toUpperCase()}`,
-          reference: session.provider_session_id || undefined,
-          paidAt: new Date(),
-        });
+        const paidAt = new Date();
+        for (const to of recipients) {
+          await emailService.sendSubscriptionLifecycleEmail(to, {
+            kind: 'payment_received', schoolName: tenant?.name || 'your school', planName: limits.name,
+            amount: Number(session.amount) || undefined, billingCycle: session.billing_cycle, endDate: sub?.end_date || null,
+            // Same receipt number on any resend: derived from the payment session.
+            receiptNumber: `SUB-${paidAt.getFullYear()}-${String(session.id).replace(/-/g, '').slice(0, 8).toUpperCase()}`,
+            reference: session.provider_session_id || undefined,
+            paidAt,
+          }).catch((e: any) => logger.warn(`Subscription payment email to ${to} failed: ${e?.message || e}`));
+        }
       }
     } catch (mailErr: any) {
       logger.warn(`Subscription payment email failed for tenant ${session.tenant_id}: ${mailErr?.message || mailErr}`);

@@ -15,7 +15,8 @@
  *   />
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useId } from 'react';
+import { AnchoredMenu, focusAnchor, menuItemClass } from './AnchoredMenu';
 
 export type DropdownItem =
   | { type: 'separator' }
@@ -40,73 +41,62 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
   align = 'right',
 }) => {
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
-
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [open]);
+  // Anchor = the wrapper around the caller's trigger. It's focusable only so
+  // Escape/Tab can hand focus back to it; the caller's button stays the
+  // keyboard target (Enter/Space on it bubbles a click to this wrapper).
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
 
   return (
-    <div ref={containerRef} className="relative inline-flex">
-      <div onClick={() => setOpen((v) => !v)} className="cursor-pointer">
+    <div className="relative inline-flex">
+      <div
+        ref={anchorRef}
+        tabIndex={-1}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        className="cursor-pointer outline-none"
+      >
         {trigger}
       </div>
 
-      {open && (
-        <div
-          role="menu"
-          className={`absolute top-full mt-1 z-30 bg-white border border-gray-200 rounded-xl shadow-lg min-w-[160px] py-1 ${
-            align === 'right' ? 'right-0' : 'left-0'
-          }`}
-        >
-          {items.map((item, i) => {
-            if ('type' in item && item.type === 'separator') {
-              return <div key={i} className="my-1 border-t border-gray-100" />;
-            }
+      {/* Portalled + positioned from the trigger rect (see AnchoredMenu). */}
+      <AnchoredMenu
+        id={menuId}
+        anchorRef={anchorRef}
+        open={open}
+        onClose={() => setOpen(false)}
+        align={align === 'right' ? 'end' : 'start'}
+        className="min-w-[160px]"
+      >
+        {items.map((item, i) => {
+          if ('type' in item && item.type === 'separator') {
+            return <div key={i} role="separator" className="my-1 border-t border-gray-100 dark:border-gray-700" />;
+          }
 
-            const menuItem = item as Extract<DropdownItem, { label: string }>;
-            const isDestructive = menuItem.variant === 'destructive';
+          const menuItem = item as Extract<DropdownItem, { label: string }>;
 
-            return (
-              <button
-                key={i}
-                role="menuitem"
-                disabled={menuItem.disabled}
-                className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                  isDestructive
-                    ? 'text-red-600 hover:bg-red-50'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-                onClick={() => {
-                  menuItem.onClick();
-                  setOpen(false);
-                }}
-              >
-                {menuItem.icon && <span className="flex-shrink-0">{menuItem.icon}</span>}
-                {menuItem.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
+          return (
+            <button
+              key={i}
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              disabled={menuItem.disabled}
+              className={menuItemClass(menuItem.variant)}
+              onClick={() => {
+                menuItem.onClick();
+                focusAnchor(anchorRef.current);
+                setOpen(false);
+              }}
+            >
+              {menuItem.icon && <span className="flex-shrink-0">{menuItem.icon}</span>}
+              {menuItem.label}
+            </button>
+          );
+        })}
+      </AnchoredMenu>
     </div>
   );
 };

@@ -18,6 +18,7 @@ import { showToast } from '@utils/toast';
 import { financeService } from '@services/financeService';
 import { classesService } from '@services/classesService';
 import { FinanceOverviewCards, fmtMoney, statusPill, SwipeHint } from './FinanceOverviewCards';
+import { HEADER_BTN, HEADER_EXPORT, BtnLabel } from '@components/finance/AccountingUi';
 import { PayFeesButton } from '@components/finance/PayFeesButton';
 import { ExportButton } from '@components/admin/common/ExportButton';
 import { YearFilter } from '@components/common/YearFilter';
@@ -134,12 +135,13 @@ export const InvoicesPage: React.FC = () => {
         subtitle="Generate and track student fee invoices"
         onRefresh={refetchAll}
         isRefreshing={isLoading || ovLoading}
+        mobileLabels
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <YearFilter value={year} onChange={setYear} includeAllOption />
-            <ExportButton endpoint="/api/v1/finance/invoices/export" filename="invoices" params={{ status: statusFilter || undefined, academic_year: year || undefined }} />
+            <ExportButton className={HEADER_EXPORT} endpoint="/api/v1/finance/invoices/export" filename="invoices" params={{ status: statusFilter || undefined, academic_year: year || undefined }} />
             {!viewingPast && !viewingAll && (
-              <Button variant="create" size="sm" onClick={() => setGenOpen(true)}><FileStack size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Generate Invoices</span></Button>
+              <Button variant="create" size="sm" className={HEADER_BTN} onClick={() => setGenOpen(true)}><FileStack size={15} /><BtnLabel short="Generate">Generate Invoices</BtnLabel></Button>
             )}
           </div>
         }

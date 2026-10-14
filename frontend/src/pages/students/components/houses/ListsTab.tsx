@@ -46,7 +46,7 @@ export const ListsTab: React.FC<{ summary?: HouseSummary; onChanged: () => void 
   return (
     <div className="space-y-6">
       {summary && summary.by_class.length > 0 && houses.length > 0 && (
-        <section aria-labelledby="by-class-h" className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+        <section aria-labelledby="by-class-h" className="max-w-full overflow-x-auto overscroll-x-contain rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
           <h2 id="by-class-h" className="px-4 pt-3 text-base font-bold text-gray-900 dark:text-white">Students by class and house</h2>
           <table className="mt-2 w-full min-w-[520px] text-sm">
             <thead>
@@ -100,7 +100,7 @@ export const ListsTab: React.FC<{ summary?: HouseSummary; onChanged: () => void 
         ) : rows.length === 0 ? (
           <EmptyState message="No students found" description="Change the house, class or search." />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+          <div className="max-w-full overflow-x-auto overscroll-x-contain rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
             <table className="w-full min-w-[560px] text-sm">
               <caption className="sr-only">Students and their houses</caption>
               <thead>

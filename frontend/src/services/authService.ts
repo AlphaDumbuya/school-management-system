@@ -114,7 +114,10 @@ export const authService = {
    */
   logout: async (): Promise<void> => {
     try {
-      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT);
+      // Send this device's refresh token so the server ends only THIS session,
+      // not the user's other active sessions (another tab, phone or laptop).
+      const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT, refreshToken ? { refresh_token: refreshToken } : undefined);
     } catch (error) {
       console.error('Logout error:', error);
     } finally {

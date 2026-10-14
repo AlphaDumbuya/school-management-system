@@ -128,6 +128,10 @@ export const ResultsPage: React.FC = () => {
     };
   }, [savedCard, ratingsTerm]);
 
+  // Header Refresh: refetch every query on screen (this page's lists plus the
+  // score grid / ranking / ratings panels, which own their own queries).
+  const refreshPage = () => queryClient.refetchQueries({ type: 'active' });
+
   // Students get a read-only view of ONLY their own published results.
   if (isStudent) {
     return <StudentResultsView />;
@@ -139,12 +143,19 @@ export const ResultsPage: React.FC = () => {
 
   return (
     <MainLayout>
+      {/* Phones: the header's Refresh sits to the RIGHT of the year filter, a
+          little wider and labelled. PageShell renders it as the first button
+          beside our actions; the marked year-filter box finds that row. */}
+      <div className="max-sm:[&_div:has(>[data-results-year])]:w-full max-sm:[&_div:has(>[data-results-year])]:flex-nowrap max-sm:[&_div:has(>[data-results-year])>button:first-child]:flex-shrink-0 max-sm:[&_div:has(>[data-results-year])>button:first-child]:px-4 max-sm:[&_div:has(>[data-results-year])>button:first-child>span]:inline">
       <PageShell
         title={readOnlyStaff ? 'Results & Grades' : 'Results & Grade Entry'}
         subtitle={readOnlyStaff ? 'Class rankings per term (view only). Scores are entered by teachers.' : 'Sierra Leone terminal booklet — Test 1 + Test 2 → Mean, per subject, per term'}
         breadcrumbs={[{ label: 'Results & Grades' }]}
+        // Refetch this page's data (classes, students, scores, rankings) in
+        // place. Without this PageShell falls back to reloading the whole app.
+        onRefresh={refreshPage}
         actions={
-          <div className="w-full sm:w-44">
+          <div data-results-year className="order-first min-w-0 flex-1 sm:order-none sm:flex-none sm:w-44">
             <YearFilter value={academicYear} onChange={setAcademicYear} noAutoSelect className="w-full [&_select]:w-full" />
           </div>
         }
@@ -312,6 +323,7 @@ export const ResultsPage: React.FC = () => {
         )}
 
       </PageShell>
+      </div>
 
       {selectedStudent && (
         <DomainRatingsModal

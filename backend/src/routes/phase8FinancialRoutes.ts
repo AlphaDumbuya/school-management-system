@@ -1823,11 +1823,58 @@ router.get('/finance/payments', authenticate, requireStaff, async (req: Request,
       )
       .orderBy('payments.payment_date', 'desc')
       .limit(1000);
+    // "Paid for" per payment: from the split recorded with the payment
+    // (payment_allocations), else the fee the payment points at, else a generic
+    // line for online payments. Separate queries that tolerate a database
+    // without the allocations table, so the ledger always loads.
+    const paidForLabel = (type?: string | null, term?: string | null, credit?: boolean) => {
+      if (credit) return 'Account credit';
+      const t = (type || '').trim() || 'Fee';
+      return term ? `${t} · ${term}` : t;
+    };
+    const allocByPayment = new Map<string, string[]>();
+    const feeById = new Map<string, { type: string | null; term: string | null }>();
+    if (rows.length) {
+      const allocs: any[] = await db('payment_allocations')
+        .where('tenant_id', tenantId).whereIn('payment_id', rows.map((r: any) => r.id))
+        .orderBy('created_at').orderBy('id')
+        .select('payment_id', 'fee_type', 'term', 'kind')
+        .catch(() => [] as any[]);
+      for (const a of allocs) {
+        const k = String(a.payment_id);
+        const list = allocByPayment.get(k) || [];
+        const label = paidForLabel(a.fee_type, a.term, a.kind === 'credit');
+        if (!list.includes(label)) list.push(label);
+        allocByPayment.set(k, list);
+      }
+      const feeIds = Array.from(new Set(rows
+        .filter((r: any) => r.fee_id && !allocByPayment.has(String(r.id)))
+        .map((r: any) => String(r.fee_id))));
+      if (feeIds.length) {
+        const fees: any[] = await db('fees')
+          .whereIn(db.raw('id::text') as any, feeIds)
+          .select(db.raw('id::text as id'), 'type', 'term')
+          .catch(() => [] as any[]);
+        for (const f of fees) feeById.set(String(f.id), { type: f.type || null, term: f.term || null });
+      }
+    }
+    const paidFor = (r: any): string | null => {
+      const fromAlloc = allocByPayment.get(String(r.id));
+      if (fromAlloc?.length) return fromAlloc.join(', ');
+      if (r.fee_id) {
+        const f = feeById.get(String(r.fee_id));
+        if (f) return paidForLabel(f.type, f.term);
+      }
+      if (/overpayment|credit/i.test(String(r.notes || ''))) return 'Account credit';
+      if (String(r.method || r.payment_method) === 'monime') return 'School fees (paid online)';
+      return null;
+    };
+
     // Derive total-paid = billed − balance for each row.
     const enriched = rows.map((r: any) => {
       const billed = Number(r.student_total_billed) || 0;
       const balance = Number(r.student_balance) || 0;
-      return { ...r, student_total_billed: billed, student_balance: balance, student_total_paid: Math.max(0, billed - balance) };
+      return { ...r, student_total_billed: billed, student_balance: balance, student_total_paid: Math.max(0, billed - balance), paid_for: paidFor(r) };
     });
     res.json({ success: true, data: enriched });
   } catch (error) {
@@ -2076,6 +2123,79 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
       .count('payments.id as count')
       .groupByRaw('COALESCE(payments.method, payments.payment_method)');
 
+    // ── Collected by FEE TYPE (what the money paid for) ──
+    // From payment_allocations (the split recorded with each payment). Same
+    // window as the method mix: with a year selected, a row counts when its
+    // own academic year matches, or (no year on it, e.g. account credit) when
+    // the payment date falls inside the year. Payments with no rows (online
+    // payments from before allocations were recorded) are reported separately
+    // as `byFeeTypeUnattributed` so the card can say so. Any error, including
+    // a database that has not been updated yet, gives an empty list.
+    let byFeeType: { feeType: string; amount: number; payments: number; share: number }[] = [];
+    let byFeeTypeUnattributed = { amount: 0, payments: 0 };
+    try {
+      const typeExpr = "CASE WHEN pa.kind = 'credit' THEN 'Account credit' ELSE COALESCE(NULLIF(TRIM(pa.fee_type), ''), 'Other fees') END";
+      const typeQ = db('payment_allocations as pa')
+        .join('payments as p', 'p.id', 'pa.payment_id')
+        .join('students as st', 'p.student_id', 'st.id')
+        .where('pa.tenant_id', tenantId)
+        .where('st.tenant_id', tenantId)
+        .where('p.status', 'completed');
+      if (methodScope) {
+        typeQ.where((w) => {
+          w.where('pa.academic_year', methodYear).orWhere((w2) => {
+            w2.whereNull('pa.academic_year');
+            if (methodScope.from) w2.where('p.payment_date', '>=', methodScope.from);
+            if (methodScope.to) w2.where('p.payment_date', '<', methodScope.to);
+          });
+        });
+      }
+      const typeRows: any[] = await typeQ
+        .select(db.raw(`${typeExpr} as fee_type`))
+        .select(db.raw('COALESCE(SUM(pa.amount),0) as amount'))
+        .select(db.raw('COUNT(DISTINCT COALESCE(pa.receipt_number, pa.payment_id::text)) as payments'))
+        .groupByRaw(typeExpr)
+        .orderByRaw('SUM(pa.amount) DESC');
+      const typeTotal = typeRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+      byFeeType = typeRows.map((r) => {
+        const amount = Math.round((Number(r.amount) || 0) * 100) / 100;
+        return {
+          feeType: r.fee_type,
+          amount,
+          payments: Number(r.payments) || 0,
+          share: typeTotal > 0 ? Math.round((amount / typeTotal) * 1000) / 10 : 0,
+        };
+      });
+
+      // Completed payments in the same window that have no allocation rows.
+      const unQ = db('payments as p')
+        .join('students as st', 'p.student_id', 'st.id')
+        .where('st.tenant_id', tenantId)
+        .where('p.status', 'completed')
+        .whereNotExists(db('payment_allocations as x').whereRaw('x.payment_id = p.id'));
+      if (methodScope) {
+        unQ.leftJoin('fees as uf', db.raw('uf.id::text') as any, 'p.fee_id')
+          .where((w) => {
+            w.where('uf.academic_year', methodYear).orWhere((w2) => {
+              w2.whereNull('uf.id');
+              if (methodScope.from) w2.where('p.payment_date', '>=', methodScope.from);
+              if (methodScope.to) w2.where('p.payment_date', '<', methodScope.to);
+            });
+          });
+      }
+      const un: any = await unQ
+        .select(db.raw('COALESCE(SUM(p.amount),0) as amount'), db.raw('COUNT(p.id) as payments'))
+        .first();
+      byFeeTypeUnattributed = {
+        amount: Math.round((Number(un?.amount) || 0) * 100) / 100,
+        payments: Number(un?.payments) || 0,
+      };
+    } catch (e) {
+      logger.warn(`finance/analytics byFeeType unavailable: ${(e as Error).message}`);
+      byFeeType = [];
+      byFeeTypeUnattributed = { amount: 0, payments: 0 };
+    }
+
     // ── 6-month collection trend (zero-filled) ──
     // Build a continuous run of the last 6 months with generate_series so the
     // chart line is unbroken even for months with no collections, then LEFT
@@ -2225,6 +2345,8 @@ router.get('/finance/analytics', authenticate, requireStaff, async (req: Request
         },
         byMethod: byMethod.map((r: any) => ({ method: r.method || 'unknown', total: Number(r.total) || 0, count: Number(r.count) || 0 })),
         trend: trend.map((r: any) => ({ label: r.label, total: Number(r.total) || 0, count: Number(r.count) || 0 })),
+        byFeeType,
+        byFeeTypeUnattributed,
         byLevel: byLevel.map((r: any) => ({ level: r.level, billed: Number(r.billed) || 0, collected: Number(r.collected) || 0, outstanding: Number(r.outstanding) || 0, rate: rate(r.billed, r.collected) })),
         byClass: byClass.map((r: any) => ({ className: r.class_name, billed: Number(r.billed) || 0, collected: Number(r.collected) || 0, outstanding: Number(r.outstanding) || 0, rate: rate(r.billed, r.collected) })),
         byTerm: byTerm.map((r: any) => ({ term: r.term, billed: Number(r.billed) || 0, collected: Number(r.collected) || 0, outstanding: Number(r.outstanding) || 0, rate: rate(r.billed, r.collected) })),

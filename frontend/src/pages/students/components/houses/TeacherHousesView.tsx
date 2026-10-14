@@ -36,7 +36,7 @@ export const TeacherHousesView: React.FC<{ access: TeacherHouseAccess }> = ({ ac
   return (
     <div className="space-y-5">
       {tabs.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Houses sections">
+        <div className="flex max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-1" role="tablist" aria-label="Houses sections">
           {tabs.map((t) => (
             <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
               className={`whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-semibold ${tab === t.id ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
@@ -50,8 +50,8 @@ export const TeacherHousesView: React.FC<{ access: TeacherHouseAccess }> = ({ ac
         <div className="space-y-4">
           <div className="rounded-2xl px-5 py-4" style={{ backgroundColor: house.color, color: textOn(house.color) }}>
             <p className="text-xs font-semibold opacity-90">{house.position === 'master' ? 'You are the house master / mistress of' : 'You are a teacher in'}</p>
-            <p className="text-2xl font-black">{house.name}</p>
-            {house.motto && <p className="text-sm italic opacity-90">“{house.motto}”</p>}
+            <p className="text-2xl font-black break-words">{house.name}</p>
+            {house.motto && <p className="text-sm italic opacity-90 break-words">“{house.motto}”</p>}
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_220px]">
             <SearchBar placeholder="Search name or student number…" onSearch={setSearch} isLoading={q.isFetching} className="w-full" />
@@ -71,7 +71,7 @@ export const TeacherHousesView: React.FC<{ access: TeacherHouseAccess }> = ({ ac
           ) : rows.length === 0 ? (
             <EmptyState message="No students in this house yet" description={search ? 'Try another name.' : 'Students appear here after the house ballot.'} />
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+            <div className="max-w-full overflow-x-auto overscroll-x-contain rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
               <table className="w-full min-w-[480px] text-sm">
                 <caption className="sr-only">Students in {house.name}</caption>
                 <thead>

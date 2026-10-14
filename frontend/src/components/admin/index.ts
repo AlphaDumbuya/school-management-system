@@ -37,6 +37,7 @@ export { DeleteDialog }        from './feedback/DeleteDialog';
 export { FormModal }           from './feedback/FormModal';
 export { Tooltip }             from './feedback/Tooltip';
 export { DropdownMenu }        from './feedback/DropdownMenu';
+export { AnchoredMenu, menuItemClass } from './feedback/AnchoredMenu';
 export { EmptyState }          from './feedback/EmptyState';
 export { ErrorState }          from './feedback/ErrorState';
 export {
@@ -55,6 +56,7 @@ export type { DeleteDialogProps }                          from './feedback/Dele
 export type { FormModalProps }                             from './feedback/FormModal';
 export type { TooltipProps, TooltipPosition }              from './feedback/Tooltip';
 export type { DropdownMenuProps, DropdownItem }            from './feedback/DropdownMenu';
+export type { AnchoredMenuProps }                          from './feedback/AnchoredMenu';
 export type { EmptyStateProps }                            from './feedback/EmptyState';
 export type { ErrorStateProps }                            from './feedback/ErrorState';
 export type { SkeletonProps, SkeletonTableRowProps, SkeletonChartProps } from './feedback/Skeleton';

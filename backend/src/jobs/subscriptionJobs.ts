@@ -7,7 +7,7 @@
  * tenant is reliably locked out at its end date — not only when it happens to
  * make a guarded request.
  *
- * Also sends the automatic lifecycle emails to the school contact:
+ * Also sends the automatic lifecycle emails to the school owner(s) and billing contact:
  *   - trial ending (7 days and 1 day before), paid plan ending (7 / 1 days)
  *   - trial / complimentary plan ended → moved to the base plan
  *   - paid plan expired (access paused, pay-and-restore link)
@@ -28,14 +28,13 @@ let job: ScheduledTask | null = null;
 
 const DAY = 86_400_000;
 
-/** Best contact for a school: tenant contact, else school email, else the principal. */
-export async function tenantContactEmail(tenantId: string): Promise<string | null> {
-  const tenant = await db('tenants').where({ id: tenantId }).first('contact_email');
-  if (tenant?.contact_email) return tenant.contact_email;
-  const school = await db('schools').where({ tenant_id: tenantId }).first('email').catch(() => null);
-  if (school?.email) return school.email;
-  const principal = await db('users').where({ tenant_id: tenantId, role: 'principal', status: 'active' }).orderBy('is_owner', 'desc').first('email');
-  return principal?.email || null;
+/**
+ * Who gets plan and billing emails: the school owner(s) (billing is owner-only)
+ * plus the school's billing contact. See utils/schoolLeaders.
+ */
+export async function billingRecipients(tenantId: string): Promise<string[]> {
+  const { billingRecipients: resolve } = await import('../utils/schoolLeaders.js');
+  return resolve(tenantId);
 }
 
 async function claim(tenantId: string, key: string): Promise<boolean> {
@@ -69,8 +68,8 @@ async function planName(planType: string): Promise<string> {
 export async function notifyTrialEnded(tenantId: string, endedSub: { id: string; plan_type: string }): Promise<void> {
   try {
     if (!(await claim(tenantId, `sub:${endedSub.id}:ended`))) return;
-    const to = await tenantContactEmail(tenantId);
-    if (!to) return;
+    const recipients = await billingRecipients(tenantId);
+    if (!recipients.length) return;
     const [{ EntitlementService }, { FEATURES }, tenant] = await Promise.all([
       import('../services/entitlementService.js'),
       import('../services/planCatalogService.js'),
@@ -81,13 +80,17 @@ export async function notifyTrialEnded(tenantId: string, endedSub: { id: string;
     const readOnly = FEATURES.filter((f) => !f.soon && ent.features[f.key] === 'read_only').map((f) => f.label);
     const diff = await planDiff(endedSub.plan_type, String(ent.plan_type));
     const { default: emailService } = await import('../services/emailService.js');
-    await emailService.sendSubscriptionLifecycleEmail(to, {
-      kind: 'trial_ended', schoolName: tenant?.name || 'your school',
+    const notice = {
+      kind: 'trial_ended' as const, schoolName: tenant?.name || 'your school',
       planName: await planName(endedSub.plan_type), newPlanName: ent.plan_name, readOnlyFeatures: readOnly,
       disabledPortals: diff.portals,
       // Trial ended with payment required: the whole school is read-only.
       paymentRequired: ent.lapsed,
-    });
+    };
+    for (const to of recipients) {
+      await emailService.sendSubscriptionLifecycleEmail(to, notice)
+        .catch((e: any) => logger.warn(`[subscriptionJobs] trial-ended email to ${to} failed: ${e?.message || e}`));
+    }
   } catch (err) {
     logger.warn(`[subscriptionJobs] trial-ended notice failed for tenant ${tenantId}: ${(err as any)?.message || err}`);
   }
@@ -115,10 +118,10 @@ export async function runSubscriptionReminders(): Promise<number> {
       // A comp that simply ends is announced by the "ended" notice only.
       if (s.is_comp && !s.is_trial) continue;
       if (!(await claim(s.tenant_id, `sub:${s.id}:remind:${bucket}`))) continue;
-      const to = await tenantContactEmail(s.tenant_id);
-      if (!to) continue;
-      await emailService.sendSubscriptionLifecycleEmail(to, {
-        kind: s.is_trial ? 'trial_ending' : 'expiring',
+      const recipients = await billingRecipients(s.tenant_id);
+      if (!recipients.length) continue;
+      const notice = {
+        kind: (s.is_trial ? 'trial_ending' : 'expiring') as 'trial_ending' | 'expiring',
         schoolName: s.school_name || 'your school', planName: await planName(s.plan_type),
         endDate: s.end_date, daysLeft, paymentRequired: s.is_trial ? paymentRequired : undefined,
         // Trial ending → what moving to Freetong would take away.
@@ -126,7 +129,11 @@ export async function runSubscriptionReminders(): Promise<number> {
           const d = await planDiff(s.plan_type, 'freetong');
           return { newPlanName: await planName('freetong'), readOnlyFeatures: d.readOnly, disabledPortals: d.portals };
         })() : {}),
-      });
+      };
+      for (const to of recipients) {
+        await emailService.sendSubscriptionLifecycleEmail(to, notice)
+          .catch((e: any) => logger.warn(`[subscriptionJobs] reminder email to ${to} failed: ${e?.message || e}`));
+      }
       sent++;
     } catch (err) {
       logger.warn(`[subscriptionJobs] reminder failed for subscription ${s.id}: ${(err as any)?.message || err}`);
@@ -190,12 +197,15 @@ export async function runSubscriptionExpirySweep(): Promise<number> {
       try {
         EntitlementService.clear(s.tenant_id);
         if (!(await claim(s.tenant_id, `sub:${s.id}:expired`))) continue;
-        const to = await tenantContactEmail(s.tenant_id);
-        if (!to) continue;
+        const recipients = await billingRecipients(s.tenant_id);
+        if (!recipients.length) continue;
         const tenant = await db('tenants').where({ id: s.tenant_id }).first('name');
-        await emailService.sendTenantSubscriptionEmail(to, {
-          schoolName: tenant?.name || 'your school', planLabel: await planName(s.plan_type), action: 'expired', tenantId: s.tenant_id,
-        });
+        const planLabel = await planName(s.plan_type);
+        for (const to of recipients) {
+          await emailService.sendTenantSubscriptionEmail(to, {
+            schoolName: tenant?.name || 'your school', planLabel, action: 'expired', tenantId: s.tenant_id,
+          }).catch((e: any) => logger.warn(`[subscriptionJobs] expiry email to ${to} failed: ${e?.message || e}`));
+        }
       } catch (err) {
         logger.warn(`[subscriptionJobs] expiry notice failed for tenant ${s.tenant_id}: ${(err as any)?.message || err}`);
       }

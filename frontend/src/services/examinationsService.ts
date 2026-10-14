@@ -158,6 +158,23 @@ export function buildExamGrid(exams: ExaminationRecord[]): {
   return { dates, grid };
 }
 
+/** Today's date as YYYY-MM-DD in the device's local time. */
+export function localIsoDate(now: Date = new Date()): string {
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${m}-${d}`;
+}
+
+/**
+ * The exam date to open by default: today if it's an exam day, else the next
+ * upcoming exam day, else the first. `dates` are YYYY-MM-DD, sorted.
+ */
+export function defaultExamDate(dates: string[], today: string = localIsoDate()): string {
+  if (dates.length === 0) return '';
+  if (dates.includes(today)) return today;
+  return dates.find((d) => d > today) ?? dates[0];
+}
+
 // ── Service ───────────────────────────────────────────────────────────────────
 
 export const examinationsService = {

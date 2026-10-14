@@ -13,7 +13,7 @@ let lastDemoToast = 0;
 
 /** Marketing / public pages: a dead session is dropped quietly, no redirect. */
 const isPublicPath = (path: string) =>
-  path === '/' || /^\/(features|pricing|why|benefits|contact|register|privacy-policy|demo|login|apply|verify|forgot-password|reset-password|newsletter|restore-access|request-reactivation)(\/|$)/.test(path);
+  path === '/' || /^\/(features|pricing|why|benefits|contact|register|privacy-policy|demo|login|apply|verify|verify-receipt|verify-report-card|verify-id|forgot-password|reset-password|newsletter|restore-access|request-reactivation)(\/|$)/.test(path);
 
 /**
  * Master switch for the offline write-queue. Disabled for now: it was
@@ -101,10 +101,135 @@ export const axiosInstance: AxiosInstance = axios.create({
   withCredentials: true,
 });
 
-// Request interceptor - Add auth token
+// ============================================================================
+// Access-token refresh
+// ============================================================================
+//
+// Why this is careful: after the app is resumed (screen on, back from the
+// camera / file picker / another app) every screen refetches at once. With an
+// expired access token that used to fire one /auth/refresh PER request, and ANY
+// non-network failure of any of them (a 429 from the shared per-IP limit on
+// school Wi-Fi, a 5xx while the database wakes up) signed an active user out.
+// Now: one refresh at a time, and only a definite "no" from the server
+// (400/401/403/404) ends the session. Transient failures keep it.
+
+/** Refresh was definitively refused by the server (or there's no refresh token). */
+class RefreshRejectedError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = 'RefreshRejectedError';
+    this.code = code;
+  }
+}
+
+/** HTTP statuses on /auth/refresh that mean "this session is over". */
+const REFRESH_REJECT_STATUSES = new Set([400, 401, 403, 404]);
+
+let refreshInFlight: Promise<string> | null = null;
+
+const readAccessToken = () => localStorage.getItem('accessToken') || localStorage.getItem('token');
+
+/** Seconds-since-epoch `exp` of a JWT, or null if it can't be read. */
+function jwtExp(token: string): number | null {
+  try {
+    const part = token.split('.')[1];
+    if (!part) return null;
+    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '='));
+    const exp = JSON.parse(json)?.exp;
+    return typeof exp === 'number' ? exp : null;
+  } catch {
+    return null;
+  }
+}
+
+async function doRefresh(): Promise<string> {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) throw new RefreshRejectedError('No refresh token');
+  try {
+    // Backend expects snake_case { refresh_token } and responds with
+    // { access_token, ... } (also snake_case, top-level). Bare axios so this
+    // call never re-enters the interceptors.
+    const response = await axios.post(
+      `${API_CONFIG.baseURL}/api/v1/auth/refresh`,
+      { refresh_token: refreshToken },
+      { headers: { 'Content-Type': 'application/json' }, timeout: API_CONFIG.timeout || 30000, withCredentials: true }
+    );
+    const body = response.data || {};
+    const accessToken = body.access_token || body.accessToken || body?.data?.accessToken;
+    const newRefreshToken = body.refresh_token || body.refreshToken || body?.data?.refreshToken;
+    if (!accessToken) throw new Error('No access token in refresh response'); // treated as transient
+    localStorage.setItem('accessToken', accessToken);
+    if (newRefreshToken) localStorage.setItem('refreshToken', newRefreshToken);
+    return accessToken;
+  } catch (err) {
+    const ax = err as AxiosError;
+    const status = ax?.response?.status;
+    if (status && REFRESH_REJECT_STATUSES.has(status)) {
+      // Another tab may have signed in again / replaced the token while this
+      // call was in flight. If so, the session isn't over: use the new one.
+      const current = localStorage.getItem('refreshToken');
+      if (current && current !== refreshToken) {
+        const fresh = readAccessToken();
+        if (fresh) return fresh;
+      }
+      const data = ax.response?.data as any;
+      throw new RefreshRejectedError('Refresh token rejected', data?.error?.code || data?.code);
+    }
+    throw err; // network error, timeout, 429, 5xx → transient
+  }
+}
+
+/**
+ * Get a new access token. Concurrent callers share ONE in-flight request, so a
+ * burst of 401s (common right after the app resumes) makes a single refresh.
+ * Rejects with RefreshRejectedError only when the server refused the session.
+ */
+export function refreshAccessToken(): Promise<string> {
+  if (!refreshInFlight) {
+    refreshInFlight = doRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+/** The server ended the session: drop it and go to sign-in (app pages only). */
+function endSession(code?: string) {
+  try {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+  } catch { /* ignore */ }
+  // On public pages (homepage, demo form, pricing…) just drop the dead
+  // session; only app pages need to go to the sign-in screen.
+  if (typeof window === 'undefined' || isPublicPath(window.location.pathname)) return;
+  const target =
+    code === 'ACCOUNT_INACTIVE' ? '/login?disabled=1'
+    : code === 'TENANT_SUSPENDED' || code === 'TENANT_UNAVAILABLE' ? '/login?suspended=1'
+    : code === 'PORTAL_NOT_IN_PLAN' ? '/login?portal=off'
+    : '/login';
+  window.location.href = target;
+}
+
+const isRefreshExemptUrl = (url?: string) =>
+  !!url && /\/auth\/(login|register|refresh|2fa\/verify-login|passkeys\/(login|authenticate))/.test(url);
+
+// Request interceptor - Add auth token (refreshing first if it has just expired,
+// so a resumed app doesn't send a burst of requests that all 401).
 axiosInstance.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+  async (config) => {
+    let token = readAccessToken();
+    if (token && !isRefreshExemptUrl(config.url) && localStorage.getItem('refreshToken')) {
+      const exp = jwtExp(token);
+      if (exp && exp * 1000 - Date.now() < 30_000) {
+        try {
+          token = await refreshAccessToken();
+        } catch {
+          // Send with the old token; the 401 handler below decides what to do.
+        }
+      }
+    }
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -120,68 +245,45 @@ axiosInstance.interceptors.response.use(
     const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
 
     // Handle 401 - Unauthorized (token expired)
-    const isAuthRequest = originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/register');
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthRequest) {
+    const isAuthRequest = originalRequest?.url?.includes('/auth/login') || originalRequest?.url?.includes('/auth/register');
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthRequest) {
       originalRequest._retry = true;
 
-      try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (!refreshToken) {
-          // No refresh token at all → genuine unauthenticated state. Public
-          // pages stay put; app pages go to sign-in.
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('user');
-          if (!isPublicPath(window.location.pathname)) window.location.href = '/login';
-          return Promise.reject(error);
-        }
-
-        // Try to refresh the token. Backend expects snake_case { refresh_token }
-        // and responds with { access_token, ... } (also snake_case, top-level).
-        const response = await axios.post(
-          `${API_CONFIG.baseURL}/api/v1/auth/refresh`,
-          { refresh_token: refreshToken },
-          { headers: { 'Content-Type': 'application/json' } }
-        );
-
-        const body = response.data || {};
-        const accessToken = body.access_token || body.accessToken || body?.data?.accessToken;
-        const newRefreshToken = body.refresh_token || body.refreshToken || body?.data?.refreshToken;
-        if (!accessToken) {
-          throw new Error('No access token in refresh response');
-        }
-
-        // Update stored tokens
-        localStorage.setItem('accessToken', accessToken);
-        if (newRefreshToken) {
-          localStorage.setItem('refreshToken', newRefreshToken);
-        }
-
-        // Retry original request with new token
-        originalRequest.headers = originalRequest.headers || {};
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-        return axiosInstance(originalRequest);
-      } catch (refreshError) {
-        // Distinguish "offline / server unreachable" from "server said no".
-        const refreshAx = refreshError as AxiosError;
-        const isOffline = !navigator.onLine || !refreshAx.response;
-
-        if (isOffline) {
-          // We can't refresh without a network, but the user already signed in
-          // on this device. Keep the cached session alive — do NOT log them out.
-          // Re-validation happens automatically the next time we're online.
-          console.warn('[auth] offline — keeping cached session, refresh deferred');
-          return Promise.reject(error);
-        }
-
-        // Online and the server rejected the refresh token → genuine logout.
+      if (!localStorage.getItem('refreshToken')) {
+        // No refresh token at all → genuine unauthenticated state. Public
+        // pages stay put; app pages go to sign-in.
         localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
-        // On public pages (homepage, demo form, pricing…) just drop the dead
-        // session; only app pages need to go to the sign-in screen.
         if (!isPublicPath(window.location.pathname)) window.location.href = '/login';
-        return Promise.reject(refreshError);
+        return Promise.reject(error);
       }
+
+      // If the token was already renewed (by a parallel request or another
+      // tab) since this request went out, just retry with the current one.
+      const sentAuth = String((originalRequest.headers as any)?.Authorization || '');
+      const current = readAccessToken();
+      let accessToken: string | null = current && sentAuth !== `Bearer ${current}` ? current : null;
+
+      if (!accessToken) {
+        try {
+          accessToken = await refreshAccessToken();
+        } catch (refreshError) {
+          if (refreshError instanceof RefreshRejectedError) {
+            // The server refused the refresh token → the session is over.
+            endSession(refreshError.code);
+            return Promise.reject(refreshError);
+          }
+          // Offline, timed out, rate-limited or a server error: the session
+          // may be perfectly valid. Keep it; the next request tries again.
+          console.warn('[auth] token refresh failed transiently — keeping session', (refreshError as Error)?.message);
+          return Promise.reject(error);
+        }
+      }
+
+      // Retry original request with the new token
+      originalRequest.headers = originalRequest.headers || {};
+      (originalRequest.headers as any).Authorization = `Bearer ${accessToken}`;
+      return axiosInstance(originalRequest);
     }
 
     // Handle 403 - Forbidden

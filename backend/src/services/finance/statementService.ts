@@ -24,6 +24,31 @@ const d10 = (v: any) => {
 };
 const KIND_LABEL: Record<string, string> = { discount: 'Discount', waiver: 'Waiver', credit_applied: 'Account credit applied', late_fee_waiver: 'Late fee waived' };
 
+const feeLabel = (type?: string | null, term?: string | null) => `${(type || '').trim() || 'Fee'}${term ? ` (${term})` : ''}`;
+
+/**
+ * What each payment paid for, e.g. ["Tuition (First Term)", "Uniform"], from
+ * payment_allocations. A payment with no rows is simply absent from the map.
+ * Tolerates a database without the table (no names, statement unchanged).
+ */
+async function loadAllocLabels(tenantId: string, paymentIds: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (!paymentIds.length) return out;
+  const rows: any[] = await db('payment_allocations')
+    .where('tenant_id', tenantId).whereIn('payment_id', paymentIds)
+    .orderBy('created_at').orderBy('id')
+    .select('payment_id', 'fee_type', 'term', 'kind')
+    .catch(() => [] as any[]);
+  for (const a of rows) {
+    const k = String(a.payment_id);
+    const list = out.get(k) || [];
+    const label = a.kind === 'credit' ? 'Account credit' : feeLabel(a.fee_type, a.term);
+    if (!list.includes(label)) list.push(label);
+    out.set(k, list);
+  }
+  return out;
+}
+
 export const statementService = {
   async build(tenantId: string, studentId: string, rawYear?: string) {
     const year = normalizeAcademicYear(rawYear || null) || (await resolveActiveYear(tenantId)).yearString;
@@ -53,15 +78,20 @@ export const statementService = {
       }
       const pays = await db('payments').where({ tenant_id: tenantId, student_id: studentId }).whereIn('fee_id', ids)
         .whereIn('status', ['completed', 'refunded'])
-        .select('id', 'amount', 'payment_date', 'receipt_number', 'method', 'payment_method', 'status', 'created_at');
+        .select('id', 'fee_id', 'amount', 'payment_date', 'receipt_number', 'method', 'payment_method', 'status', 'created_at');
+      const allocLabels = await loadAllocLabels(tenantId, pays.map((p: any) => String(p.id)));
       const byReceipt = new Map<string, any>();
       for (const p of pays) {
         const k = p.receipt_number || p.id;
-        const r = byReceipt.get(k) || byReceipt.set(k, { date: d10(p.payment_date), amount: 0, method: p.method || p.payment_method, ref: p.receipt_number }).get(k);
+        const r = byReceipt.get(k) || byReceipt.set(k, { date: d10(p.payment_date), amount: 0, method: p.method || p.payment_method, ref: p.receipt_number, paidFor: [] as string[] }).get(k);
         r.amount = round2(r.amount + Number(p.amount));
+        // What it paid for: the recorded split, else the fee the payment points at.
+        const fee: any = feeById.get(String(p.fee_id));
+        const names = allocLabels.get(String(p.id)) || (fee ? [feeLabel(fee.type, fee.term)] : []);
+        for (const n of names) if (!r.paidFor.includes(n)) r.paidFor.push(n);
       }
       for (const r of byReceipt.values()) {
-        lines.push({ date: r.date, kind: 'payment', description: `Payment · ${String(r.method || '').replace(/_/g, ' ')}`, debit: 0, credit: r.amount, reference: r.ref });
+        lines.push({ date: r.date, kind: 'payment', description: `Payment${r.paidFor.length ? ` · ${r.paidFor.join(', ')}` : ''} · ${String(r.method || '').replace(/_/g, ' ')}`, debit: 0, credit: r.amount, reference: r.ref });
       }
       const refunds = await db('refunds as r').join('payments as p', 'p.id', 'r.original_payment_id')
         .whereIn('p.fee_id', ids).select('r.amount', 'r.refund_date', 'r.reason', 'p.receipt_number');
@@ -74,8 +104,16 @@ export const statementService = {
     const online = await db('payments').where({ tenant_id: tenantId, student_id: studentId, status: 'completed' }).whereNull('fee_id')
       .whereNotExists(db('student_credits as c').whereRaw('c.payment_id = payments.id'))
       .modify((q) => { if (scopeStart) q.where('payment_date', '>=', scopeStart); })
-      .select('amount', 'payment_date', 'receipt_number', 'method');
-    for (const p of online) lines.push({ date: d10(p.payment_date), kind: 'payment', description: `Online payment · ${p.method || 'monime'}`, debit: 0, credit: round2(p.amount), reference: p.receipt_number });
+      .select('id', 'amount', 'payment_date', 'receipt_number', 'method');
+    const onlineLabels = await loadAllocLabels(tenantId, online.map((p: any) => String(p.id)));
+    for (const p of online) {
+      const names = onlineLabels.get(String(p.id));
+      lines.push({
+        date: d10(p.payment_date), kind: 'payment',
+        description: `Online payment${names?.length ? ` · ${names.join(', ')}` : ''} · ${p.method || 'monime'}`,
+        debit: 0, credit: round2(p.amount), reference: p.receipt_number,
+      });
+    }
 
     const order: Record<string, number> = { charge: 0, late_fee: 1, discount: 2, waiver: 2, late_fee_waiver: 2, reversal: 3, credit_applied: 4, payment: 5, refund: 6 };
     lines.sort((a, b) => a.date.localeCompare(b.date) || (order[a.kind] ?? 9) - (order[b.kind] ?? 9));

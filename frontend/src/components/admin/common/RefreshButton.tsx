@@ -15,6 +15,8 @@ export interface RefreshButtonProps {
   isRefreshing?: boolean;
   label?: string;
   className?: string;
+  /** Keep the text label visible on phones too (default: icon only below `sm`). */
+  labelOnMobile?: boolean;
 }
 
 type State = 'idle' | 'loading' | 'done' | 'error';
@@ -24,6 +26,7 @@ export const RefreshButton: React.FC<RefreshButtonProps> = ({
   isRefreshing,
   label = 'Refresh',
   className = '',
+  labelOnMobile = false,
 }) => {
   const [state, setState] = useState<State>('idle');
   const spinning = state === 'loading' || !!isRefreshing;
@@ -73,7 +76,7 @@ export const RefreshButton: React.FC<RefreshButtonProps> = ({
       )}
     >
       {icon}
-      <span className="hidden sm:inline">{display}</span>
+      <span className={labelOnMobile ? 'inline' : 'hidden sm:inline'}>{display}</span>
     </button>
   );
 };

@@ -8,6 +8,7 @@ import { SubscriptionService } from '@services/subscriptionService';
 import { logger } from '@utils/logger';
 import { assertOwnerManagesLeadership, requireOwner, tenantHasOwner } from '../utils/tenantOwner';
 import { clientIp } from '../middleware/rateLimit';
+import { setOwnProfilePhoto, removeOwnProfilePhoto } from '@services/profilePhotoService';
 
 const router = Router();
 
@@ -31,6 +32,38 @@ function tenantUsers(actor: any) {
   }
   return q;
 }
+
+/**
+ * PUT /api/v1/users/me/photo  { photo: "data:image/jpeg;base64,...", inline?: boolean }
+ * Set or change the signed-in user's OWN profile photo (every role). The account
+ * is always the one behind the token. JPG, PNG or WebP, up to 2 MB.
+ * Returns the avatar /me now shows: { success, data: { profilePhotoUrl } }.
+ */
+router.put('/me/photo', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) throw new AppError('Please sign in again.', 401, 'UNAUTHORIZED');
+    const data = await setOwnProfilePhoto(userId, req.body?.photo, { inline: req.body?.inline === true });
+    res.json({ success: true, message: 'Profile photo saved', data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/v1/users/me/photo
+ * Remove the signed-in user's own profile photo.
+ */
+router.delete('/me/photo', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) throw new AppError('Please sign in again.', 401, 'UNAUTHORIZED');
+    const data = await removeOwnProfilePhoto(userId);
+    res.json({ success: true, message: 'Profile photo removed', data });
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * POST /api/v1/users
@@ -491,6 +524,37 @@ router.post('/:id/ownership', requireOwner, async (req: Request, res: Response, 
       ip_address: meta.ip || null, user_agent: meta.userAgent || null, source: 'api', created_at: new Date(),
     }).catch((e: any) => logger.warn(`Could not record an ownership change: ${e?.message || e}`));
     logger.info(`Ownership ${grant ? 'granted to' : 'removed from'} ${target.email} by ${actor.email}`);
+
+    // Tell the person affected, the school's owners (after the change) and the
+    // actor. Awaited (serverless freezes after the response) but never fails the change.
+    try {
+      const { schoolOwners, leadTitleFor } = await import('../utils/schoolLeaders');
+      const [owners, actorRow, leadTitle] = await Promise.all([
+        schoolOwners(tenantId),
+        db('users').where({ id: actor.id }).first('email', 'first_name', 'last_name'),
+        leadTitleFor(tenantId),
+      ]);
+      const fullName = (u: any) => [u?.first_name, u?.last_name].filter(Boolean).join(' ');
+      const targetName = fullName(target) || target.email;
+      const actorName = fullName(actorRow) || actorRow?.email || 'A school owner';
+      const people = new Map<string, { email: string; name: string; isTarget: boolean }>();
+      const add = (email: string | null | undefined, name: string, isTarget: boolean) => {
+        const k = String(email || '').trim().toLowerCase();
+        if (k && !people.has(k)) people.set(k, { email: String(email).trim(), name, isTarget });
+      };
+      add(target.email, targetName, true);
+      for (const o of owners) add(o.email, o.name, false);
+      add(actorRow?.email, actorName, false);
+      const { default: emailService } = await import('../services/emailService');
+      const when = new Date();
+      await Promise.allSettled([...people.values()].map((p) =>
+        emailService.sendOwnershipChangedEmail(tenantId, p.email, {
+          recipientName: p.name, targetName, isTarget: p.isTarget, actorName,
+          granted: grant, when, ip: meta.ip || undefined, leadTitle,
+        })));
+    } catch (e: any) {
+      logger.warn(`Ownership change email failed: ${e?.message || e}`);
+    }
 
     res.json({ success: true, message: grant ? 'Owner added.' : 'Ownership removed.', data: { id: target.id, isOwner: grant } });
   } catch (error) {

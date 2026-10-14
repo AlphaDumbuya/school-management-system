@@ -10,6 +10,7 @@ import { Plus, Ban, Pencil, TrendingUp, TrendingDown, Wallet, Loader2 } from 'lu
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { Button } from '@components/ui/button';
+import { HEADER_BTN, HEADER_EXPORT, BtnLabel } from '@components/finance/AccountingUi';
 import { Modal } from '@components/admin/feedback/Modal';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
@@ -118,10 +119,11 @@ export const ExpensesPage: React.FC = () => {
   return (
     <MainLayout>
       <PageShell title="School Expenses" subtitle="What the school spends: salaries, utilities, supplies, maintenance and more" onRefresh={() => q.refetch()} isRefreshing={q.isFetching}
-        actions={<div className="flex items-center gap-2">
+        mobileLabels
+        actions={<div className="flex flex-wrap items-center gap-2">
           <YearFilter value={year} onChange={(y) => setPicked(!y || y === activeYear ? '' : y)} noAutoSelect />
-          <ExportButton endpoint="/api/v1/finance/expenses-v2/export" filename="expenses" params={{ academic_year: year, category: category || undefined, source: source || undefined, term: term || undefined }} />
-          {!viewingPast && <Button size="sm" variant="create" onClick={() => setEdit({ expense_date: todayLocal() })}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Record expense</span></Button>}
+          <ExportButton className={HEADER_EXPORT} endpoint="/api/v1/finance/expenses-v2/export" filename="expenses" params={{ academic_year: year, category: category || undefined, source: source || undefined, term: term || undefined }} />
+          {!viewingPast && <Button size="sm" variant="create" className={HEADER_BTN} onClick={() => setEdit({ expense_date: todayLocal() })}><Plus size={15} /><BtnLabel>Record expense</BtnLabel></Button>}
         </div>}>
         {viewingPast && <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">Showing {year} as history (closed). Record new expenses in {activeYear}.</div>}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">

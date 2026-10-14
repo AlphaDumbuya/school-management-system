@@ -13,7 +13,7 @@ import { Modal } from '@components/admin/feedback/Modal';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { showToast } from '@utils/toast';
 import { bursarC, ACCOUNT_TYPE_LABEL, type GLAccount } from '@services/bursarService';
-import { unwrap, Money } from '@components/finance/AccountingUi';
+import { unwrap, Money, HEADER_BTN, BtnLabel } from '@components/finance/AccountingUi';
 
 const input = 'w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm';
 
@@ -61,8 +61,8 @@ export const ChartOfAccountsPage: React.FC = () => {
 
   return (
     <MainLayout>
-      <PageShell title="Chart of Accounts" subtitle="Every account in the school's books. Assets, liabilities and equity show the balance today; income and expenses show this academic year" onRefresh={() => q.refetch()} isRefreshing={q.isFetching}
-        actions={<Button size="sm" variant="create" onClick={() => setEdit({})}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">New account</span></Button>}>
+      <PageShell title="Chart of Accounts" subtitle="Every account in the school's books. Assets, liabilities and equity show the balance today; income and expenses show this academic year" onRefresh={() => q.refetch()} isRefreshing={q.isFetching} mobileLabels
+        actions={<Button size="sm" variant="create" className={HEADER_BTN} onClick={() => setEdit({})}><Plus size={15} /><BtnLabel>New account</BtnLabel></Button>}>
         <div className="flex flex-col sm:flex-row gap-2 mb-4 sm:items-center">
           <SearchBar placeholder="Search code or account name…" onSearch={setSearch} className="w-full sm:max-w-sm" />
           <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Show switched-off accounts</label>
@@ -83,8 +83,8 @@ export const ChartOfAccountsPage: React.FC = () => {
                       <tbody>
                         {group.map((a) => (
                           <tr key={a.id} className={`border-t border-gray-100 dark:border-gray-800 ${!a.is_active ? 'opacity-60' : ''}`}>
-                            <td className="px-4 py-2.5 w-20 font-mono text-xs text-gray-500">{a.code}</td>
-                            <td className="px-4 py-2.5">
+                            <td className="px-4 py-2.5 w-20 font-mono text-xs text-gray-500 whitespace-nowrap">{a.code}</td>
+                            <td className="px-4 py-2.5 min-w-[10rem]">
                               <span className="font-medium">{a.name}</span>
                               {a.control && <span title="Kept by the fees / petty cash records" className="ml-2 inline-flex items-center gap-1 text-[11px] text-gray-400"><Lock size={11} /> automatic</span>}
                               {a.subtype === 'cash' && <span className="ml-2 text-[11px] text-blue-600">money</span>}
@@ -92,9 +92,9 @@ export const ChartOfAccountsPage: React.FC = () => {
                               {!a.is_active && <span className="ml-2 text-[11px] text-gray-400">switched off</span>}
                             </td>
                             <td className="px-4 py-2.5 text-right font-semibold whitespace-nowrap"><Money v={a.balance} /></td>
-                            <td className="px-4 py-2.5 text-right whitespace-nowrap w-24">
-                              <button type="button" aria-label={`Ledger for ${a.name}`} onClick={() => nav(`/finance/reports?tab=ledger&account=${a.id}`)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600"><BookOpen size={15} /></button>
-                              <button type="button" aria-label={`Edit ${a.name}`} onClick={() => setEdit(a)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600"><Pencil size={14} /></button>
+                            <td className="px-2 sm:px-4 py-1.5 text-right whitespace-nowrap w-24">
+                              <button type="button" aria-label={`Ledger for ${a.name}`} title="Ledger" onClick={() => nav(`/finance/reports?tab=ledger&account=${a.id}`)} className="inline-flex items-center justify-center w-10 h-10 sm:w-8 sm:h-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gray-700"><BookOpen size={15} /></button>
+                              <button type="button" aria-label={`Edit ${a.name}`} title="Edit" onClick={() => setEdit(a)} className="inline-flex items-center justify-center w-10 h-10 sm:w-8 sm:h-8 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gray-700"><Pencil size={14} /></button>
                             </td>
                           </tr>
                         ))}

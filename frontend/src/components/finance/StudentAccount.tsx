@@ -7,7 +7,7 @@
 import useAuthStore from '@store/authStore';
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Download, Mail, FileText, Percent, Wallet, CalendarClock, Receipt, User, Phone, Bell } from 'lucide-react';
+import { Loader2, Download, Mail, FileText, Percent, Wallet, CalendarClock, Receipt, User, Phone, Bell, ChevronDown, ChevronRight } from 'lucide-react';
 import { financeService } from '@services/financeService';
 import { Modal } from '@components/admin/feedback/Modal';
 import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialog';
@@ -15,7 +15,7 @@ import { Button } from '@components/ui/button';
 import { showToast } from '@utils/toast';
 import { YearFilter } from '@components/common/YearFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
-import { bursarService, TERMS, type Statement, type PlanSchedule, type ReceiptRow } from '@services/bursarService';
+import { bursarService, TERMS, type Statement, type PlanSchedule, type ReceiptRow, type ReceiptDetail, type ReceiptItem } from '@services/bursarService';
 
 export const le = (v: number | string | null | undefined) =>
   `Le ${(Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -371,9 +371,47 @@ export const StudentPlans: React.FC<{ studentId: string; year: string; staff?: b
 };
 
 // ── Receipts ─────────────────────────────────────────────────────────────────
+/** One receipt with what it paid for (fee type, term/year, amount per line). */
+export function useReceiptDetail(receiptNo: string | null | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['fin-receipt', receiptNo],
+    queryFn: () => ok<ReceiptDetail>(bursarService.receipt(receiptNo as string)),
+    enabled: !!receiptNo && enabled,
+    staleTime: 60_000,
+  });
+}
+
+/** The lines of a receipt: "Tuition · First Term · 2026/2027 ... Le 500.00". */
+export const ReceiptItemLines: React.FC<{ items: ReceiptItem[] }> = ({ items }) => (
+  <ul className="divide-y divide-gray-100 dark:divide-gray-800 rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900/40">
+    {items.map((it, i) => (
+      <li key={`${it.payment_id}-${i}`} className="flex items-start justify-between gap-3 px-3 py-2">
+        <div className="min-w-0">
+          <div className="font-semibold text-gray-800 dark:text-gray-100">
+            {it.label}
+            {it.status === 'refunded' && <span className="ml-2 align-middle"><Pill s="refunded" /></span>}
+          </div>
+          {it.detail && <div className="text-[11px] text-gray-500">{it.detail}</div>}
+        </div>
+        <div className={`shrink-0 font-semibold ${it.kind === 'credit' ? 'text-emerald-700' : ''}`}>{le(it.amount)}</div>
+      </li>
+    ))}
+  </ul>
+);
+
+const ReceiptItemsPanel: React.FC<{ receiptNo: string }> = ({ receiptNo }) => {
+  const d = useReceiptDetail(receiptNo);
+  if (d.isLoading) return <div className="py-2 flex justify-center"><Loader2 size={16} className="animate-spin text-gray-400" /></div>;
+  if (d.error) return <ErrorLine error={d.error} onRetry={() => d.refetch()} />;
+  const items = d.data?.items || [];
+  if (!items.length) return <p className="text-[11px] text-gray-400">No breakdown was recorded for this receipt.</p>;
+  return <ReceiptItemLines items={items} />;
+};
+
 export const ReceiptsList: React.FC<{ studentId: string; staff?: boolean }> = ({ studentId, staff }) => {
   const q = useQuery({ queryKey: ['fin-receipts', studentId], queryFn: () => ok<ReceiptRow[]>(bursarService.studentReceipts(studentId)) });
   const [busy, setBusy] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   if (q.isLoading) return <div className="py-6 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div>;
   if (q.error) return <ErrorLine error={q.error} onRetry={() => q.refetch()} />;
   const rows = q.data || [];
@@ -383,23 +421,41 @@ export const ReceiptsList: React.FC<{ studentId: string; staff?: boolean }> = ({
       <table className="w-full text-xs">
         <thead className="bg-gray-50 dark:bg-gray-900/40 text-gray-500"><tr><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Receipt</th><th className="px-3 py-2 text-left">Method</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2" /><th className="px-3 py-2" /></tr></thead>
         <tbody>
-          {rows.map((r) => (
-            <tr key={r.receipt_number} className="border-t border-gray-100 dark:border-gray-800">
-              <td className="px-3 py-2 whitespace-nowrap">{String(r.date).slice(0, 10)}</td>
-              <td className="px-3 py-2 font-mono">{r.receipt_number}</td>
-              <td className="px-3 py-2">{r.method_label}</td>
-              <td className="px-3 py-2 text-right font-semibold">{le(r.amount)}</td>
-              <td className="px-3 py-2">{r.status !== 'paid' && <Pill s={r.status} />}</td>
-              <td className="px-3 py-2 text-right whitespace-nowrap">
-                <button type="button" aria-label={`Download receipt ${r.receipt_number}`} disabled={busy === r.receipt_number}
-                  onClick={async () => { setBusy(r.receipt_number); try { await bursarService.downloadReceipt(r.receipt_number); } catch (e: any) { showToast.error(e.message); } finally { setBusy(null); } }}
-                  className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:underline mr-3"><Download size={12} /> PDF</button>
-                {staff && <button type="button" aria-label={`Email receipt ${r.receipt_number}`}
-                  onClick={async () => { const x: any = await bursarService.emailReceipt(r.receipt_number); x?.success === false ? showToast.error(x.error || 'Not sent') : showToast.success(`Sent to ${x.data.to}`); }}
-                  className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:underline"><Mail size={12} /> Email</button>}
-              </td>
-            </tr>
-          ))}
+          {rows.map((r) => {
+            const expanded = open === r.receipt_number;
+            return (
+              <React.Fragment key={r.receipt_number}>
+                <tr className="border-t border-gray-100 dark:border-gray-800">
+                  <td className="px-3 py-2 whitespace-nowrap">{String(r.date).slice(0, 10)}</td>
+                  <td className="px-3 py-2">
+                    <button type="button" aria-expanded={expanded} aria-controls={`rcpt-items-${r.receipt_number}`}
+                      aria-label={`${expanded ? 'Hide' : 'Show'} what receipt ${r.receipt_number} paid for`}
+                      onClick={() => setOpen(expanded ? null : r.receipt_number)}
+                      className="inline-flex items-center gap-1 font-mono hover:text-blue-600 text-left">
+                      {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}{r.receipt_number}
+                    </button>
+                    {r.purpose && <div className="ml-4 mt-0.5 text-[11px] text-gray-500">{r.purpose}</div>}
+                  </td>
+                  <td className="px-3 py-2">{r.method_label}</td>
+                  <td className="px-3 py-2 text-right font-semibold">{le(r.amount)}</td>
+                  <td className="px-3 py-2">{r.status !== 'paid' && <Pill s={r.status} />}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    <button type="button" aria-label={`Download receipt ${r.receipt_number}`} disabled={busy === r.receipt_number}
+                      onClick={async () => { setBusy(r.receipt_number); try { await bursarService.downloadReceipt(r.receipt_number); } catch (e: any) { showToast.error(e.message); } finally { setBusy(null); } }}
+                      className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:underline mr-3"><Download size={12} /> PDF</button>
+                    {staff && <button type="button" aria-label={`Email receipt ${r.receipt_number}`}
+                      onClick={async () => { const x: any = await bursarService.emailReceipt(r.receipt_number); x?.success === false ? showToast.error(x.error || 'Not sent') : showToast.success(`Sent to ${x.data.to}`); }}
+                      className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:underline"><Mail size={12} /> Email</button>}
+                  </td>
+                </tr>
+                {expanded && (
+                  <tr id={`rcpt-items-${r.receipt_number}`} className="bg-gray-50/60 dark:bg-gray-900/30">
+                    <td colSpan={6} className="px-3 py-2"><ReceiptItemsPanel receiptNo={r.receipt_number} /></td>
+                  </tr>
+                )}
+              </React.Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>

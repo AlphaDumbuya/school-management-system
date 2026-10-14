@@ -17,7 +17,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Trash2, CheckCircle2, ChevronDown, ChevronRight,
-  Settings2, Layers, X, Info, Undo2,
+  Settings2, Layers, Info, Undo2,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { cardTint } from '@lib/cardTint';
@@ -25,6 +25,7 @@ import { PageShell } from '@components/admin/layout/PageShell';
 import { Button } from '@components/ui/button';
 import { SearchBar } from '@components/admin/table/SearchBar';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
+import { Modal } from '@components/admin/feedback/Modal';
 import { showToast } from '@utils/toast';
 import { classesService } from '@services/classesService';
 import { feeStructureService, FeeStructure, FeeStructureExpense } from '@services/feeStructureService';
@@ -236,29 +237,34 @@ export const FeesPage: React.FC = () => {
               const fullYear = t1 + t2 + t3 + expTotal;
               return (
                 <div key={s.id} className={`rounded-2xl ${cardTint(idx)} sm:bg-white sm:dark:bg-gray-800 sm:border-gray-200 sm:dark:border-gray-700 border overflow-hidden`}>
-                  <div className="flex items-center gap-3 px-4 py-3 cursor-pointer" onClick={() => toggleExpand(s.id)}>
-                    <button className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0">
+                  {/* Phones: [chevron | name, level, status, terms | icons] on
+                      the first row and the year total on its own full-width
+                      row underneath, so nothing squeezes the class name or
+                      overflows. sm+: the original single row. */}
+                  <div className="flex flex-wrap sm:flex-nowrap items-start sm:items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-3 cursor-pointer" onClick={() => toggleExpand(s.id)}>
+                    <button type="button" aria-expanded={isOpen} aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${s.class_name}`} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0 mt-0.5 sm:mt-0">
                       {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </button>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm text-gray-900 dark:text-white">{s.class_name}</span>
+                      <div className="flex items-center gap-x-2 gap-y-1 flex-wrap">
+                        <span className="font-semibold text-sm text-gray-900 dark:text-white break-words min-w-0">{s.class_name}</span>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${levelCls(s.class_level)}`}>{s.class_level || 'Class'}</span>
+                        <span className="sm:hidden"><BilledBadge s={s} /></span>
                       </div>
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        Term 1: {fmtLe(t1)} · Term 2: {fmtLe(t2)} · Term 3: {fmtLe(t3)}
+                      <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 tabular-nums">
+                        <span className="whitespace-nowrap">Term 1: {fmtLe(t1)}</span>
+                        <span aria-hidden className="hidden sm:inline">·</span>
+                        <span className="whitespace-nowrap">Term 2: {fmtLe(t2)}</span>
+                        <span aria-hidden className="hidden sm:inline">·</span>
+                        <span className="whitespace-nowrap">Term 3: {fmtLe(t3)}</span>
                       </div>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="text-sm font-black text-gray-900 dark:text-white">{fmtLe(fullYear)} / Yr</div>
-                      <div className="text-[10px] text-gray-400">inc. {fmtLe(expTotal)} expenses</div>
+                    <div className="order-last sm:order-none basis-full sm:basis-auto flex sm:block flex-wrap items-baseline justify-between gap-x-3 pl-7 sm:pl-0 text-left sm:text-right flex-shrink-0 min-w-0">
+                      <div className="text-sm font-black text-gray-900 dark:text-white tabular-nums">{fmtLe(fullYear)} / Yr</div>
+                      <div className="text-[10px] text-gray-400 tabular-nums">inc. {fmtLe(expTotal)} expenses</div>
                     </div>
-                    <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
-                      {s.billed ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" title={`Billed: ${(s.billedTerms || []).join(', ') || 'yes'}`}>BILLED</span>
-                      ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400" title="Not billed yet">NOT BILLED</span>
-                      )}
+                    <div className="flex items-center gap-1 sm:gap-1.5 sm:ml-2 flex-shrink-0">
+                      <span className="hidden sm:inline-flex"><BilledBadge s={s} /></span>
                       {!viewingPast && <>
                       <button onClick={(e) => { e.stopPropagation(); setConfigClass(classes.find((c) => c.id === (s.classId || s.class_id)) ?? { id: s.classId || s.class_id, name: s.class_name, level: s.class_level }); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-600" title="Edit" aria-label={`Edit ${s.class_name} fee structure`}><Settings2 size={15} /></button>
                       <button onClick={(e) => { e.stopPropagation(); setBillTarget(s); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-emerald-600" title="Bill a term or the full year" aria-label={`Bill ${s.class_name}`}><Layers size={15} /></button>
@@ -269,30 +275,30 @@ export const FeesPage: React.FC = () => {
                     </div>
                   </div>
                   {isOpen && (
-                    <div className="border-t border-gray-100 dark:border-gray-700 px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-5 text-sm">
-                      <div>
+                    <div className="border-t border-gray-100 dark:border-gray-700 px-3 sm:px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-5 text-sm">
+                      <div className="min-w-0">
                         <div className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Term Tuition</div>
                         <div className="space-y-1.5">
                           {[['Term 1 (Tuition + Expenses)', t1 + expTotal], ['Term 2 (Tuition Only)', t2], ['Term 3 (Tuition Only)', t3]].map(([l, v]) => (
-                            <div key={l as string} className="flex justify-between">
-                              <span className="text-gray-500">{l}</span>
-                              <span className="font-semibold">{fmtLe(v)}</span>
+                            <div key={l as string} className="flex justify-between gap-3">
+                              <span className="text-gray-500 min-w-0">{l}</span>
+                              <span className="font-semibold tabular-nums whitespace-nowrap">{fmtLe(v)}</span>
                             </div>
                           ))}
-                          <div className="flex justify-between border-t border-gray-100 dark:border-gray-700 pt-1.5">
-                            <span className="font-bold text-gray-700 dark:text-gray-300">Full Year Total</span>
-                            <span className="font-black text-gray-900 dark:text-white">{fmtLe(fullYear)}</span>
+                          <div className="flex justify-between gap-3 border-t border-gray-100 dark:border-gray-700 pt-1.5">
+                            <span className="font-bold text-gray-700 dark:text-gray-300 min-w-0">Full Year Total</span>
+                            <span className="font-black text-gray-900 dark:text-white tabular-nums whitespace-nowrap">{fmtLe(fullYear)}</span>
                           </div>
                         </div>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <div className="font-semibold text-gray-700 dark:text-gray-300 mb-2">General Academic Year Expenses</div>
                         {exp.length === 0 ? <p className="text-gray-400 text-xs">No one-off expenses.</p> : (
                           <div className="space-y-1">
                             {exp.map((e: any, i: number) => (
-                              <div key={i} className="flex justify-between text-xs">
-                                <span className="text-gray-600 dark:text-gray-400">• {e.label}</span>
-                                <span className="font-medium">{fmtLe(e.amount)}</span>
+                              <div key={i} className="flex justify-between gap-3 text-xs">
+                                <span className="text-gray-600 dark:text-gray-400 min-w-0 break-words">• {e.label}</span>
+                                <span className="font-medium tabular-nums whitespace-nowrap">{fmtLe(e.amount)}</span>
                               </div>
                             ))}
                           </div>
@@ -384,8 +390,10 @@ const KCOLORS: Record<string, string> = {
   rose:    'text-rose-600   bg-rose-500/10',
 };
 const KPITile: React.FC<{ label: string; value: React.ReactNode; sub?: string; color: string }> = ({ label, value, sub, color }) => (
-  <div className={`rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4`}>
-    <div className={`text-xl font-black ${KCOLORS[color]?.split(' ')[0] ?? ''}`}>{value}</div>
+  <div className={`min-w-0 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 sm:p-4`}>
+    {/* Large Le amounts in a half-width phone tile: smaller type and allowed
+        to wrap rather than spill out of the card. */}
+    <div className={`text-base sm:text-xl font-black leading-tight tabular-nums [overflow-wrap:anywhere] ${KCOLORS[color]?.split(' ')[0] ?? ''}`}>{value}</div>
     <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mt-0.5">{label}</div>
     {sub && <div className="text-[11px] text-gray-400 mt-0.5">{sub}</div>}
   </div>
@@ -520,19 +528,26 @@ const FeeStructureModal: React.FC<{
     } finally { setSaving(false); }
   };
 
+  // Shared Modal (portal on <body>, header/footer pinned, body scrolls and
+  // opens at the top). The old overlay centred a taller-than-screen card in
+  // an `overflow-y-auto` flex box, which pushes its top out of reach on
+  // phones, so it appeared scrolled to the end.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 overflow-y-auto" onClick={onClose}>
-      <div className="relative w-full max-w-2xl lg:max-w-4xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 my-4" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-t-2xl">
-          <div>
-            <h3 className="font-bold text-gray-900 dark:text-white">Configure Academic Year Fees</h3>
-            <p className="text-xs text-gray-500 mt-0.5">{cls.name} · {year}</p>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
-        </div>
-
-        <form onSubmit={handleSubmit(submit)} className="p-5 space-y-6 overflow-y-auto max-h-[75vh]">
+    <Modal
+      isOpen
+      onClose={onClose}
+      title="Configure Academic Year Fees"
+      size="xl"
+      footer={
+        <>
+          {existingError && <span role="alert" className="w-full sm:w-auto sm:mr-auto text-xs text-red-600">{(existingError as Error).message} Close and try again.</span>}
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button variant="create" size="sm" onClick={handleSubmit(submit)} disabled={saving || existingLoading || !!existingError}>{saving ? 'Saving…' : existingLoading ? 'Loading…' : 'Save Academic Year Fees'}</Button>
+        </>
+      }
+    >
+        <p className="text-xs text-gray-500 -mt-2 mb-4 break-words">{cls.name} · {year}</p>
+        <form onSubmit={handleSubmit(submit)} className="space-y-6">
           {/* Term tuition */}
           <Section title="Sub-Terms Tuition Fees">
             <Controller
@@ -545,7 +560,7 @@ const FeeStructureModal: React.FC<{
                 </label>
               )}
             />
-            <div className="grid grid-cols-3 gap-0">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-0">
               <Controller
                 control={control}
                 name="term1Tuition"
@@ -609,7 +624,7 @@ const FeeStructureModal: React.FC<{
 
           {/* Payment policy — per-class OVERRIDE of the school-wide policy. */}
           <Section title="Payment Policy Rules" hint="Per-class override. Leave a field blank to use the school-wide policy from Settings → Financial.">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3">
               <Controller
                 control={control}
                 name="minPercentNew"
@@ -663,36 +678,30 @@ const FeeStructureModal: React.FC<{
           {/* Live summary */}
           <div className="rounded-2xl bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 p-4">
             <div className="text-xs font-bold uppercase text-gray-500 mb-3">Academic Year Unified Financial Summary</div>
-            <div className="grid grid-cols-3 gap-3 mb-3">
+            {/* Phones: one row per term (label left, amount right) so long
+                amounts stay readable; sm+: the original three columns. */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mb-3">
               {[
                 ['Term 1 (Tuition + Expenses)', t1v + expTotal],
                 ['Term 2 (Tuition)', t2v],
                 ['Term 3 (Tuition)', t3v],
               ].map(([l, v]) => (
-                <div key={l as string} className="text-center">
-                  <div className="text-sm font-black text-gray-900 dark:text-white">{fmtLe(v)}</div>
-                  <div className="text-[10px] text-gray-400 mt-0.5">{l}</div>
+                <div key={l as string} className="flex items-baseline justify-between gap-3 min-w-0 sm:block sm:text-center">
+                  <div className="order-2 sm:order-none text-sm font-black text-gray-900 dark:text-white tabular-nums whitespace-nowrap sm:whitespace-normal sm:[overflow-wrap:anywhere]">{fmtLe(v)}</div>
+                  <div className="order-1 sm:order-none min-w-0 text-[11px] sm:text-[10px] text-gray-500 sm:text-gray-400 sm:mt-0.5">{l}</div>
                 </div>
               ))}
             </div>
-            <div className="flex items-center justify-between border-t border-gray-200 dark:border-gray-700 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-gray-200 dark:border-gray-700 pt-3">
               <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Full Year Total</span>
-              <span className="text-lg font-black text-indigo-600">{fmtLe(fullYear)}</span>
+              <span className="text-lg font-black text-indigo-600 tabular-nums [overflow-wrap:anywhere]">{fmtLe(fullYear)}</span>
             </div>
             <p className="text-[11px] text-gray-400 mt-2">
               Parents searching in Term 1 will see their Term 1 tuition + itemised year expenses ({fmtLe(t1v + expTotal)}).
             </p>
           </div>
         </form>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700 sticky bottom-0 bg-white dark:bg-gray-800 rounded-b-2xl">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          {existingError && <span role="alert" className="mr-auto text-xs text-red-600">{(existingError as Error).message} Close and try again.</span>}
-          <Button variant="create" size="sm" onClick={handleSubmit(submit)} disabled={saving || existingLoading || !!existingError}>{saving ? 'Saving…' : existingLoading ? 'Loading…' : 'Save Academic Year Fees'}</Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
 
@@ -731,13 +740,19 @@ const BillTermModal: React.FC<{ structure: any; onClose: () => void; onDone: () 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="font-bold text-gray-900 dark:text-white">Bill Fees — {structure.class_name}</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
-        </div>
-        <div className="p-5 space-y-4">
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={`Bill Fees — ${structure.class_name}`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button variant="create" size="sm" onClick={submit} disabled={saving}>{saving ? 'Billing…' : term === 'year' ? 'Bill Full Year' : `Bill Term ${term}`}</Button>
+        </>
+      }
+    >
+        <div className="space-y-4">
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase">What to bill</label>
             <div className="grid grid-cols-2 gap-1 mt-1 bg-gray-100 dark:bg-gray-900/50 rounded-xl p-1">
@@ -763,12 +778,7 @@ const BillTermModal: React.FC<{ structure: any; onClose: () => void; onDone: () 
           </div>
           <p className="text-xs text-gray-400">This creates individual fee records for every active student in the class for {scopeLabel}, ready to collect.</p>
         </div>
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="create" size="sm" onClick={submit} disabled={saving}>{saving ? 'Billing…' : term === 'year' ? 'Bill Full Year' : `Bill Term ${term}`}</Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
 
@@ -791,13 +801,19 @@ const UnbillModal: React.FC<{ structure: any; onClose: () => void; onDone: () =>
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="font-bold text-gray-900 dark:text-white">Unbill — {structure.class_name}</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><X size={18} /></button>
-        </div>
-        <div className="p-5 space-y-4">
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={`Unbill — ${structure.class_name}`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={submit} disabled={saving} className="bg-red-600 hover:bg-red-700">{saving ? 'Removing…' : 'Unbill'}</Button>
+        </>
+      }
+    >
+        <div className="space-y-4">
           <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
             <Info size={14} className="flex-shrink-0 mt-0.5" />
             <span>Only this structure's <strong>unpaid</strong> charges are removed. Charges with a payment, or already on an invoice, are kept so history is never lost.</span>
@@ -812,16 +828,17 @@ const UnbillModal: React.FC<{ structure: any; onClose: () => void; onDone: () =>
             </div>
           </div>
         </div>
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={submit} disabled={saving} className="bg-red-600 hover:bg-red-700">{saving ? 'Removing…' : 'Unbill'}</Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
 
 /* ── Small sub-components ────────────────────────────────────────────────── */
+const BilledBadge: React.FC<{ s: any }> = ({ s }) => (s.billed ? (
+  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" title={`Billed: ${(s.billedTerms || []).join(', ') || 'yes'}`}>BILLED</span>
+) : (
+  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400" title="Not billed yet">NOT BILLED</span>
+));
+
 const Section: React.FC<{ title: string; hint?: string; children: React.ReactNode }> = ({ title, hint, children }) => (
   <div>
     <div className="flex items-center gap-1.5 mb-2">

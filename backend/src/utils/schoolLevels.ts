@@ -29,6 +29,55 @@ export function schoolLevels(schoolType?: string | null): { primary: boolean; se
   return { primary, secondary };
 }
 
+// ── Class level scope ─────────────────────────────────────────────────────────
+// Which classes belong to a school's level, so a Primary school's class pickers
+// never offer JSS/SSS classes. Mirrors frontend/src/lib/classScope.ts.
+
+export type ClassTier = 'nursery' | 'primary' | 'jss' | 'sss';
+
+/**
+ * The class tiers a school's level covers. Nursery and primary count as one
+ * tier (the same "primary" side as schoolLevels(), so a primary school's
+ * nursery classes stay visible). Secondary is split into JSS / SSS only when
+ * the level names just one of them ("Junior Secondary"); a generic
+ * "Secondary", technical/vocational or unknown level keeps both.
+ */
+export function schoolClassTiers(schoolType?: string | null): Set<ClassTier> {
+  const t = (schoolType || '').toLowerCase();
+  const { primary, secondary } = schoolLevels(schoolType);
+  const tiers = new Set<ClassTier>();
+  if (primary) { tiers.add('nursery'); tiers.add('primary'); }
+  if (secondary) {
+    const junior = /junior|jss|\bjhs\b/.test(t);
+    const senior = /senior|sss|\bshs\b/.test(t);
+    const both = /technical|vocational|k-?12/.test(t) || (!junior && !senior);
+    if (both || junior) tiers.add('jss');
+    if (both || senior) tiers.add('sss');
+  }
+  return tiers;
+}
+
+function tierOf(text?: string | null): ClassTier | null {
+  const s = String(text || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!s) return null;
+  if (/^(NURSERY|PRENURSERY|KG|KINDERGARTEN|PRESCHOOL|CRECHE|PLAYGROUP|EARLYCHILDHOOD)/.test(s)) return 'nursery';
+  if (/^(CLASS|STANDARD)\d/.test(s) || /^PRIMARY/.test(s)) return 'primary';
+  if (/^(JSS|JHS|JUNIORSECONDARY|JUNIORHIGH)/.test(s) || /^JS\d/.test(s)) return 'jss';
+  if (/^(SSS|SHS|SENIORSECONDARY|SENIORHIGH)/.test(s) || /^SS\d/.test(s)) return 'sss';
+  return null;
+}
+
+/** A class's tier from its level code ("CLASS4", "JSS 1"), else its name; null if unknown. */
+export function classTier(level?: string | null, name?: string | null): ClassTier | null {
+  return tierOf(level) ?? tierOf(name);
+}
+
+/** True when the class fits the school's level. Classes of unknown level are always kept. */
+export function classInSchoolScope(cls: { level?: string | null; name?: string | null }, schoolType?: string | null): boolean {
+  const tier = classTier(cls.level, cls.name);
+  return !tier || schoolClassTiers(schoolType).has(tier);
+}
+
 /** "Head Teacher" for a primary-only (or nursery) school, otherwise "Principal". */
 export function leadTitle(schoolType?: string | null): 'Head Teacher' | 'Principal' {
   const { primary, secondary } = schoolLevels(schoolType);

@@ -66,6 +66,24 @@ export const Money: React.FC<{ v: number | null | undefined; zero?: string; clas
   return <span className={className}>{n < 0 ? `(${s})` : s}</span>;
 };
 
+/**
+ * Page-header action buttons on the finance pages. On phones the label stays
+ * visible (icon + short text), the tap target is about 40px tall, and buttons
+ * keep their width so the header row wraps instead of squashing them.
+ */
+export const HEADER_BTN = 'min-h-[40px] sm:min-h-0 whitespace-nowrap shrink-0';
+/**
+ * The same for <ExportButton>, through its `className` (outer wrapper): shows
+ * its label on phones and gives it the 40px tap target.
+ */
+export const HEADER_EXPORT = 'shrink-0 [&>button]:min-h-[40px] sm:[&>button]:min-h-0 [&>button]:whitespace-nowrap [&>button>span]:inline';
+
+/** Button text: an optional shorter wording below `sm`, the full one above. */
+export const BtnLabel: React.FC<{ short?: string; children: React.ReactNode }> = ({ short, children }) =>
+  short
+    ? <><span className="sm:hidden">{short}</span><span className="hidden sm:inline">{children}</span></>
+    : <span>{children}</span>;
+
 export const CheckBadge: React.FC<{ ok: boolean; okText: string; badText: string }> = ({ ok, okText, badText }) => (
   <span role="status" className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${ok ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300'}`}>
     {ok ? '✓' : '!'} {ok ? okText : badText}

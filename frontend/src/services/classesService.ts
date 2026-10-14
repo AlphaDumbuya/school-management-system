@@ -7,6 +7,7 @@ import { apiClient } from '@lib/apiClient';
 import useAuthStore from '@store/authStore';
 import { rosterRepo } from '../offline/repositories/rosterRepo';
 import { getCachedAcademicSessions } from './schoolConfigService';
+import { filterClassesToSchool } from '@lib/classScope';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,11 @@ export interface ListClassesParams {
   academic_year?: string;
   /** Scope to a specific academic session id. */
   academic_session_id?: string;
+  /**
+   * By default only classes within the school's level are listed (a Primary
+   * school gets no JSS/SSS classes). 'all' lists every class regardless.
+   */
+  level_scope?: 'all';
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -118,9 +124,12 @@ export const classesService = {
    * year filter matters: legacy classes with no session count as the active year.
    */
   async _cachedClasses(params: ListClassesParams = {}): Promise<ClassRecord[]> {
-    const uid = (useAuthStore.getState().user as any)?.id;
+    const authUser = useAuthStore.getState().user as any;
+    const uid = authUser?.id;
     if (!uid) return [];
     let rows: ClassRecord[] = await rosterRepo.list(uid, 'classes').catch(() => []);
+    // Same school-level scope the API applies (no JSS/SSS in a Primary school).
+    if (params.level_scope !== 'all') rows = filterClassesToSchool(rows, authUser?.schoolType);
 
     if (params.academic_session_id) {
       rows = rows.filter((c) => String(c.academic_session_id ?? '') === String(params.academic_session_id));

@@ -13,7 +13,7 @@ import { ExportButton } from '@components/admin/common/ExportButton';
 import { usePaged, TablePager } from '@components/admin/table/TablePager';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import { bursarC, type GLAccount } from '@services/bursarService';
-import { unwrap, PeriodPicker, periodQuery, AccountSelect, Money, CheckBadge, todayLocal, type Period } from '@components/finance/AccountingUi';
+import { unwrap, PeriodPicker, periodQuery, AccountSelect, Money, CheckBadge, todayLocal, HEADER_EXPORT, type Period } from '@components/finance/AccountingUi';
 import { ChartCard } from '@components/admin/charts/ChartCard';
 import { fmtLeShort, NO_SERIES } from '@lib/chartFormat';
 
@@ -47,6 +47,13 @@ const Row: React.FC<{ label: React.ReactNode; v: number; bold?: boolean; indent?
     <td className="px-4 py-2 text-right whitespace-nowrap"><Money v={v} zero={bold ? 'Le 0.00' : '—'} className={v < 0 ? 'text-red-600' : undefined} /></td>
   </tr>
 );
+/** Honest empty state inside a statement card: nothing is invented for an empty period. */
+const Nothing: React.FC<{ title: string; hint: string }> = ({ title, hint }) => (
+  <div className="px-4 py-8 text-center">
+    <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{title}</p>
+    <p className="mt-1 text-xs text-gray-500 max-w-md mx-auto">{hint}</p>
+  </div>
+);
 const Loading = () => <div className="py-12 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div>;
 const Err: React.FC<{ e: unknown; retry: () => void }> = ({ e, retry }) => <p role="alert" className="p-4 text-sm text-red-600">{(e as Error).message} <button type="button" className="font-bold underline" onClick={retry}>Retry</button></p>;
 
@@ -71,12 +78,12 @@ export const FinancialReportsPage: React.FC = () => {
   const ledgerPg = usePaged<any>(ledger.data?.lines || [], [account, JSON.stringify(rq)], 50);
   const d = report.data;
   const exportParams = Object.fromEntries(Object.entries(rq).filter(([, v]) => v)) as Record<string, string>;
-  const exportFor = (endpoint: string, filename: string) => <ExportButton endpoint={`/api/v1/finance/gl/reports/${endpoint}`} filename={filename} params={exportParams} />;
+  const exportFor = (endpoint: string, filename: string) => <ExportButton className={HEADER_EXPORT} endpoint={`/api/v1/finance/gl/reports/${endpoint}`} filename={filename} params={exportParams} />;
 
   return (
     <MainLayout>
       <PageShell title="Financial Statements" subtitle="Statements from the school's books, ready for the board, auditors or the ministry"
-        onRefresh={() => { report.refetch(); integrity.refetch(); ledger.refetch(); }} isRefreshing={report.isFetching || ledger.isFetching}
+        onRefresh={() => { report.refetch(); integrity.refetch(); ledger.refetch(); }} isRefreshing={report.isFetching || ledger.isFetching} mobileLabels
         actions={<PeriodPicker value={period} onChange={setPeriod} activeYear={activeYear} asAt={tab === 'balance-sheet'} />}>
 
         {integrity.data && (
@@ -94,21 +101,22 @@ export const FinancialReportsPage: React.FC = () => {
         )}
 
         <div role="tablist" aria-label="Report" className="mb-4 flex flex-wrap gap-1 rounded-xl bg-gray-100 dark:bg-gray-900/50 p-1 w-fit">
-          {TABS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${tab === k ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500'}`}>{l}</button>)}
+          {TABS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap ${tab === k ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500'}`}>{l}</button>)}
         </div>
 
         {tab !== 'ledger' && (report.error ? <Err e={report.error} retry={() => report.refetch()} /> : report.isLoading || !d ? <Loading /> : (
           <>
             {tab === 'trial-balance' && (
-              <Card title={`Trial balance · ${d.range.label}`} right={<div className="flex items-center gap-2"><CheckBadge ok={d.balanced} okText="Balanced" badText="Not balanced" />{exportFor('trial-balance', 'trial-balance')}</div>}>
-                <table className="w-full text-sm">
+              <Card title={`Trial balance · ${d.range.label}`} right={<div className="flex flex-wrap items-center gap-2"><CheckBadge ok={d.balanced} okText="Balanced" badText="Not balanced" />{exportFor('trial-balance', 'trial-balance')}</div>}>
+                {!d.lines.length ? <Nothing title="Nothing posted in this period" hint="The trial balance fills in by itself as fees are billed, payments come in, expenses are recorded and payroll is paid." /> : (
+                <table className="w-full min-w-[30rem] text-sm">
                   <thead className="text-xs text-gray-500 bg-gray-50 dark:bg-gray-900/40"><tr><th className="px-4 py-2 text-left">Account</th><th className="px-4 py-2 text-right">Debit</th><th className="px-4 py-2 text-right">Credit</th></tr></thead>
                   <tbody>
-                    {d.lines.map((l: any) => <tr key={l.account_id || l.name} className="border-t border-gray-100 dark:border-gray-800"><td className="px-4 py-2"><span className="font-mono text-xs text-gray-400 mr-2">{l.code}</span>{l.name}</td><td className="px-4 py-2 text-right"><Money v={l.debit} zero="" /></td><td className="px-4 py-2 text-right"><Money v={l.credit} zero="" /></td></tr>)}
-                    <tr className="border-t-2 border-gray-200 dark:border-gray-700 font-bold"><td className="px-4 py-2.5">Total</td><td className="px-4 py-2.5 text-right"><Money v={d.total_debit} zero="Le 0.00" /></td><td className="px-4 py-2.5 text-right"><Money v={d.total_credit} zero="Le 0.00" /></td></tr>
+                    {d.lines.map((l: any) => <tr key={l.account_id || l.name} className="border-t border-gray-100 dark:border-gray-800"><td className="px-4 py-2 min-w-[12rem]"><span className="font-mono text-xs text-gray-400 mr-2">{l.code}</span>{l.name}</td><td className="px-4 py-2 text-right whitespace-nowrap"><Money v={l.debit} zero="" /></td><td className="px-4 py-2 text-right whitespace-nowrap"><Money v={l.credit} zero="" /></td></tr>)}
+                    <tr className="border-t-2 border-gray-200 dark:border-gray-700 font-bold"><td className="px-4 py-2.5">Total</td><td className="px-4 py-2.5 text-right whitespace-nowrap"><Money v={d.total_debit} zero="Le 0.00" /></td><td className="px-4 py-2.5 text-right whitespace-nowrap"><Money v={d.total_credit} zero="Le 0.00" /></td></tr>
                   </tbody>
                 </table>
-                {!d.lines.length && <p className="p-4 text-sm text-gray-500">Nothing posted in this period.</p>}
+                )}
               </Card>
             )}
 
@@ -155,6 +163,7 @@ export const FinancialReportsPage: React.FC = () => {
 
             {tab === 'income-statement' && (
               <Card title={`Income statement · ${d.range.label}`} right={exportFor('income-statement', 'income-statement')}>
+                {!d.income.length && !d.expenses.length ? <Nothing title="No income or expenses in this period" hint="Income comes from fees billed (less discounts) and other income journals; expenses from recorded expenses, petty cash spending and paid payroll." /> : <>
                 <table className="w-full text-sm"><tbody>
                   <tr><td colSpan={2} className="px-4 pt-3 pb-1 text-xs font-bold uppercase text-gray-500">Income</td></tr>
                   {d.income.map((l: any) => <Row key={l.account_id} code={l.code} label={l.name} v={l.amount} indent />)}
@@ -165,11 +174,13 @@ export const FinancialReportsPage: React.FC = () => {
                   <tr className="border-t-2 border-gray-300 dark:border-gray-600 text-base font-black"><td className="px-4 py-3">{d.surplus >= 0 ? 'Surplus' : 'Deficit'}</td><td className={`px-4 py-3 text-right ${d.surplus < 0 ? 'text-red-600' : 'text-emerald-700'}`}><Money v={d.surplus} zero="Le 0.00" /></td></tr>
                 </tbody></table>
                 {d.discounts > 0 && <p className="px-4 pb-3 text-xs text-gray-500">Fees billed <Money v={d.gross_income} /> less discounts, scholarships and waivers <Money v={d.discounts} />.</p>}
+                </>}
               </Card>
             )}
 
             {tab === 'balance-sheet' && (
-              <Card title={`Balance sheet · as at ${d.as_at}`} right={<div className="flex items-center gap-2"><CheckBadge ok={d.balanced} okText="Assets = liabilities + equity" badText="Does not balance" />{exportFor('balance-sheet', 'balance-sheet')}</div>}>
+              <Card title={`Balance sheet · as at ${d.as_at}`} right={<div className="flex flex-wrap items-center gap-2"><CheckBadge ok={d.balanced} okText="Assets = liabilities + equity" badText="Does not balance" />{exportFor('balance-sheet', 'balance-sheet')}</div>}>
+                {!d.assets.length && !d.liabilities.length && !d.equity.length ? <Nothing title={`No balances as at ${d.as_at}`} hint="Fees owed, money received and amounts the school owes appear here once they are recorded. Use a journal for opening balances held before the school started using the system." /> : (
                 <table className="w-full text-sm"><tbody>
                   <tr><td colSpan={2} className="px-4 pt-3 pb-1 text-xs font-bold uppercase text-gray-500">Assets</td></tr>
                   {d.assets.map((l: any) => <Row key={l.account_id} code={l.code} label={l.name} v={l.amount} indent />)}
@@ -182,11 +193,13 @@ export const FinancialReportsPage: React.FC = () => {
                   <Row label="Total equity" v={d.total_equity} bold />
                   <Row label="Liabilities + equity" v={d.total_liabilities + d.total_equity} bold />
                 </tbody></table>
+                )}
               </Card>
             )}
 
             {tab === 'cash-flow' && (
-              <Card title={`Cash flow · ${d.range.label}`} right={<div className="flex items-center gap-2"><CheckBadge ok={d.balanced} okText="Agrees with cash accounts" badText="Does not agree" />{exportFor('cash-flow', 'cash-flow')}</div>}>
+              <Card title={`Cash flow · ${d.range.label}`} right={<div className="flex flex-wrap items-center gap-2"><CheckBadge ok={d.balanced} okText="Agrees with cash accounts" badText="Does not agree" />{exportFor('cash-flow', 'cash-flow')}</div>}>
+                {!Number(d.opening_cash) && !Number(d.closing_cash) && !d.operating.length && !d.investing.length && !d.financing.length ? <Nothing title="No money moved in this period" hint="Cash flow counts money in and out of cash on hand, bank, mobile money and petty cash: payments received, refunds, expenses and salaries paid." /> : (
                 <table className="w-full text-sm"><tbody>
                   <Row label="Opening cash (cash, bank, mobile money, petty cash)" v={d.opening_cash} bold />
                   <tr><td colSpan={2} className="px-4 pt-3 pb-1 text-xs font-bold uppercase text-gray-500">Operating activities</td></tr>
@@ -195,8 +208,9 @@ export const FinancialReportsPage: React.FC = () => {
                   {d.investing.length > 0 && <><tr><td colSpan={2} className="px-4 pt-3 pb-1 text-xs font-bold uppercase text-gray-500">Investing activities</td></tr>{d.investing.map((l: any) => <Row key={l.label} label={l.label} v={l.amount} indent />)}</>}
                   {d.financing.length > 0 && <><tr><td colSpan={2} className="px-4 pt-3 pb-1 text-xs font-bold uppercase text-gray-500">Financing activities</td></tr>{d.financing.map((l: any) => <Row key={l.label} label={l.label} v={l.amount} indent />)}</>}
                   <Row label="Net change in cash" v={d.net_change} bold />
-                  <tr className="border-t-2 border-gray-300 dark:border-gray-600 text-base font-black"><td className="px-4 py-3">Closing cash</td><td className="px-4 py-3 text-right"><Money v={d.closing_cash} zero="Le 0.00" /></td></tr>
+                  <tr className="border-t-2 border-gray-300 dark:border-gray-600 text-base font-black"><td className="px-4 py-3">Closing cash</td><td className="px-4 py-3 text-right whitespace-nowrap"><Money v={d.closing_cash} zero="Le 0.00" /></td></tr>
                 </tbody></table>
+                )}
               </Card>
             )}
           </>
@@ -204,8 +218,8 @@ export const FinancialReportsPage: React.FC = () => {
 
         {tab === 'ledger' && (
           <Card title={ledger.data ? `${ledger.data.account.code} ${ledger.data.account.name} · ${ledger.data.range.label}` : 'General ledger'}
-            right={<div className="flex items-center gap-2">
-              {accounts.data && <AccountSelect ariaLabel="Account" value={account} onChange={setAccount} accounts={accounts.data} className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm max-w-xs" />}
+            right={<div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              {accounts.data && <AccountSelect ariaLabel="Account" value={account} onChange={setAccount} accounts={accounts.data} className="min-h-[40px] sm:min-h-0 w-full sm:w-auto px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm sm:max-w-xs" />}
               {account && exportFor(`ledger/${account}`, 'ledger')}
             </div>}>
             {!account ? <p className="p-4 text-sm text-gray-500">Choose an account to see every entry on it with a running balance.</p>
@@ -213,15 +227,15 @@ export const FinancialReportsPage: React.FC = () => {
               : ledger.isLoading || !ledger.data ? <Loading />
               : (
                 <>
-                  <table className="w-full text-sm">
-                    <thead className="text-xs text-gray-500 bg-gray-50 dark:bg-gray-900/40"><tr><th className="px-4 py-2 text-left">Date</th><th className="px-4 py-2 text-left">Entry</th><th className="px-4 py-2 text-left">Details</th><th className="px-4 py-2 text-right">Debit</th><th className="px-4 py-2 text-right">Credit</th><th className="px-4 py-2 text-right">Balance</th></tr></thead>
+                  <table className="w-full min-w-[44rem] text-sm">
+                    <thead className="text-xs text-gray-500 bg-gray-50 dark:bg-gray-900/40"><tr><th className="px-4 py-2 text-left whitespace-nowrap">Date</th><th className="px-4 py-2 text-left whitespace-nowrap">Entry</th><th className="px-4 py-2 text-left min-w-[14rem]">Details</th><th className="px-4 py-2 text-right whitespace-nowrap">Debit</th><th className="px-4 py-2 text-right whitespace-nowrap">Credit</th><th className="px-4 py-2 text-right whitespace-nowrap">Balance</th></tr></thead>
                     <tbody>
                       {ledgerPg.pager.page === 0 && <tr className="border-t border-gray-100 dark:border-gray-800 text-gray-500"><td className="px-4 py-2" colSpan={5}>Opening balance</td><td className="px-4 py-2 text-right font-semibold"><Money v={ledger.data.opening} zero="Le 0.00" /></td></tr>}
                       {ledgerPg.pageRows.map((l: any) => (
                         <tr key={l.id} className="border-t border-gray-100 dark:border-gray-800">
                           <td className="px-4 py-2 whitespace-nowrap text-gray-600">{l.entry_date}</td><td className="px-4 py-2 font-mono text-xs whitespace-nowrap">{l.entry_no}</td>
                           <td className="px-4 py-2">{l.line_memo || l.memo || '—'}</td>
-                          <td className="px-4 py-2 text-right"><Money v={l.debit} zero="" /></td><td className="px-4 py-2 text-right"><Money v={l.credit} zero="" /></td>
+                          <td className="px-4 py-2 text-right whitespace-nowrap"><Money v={l.debit} zero="" /></td><td className="px-4 py-2 text-right whitespace-nowrap"><Money v={l.credit} zero="" /></td>
                           <td className="px-4 py-2 text-right font-semibold whitespace-nowrap"><Money v={l.balance} zero="Le 0.00" /></td>
                         </tr>
                       ))}

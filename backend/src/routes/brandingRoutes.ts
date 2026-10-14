@@ -112,6 +112,23 @@ async function loadLogo(tenantId: string, raw: string): Promise<{ body: Buffer; 
   }
 }
 
+/**
+ * Bytes of any image the school stored (a pupil's photo, for example), read with
+ * the same safety rules as the logo: inline data, the school's own storage
+ * folder, or a public https address. Null when it cannot be read (no logging:
+ * callers fall back to initials).
+ */
+export async function readTenantImage(tenantId: string, ref?: string | null): Promise<{ body: Buffer; type: string } | null> {
+  if (!UUIDISH.test(String(tenantId || ''))) return null;
+  const raw = String(ref || '').trim();
+  if (!raw) return null;
+  try {
+    return await loadLogo(tenantId, raw);
+  } catch {
+    return null;
+  }
+}
+
 /** The school's current logo bytes, or null (with the reason logged). */
 export async function readTenantLogo(tenantId: string, rawLogo?: string | null): Promise<{ body: Buffer; type: string } | null> {
   if (!UUIDISH.test(String(tenantId || ''))) return null;

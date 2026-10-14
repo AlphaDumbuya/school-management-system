@@ -46,6 +46,7 @@ import { formatCurrency } from '@utils/formatting';
 import authService from '../services/authService';
 import { FileUploader } from '@components/admin/forms/FileUploader';
 import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
+import { ProfilePhotoControl } from '@components/settings/ProfilePhotoControl';
 import { StorageSettings } from '@components/settings/StorageSettings';
 import { PaymentSettings } from '@components/settings/PaymentSettings';
 import { OwnershipSettings } from '@components/settings/OwnershipSettings';
@@ -1172,6 +1173,8 @@ export const SettingsPage: React.FC = () => {
                         <CardTitle>My Profile</CardTitle>
                       </CardHeader>
                       <CardContent>
+                        {/* Own profile photo: every role (owner, staff, students, parents, super admin). */}
+                        <ProfilePhotoControl className="pb-5 mb-5 border-b border-gray-100 dark:border-gray-700" />
                         <form onSubmit={handleSaveProfile} className="space-y-4">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>

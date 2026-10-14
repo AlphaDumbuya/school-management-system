@@ -104,6 +104,13 @@ async function getApp(q: Knex | Knex.Transaction, tenantId: string, id: string, 
   return a;
 }
 
+/**
+ * The applicant's photo to show: once enrolled, the STUDENT's current photo
+ * (added or replaced on the student profile / ID card later), else the photo
+ * uploaded with the application. Needs `students as s` joined on a.student_id.
+ */
+const PHOTO_SQL = () => db.raw("COALESCE(NULLIF(TRIM(s.photo_url), ''), NULLIF(TRIM(a.child_photo_url), '')) as photo_url");
+
 /** Classes applicants can join: the active year's active classes (plus legacy no-session classes). */
 export async function currentYearClasses(tenantId: string) {
   const { sessionId } = await resolveActiveYear(tenantId);
@@ -245,7 +252,7 @@ export const admissionPipelineService = {
     const total = Number((await listQ.clone().clearSelect().count({ n: '*' }).first() as any)?.n) || 0;
     const rows = await listQ.leftJoin('classes as c', 'c.id', 'a.class_applying_for').leftJoin('classes as ec', 'ec.id', 'a.enrolled_class_id')
       .leftJoin('students as s', 's.id', 'a.student_id')
-      .select('a.*', 'c.name as class_name', 'ec.name as enrolled_class_name', 's.student_id as student_number')
+      .select('a.*', 'c.name as class_name', 'ec.name as enrolled_class_name', 's.student_id as student_number', PHOTO_SQL())
       .orderBy('a.created_at', 'desc').limit(limit).offset((page - 1) * limit);
     return { data: rows, pagination: { page, limit, total, total_pages: Math.max(1, Math.ceil(total / limit)) }, counts: statusCounts };
   },
@@ -256,7 +263,7 @@ export const admissionPipelineService = {
       .leftJoin('classes as c', 'c.id', 'a.class_applying_for').leftJoin('classes as ec', 'ec.id', 'a.enrolled_class_id')
       .leftJoin('students as s', 's.id', 'a.student_id').leftJoin('users as du', 'du.id', 'a.decided_by')
       .select('a.*', 'c.name as class_name', 'c.academic_session_id as class_session_id', 'ec.name as enrolled_class_name',
-        's.student_id as student_number', db.raw("TRIM(CONCAT_WS(' ', du.first_name, du.last_name)) as decided_by_name"))
+        's.student_id as student_number', db.raw("TRIM(CONCAT_WS(' ', du.first_name, du.last_name)) as decided_by_name"), PHOTO_SQL())
       .first();
     if (!a) throw new AppError('Application not found', 404, 'NOT_FOUND');
     const events = await db('admission_application_events as e').leftJoin('users as u', 'u.id', 'e.created_by')

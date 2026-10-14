@@ -17,6 +17,21 @@ const METHOD_LABEL: Record<string, string> = {
   cash: 'Cash', bank_transfer: 'Bank transfer', cheque: 'Cheque', card: 'Card', mobile_money: 'Mobile money', monime: 'Mobile money / card (online)', credit: 'Account credit',
 };
 
+/** One line of a receipt: a charge the payment settled (or money kept as credit). */
+export interface ReceiptItem {
+  payment_id: string;
+  /** The fee type, e.g. "Tuition" or "Uniform". */
+  label: string;
+  /** Term and year ("First Term · 2026/2027"), or a note for credit lines. */
+  detail: string | null;
+  kind: 'fee' | 'credit';
+  fee_type: string | null;
+  term: string | null;
+  academic_year: string | null;
+  amount: number;
+  status: string;
+}
+
 export interface EmailReceiptOptions {
   /** 'refund' sends the refund confirmation (REFUNDED receipt attached). */
   kind?: 'payment' | 'refund';
@@ -55,14 +70,49 @@ export const receiptService = {
     const by = byId ? await db('users').where({ id: byId }).first('first_name', 'last_name', 'role').catch(() => null) : null;
     const receivedBy = by ? [by.first_name, by.last_name].filter(Boolean).join(' ') || null : null;
 
-    // What each row paid for. Online payments are spread across the oldest fees
-    // when they are reconciled, so their single row is labelled for what it is.
-    const labelFor = (r: any): string => {
-      if (r.fee_id) return `${r.fee_type || 'Fee'}${r.fee_term ? ` · ${r.fee_term}` : ''}${r.fee_year ? ` · ${r.fee_year}` : ''}`;
-      if (/overpayment|credit/i.test(String(r.notes || ''))) return 'Extra amount held as account credit';
-      if (String(r.method || r.payment_method) === 'monime') return `School fees (paid online)${r.invoice_number ? ` · Invoice ${r.invoice_number}` : ''}`;
-      return 'School fees';
-    };
+    // What each payment paid for: the split recorded when the money came in
+    // (payment_allocations: fee type, term, year, amount). Payments from before
+    // that was kept fall back to the fee the payment row points at, and an
+    // online payment from that time to a generic line (its split was never stored).
+    const allocRows: any[] = await db('payment_allocations')
+      .where({ tenant_id: tenantId, receipt_number: receiptNumber }).orderBy('created_at').orderBy('id')
+      .catch(() => [] as any[]);
+    const allocByPayment = new Map<string, any[]>();
+    for (const a of allocRows) {
+      const k = String(a.payment_id);
+      if (!allocByPayment.has(k)) allocByPayment.set(k, []);
+      allocByPayment.get(k)!.push(a);
+    }
+    const termYear = (term?: string | null, year?: string | null) => [term, year].filter(Boolean).join(' · ') || null;
+    const items: ReceiptItem[] = [];
+    for (const r of rows) {
+      const allocs = allocByPayment.get(String(r.id));
+      if (allocs?.length) {
+        for (const a of allocs) {
+          const credit = a.kind === 'credit';
+          items.push({
+            payment_id: r.id,
+            label: a.fee_type || (credit ? 'Account credit' : 'Fee'),
+            detail: credit ? (a.description || null) : termYear(a.term, a.academic_year),
+            kind: credit ? 'credit' : 'fee',
+            fee_type: a.fee_type || null, term: a.term || null, academic_year: a.academic_year || null,
+            amount: round2(a.amount), status: r.status,
+          });
+        }
+      } else if (r.fee_id) {
+        items.push({
+          payment_id: r.id, label: r.fee_type || 'Fee', detail: termYear(r.fee_term, r.fee_year), kind: 'fee',
+          fee_type: r.fee_type || null, term: r.fee_term || null, academic_year: r.fee_year || null,
+          amount: round2(r.amount), status: r.status,
+        });
+      } else if (/overpayment|credit/i.test(String(r.notes || ''))) {
+        items.push({ payment_id: r.id, label: 'Account credit', detail: 'Extra amount held as account credit', kind: 'credit', fee_type: 'Account credit', term: null, academic_year: null, amount: round2(r.amount), status: r.status });
+      } else if (String(r.method || r.payment_method) === 'monime') {
+        items.push({ payment_id: r.id, label: 'School fees (paid online)', detail: r.invoice_number ? `Invoice ${r.invoice_number}` : null, kind: 'fee', fee_type: null, term: null, academic_year: null, amount: round2(r.amount), status: r.status });
+      } else {
+        items.push({ payment_id: r.id, label: 'School fees', detail: null, kind: 'fee', fee_type: null, term: null, academic_year: null, amount: round2(r.amount), status: r.status });
+      }
+    }
 
     return {
       receipt_number: receiptNumber,
@@ -79,12 +129,7 @@ export const receiptService = {
       date: first.payment_date,
       balance_after: first.balance_after != null ? round2(first.balance_after) : null,
       status,
-      items: rows.map((r: any) => ({
-        payment_id: r.id,
-        label: labelFor(r),
-        amount: round2(r.amount),
-        status: r.status,
-      })),
+      items,
     };
   },
 
@@ -92,9 +137,20 @@ export const receiptService = {
   async forDocument(tenantId: string, receiptNumber: string) {
     const r = await this.get(tenantId, receiptNumber);
     const contact = await familyContact(r.student_id);
+    // The pupil's photo (the school's record photo, else the account photo), and
+    // the receipt's verification code (made the first time the receipt is drawn).
+    const photo = await db('students as s').leftJoin('users as u', 'u.id', 's.user_id')
+      .where('s.id', r.student_id)
+      .first(db.raw("COALESCE(NULLIF(s.photo_url, ''), NULLIF(u.photo_url, ''), NULLIF(u.profile_photo_url, '')) as ref"))
+      .catch(() => null);
+    const { getOrCreateCode, verifyUrl, formatCode } = await import('./receiptVerifyService');
+    const code = await getOrCreateCode(tenantId, receiptNumber);
     return {
       r,
       doc: {
+        studentPhotoRef: photo?.ref || undefined,
+        verifyCode: code ? formatCode(code) : undefined,
+        verifyUrl: code ? verifyUrl(code) : undefined,
         receiptNumber: r.receipt_number,
         payerName: contact.name || r.student_name,
         studentName: r.student_name,
@@ -108,7 +164,7 @@ export const receiptService = {
         date: new Date(r.date),
         balanceRemaining: r.balance_after ?? undefined,
         status: r.status,
-        items: r.items.map((i: any) => ({ label: i.label, amount: i.amount })),
+        items: r.items.map((i) => ({ label: i.label, detail: i.detail || undefined, amount: i.amount })),
       },
     };
   },
@@ -224,8 +280,25 @@ export const receiptService = {
     if (f.studentId) q.where('p.student_id', f.studentId);
     if (f.classId) q.whereExists(db('enrollments as e').whereRaw('e.student_id = p.student_id').where('e.class_id', f.classId));
     const rows = await q.limit(Math.min(f.limit || 500, 2000));
+
+    // "Paid for" per receipt, e.g. "Tuition, Uniform" (a separate query so a school
+    // whose database has not been updated yet still gets its list).
+    const purposes = new Map<string, string[]>();
+    if (rows.length) {
+      const allocs: any[] = await db('payment_allocations')
+        .where('tenant_id', tenantId).whereIn('receipt_number', rows.map((r: any) => r.receipt_number))
+        .select('receipt_number', 'fee_type', 'kind').catch(() => [] as any[]);
+      for (const a of allocs) {
+        const name = a.kind === 'credit' ? 'Account credit' : a.fee_type;
+        if (!name) continue;
+        const list = purposes.get(a.receipt_number) || [];
+        if (!list.includes(name)) list.push(name);
+        purposes.set(a.receipt_number, list);
+      }
+    }
     return rows.map((r: any) => ({
       ...r,
+      purpose: purposes.get(r.receipt_number)?.join(', ') || null,
       amount: round2(r.amount),
       balance_after: r.balance_after != null ? round2(r.balance_after) : null,
       status: r.refunded ? 'refunded' : r.any_refunded ? 'part_refunded' : 'paid',

@@ -237,6 +237,25 @@ export const ReportCardsPage: React.FC = () => {
     // Data is in, the ids are about to be set by the effect above.
     || (!!selfDash && !!selfProfile?.id && selfClasses.length > 0)
   );
+  // Picking a student (staff) brings the report card section into view, so on
+  // a phone the loading state / card shows right away instead of below the
+  // fold. scrollIntoView also scrolls the Android app's <main> container.
+  const reportSectionRef = useRef<HTMLDivElement>(null);
+  const scrollOnPick = useRef(false);
+  const pickStudent = (v: string) => {
+    if (v) scrollOnPick.current = true;
+    setStudentId(v);
+  };
+  React.useEffect(() => {
+    if (!scrollOnPick.current || !studentId) return;
+    scrollOnPick.current = false;
+    // After the loading state has rendered in place.
+    requestAnimationFrame(() => {
+      reportSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [studentId]);
+  const pickedStudentName = studentOptions.find((o: any) => o.value === String(studentId))?.label as string | undefined;
+
   const { data: cardResp, isLoading, error } = useQuery({
     queryKey: ['report-card', studentId, classId, academicYear],
     queryFn: () => reportCardService.getReportCard(studentId, { class_id: classId, academic_year: academicYear }),
@@ -807,7 +826,7 @@ export const ReportCardsPage: React.FC = () => {
                     key={c.id}
                     type="button"
                     aria-pressed={activeChildId === c.id}
-                    onClick={() => { setSelectedChildId(c.id); setSelfClassPick(''); setClassId(''); setSelfYear(''); }}
+                    onClick={() => { if (c.id !== activeChildId) scrollOnPick.current = true; setSelectedChildId(c.id); setSelfClassPick(''); setClassId(''); setSelfYear(''); }}
                     className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm whitespace-nowrap transition ${
                       activeChildId === c.id
                         ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
@@ -854,7 +873,7 @@ export const ReportCardsPage: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <SearchableSelect label="Class" options={classOptions} value={classId} onChange={(v) => { setClassId(v); setStudentId(''); }} placeholder="Select class..." />
-              <SearchableSelect label="Student" options={studentOptions} value={studentId} onChange={setStudentId} placeholder="Select student..." />
+              <SearchableSelect label="Student" options={studentOptions} value={studentId} onChange={pickStudent} placeholder="Select student..." />
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Academic Year</label>
                 <YearFilter value={academicYear} onChange={setAcademicYear} noAutoSelect className="w-full [&_select]:w-full [&_select]:py-2.5 sm:[&_select]:py-2" />
@@ -932,6 +951,10 @@ export const ReportCardsPage: React.FC = () => {
           )}
         </div>
 
+        {/* Report card section starts here — the scroll target after a pick.
+            scroll-mt keeps it clear of the sticky top bar. */}
+        <div ref={reportSectionRef} aria-hidden="true" className="scroll-mt-20 sm:scroll-mt-24" />
+
         {/* Draft banner — staff only, when the selected card isn't released yet. */}
         {canLoad && card && !isStudent && !isParent && card.is_published === false && (
           <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300 print:hidden">
@@ -978,7 +1001,15 @@ export const ReportCardsPage: React.FC = () => {
                   : 'Choose a class, student and academic year to generate the report booklet.'}
           />
         )}
-        {canLoad && isLoading && <div className="grid gap-3"><SkeletonCard /><SkeletonCard /></div>}
+        {canLoad && isLoading && (
+          <div role="status" aria-live="polite" className="grid gap-3">
+            <div className="flex items-center gap-2.5 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm font-medium text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-300">
+              <span className="h-4 w-4 flex-shrink-0 animate-spin rounded-full border-2 border-blue-300 border-t-blue-700 dark:border-blue-800 dark:border-t-blue-300" aria-hidden="true" />
+              <span>{pickedStudentName ? `Loading ${pickedStudentName}'s report card…` : 'Loading the report card…'}</span>
+            </div>
+            <SkeletonCard /><SkeletonCard />
+          </div>
+        )}
         {canLoad && !isLoading && (error || cardError) && (
           <EmptyState message="Report card unavailable" description={cardError || 'There was an error generating this report card.'} />
         )}

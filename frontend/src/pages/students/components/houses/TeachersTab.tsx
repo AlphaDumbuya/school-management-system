@@ -71,8 +71,8 @@ export const TeachersTab: React.FC<{ summary?: HouseSummary; onChanged: () => vo
           {houses.map((h) => (
             <div key={h.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
               <div className="flex items-center justify-between gap-2 px-4 py-2.5" style={{ backgroundColor: h.color, color: textOn(h.color) }}>
-                <p className="font-black">{h.name}</p>
-                <Button size="sm" variant="outline" onClick={() => openAdd(h)} aria-label={`Add a teacher to ${h.name}`}><Plus size={13} className="mr-1" aria-hidden="true" /> Add teacher</Button>
+                <p className="min-w-0 break-words font-black">{h.name}</p>
+                <Button size="sm" variant="outline" className="flex-shrink-0 whitespace-nowrap" onClick={() => openAdd(h)} aria-label={`Add a teacher to ${h.name}`}><Plus size={13} className="mr-1" aria-hidden="true" /> Add teacher</Button>
               </div>
               {h.staff.length === 0 ? (
                 <p className="px-4 py-3 text-sm text-gray-500">No teachers on this house yet.</p>

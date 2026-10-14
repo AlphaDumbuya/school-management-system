@@ -32,16 +32,13 @@ function auditMeta(req: any) {
 }
 
 /**
- * Resolve the best contact email for a tenant: the tenant's contact_email,
- * else the school profile email, else the principal user's email.
+ * Send a plan/billing email to everyone who handles a school's billing: the
+ * school owner(s) plus the billing contact (see utils/schoolLeaders).
  */
-async function tenantContactEmail(tenantId: string): Promise<string | null> {
-  const tenant = await db('tenants').where({ id: tenantId }).first();
-  if (tenant?.contact_email) return tenant.contact_email;
-  const school = await db('schools').where({ tenant_id: tenantId }).first();
-  if (school?.email) return school.email;
-  const principal = await db('users').where({ tenant_id: tenantId, role: 'principal' }).orderBy('is_owner', 'desc').first();
-  return principal?.email || null;
+async function notifyBilling(tenantId: string, context: string, send: (to: string) => Promise<any>): Promise<void> {
+  const { billingRecipients } = await import('../utils/schoolLeaders');
+  const recipients = await billingRecipients(tenantId).catch(() => [] as string[]);
+  for (const to of recipients) notify(send(to), context);
 }
 
 /** Fire-and-forget notification — never blocks or fails the admin action. */
@@ -364,8 +361,7 @@ router.post('/tenants/:id/subscription', authenticate, authorize(UserRole.SUPER_
     const updated = await SubscriptionService.changePlan(id, plan_type, billing_cycle, userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.change', changes: { plan_type, billing_cycle } });
     const tenant = await db('tenants').where({ id }).first();
-    const to = await tenantContactEmail(id);
-    if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[plan_type] || plan_type, action: 'changed', endDate: (updated as any).end_date, tenantId: id }), 'subscription change');
+    await notifyBilling(id, 'subscription change', (to) => emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[plan_type] || plan_type, action: 'changed', endDate: (updated as any).end_date, tenantId: id }));
     res.json({ success: true, message: `Tenant subscription updated to ${plan_type.toUpperCase()}`, data: updated });
   } catch (error) {
     next(error);
@@ -595,8 +591,7 @@ router.post('/tenants/:id/subscription/renew', authenticate, authorize(UserRole.
     const updated = await SubscriptionService.renewSubscription(id, billing_cycle, req.auth!.userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.renew', changes: { billing_cycle } });
     const tenant = await db('tenants').where({ id }).first();
-    const to = await tenantContactEmail(id);
-    if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[(updated as any).plan_type] || (updated as any).plan_type, action: 'renewed', endDate: (updated as any).end_date, tenantId: id }), 'subscription renew');
+    await notifyBilling(id, 'subscription renew', (to) => emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[(updated as any).plan_type] || (updated as any).plan_type, action: 'renewed', endDate: (updated as any).end_date, tenantId: id }));
     res.json({ success: true, data: updated, message: 'Subscription renewed' });
   } catch (error) {
     next(error);
@@ -614,8 +609,7 @@ router.post('/tenants/:id/subscription/extend', authenticate, authorize(UserRole
     const updated = await SubscriptionService.extendSubscription(id, days, req.auth!.userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.extend', changes: { days } });
     const tenant = await db('tenants').where({ id }).first();
-    const to = await tenantContactEmail(id);
-    if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[(updated as any).plan_type] || (updated as any).plan_type, action: 'extended', endDate: (updated as any).end_date, tenantId: id }), 'subscription extend');
+    await notifyBilling(id, 'subscription extend', (to) => emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[(updated as any).plan_type] || (updated as any).plan_type, action: 'extended', endDate: (updated as any).end_date, tenantId: id }));
     res.json({ success: true, data: updated, message: `Subscription extended by ${days} days` });
   } catch (error) {
     next(error);
@@ -632,8 +626,7 @@ router.post('/tenants/:id/subscription/expire', authenticate, authorize(UserRole
     const updated = await SubscriptionService.expireSubscription(id, req.auth!.userId);
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.expire' });
     const tenant = await db('tenants').where({ id }).first();
-    const to = await tenantContactEmail(id);
-    if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[(updated as any).plan_type] || (updated as any).plan_type, action: 'expired', tenantId: id }), 'subscription expire');
+    await notifyBilling(id, 'subscription expire', (to) => emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[(updated as any).plan_type] || (updated as any).plan_type, action: 'expired', tenantId: id }));
     res.json({ success: true, data: updated, message: 'Subscription expired' });
   } catch (error) {
     next(error);
@@ -670,8 +663,7 @@ router.post('/tenants/:id/subscription/comp', authenticate, authorize(UserRole.S
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.comp_grant', changes: { plan_type, duration_days: duration_days ?? null, reason: reason || null } });
 
     const tenant = await db('tenants').where({ id }).first();
-    const to = await tenantContactEmail(id);
-    if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[plan_type] || plan_type, action: 'changed', endDate: (updated as any).end_date, tenantId: id }), 'comp grant');
+    await notifyBilling(id, 'comp grant', (to) => emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS[plan_type] || plan_type, action: 'changed', endDate: (updated as any).end_date, tenantId: id }));
     res.json({
       success: true,
       message: `Complimentary ${plan_type.toUpperCase()} granted${duration_days ? ` for ${duration_days} days` : ' with no expiry'}.`,
@@ -695,8 +687,7 @@ router.post('/tenants/:id/subscription/comp/revoke', authenticate, authorize(Use
     await PlatformAuditService.record({ ...auditMeta(req), tenantId: id, action: 'subscription.comp_revoke' });
 
     const tenant = await db('tenants').where({ id }).first();
-    const to = await tenantContactEmail(id);
-    if (to) notify(emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS.freetong, action: 'changed', endDate: (updated as any).end_date, tenantId: id }), 'comp revoke');
+    await notifyBilling(id, 'comp revoke', (to) => emailService.sendTenantSubscriptionEmail(to, { schoolName: tenant?.name || 'your school', planLabel: PLAN_LABELS.freetong, action: 'changed', endDate: (updated as any).end_date, tenantId: id }));
     res.json({ success: true, message: 'Complimentary plan revoked. School moved to Freetong.', data: updated });
   } catch (error) {
     next(error);
@@ -850,6 +841,7 @@ router.post('/tenants/:id/users/:userId/reset-password', authenticate, authorize
       emailService.sendAccountCredentialsEmail(id, result.email, {
         userName,
         role: u?.role,
+        isOwner: u?.is_owner === true,
         tempPassword: result.tempPassword,
       }),
       'user reset-password'

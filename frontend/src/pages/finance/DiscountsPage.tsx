@@ -21,6 +21,7 @@ import { bursarService, type DiscountRule, type DiscountGrant } from '@services/
 import { StudentPicker, type PickedStudent } from '@components/finance/StudentPicker';
 import { GrantDiscountForm, StudentAccountModal, Pill, le } from '@components/finance/StudentAccount';
 import { usePaged, TablePager } from '@components/admin/table/TablePager';
+import { HEADER_BTN, BtnLabel } from '@components/finance/AccountingUi';
 
 const KIND_LABEL: Record<string, string> = { sibling: 'Sibling', staff_child: 'Staff child', scholarship: 'Scholarship / bursary', custom: 'Custom' };
 async function ok<T>(p: Promise<any>): Promise<T> { const r = await p; if (r?.success === false) throw new Error(r.error || 'Could not load.'); return r?.data as T; }
@@ -95,9 +96,10 @@ export const DiscountsPage: React.FC = () => {
   return (
     <MainLayout>
       <PageShell title="Discounts & Scholarships" subtitle="Sibling and staff discounts, scholarships, bursaries and one-off waivers"
-        actions={<div className="flex items-center gap-2">
+        mobileLabels
+        actions={<div className="flex flex-wrap items-center gap-2">
           <YearFilter value={year} onChange={(y) => setPicked(!y || y === activeYear ? '' : y)} noAutoSelect />
-          {!viewingPast && <Button size="sm" variant="create" onClick={() => { setGrantFor(null); setGrantOpen(true); }}><Plus size={15} className="sm:mr-1.5" /><span className="hidden sm:inline">Give a discount</span></Button>}
+          {!viewingPast && <Button size="sm" variant="create" className={HEADER_BTN} onClick={() => { setGrantFor(null); setGrantOpen(true); }}><Plus size={15} /><BtnLabel short="Add discount">Give a discount</BtnLabel></Button>}
         </div>}>
         {viewingPast && <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">Showing {year} as history. New discounts are given in {activeYear}.</div>}
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-5">

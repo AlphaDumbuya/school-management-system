@@ -2,15 +2,25 @@
  * announcementService — tenant-scoped school announcements.
  *
  * All queries are scoped by tenant_id. Audience filtering lets a viewer see
- * announcements addressed to 'all' or to their specific role.
+ * announcements addressed to 'all' or to their specific role. Leaders can also
+ * be addressed: 'principal' (Head Teacher / Principal) and 'owner' (School Owner).
  */
 import { db } from '@utils/database';
 import { effectiveDuties } from '@utils/staffDuties';
 import { logger } from '@utils/logger';
 import { AppError } from '@middleware/errorHandler';
 import { applyYearScope, type YearScope } from '@utils/academicYear';
+import { isTenantOwner } from '@utils/tenantOwner';
+import { leadTitleFor, schoolOwners } from '@utils/schoolLeaders';
 
-export type Audience = 'all' | 'teacher' | 'student' | 'parent' | 'accountant' | 'admissions_officer';
+/**
+ * Who an announcement is for, stored as-is in announcements.audience.
+ *  - 'principal': the school's leaders (every `principal` account, owners
+ *    included). Shown as "Head Teacher" or "Principal" by school level.
+ *  - 'owner': the school owner(s), i.e. principals flagged users.is_owner. A
+ *    school with no named owner yet treats its principals as owners.
+ */
+export type Audience = 'all' | 'owner' | 'principal' | 'teacher' | 'student' | 'parent' | 'accountant' | 'admissions_officer';
 export type Priority = 'normal' | 'high';
 
 export interface CreateAnnouncementInput {
@@ -26,7 +36,10 @@ export interface CreateAnnouncementInput {
   classId?: string | null;
 }
 
-const VALID_AUDIENCE: Audience[] = ['all', 'teacher', 'student', 'parent', 'accountant', 'admissions_officer'];
+const VALID_AUDIENCE: Audience[] = ['all', 'owner', 'principal', 'teacher', 'student', 'parent', 'accountant', 'admissions_officer'];
+
+/** Leadership audiences: always school-wide, never class-scoped. */
+const LEADERSHIP_AUDIENCES: Audience[] = ['owner', 'principal'];
 
 /** Upper bounds so a single post can't store unbounded text (DoS / UI break). */
 const MAX_TITLE_LEN = 200;
@@ -151,6 +164,9 @@ export class AnnouncementService {
       classId = null;
       const allowed: Audience[] = ['all', 'parent', 'student'];
       if (!allowed.includes(audience)) audience = 'all';
+    } else if (LEADERSHIP_AUDIENCES.includes(audience)) {
+      // Owners and principals are school-wide, not members of a class.
+      classId = null;
     } else if (classId) {
       // Admins may also class-scope; verify the class belongs to the tenant.
       const cls = await db('classes')
@@ -191,26 +207,46 @@ export class AnnouncementService {
   }
 
   /**
-   * Build the visibility filter for a viewer (admins see everything).
-   *
-   * Non-admins see an announcement when BOTH hold:
-   *   - audience is 'all' or their own role, AND
-   *   - it is not class-scoped, OR they belong to that class (or authored it).
+   * Per-viewer audience facts:
+   *  - extraAudiences: staff duties of a teacher (users.staff_duties), e.g. a
+   *    teacher who is also Bursar receives 'accountant' posts.
+   *  - hideOwnerPosts: a principal who is NOT an owner of a school that has a
+   *    named owner does not receive posts addressed to the owner(s).
    */
-  /** Staff duties of a teacher viewer (users.staff_duties): extra audiences they receive. */
-  private async viewerDuties(viewerId?: string, viewerRole?: string): Promise<string[]> {
-    if (!viewerId) return [];
-    const row = await db('users').where('id', viewerId).first('role', 'staff_duties').catch(() => null);
-    return effectiveDuties(row?.role, row?.staff_duties);
+  private async viewerContext(viewerId?: string): Promise<{ extraAudiences: string[]; hideOwnerPosts: boolean }> {
+    if (!viewerId) return { extraAudiences: [], hideOwnerPosts: false };
+    const row = await db('users').where('id', viewerId).first('id', 'role', 'tenant_id', 'staff_duties', 'is_owner').catch(() => null);
+    const extraAudiences = effectiveDuties(row?.role, row?.staff_duties);
+    const hideOwnerPosts = row?.role === 'principal' ? !(await isTenantOwner(row)) : false;
+    return { extraAudiences, hideOwnerPosts };
   }
 
+  /**
+   * Build the visibility filter for a viewer.
+   *
+   * Super admins see everything. Principals (owners included) see everything
+   * except owner-only posts when they are not an owner (see viewerContext).
+   * Other viewers see an announcement when BOTH hold:
+   *   - audience is 'all' or their own role, AND
+   *   - it is not class-scoped, OR they belong to that class (or authored it).
+   * Leadership audiences ('owner', 'principal') never match other roles.
+   */
   private applyAudienceFilter(
     query: any,
     tenantId: string,
     viewerRole?: string,
-    ctx?: { viewerId?: string; viewerClassIds?: string[]; extraAudiences?: string[] }
+    ctx?: { viewerId?: string; viewerClassIds?: string[]; extraAudiences?: string[]; hideOwnerPosts?: boolean }
   ) {
     query.where('announcements.tenant_id', tenantId);
+    if (viewerRole === 'principal' && ctx?.hideOwnerPosts) {
+      // Principals see every post, except ones addressed only to the owner(s)
+      // (unless they wrote it themselves).
+      const viewerId = ctx.viewerId;
+      query.andWhere((q: any) => {
+        q.whereNot('announcements.audience', 'owner');
+        if (viewerId) q.orWhere('announcements.author_id', viewerId);
+      });
+    }
     if (viewerRole && !['principal', 'super_admin'].includes(viewerRole)) {
       const classIds = ctx?.viewerClassIds ?? [];
       const viewerId = ctx?.viewerId;
@@ -256,7 +292,7 @@ export class AnnouncementService {
 
     const viewerId = opts.viewerId;
     const viewerClassIds = viewerId ? await this.getViewerClassIds(tenantId, viewerId, opts.viewerRole) : [];
-    const ctx = { viewerId, viewerClassIds, extraAudiences: await this.viewerDuties(viewerId, opts.viewerRole) };
+    const ctx = { viewerId, viewerClassIds, ...(await this.viewerContext(viewerId)) };
     // Optional academic-year scope: posts dated inside that year's window.
     const yearScope = opts.yearScope ?? null;
 
@@ -286,6 +322,11 @@ export class AnnouncementService {
       });
     }
 
+    // A principal author is called by the school's lead title ("Head Teacher"
+    // in a primary/nursery-only school, else "Principal"); a named owner is
+    // "School Owner".
+    const lead = await leadTitleFor(tenantId);
+
     const items = await q
       .orderBy('announcements.created_at', 'desc')
       .limit(limit)
@@ -294,18 +335,23 @@ export class AnnouncementService {
         'announcements.*',
         'ac.name as class_name',
         'users.role as author_role',
+        db.raw('COALESCE(users.is_owner, false) as author_is_owner'),
         db.raw("TRIM(CONCAT(users.first_name, ' ', users.last_name)) as author_name"),
         // Respectful, role-based display name (honorific prefix + full name).
-        db.raw(`
-          CASE users.role
-            WHEN 'principal' THEN CONCAT('Principal ', users.first_name, ' ', users.last_name)
-            WHEN 'super_admin' THEN CONCAT('Administrator ', users.first_name, ' ', users.last_name)
-            WHEN 'teacher' THEN CONCAT('Tr. ', users.first_name, ' ', users.last_name)
-            WHEN 'accountant' THEN CONCAT('Bursar ', users.first_name, ' ', users.last_name)
-            WHEN 'admissions_officer' THEN CONCAT('Admissions Officer ', users.first_name, ' ', users.last_name)
+        db.raw(
+          `
+          CASE
+            WHEN users.role = 'principal' AND COALESCE(users.is_owner, false) THEN CONCAT('School Owner ', users.first_name, ' ', users.last_name)
+            WHEN users.role = 'principal' THEN CONCAT(?::text, ' ', users.first_name, ' ', users.last_name)
+            WHEN users.role = 'super_admin' THEN CONCAT('Administrator ', users.first_name, ' ', users.last_name)
+            WHEN users.role = 'teacher' THEN CONCAT('Tr. ', users.first_name, ' ', users.last_name)
+            WHEN users.role = 'accountant' THEN CONCAT('Bursar ', users.first_name, ' ', users.last_name)
+            WHEN users.role = 'admissions_officer' THEN CONCAT('Admissions Officer ', users.first_name, ' ', users.last_name)
             ELSE TRIM(CONCAT(users.first_name, ' ', users.last_name))
           END as author_display
-        `),
+        `,
+          [lead]
+        ),
         opts.viewerId
           ? db.raw('(announcement_reads.id IS NOT NULL) as is_read')
           : db.raw('true as is_read')
@@ -326,7 +372,7 @@ export class AnnouncementService {
   async unreadCount(tenantId: string, viewerId: string, viewerRole?: string): Promise<number> {
     if (!tenantId || !viewerId) return 0;
     const viewerClassIds = await this.getViewerClassIds(tenantId, viewerId, viewerRole);
-    const extraAudiences = await this.viewerDuties(viewerId, viewerRole);
+    const viewerCtx = await this.viewerContext(viewerId);
     const q = db('announcements').leftJoin('announcement_reads', function () {
       this.on('announcement_reads.announcement_id', '=', 'announcements.id').andOn(
         'announcement_reads.user_id',
@@ -334,7 +380,7 @@ export class AnnouncementService {
         db.raw('?', [viewerId])
       );
     });
-    this.applyAudienceFilter(q, tenantId, viewerRole, { viewerId, viewerClassIds, extraAudiences });
+    this.applyAudienceFilter(q, tenantId, viewerRole, { viewerId, viewerClassIds, ...viewerCtx });
     q.whereNull('announcement_reads.id');
     const row: any = await q.count('announcements.id as count').first();
     return Number(row?.count ?? 0);
@@ -356,9 +402,9 @@ export class AnnouncementService {
   async markAllRead(tenantId: string, viewerId: string, viewerRole?: string) {
     if (!tenantId || !viewerId) return;
     const viewerClassIds = await this.getViewerClassIds(tenantId, viewerId, viewerRole);
-    const extraAudiences = await this.viewerDuties(viewerId, viewerRole);
+    const viewerCtx = await this.viewerContext(viewerId);
     const q = db('announcements');
-    this.applyAudienceFilter(q, tenantId, viewerRole, { viewerId, viewerClassIds, extraAudiences });
+    this.applyAudienceFilter(q, tenantId, viewerRole, { viewerId, viewerClassIds, ...viewerCtx });
     const rows = await q.select('announcements.id');
     if (!rows.length) return;
     const now = new Date();
@@ -418,6 +464,8 @@ export class AnnouncementService {
         if (!allowed.includes(aud)) aud = 'all';
       }
       update.audience = aud;
+      // Leadership audiences are school-wide.
+      if (LEADERSHIP_AUDIENCES.includes(aud)) update.class_id = null;
     }
     if (patch.priority !== undefined) {
       update.priority = patch.priority === 'high' ? 'high' : 'normal';
@@ -463,8 +511,15 @@ export class AnnouncementService {
           .select('email', 'first_name');
         recipients.push(...guardians);
       }
+    } else if (audience === 'owner') {
+      // The owner(s); a school with no named owner yet: its principals.
+      const owners = await schoolOwners(tenantId);
+      recipients = owners
+        .filter((o) => !!o.email)
+        .map((o) => ({ email: o.email as string, first_name: o.name.split(' ')[0] || undefined }));
     } else {
-      // Tenant-wide by role (admins broadcasting).
+      // Tenant-wide by role (admins broadcasting). 'principal' = every
+      // principal account, owners included.
       const q = db('users').where({ tenant_id: tenantId, status: 'active' }).whereNotNull('email');
       if (audience !== 'all') q.andWhere({ role: audience });
       recipients = await q.select('email', 'first_name');

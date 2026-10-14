@@ -15,7 +15,10 @@ import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { usePaged, TablePager } from '@components/admin/table/TablePager';
 import { showToast } from '@utils/toast';
 import { bursarC, type GLAccount } from '@services/bursarService';
-import { unwrap, todayLocal, AccountSelect, Money, CheckBadge } from '@components/finance/AccountingUi';
+import { unwrap, todayLocal, AccountSelect, Money, CheckBadge, HEADER_BTN, BtnLabel } from '@components/finance/AccountingUi';
+
+/** Row icon actions: ~40px tap target on phones, compact on larger screens. */
+const rowBtn = 'inline-flex items-center justify-center w-10 h-10 sm:w-8 sm:h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700';
 
 const input = 'w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm';
 
@@ -157,10 +160,10 @@ export const BankReconciliationPage: React.FC = () => {
 
   return (
     <MainLayout>
-      <PageShell title="Bank Reconciliation" subtitle="Check the school's books against the bank and mobile-money statements" onRefresh={() => view.refetch()} isRefreshing={view.isFetching}
-        actions={accountId ? <div className="flex items-center gap-2">
-          <Button size="sm" variant="create" onClick={() => setImportOpen(true)}><Upload size={14} className="sm:mr-1.5" /><span className="hidden sm:inline">Import statement</span></Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={async () => { setBusy(true); try { const r: any = await bursarC.bankAutoMatch(accountId); if (r?.success === false) return showToast.error(r.error || 'Failed'); showToast.success(`Matched ${r.data.matched} line${r.data.matched === 1 ? '' : 's'} · ${r.data.remaining} left`); refresh(); } finally { setBusy(false); } }}><Wand2 size={14} className="sm:mr-1.5" /><span className="hidden sm:inline">Auto-match</span></Button>
+      <PageShell title="Bank Reconciliation" subtitle="Check the school's books against the bank and mobile-money statements" onRefresh={() => view.refetch()} isRefreshing={view.isFetching} mobileLabels
+        actions={accountId ? <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="create" className={HEADER_BTN} onClick={() => setImportOpen(true)}><Upload size={14} /><BtnLabel short="Import">Import statement</BtnLabel></Button>
+          <Button size="sm" variant="outline" className={HEADER_BTN} disabled={busy} onClick={async () => { setBusy(true); try { const r: any = await bursarC.bankAutoMatch(accountId); if (r?.success === false) return showToast.error(r.error || 'Failed'); showToast.success(`Matched ${r.data.matched} line${r.data.matched === 1 ? '' : 's'} · ${r.data.remaining} left`); refresh(); } finally { setBusy(false); } }}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}<BtnLabel>Auto-match</BtnLabel></Button>
         </div> : undefined}>
         {accs.error ? <p role="alert" className="text-sm text-red-600">{(accs.error as Error).message}</p>
           : accs.isLoading ? <div className="py-12 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div>
@@ -170,7 +173,7 @@ export const BankReconciliationPage: React.FC = () => {
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                 {accs.data.map((a) => (
                   <button key={a.id} type="button" aria-pressed={a.id === accountId} onClick={() => { setPicked(a.id); setMatching(null); setTicked(new Set()); setStmtBal(''); }}
-                    className={`text-left rounded-2xl border p-3 bg-white dark:bg-gray-800 ${a.id === accountId ? 'ring-2 ring-blue-500 border-blue-300' : 'border-gray-200 dark:border-gray-700'}`}>
+                    className={`min-w-0 break-words text-left rounded-2xl border p-3 bg-white dark:bg-gray-800 ${a.id === accountId ? 'ring-2 ring-blue-500 border-blue-300' : 'border-gray-200 dark:border-gray-700'}`}>
                     <div className="text-xs text-gray-500">{a.code} · {a.name}</div>
                     <div className="text-lg font-black"><Money v={a.book_balance} zero="Le 0.00" /></div>
                     <div className="text-[11px] text-gray-500">{a.statement_lines ? `${a.unmatched} to match · statement to ${a.last_statement_date}` : 'No statement imported'}</div>
@@ -181,10 +184,10 @@ export const BankReconciliationPage: React.FC = () => {
               {view.error ? <p role="alert" className="text-sm text-red-600">{(view.error as Error).message}</p> : !d ? <div className="py-10 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div> : (
                 <>
                   <div className="mb-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-                    <div className="flex flex-wrap items-end gap-3 mb-3">
-                      <div><label htmlFor="br-asat" className="text-xs font-semibold text-gray-500">As at</label><input id="br-asat" type="date" max={todayLocal()} value={asAt} onChange={(e) => setAsAt(e.target.value || todayLocal())} className="block mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" /></div>
-                      <div><label htmlFor="br-bal" className="text-xs font-semibold text-gray-500">Statement closing balance (Le)</label><input id="br-bal" type="number" step="0.01" value={stmtBal} placeholder={d.summary.statement_balance != null ? String(d.summary.statement_balance) : 'From your statement'} onChange={(e) => setStmtBal(e.target.value)} className="block mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm w-48" /></div>
-                      <div className="ml-auto">{d.summary.difference == null ? <span className="text-xs text-gray-500">Enter the statement balance to check the difference.</span> : <CheckBadge ok={d.summary.reconciled} okText="Reconciled" badText={`Difference Le ${Math.abs(d.summary.difference).toFixed(2)}`} />}</div>
+                    <div className="grid grid-cols-1 xs:grid-cols-2 sm:flex sm:flex-wrap sm:items-end gap-3 mb-3">
+                      <div className="min-w-0"><label htmlFor="br-asat" className="text-xs font-semibold text-gray-500">As at</label><input id="br-asat" type="date" max={todayLocal()} value={asAt} onChange={(e) => setAsAt(e.target.value || todayLocal())} className="block w-full sm:w-auto min-h-[40px] mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" /></div>
+                      <div className="min-w-0"><label htmlFor="br-bal" className="text-xs font-semibold text-gray-500">Statement closing balance (Le)</label><input id="br-bal" type="number" inputMode="decimal" step="0.01" value={stmtBal} placeholder={d.summary.statement_balance != null ? String(d.summary.statement_balance) : 'From your statement'} onChange={(e) => setStmtBal(e.target.value)} className="block w-full sm:w-48 min-h-[40px] mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm" /></div>
+                      <div className="xs:col-span-2 sm:ml-auto">{d.summary.difference == null ? <span className="text-xs text-gray-500">Enter the statement balance to check the difference.</span> : <CheckBadge ok={d.summary.reconciled} okText="Reconciled" badText={`Difference Le ${Math.abs(d.summary.difference).toFixed(2)}`} />}</div>
                     </div>
                     <dl className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
                       <div><dt className="text-xs text-gray-500">Balance in the books</dt><dd className="font-bold"><Money v={d.summary.book_balance} zero="Le 0.00" /></dd></div>
@@ -192,7 +195,7 @@ export const BankReconciliationPage: React.FC = () => {
                       <div><dt className="text-xs text-gray-500">On the statement, not in the books ({d.summary.unmatched_statement_count})</dt><dd className="font-bold"><Money v={d.summary.unmatched_statement} zero="Le 0.00" /></dd></div>
                       <div><dt className="text-xs text-gray-500">In the books, not on the statement ({d.summary.unmatched_book_count})</dt><dd className="font-bold"><Money v={d.summary.unmatched_book} zero="Le 0.00" /></dd></div>
                     </dl>
-                    {lastBatch && <Button size="sm" variant="ghost" className="mt-3" onClick={() => setUndoOpen(true)}><Undo2 size={13} className="mr-1" /> Undo the last import</Button>}
+                    {lastBatch && <Button size="sm" variant="ghost" className={`mt-3 ${HEADER_BTN}`} onClick={() => setUndoOpen(true)}><Undo2 size={13} /> Undo the last import</Button>}
                   </div>
 
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -209,16 +212,16 @@ export const BankReconciliationPage: React.FC = () => {
                             {stmtPg.pageRows.map((l: any) => (
                               <tr key={l.id} className={`border-t border-gray-100 dark:border-gray-800 ${matching?.id === l.id ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}>
                                 <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">{l.txn_date}</td>
-                                <td className="px-3 py-2"><div className="text-sm">{l.description || '—'}</div><div className="text-[11px] text-gray-400">{l.reference}{l.matches.length > 0 && ` · matched to ${l.matches.map((m: any) => m.entry_no).join(', ')}`}</div></td>
+                                <td className="px-3 py-2 min-w-[11rem]"><div className="text-sm break-words">{l.description || '—'}</div><div className="text-[11px] text-gray-400 break-words">{l.reference}{l.matches.length > 0 && ` · matched to ${l.matches.map((m: any) => m.entry_no).join(', ')}`}</div></td>
                                 <td className={`px-3 py-2 text-right font-semibold whitespace-nowrap ${l.amount < 0 ? 'text-rose-700' : 'text-emerald-700'}`}><Money v={l.amount} /></td>
-                                <td className="px-3 py-2 text-right whitespace-nowrap">
+                                <td className="px-1 sm:px-3 py-1 text-right whitespace-nowrap">
                                   {l.status === 'unmatched' && <>
-                                    <button type="button" title="Match to book items" aria-label="Match to book items" onClick={() => { setMatching(matching?.id === l.id ? null : l); setTicked(new Set()); }} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600"><Link2 size={14} /></button>
-                                    <button type="button" title="Add to the books" aria-label="Add to the books" onClick={() => { setBooking(l); setBookAcc(''); setBookMemo(l.description || ''); }} className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600"><BookPlus size={14} /></button>
-                                    <button type="button" title="Ignore" aria-label="Ignore line" onClick={() => act(bursarC.bankIgnore(l.id, true), 'Line ignored')} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700"><EyeOff size={14} /></button>
+                                    <button type="button" title="Match to book items" aria-label="Match to book items" aria-pressed={matching?.id === l.id} onClick={() => { setMatching(matching?.id === l.id ? null : l); setTicked(new Set()); }} className={`${rowBtn} hover:text-blue-600 ${matching?.id === l.id ? 'text-blue-600 bg-blue-50 dark:bg-blue-950/40' : ''}`}><Link2 size={15} /></button>
+                                    <button type="button" title="Add to the books" aria-label="Add to the books" onClick={() => { setBooking(l); setBookAcc(''); setBookMemo(l.description || ''); }} className={`${rowBtn} hover:text-emerald-600`}><BookPlus size={15} /></button>
+                                    <button type="button" title="Ignore" aria-label="Ignore line" onClick={() => act(bursarC.bankIgnore(l.id, true), 'Line ignored')} className={`${rowBtn} hover:text-gray-700`}><EyeOff size={15} /></button>
                                   </>}
-                                  {l.status === 'matched' && <button type="button" title="Unmatch" aria-label="Unmatch" onClick={() => act(bursarC.bankUnmatch(l.id), 'Unmatched')} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600"><Unlink size={14} /></button>}
-                                  {l.status === 'ignored' && <button type="button" title="Restore" aria-label="Restore line" onClick={() => act(bursarC.bankIgnore(l.id, false), 'Line restored')} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600"><Eye size={14} /></button>}
+                                  {l.status === 'matched' && <button type="button" title="Unmatch" aria-label="Unmatch" onClick={() => act(bursarC.bankUnmatch(l.id), 'Unmatched')} className={`${rowBtn} hover:text-red-600`}><Unlink size={15} /></button>}
+                                  {l.status === 'ignored' && <button type="button" title="Restore" aria-label="Restore line" onClick={() => act(bursarC.bankIgnore(l.id, false), 'Line restored')} className={`${rowBtn} hover:text-blue-600`}><Eye size={15} /></button>}
                                 </td>
                               </tr>
                             ))}
@@ -232,9 +235,9 @@ export const BankReconciliationPage: React.FC = () => {
                       <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
                         <h2 className="text-sm font-bold">In the books, not yet on a statement</h2>
                         {matching && <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs" aria-live="polite">
-                          <span>Tick the items that make up <strong><Money v={matching.amount} /></strong> ({matching.description || matching.txn_date}). Selected: <strong><Money v={tickedSum / 100} zero="Le 0.00" /></strong></span>
-                          <Button size="sm" disabled={busy || tickedSum !== Math.round(matching.amount * 100)} onClick={async () => { if (await act(bursarC.bankMatch(matching.id, Array.from(ticked)), 'Matched')) { setMatching(null); setTicked(new Set()); } }}>Match</Button>
-                          <Button size="sm" variant="ghost" onClick={() => { setMatching(null); setTicked(new Set()); }}>Cancel</Button>
+                          <span className="basis-full sm:basis-auto sm:flex-1 min-w-0">Tick the items that make up <strong><Money v={matching.amount} /></strong> ({matching.description || matching.txn_date}). Selected: <strong><Money v={tickedSum / 100} zero="Le 0.00" /></strong></span>
+                          <Button size="sm" className={HEADER_BTN} disabled={busy || tickedSum !== Math.round(matching.amount * 100)} onClick={async () => { if (await act(bursarC.bankMatch(matching.id, Array.from(ticked)), 'Matched')) { setMatching(null); setTicked(new Set()); } }}><Link2 size={14} /> Match</Button>
+                          <Button size="sm" variant="ghost" className={HEADER_BTN} onClick={() => { setMatching(null); setTicked(new Set()); }}>Cancel</Button>
                         </div>}
                       </div>
                       {!bookRows.length ? <p className="p-4 text-sm text-gray-500">Everything in the books is matched.</p> : (
@@ -242,9 +245,9 @@ export const BankReconciliationPage: React.FC = () => {
                           <table className="w-full text-sm"><tbody>
                             {bookPg.pageRows.map((b: any) => (
                               <tr key={b.id} className="border-t border-gray-100 dark:border-gray-800">
-                                {matching && <td className="pl-3"><input type="checkbox" aria-label={`Select ${b.entry_no}`} checked={ticked.has(b.id)} onChange={(e) => setTicked((s) => { const n = new Set(s); e.target.checked ? n.add(b.id) : n.delete(b.id); return n; })} /></td>}
+                                {matching && <td className="pl-3"><label className="inline-flex items-center justify-center w-10 h-10 sm:w-6 sm:h-6 cursor-pointer"><input type="checkbox" className="w-4 h-4" aria-label={`Select ${b.entry_no}`} checked={ticked.has(b.id)} onChange={(e) => setTicked((s) => { const n = new Set(s); e.target.checked ? n.add(b.id) : n.delete(b.id); return n; })} /></label></td>}
                                 <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">{b.entry_date}</td>
-                                <td className="px-3 py-2"><div className="text-sm">{b.line_memo || b.memo || '—'}</div><div className="text-[11px] text-gray-400 font-mono">{b.entry_no}</div></td>
+                                <td className="px-3 py-2 min-w-[11rem]"><div className="text-sm break-words">{b.line_memo || b.memo || '—'}</div><div className="text-[11px] text-gray-400 font-mono">{b.entry_no}</div></td>
                                 <td className={`px-3 py-2 text-right font-semibold whitespace-nowrap ${b.amount < 0 ? 'text-rose-700' : 'text-emerald-700'}`}><Money v={b.amount} /></td>
                               </tr>
                             ))}

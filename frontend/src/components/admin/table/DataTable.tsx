@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useId } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -24,6 +24,7 @@ import { SkeletonTableRow } from '../feedback/Skeleton';
 import { EmptyState } from '../feedback/EmptyState';
 import { ErrorState } from '../feedback/ErrorState';
 import { cardTint } from '@lib/cardTint';
+import { AnchoredMenu, menuItemClass } from '../feedback/AnchoredMenu';
 
 export interface RowAction<TData = any> {
   label: string;
@@ -57,66 +58,62 @@ const PAGE_SIZES = [10, 25, 50, 100];
 
 // ── Row Action Menu ───────────────────────────────────────────────────────────
 
+// The menu itself is AnchoredMenu: portalled to <body> and positioned from the
+// trigger's on-screen rect, so it opens next to the "⋯" in both the desktop
+// table and the mobile cards (and inside the native app's scrolling <main>).
 function RowActionMenu<TData>({ row, actions }: { row: TData; actions: RowAction<TData>[] }) {
   const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ top?: number; bottom?: number; right: number }>({ right: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
 
-  const handleOpen = (e: React.MouseEvent) => {
+  const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (menuRef.current) {
-      const rect = menuRef.current.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const menuHeight = Math.min(actions.length * 40 + 8, 300); // estimate menu height
-      const spaceBelow = viewportHeight - rect.bottom;
-      const rightPos = window.innerWidth - rect.right;
-
-      if (spaceBelow < menuHeight && rect.top > menuHeight) {
-        // Open upward
-        setPosition({ bottom: viewportHeight - rect.top + 4, right: rightPos });
-      } else {
-        // Open downward
-        setPosition({ top: rect.bottom + 4, right: rightPos });
-      }
-    }
     setOpen((v) => !v);
   };
 
   return (
-    <div className="relative" ref={menuRef}>
+    <div className="relative flex-shrink-0">
       <button
-        onClick={handleOpen}
+        ref={triggerRef}
+        type="button"
+        onClick={handleToggle}
         aria-label="Row actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
         className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
       >
         <MoreHorizontal size={16} className="text-gray-500 dark:text-gray-400" />
       </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
-          <div
-            className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl min-w-[170px] py-1.5 animate-in fade-in duration-100"
-            style={{
-              ...(position.top !== undefined ? { top: position.top } : {}),
-              ...(position.bottom !== undefined ? { bottom: position.bottom } : {}),
-              right: position.right,
+      <AnchoredMenu
+        id={menuId}
+        anchorRef={triggerRef}
+        open={open}
+        onClose={() => setOpen(false)}
+        align="end"
+        aria-label="Row actions"
+        className="min-w-[170px]"
+      >
+        {actions.map((action, i) => (
+          <button
+            key={i}
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            className={menuItemClass(action.variant)}
+            onClick={() => {
+              action.onClick(row);
+              // Back on the trigger so a dialog opened by the action returns
+              // focus here when it closes.
+              triggerRef.current?.focus({ preventScroll: true });
+              setOpen(false);
             }}
           >
-            {actions.map((action, i) => (
-              <button
-                key={i}
-                className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2.5 transition-colors ${
-                  action.variant === 'destructive' ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-200'
-                }`}
-                onClick={() => { action.onClick(row); setOpen(false); }}
-              >
-                {action.icon}
-                {action.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+            {action.icon}
+            {action.label}
+          </button>
+        ))}
+      </AnchoredMenu>
     </div>
   );
 }

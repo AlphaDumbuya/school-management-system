@@ -55,7 +55,7 @@ export const SearchableMultiSelect: React.FC<{
       </button>
 
       {open && (
-        <div className="absolute z-30 mt-1 w-full min-w-[260px] rounded-xl border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+        <div className="absolute z-30 mt-1 w-full sm:min-w-[260px] rounded-xl border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-800">
           <div className="relative mb-2">
             <Search size={14} aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input ref={searchRef} type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${noun}…`} aria-label={`Search ${noun}`}
@@ -78,8 +78,8 @@ export const SearchableMultiSelect: React.FC<{
                 <li key={o.value}>
                   <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <input type="checkbox" checked={on} onChange={() => toggle(o.value)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span className={`flex-1 truncate ${o.muted ? 'text-gray-400' : 'text-gray-800 dark:text-gray-100'}`}>{o.label}</span>
-                    {o.hint && <span className="text-xs text-gray-500">{o.hint}</span>}
+                    <span className={`min-w-0 flex-1 truncate ${o.muted ? 'text-gray-400' : 'text-gray-800 dark:text-gray-100'}`}>{o.label}</span>
+                    {o.hint && <span className="flex-shrink-0 whitespace-nowrap text-xs text-gray-500">{o.hint}</span>}
                     {on && <Check size={13} aria-hidden="true" className="text-blue-600" />}
                   </label>
                 </li>
