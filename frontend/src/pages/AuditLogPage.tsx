@@ -15,7 +15,7 @@ import { unwrap, todayLocal } from '@components/finance/AccountingUi';
 import { showToast } from '@utils/toast';
 import schoolAuditService, { AuditFilters, AuditRow } from '@services/schoolAuditService';
 
-const field = 'px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm';
+const field = 'w-full min-w-0 lg:w-auto px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const monthLabel = (m: string, short = false) => {
   const [y, mm] = m.split('-');
@@ -53,32 +53,42 @@ const Details: React.FC<{ r: AuditRow; showAddress: boolean }> = ({ r, showAddre
     <div className="space-y-2 text-xs">
       {r.reason && <p><span className="text-gray-500">Reason:</span> <span className="font-medium">{r.reason}</span></p>}
       {changed.length > 0 ? (
-        <table>
-          <thead className="text-gray-500"><tr><th className="pr-4 text-left font-semibold">Field</th><th className="pr-4 text-left font-semibold">Before</th><th className="text-left font-semibold">After</th></tr></thead>
-          <tbody>{changed.map((k) => (
-            <tr key={k}><td className="pr-4 py-0.5 text-gray-500">{label(k)}</td><td className="pr-4 py-0.5 line-through text-gray-400">{fmt(before![k])}</td><td className="py-0.5 font-medium">{fmt(after![k])}</td></tr>
-          ))}</tbody>
-        </table>
+        // Three columns from sm up; on phones each field stacks as
+        // "Field" then "before → after" so nothing is squeezed.
+        <div className="space-y-1.5 sm:space-y-0.5">
+          <div className="hidden sm:grid grid-cols-[minmax(6rem,10rem)_1fr_1fr] gap-x-4 text-gray-500 font-semibold"><span>Field</span><span>Before</span><span>After</span></div>
+          {changed.map((k) => (
+            <div key={k} className="sm:grid sm:grid-cols-[minmax(6rem,10rem)_1fr_1fr] sm:gap-x-4">
+              <div className="text-gray-500 break-words">{label(k)}</div>
+              <div className="flex flex-wrap items-baseline gap-x-1.5 min-w-0 sm:contents">
+                <span className="line-through text-gray-400 break-words min-w-0"><span className="sr-only">Before: </span>{fmt(before![k])}</span>
+                <span aria-hidden="true" className="text-gray-400 sm:hidden">→</span>
+                <span className="font-medium break-words min-w-0"><span className="sr-only">After: </span>{fmt(after![k])}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : after ? (
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
           {Object.entries(after).filter(([, v]) => v !== null && v !== '').map(([k, v]) => (
-            <div key={k} className="flex gap-2"><dt className="text-gray-500 min-w-[6rem]">{label(k)}</dt><dd className="font-medium break-words">{fmt(v)}</dd></div>
+            <div key={k} className="flex gap-2 min-w-0"><dt className="text-gray-500 w-24 shrink-0 break-words">{label(k)}</dt><dd className="font-medium break-words min-w-0">{fmt(v)}</dd></div>
           ))}
         </dl>
       ) : !r.reason ? <p className="text-gray-500">No extra details were recorded.</p> : null}
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-gray-500">
-        <div className="flex gap-2"><dt className="min-w-[6rem]">Record type</dt><dd className="font-medium text-gray-700 dark:text-gray-300">{nice(r.entityType)}</dd></div>
-        {showAddress && r.ip && <div className="flex gap-2"><dt className="min-w-[6rem]">IP address</dt><dd className="font-medium text-gray-700 dark:text-gray-300">{r.ip}</dd></div>}
-        {showAddress && r.userAgent && <div className="flex gap-2 sm:col-span-2"><dt className="min-w-[6rem]">Browser</dt><dd className="font-medium text-gray-700 dark:text-gray-300 break-all">{r.userAgent}</dd></div>}
+        <div className="flex gap-2 min-w-0"><dt className="w-24 shrink-0">Record type</dt><dd className="font-medium text-gray-700 dark:text-gray-300 break-words min-w-0">{nice(r.entityType)}</dd></div>
+        {showAddress && r.ip && <div className="flex gap-2 min-w-0"><dt className="w-24 shrink-0">IP address</dt><dd className="font-medium text-gray-700 dark:text-gray-300 break-all min-w-0">{r.ip}</dd></div>}
+        {showAddress && r.userAgent && <div className="flex gap-2 min-w-0 sm:col-span-2"><dt className="w-24 shrink-0">Browser</dt><dd className="font-medium text-gray-700 dark:text-gray-300 break-all min-w-0">{r.userAgent}</dd></div>}
       </dl>
     </div>
   );
 };
 
 const Stat: React.FC<{ icon: React.ReactNode; value: React.ReactNode; label: string; warn?: boolean }> = ({ icon, value, label: l, warn }) => (
-  <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3.5 flex items-center gap-3">
-    <span className={`rounded-xl p-2 ${warn ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-[#1d4ed8]'}`} aria-hidden="true">{icon}</span>
-    <div><div className="text-lg font-bold leading-tight">{value}</div><div className="text-xs text-gray-500">{l}</div></div>
+  // Phones: three compact tiles in a row (icon hidden). sm+: icon + text.
+  <div className="min-w-0 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 sm:p-3.5 flex items-center gap-3">
+    <span className={`hidden sm:inline-flex rounded-xl p-2 ${warn ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-[#1d4ed8]'}`} aria-hidden="true">{icon}</span>
+    <div className="min-w-0"><div className={`text-lg font-bold leading-tight ${warn ? 'text-red-600 sm:text-current' : ''}`}>{value}</div><div className="text-[11px] sm:text-xs leading-snug text-gray-500">{l}</div></div>
   </div>
 );
 
@@ -105,6 +115,7 @@ export const AuditLogPage: React.FC = () => {
   const reset = <T,>(fn: (v: T) => void) => (v: T) => { fn(v); setPage(0); };
   const d = q.data;
   const sum = s.data;
+  const toggle = (id: string) => setOpen((x) => { const n = new Set(x); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const exportCsv = async () => {
     setExporting(true);
@@ -127,14 +138,15 @@ export const AuditLogPage: React.FC = () => {
         )}
       >
         {sum && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
             <Stat icon={<Activity size={18} />} value={sum.changesLast30Days} label="Recorded actions, last 30 days" />
             <Stat icon={<Users size={18} />} value={sum.activePeopleLast7Days} label="People active, last 7 days" />
             <Stat icon={sum.failedSignInsLast7Days ? <ShieldAlert size={18} /> : <LogIn size={18} />} value={sum.failedSignInsLast7Days} label="Failed sign-ins, last 7 days" warn={sum.failedSignInsLast7Days >= 5} />
           </div>
         )}
 
-        <div className="flex flex-col lg:flex-row gap-2 mb-3 lg:items-center flex-wrap">
+        {/* Phones: search on its own row, then filters two per row. lg+: one wrapping row. */}
+        <div className="grid grid-cols-2 gap-2 mb-3 lg:flex lg:flex-wrap lg:items-center">
           <select aria-label="Academic year" value={academicYear} onChange={(e) => { setMonth(''); reset(setAcademicYear)(e.target.value); }} className={field}>
             <option value="">{d?.academicYear && academicYear === '' ? `Current year (${d.academicYear.name})` : 'Current academic year'}</option>
             {(d?.sessions || []).filter((x: any) => !(x.isActive && academicYear === '')).map((x: any) => <option key={x.id} value={x.id}>{x.name}{x.isActive ? ' (current)' : ''}</option>)}
@@ -144,7 +156,7 @@ export const AuditLogPage: React.FC = () => {
             <option value="">All months</option>
             {(d?.months || []).map((m: any) => <option key={m.month} value={m.month}>{monthLabel(m.month)} ({m.count})</option>)}
           </select>
-          <SearchBar placeholder="Search action, record or person…" onSearch={reset(setSearch)} className="w-full lg:max-w-xs" />
+          <SearchBar placeholder="Search action, record or person…" onSearch={reset(setSearch)} className="col-span-2 order-first w-full lg:order-none lg:max-w-xs" />
           <select aria-label="Category" value={category} onChange={(e) => reset(setCategory)(e.target.value)} className={field}>
             <option value="">All categories</option>
             {(d?.categories || []).map((c: string) => <option key={c} value={c}>{c}</option>)}
@@ -196,7 +208,38 @@ export const AuditLogPage: React.FC = () => {
         ) : !d.rows.length ? (
           <EmptyState message="Nothing found" description="Actions appear here as people sign in and change records in your school." />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+            {/* Phones: one card per action (a 5-column table wraps badly there). */}
+            <ul className="md:hidden divide-y divide-gray-100 dark:divide-gray-700">
+              {d.rows.map((r: AuditRow) => {
+                const isOpen = open.has(r.id);
+                return (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      onClick={() => toggle(r.id)}
+                      className="w-full flex items-start gap-2.5 px-3 py-3 text-left active:bg-gray-50 dark:active:bg-gray-900/40"
+                    >
+                      <span className="mt-0.5 text-gray-400 shrink-0" aria-hidden="true">{isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-gray-900 dark:text-gray-100 break-words">{r.summary}</span>
+                        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500">
+                          <span className={`inline-block rounded-full border px-2 py-0.5 font-semibold ${toneOf(r.category)}`}>{r.category}</span>
+                          <span className="min-w-0 break-words"><span className="font-medium text-gray-700 dark:text-gray-300">{r.actor.name || '—'}</span>{r.actor.role ? <span className="capitalize"> · {nice(r.actor.role)}</span> : null}</span>
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-gray-400">{when(r.at)}</span>
+                      </span>
+                    </button>
+                    {isOpen && (
+                      <div className="px-3 pb-3 pl-9 -mt-1"><Details r={r} showAddress={d.canSeeAddresses} /></div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900/40 text-xs text-gray-500">
                 <tr><th className="px-3 py-3 w-8" /><th className="px-3 py-3 text-left">When</th><th className="px-3 py-3 text-left">Who</th><th className="px-3 py-3 text-left">Category</th><th className="px-3 py-3 text-left">What</th></tr>
@@ -206,7 +249,7 @@ export const AuditLogPage: React.FC = () => {
                   <React.Fragment key={r.id}>
                     <tr className="border-t border-gray-100 dark:border-gray-800">
                       <td className="px-3 py-2.5">
-                        <button type="button" aria-expanded={open.has(r.id)} aria-label="Show details" onClick={() => setOpen((x) => { const n = new Set(x); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n; })} className="text-gray-400 hover:text-gray-700">
+                        <button type="button" aria-expanded={open.has(r.id)} aria-label="Show details" onClick={() => toggle(r.id)} className="text-gray-400 hover:text-gray-700">
                           {open.has(r.id) ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                         </button>
                       </td>
@@ -222,6 +265,7 @@ export const AuditLogPage: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            </div>
             <TablePager page={page} pageCount={Math.max(1, Math.ceil(d.total / size))} size={size} total={d.total} onPage={setPage} onSize={(n) => { setSize(n); setPage(0); }} label="actions" />
           </div>
         )}

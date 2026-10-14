@@ -18,6 +18,11 @@
              background of EVERY view that has none, which painted the native
              <select> dropdown dialog (and its list) solid blue. -->
         <item name="android:windowBackground">@color/splashBackground</item>
+        <!-- Native <select> dialog (older WebViews only; newer ones draw the
+             picker in the page, see index.css). Pin it to the standard AppCompat
+             alert surface so it never picks up the brand-blue window colour. -->
+        <item name="android:alertDialogTheme">@style/ThemeOverlay.AppCompat.Dialog.Alert</item>
+        <item name="alertDialogTheme">@style/ThemeOverlay.AppCompat.Dialog.Alert</item>
     </style>
 
 
