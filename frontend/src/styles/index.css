@@ -125,6 +125,99 @@ select option:focus {
   color: #f3f4f6;
 }
 
+/*
+ * Android app: in-page select pickers (no native Android dialog).
+ *
+ * The rules above only reach desktop browsers. Android WebView opens a native
+ * Android dialog for <select>, which ignores page CSS, so its blue look comes
+ * from the APK theme and could not be changed from here.
+ *
+ * Chromium 135+ (current Android System WebView) supports customizable select:
+ * with `appearance: base-select` the dropdown is drawn by the page as a popover,
+ * so we fully control its colours. Gated on @supports, so older WebViews keep the
+ * native dialog. Scoped to the app shell (`.wiskul-native`, set in
+ * nativeChrome.ts) so desktop and mobile browsers are untouched. Multi-selects
+ * and list boxes (`size`) keep their native rendering.
+ */
+@supports (appearance: base-select) {
+  .wiskul-native select:not([multiple]):not([size]),
+  .wiskul-native select:not([multiple]):not([size])::picker(select) {
+    appearance: base-select;
+  }
+
+  .wiskul-native select:not([multiple]):not([size]) {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  /* Selects with appearance-none already draw their own chevron. */
+  .wiskul-native select.appearance-none::picker-icon {
+    display: none;
+  }
+  .wiskul-native select::picker-icon {
+    color: #6b7280; /* gray-500 */
+  }
+
+  .wiskul-native select::picker(select) {
+    background-color: #ffffff;
+    color: #111827;
+    border: 1px solid #e5e7eb; /* gray-200 */
+    border-radius: 12px;
+    box-shadow: 0 12px 28px -6px rgb(0 0 0 / 0.18), 0 4px 10px -4px rgb(0 0 0 / 0.08);
+    padding: 4px;
+    margin-block: 4px;
+    max-height: min(60vh, 22rem);
+    overflow-y: auto;
+    font-size: 15px;
+  }
+
+  /* Touch-sized rows; a neutral grey for the chosen item instead of blue. */
+  .wiskul-native select option {
+    min-height: 44px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    white-space: normal;
+    background-color: transparent;
+    color: #111827;
+  }
+  .wiskul-native select option:hover,
+  .wiskul-native select option:focus-visible {
+    background-color: #f3f4f6; /* gray-100 */
+    color: #111827;
+    outline: none;
+  }
+  .wiskul-native select option:checked {
+    background-color: #f3f4f6;
+    color: #111827;
+    font-weight: 600;
+  }
+  .wiskul-native select option::checkmark {
+    color: #1d4ed8; /* brand blue tick only, no fill */
+  }
+  .wiskul-native select option:disabled {
+    color: #9ca3af;
+  }
+
+  .dark .wiskul-native select::picker(select) {
+    background-color: #1f2937; /* gray-800 */
+    color: #f3f4f6;
+    border-color: #374151;
+  }
+  .dark .wiskul-native select option {
+    background-color: transparent;
+    color: #f3f4f6;
+  }
+  .dark .wiskul-native select option:hover,
+  .dark .wiskul-native select option:focus-visible,
+  .dark .wiskul-native select option:checked {
+    background-color: #374151; /* gray-700 */
+    color: #ffffff;
+  }
+  .dark .wiskul-native select option::checkmark {
+    color: #93c5fd; /* blue-300 */
+  }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
