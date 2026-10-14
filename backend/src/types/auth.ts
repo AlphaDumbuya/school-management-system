@@ -30,6 +30,8 @@ export interface UserResponse {
   /** Extra duties for a teacher who is also Bursar / Admissions Officer. */
   staffDuties?: string[];
   schoolLogoUrl?: string | null;
+  /** Short, versioned URL of the school's dashboard banner photo; null when none. */
+  schoolBannerUrl?: string | null;
   schoolName?: string | null;
   /** The school level the school chose (for example "Nursery & Primary"). */
   schoolType?: string | null;

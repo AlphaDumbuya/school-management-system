@@ -24,6 +24,13 @@ export interface AuthUser {
   hasOnboarded?: boolean;
   tenantId?: string;
   schoolLogoUrl?: string;
+  /**
+   * Short, versioned link to the school's dashboard banner photo (shown behind the
+   * welcome hero), e.g. ".../public/branding/<id>/banner?v=ab12cd34ef". Never an
+   * inline image. null/undefined when the school has no banner. Safe to use as an
+   * <img> src or CSS background-image as-is.
+   */
+  schoolBannerUrl?: string | null;
   schoolName?: string;
   /** The school level the school chose (for example "Nursery & Primary"). */
   schoolType?: string | null;

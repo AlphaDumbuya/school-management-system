@@ -2196,12 +2196,48 @@ class EmailService {
         className?: string;
         days: Array<{ date: string; label: string; status: 'present' | 'late' | 'excused' | 'absent' | 'none' }>;
         summary: { present: number; late: number; excused: number; absent: number; recorded: number; rate: number };
+        /** The teacher's review of the child's week (1 to 5 ratings, plain-text comment). */
+        review?: {
+          performance_rating: number;
+          behaviour_rating?: number | null;
+          comment?: string | null;
+          teacher_name?: string | null;
+        };
       }>;
     }
   ): Promise<EmailResponse> {
     const branding = await resolveTenantBranding(tenantId);
     const portalUrl = `${branding.appUrl}/students/attendance`;
     const range = `${this.fmtDate(data.weekStart)} to ${this.fmtDate(data.weekEnd)}`;
+
+    // Review rating words and badge colours (5/4 green, 3 blue, 2 amber, 1 red).
+    const RATING_TEXT: Record<number, string> = { 5: 'Excellent', 4: 'Very good', 3: 'Good', 2: 'Needs support', 1: 'Concern' };
+    const RATING_STYLE: Record<number, { bg: string; fg: string }> = {
+      5: { bg: '#dcfce7', fg: '#166534' },
+      4: { bg: '#dcfce7', fg: '#166534' },
+      3: { bg: '#dbeafe', fg: '#1e40af' },
+      2: { bg: '#fef3c7', fg: '#92400e' },
+      1: { bg: '#fee2e2', fg: '#991b1b' },
+    };
+    const ratingBadge = (title: string, rating?: number | null) => {
+      const r = Number(rating);
+      if (!RATING_TEXT[r]) return '';
+      const st = RATING_STYLE[r];
+      return `<span style="display:inline-block;background:${st.bg};color:${st.fg};border-radius:999px;padding:4px 10px;margin:0 6px 6px 0;font-size:12px;font-weight:600;">${title}: ${RATING_TEXT[r]}</span>`;
+    };
+    const reviewBlock = (rv?: (typeof data.children)[number]['review']) => {
+      if (!rv || !RATING_TEXT[Number(rv.performance_rating)]) return '';
+      const comment = String(rv.comment || '').trim();
+      const teacher = String(rv.teacher_name || '').trim();
+      return `
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid #e2e8f0;">
+            <div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Teacher's review</div>
+            <div>${ratingBadge('Performance', rv.performance_rating)}${ratingBadge('Behaviour', rv.behaviour_rating)}</div>
+            ${comment ? `<div style="margin:6px 0;padding:6px 12px;border-left:3px solid #cbd5e1;color:#334155;font-size:14px;font-style:italic;">${escapeHtml(comment).replace(/\r?\n/g, '<br>')}</div>` : ''}
+            ${teacher ? `<div style="font-size:13px;color:#64748b;">&mdash; ${escapeHtml(teacher)}</div>` : ''}
+          </div>`;
+    };
+    const anyReview = data.children.some((c) => !!c.review && !!RATING_TEXT[Number(c.review.performance_rating)]);
 
     const STYLE: Record<string, { bg: string; fg: string; text: string }> = {
       present: { bg: '#dcfce7', fg: '#166534', text: 'Present' },
@@ -2235,7 +2271,7 @@ class EmailService {
           <div style="font-size:14px;color:#334155;">
             ${escapeHtml(parts.join(' · '))} &nbsp;|&nbsp;
             <strong style="color:${concern ? '#b45309' : '#059669'};">${s.recorded ? `${s.rate}% attendance` : 'No days recorded'}</strong>
-          </div>
+          </div>${reviewBlock(c.review)}
         </div>`;
     };
 
@@ -2243,7 +2279,7 @@ class EmailService {
     const names = data.children.map((c) => c.name);
     const bodyHtml = `
       <p>Dear ${escapeHtml(data.recipientName)},</p>
-      <p>Here is the attendance summary for the week of <strong>${escapeHtml(range)}</strong> at <strong>${escapeHtml(branding.name)}</strong>.</p>
+      <p>Here is the attendance${anyReview ? ' and teacher\'s review' : ' summary'} for the week of <strong>${escapeHtml(range)}</strong> at <strong>${escapeHtml(branding.name)}</strong>.</p>
       ${data.children.map(childBlock).join('')}
       ${calloutBlock(
         anyAbsent
@@ -2262,7 +2298,7 @@ class EmailService {
         eyebrow: 'Weekly Attendance',
         heading: 'Attendance this week',
         bodyHtml,
-        preheader: `Attendance for ${names.join(', ')}, ${range}.`,
+        preheader: `${anyReview ? 'Attendance and teacher\'s review' : 'Attendance'} for ${names.join(', ')}, ${range}.`,
       }),
       isHtml: true,
     });

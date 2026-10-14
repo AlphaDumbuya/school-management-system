@@ -15,7 +15,7 @@ import {
   Users, Briefcase, BookOpen, Wallet,
   UserPlus, CalendarDays, BarChart2,
   CreditCard, Send, ChevronRight,
-  CalendarCheck, Bell, AlertCircle,
+  Bell, AlertCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -35,7 +35,9 @@ import { RoleGuard } from '@components/admin/common/RoleGuard';
 import SystemHealthPanel from '@components/dashboard/SystemHealthPanel';
 import { useDashboard } from '@hooks/useDashboard';
 import { useAuth } from '@hooks/useAuth';
-import { RefreshButton } from '@components/admin/common/RefreshButton';
+import { WelcomeHero } from '@components/dashboard/WelcomeHero';
+import { HeroRefreshButton } from '@components/dashboard/HeroRefreshButton';
+import { roleDisplayName } from '@lib/leadTitle';
 import { teacherAttendanceService } from '@services/teacherAttendanceService';
 import {
   formatCurrency,
@@ -44,13 +46,6 @@ import {
 } from './adminDashboardHelpers';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-const timeGreeting = () => {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good Morning';
-  if (h < 17) return 'Good Afternoon';
-  return 'Good Evening';
-};
 
 const ACTIVITY_STYLE: Record<string, { icon: React.ReactNode; color: string }> = {
   student: { icon: <UserPlus size={15} />, color: 'bg-blue-500' },
@@ -150,12 +145,7 @@ export const AdminDashboard: React.FC = () => {
 
   const isInitialLoad = loading && dashboard === null;
 
-  // Short date for mobile, full date for larger screens
-  const shortDate = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  const fullDate  = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const firstName = user?.firstName || 'Admin';
-  const greeting = timeGreeting();
-
+  
   // Fee collection donut — the selected year's fees (billed vs collected).
   const collected = dashboard?.financialSummary?.totalRevenue ?? 0;
   const outstanding = dashboard?.financialSummary?.outstandingBalance ?? 0;
@@ -188,37 +178,19 @@ export const AdminDashboard: React.FC = () => {
           <ErrorState message={error ?? 'Failed to load dashboard data'} onRetry={refreshDashboard} />
         )}
 
-        {/* ═══ ROW 1 — Greeting + date ═══ */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          {/* Left: greeting — the controls drop below it on narrow phones */}
-          <div className="min-w-[12rem] flex-1">
-            <h1 className="text-base xs:text-xl sm:text-2xl lg:text-3xl font-black text-gray-900 tracking-tight leading-snug">
-              {greeting}, {firstName}!{' '}
-              <span role="img" aria-label="wave">👋</span>
-            </h1>
-            <p className="text-gray-400 text-[11px] sm:text-sm mt-0.5 hidden sm:block">
-              Welcome back to WiSkul. Here's what's happening today.
-            </p>
-          </div>
-
-          {/* Right: compact date chip + refresh — never wider than necessary */}
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-            {/* Mobile: icon-only date pill */}
-            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-2.5 py-2 shadow-sm">
-              <CalendarCheck size={14} className="text-[#315B8C] flex-shrink-0" />
-              {/* Short date on mobile, full on sm+ */}
-              <div className="leading-tight">
-                <p className="text-[11px] font-bold text-gray-900 sm:hidden whitespace-nowrap">{shortDate}</p>
-                <p className="text-xs font-bold text-gray-900 hidden sm:block whitespace-nowrap">{fullDate}</p>
-                <p className="text-[10px] text-gray-400 hidden md:block">
-                  {yearInfo?.name ? `Academic Year ${yearInfo.name}${viewingPast ? ' (past)' : ''}` : 'No academic year set'}
-                </p>
-              </div>
+        {/* ═══ ROW 1 — Welcome hero (shows the school's banner photo when it has one) ═══ */}
+        <WelcomeHero
+          firstName={user?.firstName}
+          role="principal"
+          schoolName={user?.schoolName}
+          subtitle={`${roleDisplayName(user)}${user?.schoolName ? ` · ${user.schoolName}` : ''}${yearInfo?.name ? ` · Academic Year ${yearInfo.name}${viewingPast ? ' (past)' : ''}` : ''}`}
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <YearFilter value={year} onChange={setYear} />
+              <HeroRefreshButton onRefresh={refreshOverview} />
             </div>
-            <YearFilter value={year} onChange={setYear} />
-            <RefreshButton onRefresh={refreshOverview} />
-          </div>
-        </div>
+          }
+        />
 
         {/* Viewing a past year — everything below is that year's snapshot */}
         {viewingPast && (

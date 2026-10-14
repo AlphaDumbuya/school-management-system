@@ -437,6 +437,53 @@ export const houseService = {
     });
   },
 
+  /**
+   * Reset the ballot: take every student in scope OFF their house so the ballot can
+   * be run again. Only the house is cleared. Classes, enrolment, fees, attendance and
+   * results are not touched, and the draw log is not erased: each student gets a
+   * 'removed' entry (their previous house and the reason), so the reset is on record.
+   *
+   * Scope: the whole school, or only the students currently in the given classes.
+   * Only active students are reset (the same ones the ballot and the head-counts use).
+   */
+  async resetBallot(
+    tenantId: string,
+    userId: string,
+    opts: { reason?: unknown; class_ids?: string[] },
+    outer?: Knex.Transaction,
+  ) {
+    const why = String(opts.reason ?? '').trim().replace(/\s+/g, ' ').slice(0, 250);
+    if (why.length < 3) throw new AppError('Give a short reason for resetting the ballot.', 400, 'REASON_REQUIRED');
+    const reason = `Ballot reset: ${why}`;
+    const run = <T>(fn: (trx: Knex.Transaction) => Promise<T>): Promise<T> => (outer ? fn(outer) : db.transaction(fn));
+    const { sessionId } = await resolveActiveYear(tenantId);
+    return run(async (trx) => {
+      // Same lock as the draw: nobody can draw while the houses are being cleared.
+      await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [`house-draw:${tenantId}`]);
+
+      const lat = classLateral(sessionId);
+      const q = trx('students as s').joinRaw(lat.sql, lat.bindings)
+        .where('s.tenant_id', tenantId).where('s.status', 'active').whereNotNull('s.house_id');
+      const classIds = (opts.class_ids || []).filter(Boolean);
+      if (classIds.length) q.whereIn('cl.id', classIds);
+      const rows: Array<{ id: string; house_id: string }> = await q.select('s.id', 's.house_id');
+      if (rows.length > 5000) throw new AppError('Reset at most 5,000 students at a time. Choose some classes.', 400, 'TOO_MANY');
+      if (!rows.length) return { cleared: 0 };
+
+      const now = new Date();
+      for (let k = 0; k < rows.length; k += 500) {
+        const chunk = rows.slice(k, k + 500);
+        await trx('students').where({ tenant_id: tenantId }).whereIn('id', chunk.map((r) => r.id)).update({ house_id: null, updated_at: now });
+        await trx('house_draws').insert(chunk.map((r) => ({
+          tenant_id: tenantId, student_id: r.id, house_id: null, previous_house_id: r.house_id,
+          method: 'removed', reason, drawn_by: userId, created_at: now,
+        })));
+      }
+      logger.info(`House ballot reset by ${userId} for tenant ${tenantId}: ${rows.length} student(s) cleared (${classIds.length ? `${classIds.length} class(es)` : 'whole school'})`);
+      return { cleared: rows.length };
+    });
+  },
+
   /** Head-counts per house in the scope (whole school, or one class). */
   async counts(conn: Knex | Knex.Transaction, tenantId: string, sessionId: string | null, classId: string | null) {
     const lat = classLateral(sessionId);

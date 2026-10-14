@@ -10,6 +10,11 @@
  * in `finance_notices`, so repeats (the Friday cron plus the Saturday catch-up)
  * never double-send. A claim is released when the send fails so the catch-up
  * can retry.
+ *
+ * The teacher's weekly review of each child (weekly_student_reviews) rides along
+ * in the same email and in-app notice. Reviews written after the digest went out
+ * are announced by weeklyReviewService instead (guarded by the same
+ * `review-app:` claim, so nobody is told twice).
  */
 import crypto from 'crypto';
 import cron from 'node-cron';
@@ -23,9 +28,28 @@ import { attendanceNotifyMode } from '@services/attendanceNotifications';
 
 export type DigestDayStatus = 'present' | 'late' | 'excused' | 'absent' | 'none';
 
+/** Shared wording for the 1 to 5 weekly review ratings (app and email). */
+export const RATING_LABELS: Record<number, string> = { 5: 'Excellent', 4: 'Very good', 3: 'Good', 2: 'Needs support', 1: 'Concern' };
+export const ratingLabel = (n: number | null | undefined): string => RATING_LABELS[Number(n)] || '';
+
+export interface DigestReview {
+  performance_rating: number;
+  behaviour_rating: number | null;
+  comment: string | null;
+  teacher_name: string | null;
+}
+
+/** First ~n characters of a comment on one line, with an ellipsis when cut. */
+export function reviewSnippet(text: string | null | undefined, n = 140): string {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  return t.length > n ? `${t.slice(0, n).trimEnd()}…` : t;
+}
+
 export interface DigestChild {
   name: string;
   className?: string;
+  /** The teacher's review of this child for the week, when one was written. */
+  review?: DigestReview;
   /** Monday to Friday, in order. */
   days: Array<{ date: string; label: string; status: DigestDayStatus }>;
   summary: { present: number; late: number; excused: number; absent: number; recorded: number; rate: number };
@@ -99,6 +123,44 @@ export interface DigestResult {
   failed: number;
 }
 
+interface DigestStudent { name: string; classId: string | null; rows: any[]; review?: DigestReview }
+
+/**
+ * That week's reviews (tenant-scoped) with the child's name and the teacher's
+ * name. Never throws: if the table isn't there yet the digest simply goes out
+ * without reviews, as it always did.
+ */
+async function loadWeekReviews(tenantId: string, weekStart: string): Promise<Array<{ student_id: string; student_name: string; class_id: string | null; review: DigestReview }>> {
+  try {
+    const rows = await db('weekly_student_reviews as r')
+      .join('students as s', function () { this.on('s.id', '=', 'r.student_id').andOn('s.tenant_id', '=', 'r.tenant_id'); })
+      .leftJoin('users as u', 'u.id', 's.user_id')
+      .leftJoin('users as au', 'au.id', 'r.author_user_id')
+      .where('r.tenant_id', tenantId)
+      .whereRaw('r.week_start = ?::date', [weekStart])
+      .whereRaw("COALESCE(s.status, 'active') NOT IN ('withdrawn', 'graduated', 'deleted', 'transferred', 'inactive')")
+      .select(
+        'r.student_id', 'r.class_id', 'r.performance_rating', 'r.behaviour_rating', 'r.comment',
+        db.raw("COALESCE(NULLIF(TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')), ''), TRIM(COALESCE(s.first_name,'') || ' ' || COALESCE(s.last_name,'')), s.student_id) as student_name"),
+        db.raw("NULLIF(TRIM(COALESCE(au.first_name,'') || ' ' || COALESCE(au.last_name,'')), '') as teacher_name"),
+      ) as any[];
+    return rows.map((r) => ({
+      student_id: r.student_id,
+      student_name: r.student_name,
+      class_id: r.class_id || null,
+      review: {
+        performance_rating: Number(r.performance_rating),
+        behaviour_rating: r.behaviour_rating == null ? null : Number(r.behaviour_rating),
+        comment: r.comment || null,
+        teacher_name: r.teacher_name || null,
+      },
+    }));
+  } catch (e: any) {
+    logger.warn(`Weekly digest: could not load weekly reviews: ${e?.message || e}`);
+    return [];
+  }
+}
+
 export async function digestForTenant(tenantId: string, weekStart: string, dryRun: boolean): Promise<Omit<DigestResult, 'tenants'>> {
   const out = { families: 0, sent: 0, skipped: 0, failed: 0 };
   const weekEnd = addDays(weekStart, 4);
@@ -114,14 +176,23 @@ export async function digestForTenant(tenantId: string, weekStart: string, dryRu
       'a.student_id', 'a.attendance_date', 'a.status', 'a.class_id',
       db.raw("COALESCE(NULLIF(TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')), ''), TRIM(COALESCE(s.first_name,'') || ' ' || COALESCE(s.last_name,'')), s.student_id) as student_name"),
     ) as any[];
-  if (!rows.length) return out;
 
-  const byStudent = new Map<string, { name: string; classId: string | null; rows: any[] }>();
+  // Teachers' reviews for the week. A child with a review but no attendance rows
+  // still gets their review, so the list of children is attendance ∪ reviews.
+  const reviews = await loadWeekReviews(tenantId, weekStart);
+  if (!rows.length && !reviews.length) return out;
+
+  const byStudent = new Map<string, DigestStudent>();
   for (const r of rows) {
-    const e: { name: string; classId: string | null; rows: any[] } =
-      byStudent.get(r.student_id) || { name: r.student_name, classId: r.class_id || null, rows: [] };
+    const e: DigestStudent = byStudent.get(r.student_id) || { name: r.student_name, classId: r.class_id || null, rows: [] };
     e.rows.push(r);
     if (!e.classId && r.class_id) e.classId = r.class_id;
+    byStudent.set(r.student_id, e);
+  }
+  for (const r of reviews) {
+    const e: DigestStudent = byStudent.get(r.student_id) || { name: r.student_name, classId: r.class_id || null, rows: [] };
+    if (!e.classId && r.class_id) e.classId = r.class_id;
+    e.review = r.review;
     byStudent.set(r.student_id, e);
   }
 
@@ -154,7 +225,9 @@ export async function digestForTenant(tenantId: string, weekStart: string, dryRu
     try {
       const children = Array.from(fam.studentIds).map((id) => {
         const s = byStudent.get(id)!;
-        return buildChildDigest(s.name, s.classId ? className.get(s.classId) : undefined, weekStart, s.rows);
+        const child = buildChildDigest(s.name, s.classId ? className.get(s.classId) : undefined, weekStart, s.rows);
+        if (s.review) child.review = s.review;
+        return child;
       });
       const res: any = await emailService.sendWeeklyAttendanceEmail(tenantId, fam.email, {
         recipientName: fam.name, weekStart, weekEnd, children,
@@ -177,13 +250,23 @@ export async function digestForTenant(tenantId: string, weekStart: string, dryRu
   return out;
 }
 
-async function weeklyInAppNotices(tenantId: string, weekStart: string, byStudent: Map<string, { name: string; classId: string | null; rows: any[] }>) {
+async function weeklyInAppNotices(tenantId: string, weekStart: string, byStudent: Map<string, DigestStudent>) {
   const { default: notificationService } = await import('@services/notificationService');
   for (const [studentId, s] of byStudent) {
     if (!(await claimNotice(tenantId, `attn-week-app:${weekStart}:${studentId}`))) continue;
     const c = buildChildDigest(s.name, undefined, weekStart, s.rows);
     const { present, late, excused, absent, recorded, rate } = c.summary;
-    const message = `${s.name} this week: ${present} present${late ? `, ${late} late` : ''}${excused ? `, ${excused} excused` : ''}, ${absent} absent (${recorded} day${recorded === 1 ? '' : 's'} recorded, ${rate}% attendance).`;
+    let message = recorded
+      ? `${s.name} this week: ${present} present${late ? `, ${late} late` : ''}${excused ? `, ${excused} excused` : ''}, ${absent} absent (${recorded} day${recorded === 1 ? '' : 's'} recorded, ${rate}% attendance).`
+      : `${s.name} this week: no attendance days were recorded.`;
+    // Add the teacher's review. Claiming the review notice here means the
+    // save-time notifier (weeklyReviewService) can never tell the family again.
+    if (s.review && (await claimNotice(tenantId, `review-app:${weekStart}:${studentId}`))) {
+      const perf = ratingLabel(s.review.performance_rating);
+      const beh = s.review.behaviour_rating ? ` (behaviour: ${ratingLabel(s.review.behaviour_rating)})` : '';
+      const quote = reviewSnippet(s.review.comment);
+      message += ` Teacher's review: ${perf}${beh}.${quote ? ` "${quote}"` : ''}`;
+    }
     const links = await db('guardians').where({ student_id: studentId }).whereNotNull('user_id').pluck('user_id') as string[];
     const stu = await db('students').where({ id: studentId }).first('user_id');
     const recipients = new Set<string>([...links, ...(stu?.user_id ? [stu.user_id] : [])]);

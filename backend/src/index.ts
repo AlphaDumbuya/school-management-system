@@ -33,6 +33,7 @@ import houseBadgeRoutes from '@routes/houseBadgeRoutes';
 import publicAdmissionRoutes from '@routes/publicAdmissionRoutes';
 import planRoutes from '@routes/planRoutes';
 import brandingRoutes from '@routes/brandingRoutes';
+import schoolBannerRoutes from '@routes/schoolBannerRoutes';
 import { rememberRequestOrigin } from '@utils/publicUrl';
 import { planFeatureGate } from '@middleware/subscriptionGuard';
 import { demoReadOnly } from '@middleware/demoReadOnly';
@@ -42,6 +43,7 @@ import enrollmentWorkflowRoutes from '@routes/enrollmentWorkflowRoutes';
 import gradeRoutes from '@routes/gradeRoutes';
 import phase5GradeRoutes from '@routes/phase5GradeRoutes';
 import attendanceRoutes from '@routes/attendanceRoutes';
+import weeklyReviewRoutes from '@routes/weeklyReviewRoutes';
 import syncRoutes from '@routes/syncRoutes';
 import phase5AttendanceRoutes from '@routes/phase5AttendanceRoutes';
 import phase6ScheduleRoutes from '@routes/phase6ScheduleRoutes';
@@ -308,6 +310,8 @@ app.use('/api/v1/results', resultsRoutes);
 
 // File Upload Routes
 app.use('/api/v1/uploads', uploadRoutes);
+// School dashboard banner (principal / super admin set and remove; read via /public/branding)
+app.use('/api/v1/school-banner', schoolBannerRoutes);
 
 // Houses and the house ballot (mounted before admissions so '/houses' isn't read as an application id)
 app.use('/api/v1/admissions/houses', houseRoutes);
@@ -336,6 +340,9 @@ app.use('/api/v1/attendance', attendanceRoutes);
 
 // Attendance Routes (Phase 5 - Complete Implementation)
 app.use('/api/v1/attendance', phase5AttendanceRoutes);
+
+// Weekly student reviews (teacher's review of each child's week; shown with the attendance digest)
+app.use('/api/v1/weekly-reviews', weeklyReviewRoutes);
 
 // Schedule Routes (Phase 6)
 app.use('/api/v1/schedules', phase6ScheduleRoutes);

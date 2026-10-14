@@ -138,6 +138,9 @@ export const houseService = {
   updateSettings: (body: Partial<HouseSettings>) => apiClient.put<HouseSettings>(`${base}/settings`, body),
   draw: (student_id: string) => apiClient.post<DrawResult>(`${base}/draw`, { student_id }),
   drawMany: (body: { student_ids?: string[]; class_ids?: string; search?: string }) => apiClient.post<DrawManyResult>(`${base}/draw-many`, body),
+  /** Take students off their house so the ballot can run again (whole school, or the listed classes). Principal / owner only. */
+  resetBallot: (body: { reason: string; class_ids?: string[] }) =>
+    apiClient.post<{ cleared: number }>(`${base}/reset-ballot`, { ...body, confirm: true }),
   assign: (body: { student_id: string; house_id: string | null; reason?: string }) =>
     apiClient.put<{ unchanged: boolean }>(`${base}/assign`, body),
 
