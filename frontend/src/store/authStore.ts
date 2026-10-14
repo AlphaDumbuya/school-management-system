@@ -11,6 +11,7 @@ import authService from '@services/authService';
 import { clearQueue } from '@lib/offlineQueue';
 import { wipeOfflineDb, wipeOtherUsers } from '../offline/db';
 import { runSync } from '../offline/syncEngine';
+import { withBannerSrc } from '@lib/schoolBanner';
 
 interface AuthStore {
   // State
@@ -57,7 +58,7 @@ interface AuthStore {
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
   // Initial state
-  user: authService.getCurrentUser(),
+  user: withBannerSrc(authService.getCurrentUser()),
   isAuthenticated: authService.isAuthenticated(),
   isLoading: false,
   error: null,
@@ -69,7 +70,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   mfaToken: null,
 
   // State setters
-  setUser: (user) => set({ user }),
+  setUser: (user) => set({ user: withBannerSrc(user) }),
   setIsAuthenticated: (value) => set({ isAuthenticated: value }),
   setIsLoading: (value) => set({ isLoading: value }),
   setError: (error) => set({ error }),
@@ -94,7 +95,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       // If we have both token and user, restore the session
       if (storedUser && token) {
         set({
-          user: storedUser,
+          user: withBannerSrc(storedUser),
           isAuthenticated: true,
           accessToken: token,
           error: null,
@@ -105,7 +106,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         try {
           const response = await authService.fetchMe();
           if (response.success && response.data) {
-            set({ user: response.data });
+            set({ user: withBannerSrc(response.data) });
           }
         } catch (error) {
           // User data refresh failed, but keep the session
@@ -130,7 +131,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const response = await authService.fetchMe();
       if (response.success && response.data) {
-        set({ user: response.data });
+        set({ user: withBannerSrc(response.data) });
         if (response.data.role && response.data.role !== prevRole) {
           // Role actually changed → clear cached role-scoped queries + send the
           // user to their dashboard so the new portal renders cleanly.
@@ -268,7 +269,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       if (response.success && response.data) {
         set({
           accessToken: response.data.accessToken,
-          user: response.data.user,
+          user: withBannerSrc(response.data.user),
         });
         return true;
       }

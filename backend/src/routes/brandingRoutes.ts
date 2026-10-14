@@ -16,6 +16,7 @@ import express, { Request, Response } from 'express';
 import { db } from '../utils/database';
 import { logger } from '../utils/logger';
 import { PLATFORM_LOGO_PNG_BASE64 } from '../assets/platformLogo';
+import { schoolBannerHandler } from './schoolBannerRoutes';
 
 const router = express.Router();
 let platformLogo: Buffer | null = null;
@@ -176,6 +177,8 @@ router.get('/platform/logo.png', (_req: Request, res: Response) => {
   });
   return res.end(body);
 });
+// The school's dashboard banner photo (served like the logo; see schoolBannerRoutes).
+router.get('/:tenantId/banner', schoolBannerHandler);
 router.get('/:tenantId/logo', async (req: Request, res: Response) => {
   const { tenantId } = req.params;
   if (!UUIDISH.test(tenantId)) return res.status(404).end();

@@ -1,6 +1,8 @@
 import React from 'react';
-import { Inbox, SearchX } from 'lucide-react';
 import { Button } from '../../ui/button';
+import { EmptyArt, pickIllustration, type EmptyIllustration } from './emptyArt';
+
+export type { EmptyIllustration } from './emptyArt';
 
 export interface EmptyStateProps {
   message: string;
@@ -9,6 +11,8 @@ export interface EmptyStateProps {
   isSearchResult?: boolean;
   onClearSearch?: () => void;
   className?: string;
+  /** Overrides the automatic pick (search results / message keywords). Default 'empty'. */
+  illustration?: EmptyIllustration;
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
@@ -18,14 +22,16 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   isSearchResult = false,
   onClearSearch,
   className = '',
+  illustration,
 }) => {
+  const art: EmptyIllustration =
+    illustration ?? (isSearchResult ? 'search' : pickIllustration(`${message} ${description ?? ''}`));
+
   return (
     <div
       className={`flex flex-col items-center justify-center min-h-[200px] py-12 text-center ${className}`}
     >
-      <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 ${isSearchResult ? 'bg-amber-50 text-amber-500' : 'bg-blue-50 text-blue-500'}`}>
-        {isSearchResult ? <SearchX size={30} /> : <Inbox size={30} />}
-      </div>
+      <EmptyArt name={art} className="mb-3" />
 
       <p className="text-sm font-semibold text-gray-700">{message}</p>
 

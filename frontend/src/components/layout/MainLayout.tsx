@@ -285,14 +285,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         {/* Content area — tight horizontal gutter on mobile so content isn't
             choked; comfortable padding from sm upwards. Subtle radial texture
             adds depth without noise. */}
-        <main
-          className="flex-1 overflow-y-auto"
-          style={{
-            backgroundImage:
-              'radial-gradient(circle at 1px 1px, rgba(99,102,241,0.05) 1px, transparent 0)',
-            backgroundSize: '28px 28px',
-          }}
-        >
+        <main className="flex-1 overflow-y-auto app-main-bg">
           {/* Bottom space on phones clears the system gesture bar so the last item can
               always be scrolled fully into view (every page, not only PageShell ones). */}
           <div className="px-2 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+5rem)] sm:p-6 animate-page-enter">

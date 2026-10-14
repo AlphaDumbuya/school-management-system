@@ -8,6 +8,7 @@ import { AuthResponse, UserResponse, UserRole, UserStatus } from '../types/auth'
 import { sendSchoolWelcomeEmail } from './emailService';
 import { effectiveDuties } from '../utils/staffDuties';
 import { leadTitle, schoolTypeFor } from '../utils/schoolLevels';
+import { schoolBannerUrl } from './schoolBannerService';
 import { isTenantOwner } from '../utils/tenantOwner';
 
 /**
@@ -872,6 +873,7 @@ export class AuthService {
       status: user.status,
       tenantId: user.tenant_id,
       schoolLogoUrl,
+      schoolBannerUrl: await schoolBannerUrl(user.tenant_id),
       schoolName,
       schoolType: await schoolTypeFor(this.db, user.tenant_id),
       leadTitle: leadTitle(await schoolTypeFor(this.db, user.tenant_id)),

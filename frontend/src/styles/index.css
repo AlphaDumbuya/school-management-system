@@ -571,3 +571,37 @@ table {
     display: none;
   }
 }
+
+/* ------------------------------------------------------------------
+   App content background (<main> in MainLayout)
+   Very light colour wash in the top corners over the existing gray-50
+   shell, plus the original faint dot texture. Pure CSS, no images.
+   `background-attachment: local` makes every layer scroll with the
+   content (no `fixed`, which janks in Android WebView). Wash sizes are
+   fixed px so they don't stretch with page height. The base colour is
+   left transparent on purpose: <main> sits on the shell's own
+   background, so light/dark behaviour stays exactly as before.
+   ------------------------------------------------------------------ */
+.app-main-bg {
+  background-image:
+    radial-gradient(ellipse at 0 0, rgba(29, 78, 216, 0.07), transparent 70%),
+    radial-gradient(ellipse at 100% 0, rgba(124, 58, 237, 0.05), transparent 70%),
+    radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.05) 1px, transparent 0);
+  background-size:
+    min(760px, 100%) 460px,
+    min(760px, 100%) 460px,
+    28px 28px;
+  background-position:
+    0 0,
+    100% 0,
+    0 0;
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-attachment: local, local, local;
+}
+
+.dark .app-main-bg {
+  background-image:
+    radial-gradient(ellipse at 0 0, rgba(96, 165, 250, 0.06), transparent 70%),
+    radial-gradient(ellipse at 100% 0, rgba(167, 139, 250, 0.045), transparent 70%),
+    radial-gradient(circle at 1px 1px, rgba(165, 180, 252, 0.05) 1px, transparent 0);
+}

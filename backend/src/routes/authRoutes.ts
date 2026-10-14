@@ -8,6 +8,7 @@ import { loginLimiter, otpLimiter, passkeyLimiter, publicFormLimiter } from '@mi
 import { logger } from '@utils/logger';
 import { effectiveDuties } from '@utils/staffDuties';
 import { leadTitle, schoolTypeFor } from '@utils/schoolLevels';
+import { schoolBannerUrl } from '@services/schoolBannerService';
 import { isTenantOwner } from '@utils/tenantOwner';
 import { recordAudit } from '@utils/auditTrail';
 import { UserRole, UserStatus } from '@types/auth';
@@ -777,6 +778,8 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
       status: user.status,
       tenantId: user.tenant_id,
       schoolLogoUrl,
+      // Short versioned link to the school's dashboard banner photo (null when none).
+      schoolBannerUrl: await schoolBannerUrl(user.tenant_id),
       schoolName,
       // What the school's top leader is called (Head Teacher for a primary-only school).
       schoolType: await schoolTypeFor(db, user.tenant_id),

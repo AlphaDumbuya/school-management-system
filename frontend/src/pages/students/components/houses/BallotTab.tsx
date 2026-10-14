@@ -6,7 +6,8 @@
  */
 import React, { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Shuffle } from 'lucide-react';
+import { RotateCcw, Shuffle } from 'lucide-react';
+import { useAuth } from '@hooks/useAuth';
 import { Modal } from '@components/admin/feedback/Modal';
 import { EmptyState } from '@components/admin/feedback/EmptyState';
 import { SearchBar } from '@components/admin/table/SearchBar';
@@ -42,6 +43,15 @@ export const BallotTab: React.FC<{
   const [busyAll, setBusyAll] = useState(false);
   const [allResult, setAllResult] = useState<DrawManyResult | null>(null);
   const busy = useRef(false);
+
+  // Reset ballot: principal / school owner only (the server checks too).
+  const { user } = useAuth();
+  const canReset = !teacher && (user?.role === 'principal' || user?.role === 'super_admin');
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetReason, setResetReason] = useState('');
+  const [resetWord, setResetWord] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   const activeHouses = (summary?.houses || []).filter((h) => h.is_active);
   const lotteryHouses: LotteryHouse[] = teacher ? teacher.houses : activeHouses.map((h) => ({ id: h.id, name: h.name, color: h.color, motto: h.motto }));
@@ -81,6 +91,31 @@ export const BallotTab: React.FC<{
       setReveal({ state: 'error', name, error: (e as Error).message });
     } finally {
       busy.current = false;
+      refresh();
+    }
+  };
+
+  // How many students hold a house in the scope the reset would cover (the selected classes, or everyone).
+  const inHouseCount = (summary?.by_class || [])
+    .filter((c) => !classIds.length || (c.class_id && classIds.includes(c.class_id)))
+    .reduce((n, c) => n + (c.total - c.unassigned), 0);
+  const scopeText = classIds.length ? `the ${classIds.length} selected class${classIds.length === 1 ? '' : 'es'}` : 'the whole school';
+  const resetReady = resetReason.trim().length >= 3 && resetWord.trim().toUpperCase() === 'RESET';
+
+  const closeReset = () => { if (!resetBusy) { setResetOpen(false); setResetReason(''); setResetWord(''); setResetError(null); } };
+  const doReset = async () => {
+    if (!resetReady) return;
+    setResetBusy(true);
+    setResetError(null);
+    try {
+      const r = await houseService.resetBallot({ reason: resetReason.trim(), class_ids: classIds.length ? classIds : undefined });
+      if (r.success === false || !r.data) { setResetError(r.error || 'Could not reset the ballot.'); return; }
+      showToast.success(r.data.cleared === 0 ? 'Nobody in that scope had a house.' : `${r.data.cleared} student${r.data.cleared === 1 ? '' : 's'} can be drawn again`);
+      setResetOpen(false); setResetReason(''); setResetWord('');
+    } catch (e) {
+      setResetError((e as Error).message || 'Could not reset the ballot.');
+    } finally {
+      setResetBusy(false);
       refresh();
     }
   };
@@ -128,9 +163,16 @@ export const BallotTab: React.FC<{
           )}
         </div>
         {!teacher && (
-          <Button onClick={() => setConfirmAll(true)} disabled={waiting.length === 0} className="whitespace-nowrap">
-            <Shuffle size={15} className="mr-1.5" aria-hidden="true" /> Draw for all {waiting.length > 0 ? `(${totalWaiting})` : ''}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setConfirmAll(true)} disabled={waiting.length === 0} className="min-h-[40px] whitespace-nowrap">
+              <Shuffle size={15} className="mr-1.5" aria-hidden="true" /> Draw for all {waiting.length > 0 ? `(${totalWaiting})` : ''}
+            </Button>
+            {canReset && (
+              <Button variant="outline" onClick={() => setResetOpen(true)} disabled={inHouseCount === 0} className="min-h-[40px] whitespace-nowrap text-red-700 hover:text-red-800">
+                <RotateCcw size={15} className="mr-1.5" aria-hidden="true" /> Reset ballot
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
@@ -185,6 +227,39 @@ export const BallotTab: React.FC<{
             Each of the {Math.min(totalWaiting, 1000)} student{totalWaiting === 1 ? '' : 's'} listed gets a house, drawn at random in a mixed order. The draw always fills the smallest houses, so the houses end up level (within one student), and your ballot rules mix boys, girls and classes. A student's house can only be changed afterwards by staff, with a reason.
           </p>
         )}
+      </Modal>
+
+      {/* Reset: take students off their house so the ballot can run again */}
+      <Modal isOpen={resetOpen} onClose={closeReset} title="Reset the ballot?" size="md"
+        footer={(
+          <div className="flex w-full flex-wrap justify-end gap-2">
+            <Button variant="outline" onClick={closeReset} disabled={resetBusy}>Cancel</Button>
+            <Button onClick={doReset} disabled={!resetReady || resetBusy} className="bg-red-600 hover:bg-red-700">
+              {resetBusy ? 'Resetting…' : `Reset ${inHouseCount} student${inHouseCount === 1 ? '' : 's'}`}
+            </Button>
+          </div>
+        )}>
+        <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+          <p>
+            This takes <strong>{inHouseCount}</strong> student{inHouseCount === 1 ? '' : 's'} in <strong>{scopeText}</strong> off their house, so you can run the ballot for them again.
+          </p>
+          <ul className="list-disc space-y-1 pl-5 text-xs text-gray-600 dark:text-gray-400">
+            <li>Only the house is removed. Classes, fees, attendance and results are not touched.</li>
+            <li>Nothing is erased from the history: every student gets an entry showing their previous house and your reason.</li>
+            <li>Nobody can draw while the reset runs, and the new draw starts with level houses.</li>
+          </ul>
+          <div>
+            <label htmlFor="reset-reason" className="mb-1 block text-xs font-semibold text-gray-800 dark:text-gray-200">Reason</label>
+            <input id="reset-reason" value={resetReason} onChange={(e) => setResetReason(e.target.value)} maxLength={250} placeholder="For example: start of the new term" autoComplete="off"
+              className="min-h-[44px] w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-800" />
+          </div>
+          <div>
+            <label htmlFor="reset-word" className="mb-1 block text-xs font-semibold text-gray-800 dark:text-gray-200">Type RESET to confirm</label>
+            <input id="reset-word" value={resetWord} onChange={(e) => setResetWord(e.target.value)} placeholder="RESET" autoComplete="off" autoCapitalize="characters" spellCheck={false}
+              className="min-h-[44px] w-full rounded-lg border border-gray-300 px-3 font-mono text-sm uppercase focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-800" />
+          </div>
+          {resetError && <p role="alert" className="text-xs text-red-600">{resetError}</p>}
+        </div>
       </Modal>
 
       <Modal isOpen={!!allResult} onClose={() => setAllResult(null)} title="Ballot finished" size="md" footer={<Button onClick={() => setAllResult(null)}>Done</Button>}>

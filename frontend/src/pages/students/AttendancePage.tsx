@@ -30,6 +30,7 @@ import {
   ClipboardList,
   X,
   LogOut,
+  ClipboardEdit,
 } from 'lucide-react';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
@@ -49,6 +50,8 @@ import { TermFilter, type TermValue } from '@components/common/TermFilter';
 import { useAcademicYears } from '@hooks/useAcademicYears';
 import { TeacherAttendancePanel } from '@components/attendance/TeacherAttendancePanel';
 import { AttendanceTimeDetails, TimedAttendanceRecord } from '@components/attendance/AttendanceTimeDetails';
+import { WeeklyReviewGrid } from '@components/attendance/WeeklyReviewGrid';
+import { WeeklyReviewHistory } from '@components/attendance/WeeklyReviewHistory';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -94,7 +97,7 @@ function getDotColor(status: string): string {
   }
 }
 
-type ActiveTab = 'logs' | 'register' | 'analytics' | 'teachers';
+type ActiveTab = 'logs' | 'register' | 'review' | 'analytics' | 'teachers';
 
 /** apiClient never throws: turn a `{ success: false }` response into an error. */
 function assertOk<T>(res: T): T {
@@ -195,7 +198,7 @@ export const AttendancePage: React.FC = () => {
     setClassFilter(''); setRegClassId(''); setIsAllStudentsMode(false);
     setLoadedKey(''); setPage(1); setEditRecord(null);
     // The register is for the current year only.
-    if (y && y !== activeYear && activeTab === 'register') setActiveTab('logs');
+    if (y && y !== activeYear && (activeTab === 'register' || activeTab === 'review')) setActiveTab('logs');
   };
 
   // ── Queries ───────────────────────────────────────────────────────────────
@@ -552,6 +555,9 @@ export const AttendancePage: React.FC = () => {
   const TABS = [
     { id: 'logs',      label: 'Attendance Logs',  icon: <ClipboardList size={16} /> },
     { id: 'register',  label: 'Class Register',    icon: <UserCheck size={16} /> },
+    ...(!staffSelfOnly && (user?.role === 'principal' || user?.role === 'super_admin' || isTeachingUser(user as any))
+      ? [{ id: 'review', label: 'Weekly Review', icon: <ClipboardEdit size={16} /> }]
+      : []),
     { id: 'analytics', label: 'Analytics',         icon: <BarChart2 size={16} /> },
     ...(user?.role === 'principal' || user?.role === 'super_admin' || isTeachingUser(user as any)
       ? [{ id: 'teachers', label: isTeachingUser(user as any) && user?.role !== 'principal' && user?.role !== 'super_admin' ? 'My Attendance' : 'Teacher Attendance', icon: <Users size={16} /> }]
@@ -603,7 +609,7 @@ export const AttendancePage: React.FC = () => {
 
           {/* ── Tab bar ─────────────────────────────────────────────────── */}
           {!staffSelfOnly && <div className="flex items-center gap-2 bg-slate-100 dark:bg-gray-800 p-1.5 rounded-2xl w-full overflow-x-auto scrollbar-none whitespace-nowrap sm:w-fit">
-            {TABS.filter((tab) => !(viewingPast && tab.id === 'register')).filter((tab) => !staffSelfOnly || tab.id === 'teachers').map((tab) => (
+            {TABS.filter((tab) => !(viewingPast && (tab.id === 'register' || tab.id === 'review'))).filter((tab) => !staffSelfOnly || tab.id === 'teachers').map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as ActiveTab)}
@@ -616,7 +622,7 @@ export const AttendancePage: React.FC = () => {
                 {tab.icon}
                 <span className="hidden sm:inline">{tab.label}</span>
                 <span className="inline sm:hidden">
-                  {tab.id === 'logs' ? 'Logs' : tab.id === 'register' ? 'Register' : tab.id === 'teachers' ? 'Teachers' : 'Analytics'}
+                  {tab.id === 'logs' ? 'Logs' : tab.id === 'register' ? 'Register' : tab.id === 'review' ? 'Review' : tab.id === 'teachers' ? 'Teachers' : 'Analytics'}
                 </span>
               </button>
             ))}
@@ -641,6 +647,8 @@ export const AttendancePage: React.FC = () => {
           )}
 
           {activeTab === 'teachers' && user && <TeacherAttendancePanel role={user.role} />}
+
+          {activeTab === 'review' && !viewingPast && !staffSelfOnly && <WeeklyReviewGrid classes={classes} year={year} />}
 
           {/* ══════════════════════════════════════════════════════════════ */}
           {/* TAB 1: LOGS                                                   */}
@@ -1687,6 +1695,8 @@ const StudentAttendanceView: React.FC = () => {
               </div>
             )}
 
+            <WeeklyReviewHistory mode="my" year={year} term={term} attendanceRecords={records} />
+
             {/* Records */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -1914,6 +1924,8 @@ const ParentAttendanceView: React.FC = () => {
                   <KPICard title="Late" value={String(summary.late)} icon={<Clock className="w-5 h-5" />} color="amber" />
                   <KPICard title="Absent" value={String(summary.absent)} icon={<XCircle className="w-5 h-5" />} color="red" />
                 </div>
+
+                <WeeklyReviewHistory mode="child" studentId={currentId} year={year} term={term} attendanceRecords={records} />
 
                 <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
                   <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">

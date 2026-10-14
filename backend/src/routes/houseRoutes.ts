@@ -131,6 +131,21 @@ router.put('/assign', wrap(async (req, res) => {
   res.json({ success: true, data: await svc.assign(T(req), U(req), studentId, houseId, str(req.body?.reason)) });
 }));
 
+/**
+ * POST /reset-ballot { reason, confirm: true, class_ids? }: take students off their
+ * house so the ballot can be run again (whole school, or the listed classes). Only the
+ * house is cleared; the draw log keeps a record of every student. Principal / super admin only.
+ */
+router.post('/reset-ballot', wrap(async (req, res) => {
+  const role = String(req.user?.role || '');
+  if (role !== 'principal' && role !== 'super_admin') {
+    throw new AppError('Only the principal or the school owner can reset the ballot.', 403, 'FORBIDDEN');
+  }
+  if (req.body?.confirm !== true) throw new AppError('Confirm the reset to continue.', 400, 'CONFIRM_REQUIRED');
+  const classIds = Array.isArray(req.body?.class_ids) ? req.body.class_ids.filter((x: unknown): x is string => typeof x === 'string' && UUID_RE.test(x)) : undefined;
+  res.json({ success: true, data: await svc.resetBallot(T(req), U(req), { reason: req.body?.reason, class_ids: classIds }) });
+}));
+
 /** POST /: add a house. */
 router.post('/', wrap(async (req, res) => {
   res.status(201).json({ success: true, data: await svc.createHouse(T(req), U(req), req.body || {}) });

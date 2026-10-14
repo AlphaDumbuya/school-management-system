@@ -47,6 +47,7 @@ import authService from '../services/authService';
 import { FileUploader } from '@components/admin/forms/FileUploader';
 import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
 import { ProfilePhotoControl } from '@components/settings/ProfilePhotoControl';
+import { SchoolBannerControl } from '@components/settings/SchoolBannerControl';
 import { StorageSettings } from '@components/settings/StorageSettings';
 import { PaymentSettings } from '@components/settings/PaymentSettings';
 import { OwnershipSettings } from '@components/settings/OwnershipSettings';
@@ -1593,6 +1594,13 @@ export const SettingsPage: React.FC = () => {
                                 maxSizeMB={2}
                               />
                             </div>
+                            {/* Dashboard banner photo (principal / super admin; saves on its own, not with the form). */}
+                            {(user?.role === 'principal' || user?.role === 'super_admin') && (
+                              <div>
+                                <span className="text-xs font-semibold text-gray-500 block mb-1">Dashboard Banner</span>
+                                <SchoolBannerControl />
+                              </div>
+                            )}
                           </div>
                         </div>
 

@@ -3,10 +3,21 @@
  * Features: live clock, animated gradient mesh, floating orbs, shimmer
  * greeting, glassmorphism date pill, and role-tinted identity.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Sun, Sunrise, Moon, Sparkles } from 'lucide-react';
 import useAuthStore from '@store/authStore';
 import { roleDisplayName } from '@lib/leadTitle';
+import { HeroArt } from './heroArt';
+
+// Role colour over a school photo: only behind the text. On phones the text
+// spans the whole width, so a light tint stays on the right; from `sm` up the
+// right side of the photo is left clear.
+const PHOTO_TINT_CLASS = [
+  '[-webkit-mask-image:linear-gradient(to_right,rgba(0,0,0,0.82),rgba(0,0,0,0.30))]',
+  '[mask-image:linear-gradient(to_right,rgba(0,0,0,0.82),rgba(0,0,0,0.30))]',
+  'sm:[-webkit-mask-image:linear-gradient(to_right,rgba(0,0,0,0.85)_0%,rgba(0,0,0,0.45)_32%,transparent_62%)]',
+  'sm:[mask-image:linear-gradient(to_right,rgba(0,0,0,0.85)_0%,rgba(0,0,0,0.45)_32%,transparent_62%)]',
+].join(' ');
 
 export interface WelcomeHeroProps {
   firstName?: string;
@@ -51,10 +62,24 @@ export const WelcomeHero: React.FC<WelcomeHeroProps> = ({
   role = 'principal',
 }) => {
   const { text: greeting, Icon } = timeGreeting();
-  const theme = ROLE_THEME[role] ?? ROLE_THEME.principal;
+  // The admissions dashboard passes 'admissions'; it is the admissions_officer theme and art.
+  const roleKey = role === 'admissions' ? 'admissions_officer' : role;
+  const theme = ROLE_THEME[roleKey] ?? ROLE_THEME.principal;
   // The school's top leader is a "Head Teacher" in a primary-only school, a "Principal" otherwise.
   const authUser = useAuthStore((st) => st.user);
   const label = roleLabel ?? (role === 'principal' ? roleDisplayName(authUser) : prettyRole(role));
+
+  // School banner photo (decorative). Shown only once it has loaded; any failure keeps the plain gradient.
+  const bannerUrl = authUser?.schoolBannerUrl || null;
+  const [photoState, setPhotoState] = useState<'loading' | 'loaded' | 'failed'>('loading');
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    setPhotoState('loading');
+    // A cached image can finish before React attaches onLoad.
+    const el = imgRef.current;
+    if (el?.complete) setPhotoState(el.naturalWidth > 0 ? 'loaded' : 'failed');
+  }, [bannerUrl]);
+  const showPhoto = !!bannerUrl && photoState === 'loaded';
 
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -69,19 +94,59 @@ export const WelcomeHero: React.FC<WelcomeHeroProps> = ({
 
   return (
     <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${theme.gradient} text-white shadow-2xl mb-6 ring-1 ${theme.ring}`}>
-      {/* ── Animated mesh orbs ── */}
-      <div className={`pointer-events-none absolute -top-12 -right-12 w-64 h-64 rounded-full ${theme.orb} opacity-20 blur-3xl animate-pulse`} />
-      <div className={`pointer-events-none absolute -bottom-16 -left-12 w-72 h-72 rounded-full ${theme.orb} opacity-10 blur-[80px]`} style={{ animation: 'pulse 4s ease-in-out infinite 1s' }} />
-      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[180px] bg-white/5 blur-[50px] rounded-full" />
+      {/* ── School banner photo (behind everything; absolutely positioned so it can't shift layout) ── */}
+      {bannerUrl && photoState !== 'failed' && (
+        <>
+          <img
+            ref={imgRef}
+            src={bannerUrl}
+            alt=""
+            aria-hidden="true"
+            loading="eager"
+            decoding="async"
+            {...({ fetchpriority: 'high' } as Record<string, string>)}
+            onLoad={() => setPhotoState('loaded')}
+            onError={() => setPhotoState('failed')}
+            className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-500 motion-reduce:transition-none ${showPhoto ? 'opacity-100' : 'opacity-0'}`}
+          />
+          {showPhoto && (
+            <>
+              {/* Role colour behind the text only, so the photo keeps its own colours */}
+              <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${theme.gradient} ${PHOTO_TINT_CLASS}`} />
+              {/* A light shade under the text keeps white copy readable on a bright photo */}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/30 via-black/10 to-black/10 sm:to-transparent" />
+            </>
+          )}
+        </>
+      )}
 
-      {/* ── Dot texture ── */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.06]"
-        style={{
-          backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.9) 1px, transparent 0)',
-          backgroundSize: '20px 20px',
-        }}
-      />
+      {/* ── Animated mesh orbs (the plain gradient only: over a photo they read as haze) ── */}
+      {!showPhoto && (
+        <>
+          <div className={`pointer-events-none absolute -top-12 -right-12 w-64 h-64 rounded-full ${theme.orb} opacity-20 blur-3xl animate-pulse motion-reduce:animate-none`} />
+          <div className={`pointer-events-none absolute -bottom-16 -left-12 w-72 h-72 rounded-full ${theme.orb} opacity-10 blur-[80px] animate-[pulse_4s_ease-in-out_1s_infinite] motion-reduce:animate-none`} />
+          <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[180px] bg-white/5 blur-[50px] rounded-full" />
+        </>
+      )}
+
+      {/* ── Role line art (sm+ only; hidden while a school photo is showing) ── */}
+      {!showPhoto && (
+        <HeroArt
+          role={roleKey}
+          className="hidden sm:block absolute -bottom-3 right-4 lg:right-8 h-28 w-28 lg:h-36 lg:w-36 text-white/20"
+        />
+      )}
+
+      {/* ── Dot texture (plain gradient only) ── */}
+      {!showPhoto && (
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.9) 1px, transparent 0)',
+            backgroundSize: '20px 20px',
+          }}
+        />
+      )}
 
       {/* ── Top shimmer line ── */}
       <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
@@ -125,7 +190,7 @@ export const WelcomeHero: React.FC<WelcomeHeroProps> = ({
         {/* Right: date + time pill + actions */}
         <div className="flex flex-col items-start sm:items-end gap-2 sm:gap-2.5 flex-shrink-0">
           {/* Date pill */}
-          <div className="inline-flex flex-col items-start sm:items-end gap-0.5 rounded-xl bg-white/10 backdrop-blur-sm ring-1 ring-white/20 px-3 sm:px-4 py-2 sm:py-2.5 shadow-inner">
+          <div className={`inline-flex flex-col items-start sm:items-end gap-0.5 rounded-xl ${showPhoto ? 'bg-black/20' : 'bg-white/10'} backdrop-blur-sm ring-1 ring-white/20 px-3 sm:px-4 py-2 sm:py-2.5 shadow-inner`}>
             <span className="text-[10px] sm:text-[11px] font-semibold text-white/70 uppercase tracking-wider">{dateStr}</span>
             <span className="text-lg sm:text-xl font-black text-white tabular-nums tracking-tight leading-none">{timeStr}</span>
           </div>
