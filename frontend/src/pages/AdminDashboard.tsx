@@ -11,6 +11,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { pollWhileActive } from '@lib/activity';
 import {
   Users, Briefcase, BookOpen, Wallet,
   UserPlus, CalendarDays, BarChart2,
@@ -126,7 +127,7 @@ export const AdminDashboard: React.FC = () => {
     queryKey: ['teacher-attendance', 'roster', attendanceDate],
     queryFn: () => teacherAttendanceService.getRoster(attendanceDate),
     enabled: canSeeTeacherAttendance,
-    refetchInterval: 60_000,
+    refetchInterval: pollWhileActive(60_000),
     staleTime: 0,
   });
 

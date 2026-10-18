@@ -8,10 +8,17 @@
 import { isTeachingUser } from '@lib/staffJobs';
 import { useEffect } from 'react';
 import useAuthStore from '@store/authStore';
+import { isUserIdle } from '@lib/activity';
 import { runSync } from './syncEngine';
 
 const SYNC_EVENT = 'wiskul:sync';
-const INTERVAL_MS = 30_000;
+/**
+ * Safety-net timer only. Writes sync straight away (requestSync), and the app
+ * syncs on start, on reconnect and on return to the foreground. Every cycle
+ * pulls the teacher's roster from the server and wakes the database, so the
+ * timer runs every 5 minutes, and only while the app is on screen and in use.
+ */
+const INTERVAL_MS = 5 * 60_000;
 
 /** Ask the engine to sync soon (call after any local write). */
 export function requestSync() {
@@ -42,7 +49,11 @@ export function useSyncEngine() {
     window.addEventListener('online', onOnline);
     window.addEventListener(SYNC_EVENT, onRequest);
     document.addEventListener('visibilitychange', onVisible);
-    const interval = window.setInterval(tick, INTERVAL_MS);
+    const interval = window.setInterval(() => {
+      // Hidden (background tab, Android app paused) or nobody using it: skip.
+      if (document.visibilityState !== 'visible' || isUserIdle()) return;
+      tick();
+    }, INTERVAL_MS);
 
     // Register a Background Sync tag so a supporting browser/OS can wake the SW
     // to flush the queue even if the tab is closed (progressive enhancement).

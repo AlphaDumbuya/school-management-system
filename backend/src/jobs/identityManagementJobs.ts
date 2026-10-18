@@ -121,6 +121,11 @@ export const secretCleanupJob = cron.schedule(
   }
 );
 
+// node-cron v4 ignores `scheduled: false`: a task starts as soon as it is
+// created, i.e. on import. Stop them so they only run when
+// startIdentityManagementJobs() is called.
+[cardExpirationJob, expirationNotificationJob, secretRotationJob, secretCleanupJob].forEach((j) => j.stop());
+
 /**
  * Start all identity management jobs
  */

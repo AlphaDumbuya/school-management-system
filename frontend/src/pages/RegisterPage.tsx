@@ -37,6 +37,7 @@ import useAuthStore from '@store/authStore';
 import { getDashboardPath } from '@hooks/useAuth';
 import { showToast } from '@utils/toast';
 import { toast } from 'react-toastify';
+import { SCHOOL_LEVEL_OPTIONS, SCHOOL_LEVEL_GROUPS } from '@lib/leadTitle';
 
 const registerSchema = z.object({
   // Step 1: School Profile & Ownership
@@ -425,25 +426,13 @@ export const RegisterPage: React.FC = () => {
                                 {...register('school_type')}
                                 className="w-full bg-[#16235c] border border-white/15 focus:border-amber-400/50 rounded-xl px-4 py-3.5 text-sm text-white outline-none cursor-pointer [&_option]:bg-[#16235c] [&_option]:text-white [&_optgroup]:bg-[#16235c] [&_optgroup]:text-amber-300"
                               >
-                                <optgroup label="One level">
-                                  <option value="Nursery / Early Childhood">Nursery only (Pre-School, Nursery 1 – 3)</option>
-                                  <option value="Primary">Primary only (Class 1 – Class 6)</option>
-                                  <option value="Junior Secondary">Junior Secondary only (JSS 1 – JSS 3)</option>
-                                  <option value="Senior Secondary">Senior Secondary only (SSS 1 – SSS 3)</option>
-                                </optgroup>
-                                <optgroup label="Two levels">
-                                  <option value="Nursery & Primary">Nursery &amp; Primary</option>
-                                  <option value="Primary & Junior Secondary">Primary &amp; Junior Secondary (Class 1 – JSS 3)</option>
-                                  <option value="Secondary (JSS & SSS)">Junior &amp; Senior Secondary (JSS 1 – SSS 3)</option>
-                                </optgroup>
-                                <optgroup label="Three or more levels">
-                                  <option value="Nursery, Primary & Junior Secondary">Nursery, Primary &amp; Junior Secondary</option>
-                                  <option value="Primary, Junior & Senior Secondary">Primary, Junior &amp; Senior Secondary (Class 1 – SSS 3)</option>
-                                  <option value="Primary & Secondary">Nursery, Primary, Junior &amp; Senior Secondary (all levels)</option>
-                                </optgroup>
-                                <optgroup label="Other">
-                                  <option value="Technical & Vocational">Technical &amp; Vocational Institute / College</option>
-                                </optgroup>
+                                {SCHOOL_LEVEL_GROUPS.map((g) => (
+                                  <optgroup key={g} label={g}>
+                                    {SCHOOL_LEVEL_OPTIONS.filter((o) => o.group === g).map((o) => (
+                                      <option key={o.value} value={o.value}>{o.label}</option>
+                                    ))}
+                                  </optgroup>
+                                ))}
                               </select>
                             </div>
                           </div>

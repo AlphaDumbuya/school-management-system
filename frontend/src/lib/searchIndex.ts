@@ -72,6 +72,7 @@ const KEYWORDS: Record<string, string[]> = {
   '/platform/communications': ['communications', 'broadcast', 'email schools', 'newsletter'],
   '/platform/demo-requests': ['demo', 'demo requests', 'leads'],
   '/platform/support': ['support', 'tickets', 'triage', 'help requests'],
+  '/platform/verifications': ['verifications', 'verify schools', 'school verification', 'emis', 'review', 'approve', 'reject'],
   '/accountant/dashboard': ['home', 'finance overview', 'bursar dashboard'],
   '/teacher/dashboard': ['home', 'teaching overview', 'teacher dashboard'],
   '/admissions/dashboard': ['home', 'admissions overview', 'admissions dashboard'],

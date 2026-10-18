@@ -277,18 +277,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
     id: 'verify-school',
     collection: 'settings',
     title: 'Verify your school',
-    summary: "Confirm your school's EMIS code and your ID as the account owner.",
+    summary: "Submit your school's EMIS code and your ID as the account owner for WiSkul to review.",
     roles: ['principal'],
     route: '/verify-school',
     routeLabel: 'Verify your school',
-    keywords: ['verification', 'verify', 'emis', 'account owner', 'id', 'badge'],
+    keywords: ['verification', 'verify', 'emis', 'account owner', 'id', 'badge', 'review', 'rejected', 'pending', 'resubmit'],
     sections: [
       {
         id: 'what',
         heading: 'What verification is',
         blocks: [
-          p(["The account owner (the principal who registered the school) confirms the school's EMIS code and their own government ID, and declares that the details are true. It takes about two minutes and is done at once."]),
-          p(["You'll need it before changing your subscription plan. Everything else works without it."]),
+          p(["The account owner (the principal who registered the school) submits the school's EMIS code and their own government ID, and declares that the details are true. WiSkul's verification team then reviews the details, usually within one working day."]),
+          p(["You'll need a verified school before changing your subscription plan. Everything else works while you wait."]),
         ],
       },
       {
@@ -298,7 +298,19 @@ export const HELP_ARTICLES: HelpArticle[] = [
           steps([
             { title: 'Have your details ready', body: [["Your school's EMIS code (or MBSSE registration number) and your national ID, passport or driver's licence."]] },
             { title: 'Check your account name', body: [['The name on your ID must match your account name. If it doesn\'t, correct it first in ', link('Settings → Profile', '/settings?tab=profile'), '.']] },
-            { title: 'Fill in the form', body: [['Open ', link('Verify your school', '/verify-school'), ', enter the details, tick the declaration and choose Verify my school.']] },
+            { title: 'Fill in the form', body: [['Open ', link('Verify your school', '/verify-school'), ', enter the details, tick the declaration and choose Submit for review.']] },
+            { title: 'Wait for the review', body: [["Your school shows as under review. WiSkul checks the details and lets you know by email and in the app."]] },
+          ]),
+        ],
+      },
+      {
+        id: 'outcome',
+        heading: 'Approved or not approved',
+        blocks: [
+          list([
+            ['Approved: your school is verified and the Verified badge appears next to your name.'],
+            ['Not approved: you\'ll see the reason on the Verify your school page. Fix the details, enter your ID number again and choose Submit for review.'],
+            ['WiSkul can remove a verification later if the details turn out to be wrong. You\'ll see the reason and can submit again.'],
           ]),
         ],
       },
@@ -307,10 +319,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'What we check and store',
         blocks: [
           list([
-            ['The EMIS code and ID number must be in a valid format.'],
-            ['The name on your ID must match your account name (middle names and word order don\'t matter).'],
-            ['Each EMIS code can be verified by one school only.'],
-            ['Your ID number is encrypted; only its last 4 characters are shown, to you and to WiSkul support. Parents, staff and other schools never see these details.'],
+            ['The EMIS code belongs to your school, and no other school uses it.'],
+            ['The name on your ID matches your account name (middle names and word order don\'t matter).'],
+            ['The school details match what MBSSE has on record.'],
+            ['Your ID number is encrypted. Only WiSkul\'s verification team can see it, to check it against your documents. Your school\'s staff, parents and other schools never see it.'],
           ]),
           note(["After verifying, your name is locked to the name on your ID. Contact WiSkul support if it needs correcting, or if another school is using your EMIS code."]),
         ],
@@ -413,8 +425,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           steps([
             { title: 'Open Payments settings', body: [['Go to ', link('Settings → Payments', '/settings?tab=payments'), '.']] },
-            { title: 'Enter your Monime details', body: [['Paste your Monime Space ID and access token, then save.']] },
+            { title: 'Enter your Monime details', body: [['Paste your Monime Space ID and access token.']] },
+            { title: 'Confirm it\'s you', body: [['Enter your password, plus the code from your authenticator app. Without two-factor sign-in, choose Email me a code and enter the 6-digit code we send you. Then save.']] },
           ]),
+          note(['Only the school owner of a school verified by WiSkul can connect or change the payment account. Turning online payments off is always allowed. The school owner(s) and the school email are told about every change.']),
           note(['Once connected, online fee payments settle directly into your school\'s own Monime account. Set this up as part of your finance configuration so parents can pay online from day one.']),
         ],
       },

@@ -512,7 +512,7 @@ export class TenantService {
 
       const activeTenantIds = db('tenants').select('id').whereNot({ status: 'expired' });
 
-      const [verifiedSchools, passkeyUsers, twoFactorUsers] = await Promise.all([
+      const [verifiedSchools, passkeyUsers, twoFactorUsers, pendingVerifications] = await Promise.all([
         // Verified schools = tenant owners (principals) with verification_status 'verified'.
         safeCount(() =>
           db('users')
@@ -527,6 +527,14 @@ export class TenantService {
         safeCount(() =>
           db('users')
             .where({ two_factor_enabled: true })
+            .whereIn('tenant_id', activeTenantIds)
+            .count('* as count')
+            .first()
+        ),
+        // School verifications waiting for WiSkul's review.
+        safeCount(() =>
+          db('verification_records')
+            .where({ status: 'pending' })
             .whereIn('tenant_id', activeTenantIds)
             .count('* as count')
             .first()
@@ -546,6 +554,7 @@ export class TenantService {
         // Feature adoption
         verifiedSchools,
         unverifiedSchools: Math.max(0, totalTenantsNum - verifiedSchools),
+        pendingVerifications,
         passkeyUsers,
         twoFactorUsers,
       };

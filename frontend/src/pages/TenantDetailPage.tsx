@@ -5,6 +5,7 @@
  *   Overview   — live stats + status
  *   Profile    — edit name, contacts, address, limits
  *   Subscription — change plan
+ *   Verification — review the owner's submission; approve / reject / revoke
  *   Email Sender — platform vs. school's own (post-verification)
  *   Danger Zone  — suspend / activate / delete
  *
@@ -15,8 +16,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Building2, ArrowLeft, Loader2, Users, GraduationCap, Save, Mail, CreditCard,
   ShieldAlert, Pause, Play, Trash2, Globe, Phone, MapPin, Info, Receipt,
-  UserCog, ScrollText, KeyRound, Unlock, ShieldOff, LogIn, RefreshCw, RotateCcw, Download,
+  UserCog, ScrollText, KeyRound, Unlock, ShieldOff, LogIn, RefreshCw, RotateCcw, Download, BadgeCheck,
 } from 'lucide-react';
+import { VerificationReview } from '@components/platform/VerificationReview';
 import MainLayout from '@components/layout/MainLayout';
 import { PageShell } from '@components/admin/layout/PageShell';
 import { StatusBadge } from '@components/admin/feedback/StatusBadge';
@@ -34,7 +36,7 @@ import {
   type SuspensionCategory,
 } from '@lib/suspensionReasons';
 
-type Tab = 'overview' | 'profile' | 'subscription' | 'billing' | 'users' | 'email' | 'audit' | 'danger';
+type Tab = 'overview' | 'profile' | 'subscription' | 'billing' | 'users' | 'verification' | 'email' | 'audit' | 'danger';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Overview', icon: <Info size={15} /> },
@@ -42,6 +44,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'subscription', label: 'Subscription', icon: <CreditCard size={15} /> },
   { id: 'billing', label: 'Billing', icon: <Receipt size={15} /> },
   { id: 'users', label: 'Users', icon: <UserCog size={15} /> },
+  { id: 'verification', label: 'Verification', icon: <BadgeCheck size={15} /> },
   { id: 'email', label: 'Email Sender', icon: <Mail size={15} /> },
   { id: 'audit', label: 'Audit', icon: <ScrollText size={15} /> },
   { id: 'danger', label: 'Danger Zone', icon: <ShieldAlert size={15} /> },
@@ -736,6 +739,13 @@ export const TenantDetailPage: React.FC = () => {
                     </div>
                   </>
                 )}
+              </div>
+            )}
+
+            {/* ── Verification (loads only when opened) ── */}
+            {tab === 'verification' && tenantId && (
+              <div className="max-w-3xl">
+                <VerificationReview tenantId={tenantId} />
               </div>
             )}
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { pollWhileActive } from '@lib/activity';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle, Clock, Loader2 } from 'lucide-react';
 import { Button } from '@components/ui/button';
@@ -54,7 +55,7 @@ export const TeacherAttendancePanel: React.FC<{ role: string }> = ({ role }) => 
     staleTime: 0,
     // Keep "today" current: a page left open overnight moves to the new day,
     // and sign-in closes at the school's cut-off time.
-    refetchInterval: 60_000,
+    refetchInterval: pollWhileActive(60_000),
     refetchOnWindowFocus: true,
   });
 

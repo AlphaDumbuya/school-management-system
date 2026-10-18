@@ -81,6 +81,20 @@ export interface GradeScale {
   grades: GradeEntry[];
 }
 
+/** The school's saved payment settings, as the app may see them (never the token). */
+export interface MonimeConfigView {
+  configured: boolean;
+  spaceId: string | null;
+  tokenMasked: string | null;
+  twoFactorRequired?: boolean;
+  /** No authenticator app: a code is emailed to the owner instead. */
+  emailCodeRequired?: boolean;
+  ownerEmailMasked?: string;
+  /** WiSkul's review of the school: only 'verified' may connect or change the account. */
+  verificationStatus?: 'unverified' | 'pending' | 'verified' | 'rejected' | string;
+  lastChange?: { at: string; by: string | null } | null;
+}
+
 export interface BillingInvoice {
   id: string;
   tenant_id: string;
@@ -300,16 +314,25 @@ export const schoolConfigService = {
 
   // ── Monime payment credentials (school's OWN account for fee collection) ──
   async getMonimeConfig() {
-    return apiClient.get<{ configured: boolean; spaceId: string | null; tokenMasked: string | null; twoFactorRequired?: boolean; lastChange?: { at: string; by: string | null } | null }>(
-      '/api/v1/school-config/monime'
+    return apiClient.get<MonimeConfigView>('/api/v1/school-config/monime');
+  },
+
+  /**
+   * Changing payment settings needs the owner's password plus the authenticator
+   * code (2FA on) or a code emailed to them (2FA off; see sendMonimeEmailCode).
+   */
+  async saveMonimeConfig(payload: { accessToken?: string; spaceId?: string; enabled?: boolean; currentPassword: string; twoFactorCode?: string; emailCode?: string }) {
+    return apiClient.post<{ message: string; data: MonimeConfigView }>(
+      '/api/v1/school-config/monime',
+      payload
     );
   },
 
-  /** Changing payment settings needs the principal's password (and 2FA code when on). */
-  async saveMonimeConfig(payload: { accessToken?: string; spaceId?: string; enabled?: boolean; currentPassword: string; twoFactorCode?: string }) {
-    return apiClient.post<{ message: string; data: { configured: boolean; spaceId: string | null; tokenMasked: string | null; twoFactorRequired?: boolean; lastChange?: { at: string; by: string | null } | null } }>(
-      '/api/v1/school-config/monime',
-      payload
+  /** Email the owner a one-time code for confirming a payment-settings change. */
+  async sendMonimeEmailCode() {
+    return apiClient.post<{ sentTo: string; expiresInMinutes: number; resendInSeconds: number }>(
+      '/api/v1/school-config/monime/email-code',
+      {}
     );
   },
 

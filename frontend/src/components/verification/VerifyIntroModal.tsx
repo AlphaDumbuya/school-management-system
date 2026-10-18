@@ -1,13 +1,15 @@
 /**
- * VerifyIntroModal — a once-per-session reminder for an unverified account
- * owner (principal). Calm and factual: what verification is, how long it
- * takes, and what it's needed for.
+ * VerifyIntroModal — a once-per-session reminder for an account owner
+ * (principal) whose school still needs action: never submitted (unverified) or
+ * not approved (rejected). Nothing is shown while WiSkul is reviewing
+ * (pending) or once verified. Calm and factual: what verification is, who
+ * reviews it, and what it's needed for.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, ArrowRight, X } from 'lucide-react';
 import useAuthStore from '@store/authStore';
-import verificationService, { isVerifiedUser } from '@services/verificationService';
+import verificationService, { isVerifiedUser, userVerificationState } from '@services/verificationService';
 
 const SESSION_KEY = 'wiskul_verify_reminder_shown';
 
@@ -17,11 +19,15 @@ export const VerifyIntroModal: React.FC = () => {
   const userId = (user as any)?.id as string | undefined;
   const role = (user as any)?.role;
   const [open, setOpen] = useState(false);
+  const [rejected, setRejected] = useState(false);
+  const [reason, setReason] = useState<string | null>(null);
   const primaryRef = useRef<HTMLButtonElement | null>(null);
   const lastFocus = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (role !== 'principal' || (user as any)?.isOwner === false || !userId || isVerifiedUser(user)) return;
+    // Under review: nothing for the owner to do, so no reminder.
+    if (userVerificationState(user) === 'pending') return;
     // Only once per browser session (survives route changes, resets on a new visit).
     try {
       if (sessionStorage.getItem(SESSION_KEY) === '1') return;
@@ -29,7 +35,10 @@ export const VerifyIntroModal: React.FC = () => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
     verificationService.getStatus().then((res) => {
-      if (!cancelled && res.success && res.data?.status !== 'verified') {
+      const s = res.success ? res.data?.status : undefined;
+      if (!cancelled && (s === 'unverified' || s === 'rejected')) {
+        setRejected(s === 'rejected');
+        setReason(s === 'rejected' ? res.data?.lastReason || null : null);
         timer = setTimeout(() => setOpen(true), 700);
       }
     });
@@ -75,13 +84,22 @@ export const VerifyIntroModal: React.FC = () => {
           <div className="mx-auto w-14 h-14 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center mb-3">
             <ShieldCheck size={28} className="text-white" aria-hidden="true" />
           </div>
-          <h2 id="verify-reminder-title" className="text-lg font-black text-white">Verify your school</h2>
+          <h2 id="verify-reminder-title" className="text-lg font-black text-white">
+            {rejected ? 'Verification not approved' : 'Verify your school'}
+          </h2>
         </div>
         <div className="p-6 space-y-4">
-          <p id="verify-reminder-text" className="text-sm text-slate-600">
-            Confirm your school's EMIS code and your ID as the account owner. It takes about two minutes,
-            and you'll need it before changing your subscription plan.
-          </p>
+          {rejected ? (
+            <p id="verify-reminder-text" className="text-sm text-slate-600">
+              WiSkul couldn't approve your school's details. Fix them and submit them again.
+              {reason && <span className="block mt-2"><span className="font-semibold text-slate-800">Reason: </span>{reason}</span>}
+            </p>
+          ) : (
+            <p id="verify-reminder-text" className="text-sm text-slate-600">
+              Submit your school's EMIS code and your ID as the account owner. WiSkul reviews them, usually within one
+              working day, and you'll need a verified school before changing your subscription plan.
+            </p>
+          )}
           <p className="text-xs text-slate-500">
             Have your EMIS code (or school registration number) and your national ID, passport or driver's licence ready.
           </p>
@@ -91,7 +109,7 @@ export const VerifyIntroModal: React.FC = () => {
               onClick={() => { close(); navigate('/verify-school'); }}
               className="flex-1 inline-flex items-center justify-center gap-2 bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold text-sm py-3 rounded-xl transition-colors"
             >
-              Verify now <ArrowRight size={16} aria-hidden="true" />
+              {rejected ? 'See why and resubmit' : 'Verify now'} <ArrowRight size={16} aria-hidden="true" />
             </button>
             <button onClick={close} className="px-4 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm">
               Later

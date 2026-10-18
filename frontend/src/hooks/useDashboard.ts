@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { pollWhileActive } from '@lib/activity';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { dashboardService } from '@services/dashboardService';
 
@@ -118,7 +119,7 @@ export const useDashboard = (academicYear: string = '') => {
     // Cache-buster so the service worker never serves a stale cached response.
     queryFn: () => dashboardService.getCompleteDashboard(`${Date.now()}`, academicYear || undefined),
     staleTime: 0,
-    refetchInterval: 300_000,
+    refetchInterval: pollWhileActive(300_000),
     placeholderData: keepPreviousData,
   });
 

@@ -9,7 +9,12 @@ export interface OwnerOverview {
     staff: { current: number; max: number } | null;
   };
   payments: { feeCollectionConfigured: boolean };
-  verification: { status: 'verified' | 'unverified'; verifiedAt: string | null };
+  verification: {
+    status: 'unverified' | 'pending' | 'verified' | 'rejected';
+    verifiedAt: string | null;
+    submittedAt?: string | null;
+    lastReason?: string | null;
+  };
   people: {
     principals: Array<{ id: string; name: string; email: string; status: string; isOwner: boolean; lastLogin: string | null }>;
     counts: { teachers: number; bursars: number; admissionsOfficers: number; students: number };

@@ -15,6 +15,7 @@
  * polling with focus refresh.
  */
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import { pollWhileActive } from '@lib/activity';
 import { announceNew } from '@lib/nativeNotifications';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -115,12 +116,12 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
   const [open, setOpen] = useState(false);
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
 
-  // Notifications — poll every 60s, refetch on window focus.
+  // Notifications: every 2 minutes while someone is using the app (stops when idle), and on window focus.
   const { data: notifResp, isLoading: notifLoading } = useQuery({
     queryKey: ['bell-notifications'],
     queryFn: () => notificationService.list({ limit: 30 }),
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: pollWhileActive(120_000),
     refetchOnWindowFocus: true,
   });
   const notifications: AppNotification[] = Array.isArray(notifResp?.data) ? notifResp!.data : [];
@@ -138,7 +139,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
     queryFn: () => dashboardService.getAlerts(),
     enabled: canSeeAlerts,
     staleTime: 120_000,
-    refetchInterval: 300_000,
+    refetchInterval: pollWhileActive(300_000),
   });
   const alerts: SystemAlert[] = useMemo(() => {
     const raw = (alertsResp as any)?.data ?? (alertsResp as any) ?? [];
@@ -151,7 +152,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
     queryKey: ['bell-announcements'],
     queryFn: () => announcementService.list({ limit: 15 }),
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: pollWhileActive(120_000),
     refetchOnWindowFocus: true,
   });
   const announcements: Announcement[] = Array.isArray((annResp as any)?.data) ? (annResp as any).data : [];
@@ -159,7 +160,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ canSeeAlerts
     queryKey: ['announcements-unread'],
     queryFn: () => announcementService.unreadCount(),
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: pollWhileActive(120_000),
     refetchOnWindowFocus: true,
   });
   const announcementsUnread = Number((annUnreadResp as any)?.data?.count ?? 0);
