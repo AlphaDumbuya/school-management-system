@@ -118,12 +118,27 @@ export const OwnerPage: React.FC = () => {
               icon={<ShieldCheck size={16} className="text-indigo-600" />}
               title="School verification"
               to={data.verification.status === 'verified' ? undefined : '/verify-school'}
-              linkLabel="Verify your school"
+              linkLabel={
+                data.verification.status === 'pending' ? 'View submission'
+                  : data.verification.status === 'rejected' ? 'See why and resubmit'
+                  : 'Verify your school'
+              }
             >
               {data.verification.status === 'verified' ? (
-                <p className="text-emerald-700 font-semibold">Verified{data.verification.verifiedAt ? ` on ${fmtDate(data.verification.verifiedAt)}` : ''}.</p>
+                <p className="text-emerald-700 font-semibold">Verified by WiSkul{data.verification.verifiedAt ? ` on ${fmtDate(data.verification.verifiedAt)}` : ''}.</p>
+              ) : data.verification.status === 'pending' ? (
+                <p className="text-gray-600">
+                  Under review{data.verification.submittedAt ? ` since ${fmtDate(data.verification.submittedAt)}` : ''}. WiSkul usually reviews
+                  a school within one working day and will let you know by email and in the app.
+                </p>
+              ) : data.verification.status === 'rejected' ? (
+                <>
+                  <p className="text-red-700 font-semibold">Not approved.</p>
+                  {data.verification.lastReason && <p className="text-gray-600">Reason: {data.verification.lastReason}</p>}
+                  <p className="text-gray-600">Fix the details and submit them again.</p>
+                </>
               ) : (
-                <p className="text-gray-600">Not verified yet. It takes about two minutes and is needed before you change your plan.</p>
+                <p className="text-gray-600">Not verified yet. Submit your school's details for WiSkul to review. It's needed before you change your plan.</p>
               )}
             </Card>
 

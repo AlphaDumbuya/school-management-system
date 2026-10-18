@@ -28,6 +28,9 @@ export const SCHOOL_LEVEL_OPTIONS: Array<{ group: string; label: string; value: 
   { group: 'Other', value: 'Technical & Vocational', label: 'Technical & Vocational Institute / College' },
 ];
 
+/** The option groups of SCHOOL_LEVEL_OPTIONS, in display order (for <optgroup>s). */
+export const SCHOOL_LEVEL_GROUPS: string[] = Array.from(new Set(SCHOOL_LEVEL_OPTIONS.map((o) => o.group)));
+
 /** The name to show for a signed-in user's role. */
 export function roleDisplayName(user?: { role?: string | null; leadTitle?: string | null; schoolType?: string | null; isNamedOwner?: boolean | null } | null): string {
   const role = String(user?.role || '');

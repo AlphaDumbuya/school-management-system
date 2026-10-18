@@ -711,15 +711,61 @@ router.get('/monime', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER
   try {
     const tenantId = getTenantId(req);
     const school = await db('schools').where({ tenant_id: tenantId }).first();
-    const { default: twoFactor } = await import('../services/twoFactorService');
-    const security = await import('../services/paymentSettingsSecurity');
     res.json({
       success: true,
-      data: monimeView(school, {
-        twoFactorRequired: await twoFactor.isEnabled(req.auth!.userId).catch(() => false),
-        lastChange: await security.lastChange(db, tenantId).catch(() => null),
-      }),
+      data: monimeView(school, await securityView(req.auth!.userId, tenantId)),
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** What the page needs to ask for the right checks (no secrets). */
+async function securityView(userId: string, tenantId: string) {
+  const { default: twoFactor } = await import('../services/twoFactorService');
+  const security = await import('../services/paymentSettingsSecurity');
+  const [twoFactorRequired, lastChange, verificationStatus, me] = await Promise.all([
+    twoFactor.isEnabled(userId).catch(() => false),
+    security.lastChange(db, tenantId).catch(() => null),
+    security.schoolVerificationState(db, tenantId).catch(() => 'unverified'),
+    db('users').where({ id: userId }).first('email').catch(() => null),
+  ]);
+  return {
+    twoFactorRequired,
+    // Without an authenticator app, a code is emailed to the account instead.
+    emailCodeRequired: !twoFactorRequired,
+    ownerEmailMasked: security.maskEmail((me as any)?.email),
+    verificationStatus,
+    lastChange,
+  };
+}
+
+/** Why an unverified school cannot connect or change its payment account. */
+function verificationMessage(state: string): string {
+  if (state === 'pending') return 'Your school verification is waiting for review by WiSkul. You can connect or change your payment account once it is approved. You can still turn online payments off.';
+  if (state === 'rejected') return 'Your school verification was not approved. Open Verify school to see why and submit again. You can still turn online payments off.';
+  return 'Verify your school before connecting or changing where fee payments go. WiSkul reviews it, usually within one working day. You can still turn online payments off.';
+}
+
+/**
+ * POST /api/v1/school-config/monime/email-code
+ * Email the signed-in owner a one-time code for confirming a payment-settings
+ * change (used when they have no authenticator app).
+ */
+router.post('/monime/email-code', paymentSettingsLimiter, authenticate, authorize(UserRole.PRINCIPAL), attachUserContext, requireOwner, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const security = await import('../services/paymentSettingsSecurity');
+    security.assertNotImpersonated(req);
+    const tenantId = getTenantId(req);
+    const result = await security.sendEmailCode(db, {
+      userId: req.auth!.userId,
+      tenantId,
+      purpose: 'payment_settings',
+      purposeText: 'change where your school\'s fee payments go',
+      ip: clientIp(req),
+      userAgent: String(req.headers['user-agent'] || '').slice(0, 300),
+    });
+    res.json({ success: true, message: `We emailed a code to ${result.sentTo}.`, data: result });
   } catch (error) {
     next(error);
   }
@@ -728,13 +774,14 @@ router.get('/monime', authenticate, authorize(UserRole.PRINCIPAL, UserRole.SUPER
 /**
  * POST /api/v1/school-config/monime
  * Configure (or turn off) the tenant's Monime account for collecting fee payments.
- *   { accessToken?, spaceId, enabled?: boolean, currentPassword, twoFactorCode? }
+ *   { accessToken?, spaceId, enabled?: boolean, currentPassword, twoFactorCode?, emailCode? }
  *
  * This decides where every fee payment goes, so it is protected like a bank
- * account change: principal only, never from an impersonated session, the
- * principal's password (and 2FA code) again, a lock-out after wrong answers,
- * strict validation, a token bound to the school and space, an audit entry,
- * and an alert to the principals and the school contact. See
+ * account change: school owner only, never from an impersonated session, a
+ * school verified by WiSkul (except to turn payments off), the owner's
+ * password plus a 2FA or emailed code, a lock-out after wrong answers, strict
+ * validation, a token bound to the school and space, an audit entry, and an
+ * alert to the school owner(s) and the school contact. See
  * services/paymentSettingsSecurity.ts.
  */
 router.post('/monime', paymentSettingsLimiter, authenticate, authorize(UserRole.PRINCIPAL), attachUserContext, requireOwner, async (req: Request, res: Response, next: NextFunction) => {
@@ -749,13 +796,26 @@ router.post('/monime', paymentSettingsLimiter, authenticate, authorize(UserRole.
     security.assertNotImpersonated(req);
 
     const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
-    const { accessToken, spaceId, enabled, currentPassword, twoFactorCode } = body;
+    const { accessToken, spaceId, enabled, currentPassword, twoFactorCode, emailCode } = body;
     if (enabled !== undefined && typeof enabled !== 'boolean') {
       throw new AppError('enabled must be true or false', 400, 'VALIDATION_ERROR');
     }
+    const turningOff = enabled === false;
 
-    // Prove it is really the principal, every time.
-    await security.assertStepUp(db, { userId, role, password: currentPassword, twoFactorCode, ...meta }, twoFactor);
+    // Only a school verified by WiSkul may connect or change where fee money
+    // goes. Turning payments off is always allowed (an emergency stop).
+    if (!turningOff) {
+      const state = await security.schoolVerificationState(db, tenantId);
+      if (state !== 'verified') throw new AppError(verificationMessage(state), 403, 'SCHOOL_VERIFICATION_REQUIRED');
+    }
+
+    // Prove it is really the owner, every time: password plus the authenticator
+    // code, or (without 2FA) a code emailed to the account. The emergency stop
+    // needs the password (and 2FA if set up) but not an emailed code.
+    await security.assertStepUp(db, {
+      userId, role, password: currentPassword, twoFactorCode, ...meta,
+      emailCodePurpose: turningOff ? undefined : 'payment_settings', emailCode,
+    }, twoFactor);
 
     const school = await db('schools').where({ tenant_id: tenantId }).first();
     if (!school) throw new AppError('School profile not found for this tenant', 404, 'NOT_FOUND');
@@ -817,10 +877,7 @@ router.post('/monime', paymentSettingsLimiter, authenticate, authorize(UserRole.
       message: change.kind === 'disabled'
         ? 'Online fee payments are now turned off for your school.'
         : 'Fee payments will now settle into your school\'s own Monime account.',
-      data: monimeView(updated, {
-        twoFactorRequired: await twoFactor.isEnabled(userId).catch(() => false),
-        lastChange: await security.lastChange(db, tenantId).catch(() => null),
-      }),
+      data: monimeView(updated, await securityView(userId, tenantId)),
     });
   } catch (error) {
     next(error);

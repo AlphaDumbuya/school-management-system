@@ -23,6 +23,7 @@ import { AppError } from '../middleware/errorHandler';
 import { UserRole } from '../types/auth';
 import { db } from '../utils/database';
 import eventCategoryService from '../services/eventCategoryService';
+import verificationService from '../services/verificationService';
 
 const router = Router();
 
@@ -130,6 +131,115 @@ router.get('/statistics', authenticate, authorize(UserRole.SUPER_ADMIN), async (
 router.get('/tenants/suspensions', authenticate, authorize(UserRole.SUPER_ADMIN), async (_req, res, next) => {
   try {
     const data = await TenantService.getSuspensionOverview();
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── School verification review (super admin) ────────────────────────────────
+// Schools submit their EMIS code and owner ID; WiSkul approves or rejects here.
+// Declared before `/tenants/:id` (the /verifications paths never collide with it).
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function tenantIdParam(req: any): string {
+  const id = String(req.params.id || '');
+  if (!UUID_RE.test(id)) throw new AppError('Invalid school id', 400, 'INVALID_ID');
+  return id;
+}
+const reviewMeta = (req: any) => {
+  const { ip, userAgent } = auditMeta(req);
+  return { ip: ip || null, userAgent: userAgent || null };
+};
+
+/**
+ * @route   GET /api/v1/platform/verifications?status=pending|verified|rejected|unverified|all&search=
+ * @desc    Verification review queue (default: pending, oldest first). Never includes the ID number.
+ * @access  Super Admin only
+ */
+router.get('/verifications', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const data = await verificationService.listForReview({
+      status: req.query.status ? String(req.query.status) : undefined,
+      search: req.query.search ? String(req.query.search) : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+    });
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   GET /api/v1/platform/verifications/count
+ * @desc    Number of verifications waiting for review.
+ * @access  Super Admin only
+ */
+router.get('/verifications/count', authenticate, authorize(UserRole.SUPER_ADMIN), async (_req, res, next) => {
+  try {
+    const pending = await verificationService.pendingCount();
+    res.json({ success: true, data: { pending } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   GET /api/v1/platform/tenants/:id/verification
+ * @desc    Full verification detail, including the decrypted ID number (audited
+ *          as verification.id_viewed each time), school profile and history.
+ * @access  Super Admin only
+ */
+router.get('/tenants/:id/verification', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const id = tenantIdParam(req);
+    const data = await verificationService.getForReview(id, req.auth!.userId, reviewMeta(req));
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/v1/platform/tenants/:id/verification/approve
+ * @body    { notes?: string }
+ * @access  Super Admin only
+ */
+router.post('/tenants/:id/verification/approve', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const id = tenantIdParam(req);
+    const data = await verificationService.approve(id, req.auth!.userId, req.body?.notes, reviewMeta(req));
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/v1/platform/tenants/:id/verification/reject
+ * @body    { reason: string } (5–500 characters, plain text)
+ * @access  Super Admin only
+ */
+router.post('/tenants/:id/verification/reject', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const id = tenantIdParam(req);
+    const data = await verificationService.reject(id, req.auth!.userId, req.body?.reason, reviewMeta(req));
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/v1/platform/tenants/:id/verification/revoke
+ * @body    { reason: string } (5–500 characters, plain text)
+ * @desc    Take back a verified school's verification (back to unverified).
+ * @access  Super Admin only
+ */
+router.post('/tenants/:id/verification/revoke', authenticate, authorize(UserRole.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const id = tenantIdParam(req);
+    const data = await verificationService.revoke(id, req.auth!.userId, req.body?.reason, reviewMeta(req));
     res.json({ success: true, data });
   } catch (error) {
     next(error);

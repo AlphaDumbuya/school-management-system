@@ -55,7 +55,7 @@ import { SchoolLevelDialog } from '@components/settings/SchoolLevelDialog';
 import { SCHOOL_LEVEL_OPTIONS, leadTitleFor } from '@lib/leadTitle';
 import { OfflineStorageSettings } from '@components/offline/OfflineStorageSettings';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
-import { isVerifiedUser } from '@services/verificationService';
+import { isVerifiedUser, userVerificationState } from '@services/verificationService';
 import { useQueryClient } from '@tanstack/react-query';
 import { BookletContent, PHOTO_FRAME_OPTIONS, type PhotoFrameStyle } from './academic/components/BookletContent';
 import { ReportSettingsPanel } from './academic/components/ReportSettingsPanel';
@@ -86,6 +86,7 @@ export const SettingsPage: React.FC = () => {
   const navigateTo = useNavigate();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const verificationState = userVerificationState(user);
   const setUser = useAuthStore((s) => s.setUser);
   const logout = useAuthStore((s) => s.logout);
   const isSuperAdmin = user?.role === 'super_admin';
@@ -844,7 +845,8 @@ export const SettingsPage: React.FC = () => {
       } else {
         // Verification gate (only that error): guide the owner to verify.
         if ((res as any).code === 'SCHOOL_VERIFICATION_REQUIRED') {
-          showToast.info('Verify your school first. It takes about two minutes, then come back to change your plan.');
+          // The server says which state the school is in (not submitted, under review, not approved).
+          showToast.info(res.error || 'Your school needs to be verified by WiSkul before you can change your plan.');
           navigateTo('/verify-school');
           return;
         }
@@ -1146,18 +1148,32 @@ export const SettingsPage: React.FC = () => {
                     {user?.role === 'principal' && (
                       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-5 py-4">
                         <div className="flex items-center gap-3 min-w-0">
-                          <ShieldCheck size={20} className={isVerifiedUser(user) ? 'text-emerald-600' : 'text-[#1d4ed8]'} aria-hidden="true" />
+                          <ShieldCheck
+                            size={20}
+                            className={isVerifiedUser(user) ? 'text-emerald-600' : verificationState === 'rejected' ? 'text-red-600' : 'text-[#1d4ed8]'}
+                            aria-hidden="true"
+                          />
                           <div className="min-w-0">
                             <p className="text-sm font-bold text-gray-900 dark:text-white">School verification</p>
                             <p className="text-xs text-gray-500">
                               {isVerifiedUser(user)
                                 ? 'Your school is verified. Your name is locked to the name on your ID.'
-                                : "Not verified yet. You'll need it before changing your subscription plan."}
+                                : verificationState === 'pending'
+                                  ? 'Under review. WiSkul usually reviews a school within one working day.'
+                                  : verificationState === 'rejected'
+                                    ? 'Not approved. See why, fix the details and submit them again.'
+                                    : "Not verified yet. You'll need it before changing your subscription plan."}
                             </p>
                           </div>
                         </div>
                         <Link to="/verify-school" className="text-sm font-semibold text-[#1d4ed8] hover:underline whitespace-nowrap">
-                          {isVerifiedUser(user) ? 'View details' : 'Verify now'}
+                          {isVerifiedUser(user)
+                            ? 'View details'
+                            : verificationState === 'pending'
+                              ? 'View submission'
+                              : verificationState === 'rejected'
+                                ? 'See why and resubmit'
+                                : 'Verify now'}
                         </Link>
                       </div>
                     )}

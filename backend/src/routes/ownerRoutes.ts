@@ -42,7 +42,14 @@ router.get('/overview', async (req: Request, res: Response, next: NextFunction) 
     ]);
 
     const owner = principals.find((p: any) => p.is_owner) || principals[0];
-    const verification = await db('users').where({ id: owner?.id }).first('verification_status', 'verified_at').catch(() => null);
+    const [verification, verificationRecord] = await Promise.all([
+      db('users').where({ id: owner?.id }).first('verification_status', 'verified_at').catch(() => null),
+      db('verification_records').where({ tenant_id: tenantId }).first('last_reason', 'submitted_at').catch(() => null),
+    ]);
+    // unverified | pending (waiting for WiSkul) | verified | rejected
+    const verificationStatus = ['pending', 'verified', 'rejected'].includes(verification?.verification_status)
+      ? verification.verification_status
+      : 'unverified';
 
     const [teachers, bursars, admissions, students] = await Promise.all([
       count(db('users').where({ tenant_id: tenantId, role: 'teacher', status: 'active' }).count({ n: '*' }).first()),
@@ -71,8 +78,10 @@ router.get('/overview', async (req: Request, res: Response, next: NextFunction) 
         },
         payments: { feeCollectionConfigured: !!school?.monime_configured },
         verification: {
-          status: verification?.verification_status === 'verified' ? 'verified' : 'unverified',
-          verifiedAt: verification?.verified_at || null,
+          status: verificationStatus,
+          verifiedAt: verificationStatus === 'verified' ? verification?.verified_at || null : null,
+          submittedAt: verificationRecord?.submitted_at || null,
+          lastReason: verificationStatus === 'rejected' || verificationStatus === 'unverified' ? verificationRecord?.last_reason || null : null,
         },
         people: {
           principals: principals.map((p: any) => ({

@@ -4,15 +4,20 @@
  * Whoever controls these decides where every fee payment goes, so changing them
  * is treated like changing a bank account:
  *  - only the school's principal, never through an impersonated session;
- *  - the principal's password (and 2FA code, if on) is asked for again, with a
- *    lock-out after repeated wrong answers (counted in the database, so it
- *    holds across serverless instances);
+ *  - connecting or changing the account needs a school verified by WiSkul
+ *    (EMIS code and the owner's ID checked by a person); turning online
+ *    payments OFF is always allowed, as an emergency stop;
+ *  - two checks every time: the owner's password, plus the 6-digit code from
+ *    their authenticator app (2FA) or, without one, a one-time code emailed to
+ *    their account (single use, 10 minutes, a few attempts), with a lock-out
+ *    after repeated wrong answers (counted in the database, so it holds across
+ *    serverless instances);
  *  - the values are validated, the token is stored encrypted and bound to the
  *    school and space (so a copied or edited row stops working);
  *  - every change and every failed attempt is written to the audit log (never
  *    the token itself, only a short fingerprint);
- *  - the principals, the school contact and the person who made it are told by
- *    email and in the app straight away.
+ *  - the school owner(s), the school contact and the person who made it are
+ *    told by email and in the app straight away.
  */
 import crypto from 'crypto';
 import type { Knex } from 'knex';
@@ -87,7 +92,11 @@ async function recordFailure(conn: Knex, userId: string, role: string, meta: Req
  */
 export async function assertStepUp(
   conn: Knex,
-  p: { userId: string; role: string; password?: unknown; twoFactorCode?: unknown } & RequestMeta,
+  p: {
+    userId: string; role: string; password?: unknown; twoFactorCode?: unknown;
+    /** Require an emailed code (for this purpose) when the user has no authenticator app. */
+    emailCodePurpose?: string; emailCode?: unknown;
+  } & RequestMeta,
   twoFactor: { isEnabled(id: string): Promise<boolean>; verifyCode(id: string, code: string): Promise<boolean> },
 ): Promise<void> {
   const since = new Date(Date.now() - STEP_UP_WINDOW_MINUTES * 60_000);
@@ -115,7 +124,123 @@ export async function assertStepUp(
       await recordFailure(conn, p.userId, p.role, p, 'wrong 2FA code');
       throw new AppError('That code is not correct.', 403, 'STEP_UP_FAILED');
     }
+    return;
   }
+
+  // No authenticator app: a code emailed to the account, when the caller asks
+  // for a second check (a password alone is one stolen secret away).
+  if (p.emailCodePurpose) {
+    const code = typeof p.emailCode === 'string' ? p.emailCode.trim() : '';
+    if (!code) {
+      throw new AppError('Enter the 6-digit code we emailed you. Choose "Email me a code" if you have not got one yet.', 403, 'EMAIL_CODE_REQUIRED');
+    }
+    const ok = await consumeEmailCode(conn, p.userId, p.emailCodePurpose, code);
+    if (!ok) {
+      await recordFailure(conn, p.userId, p.role, p, 'wrong email code');
+      throw new AppError('That code is not correct or has expired. Ask for a new code and try again.', 403, 'STEP_UP_FAILED');
+    }
+  }
+}
+
+// ── Emailed one-time codes (second check without an authenticator app) ────────
+
+export const EMAIL_CODE_TTL_MINUTES = 10;
+const EMAIL_CODE_MAX_ATTEMPTS = 5;
+const EMAIL_CODE_RESEND_SECONDS = 60;
+const EMAIL_CODE_MAX_PER_HOUR = 5;
+
+/** Codes are kept only as a keyed hash, tied to the person and the purpose. */
+function hashEmailCode(userId: string, purpose: string, code: string): string {
+  const key = process.env.STEP_UP_CODE_SECRET || process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'wiskul-step-up';
+  return crypto.createHmac('sha256', key).update(`${userId}:${purpose}:${code}`).digest('hex');
+}
+
+/** "a****@gmail.com": enough to recognise the inbox, not to read the address. */
+export function maskEmail(email?: string | null): string {
+  const e = String(email || '');
+  const at = e.indexOf('@');
+  if (at < 1) return 'your email';
+  return `${e[0]}${'*'.repeat(Math.max(1, Math.min(4, at - 1)))}${e.slice(at)}`;
+}
+
+/**
+ * Email a 6-digit code to the signed-in user for `purpose`. A new code replaces
+ * any earlier one. At most one a minute and five an hour per person.
+ */
+export async function sendEmailCode(
+  conn: Knex,
+  p: { userId: string; tenantId: string | null; purpose: string; purposeText: string } & RequestMeta,
+): Promise<{ sentTo: string; expiresInMinutes: number; resendInSeconds: number }> {
+  const user: any = await conn('users').where({ id: p.userId }).first('id', 'email', 'first_name', 'last_name', 'tenant_id');
+  if (!user?.email) throw new AppError('Your account has no email address to send a code to.', 400, 'NO_EMAIL');
+
+  const recent: any[] = await conn('step_up_codes')
+    .where({ user_id: p.userId, purpose: p.purpose })
+    .where('created_at', '>', new Date(Date.now() - 60 * 60_000))
+    .orderBy('created_at', 'desc')
+    .select('created_at');
+  if (recent.length) {
+    const wait = EMAIL_CODE_RESEND_SECONDS - Math.floor((Date.now() - new Date(recent[0].created_at).getTime()) / 1000);
+    if (wait > 0) throw new AppError(`Please wait ${wait} seconds before asking for another code.`, 429, 'EMAIL_CODE_TOO_SOON');
+  }
+  if (recent.length >= EMAIL_CODE_MAX_PER_HOUR) {
+    throw new AppError('Too many codes asked for. Please try again in an hour.', 429, 'EMAIL_CODE_LIMIT');
+  }
+
+  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+  const now = new Date();
+  await conn.transaction(async (trx) => {
+    // Only the newest code counts.
+    await trx('step_up_codes').where({ user_id: p.userId, purpose: p.purpose }).whereNull('consumed_at').update({ consumed_at: now });
+    await trx('step_up_codes').insert({
+      user_id: p.userId, tenant_id: p.tenantId, purpose: p.purpose,
+      code_hash: hashEmailCode(p.userId, p.purpose, code),
+      expires_at: new Date(now.getTime() + EMAIL_CODE_TTL_MINUTES * 60_000), created_at: now,
+    });
+  });
+
+  const { default: emailService } = await import('./emailService.js');
+  const res: any = await emailService.sendStepUpCodeEmail(p.tenantId, user.email, {
+    userName: [user.first_name, user.last_name].filter(Boolean).join(' ') || 'there',
+    code, minutes: EMAIL_CODE_TTL_MINUTES, purposeText: p.purposeText, ip: p.ip,
+  });
+  if (res?.status !== 'sent' && process.env.NODE_ENV === 'development' && !process.env.VERCEL) {
+    // Local development without an email provider: show the code in the server log.
+    logger.info(`[dev] Step-up code for user ${p.userId} (${p.purpose}): ${code}`);
+  } else if (res?.status !== 'sent') {
+    logger.warn(`Step-up code email not confirmed for user ${p.userId} (${res?.status || 'no status'})`);
+    throw new AppError('We could not send the code by email. Please try again in a minute.', 503, 'EMAIL_CODE_NOT_SENT');
+  }
+  return { sentTo: maskEmail(user.email), expiresInMinutes: EMAIL_CODE_TTL_MINUTES, resendInSeconds: EMAIL_CODE_RESEND_SECONDS };
+}
+
+/** Check (and use up) the newest emailed code. Wrong answers count against it. */
+async function consumeEmailCode(conn: Knex, userId: string, purpose: string, code: string): Promise<boolean> {
+  if (!/^\d{6}$/.test(code)) return false;
+  const row: any = await conn('step_up_codes')
+    .where({ user_id: userId, purpose }).whereNull('consumed_at')
+    .orderBy('created_at', 'desc').first('id', 'code_hash', 'expires_at', 'attempts');
+  if (!row || new Date(row.expires_at).getTime() < Date.now() || Number(row.attempts) >= EMAIL_CODE_MAX_ATTEMPTS) return false;
+
+  const expected = Buffer.from(String(row.code_hash), 'hex');
+  const given = Buffer.from(hashEmailCode(userId, purpose, code), 'hex');
+  const match = expected.length === given.length && crypto.timingSafeEqual(expected, given);
+  if (!match) {
+    await conn('step_up_codes').where({ id: row.id }).increment('attempts', 1);
+    return false;
+  }
+  // Single use: only one request can consume it.
+  const used = await conn('step_up_codes').where({ id: row.id }).whereNull('consumed_at').update({ consumed_at: new Date() });
+  return used === 1;
+}
+
+/** Is the school verified by WiSkul? (Its state lives on the owner's account.) */
+export async function schoolVerificationState(conn: Knex, tenantId: string): Promise<string> {
+  const owner: any = await conn('users')
+    .where({ tenant_id: tenantId, role: 'principal' })
+    .orderBy([{ column: 'is_owner', order: 'desc' }, { column: 'created_at', order: 'asc' }])
+    .first('verification_status');
+  return String(owner?.verification_status || 'unverified');
 }
 
 export interface PaymentChange {

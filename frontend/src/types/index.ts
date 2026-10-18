@@ -20,7 +20,7 @@ export interface AuthUser {
   status: UserStatus;
   profileImage?: string;
   profilePhotoUrl?: string | null;
-  verificationStatus?: 'unverified' | 'verified' | string | null;
+  verificationStatus?: 'unverified' | 'pending' | 'verified' | 'rejected' | string | null;
   hasOnboarded?: boolean;
   tenantId?: string;
   schoolLogoUrl?: string;

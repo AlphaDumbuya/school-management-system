@@ -136,6 +136,7 @@ const V2Route: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 import RegisterPage from '@pages/RegisterPage';
 import DemoStartPage from '@pages/DemoStartPage';
 import PlatformDemoRequestsPage from '@pages/PlatformDemoRequestsPage';
+import PlatformVerificationsPage from '@pages/PlatformVerificationsPage';
 import WelcomePage, { hasOnboarded } from '@pages/WelcomePage';
 import VerificationPage from '@pages/VerificationPage';
 import OwnerPage from '@pages/OwnerPage';
@@ -537,6 +538,10 @@ const router = createBrowserRouter(
         {
           path: 'platform/support',
           element: <P requiredRoles={['super_admin']}><G feature="Support triage"><PlatformSupportPage /></G></P>,
+        },
+        {
+          path: 'platform/verifications',
+          element: <P requiredRoles={['super_admin']}><G feature="School verifications"><PlatformVerificationsPage /></G></P>,
         },
 
         // ── SYSTEM ─────────────────────────────────────────────────

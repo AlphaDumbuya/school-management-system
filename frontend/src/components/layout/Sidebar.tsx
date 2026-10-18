@@ -45,7 +45,12 @@ import { useHouseAccess } from '@hooks/useHouseAccess';
 import { routeAccess } from '@lib/planFeatures';
 import { isDemoUser } from '@lib/demo';
 import { roleDisplayName } from '@lib/leadTitle';
+import { pollWhileActive } from '@lib/activity';
+import platformVerificationService, { verificationKeys } from '@services/platformVerificationService';
+import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
+
+const PLATFORM_VERIFICATIONS_PATH = '/platform/verifications';
 
 export interface NavItem {
   label: string;
@@ -670,6 +675,16 @@ export const navItems: NavItem[] = [
     group: 'Platform',
     version: 'v1',
   },
+  {
+    // Badge: schools waiting for review (filled in at render time).
+    label: 'Verifications',
+    icon: <FaShieldAlt className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: PLATFORM_VERIFICATIONS_PATH,
+    roles: ['super_admin'],
+    module: 'Platform Management',
+    group: 'Platform',
+    version: 'v1',
+  },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = false, onToggleCollapse }) => {
@@ -775,6 +790,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
   const ENABLE_V2_FEATURES = false;
 
   const isSuperAdmin = user?.role === 'super_admin';
+  // Super admin: how many school verifications are waiting for review.
+  const { data: verificationCount } = useQuery({
+    queryKey: verificationKeys.count,
+    queryFn: () => platformVerificationService.count(),
+    enabled: isSuperAdmin,
+    refetchInterval: pollWhileActive(120_000),
+    staleTime: 30_000,
+  });
+  const pendingVerifications = verificationCount?.success ? verificationCount.data?.pending ?? 0 : 0;
+  const badgeFor = (item: NavItem) =>
+    item.path === PLATFORM_VERIFICATIONS_PATH ? (pendingVerifications > 0 ? String(pendingVerifications) : undefined) : item.badge;
   // A teacher sees "My House" only after being given access to it.
   const houseAccess = useHouseAccess(user?.role);
 
@@ -964,12 +990,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                       const itemPath = item.path.replace(/\/+$/, '');
                       const isActive = currentPath === itemPath || currentPath.startsWith(itemPath + '/');
                       const readOnly = routeAccess(user, item.path) === 'read_only';
+                      const badge = badgeFor(item);
+                      const isVerificationsItem = item.path === PLATFORM_VERIFICATIONS_PATH;
                       return (
                         <button
                           key={item.path}
                           ref={isActive ? activeItemRef : undefined}
                           onClick={() => handleNavigation(item.path)}
-                          title={collapsed ? `${item.label}${readOnly ? ' (read-only)' : ''}` : readOnly ? 'Read-only on your current plan' : undefined}
+                          title={collapsed ? `${item.label}${isVerificationsItem && badge ? ` (${badge} waiting for review)` : ''}${readOnly ? ' (read-only)' : ''}` : readOnly ? 'Read-only on your current plan' : undefined}
                           aria-label={readOnly ? `${item.label}, read-only` : undefined}
                           aria-current={isActive ? 'page' : undefined}
                           className={clsx(
@@ -982,7 +1010,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                         >
                           <div className="relative w-4 sm:w-5 h-4 sm:h-5 flex-shrink-0 flex items-center justify-center">
                             {item.icon}
-                            {collapsed && item.badge && (
+                            {collapsed && badge && (
                               <span className="hidden lg:block absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500" />
                             )}
                           </div>
@@ -993,9 +1021,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed = f
                               className={clsx('w-3 h-3 flex-shrink-0', isActive ? 'text-amber-200' : 'text-amber-400', collapsed && 'lg:hidden')}
                             />
                           )}
-                          {!collapsed && item.badge && (
+                          {!collapsed && badge && (
                             <span className="bg-red-600 text-white text-xs px-1.5 sm:px-2 py-0.5 rounded-full flex-shrink-0">
-                              {item.badge}
+                              {badge}
+                              {isVerificationsItem && <span className="sr-only"> waiting for review</span>}
                             </span>
                           )}
                           {!collapsed && isActive && <FaChevronRight className="w-3 sm:w-4 h-3 sm:h-4 flex-shrink-0" />}

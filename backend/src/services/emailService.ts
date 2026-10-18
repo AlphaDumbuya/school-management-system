@@ -1749,7 +1749,37 @@ class EmailService {
   }
 
   /**
-   * Security alert → principals, school contact and the person who made it, when a
+   * One-time code → the signed-in user, as the second check for a sensitive
+   * change (for example payment settings) when they have no authenticator app.
+   * Holds only the code, what it is for and where the request came from.
+   */
+  async sendStepUpCodeEmail(
+    tenantId: string | null,
+    toEmail: string,
+    data: { userName: string; code: string; minutes: number; purposeText: string; ip?: string }
+  ): Promise<EmailResponse> {
+    const branding = tenantId ? await resolveTenantBranding(tenantId) : platformBranding();
+    const code = escapeHtml(data.code);
+    const bodyHtml = `
+      <p>Hello ${escapeHtml(data.userName)},</p>
+      <p>Use this code to confirm it is you and ${escapeHtml(data.purposeText)}:</p>
+      <p style="margin:16px 0;font-size:30px;font-weight:700;letter-spacing:8px;font-family:'Courier New',monospace;text-align:center;">${code}</p>
+      <p style="margin:0 0 4px 0;">The code works once and expires in ${data.minutes} minutes.</p>
+      ${data.ip ? `<p style="margin:0 0 4px 0;">Requested from: ${escapeHtml(data.ip)}</p>` : ''}
+      ${calloutBlock('WiSkul will never ask you for this code by phone, SMS or chat. If you did not ask for it, someone may know your password: change it right away.', 'warn')}`;
+
+    return this.sendEmail({
+      ...this.senderFromBranding(branding),
+      to: toEmail,
+      // The code stays out of the subject so it is not shown on a lock screen.
+      subject: 'Your confirmation code',
+      body: renderEmail({ branding, eyebrow: 'Account Security', heading: 'Confirm it\'s you', bodyHtml, preheader: `Your code expires in ${data.minutes} minutes.` }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * Security alert → school owner(s), school contact and the person who made it, when a
    * school's payment settings (where fee payments are paid into) are changed.
    * Never contains the token; only what changed, who, when and from where.
    */
@@ -2586,6 +2616,122 @@ class EmailService {
         bodyHtml,
         preheader: `Ticket ${data.reference}: ${data.subject}`,
       }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * A school owner submitted their school for verification → the WiSkul team
+   * (SUPPORT_EMAIL). Platform-branded, links to the review queue.
+   */
+  async sendVerificationSubmittedEmail(data: {
+    schoolName: string;
+    ownerName: string;
+    ownerEmail?: string | null;
+    emisCode: string;
+    tenantId: string;
+    resubmission?: boolean;
+  }): Promise<EmailResponse> {
+    const branding = platformBranding();
+    const to = process.env.SUPPORT_EMAIL || 'support@wiskulsl.com';
+    const reviewUrl = `${branding.appUrl}/platform/verifications?tenant=${encodeURIComponent(data.tenantId)}`;
+    const bodyHtml = `
+      <p>${data.resubmission ? 'A school has submitted its verification again after it was not approved.' : 'A school has submitted its verification for review.'}</p>
+      ${detailsCard(
+        detailRow('School', escapeHtml(data.schoolName)) +
+        detailRow('Account owner', escapeHtml(data.ownerName || '—')) +
+        detailRow('Owner email', escapeHtml(data.ownerEmail || '—')) +
+        detailRow('EMIS code', escapeHtml(data.emisCode))
+      )}
+      <p>Check the EMIS code and the owner's ID, then approve or reject it. The school can't change its plan until it is approved.</p>
+      ${emailButton('Review verification', reviewUrl)}`;
+    return this.sendEmail({
+      ...this.platformSender('info'),
+      to,
+      subject: `School verification to review: ${data.schoolName}`,
+      body: renderEmail({
+        branding,
+        eyebrow: 'School verification',
+        heading: 'New school verification to review',
+        bodyHtml,
+        preheader: `${data.schoolName} (EMIS ${data.emisCode}) is waiting for review.`,
+      }),
+      isHtml: true,
+    });
+  }
+
+  /**
+   * WiSkul's decision on a school verification → the school owner.
+   * approved: the school is verified. rejected / revoked: shows the reason and
+   * how to submit again or contact support.
+   */
+  async sendSchoolVerificationDecisionEmail(
+    toEmail: string,
+    data: { schoolName: string; ownerName?: string; decision: 'approved' | 'rejected' | 'revoked'; reason?: string | null }
+  ): Promise<EmailResponse> {
+    const branding = platformBranding();
+    const supportEmail = process.env.SUPPORT_EMAIL || 'support@wiskulsl.com';
+    const verifyUrl = `${branding.appUrl}/verify-school`;
+    const first = (data.ownerName || '').trim().split(/\s+/)[0] || 'there';
+    const school = escapeHtml(data.schoolName);
+    const reasonBlock = data.reason
+      ? `<p style="font-weight:600;margin:18px 0 6px;">Reason</p>
+         <div style="background:#f8fafc;border-left:4px solid #f59e0b;border-radius:8px;padding:12px 14px;font-size:14px;line-height:1.6;color:#334155;white-space:pre-wrap;">${escapeHtml(data.reason)}</div>`
+      : '';
+    const contact = `<p style="color:#64748b;font-size:13px;">Questions? Reply to this email or write to <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
+
+    let subject: string;
+    let eyebrow: string;
+    let heading: string;
+    let preheader: string;
+    let bodyHtml: string;
+
+    if (data.decision === 'approved') {
+      subject = `${data.schoolName} is verified on WiSkul`;
+      eyebrow = 'School verified';
+      heading = 'Your school is verified';
+      preheader = `WiSkul has verified ${data.schoolName}.`;
+      bodyHtml = `
+        <p>Hello ${escapeHtml(first)},</p>
+        <p>Good news: WiSkul has reviewed and approved the verification for <strong>${school}</strong>.</p>
+        ${calloutBlock('Your school now shows as verified, and you can change your plan and use every feature that needs a verified school.', 'success')}
+        ${emailButton('View your verification', verifyUrl)}
+        ${contact}`;
+    } else if (data.decision === 'rejected') {
+      subject = `${data.schoolName}: verification not approved`;
+      eyebrow = 'School verification';
+      heading = 'Your school verification was not approved';
+      preheader = `WiSkul could not approve the verification for ${data.schoolName}. See why and submit again.`;
+      bodyHtml = `
+        <p>Hello ${escapeHtml(first)},</p>
+        <p>WiSkul reviewed the verification for <strong>${school}</strong> and could not approve it yet.</p>
+        ${reasonBlock}
+        <p style="font-weight:600;margin:18px 0 6px;">What to do next</p>
+        <ol style="color:#334155;font-size:14px;line-height:1.7;padding-left:20px;margin:8px 0;">
+          <li>Open Verify school and check the details against the reason above.</li>
+          <li>Correct them and submit again. We review it again, usually within one working day.</li>
+        </ol>
+        ${emailButton('Open Verify school', verifyUrl)}
+        ${contact}`;
+    } else {
+      subject = `${data.schoolName}: verification removed`;
+      eyebrow = 'School verification';
+      heading = 'Your school is no longer verified';
+      preheader = `WiSkul removed the verification for ${data.schoolName}.`;
+      bodyHtml = `
+        <p>Hello ${escapeHtml(first)},</p>
+        <p>WiSkul has removed the verification for <strong>${school}</strong>. Until it is verified again, plan changes and other features that need a verified school are paused. Your data is safe.</p>
+        ${reasonBlock}
+        <p>You can submit your school for verification again from Verify school, or contact us if you think this is a mistake.</p>
+        ${emailButton('Open Verify school', verifyUrl)}
+        ${contact}`;
+    }
+
+    return this.sendEmail({
+      ...this.platformSender('support'),
+      to: toEmail,
+      subject,
+      body: renderEmail({ branding, eyebrow, heading, bodyHtml, preheader }),
       isHtml: true,
     });
   }

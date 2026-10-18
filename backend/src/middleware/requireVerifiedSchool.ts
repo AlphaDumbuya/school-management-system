@@ -2,7 +2,9 @@
  * requireVerifiedSchool — gate high-impact tenant features until the school's
  * account owner has verified the school.
  *
- * Blocks with 403 SCHOOL_VERIFICATION_REQUIRED when the tenant is not verified.
+ * Blocks with 403 SCHOOL_VERIFICATION_REQUIRED unless the tenant is 'verified'
+ * (approved by WiSkul). 'pending' and 'rejected' schools are blocked too; the
+ * message says which state the school is in.
  * The tenant's verification state lives on the owner (principal) user row; we
  * resolve it by tenant so any tenant user hitting a gated route is checked
  * against the tenant's verification status.
@@ -36,11 +38,16 @@ export const requireVerifiedSchool = async (req: Request, res: Response, next: N
       return next();
     }
 
-    throw new AppError(
-      'Verify your school before changing your plan. It takes about two minutes.',
-      403,
-      'SCHOOL_VERIFICATION_REQUIRED'
-    );
+    // Verification is reviewed by WiSkul: say where the school is in that process.
+    // (AppError carries only message/status/code, so the state is in the message.)
+    const message =
+      owner?.verification_status === 'pending'
+        ? 'Your school verification is waiting for review by WiSkul. You can change your plan once it is approved.'
+        : owner?.verification_status === 'rejected'
+          ? 'Your school verification was not approved. Open Verify school to see why and submit again.'
+          : 'Verify your school before changing your plan. WiSkul reviews it, usually within one working day.';
+
+    throw new AppError(message, 403, 'SCHOOL_VERIFICATION_REQUIRED');
   } catch (error) {
     next(error);
   }
