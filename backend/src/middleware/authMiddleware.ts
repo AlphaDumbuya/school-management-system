@@ -80,9 +80,14 @@ export const attachUserContext = async (req: Request, res: Response, next: NextF
     if (!req.auth) {
       return next();
     }
-    // select('*') so staff_duties is read when the column exists, without
-    // breaking before migration 162 runs.
-    const user = await db('users').select('*').where('id', req.auth.userId).first();
+    // Only what this middleware uses. This runs on nearly every request, and
+    // select('*') also pulled the password hash, 2FA secrets and any photo
+    // stored inline on the row (data URLs can be hundreds of KB), which wasted
+    // database transfer on every call.
+    const user = await db('users')
+      .select('id', 'tenant_id', 'email', 'role', 'status', 'staff_duties', 'is_owner')
+      .where('id', req.auth.userId)
+      .first();
     if (user) {
       // Enforce the user's OWN account status on every request. Deactivating,
       // suspending or dismissing a user must cut them off immediately — not
@@ -181,7 +186,7 @@ export const authorize = (...allowedRoles: Array<UserRole | UserRole[]>) => {
       let duties: string[] = req.user?.staff_duties ?? [];
       let primary: string | undefined = req.user?.primary_role;
       if (!req.user || String(req.user.id) !== String(req.auth.userId)) {
-        const row = await db('users').where('id', req.auth.userId).first('*').catch(() => null);
+        const row = await db('users').where('id', req.auth.userId).first('status', 'role', 'staff_duties').catch(() => null);
         if (row && row.status && String(row.status).trim().toLowerCase() !== 'active') {
           throw new AppError(`Your account is ${row.status}. Please contact your school administrator.`, 403, 'ACCOUNT_INACTIVE');
         }

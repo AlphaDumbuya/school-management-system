@@ -7,6 +7,7 @@
  */
 
 import { isTeachingUser } from '@lib/staffJobs';
+import { pollWhileActive } from '@lib/activity';
 import React, { useState, useMemo, useCallback } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -1842,7 +1843,7 @@ const ParentAttendanceView: React.FC = () => {
     enabled: !!currentId && !!year,
     // Keep the today banner reasonably live so a check-in/out reflects quickly.
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: pollWhileActive(60_000),
     refetchOnWindowFocus: true,
   });
   // apiClient never throws: a refused/failed load is success:false.

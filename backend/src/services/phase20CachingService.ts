@@ -2,6 +2,7 @@ import type { Knex } from 'knex';
 import { v4 as uuidv4 } from 'uuid';
 import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
+import { backgroundJobsEnabled } from '@utils/backgroundJobs';
 
 /**
  * Phase 20.5: Caching and Performance Optimization
@@ -37,8 +38,16 @@ export class CachingService {
   constructor(database: Knex) {
     this.db = database;
     logger.info('CachingService initialized');
-    // Periodically clean up expired cache entries
-    setInterval(() => this.cleanupExpiredCache(), 60000); // Every minute
+    // Periodically clean up expired cache entries. The sweep runs a DELETE on
+    // the database, so only where background jobs run (a long-running server):
+    // every minute in every process kept the hosted database from ever going
+    // to sleep. Expired entries are ignored on read anyway, and the in-memory
+    // cache is bounded by maxMemoryCacheSize.
+    if (backgroundJobsEnabled()) {
+      // Every 15 minutes, and never keep the process alive just for this.
+      const timer = setInterval(() => this.cleanupExpiredCache(), 15 * 60_000);
+      (timer as any).unref?.();
+    }
   }
 
   /**

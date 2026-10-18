@@ -96,6 +96,7 @@ import { startEventManagementJobs } from './jobs/eventManagementJobs.js';
 import { startSmsDeliveryJobs } from './jobs/smsDeliveryJobs.js';
 import { startSubscriptionJobs } from './jobs/subscriptionJobs.js';
 import { startAttendanceDigestJobs } from './jobs/attendanceDigestJobs.js';
+import { backgroundJobsEnabled } from './utils/backgroundJobs.js';
 
 // Load environment variables
 dotenv.config();
@@ -505,34 +506,47 @@ app.use((req: Request, res: Response) => {
 // Error handler (must be last)
 app.use(errorHandler);
 
-// Start jobs that should run with the API (if process runs them)
-try {
-  startSmsDeliveryJobs();
-} catch (e) {
-  logger.warn('Could not start SMS delivery jobs at startup', { error: e });
-}
+// Start the in-process scheduled jobs, only where they belong (a long-running
+// production server). Not on Vercel (Vercel Cron routes do the daily/weekly
+// work) and not in local development against the shared database: every job
+// queries the database, and the SMS job runs every minute, which kept the
+// database awake all day. See utils/backgroundJobs.ts.
+if (backgroundJobsEnabled()) {
+  try {
+    startSmsDeliveryJobs();
+  } catch (e) {
+    logger.warn('Could not start SMS delivery jobs at startup', { error: e });
+  }
 
-try {
-  startSubscriptionJobs();
-} catch (e) {
-  logger.warn('Could not start subscription jobs at startup', { error: e });
-}
+  try {
+    startSubscriptionJobs();
+  } catch (e) {
+    logger.warn('Could not start subscription jobs at startup', { error: e });
+  }
 
-try {
-  startFinanceJobs();
-} catch (e) {
-  logger.warn('Could not start finance jobs at startup', { error: e });
-}
+  try {
+    startFinanceJobs();
+  } catch (e) {
+    logger.warn('Could not start finance jobs at startup', { error: e });
+  }
 
-try {
-  startAttendanceDigestJobs();
-} catch (e) {
-  logger.warn('Could not start attendance digest jobs at startup', { error: e });
-}
-try {
-  startEventManagementJobs();
-} catch (e) {
-  logger.warn('Could not start event management jobs at startup', { error: e });
+  try {
+    startAttendanceDigestJobs();
+  } catch (e) {
+    logger.warn('Could not start attendance digest jobs at startup', { error: e });
+  }
+  try {
+    startEventManagementJobs();
+  } catch (e) {
+    logger.warn('Could not start event management jobs at startup', { error: e });
+  }
+  try {
+    startIdentityManagementJobs();
+  } catch (e) {
+    logger.warn('Could not start identity management jobs at startup', { error: e });
+  }
+} else {
+  logger.info('In-process scheduled jobs are off here (serverless or local development). Set ENABLE_BACKGROUND_JOBS=true to run them.');
 }
 
 export default app;
