@@ -104,7 +104,8 @@ export function auditCapture(req: Request, res: Response, next: NextFunction) {
       newValues: { path, fields: body.slice(0, 40) },
       source: 'api',
     }, db);
-    const timeout = new Promise((r) => setTimeout(r, 1500));
+    // Reduced from 1500ms to 300ms to save CPU time on Vercel serverless
+    const timeout = new Promise((r) => setTimeout(r, 300));
     Promise.race([write, timeout]).finally(() => originalEnd(...args));
     return res;
   };

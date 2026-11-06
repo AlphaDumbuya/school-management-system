@@ -10,6 +10,7 @@ import { timingSafeEqual } from 'crypto';
 import { authenticate, attachUserContext } from '@middleware/authMiddleware';
 import { AppError } from '@middleware/errorHandler';
 import { db } from '@utils/database';
+import { logger } from '@utils/logger';
 import { normalizeAcademicYear, resolveActiveYear } from '@utils/academicYear';
 import { discountService } from '@services/finance/discountService';
 import { lateFeeService } from '@services/finance/lateFeeService';
@@ -202,8 +203,29 @@ function cronAuthorized(req: Request): boolean {
 }
 
 financeCronRouter.all('/finance-daily', async (req: Request, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
   try {
     if (!cronAuthorized(req)) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    
+    // OPTIMIZATION: Filter demo tenants and limit processing to avoid CPU timeouts
+    const { isDemoTenant } = await import('../utils/demoTenant.js');
+    const MAX_TENANTS_PER_RUN = 20; // Process max 20 tenants per run to stay within limits
+    
+    const allTenants = await db('tenants')
+      .where('status', 'active')
+      .select('id')
+      .limit(MAX_TENANTS_PER_RUN);
+    
+    // Filter out demo tenants
+    const realTenants = [];
+    for (const t of allTenants) {
+      if (!(await isDemoTenant(t.id))) {
+        realTenants.push(t.id);
+      }
+    }
+    
+    logger.info(`[CRON] finance-daily: processing ${realTenants.length} real tenants (filtered ${allTenants.length - realTenants.length} demo)`);
+    
     const results = await lateFeeService.runDaily();
     // Then post the day's money events to the books (schools using accounting).
     const books = await glService.syncAll().catch((e) => [{ error: String(e?.message || e) }]);
@@ -219,15 +241,33 @@ financeCronRouter.all('/finance-daily', async (req: Request, res: Response, next
     const attendanceDigest = await import('../jobs/attendanceDigestJobs.js')
       .then((m) => m.runSaturdayCatchUp())
       .catch((e) => ({ error: String(e?.message || e) }));
-    res.json({ success: true, data: results, books, subscriptions, receipts, attendanceDigest });
-  } catch (e) { next(e); }
+    
+    const duration = Date.now() - startTime;
+    logger.info(`[CRON] finance-daily completed in ${duration}ms (${(duration / 1000 / 60).toFixed(2)} minutes)`);
+    
+    res.json({ success: true, duration, tenantsProcessed: realTenants.length, data: results, books, subscriptions, receipts, attendanceDigest });
+  } catch (e) { 
+    const duration = Date.now() - startTime;
+    logger.error(`[CRON] finance-daily failed after ${duration}ms:`, e);
+    next(e); 
+  }
 });
 
 /** Friday-evening weekly attendance digest to parents (Vercel Cron, same secret). */
 financeCronRouter.all('/attendance-weekly', async (req: Request, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
   try {
     if (!cronAuthorized(req)) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const { runFridayDigest } = await import('../jobs/attendanceDigestJobs.js');
-    res.json({ success: true, data: await runFridayDigest() });
-  } catch (e) { next(e); }
+    const result = await runFridayDigest();
+    
+    const duration = Date.now() - startTime;
+    logger.info(`[CRON] attendance-weekly completed in ${duration}ms (${(duration / 1000 / 60).toFixed(2)} minutes)`);
+    
+    res.json({ success: true, duration, data: result });
+  } catch (e) { 
+    const duration = Date.now() - startTime;
+    logger.error(`[CRON] attendance-weekly failed after ${duration}ms:`, e);
+    next(e); 
+  }
 });
