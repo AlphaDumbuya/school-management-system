@@ -15,10 +15,13 @@ bin() {
 # 1. Backend bundle (served by api/index.ts from backend/dist).
 (cd "$ROOT/backend" && "$(bin backend tsup)")
 
-# 2. Migrations - SKIPPED: Database already exists with all schema and data
-#    The previous Vercel account had everything set up. We're just redeploying
-#    the application code without touching the database.
-echo "Database migrations skipped - using existing database schema and data"
+# 2. Migrations. Preview deployments share the production database, so they
+#    skip migrations unless the preview has its own isolated database.
+if [ "${VERCEL_ENV:-}" = "preview" ] && [ "${PREVIEW_DATABASE_ISOLATED:-}" != "1" ]; then
+  echo "Preview build: database migrations skipped (preview shares the production database)"
+else
+  (cd "$ROOT/backend" && NODE_ENV=production "$(bin backend knex)" migrate:latest --knexfile knexfile.js)
+fi
 
 # 3. Frontend (outputDirectory: frontend/dist).
 (cd "$ROOT/frontend" && "$(bin frontend vite)" build)
