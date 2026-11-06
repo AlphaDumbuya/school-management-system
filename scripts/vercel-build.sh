@@ -20,7 +20,7 @@ bin() {
 if [ "${VERCEL_ENV:-}" = "preview" ] && [ "${PREVIEW_DATABASE_ISOLATED:-}" != "1" ]; then
   echo "Preview build: database migrations skipped (preview shares the production database)"
 else
-  (cd "$ROOT/backend" && "$(bin backend knex)" migrate:latest --knexfile knexfile.js)
+  (cd "$ROOT/backend" && NODE_ENV=production "$(bin backend knex)" migrate:latest --knexfile knexfile.js)
 fi
 
 # 3. Frontend (outputDirectory: frontend/dist).
