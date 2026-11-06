@@ -185,16 +185,23 @@ export async function openExternal(url: string): Promise<void> {
   }
   try {
     // Capacitor routes the special '_system' target to the external browser.
+    // This opens the URL in Chrome/external browser, which handles the APK download.
+    // We do NOT use window.location.href fallback as it can cause download loops
+    // (the WebView itself tries to download, then loops back to the app).
     const opened = window.open(url, '_system');
-    if (!opened) {
-      // Some webviews return null even on success; also try a location assign
-      // as a fallback so the download definitely starts.
-      window.location.href = url;
+    
+    // Wait a moment to ensure the external browser opens
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    
+    if (opened === null) {
+      // null can mean either success or failure in Capacitor WebView.
+      // Show a toast to guide the user in case the browser didn't open.
+      await toast('Opening download in browser...', 'success');
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn('openExternal failed, falling back', err);
-    window.open(url, '_blank', 'noopener,noreferrer');
+    console.warn('openExternal failed', err);
+    await toast('Failed to open download. Please try from the website.', 'error');
   }
 }
 

@@ -42,15 +42,30 @@ async function getInstalledVersionCode(): Promise<number | null> {
 // for self-updating). Set VITE_DISTRIBUTION=play for Play builds to suppress it.
 const IS_PLAY_BUILD = import.meta.env.VITE_DISTRIBUTION === 'play';
 
+// Singleton state to prevent duplicate banners when component remounts
+let globalBannerState: {
+  dismissed: boolean;
+  version: number | null;
+  checkInProgress: boolean;
+} = {
+  dismissed: false,
+  version: null,
+  checkInProgress: false,
+};
+
 export const NativeUpdateBanner: React.FC = () => {
-  const [latest, setLatest] = useState<number | null>(null);
+  const [latest, setLatest] = useState<number | null>(globalBannerState.version);
   const [installed, setInstalled] = useState<number | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(globalBannerState.dismissed);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     if (IS_PLAY_BUILD) return;   // Play handles updates — no sideload banner.
     if (!isAppMode()) return;    // native app only
+    if (globalBannerState.checkInProgress) return; // Prevent duplicate checks
+    
     let cancelled = false;
+    globalBannerState.checkInProgress = true;
 
     (async () => {
       const [inst] = await Promise.all([getInstalledVersionCode()]);
@@ -65,17 +80,26 @@ export const NativeUpdateBanner: React.FC = () => {
         const data = await res.json();
         const lv = typeof data?.latestVersion === 'number' ? data.latestVersion : null;
         if (cancelled) return;
+        
+        globalBannerState.version = lv;
         setLatest(lv);
+        
         // Honor a prior dismissal for THIS latest version.
         if (lv != null && localStorage.getItem(DISMISS_KEY) === String(lv)) {
+          globalBannerState.dismissed = true;
           setDismissed(true);
         }
       } catch {
         /* offline or unavailable — no banner */
+      } finally {
+        globalBannerState.checkInProgress = false;
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => { 
+      cancelled = true;
+      globalBannerState.checkInProgress = false;
+    };
   }, []);
 
   // Show only when we know both versions and the installed one is older.
@@ -90,8 +114,24 @@ export const NativeUpdateBanner: React.FC = () => {
   if (!updateAvailable) return null;
 
   const dismiss = () => {
+    globalBannerState.dismissed = true;
     setDismissed(true);
     if (latest != null) localStorage.setItem(DISMISS_KEY, String(latest));
+  };
+
+  const handleUpdate = async () => {
+    // Prevent multiple clicks (duplicate download)
+    if (downloading) return;
+    setDownloading(true);
+    
+    try {
+      await openExternal(DOWNLOAD_URL);
+      // Dismiss banner immediately after opening download (prevents duplicate prompts)
+      setTimeout(() => dismiss(), 1000);
+    } catch (err) {
+      console.error('Failed to open APK download:', err);
+      setDownloading(false);
+    }
   };
 
   return (
@@ -99,10 +139,11 @@ export const NativeUpdateBanner: React.FC = () => {
       <Download size={15} />
       <span>A new version of the WiSkul app is available.</span>
       <button
-        onClick={() => openExternal(DOWNLOAD_URL)}
-        className="rounded-lg bg-white/20 hover:bg-white/30 px-2.5 py-0.5 font-bold"
+        onClick={handleUpdate}
+        disabled={downloading}
+        className="rounded-lg bg-white/20 hover:bg-white/30 px-2.5 py-0.5 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        Update
+        {downloading ? 'Opening...' : 'Update'}
       </button>
       <button onClick={dismiss} aria-label="Dismiss" className="opacity-80 hover:opacity-100">
         <X size={14} />
