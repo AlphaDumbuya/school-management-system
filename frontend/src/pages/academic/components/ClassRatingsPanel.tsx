@@ -86,7 +86,8 @@ export const ClassRatingsPanel: React.FC<Props> = ({ classId, className, academi
         </div>
       )}
 
-      <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl">
+      {/* relative: the sr-only "Rate" header label is position:absolute; without this it escapes the scroller and widens the whole page on phones */}
+      <div className="relative overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl">
         <table className="w-full text-sm min-w-[560px]">
           <thead className="bg-gray-50 dark:bg-gray-800">
             <tr className="text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">

@@ -333,7 +333,8 @@ export const ScoreEntryGrid: React.FC<Props> = ({ academicYear }) => {
           </div>
 
           {/* the preview table: read only */}
-          <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl">
+          {/* relative: the sr-only "Edit" header label is position:absolute; without this it escapes the scroller and widens the whole page on phones */}
+          <div className="relative overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl">
             <table className="w-full text-sm min-w-[600px]">
               <thead className={TABLE_HEAD}>
                 <tr>
