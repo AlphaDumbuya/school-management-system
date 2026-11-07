@@ -49,6 +49,8 @@ export interface SchoolInfo {
   country?: string;
   logo_url?: string;
   motto?: string;
+  /** The school's main colour, "#RRGGBB". Empty or null means the default blue. */
+  brand_color?: string | null;
   founded_year?: number;
   principal_name?: string;
   principal_email?: string;

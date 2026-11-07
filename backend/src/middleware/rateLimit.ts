@@ -172,6 +172,22 @@ export const publicFormLimiter = makeLimiter({
   message: { success: false, error: 'Too many applications from this connection. Please wait a few minutes and try again.' },
 });
 
+// Parent "complete your child's record" link: opening and submitting, per IP. Guessing a link is infeasible
+// (256-bit secret); this keeps scripted probing and form spam cheap to stop.
+export const studentUpdateLimiter = makeLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  keyGenerator: (req) => `student-update:${clientIp(req)}`,
+  message: { success: false, error: 'Too many requests from this connection. Please wait a few minutes and try again.' },
+});
+// "Is my child registered?" check on the shared link. It answers yes only to someone who knows the child's name,
+// date of birth AND a contact the school holds, but it is still a guessing target, so it is much tighter.
+export const studentCheckLimiter = makeLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => `student-check:${clientIp(req)}`,
+  message: { success: false, error: 'Too many checks from this connection. Please wait a few minutes and try again, or ask the school.' },
+});
 // "Book a live demo" form (the service also caps per email and per IP in the
 // database, which holds across serverless instances).
 export const demoRequestLimiter = makeLimiter({

@@ -30,6 +30,8 @@ export interface SchoolInfo {
   country?: string;
   logo_url?: string;
   motto?: string;
+  /** Main brand colour, "#RRGGBB". Empty means the default blue. */
+  brand_color?: string | null;
   founded_year?: number;
   principal_name?: string;
   principal_email?: string;
@@ -152,6 +154,7 @@ export class Phase15SchoolConfigService {
         country: school.country,
         logo_url: school.logo_url,
         motto: school.motto,
+        brand_color: school.brand_color ?? null,
         founded_year: school.founded_year,
         principal_name: school.principal_name,
         principal_email: school.principal_email,
@@ -197,6 +200,16 @@ export class Phase15SchoolConfigService {
         throw new AppError('Invalid website URL', 400, 'VALIDATION_ERROR');
       }
 
+      // Brand colour: "#RRGGBB" (stored upper-case), or empty to go back to the default.
+      if (data.brand_color !== undefined && data.brand_color !== null && String(data.brand_color).trim() !== '') {
+        const colour = String(data.brand_color).trim();
+        if (!/^#[0-9a-fA-F]{6}$/.test(colour)) {
+          throw new AppError('Brand colour must look like #1D4ED8 (a # and six letters or numbers).', 400, 'VALIDATION_ERROR');
+        }
+        data.brand_color = colour.toUpperCase();
+      } else if (data.brand_color !== undefined) {
+        data.brand_color = null;
+      }
       // Build update data
       const updateData: any = {
         updated_at: new Date(),
@@ -217,6 +230,7 @@ export class Phase15SchoolConfigService {
         'country',
         'logo_url',
         'motto',
+        'brand_color',
         'founded_year',
         'principal_name',
         'principal_email',

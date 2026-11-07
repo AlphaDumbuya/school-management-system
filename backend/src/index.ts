@@ -18,6 +18,7 @@ import auditRoutes from '@routes/auditRoutes';
 import userRoutes from '@routes/userRoutes';
 import rbacRoutes from '@routes/rbacRoutes';
 import studentRoutes from '@routes/studentRoutes';
+import { staffRouter as studentRecordStaffRoutes, publicRouter as studentRecordPublicRoutes } from '@routes/studentRecordRoutes';
 import guardianRoutes from '@routes/guardianRoutes';
 import classRoutes from '@routes/classRoutes';
 import subjectRoutes from '@routes/subjectRoutes';
@@ -268,6 +269,8 @@ app.use('/api/v1/platform/demo-requests', platformDemoRouter);
 app.use('/api/v1/public/branding', brandingRoutes);
 app.use('/api/v1/public', publicVerifyRoutes);
 app.use('/api/v1/public/admissions', publicAdmissionRoutes);
+// Parents completing / checking their child's record through a link (no login; the link identifies the school).
+app.use('/api/v1/public/student-update', studentRecordPublicRoutes);
 
 // App stats (APK download tracking + count). Contains the PUBLIC
 // GET /api/v1/app/download route, so — like publicVerifyRoutes above — it MUST
@@ -284,6 +287,8 @@ app.use('/api/v1/roles', rbacRoutes);
 
 // Student Routes
 app.use('/api/v1/students', studentRoutes);
+// Completing student records (staff: principal, admissions officer): links, review queue, the parents' message.
+app.use('/api/v1/student-records', studentRecordStaffRoutes);
 
 // Guardian Routes — mounted under both /guardians and /students so student-
 // nested guardian actions (e.g. /students/:studentId/parent-account,

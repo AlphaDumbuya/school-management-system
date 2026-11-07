@@ -44,6 +44,7 @@ import schoolConfigService, { SchoolInfo, GradeScale, BillingInvoice, Subscripti
 import { GRADING_PRESETS, scaleFromPreset } from '@lib/gradingPresets';
 import { formatCurrency } from '@utils/formatting';
 import authService from '../services/authService';
+import { DEFAULT_PRIMARY, isHexColor, whiteTextPasses, effectivePrimary } from '../brand/palette';
 import { FileUploader } from '@components/admin/forms/FileUploader';
 import { TwoFactorSettings } from '@components/settings/TwoFactorSettings';
 import { ProfilePhotoControl } from '@components/settings/ProfilePhotoControl';
@@ -1485,6 +1486,44 @@ export const SettingsPage: React.FC = () => {
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 transition"
                                 placeholder="e.g. Learning for Success"
                               />
+                            </div>
+                            <div>
+                              <label htmlFor="school-brand-color" className="text-xs font-semibold text-gray-500 block mb-1">School Colour</label>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  id="school-brand-color"
+                                  type="color"
+                                  aria-label="Pick the school colour"
+                                  value={isHexColor(schoolInfo.brand_color) ? String(schoolInfo.brand_color).trim() : DEFAULT_PRIMARY}
+                                  onChange={(e) => setSchoolInfo({ ...schoolInfo, brand_color: e.target.value.toUpperCase() })}
+                                  className="h-10 w-12 cursor-pointer rounded border border-gray-300 bg-white p-1"
+                                />
+                                <input
+                                  type="text"
+                                  aria-label="School colour as a hex code"
+                                  value={schoolInfo.brand_color ?? ''}
+                                  maxLength={7}
+                                  onChange={(e) => setSchoolInfo({ ...schoolInfo, brand_color: e.target.value.trim() })}
+                                  className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 font-mono transition"
+                                  placeholder={DEFAULT_PRIMARY}
+                                />
+                                {schoolInfo.brand_color && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSchoolInfo({ ...schoolInfo, brand_color: null })}
+                                    className="text-xs font-semibold text-gray-500 underline hover:text-gray-700"
+                                  >
+                                    Use default
+                                  </button>
+                                )}
+                              </div>
+                              <p className="mt-1 text-xs text-gray-500">
+                                {schoolInfo.brand_color && !isHexColor(schoolInfo.brand_color)
+                                  ? 'Use a # and six letters or numbers, like #1D4ED8.'
+                                  : isHexColor(schoolInfo.brand_color) && !whiteTextPasses(String(schoolInfo.brand_color))
+                                    ? `Too light for white text. Pages will use a slightly darker shade (${effectivePrimary(String(schoolInfo.brand_color))}).`
+                                    : 'Used on the pages your parents see, such as the page where they check and complete their child\'s record.'}
+                              </p>
                             </div>
                             <div>
                               <label className="text-xs font-semibold text-gray-500 block mb-1">Registration/Accreditation Number</label>

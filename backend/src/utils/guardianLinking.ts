@@ -13,6 +13,16 @@
 import type { Knex } from 'knex';
 import { logger } from './logger.js';
 
+/**
+ * Databases built from the migrations have no guardians.created_by column (some older ones do). Inserting it
+ * blindly made every link fail quietly on a fresh database, so no guardian row was created. Checked once.
+ */
+let guardiansHaveCreatedBy: boolean | null = null;
+async function hasCreatedBy(db: Knex): Promise<boolean> {
+  if (guardiansHaveCreatedBy === null) guardiansHaveCreatedBy = await db.schema.hasColumn('guardians', 'created_by').catch(() => false);
+  return guardiansHaveCreatedBy;
+}
+
 export interface GuardianInput {
   guardian_name?: string | null;
   guardian_email?: string | null;
@@ -86,7 +96,7 @@ export async function linkGuardianForStudent(
       user_id: linkedUserId,
       created_at: new Date(),
       updated_at: new Date(),
-      created_by: createdBy || null,
+      ...((await hasCreatedBy(db)) ? { created_by: createdBy || null } : {}),
     });
 
     if (parentUser || existingGuardian) {

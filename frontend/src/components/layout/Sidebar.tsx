@@ -185,6 +185,15 @@ export const navItems: NavItem[] = [
     version: 'v1',
   },
   {
+    label: 'Student Records',
+    icon: <FaClipboardList className="w-4 sm:w-5 h-4 sm:h-5" />,
+    path: '/students/records',
+    roles: ['super_admin', 'principal', 'admissions_officer'],
+    module: 'Student Management',
+    group: 'Students',
+    version: 'v1',
+  },
+  {
     label: 'Sport House',
     icon: <FaFlag className="w-4 sm:w-5 h-4 sm:h-5" />,
     path: '/students/houses',

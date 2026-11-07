@@ -49,6 +49,9 @@ import PromotionsPage from '@pages/academic/PromotionsPage';
 import StudentDirectoryPage from '@pages/students/StudentDirectoryPage';
 import AdmissionsPage from '@pages/students/AdmissionsPage';
 import HousesPage from '@pages/students/HousesPage';
+import UpdateRecordPage from '@pages/students/UpdateRecordPage';
+import SharedRecordPage from '@pages/students/SharedRecordPage';
+import StudentRecordsPage from '@pages/students/StudentRecordsPage';
 import PublicAdmissionPage from '@pages/students/PublicAdmissionPage';
 import { StudentProfilesPage } from '@pages/students/StudentProfilesPage';
 import { AttendancePage } from '@pages/students/AttendancePage';
@@ -188,6 +191,9 @@ const router = createBrowserRouter(
         // auth state rehydrates — the page only needs the ?session query param.
         { path: 'finance/pay/return', element: <PaymentReturnPage /> },
         { path: 'apply/:schoolSlug', element: <PublicAdmissionPage /> },
+        // A parent's link to check / complete their child's record (no login). The link identifies the school.
+        { path: 'update-record/school/:token', element: <SharedRecordPage /> },
+        { path: 'update-record/:token', element: <UpdateRecordPage /> },
         { path: 'forgot-password', element: <ForgotPasswordPage /> },
         { path: 'reset-password', element: <ResetPasswordPage /> },
         // School registration is a marketing/web action only — in app mode redirect to login.
@@ -324,6 +330,10 @@ const router = createBrowserRouter(
         {
           path: 'students/admissions',
           element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><G feature="Admissions"><AdmissionsPage /></G></P>,
+        },
+        {
+          path: 'students/records',
+          element: <P requiredRoles={['principal', 'super_admin', 'admissions_officer']}><StudentRecordsPage /></P>,
         },
         {
           path: 'students/houses',
