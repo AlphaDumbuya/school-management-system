@@ -15,8 +15,9 @@ export function liveMean(t1: string, t2: string): number | null {
   const a = t1 === '' ? null : Number(t1);
   const b = t2 === '' ? null : Number(t2);
   if (a == null && b == null) return null;
-  if (a != null && b != null) return Math.round(((a + b) / 2) * 10) / 10;
-  return Math.round((a ?? b)! * 10) / 10;
+  // Whole numbers, a half or more rounds up (40.5 -> 41): the same rule the server saves.
+  if (a != null && b != null) return Math.floor((a + b) / 2 + 0.5 + 1e-9);
+  return Math.floor((a ?? b)! + 0.5 + 1e-9);
 }
 
 export const toStr = (v: number | string | null | undefined): string => (v == null || v === '' ? '' : String(Number(v)));

@@ -87,12 +87,20 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+/**
+ * Sierra Leone report cards show MEAN scores as whole numbers: a half or more rounds up (40.5 -> 41),
+ * anything below a half stays (40.4 -> 40). The tiny extra guards against floating point (40.4999999).
+ */
+function wholeMean(n: number): number {
+  return Math.floor(n + 0.5 + 1e-9);
+}
+
 function computeMean(test1: number | null, test2: number | null): number | null {
   const t1 = test1 == null ? null : Number(test1);
   const t2 = test2 == null ? null : Number(test2);
   if (t1 == null && t2 == null) return null;
-  if (t1 != null && t2 != null) return round1((t1 + t2) / 2);
-  return round1((t1 ?? t2)!); // only one test present
+  if (t1 != null && t2 != null) return wholeMean((t1 + t2) / 2);
+  return wholeMean((t1 ?? t2)!); // only one test present
 }
 
 export interface SubjectScoreInput {
@@ -2409,7 +2417,7 @@ export class SLReportCardService {
 
     const subjects = Object.values(subjMap).map((s: any) => {
       const termMeans = SL_TERMS.map((t) => s.terms[t]?.mean).filter((m: any) => m != null) as number[];
-      const yearlyMean = termMeans.length > 0 ? round1(termMeans.reduce((a, b) => a + b, 0) / termMeans.length) : null;
+      const yearlyMean = termMeans.length > 0 ? wholeMean(termMeans.reduce((a, b) => a + b, 0) / termMeans.length) : null;
       return { ...s, yearly_mean: yearlyMean };
     });
 
@@ -2430,7 +2438,7 @@ export class SLReportCardService {
     for (const [sid, subjMeans] of Object.entries(perStudentSubject)) {
       for (const [subjectId, means] of Object.entries(subjMeans)) {
         const ym = means.reduce((a, b) => a + b, 0) / means.length;
-        (bySubject[subjectId] ??= []).push({ studentId: sid, yearlyMean: round1(ym) });
+        (bySubject[subjectId] ??= []).push({ studentId: sid, yearlyMean: wholeMean(ym) });
       }
     }
 
@@ -2596,7 +2604,7 @@ export class SLReportCardService {
       const terms = { ...(s.terms || {}) };
       for (const t of hidden) delete terms[t];
       const means = SL_TERMS.map((t) => terms[t]?.mean).filter((m: any) => m != null) as number[];
-      return { ...s, terms, yearly_mean: null, yearly_rank: null, released_mean: means.length ? round1(means.reduce((a, b) => a + b, 0) / means.length) : null };
+      return { ...s, terms, yearly_mean: null, yearly_rank: null, released_mean: means.length ? wholeMean(means.reduce((a, b) => a + b, 0) / means.length) : null };
     });
     out.term_summaries = { ...(card.term_summaries || {}) };
     for (const t of hidden) out.term_summaries[t] = null;
@@ -2673,7 +2681,7 @@ export class SLReportCardService {
     const students = Object.keys(perStudent).map((sid) => {
       const subjects = perStudent[sid];
       const subjectYearlyMeans = Object.values(subjects).map(
-        (means) => means.reduce((a, b) => a + b, 0) / means.length,
+        (means) => wholeMean(means.reduce((a, b) => a + b, 0) / means.length),
       );
       const combined = round1(subjectYearlyMeans.reduce((a, b) => a + b, 0));
       const percentage = subjectYearlyMeans.length > 0
