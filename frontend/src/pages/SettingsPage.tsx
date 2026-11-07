@@ -178,11 +178,14 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     if (!subPay || subPay.status !== 'ussd') return;
     let cancelled = false;
+    let pollFailures = 0;
     const timer = setInterval(async () => {
       try {
         const res = await schoolConfigService.getSubscriptionCheckoutStatus(subPay.sessionId);
         const s = res.success ? res.data?.status : undefined;
         if (cancelled) return;
+        if (!res.success) { pollFailures += 1; if (pollFailures === 4) showToast.warning('We cannot check your payment right now. If you completed it, your plan will activate by itself within a few minutes.'); }
+        else pollFailures = 0;
         if (s === 'completed') {
           setSubPay((p) => (p ? { ...p, status: 'completed' } : p));
           showToast.success(`Your plan is now ${subPay.planType.toUpperCase()}.`);
@@ -2595,6 +2598,34 @@ export const SettingsPage: React.FC = () => {
                 {/* ── PLAN & BILLING TAB ── */}
                 {activeTab === 'billing' && (
                   <div className="space-y-6">
+                    {/* Paying for a plan needs a verified school (WiSkul reviews it, usually within a working day). Say so BEFORE the
+                        owner presses Upgrade, with the exact state and the next step, instead of failing after the click. */}
+                    {isOwner && !isVerifiedUser(user) && (
+                      <div role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-4 flex items-start gap-3">
+                        <ShieldCheck size={18} className="text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+                        <div className="text-sm text-blue-900">
+                          <p className="font-bold">
+                            {verificationState === 'pending'
+                              ? 'Your school verification is being reviewed'
+                              : verificationState === 'rejected'
+                                ? 'Your school verification was not approved'
+                                : 'Verify your school to upgrade'}
+                          </p>
+                          <p className="text-xs text-blue-800/90 mt-0.5">
+                            {verificationState === 'pending'
+                              ? 'WiSkul usually finishes within one working day. You can upgrade as soon as it is approved. Your trial and your data are not affected while you wait.'
+                              : verificationState === 'rejected'
+                                ? 'Open the verification page to see why, correct it and send it again. You can upgrade once it is approved.'
+                                : 'Paying for a plan needs a verified school. It takes a few minutes to send your details, and WiSkul usually approves within one working day. Start now so you can upgrade before your trial ends.'}
+                          </p>
+                          {verificationState !== 'pending' && (
+                            <button type="button" onClick={() => navigateTo('/verify-school')} className="mt-2 text-xs font-bold text-blue-700 underline hover:text-blue-900">
+                              {verificationState === 'rejected' ? 'Fix and resend verification' : 'Verify my school'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     {/* Trial banner — new schools explore the top plan free for a
                         limited time, then drop to Freetong (never locked out). */}
                     {subscription?.subscription?.is_trial && subscription?.subscription?.end_date && (() => {

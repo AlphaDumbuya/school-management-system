@@ -1091,6 +1091,8 @@ class EmailService {
       disabledPortals?: string[];
       /** Trial ends with payment required (school becomes read-only until paid). */
       paymentRequired?: boolean;
+      /** The school is not verified yet: paying for a plan needs verification (WiSkul reviews it within a working day). */
+      needsVerification?: boolean;
       /** payment_received: stable receipt number, provider reference and payment time for the PDF receipt. */
       receiptNumber?: string;
       reference?: string;
@@ -1124,6 +1126,7 @@ class EmailService {
           ? calloutBlock('To keep adding and changing records after that date, choose a plan and pay before the trial ends. If you don’t, everyone can still sign in and view everything, but changes are paused until a plan is paid. Nothing is deleted.', 'warn')
           : calloutBlock(`Nothing is deleted when the trial ends. Your school moves to ${escapeHtml(data.newPlanName || 'the base plan')} unless you choose a plan.`, 'info')}
         ${!data.paymentRequired ? planChangeLists(data.readOnlyFeatures, data.disabledPortals, 'future') : ''}
+        ${data.needsVerification ? calloutBlock('To pay for a plan, your school must first be verified. Sending your details takes a few minutes and WiSkul usually approves within one working day, so please start now: <a href="' + branding.appUrl + '/verify-school" style="color:#1d4ed8;">verify your school</a>.', 'warn') : ''}
         ${emailButton('Choose a plan', billingUrl)}
         <p style="color:#64748b;font-size:13px;">Questions about plans? Email <a href="mailto:${supportEmail}" style="color:#1d4ed8;">${supportEmail}</a>.</p>`;
     } else if (data.kind === 'trial_ended' && data.paymentRequired) {

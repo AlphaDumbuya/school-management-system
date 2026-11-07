@@ -96,7 +96,9 @@ export async function notifyTrialEnded(tenantId: string, endedSub: { id: string;
   }
 }
 
-/** Reminders for subscriptions ending within 7 days (7-day and 1-day notices). */
+/** Days-left steps at which an ending trial / plan is reminded. */
+const REMINDER_STEPS = [1, 2, 3, 5, 7];
+/** Reminders for subscriptions ending within 7 days (at 7, 5, 3, 2 and 1 days left). */
 export async function runSubscriptionReminders(): Promise<number> {
   const now = Date.now();
   const soon = await db('subscriptions as s')
@@ -114,13 +116,20 @@ export async function runSubscriptionReminders(): Promise<number> {
   for (const s of soon) {
     try {
       const daysLeft = Math.max(1, Math.ceil((new Date(s.end_date).getTime() - now) / DAY));
-      const bucket = daysLeft <= 1 ? '1d' : '7d';
+      // A reminder at 7, 5, 3, 2 and 1 days left (each sent once). The bucket is the nearest step at or above the days
+      // left, so a run that was missed one day still sends the notice for where the school is now.
+      const step = REMINDER_STEPS.find((n) => daysLeft <= n) ?? 7;
+      const bucket = `${step}d`;
       // A comp that simply ends is announced by the "ended" notice only.
       if (s.is_comp && !s.is_trial) continue;
       if (!(await claim(s.tenant_id, `sub:${s.id}:remind:${bucket}`))) continue;
       const recipients = await billingRecipients(s.tenant_id);
       if (!recipients.length) continue;
+      // Paying for a plan needs a verified school: tell an unverified owner in the email, before they hit the wall.
+      const owner = await db('users').where({ tenant_id: s.tenant_id, role: 'principal' }).orderBy([{ column: 'is_owner', order: 'desc' }, { column: 'created_at', order: 'asc' }]).first('verification_status');
+      const needsVerification = owner?.verification_status !== 'verified';
       const notice = {
+        needsVerification,
         kind: (s.is_trial ? 'trial_ending' : 'expiring') as 'trial_ending' | 'expiring',
         schoolName: s.school_name || 'your school', planName: await planName(s.plan_type),
         endDate: s.end_date, daysLeft, paymentRequired: s.is_trial ? paymentRequired : undefined,
