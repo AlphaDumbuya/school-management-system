@@ -9,6 +9,7 @@
 import React, { useState } from 'react';
 import { X, FlipHorizontal2, Pencil } from 'lucide-react';
 import { VisualIdCardRenderer } from './VisualIdCardRenderer';
+import { resolveSchoolName, getSchoolNameSync } from './schoolNameFor';
 import { CardTemplate } from '@services/idCardService';
 import { Button } from '@components/ui/button';
 
@@ -41,7 +42,7 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({ isOp
     role: template.defaultForRoles?.[0] ? String(template.defaultForRoles[0]).toUpperCase() : 'STUDENT',
     departmentOrGrade: 'Grade 10',
     expiresAt: '31/08/2027',
-    schoolName: config.customSchoolName,
+    schoolName: resolveSchoolName(config.customSchoolName, getSchoolNameSync()),
   };
 
   return (

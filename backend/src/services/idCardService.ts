@@ -641,7 +641,15 @@ export class IdCardService {
         const expiryLabel = template.config.expiryLabel || 'EXPIRES';
 
         const logoUrl = template.logoUrl || template.config?.logoUrl;
-        const schoolNameText = template.config?.customSchoolName || 'GINYARD ACADEMY';
+        // The name printed on the card: the template's own real name, else THIS school's registered name. The old
+        // sample names ("WI SKUL ACADEMY", "GINYARD ACADEMY") are never printed on a school's card.
+        const isSampleName = (n: unknown) => { const t = String(n || '').trim(); return !t || /^wi\s*-?\s*skul\s+academy$/i.test(t) || /^ginyard\b/i.test(t) || /^school name$/i.test(t); };
+        let schoolNameText = isSampleName(template.config?.customSchoolName) ? '' : String(template.config.customSchoolName).trim();
+        if (!schoolNameText) {
+          const schoolRow = await this.db('schools').where({ tenant_id: tenantId }).first('name');
+          const tenantRow = schoolRow?.name ? null : await this.db('tenants').where({ id: tenantId }).first('name');
+          schoolNameText = String(schoolRow?.name || tenantRow?.name || '').trim();
+        }
 
         const vf = {
           showName: template.config.visibleFields?.showName !== false,

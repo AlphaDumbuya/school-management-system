@@ -11,6 +11,7 @@ import {
     RotateCcw, Ban, AlertTriangle, FlipHorizontal2,
 } from 'lucide-react';
 import { VisualIdCardRenderer } from './VisualIdCardRenderer';
+import { resolveSchoolName, getSchoolNameSync } from './schoolNameFor';
 import { CardPdfExporter, buildCardExportData } from './cardExport';
 import type { CardPdfExporterHandle } from './cardExport';
 
@@ -174,6 +175,7 @@ export const CardDetailsModal: React.FC<CardDetailsModalProps> = ({
                                         dob: card.user?.dob ? formatDate(card.user.dob) : undefined,
                                         departmentOrGrade: card.user?.departmentOrGrade,
                                         qrImageUrl: (card as any).qrImageUrl || undefined,
+                                        schoolName: resolveSchoolName(card.template?.config?.customSchoolName, getSchoolNameSync()),
                                     }}
                                     logoUrl={card.template?.logoUrl || card.template?.config?.logoUrl}
                                     side={previewSide}

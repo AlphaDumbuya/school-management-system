@@ -15,6 +15,7 @@ import {
   Image, RotateCcw, FlipHorizontal2, Maximize2
 } from 'lucide-react';
 import { VisualIdCardRenderer, VisualCardUserData } from './VisualIdCardRenderer';
+import { resolveSchoolName, getSchoolNameSync } from './schoolNameFor';
 
 interface TemplateFormModalProps {
     isOpen: boolean;
@@ -534,7 +535,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
         dobLabel: 'D.O.B',
         gradeLabel: 'GRADE',
         expiryLabel: 'EXPIRES',
-        customSchoolName: 'WI SKUL ACADEMY',
+        customSchoolName: getSchoolNameSync(),
         logoEmblem: 'graduation-cap' as 'graduation-cap' | 'building' | 'shield' | 'award' | 'book',
         visibleFields: {
             showName: true,
@@ -609,7 +610,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                     dobLabel: conf.dobLabel || 'D.O.B',
                     gradeLabel: conf.gradeLabel || 'GRADE',
                     expiryLabel: conf.expiryLabel || 'EXPIRES',
-                    customSchoolName: conf.customSchoolName || 'WI SKUL ACADEMY',
+                    customSchoolName: resolveSchoolName(conf.customSchoolName, getSchoolNameSync()),
                     logoEmblem: conf.logoEmblem || 'graduation-cap',
                     visibleFields: {
                         showName: conf.visibleFields?.showName !== false,
@@ -650,7 +651,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                     dobLabel: 'D.O.B',
                     gradeLabel: 'GRADE',
                     expiryLabel: 'EXPIRES',
-                    customSchoolName: 'WI SKUL ACADEMY',
+                    customSchoolName: getSchoolNameSync(),
                     logoEmblem: 'graduation-cap',
                     visibleFields: {
                         showName: true,
@@ -1007,7 +1008,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
 
     // Get user sample data for preview
     const getPreviewUser = (): VisualCardUserData => {
-        const school = formData.customSchoolName || 'WI SKUL ACADEMY';
+        const school = resolveSchoolName(formData.customSchoolName, getSchoolNameSync()) || 'SCHOOL NAME';
         if (previewRole === 'student') {
             return {
                 name: 'Alice Smith',
@@ -2086,7 +2087,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                                             value={formData.customSchoolName || ''}
                                             onChange={e => setFormData(prev => ({ ...prev, customSchoolName: e.target.value }))}
                                             className="flex-1 px-2.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                                            placeholder="Enter school name..."
+                                            placeholder={getSchoolNameSync() || 'Enter school name...'}
                                         />
                                     </div>
                                 )}

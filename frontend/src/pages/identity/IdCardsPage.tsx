@@ -28,6 +28,7 @@ import { ConfirmationDialog } from '@components/admin/feedback/ConfirmationDialo
 import { CardGenerationModal } from './components/CardGenerationModal';
 import { CardDetailsModal } from './components/CardDetailsModal';
 import { VisualIdCardRenderer } from './components/VisualIdCardRenderer';
+import { resolveSchoolName, getSchoolNameSync } from './components/schoolNameFor';
 import { CardPdfExporter, buildCardExportData } from './components/cardExport';
 import type { CardPdfExporterHandle } from './components/cardExport';
 import { YearFilter } from '@components/common/YearFilter';
@@ -171,6 +172,7 @@ function VisualIdCard({ card, onView, onRevoke, onRegenerate, onDelete, onReport
             dob: (user as any)?.dob ? fmt((user as any).dob) : undefined,
             departmentOrGrade: (user as any)?.departmentOrGrade || undefined,
             qrImageUrl: (card as any).qrImageUrl || undefined,
+            schoolName: resolveSchoolName(card.template?.config?.customSchoolName, getSchoolNameSync()),
           }}
           logoUrl={card.template?.logoUrl || card.template?.config?.logoUrl}
           side="front"

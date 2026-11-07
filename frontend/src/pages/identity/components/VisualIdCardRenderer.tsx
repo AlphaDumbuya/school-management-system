@@ -11,6 +11,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { QrCode, GraduationCap, Building2, User as UserIcon } from 'lucide-react';
 import { CardFormat, TemplateConfig } from '@services/idCardService';
+import { resolveSchoolName, getSchoolNameSync } from './schoolNameFor';
 
 export interface VisualCardUserData {
   name: string;
@@ -57,7 +58,7 @@ const DEFAULT_USER: VisualCardUserData = {
   email: 'm.maxwell@school.edu',
   issuedAt: '01/09/2025',
   expiresAt: '31/08/2027',
-  schoolName: 'Ginyard International Co.',
+  schoolName: '',
 };
 
 const CARD_DIMS = {
@@ -457,7 +458,8 @@ interface FrontSharedProps {
 function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary, secondary, textColor, fontFamily, photoShapeCls, photoClipStyle, activeLogoUrl, logoFailed, onLogoError, vf, selectedElement, onClickElement, onPointerDown, onSizeChange, readonly, layout, sidebarOffset }: FrontSharedProps) {
   const pb = config.photoBorderColor || primary;
   const pbW = config.photoBorderWidth ?? 2;
-  const schoolName = config.customSchoolName || user.schoolName || 'SCHOOL NAME';
+  // One rule everywhere (see schoolNameFor): the template's own real name, else the user's school. Never a sample name.
+  const schoolName = resolveSchoolName(config.customSchoolName, user.schoolName, getSchoolNameSync()) || 'SCHOOL NAME';
 
   const headerStyle       = (config.headerStyle || 'curved-wave') as string;
   const suppressHeader    = headerStyle === 'top-banner';
@@ -746,7 +748,8 @@ function FrontContentPVC({ user, config, scale, cardW, cardH, fontMult, primary,
 function FrontContentBadge({ user, config, scale, cardW, cardH, fontMult, primary, secondary, textColor, fontFamily, photoShapeCls, photoClipStyle, activeLogoUrl, logoFailed, onLogoError, vf, selectedElement, onClickElement, onPointerDown, onSizeChange, readonly, layout, sidebarOffset }: FrontSharedProps) {
   const pb  = config.photoBorderColor || primary;
   const pbW = config.photoBorderWidth ?? 3;
-  const schoolName = config.customSchoolName || user.schoolName || 'SCHOOL NAME';
+  // One rule everywhere (see schoolNameFor): the template's own real name, else the user's school. Never a sample name.
+  const schoolName = resolveSchoolName(config.customSchoolName, user.schoolName, getSchoolNameSync()) || 'SCHOOL NAME';
   const hStyle = (config.headerStyle || 'curved-wave') as string;
   const suppressHeader     = hStyle === 'top-banner';
   const needsHeaderBacking = hStyle === 'wave-bottom' || hStyle === 'minimal-clean';
@@ -1378,7 +1381,8 @@ export const VisualIdCardRenderer: React.FC<VisualIdCardRendererProps> = ({
     customElements: [],
   };
 
-  const schoolName = config.customSchoolName || user.schoolName || 'SCHOOL NAME';
+  // One rule everywhere (see schoolNameFor): the template's own real name, else the user's school. Never a sample name.
+  const schoolName = resolveSchoolName(config.customSchoolName, user.schoolName, getSchoolNameSync()) || 'SCHOOL NAME';
   const activeLogoUrl = logoUrl || config.logoUrl;
   const isSidebarLeft = headerStyle === 'sidebar-left';
   const sidebarOffset = isSidebarLeft ? (isPortrait ? cardW * 0.13 : cardW * 0.15) : 0;

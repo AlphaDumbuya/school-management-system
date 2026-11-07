@@ -6,6 +6,7 @@
 
 import { CardExportData } from './CardPdfExporter';
 import { TemplateConfig } from '@services/idCardService';
+import { resolveSchoolName, getSchoolNameSync } from './schoolNameFor';
 
 export { CardPdfExporter } from './CardPdfExporter';
 export type { CardPdfExporterHandle, CardExportData } from './CardPdfExporter';
@@ -59,7 +60,8 @@ export function buildCardExportData(card: any, output: 'pdf' | 'png' | 'jpg' = '
       departmentOrGrade: user.departmentOrGrade || undefined,
       expiresAt: fmt(card.expiresAt),
       issuedAt: fmt(card.issuedAt),
-      schoolName: card.template?.config?.customSchoolName,
+      // the template's own real name, else the signed-in school's (never a sample name)
+      schoolName: resolveSchoolName(card.template?.config?.customSchoolName, getSchoolNameSync()),
       qrImageUrl: card.qrImageUrl || undefined,
     },
   };
