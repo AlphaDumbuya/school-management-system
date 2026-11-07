@@ -925,6 +925,7 @@ export const SettingsPage: React.FC = () => {
   return (
     <MainLayout>
       <PageShell
+        onRefresh={fetchInitialData}
         title="Settings & Configuration"
         subtitle={isSuperAdmin
           ? 'Manage your platform account profile and security.'

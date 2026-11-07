@@ -51,6 +51,12 @@ export const OwnerPage: React.FC = () => {
   const [data, setData] = useState<OwnerOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Shared by the first load and the header Refresh button (reloads this page's data, not the browser page).
+  const loadOverview = React.useCallback(async () => {
+    const res: any = await ownerService.getOverview();
+    if (res?.success && res.data) { setData(res.data); setError(null); }
+    else setError(res?.error || 'Could not load the owner overview.');
+  }, []);
   useEffect(() => {
     let cancelled = false;
     ownerService.getOverview().then((res: any) => {
@@ -66,7 +72,7 @@ export const OwnerPage: React.FC = () => {
 
   return (
     <MainLayout>
-    <PageShell title="School Owner" subtitle={`${data?.schoolName ? `${data.schoolName}: ` : ''}the items only you can see and change`}>
+    <PageShell onRefresh={loadOverview} title="School Owner" subtitle={`${data?.schoolName ? `${data.schoolName}: ` : ''}the items only you can see and change`}>
     <div className="space-y-5">
 
       {!data && !error && (

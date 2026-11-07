@@ -1,4 +1,5 @@
 import React, { useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Breadcrumb } from './Breadcrumb';
 import { PageHeader } from './PageHeader';
 // SkeletonChart will be created as part of task 3.1 (feedback/Skeleton.tsx)
@@ -63,13 +64,21 @@ export const PageShell: React.FC<PageShellProps> = ({
   mobileLabels = false,
   children,
 }) => {
-  // Most data-heavy pages provide a targeted refetch through `onRefresh`.
-  // For the remaining admin pages, use a full browser reload so the control is
-  // never cosmetic: all page state and server data are fetched again.
-  const reloadPage = useCallback(() => {
-    window.location.reload();
-  }, []);
-  const refresh = onRefresh ?? reloadPage;
+  // The Refresh button reloads the DATA of the page that is open, never the whole browser page (so the
+  // user keeps their place, filters, open tabs and the sidebar). It:
+  //   1. runs the page's own `onRefresh` first (for state the page loads by hand), then
+  //   2. refetches every data query that is active on screen (what this page and its panels show), and
+  //   3. waits for all of it, so the button's spinner and "Updated" are true.
+  // `cancelRefetch: false` joins a fetch the page's own refresh already started instead of restarting it.
+  const queryClient = useQueryClient();
+  const refresh = useCallback(async () => {
+    const own = Promise.resolve(onRefresh?.());
+    const queries = queryClient.refetchQueries({ type: 'active' }, { cancelRefetch: false });
+    const [ownResult, queryResult] = await Promise.allSettled([own, queries]);
+    // Surface a failure so the button shows "Failed" instead of a false "Updated".
+    if (ownResult.status === 'rejected') throw ownResult.reason;
+    if (queryResult.status === 'rejected') throw queryResult.reason;
+  }, [onRefresh, queryClient]);
 
   // Compose a Refresh control with the page's own actions so every PageShell
   // page gets a consistent, working reload button.

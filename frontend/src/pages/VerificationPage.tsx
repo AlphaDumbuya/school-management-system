@@ -211,7 +211,7 @@ export const VerificationPage: React.FC = () => {
 
   return (
     <MainLayout>
-      <PageShell title="Verify your school" subtitle="Confirm your school's details as the account owner">
+      <PageShell onRefresh={loadStatus} title="Verify your school" subtitle="Confirm your school's details as the account owner">
         {status === 'loading' ? (
           <div className="flex items-center gap-2 text-gray-500 py-16 justify-center" role="status">
             <Loader2 className="animate-spin" size={18} aria-hidden="true" /> Loading…
