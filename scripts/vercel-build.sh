@@ -20,7 +20,11 @@ bin() {
 if [ "${VERCEL_ENV:-}" = "preview" ] && [ "${PREVIEW_DATABASE_ISOLATED:-}" != "1" ]; then
   echo "Preview build: database migrations skipped (preview shares the production database)"
 else
-  (cd "$ROOT/backend" && NODE_ENV=production "$(bin backend knex)" migrate:latest --knexfile knexfile.js)
+  # --env development on purpose: the migration history in the database is recorded with the SOURCE file
+  # names (001_initial_schema.ts ...). The "production" knex config reads the compiled .js files instead, so
+  # knex stops with "migration directory is corrupt" and the whole deploy fails. This reads the same names
+  # the history was written with, and applies only migrations that are really pending.
+  (cd "$ROOT/backend" && "$(bin backend knex)" migrate:latest --knexfile knexfile.js --env development)
 fi
 
 # 3. Frontend (outputDirectory: frontend/dist).
