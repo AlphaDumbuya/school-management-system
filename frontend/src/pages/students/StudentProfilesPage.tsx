@@ -196,6 +196,9 @@ export const StudentProfilesPage: React.FC = () => {
   });
   const gradesPayload = (gradesData as any)?.data ?? {};
   const grades = gradesPayload.results ?? [];
+  // The principal can switch results off for teachers; the server then answers with an error instead of data.
+  const resultsBlocked = (gradesData as any)?.success === false;
+  const blockedReason: string = (gradesData as any)?.error || 'You are not allowed to view these results.';
 
   const academicStats = useMemo(() => {
     const s = gradesPayload.stats ?? { subjects: 0, avg_test1: 0, avg_test2: 0, avg_mean: 0 };
@@ -869,10 +872,10 @@ export const StudentProfilesPage: React.FC = () => {
                     <div className="space-y-6">
                       {/* Academics KPI Overview */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                        <KPICard title="Subjects Recorded" value={isGradesLoading ? '...' : String(academicStats.count)} icon={<BookOpen size={20} />} color="blue" />
-                        <KPICard title="Test 1 Avg" value={isGradesLoading ? '...' : `${academicStats.avgTest1} / 100`} icon={<Clock size={20} />} color="amber" />
-                        <KPICard title="Test 2 Avg" value={isGradesLoading ? '...' : `${academicStats.avgTest2} / 100`} icon={<Award size={20} />} color="purple" />
-                        <KPICard title="Overall Average (Mean)" value={isGradesLoading ? '...' : `${academicStats.avgMean}%`} icon={<BarChart3 size={20} />} color="green" />
+                        <KPICard title="Subjects Recorded" value={isGradesLoading ? '...' : resultsBlocked ? '—' : String(academicStats.count)} icon={<BookOpen size={20} />} color="blue" />
+                        <KPICard title="Test 1 Avg" value={isGradesLoading ? '...' : resultsBlocked ? '—' : `${academicStats.avgTest1} / 100`} icon={<Clock size={20} />} color="amber" />
+                        <KPICard title="Test 2 Avg" value={isGradesLoading ? '...' : resultsBlocked ? '—' : `${academicStats.avgTest2} / 100`} icon={<Award size={20} />} color="purple" />
+                        <KPICard title="Overall Average (Mean)" value={isGradesLoading ? '...' : resultsBlocked ? '—' : `${academicStats.avgMean}%`} icon={<BarChart3 size={20} />} color="green" />
                       </div>
 
                       {/* Grades Table */}
@@ -882,6 +885,11 @@ export const StudentProfilesPage: React.FC = () => {
                         </div>
                         {isGradesLoading ? (
                           <div className="p-8 text-center text-gray-400"><Clock className="animate-spin mx-auto mb-2" /> Loading results...</div>
+                        ) : resultsBlocked ? (
+                          <div className="p-12 text-center text-gray-500">
+                            <Award size={36} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+                            {blockedReason}
+                          </div>
                         ) : grades.length === 0 ? (
                           <div className="p-12 text-center text-gray-400">
                             <Award size={36} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />

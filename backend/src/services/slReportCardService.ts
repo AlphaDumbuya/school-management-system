@@ -905,6 +905,8 @@ export class SLReportCardService {
     await this.assertClassInTenant(classId, tenantId);
     // A teacher may only rank the classes they teach or lead.
     if (role === 'teacher') await this.assertTeacherScope(viewerUserId, tenantId, role, classId);
+    // Positions are computed results: the principal can switch them off for teachers.
+    await this.assertTeacherMayViewResults(tenantId, role);
     const isStaff = ['principal', 'super_admin', 'teacher'].includes(role);
     const isYear = !term || term === 'full';
     const normTerm = isYear ? null : term!;
@@ -1105,12 +1107,190 @@ export class SLReportCardService {
       }
     });
 
+    // These scores are final: a draft of them is no longer needed.
+    await this.clearScoreDrafts(tenantId, class_id, subject_id, term, academic_year, scores.map((s) => s.student_id));
+
     // Recompute derived values for the whole class/term
     await this.recomputeSubjectRanks(tenantId, class_id, term, academic_year);
     await this.recomputeTermSummaries(tenantId, class_id, term, academic_year);
 
     logger.info(`SL scores saved: ${saved} students, subject ${subject_id}, ${term} ${academic_year}`);
     return { saved };
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Score drafts: work in progress. Saved apart from the real scores, never locked, never counted in
+  // ranks, summaries, report cards or what students and parents see. Submitting (saveSubjectScores)
+  // writes the real scores under the principal's lock rules and clears the draft.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * The principal can switch off "Allow teachers to view results" (Settings > Grading & Results).
+   * Every endpoint that shows a teacher COMPUTED results (positions, summaries, report cards) must call this.
+   * Does nothing for other roles.
+   */
+  async assertTeacherMayViewResults(tenantId: string, role: string): Promise<void> {
+    if (role !== 'teacher') return;
+    const settings = await this.getSettings(tenantId);
+    if (!settings.allow_teacher_view_results) {
+      throw new Error('You are not authorized to view results. The principal has turned this off for teachers.');
+    }
+  }
+
+  /** Mirrors the lock rule in saveSubjectScores: may this user still change a locked score? */
+  private canEditScores(isLocked: boolean, role: string, settings: { allow_teacher_edit_after_lock: boolean }): boolean {
+    const isStaffAdmin = role === 'principal' || role === 'super_admin';
+    return !isLocked || isStaffAdmin || !!settings.allow_teacher_edit_after_lock;
+  }
+
+  /**
+   * Adds to each row of the score grid: whether its real scores are locked, whether this user may still edit
+   * them, and any saved draft. A missing drafts table (migration not run yet) only means "no drafts".
+   */
+  async attachDraftsToGrid(
+    tenantId: string,
+    role: string,
+    key: { class_id: string; subject_id: string; term: string; academic_year: string },
+    grid: any[],
+  ): Promise<any[]> {
+    const cell = { tenant_id: tenantId, class_id: key.class_id, subject_id: key.subject_id, term: key.term, academic_year: key.academic_year };
+    const settings = await this.getSettings(tenantId);
+    const lockRows = await db('sl_subject_results').where(cell).select('student_id', 'is_locked');
+    const draftRows = await db('sl_score_drafts')
+      .where(cell)
+      .select('student_id', 'test1', 'test2', 'updated_at')
+      .catch((err: any) => {
+        logger.warn(`Score drafts unavailable: ${err?.message}`);
+        return [] as any[];
+      });
+    const lockedBy = new Map<string, boolean>(lockRows.map((r: any) => [r.student_id, r.is_locked === true]));
+    const draftBy = new Map<string, any>(draftRows.map((r: any) => [r.student_id, r]));
+    const num = (v: any) => (v == null ? null : Number(v));
+    return grid.map((row) => {
+      const locked = lockedBy.get(row.student_id) === true;
+      const d = draftBy.get(row.student_id);
+      return {
+        ...row,
+        // The subject position is a computed result: hidden from teachers when the principal switched viewing off.
+        subject_rank: role === 'teacher' && !settings.allow_teacher_view_results ? null : row.subject_rank,
+        is_locked: locked,
+        can_edit: this.canEditScores(locked, role, settings),
+        has_draft: !!d,
+        draft_test1: d ? num(d.test1) : null,
+        draft_test2: d ? num(d.test2) : null,
+        draft_saved_at: d ? d.updated_at : null,
+      };
+    });
+  }
+
+  /**
+   * Save Test 1 / Test 2 as a draft for many students of one subject+class+term. A row with both tests empty
+   * removes that student's draft. Students whose real scores are locked for this user are skipped (a draft
+   * for them could never be submitted). Nothing is ranked or summarised.
+   */
+  async saveScoreDraft(
+    tenantId: string,
+    userId: string,
+    payload: BulkSubjectScoresPayload,
+    ctx?: { role?: string },
+  ): Promise<{ saved: number; cleared: number; skipped_locked: number }> {
+    const { class_id, subject_id, term, scores } = payload;
+    const role = ctx?.role ?? 'principal';
+
+    if (!class_id || !subject_id || !payload.academic_year || !term || !Array.isArray(scores)) {
+      throw new Error('class_id, subject_id, academic_year, term and scores[] are required');
+    }
+    if (!SL_TERMS.includes(term)) throw new Error('Invalid term');
+
+    await this.assertClassInTenant(class_id, tenantId);
+    const academic_year = await this.assertClassYear(class_id, payload.academic_year, role);
+    await this.assertTeacherScope(userId, tenantId, role, class_id, subject_id);
+
+    for (const row of scores) {
+      for (const v of [row.test1, row.test2]) {
+        if (v != null && !(Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 100)) {
+          throw new Error('Test scores must be between 0 and 100');
+        }
+      }
+    }
+
+    const settings = await this.getSettings(tenantId);
+    const lockedIds = new Set<string>(
+      (await db('sl_subject_results')
+        .where({ tenant_id: tenantId, class_id, subject_id, term, academic_year, is_locked: true })
+        .whereIn('student_id', scores.map((s) => s.student_id).filter(Boolean))
+        .select('student_id')).map((r: any) => r.student_id),
+    );
+    const mayEditLocked = this.canEditScores(true, role, settings);
+
+    let saved = 0;
+    let cleared = 0;
+    let skipped_locked = 0;
+
+    await db.transaction(async (trx) => {
+      for (const row of scores) {
+        if (lockedIds.has(row.student_id) && !mayEditLocked) { skipped_locked++; continue; }
+        const student = await trx('students').where({ id: row.student_id, tenant_id: tenantId }).first('id');
+        if (!student) continue;
+
+        const cell = { tenant_id: tenantId, class_id, subject_id, student_id: row.student_id, term, academic_year };
+        if (row.test1 == null && row.test2 == null) {
+          cleared += await trx('sl_score_drafts').where(cell).del();
+          continue;
+        }
+        await trx('sl_score_drafts')
+          .insert({ ...cell, test1: row.test1, test2: row.test2, saved_by: userId })
+          .onConflict(['student_id', 'subject_id', 'class_id', 'term', 'academic_year'])
+          .merge({ test1: row.test1, test2: row.test2, saved_by: userId, updated_at: trx.fn.now() });
+        saved++;
+      }
+    });
+
+    logger.info(`SL score draft saved: ${saved} students (${cleared} cleared, ${skipped_locked} locked), subject ${subject_id}, ${term} ${academic_year}`);
+    return { saved, cleared, skipped_locked };
+  }
+
+  /** Throw away the whole draft of one subject+class+term. */
+  async discardScoreDraft(
+    tenantId: string,
+    userId: string,
+    params: { class_id?: string; subject_id?: string; term?: string; academic_year?: string },
+    ctx?: { role?: string },
+  ): Promise<{ discarded: number }> {
+    const { class_id, subject_id, term } = params;
+    const role = ctx?.role ?? 'principal';
+    if (!class_id || !subject_id || !params.academic_year || !term) {
+      throw new Error('class_id, subject_id, academic_year and term are required');
+    }
+    if (!(SL_TERMS as readonly string[]).includes(term)) throw new Error('Invalid term');
+
+    await this.assertClassInTenant(class_id, tenantId);
+    const academic_year = await this.assertClassYear(class_id, params.academic_year, role);
+    await this.assertTeacherScope(userId, tenantId, role, class_id, subject_id);
+
+    const discarded = await db('sl_score_drafts').where({ tenant_id: tenantId, class_id, subject_id, term, academic_year }).del();
+    return { discarded };
+  }
+
+  /** The scores are final now: drop their drafts. Best effort, it must never block saving real scores. */
+  private async clearScoreDrafts(
+    tenantId: string,
+    classId: string,
+    subjectId: string,
+    term: string,
+    academicYear: string,
+    studentIds: string[],
+  ): Promise<void> {
+    const ids = studentIds.filter(Boolean);
+    if (!ids.length) return;
+    try {
+      await db('sl_score_drafts')
+        .where({ tenant_id: tenantId, class_id: classId, subject_id: subjectId, term, academic_year: academicYear })
+        .whereIn('student_id', ids)
+        .del();
+    } catch (err: any) {
+      logger.warn(`Could not clear score drafts: ${err?.message}`);
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────────────

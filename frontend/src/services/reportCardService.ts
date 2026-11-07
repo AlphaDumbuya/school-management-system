@@ -118,6 +118,15 @@ export interface ScoreGridRow {
   test2: number | null;
   mean: number | null;
   subject_rank: number | null;
+  /** The saved (real) scores are locked. */
+  is_locked?: boolean;
+  /** This user may still change this student's scores (false when locked and the principal has not allowed it). */
+  can_edit?: boolean;
+  /** An unsubmitted draft exists. Drafts are not counted in ranks, report cards or what students see. */
+  has_draft?: boolean;
+  draft_test1?: number | null;
+  draft_test2?: number | null;
+  draft_saved_at?: string | null;
 }
 
 export interface SaveScoresPayload {
@@ -262,6 +271,16 @@ export const reportCardService = {
   /** Bulk-save Test1/Test2 for a class+subject+term */
   async saveScores(payload: SaveScoresPayload) {
     return apiClient.post(`${BASE}/scores`, payload);
+  },
+
+  /** Save Test1/Test2 as a DRAFT: never locked, not counted anywhere until submitted with saveScores. */
+  async saveScoreDraft(payload: SaveScoresPayload) {
+    return apiClient.put(`${BASE}/scores/draft`, payload);
+  },
+
+  /** Throw away the draft of a class+subject+term. */
+  async discardScoreDraft(params: { class_id: string; subject_id: string; term: SLTerm; academic_year: string }) {
+    return apiClient.delete(`${BASE}/scores/draft`, { params });
   },
 
   /** Save affective + psychomotor ratings (two ratings per trait) for a student+term */

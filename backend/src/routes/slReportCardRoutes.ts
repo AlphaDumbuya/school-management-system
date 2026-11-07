@@ -89,7 +89,14 @@ router.get('/grid', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole
       term as string,
       academic_year as string,
     );
-    res.json({ success: true, data: grid });
+    // Lock state + any saved draft per student, for the entry screen.
+    const withDrafts = await slReportCardService.attachDraftsToGrid(
+      tenant(req),
+      req.user!.role,
+      { class_id: class_id as string, subject_id: subject_id as string, term: term as string, academic_year: academic_year as string },
+      grid,
+    );
+    res.json({ success: true, data: withDrafts });
   } catch (error: any) {
     if (error?.message?.includes('assigned') || error?.message?.includes('authorized') || error?.message?.includes('Teacher profile')) {
       return res.status(403).json({ success: false, error: error.message });
@@ -120,6 +127,61 @@ router.post(
         error.message?.includes('locked') || error.message?.includes('authorized')
       ) {
         return res.status(403).json({ success: false, error: error.message });
+      }
+      next(error);
+    }
+  },
+);
+
+// ── Score drafts (work in progress, never locked, never counted) ────────────
+
+/**
+ * PUT /scores/draft
+ * Save Test1/Test2 as a draft. Does not rank, summarise, lock or publish anything.
+ */
+router.put(
+  '/scores/draft',
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await slReportCardService.saveScoreDraft(
+        tenant(req), req.user!.id, req.body, { role: req.user!.role },
+      );
+      const note = result.skipped_locked ? ` (${result.skipped_locked} locked, left out)` : '';
+      res.json({ success: true, message: `Draft saved${note}`, data: result });
+    } catch (error: any) {
+      logger.error('Error saving SL score draft:', error);
+      const m: string = error.message || '';
+      if (m.includes('required') || m.includes('between') || m.includes('Invalid')) {
+        return res.status(400).json({ success: false, error: m });
+      }
+      if (m.includes('assigned') || m.includes('authorized') || m.includes('past academic year') || m.includes('Teacher profile')) {
+        return res.status(403).json({ success: false, error: m });
+      }
+      next(error);
+    }
+  },
+);
+
+/**
+ * DELETE /scores/draft?class_id&subject_id&term&academic_year
+ * Throw away the draft of one class+subject+term.
+ */
+router.delete(
+  '/scores/draft',
+  authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await slReportCardService.discardScoreDraft(
+        tenant(req), req.user!.id, req.query as any, { role: req.user!.role },
+      );
+      res.json({ success: true, message: 'Draft discarded', data: result });
+    } catch (error: any) {
+      logger.error('Error discarding SL score draft:', error);
+      const m: string = error.message || '';
+      if (m.includes('required') || m.includes('Invalid')) return res.status(400).json({ success: false, error: m });
+      if (m.includes('assigned') || m.includes('authorized') || m.includes('past academic year') || m.includes('Teacher profile')) {
+        return res.status(403).json({ success: false, error: m });
       }
       next(error);
     }
@@ -324,6 +386,11 @@ router.get('/student/:studentId/summary', authorize(UserRole.PRINCIPAL, UserRole
   try {
     // Teachers: only students who are (or were) in one of their classes.
     if (req.user!.role === 'teacher') {
+      try {
+        await slReportCardService.assertTeacherMayViewResults(tenant(req), req.user!.role);
+      } catch (e: any) {
+        return res.status(403).json({ success: false, error: e.message });
+      }
       const { teacherCanAccessStudent } = await import('../utils/teacherScope.js');
       if (!(await teacherCanAccessStudent(req.user!.id, tenant(req), req.params.studentId))) {
         return res.status(403).json({ success: false, error: 'You can only view students in your classes' });

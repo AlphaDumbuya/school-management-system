@@ -31,7 +31,7 @@ const TOGGLES: { key: keyof ReportSettings; label: string; desc: string; icon: R
   {
     key: 'auto_lock_on_entry',
     label: 'Auto-lock scores on entry',
-    desc: 'Once a teacher saves scores for a subject/term, they are locked to prevent later manipulation.',
+    desc: 'Once a teacher submits scores for a subject/term, they are locked to prevent later manipulation. Teachers can still keep unfinished work as a draft, which is never locked and never counted.',
     icon: <Lock size={16} />,
   },
   {
