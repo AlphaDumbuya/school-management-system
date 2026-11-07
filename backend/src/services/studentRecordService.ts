@@ -238,8 +238,9 @@ function issueVerifyToken(tenantId: string, studentId: string, linkId: string): 
 function readVerifyToken(token: unknown): { t: string; s: string; l: string } | null {
   const [body, sig, extra] = String(token || '').split('.');
   if (!body || !sig || extra !== undefined) return null;
-  const expected = Buffer.from(signBody(body));
-  const given = Buffer.from(sig);
+  // Constant-time comparison of two equal-length digests (hex, so the comparison is on plain bytes on every Node typing).
+  const expected = Buffer.from(signBody(body), 'utf8') as unknown as Uint8Array;
+  const given = Buffer.from(sig, 'utf8') as unknown as Uint8Array;
   if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) return null;
   try {
     const p = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
