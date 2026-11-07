@@ -127,6 +127,53 @@ export interface ScoreGridRow {
   draft_test1?: number | null;
   draft_test2?: number | null;
   draft_saved_at?: string | null;
+  /** When these scores were last saved, and by whom. */
+  updated_at?: string | null;
+  entered_by_name?: string | null;
+}
+
+/** What to know before releasing a class's results. */
+export interface ReleaseCheck {
+  students: number;
+  already_released: boolean;
+  terms: Array<{
+    term: string;
+    subjects_total: number;
+    subjects_complete: number;
+    subjects_partial: Array<{ name: string; entered: number; total: number }>;
+    subjects_empty: string[];
+    drafts: number;
+    locked: number;
+    scores: number;
+  }>;
+  ratings_incomplete: number;
+  editing: { auto_lock_on_entry: boolean; allow_teacher_edit_after_lock: boolean; released_scores_editable_by_teachers: boolean };
+}
+
+/** One student's place in the ratings work of a class and term. */
+export interface ClassRatingsRow {
+  student_id: string;
+  roll_number: string | null;
+  student_name: string;
+  /** Affective traits rated, out of 12. */
+  affective: number;
+  /** Psychomotor skills rated, out of 12. */
+  psychomotor: number;
+  conduct: string | null;
+  has_comment: boolean;
+}
+
+/** How far along one subject is for a class and term. */
+export interface SubjectProgress {
+  subject_id: string;
+  name: string;
+  code: string | null;
+  /** Students with a score. */
+  entered: number;
+  /** Students in the class. */
+  total: number;
+  locked: number;
+  drafts: number;
 }
 
 export interface SaveScoresPayload {
@@ -273,6 +320,29 @@ export const reportCardService = {
     return apiClient.post(`${BASE}/scores`, payload);
   },
 
+  /** Every student of a class with how far their ratings and conduct are for a term. */
+  async getClassRatings(params: { class_id: string; term: SLTerm; academic_year: string }) {
+    return apiClient.get<{ success: boolean; data: ClassRatingsRow[] }>(`${BASE}/ratings/class`, { params });
+  },
+
+  /** Apply the same ratings and/or conduct to many students of a class and term. Blank traits are left alone. */
+  async saveBulkRatings(payload: {
+    class_id: string;
+    academic_year: string;
+    term: SLTerm;
+    student_ids: string[];
+    affective?: Record<number, { r1: number | null; r2: number | null }>;
+    psychomotor?: Record<number, { r1: number | null; r2: number | null }>;
+    conduct?: string;
+  }) {
+    return apiClient.post<{ success: boolean; message: string; data: { saved: number; failed: Array<{ student_id: string; error: string }> } }>(`${BASE}/ratings/bulk`, payload);
+  },
+
+  /** Per subject of a class: how many students have scores, how many are locked, how many drafts. */
+  async getSubjectProgress(params: { class_id: string; term: SLTerm; academic_year: string }) {
+    return apiClient.get<{ success: boolean; data: SubjectProgress[] }>(`${BASE}/subject-progress`, { params });
+  },
+
   /** Save Test1/Test2 as a DRAFT: never locked, not counted anywhere until submitted with saveScores. */
   async saveScoreDraft(payload: SaveScoresPayload) {
     return apiClient.put(`${BASE}/scores/draft`, payload);
@@ -377,8 +447,13 @@ export const reportCardService = {
   },
 
   /** Publish / unpublish results for a class (gates parent/student visibility). */
-  async setPublication(payload: { class_id: string; academic_year: string; term?: SLTerm | null; published: boolean; reason?: string | null }) {
+  async setPublication(payload: { class_id: string; academic_year: string; term?: SLTerm | null; published: boolean; reason?: string | null; lock_scores?: boolean }) {
     return apiClient.post(`${BASE}/publish`, payload);
+  },
+
+  /** What to know before releasing: who is told, what is unfinished, what restricts editing. Term '' = whole year. */
+  async getReleaseCheck(params: { class_id: string; academic_year: string; term: '' | SLTerm }) {
+    return apiClient.get<{ success: boolean; data: ReleaseCheck }>(`${BASE}/release-check`, { params });
   },
 
   /** Publish history — which classes/terms have been released, when, by whom. */

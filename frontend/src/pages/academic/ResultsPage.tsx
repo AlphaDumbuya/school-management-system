@@ -26,6 +26,7 @@ import { SL_TERMS, SLTerm, SL_GRADING_METHOD, CONDUCT_CODES, getGradingMethod, r
 import { StudentResultsView } from './components/StudentResultsView';
 import { ParentResultsView } from './components/ParentResultsView';
 import { ClassRankingView } from './components/ClassRankingView';
+import { ClassRatingsPanel } from './components/ClassRatingsPanel';
 
 export const ResultsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -269,31 +270,27 @@ export const ResultsPage: React.FC = () => {
         {tab === 'ratings' && (
           <RoleGuard roles={['principal', 'super_admin', 'teacher']} fallback={<p className="text-sm text-gray-500">You do not have permission to enter ratings.</p>}>
             <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                 <SearchableSelect label="Class" options={classOptions} value={ratingsClassId} onChange={(v) => { setRatingsClassId(v); setRatingsStudentId(''); }} placeholder="Select class..." />
-                <SearchableSelect label="Student" options={studentOptions} value={ratingsStudentId} onChange={setRatingsStudentId} placeholder="Select student..." />
                 <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Term</label>
-                  <select value={ratingsTerm} onChange={(e) => setRatingsTerm(e.target.value as SLTerm)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300">
+                  <label htmlFor="ratings-term" className="text-sm font-medium text-gray-700 dark:text-gray-300">Term</label>
+                  <select id="ratings-term" value={ratingsTerm} onChange={(e) => setRatingsTerm(e.target.value as SLTerm)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300">
                     {SL_TERMS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
               </div>
-
-              {ratingsStudentId ? (
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{selectedStudent ? `${selectedStudent.first_name} ${selectedStudent.last_name}` : ''}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Enter 12 affective + 12 psychomotor ratings, attendance & conduct for {ratingsTerm.replace('_', ' ')}.</p>
-                  </div>
-                  <Button variant="default" size="sm" onClick={() => setRatingsModalOpen(true)} className="w-full sm:w-auto flex-shrink-0 whitespace-nowrap">
-                    <Star size={15} className="mr-1.5" /> Enter Ratings
-                  </Button>
-                </div>
+              {ratingsClassId ? (
+                <ClassRatingsPanel
+                  classId={ratingsClassId}
+                  className={classOptions.find((o: any) => o.value === ratingsClassId)?.label ?? ''}
+                  academicYear={academicYear}
+                  term={ratingsTerm}
+                  onRate={(id) => { setRatingsStudentId(id); setRatingsModalOpen(true); }}
+                />
               ) : (
                 <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl">
                   <BookOpen size={28} className="mx-auto mb-2 text-gray-400" />
-                  Select a class and student to enter affective / psychomotor ratings.
+                  Select a class to see all its students and enter affective / psychomotor ratings, one by one or for many at once.
                 </div>
               )}
             </div>

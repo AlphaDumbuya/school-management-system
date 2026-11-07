@@ -15,6 +15,7 @@ import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
 import { showToast } from '@utils/toast';
 import { classesService } from '@services/classesService';
 import { reportCardService, ReportSettings, SL_TERMS, SLTerm } from '@services/reportCardService';
+import { ReleaseDialog } from './ReleaseDialog';
 
 interface Props {
   academicYear: string;
@@ -63,6 +64,8 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
   const [pubClassId, setPubClassId] = useState('');
   const [pubTerm, setPubTerm] = useState<'' | SLTerm>('');
   const [publishing, setPublishing] = useState(false);
+  // The release dialog: nothing is released until the principal confirms in it.
+  const [releaseOpen, setReleaseOpen] = useState(false);
 
   // Unrelease-with-reason modal. `target` identifies which class/term to pull
   // back; when null the modal is closed.
@@ -117,7 +120,7 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
 
   const handlePublish = async (
     published: boolean,
-    override?: { classId: string; term: '' | SLTerm; reason?: string },
+    override?: { classId: string; term: '' | SLTerm; reason?: string; lockScores?: boolean },
   ) => {
     const classId = override?.classId ?? pubClassId;
     const term = override?.term ?? pubTerm;
@@ -130,6 +133,7 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
         term: term || null,
         published,
         reason: override?.reason ?? null,
+        lock_scores: published && override?.lockScores ? true : undefined,
       });
       const label = term ? SL_TERMS.find((t) => t.value === term)?.label || term : 'Whole year';
       const cls = classOptions.find((c) => c.value === classId)?.label || 'class';
@@ -221,7 +225,7 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button onClick={() => handlePublish(true)} disabled={publishing || !pubClassId} className="gap-1.5">
+          <Button onClick={() => setReleaseOpen(true)} disabled={publishing || !pubClassId} className="gap-1.5">
             {publishing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Release
           </Button>
           <Button
@@ -410,6 +414,19 @@ export const ReportSettingsPanel: React.FC<Props> = ({ academicYear }) => {
         </div>,
         document.body,
       )}
+      <ReleaseDialog
+        isOpen={releaseOpen}
+        onClose={() => setReleaseOpen(false)}
+        classId={pubClassId}
+        className={classOptions.find((c) => c.value === pubClassId)?.label || 'this class'}
+        academicYear={academicYear}
+        term={pubTerm}
+        busy={publishing}
+        onConfirm={async (lockScores) => {
+          await handlePublish(true, { classId: pubClassId, term: pubTerm, lockScores });
+          setReleaseOpen(false);
+        }}
+      />
     </div>
   );
 };

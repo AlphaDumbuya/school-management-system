@@ -133,6 +133,29 @@ router.post(
   },
 );
 
+/**
+ * GET /subject-progress?class_id&term&academic_year
+ * Per subject of a class: how many students have scores, how many are locked, how many drafts.
+ */
+router.get('/subject-progress', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { class_id, term, academic_year } = req.query;
+    if (!class_id || !term || !academic_year) {
+      return res.status(400).json({ success: false, error: 'class_id, term, academic_year are required' });
+    }
+    const data = await slReportCardService.getSubjectProgress(
+      tenant(req), req.user!.id, req.user!.role, class_id as string, term as string, academic_year as string,
+    );
+    res.json({ success: true, data });
+  } catch (error: any) {
+    const m: string = error?.message || '';
+    if (m.includes('Invalid')) return res.status(400).json({ success: false, error: m });
+    if (m.includes('assigned') || m.includes('authorized') || m.includes('Teacher profile')) return res.status(403).json({ success: false, error: m });
+    logger.error('Error getting subject progress:', error);
+    next(error);
+  }
+});
+
 // ── Score drafts (work in progress, never locked, never counted) ────────────
 
 /**
@@ -187,6 +210,70 @@ router.delete(
     }
   },
 );
+
+/**
+ * GET /ratings/class?class_id&term&academic_year
+ * Every student of the class with how many Affective / Psychomotor traits are rated and the conduct, for a term.
+ */
+router.get('/ratings/class', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { class_id, term, academic_year } = req.query;
+    if (!class_id || !term || !academic_year) {
+      return res.status(400).json({ success: false, error: 'class_id, term, academic_year are required' });
+    }
+    const data = await slReportCardService.getClassRatingsOverview(
+      tenant(req), req.user!.id, req.user!.role, class_id as string, term as string, academic_year as string,
+    );
+    res.json({ success: true, data });
+  } catch (error: any) {
+    const m: string = error?.message || '';
+    if (m.includes('Invalid')) return res.status(400).json({ success: false, error: m });
+    if (m.includes('assigned') || m.includes('authorized') || m.includes('Teacher profile')) return res.status(403).json({ success: false, error: m });
+    logger.error('Error getting class ratings overview:', error);
+    next(error);
+  }
+});
+
+/**
+ * POST /ratings/bulk
+ * Apply the same ratings and/or conduct to many students of one class and term.
+ */
+router.post('/ratings/bulk', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.TEACHER), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await slReportCardService.saveBulkRatings(tenant(req), req.user!.id, req.body, { role: req.user!.role });
+    const note = result.failed.length ? ` (${result.failed.length} could not be saved)` : '';
+    res.json({ success: true, message: `Applied to ${result.saved} students${note}`, data: result });
+  } catch (error: any) {
+    const m: string = error?.message || '';
+    if (m.includes('required') || m.includes('Choose') || m.includes('Too many') || m.includes('Invalid') || m.includes('between')) {
+      return res.status(400).json({ success: false, error: m });
+    }
+    if (m.includes('assigned') || m.includes('authorized') || m.includes('Teacher profile') || m.includes('past academic year')) {
+      return res.status(403).json({ success: false, error: m });
+    }
+    logger.error('Error saving bulk ratings:', error);
+    next(error);
+  }
+});
+
+/**
+ * GET /release-check?class_id&academic_year&term (term empty = whole year)
+ * What to know before releasing a class's results. Principal only. Read only.
+ */
+router.get('/release-check', authorize(UserRole.PRINCIPAL, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { class_id, academic_year } = req.query;
+    const term = typeof req.query.term === 'string' && req.query.term && req.query.term !== 'full' ? req.query.term : null;
+    if (!class_id || !academic_year) return res.status(400).json({ success: false, error: 'class_id and academic_year are required' });
+    const data = await slReportCardService.getReleaseCheck(tenant(req), class_id as string, academic_year as string, term);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    const m: string = error?.message || '';
+    if (m.includes('Invalid')) return res.status(400).json({ success: false, error: m });
+    logger.error('Error getting release check:', error);
+    next(error);
+  }
+});
 
 // ── Domain ratings (affective / psychomotor) ────────────────────────────────
 
@@ -329,7 +416,9 @@ router.post(
       } else if (ap && ap.reason === 'no_next_class') {
         message += ' — auto-promotion skipped: set a "next class" on this class first';
       }
-      res.json({ success: true, message, auto_promotion: ap ?? null });
+      const locked = result?.scores_locked ?? 0;
+      if (locked) message += ` — ${locked} scores locked`;
+      res.json({ success: true, message, auto_promotion: ap ?? null, scores_locked: locked });
     } catch (error: any) {
       logger.error('Error publishing SL results:', error);
       if (error.message?.includes('Invalid')) return res.status(400).json({ success: false, error: error.message });

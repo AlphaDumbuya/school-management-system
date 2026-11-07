@@ -356,8 +356,8 @@ export class SLReportCardService {
   async setPublication(
     tenantId: string,
     userId: string,
-    payload: { class_id: string; academic_year: string; term?: string | null; published: boolean; reason?: string | null },
-  ): Promise<{ auto_promotion?: { ran: boolean; reason?: string; promoted: number; repeated: number; graduated: number; skipped: number } }> {
+    payload: { class_id: string; academic_year: string; term?: string | null; published: boolean; reason?: string | null; lock_scores?: boolean },
+  ): Promise<{ auto_promotion?: { ran: boolean; reason?: string; promoted: number; repeated: number; graduated: number; skipped: number }; scores_locked?: number }> {
     await this.assertClassInTenant(payload.class_id, tenantId);
     payload = { ...payload, academic_year: await this.assertClassYear(payload.class_id, payload.academic_year, 'principal') };
     // No term / 'full' = the whole year. Anything else must be a real term: a
@@ -394,6 +394,11 @@ export class SLReportCardService {
       });
     }
 
+    // Optional: lock the submitted scores of what was just released, so they can no longer be changed by teachers.
+    let scoresLocked = 0;
+    if (payload.published && payload.lock_scores) {
+      scoresLocked = await this.lockClassScores(tenantId, userId, payload.class_id, payload.academic_year, term);
+    }
     // Notify guardians/students, best-effort, never blocks the action:
     //  - on publish → "results are available"
     //  - on unpublish → "results withdrawn" + the reason (if provided)
@@ -418,7 +423,7 @@ export class SLReportCardService {
             tenantId, payload.class_id, payload.academic_year, userId,
           );
           logger.info(`Auto-promotion on publish for class ${payload.class_id}:`, result);
-          return { auto_promotion: result };
+          return { auto_promotion: result, scores_locked: scoresLocked };
         } catch (err) {
           // Never block publishing because promotion failed.
           logger.error('Auto-promotion on publish failed:', err);
@@ -426,7 +431,7 @@ export class SLReportCardService {
       }
     }
 
-    return {};
+    return { scores_locked: scoresLocked };
   }
 
   /**
@@ -1137,6 +1142,282 @@ export class SLReportCardService {
     }
   }
 
+  /**
+   * Which subjects of a class have scores for a term, and how far along they are. Feeds the picker on the
+   * Results page. A teacher only sees the subjects they may enter; staff see all. When the class has no
+   * subjects mapped to it (common), every active subject is listed so the page still works.
+   * Counts use the class roster only. No computed results (ranks, averages) are returned.
+   */
+  async getSubjectProgress(
+    tenantId: string,
+    userId: string,
+    role: string,
+    classId: string,
+    term: string,
+    academicYear: string,
+  ): Promise<Array<{ subject_id: string; name: string; code: string | null; entered: number; total: number; locked: number; drafts: number }>> {
+    if (!(SL_TERMS as readonly string[]).includes(term)) throw new Error('Invalid term');
+    await this.assertClassInTenant(classId, tenantId);
+    await this.assertTeacherScope(userId, tenantId, role, classId);
+
+    const rosterRows = await db('enrollments')
+      .join('students', 'enrollments.student_id', 'students.id')
+      .where('enrollments.class_id', classId)
+      .whereIn('enrollments.status', await this.rosterStatuses(classId))
+      .where('students.tenant_id', tenantId)
+      .distinct('students.id as id');
+    const roster = new Set<string>(rosterRows.map((r: any) => r.id));
+
+    let subjectIds: string[] | null = null;
+    if (role === 'teacher') subjectIds = await this.getTeacherSubjectIdsForClass(userId, tenantId, classId);
+    // The class's own subjects when it has any; otherwise every active subject of this school.
+    const mapped = await db('class_subjects').where('class_id', classId).distinct('subject_id');
+    let subjectQuery = db('subjects').where('tenant_id', tenantId).select('id', 'name', 'code').orderBy('name', 'asc');
+    if (mapped.length) subjectQuery = subjectQuery.whereIn('id', mapped.map((m: any) => m.subject_id));
+    else subjectQuery = subjectQuery.where((q) => q.where('status', 'active').orWhereNull('status'));
+    let subjects: any[] = await subjectQuery;
+    if (subjectIds) subjects = subjects.filter((s) => subjectIds!.map(String).includes(String(s.id)));
+
+    const cell = { tenant_id: tenantId, class_id: classId, term, academic_year: academicYear };
+    const results = await db('sl_subject_results').where(cell).select('subject_id', 'student_id', 'test1', 'test2', 'is_locked');
+    const drafts = await db('sl_score_drafts')
+      .where(cell)
+      .select('subject_id', 'student_id')
+      .catch(() => [] as any[]);
+
+    return subjects.map((s) => {
+      const mine = results.filter((r: any) => r.subject_id === s.id && roster.has(r.student_id));
+      return {
+        subject_id: s.id,
+        name: s.name,
+        code: s.code ?? null,
+        entered: mine.filter((r: any) => r.test1 != null || r.test2 != null).length,
+        total: roster.size,
+        locked: mine.filter((r: any) => r.is_locked === true).length,
+        drafts: drafts.filter((d: any) => d.subject_id === s.id && roster.has(d.student_id)).length,
+      };
+    });
+  }
+
+  /**
+   * Every student of a class with how far their Affective and Psychomotor ratings and their conduct are for a term.
+   * Feeds the class list on the Ratings tab. A teacher must be assigned to the class. Counts only: the ratings
+   * themselves are not returned.
+   */
+  async getClassRatingsOverview(
+    tenantId: string,
+    userId: string,
+    role: string,
+    classId: string,
+    term: string,
+    academicYear: string,
+  ): Promise<Array<{ student_id: string; roll_number: string | null; student_name: string; affective: number; psychomotor: number; conduct: string | null; has_comment: boolean }>> {
+    if (!(SL_TERMS as readonly string[]).includes(term)) throw new Error('Invalid term');
+    await this.assertClassInTenant(classId, tenantId);
+    await this.assertTeacherScope(userId, tenantId, role, classId);
+
+    const roster = await db('enrollments')
+      .join('students', 'enrollments.student_id', 'students.id')
+      .leftJoin('users', 'students.user_id', 'users.id')
+      .where('enrollments.class_id', classId)
+      .whereIn('enrollments.status', await this.rosterStatuses(classId))
+      .where('students.tenant_id', tenantId)
+      .distinctOn('students.id')
+      .select(
+        'students.id as student_id',
+        'students.student_id as roll_number',
+        db.raw("COALESCE(users.first_name || ' ' || users.last_name, students.student_id) as student_name"),
+      )
+      .orderBy('students.id');
+    roster.sort((a: any, b: any) => String(a.roll_number ?? '').localeCompare(String(b.roll_number ?? ''), undefined, { numeric: true }));
+
+    const cell = { tenant_id: tenantId, class_id: classId, term, academic_year: academicYear };
+    const ratings = await db('sl_domain_ratings').where(cell).select('student_id', 'domain', 'trait_index', 'rating1', 'rating2');
+    const summaries = await db('sl_term_summaries').where(cell).select('student_id', 'conduct', 'teacher_comment');
+
+    return roster.map((s: any) => {
+      const mine = ratings.filter((r: any) => r.student_id === s.student_id && (r.rating1 != null || r.rating2 != null));
+      const sum = summaries.find((x: any) => x.student_id === s.student_id);
+      return {
+        student_id: s.student_id,
+        roll_number: s.roll_number ?? null,
+        student_name: s.student_name,
+        affective: new Set(mine.filter((r: any) => r.domain === 'affective').map((r: any) => r.trait_index)).size,
+        psychomotor: new Set(mine.filter((r: any) => r.domain === 'psychomotor').map((r: any) => r.trait_index)).size,
+        conduct: sum?.conduct ?? null,
+        has_comment: !!(sum?.teacher_comment && String(sum.teacher_comment).trim()),
+      };
+    });
+  }
+
+  /**
+   * Apply the SAME ratings (and/or conduct) to many students of one class and term in one go.
+   * Each student is saved through the normal single-student methods, so every rule there still applies
+   * (class and year checks, teacher scope, 1 to 5). Traits left blank are not touched. One student failing
+   * does not stop the others; the answer says who was saved and who was not.
+   */
+  async saveBulkRatings(
+    tenantId: string,
+    userId: string,
+    payload: {
+      class_id: string;
+      academic_year: string;
+      term: SLTerm;
+      student_ids: string[];
+      affective?: Record<number, { r1: number | null; r2: number | null }>;
+      psychomotor?: Record<number, { r1: number | null; r2: number | null }>;
+      conduct?: string;
+    },
+    ctx?: { role?: string },
+  ): Promise<{ saved: number; failed: Array<{ student_id: string; error: string }> }> {
+    const { class_id, term } = payload;
+    const ids = Array.from(new Set((payload.student_ids || []).filter(Boolean)));
+    if (!class_id || !payload.academic_year || !term || !ids.length) {
+      throw new Error('class_id, academic_year, term and student_ids[] are required');
+    }
+    if (ids.length > 300) throw new Error('Too many students in one go (limit 300)');
+    const hasAff = payload.affective && Object.values(payload.affective).some((v) => v && (v.r1 != null || v.r2 != null));
+    const hasPsy = payload.psychomotor && Object.values(payload.psychomotor).some((v) => v && (v.r1 != null || v.r2 != null));
+    if (!hasAff && !hasPsy && !payload.conduct) throw new Error('Choose at least one rating or a conduct to apply');
+
+    const role = ctx?.role ?? 'principal';
+    const failed: Array<{ student_id: string; error: string }> = [];
+    let saved = 0;
+    for (const student_id of ids) {
+      try {
+        if (hasAff || hasPsy) {
+          await this.saveDomainRatings(tenantId, userId, {
+            student_id, class_id, academic_year: payload.academic_year, term,
+            affective: payload.affective || {}, psychomotor: payload.psychomotor || {},
+          }, { role });
+        }
+        if (payload.conduct) {
+          await this.saveTermRecord(tenantId, userId, {
+            student_id, class_id, academic_year: payload.academic_year, term, conduct: payload.conduct,
+          }, { role });
+        }
+        saved++;
+      } catch (e: any) {
+        failed.push({ student_id, error: e?.message || 'Could not save' });
+      }
+    }
+    logger.info(`SL bulk ratings: ${saved} saved, ${failed.length} failed, ${term} ${payload.academic_year}`);
+    return { saved, failed };
+  }
+
+  /**
+   * What the principal should know BEFORE releasing a class's results (a term, or the whole year when term is null):
+   * who will be told, which subjects are unfinished or still only drafts, what is locked, and the editing rules in force.
+   * Read only. The release itself is setPublication.
+   */
+  async getReleaseCheck(
+    tenantId: string,
+    classId: string,
+    academicYear: string,
+    term: string | null,
+  ): Promise<{
+    students: number;
+    already_released: boolean;
+    terms: Array<{ term: string; subjects_total: number; subjects_complete: number; subjects_partial: Array<{ name: string; entered: number; total: number }>; subjects_empty: string[]; drafts: number; locked: number; scores: number }>;
+    ratings_incomplete: number;
+    editing: { auto_lock_on_entry: boolean; allow_teacher_edit_after_lock: boolean; released_scores_editable_by_teachers: boolean };
+  }> {
+    await this.assertClassInTenant(classId, tenantId);
+    const year = await this.assertClassYear(classId, academicYear, 'principal');
+    if (term && !(SL_TERMS as readonly string[]).includes(term)) throw new Error('Invalid term');
+
+    const roster = await db('enrollments')
+      .join('students', 'enrollments.student_id', 'students.id')
+      .where('enrollments.class_id', classId)
+      .whereIn('enrollments.status', await this.rosterStatuses(classId))
+      .where('students.tenant_id', tenantId)
+      .distinct('students.id as id');
+    const ids = new Set<string>(roster.map((r: any) => r.id));
+
+    const mapped = await db('class_subjects').where('class_id', classId).distinct('subject_id');
+    let sq = db('subjects').where('tenant_id', tenantId).select('id', 'name').orderBy('name', 'asc');
+    if (mapped.length) sq = sq.whereIn('id', mapped.map((m: any) => m.subject_id));
+    else sq = sq.where((q) => q.where('status', 'active').orWhereNull('status'));
+    const subjects: any[] = await sq;
+
+    const termsToCheck = term ? [term] : [...SL_TERMS];
+    const base = { tenant_id: tenantId, class_id: classId, academic_year: year };
+    const results = await db('sl_subject_results').where(base).whereIn('term', termsToCheck).select('subject_id', 'term', 'student_id', 'test1', 'test2', 'is_locked');
+    const drafts = await db('sl_score_drafts').where(base).whereIn('term', termsToCheck).select('subject_id', 'term', 'student_id').catch(() => [] as any[]);
+    const ratings = await db('sl_domain_ratings').where(base).whereIn('term', termsToCheck).select('student_id', 'term', 'domain', 'trait_index', 'rating1', 'rating2');
+
+    const perTerm = termsToCheck.map((t) => {
+      const inTerm = results.filter((r: any) => r.term === t && ids.has(r.student_id));
+      const partial: Array<{ name: string; entered: number; total: number }> = [];
+      const empty: string[] = [];
+      let complete = 0;
+      for (const s of subjects) {
+        const entered = inTerm.filter((r: any) => r.subject_id === s.id && (r.test1 != null || r.test2 != null)).length;
+        if (entered === 0) empty.push(s.name);
+        else if (entered < ids.size) partial.push({ name: s.name, entered, total: ids.size });
+        else complete++;
+      }
+      return {
+        term: t,
+        subjects_total: subjects.length,
+        subjects_complete: complete,
+        subjects_partial: partial,
+        subjects_empty: empty,
+        drafts: drafts.filter((d: any) => d.term === t && ids.has(d.student_id)).length,
+        locked: inTerm.filter((r: any) => r.is_locked === true).length,
+        scores: inTerm.filter((r: any) => r.test1 != null || r.test2 != null).length,
+      };
+    });
+
+    // A student's ratings are incomplete when any term being released has fewer than 12 + 12 traits rated.
+    let ratingsIncomplete = 0;
+    for (const sid of ids) {
+      const short = termsToCheck.some((t) => {
+        const mine = ratings.filter((r: any) => r.student_id === sid && r.term === t && (r.rating1 != null || r.rating2 != null));
+        const n = (d: string) => new Set(mine.filter((r: any) => r.domain === d).map((r: any) => r.trait_index)).size;
+        return n('affective') < 12 || n('psychomotor') < 12;
+      });
+      if (short) ratingsIncomplete++;
+    }
+
+    const settings = await this.getSettings(tenantId);
+    const existing = await db('sl_report_publications')
+      .where({ tenant_id: tenantId, class_id: classId, academic_year: year, term: term ?? null })
+      .first('is_published');
+    return {
+      students: ids.size,
+      already_released: !!existing?.is_published,
+      terms: perTerm,
+      ratings_incomplete: ratingsIncomplete,
+      editing: {
+        auto_lock_on_entry: settings.auto_lock_on_entry,
+        allow_teacher_edit_after_lock: settings.allow_teacher_edit_after_lock,
+        // The server does not stop teachers changing scores of a released term; only locks do.
+        released_scores_editable_by_teachers: true,
+      },
+    };
+  }
+
+  /**
+   * Lock every submitted score of a class for a term (term null = all terms of the year), so teachers can no longer
+   * change them. Principal action, used when results are released. Returns how many scores were newly locked.
+   * `conn` is the database connection; a test passes a transaction it then rolls back.
+   */
+  async lockClassScores(
+    tenantId: string,
+    userId: string,
+    classId: string,
+    academicYear: string,
+    term: string | null,
+    conn: any = db,
+  ): Promise<number> {
+    const q = conn('sl_subject_results').where({ tenant_id: tenantId, class_id: classId, academic_year: academicYear });
+    if (term) q.where('term', term);
+    return q
+      .where((w: any) => w.whereNull('is_locked').orWhere('is_locked', false))
+      .update({ is_locked: true, locked_at: conn.fn.now(), locked_by: userId, updated_at: conn.fn.now() });
+  }
+
   /** Mirrors the lock rule in saveSubjectScores: may this user still change a locked score? */
   private canEditScores(isLocked: boolean, role: string, settings: { allow_teacher_edit_after_lock: boolean }): boolean {
     const isStaffAdmin = role === 'principal' || role === 'super_admin';
@@ -1155,7 +1436,10 @@ export class SLReportCardService {
   ): Promise<any[]> {
     const cell = { tenant_id: tenantId, class_id: key.class_id, subject_id: key.subject_id, term: key.term, academic_year: key.academic_year };
     const settings = await this.getSettings(tenantId);
-    const lockRows = await db('sl_subject_results').where(cell).select('student_id', 'is_locked');
+    const lockRows = await db('sl_subject_results')
+      .leftJoin('users as eb', 'sl_subject_results.entered_by', 'eb.id')
+      .where({ 'sl_subject_results.tenant_id': tenantId, 'sl_subject_results.class_id': key.class_id, 'sl_subject_results.subject_id': key.subject_id, 'sl_subject_results.term': key.term, 'sl_subject_results.academic_year': key.academic_year })
+      .select('sl_subject_results.student_id', 'sl_subject_results.is_locked', 'sl_subject_results.updated_at', db.raw("NULLIF(TRIM(COALESCE(eb.first_name, '') || ' ' || COALESCE(eb.last_name, '')), '') as entered_by_name"));
     const draftRows = await db('sl_score_drafts')
       .where(cell)
       .select('student_id', 'test1', 'test2', 'updated_at')
@@ -1164,6 +1448,7 @@ export class SLReportCardService {
         return [] as any[];
       });
     const lockedBy = new Map<string, boolean>(lockRows.map((r: any) => [r.student_id, r.is_locked === true]));
+    const auditBy = new Map<string, any>(lockRows.map((r: any) => [r.student_id, r]));
     const draftBy = new Map<string, any>(draftRows.map((r: any) => [r.student_id, r]));
     const num = (v: any) => (v == null ? null : Number(v));
     return grid.map((row) => {
@@ -1173,6 +1458,8 @@ export class SLReportCardService {
         ...row,
         // The subject position is a computed result: hidden from teachers when the principal switched viewing off.
         subject_rank: role === 'teacher' && !settings.allow_teacher_view_results ? null : row.subject_rank,
+        updated_at: auditBy.get(row.student_id)?.updated_at ?? null,
+        entered_by_name: auditBy.get(row.student_id)?.entered_by_name ?? null,
         is_locked: locked,
         can_edit: this.canEditScores(locked, role, settings),
         has_draft: !!d,
