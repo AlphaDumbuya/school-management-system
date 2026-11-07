@@ -311,7 +311,7 @@ export const admissionPipelineService = {
     if (body?.enrol_now === true) {
       if (!created.class_applying_for) throw new AppError('Choose a class to enrol into.', 400, 'VALIDATION_ERROR');
       await this.changeStatus(tenantId, user, created.id, { status: 'approved', note: 'Accepted at the office', silent: true });
-      enrolment = await this.enrol(tenantId, user, created.id, { class_id: created.class_applying_for, bill_terms: Array.isArray(body?.bill_terms) ? body.bill_terms : undefined, bill_all: !Array.isArray(body?.bill_terms) });
+      enrolment = await this.enrol(tenantId, user, created.id, { class_id: created.class_applying_for, bill_terms: Array.isArray(body?.bill_terms) ? body.bill_terms : undefined, bill_all: !Array.isArray(body?.bill_terms), house_id: typeof body?.house_id === 'string' ? body.house_id : undefined });
     }
     return { application: await this.get(tenantId, created.id), enrolment };
   },
@@ -432,7 +432,7 @@ export const admissionPipelineService = {
    * Enrol an approved applicant: create the student once, enrol them in a
    * current-year class, link parents and provision logins. Idempotent.
    */
-  async enrol(tenantId: string, user: { id: string; role?: string }, id: string, body: { class_id?: string; allow_over_capacity?: boolean; bill_terms?: string[]; bill_all?: boolean }) {
+  async enrol(tenantId: string, user: { id: string; role?: string }, id: string, body: { class_id?: string; allow_over_capacity?: boolean; bill_terms?: string[]; bill_all?: boolean; house_id?: string }) {
     const pre = await getApp(db, tenantId, id);
     if (pre.student_id) {
       const s = await db('students').where({ id: pre.student_id }).first('id', 'student_id');
@@ -497,9 +497,16 @@ export const admissionPipelineService = {
         guardian_occupation: app.guardian_occupation || null,
       }, user.id);
     } catch (e) { warnings.push('Parent could not be linked automatically. Link them in Student Profiles.'); logger.warn(`Guardian link failed: ${(e as any)?.message || e}`); }
-    // House: drawn now only when the school switched on "draw automatically on enrolment"
-    // (after the parent is linked, so a sibling joins their brother's or sister's house).
-    const house = await houseService.autoAssignOnEnrol(tenantId, user.id, student.id);
+    // House. If staff say the child ALREADY belongs to a house (a school moving to the system with houses in use),
+    // that house is used and nothing is drawn. Otherwise it is drawn now only when the school switched on "draw
+    // automatically on enrolment" (after the parent is linked, so a sibling joins their brother's or sister's house).
+    let house: any = null;
+    try {
+      house = await houseService.autoAssignOnEnrol(tenantId, user.id, student.id, undefined, body?.house_id ? { house_id: body.house_id } : undefined);
+    } catch (e: any) {
+      // The student exists by now: say the house was not set instead of failing the whole enrolment.
+      warnings.push(`The house could not be set (${e?.message || 'unknown reason'}). Set it in Sport House.`);
+    }
     let accounts: any = null;
     try {
       const { provisionStudentAccounts } = await import('@utils/studentAccounts');

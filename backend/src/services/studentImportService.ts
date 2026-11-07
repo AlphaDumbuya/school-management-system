@@ -14,6 +14,7 @@ import { AppError } from '../middleware/errorHandler';
 import { generateNextId } from '../utils/idGenerator';
 import { linkGuardianForStudent } from '../utils/guardianLinking';
 import { houseService } from './houseService';
+import { currentYearClasses } from './admissions/admissionPipelineService';
 import { SubscriptionService } from './subscriptionService';
 
 /** The columns the template exposes → the student field they map to. */
@@ -47,10 +48,11 @@ export interface ImportResult {
 
 /** Build a downloadable CSV template with the expected headers + one sample row. */
 export function buildStudentTemplate(): string {
-  const headers = IMPORT_COLUMNS.map((c) => c.header);
+  // "House" is optional: fill it only for students who ALREADY belong to one of the school's sport houses.
+  const headers = [...IMPORT_COLUMNS.map((c) => c.header), 'House'];
   const sample = [
     'Aminata', 'Kamara', 'female', '2014-05-12', '', '+23276000000',
-    '12 Circular Rd, Freetown', 'Mariama Kamara', '+23276111111', '', 'Mother', 'JSS 1',
+    '12 Circular Rd, Freetown', 'Mariama Kamara', '+23276111111', '', 'Mother', 'JSS 1', '',
   ];
   const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
   return headers.map(esc).join(',') + '\n' + sample.map(esc).join(',') + '\n';
@@ -97,6 +99,9 @@ export async function importStudents(
   fieldByNorm.set('dateofbirth', 'date_of_birth');
   fieldByNorm.set('dob', 'date_of_birth');
   fieldByNorm.set('class', 'class_name');
+  // Optional: the sport house a student ALREADY belongs to (by the house's name).
+  fieldByNorm.set('house', 'house_name');
+  fieldByNorm.set('sporthouse', 'house_name');
 
   const get = (rec: Record<string, string>, field: string): string => {
     for (const [k, v] of Object.entries(rec)) {
@@ -112,13 +117,19 @@ export async function importStudents(
   const maxStudents = sub?.max_students ?? 999999;
   const headroom = Math.max(0, maxStudents - currentCount);
 
-  // Pre-load classes for name→id resolution (tenant-scoped).
-  const classes = await db('classes').where({ tenant_id: tenantId }).select('id', 'name');
+  // Pre-load classes for name→id resolution. `classes` has no tenant_id column (a class belongs to a school through its
+  // academic session), so this reuses the school-scoped list the admissions enrolment uses: the ACTIVE year's classes,
+  // which are the ones a student can be enrolled into. (The old `where({ tenant_id })` made every import fail.)
+  const classes = await currentYearClasses(tenantId);
   const classByName = new Map<string, string>();
   classes.forEach((c: any) => classByName.set(norm(c.name), c.id));
 
+  // The school's own houses, for the optional House column.
+  const houseRows = await db('houses').where({ tenant_id: tenantId, is_active: true }).select('id', 'name');
+  const houseByName = new Map<string, string>();
+  houseRows.forEach((h: any) => houseByName.set(norm(h.name), h.id));
   const errors: ImportRowError[] = [];
-  const valid: Array<{ data: any; className: string; guardian: any }> = [];
+  const valid: Array<{ data: any; className: string; guardian: any; houseId: string | null }> = [];
   const seenEmails = new Set<string>();
 
   records.forEach((rec, i) => {
@@ -158,7 +169,17 @@ export async function importStudents(
       return;
     }
 
+    const houseName = get(rec, 'house_name');
+    let houseId: string | null = null;
+    if (houseName) {
+      houseId = houseByName.get(norm(houseName)) || null;
+      if (!houseId) {
+        errors.push({ row: rowNo, message: `House "${houseName}" not found. Create it in Sport House first, correct the name, or leave House blank.` });
+        return;
+      }
+    }
     valid.push({
+      houseId,
       data: {
         first_name: first,
         last_name: last,
@@ -240,12 +261,17 @@ export async function importStudents(
           ).catch(() => undefined);
         }
 
+        // A house the student already belongs to: set it now, in the same transaction, with no draw.
+        if (inserted?.id && item.houseId) {
+          await houseService.assignExisting(tenantId, createdBy ?? null, inserted.id, { house_id: item.houseId }, trx);
+        }
         imported += 1;
         if (inserted?.id) importedIds.push(inserted.id);
       }
     });
     // Sport house (only if the school draws automatically). A big import is left for the live ballot instead.
     if (importedIds.length > 0 && importedIds.length <= 25) {
+      // (A student who already has a house is never drawn again: draw() refuses them.)
       for (const id of importedIds) await houseService.autoAssignOnEnrol(tenantId, createdBy ?? null, id);
     }
   }

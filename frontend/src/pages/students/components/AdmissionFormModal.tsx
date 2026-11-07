@@ -156,6 +156,8 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
   const needsCaptcha = !!publicSchoolSlug && !!captchaSiteKey;
   const isStaffCreate = !publicSchoolSlug && !editing;
   const [enrolNow, setEnrolNow] = useState(false);
+  // A child who ALREADY belongs to a sport house (only used when the office enrols them straight away).
+  const [houseId, setHouseId] = useState('');
   const [docs, setDocs] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -253,13 +255,13 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
       }
       const res: any = publicSchoolSlug
         ? await admissionsService.submitPublicApplication(publicSchoolSlug, { ...form, website, turnstile_token: captchaToken || undefined })
-        : await admissionsService.submitApplication({ ...form, documents: docs, enrol_now: enrolNow });
+        : await admissionsService.submitApplication({ ...form, documents: docs, enrol_now: enrolNow, ...(enrolNow && houseId ? { house_id: houseId } : {}) });
       if (res.success === false) throw new Error(res.error ?? 'Submission failed');
       const enrolment = res.data?.enrolment;
       if (enrolment && onEnrolled) onEnrolled(enrolment, `${form.child_first_name} ${form.child_last_name}`);
       else showToast.success(res.data?.duplicate ? 'This application was already received' : 'Application submitted');
       onSuccess(res.data?.application_number, res.data?.email_sent); onClose();
-      setStep(1); setDocs({}); setEnrolNow(false);
+      setStep(1); setDocs({}); setEnrolNow(false); setHouseId('');
       setForm({ child_first_name: '', child_middle_name: '', child_last_name: '', child_dob: '', child_gender: '', child_nationality: 'Sierra Leonean', child_religion: '', child_place_of_birth: '', class_applying_for: '', child_address: '', previous_school: '', last_grade_attained: '', child_photo_url: '', guardian_first_name: '', guardian_middle_name: '', guardian_last_name: '', guardian_relationship: '', guardian_phone: '', guardian_alt_phone: '', guardian_email: '', guardian_occupation: '', guardian_address: '', guardian_nationality: 'Sierra Leonean', guardian_national_id: '', takes_medication: false, medication_details: '', has_allergies: false, allergy_details: '', has_chronic_illness: false, chronic_illness_details: '', allow_first_aid: true, emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '' });
     } catch (err) {
       setServerError(err instanceof Error ? err.message : 'Something went wrong');
@@ -410,6 +412,16 @@ export const AdmissionFormModal: React.FC<AdmissionFormModalProps> = ({ isOpen, 
               <input type="checkbox" className="mt-0.5" checked={enrolNow} onChange={(e) => setEnrolNow(e.target.checked)} />
               <span><strong>Accept and enrol now</strong> (walk-in admission). The child becomes a student in the chosen class straight away, portal sign-ins are created and any terms already billed to the class are billed to them too (the bursar is told). Leave it unticked to review the application first.</span>
             </label>
+          )}
+          {isStaffCreate && enrolNow && (meta?.houses?.length ?? 0) > 0 && (
+            <div className="mt-3">
+              <label htmlFor="adm-house" className="text-sm font-medium text-gray-700 dark:text-gray-300">Sport house</label>
+              <select id="adm-house" value={houseId} onChange={(e) => setHouseId(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                <option value="">No house chosen (the school's usual rule applies)</option>
+                {meta.houses.map((h: any) => <option key={h.id} value={h.id}>Already in {h.name}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose a house only if this child already belongs to one. They join it without a ballot.</p>
+            </div>
           )}
           {publicSchoolSlug && (
             <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>

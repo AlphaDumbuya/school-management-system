@@ -95,6 +95,8 @@ export interface AdmissionsMeta {
   documents: { key: string; label: string }[];
   active_year: string;
   classes: AdmissionClass[];
+  /** The school's own houses (name and colour), for a child who already belongs to one. */
+  houses?: { id: string; name: string; color: string }[];
 }
 
 export interface EnrolResult {
@@ -199,7 +201,7 @@ export const admissionsService = {
     return apiClient.post<{ success: boolean; data: AdmissionDetail }>(`/api/v1/admissions/${id}/notes`, { note });
   },
 
-  async enrol(id: string, data: { class_id: string; allow_over_capacity?: boolean; bill_terms?: string[] }) {
+  async enrol(id: string, data: { class_id: string; allow_over_capacity?: boolean; bill_terms?: string[]; house_id?: string }) {
     return apiClient.post<{ success: boolean; data: EnrolResult }>(`/api/v1/admissions/${id}/enrol`, data);
   },
 

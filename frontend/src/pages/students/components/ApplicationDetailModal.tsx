@@ -100,7 +100,10 @@ export const EnrolDialog: React.FC<{ app: { id: string; class_applying_for?: str
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [terms, setTerms] = useState<string[]>([]);
-  React.useEffect(() => { setClassId(preferred); setOver(false); }, [app?.id, preferred]);
+  const houses = meta?.houses || [];
+  // '' = let the school's rule decide (a draw, if it draws on enrolment); otherwise the house the child already belongs to.
+  const [houseId, setHouseId] = useState('');
+  React.useEffect(() => { setClassId(preferred); setOver(false); setHouseId(''); }, [app?.id, preferred]);
   const cls = classes.find((c) => c.id === classId);
   // Default: bill every term the class has already been billed.
   React.useEffect(() => { setTerms(cls?.billed_terms || []); }, [cls?.id, cls?.billed_terms?.length]);
@@ -111,7 +114,7 @@ export const EnrolDialog: React.FC<{ app: { id: string; class_applying_for?: str
         <Button disabled={busy || !classId || (!!cls?.full && !over)} onClick={async () => {
           setBusy(true);
           try {
-            const r: any = await admissionsService.enrol(app.id, { class_id: classId, allow_over_capacity: over, bill_terms: terms });
+            const r: any = await admissionsService.enrol(app.id, { class_id: classId, allow_over_capacity: over, bill_terms: terms, ...(houseId ? { house_id: houseId } : {}) });
             if (r?.success === false) return showToast.error(r.error || 'Could not enrol');
             onDone(r.data);
           } finally { setBusy(false); }
@@ -126,6 +129,16 @@ export const EnrolDialog: React.FC<{ app: { id: string; class_applying_for?: str
             {classes.map((c) => <option key={c.id} value={c.id}>{c.name}{c.capacity ? ` · ${c.enrolled}/${c.capacity}${c.full ? ' (full)' : ''}` : ` · ${c.enrolled} students`}</option>)}
           </select>
         </div>
+        {houses.length > 0 && (
+          <div>
+            <label htmlFor="enrol-house" className="text-xs font-semibold text-gray-600 dark:text-gray-300">Sport house</label>
+            <select id="enrol-house" className={input} value={houseId} onChange={(e) => setHouseId(e.target.value)}>
+              <option value="">No house chosen (the school's usual rule applies)</option>
+              {houses.map((h) => <option key={h.id} value={h.id}>Already in {h.name}</option>)}
+            </select>
+            <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Choose a house only if this child already belongs to one (for example from the previous school records). They join it without a ballot.</p>
+          </div>
+        )}
         {cls && (
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 text-xs">
             {cls.billed_terms.length === 0

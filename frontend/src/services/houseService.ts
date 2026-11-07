@@ -109,7 +109,7 @@ export interface HouseImportResult {
 
 export interface HouseLogEntry {
   id: string;
-  method: 'ballot' | 'auto' | 'sibling' | 'manual' | 'removed';
+  method: 'ballot' | 'auto' | 'sibling' | 'manual' | 'removed' | 'existing';
   reason: string | null;
   created_at: string;
   student_pk: string;

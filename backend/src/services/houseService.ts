@@ -20,7 +20,7 @@ import { AppError } from '@middleware/errorHandler';
 import { logger } from '@utils/logger';
 import { resolveActiveYear } from '@utils/academicYear';
 
-export type DrawMethod = 'ballot' | 'auto' | 'sibling' | 'manual' | 'removed';
+export type DrawMethod = 'ballot' | 'auto' | 'sibling' | 'manual' | 'removed' | 'existing';
 
 export interface HouseSettings {
   balance_scope: 'school' | 'class';
@@ -654,13 +654,51 @@ export const houseService = {
    * "draw automatically on enrolment" on. Never throws (enrolment must not fail
    * because of a house); returns the house, or null.
    */
-  async autoAssignOnEnrol(tenantId: string, userId: string | null, studentId: string, outer?: Knex.Transaction) {
+  /**
+   * Put a student in a house they ALREADY belong to (a school moving to the system with its houses already in use,
+   * or a child whose sibling/previous record already has one). It is not a draw: nobody is balanced or balloted, and
+   * the history says "existing". It never overwrites a house the student already has (that is a staff move, with a reason).
+   */
+  async assignExisting(tenantId: string, userId: string | null, studentId: string, ref: { house_id?: unknown; house_name?: unknown }, outer?: Knex.Transaction) {
+    const run = <T>(fn: (trx: Knex.Transaction) => Promise<T>): Promise<T> => (outer ? fn(outer) : db.transaction(fn));
+    return run(async (trx) => {
+      await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [`house-draw:${tenantId}`]);
+      const id = String(ref.house_id || '').trim();
+      const name = String(ref.house_name || '').trim().toLowerCase();
+      let house: any = null;
+      if (id && /^[0-9a-f-]{36}$/i.test(id)) house = await trx('houses').where({ id, tenant_id: tenantId, is_active: true }).first();
+      else if (name) house = await trx('houses').where({ tenant_id: tenantId, is_active: true }).whereRaw('LOWER(TRIM(name)) = ?', [name]).first();
+      if (!house) throw new AppError(id || name ? 'That house does not exist in this school. Choose one of the school\'s houses.' : 'Choose a house.', 400, 'HOUSE_NOT_FOUND');
+      const student: any = await trx('students').where({ id: studentId, tenant_id: tenantId }).first('id', 'house_id');
+      if (!student) throw new AppError('Student not found.', 404, 'NOT_FOUND');
+      if (student.house_id) return { unchanged: true, house: null };
+      await trx('students').where({ id: studentId, tenant_id: tenantId }).update({ house_id: house.id, updated_at: new Date() });
+      await trx('house_draws').insert({
+        tenant_id: tenantId, student_id: studentId, house_id: house.id, previous_house_id: null,
+        method: 'existing', reason: 'Already belonged to this house', drawn_by: userId, created_at: new Date(),
+      });
+      return { unchanged: false, house: { id: house.id, name: house.name, color: house.color } };
+    });
+  },
+  /**
+   * Called wherever a student is created. With `existing` (a house the student already belongs to) that house is used
+   * and nothing is drawn. Otherwise, a house is drawn only when the school switched on "draw automatically on enrolment".
+   * A student who already has a house is never drawn again.
+   */
+  async autoAssignOnEnrol(tenantId: string, userId: string | null, studentId: string, outer?: Knex.Transaction, existing?: { house_id?: unknown; house_name?: unknown }) {
+    const wantsExisting = !!(existing && (String(existing.house_id || '').trim() || String(existing.house_name || '').trim()));
     try {
+      if (wantsExisting) {
+        const r = await this.assignExisting(tenantId, userId, studentId, existing!, outer);
+        return r.house;
+      }
       const settings = await this.getSettings(tenantId, outer || db);
       if (!settings.auto_assign_on_enrol) return null;
       const r = await this.draw(tenantId, userId, studentId, 'auto', outer);
       return r.house;
     } catch (e: any) {
+      // A house that was asked for but cannot be used must be visible to the caller, not silently replaced by a draw.
+      if (wantsExisting) throw e;
       if (e?.code !== 'NO_HOUSES' && e?.code !== 'ALREADY_HAS_HOUSE') logger.warn(`Automatic house draw failed: ${e?.message || e}`);
       return null;
     }

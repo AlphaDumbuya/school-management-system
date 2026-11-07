@@ -52,6 +52,7 @@ export const METHOD_LABEL: Record<string, string> = {
   auto: 'Automatic on enrolment',
   sibling: 'Joined sibling',
   manual: 'Moved by staff',
+  existing: 'Already in this house',
   removed: 'House removed',
 };
 

@@ -73,7 +73,9 @@ router.get('/meta', staff, wrap(async (req, res) => {
   // Class pickers/filters only offer classes within the school's level.
   const schoolType = await schoolTypeFor(db, T(req));
   const classes = (await currentYearClasses(T(req))).filter((c: any) => classInSchoolScope(c, schoolType));
-  res.json({ success: true, data: { statuses: STATUSES, transitions: TRANSITIONS, labels: LABELS, documents: DOCUMENTS, active_year: yearString, classes } });
+  // The school's own houses, so a child who ALREADY belongs to one can be enrolled straight into it.
+  const houses = await db('houses').where({ tenant_id: T(req), is_active: true }).orderBy('sort_order').select('id', 'name', 'color').catch(() => []);
+  res.json({ success: true, data: { statuses: STATUSES, transitions: TRANSITIONS, labels: LABELS, documents: DOCUMENTS, active_year: yearString, classes, houses } });
 }));
 
 /** GET /api/v1/admissions/overview?academic_year=YYYY/YYYY|all (default: the active year). */
