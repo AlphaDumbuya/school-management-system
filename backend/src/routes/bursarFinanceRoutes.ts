@@ -207,32 +207,16 @@ financeCronRouter.all('/finance-daily', async (req: Request, res: Response, next
   try {
     if (!cronAuthorized(req)) return res.status(401).json({ success: false, error: 'Unauthorized' });
     
-    // OPTIMIZATION: Filter demo tenants and limit processing to avoid CPU timeouts
-    const { isDemoTenant } = await import('../utils/demoTenant.js');
-    const MAX_TENANTS_PER_RUN = 20; // Process max 20 tenants per run to stay within limits
-    
-    const allTenants = await db('tenants')
-      .where('status', 'active')
-      .select('id')
-      .limit(MAX_TENANTS_PER_RUN);
-    
-    // Filter out demo tenants
-    const realTenants = [];
-    for (const t of allTenants) {
-      if (!(await isDemoTenant(t.id))) {
-        realTenants.push(t.id);
-      }
-    }
-    
-    logger.info(`[CRON] finance-daily: processing ${realTenants.length} real tenants (filtered ${allTenants.length - realTenants.length} demo)`);
-    
-    const results = await lateFeeService.runDaily();
-    // Then post the day's money events to the books (schools using accounting).
-    const books = await glService.syncAll().catch((e) => [{ error: String(e?.message || e) }]);
-    // Subscription reminders + expiry sweep (node-cron doesn't run on serverless).
+    // (A demo-tenant filter used to be here. It imported a file that does not exist, so the whole daily job failed before doing
+    // anything, and its result was never used to limit the work. Removed.)
+    // Subscription reminders + expiry sweep FIRST (node-cron doesn't run on serverless). A school must get its "your trial
+    // ends soon" notice even if the fee or ledger work below fails or runs long.
     const subscriptions = await import('../jobs/subscriptionJobs.js')
       .then((m) => m.runSubscriptionDaily())
       .catch((e) => ({ error: String(e?.message || e) }));
+    const results = await lateFeeService.runDaily();
+    // Then post the day's money events to the books (schools using accounting).
+    const books = await glService.syncAll().catch((e) => [{ error: String(e?.message || e) }]);
     // Online-payment receipts whose email didn't go out are sent again.
     const receipts = await import('../services/finance/receiptService.js')
       .then((m) => m.receiptService.resendMissingOnline())
@@ -245,7 +229,7 @@ financeCronRouter.all('/finance-daily', async (req: Request, res: Response, next
     const duration = Date.now() - startTime;
     logger.info(`[CRON] finance-daily completed in ${duration}ms (${(duration / 1000 / 60).toFixed(2)} minutes)`);
     
-    res.json({ success: true, duration, tenantsProcessed: realTenants.length, data: results, books, subscriptions, receipts, attendanceDigest });
+    res.json({ success: true, duration, data: results, books, subscriptions, receipts, attendanceDigest });
   } catch (e) { 
     const duration = Date.now() - startTime;
     logger.error(`[CRON] finance-daily failed after ${duration}ms:`, e);
