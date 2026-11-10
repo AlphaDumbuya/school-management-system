@@ -14,8 +14,9 @@ import {
   Gavel, Calculator, CalendarDays, PlayCircle,
 } from 'lucide-react';
 import PublicNavbar, { PublicFooter } from '@components/public';
+import ProductSubNav from '@components/public/company/ProductSubNav';
 import AppDownloadButtons from '@components/public/AppDownloadButtons';
-import LiveDemoModal, { openLiveDemo } from '@components/public/LiveDemoModal';
+import { openLiveDemo } from '@components/public/LiveDemoModal';
 
 // Theme tokens — see docs/THEME_GUIDE.md
 const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
@@ -58,7 +59,7 @@ export const LandingPage: React.FC = () => {
         <div className="absolute inset-0 opacity-[0.1] pointer-events-none" style={DOT_PATTERN} />
         <div className="absolute top-[-10%] right-[-8%] w-[500px] h-[500px] rounded-full bg-white/5 blur-[120px] pointer-events-none" />
 
-        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center relative z-10">
+        <div className="max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center relative z-10">
           <div>
             <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-3.5 py-1.5 mb-6">
               <Sparkles size={14} className="text-amber-400" />
@@ -125,11 +126,12 @@ export const LandingPage: React.FC = () => {
             </div>
           </div>
         </div>
+        <ProductSubNav />
       </section>
 
       {/* ═══ TRUST STRIP (overlapping white card) ═══ */}
       <section className="px-6 sm:px-10 -mt-12 relative z-20">
-        <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-xl border border-[#e5e9f2] grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-[#eef1f7]">
+        <div className="max-w-[1400px] mx-auto bg-white rounded-2xl shadow-xl border border-[#e5e9f2] grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-[#eef1f7]">
           {[
             { value: '10+', label: 'Modules included' },
             { value: 'Free', label: 'Trial for new schools' },
@@ -144,12 +146,9 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Live demo popup (opened by the "Get a live demo" buttons) */}
-      <LiveDemoModal />
-
       {/* ═══ FEATURES (light) ═══ */}
       <section id="why" className="px-6 sm:px-10 py-20 sm:py-24">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-[1400px] mx-auto">
           <SectionHead
             eyebrow="Why WiSkul"
             title="Everything your school needs, done well"
@@ -187,7 +186,7 @@ export const LandingPage: React.FC = () => {
       {/* ═══ HOW IT WORKS (navy band) ═══ */}
       <section className={`relative px-6 sm:px-10 py-20 sm:py-24 overflow-hidden ${NAVY_BAND}`}>
         <div className="absolute inset-0 opacity-[0.1] pointer-events-none" style={DOT_PATTERN} />
-        <div className="relative max-w-6xl mx-auto">
+        <div className="relative max-w-[1400px] mx-auto">
           <SectionHead light eyebrow="How it works" title="Up and running in three steps" />
           <div className="flex justify-center mb-10">
             <img
@@ -217,7 +216,7 @@ export const LandingPage: React.FC = () => {
 
       {/* ═══ MODULES (light) ═══ */}
       <section id="features" className="px-6 sm:px-10 py-20 sm:py-24">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-[1400px] mx-auto">
           <SectionHead
             eyebrow="Platform"
             title="Everything in one place"
@@ -268,7 +267,7 @@ export const LandingPage: React.FC = () => {
 
       {/* ═══ BENEFITS (light, tinted) ═══ */}
       <section id="benefits" className="px-6 sm:px-10 py-20 sm:py-24 bg-white border-y border-[#e5e9f2]">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-[1400px] mx-auto">
           <SectionHead eyebrow="Typical Benefits" title="A toolkit every school needs" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
@@ -311,7 +310,7 @@ export const LandingPage: React.FC = () => {
         <div className="absolute inset-0 bg-gradient-to-br from-[#16235c]/95 via-[#1a2b6b]/90 to-[#20308a]/92" />
         <div className="absolute inset-0 opacity-[0.08] pointer-events-none" style={DOT_PATTERN} />
         <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="max-w-6xl mx-auto text-center">
+        <div className="max-w-[1400px] mx-auto text-center">
           <div className="relative z-10 space-y-5">
             <span className="inline-block text-amber-300 text-xs font-bold tracking-[0.2em] uppercase bg-white/10 px-3.5 py-1.5 rounded-full border border-white/20">
               Get Started Today

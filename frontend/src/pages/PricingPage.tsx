@@ -7,6 +7,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, X, ArrowRight, Loader2 } from 'lucide-react';
 import PublicNavbar, { PublicFooter } from '@components/public';
+import ProductSubNav from '@components/public/company/ProductSubNav';
+import { EditionTeaser } from '@components/public/company/ui';
 import { usePublicPlans, isUnlimited, planAdds, PlanCatalogPayload, PlanFeatureDef } from '@services/planService';
 
 const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
@@ -83,21 +85,22 @@ export const PricingPage: React.FC = () => {
             ))}
           </div>
         </div>
+        <ProductSubNav />
       </section>
 
       {/* ═══ PRICING CARDS (light, overlapping) ═══ */}
       <section className="px-6 sm:px-10 -mt-8 relative z-20 pb-16">
         {isLoading && (
-          <div className="max-w-6xl mx-auto rounded-2xl bg-white border border-[#e5e9f2] p-10 text-center text-sm text-slate-500 flex items-center justify-center gap-2" role="status">
+          <div className="max-w-[1400px] mx-auto rounded-2xl bg-white border border-[#e5e9f2] p-10 text-center text-sm text-slate-500 flex items-center justify-center gap-2" role="status">
             <Loader2 className="animate-spin" size={16} aria-hidden="true" /> Loading plans…
           </div>
         )}
         {!isLoading && (isError || !PLANS.length) && (
-          <div className="max-w-6xl mx-auto rounded-2xl bg-white border border-[#e5e9f2] p-10 text-center text-sm text-slate-600">
+          <div className="max-w-[1400px] mx-auto rounded-2xl bg-white border border-[#e5e9f2] p-10 text-center text-sm text-slate-600">
             Plans couldn’t be loaded right now. <button className="font-semibold text-[#1d4ed8] underline" onClick={() => navigate('/contact')}>Contact us</button> for pricing.
           </div>
         )}
-        <div className={`max-w-6xl mx-auto grid grid-cols-1 gap-6 lg:gap-8 ${PLANS.length >= 3 ? 'md:grid-cols-3' : PLANS.length === 2 ? 'md:grid-cols-2' : ''}`}>
+        <div className={`max-w-[1400px] mx-auto grid grid-cols-1 gap-6 lg:gap-8 ${PLANS.length >= 3 ? 'md:grid-cols-3' : PLANS.length === 2 ? 'md:grid-cols-2' : ''}`}>
           {PLANS.map((plan) => (
             <div key={plan.id}
               className={`relative rounded-2xl bg-white flex flex-col shadow-sm border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${
@@ -244,6 +247,8 @@ export const PricingPage: React.FC = () => {
           </div>
         </div>
       </section>
+
+      <EditionTeaser title={'Prefer to own it? Pay once.'} text={'A School Edition is a one-time purchase with your own branding, database and app. No subscription, no plan limits.'} />
 
       <PublicFooter />
     </div>

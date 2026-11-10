@@ -10,6 +10,7 @@ import {
   Target, Smartphone, GraduationCap, BarChart3, ArrowRight, Check, X,
 } from 'lucide-react';
 import PublicNavbar, { PublicFooter } from '@components/public';
+import ProductSubNav from '@components/public/company/ProductSubNav';
 
 const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
 const DOT_PATTERN: React.CSSProperties = {
@@ -66,11 +67,12 @@ export const BenefitsPage: React.FC = () => {
             fees and communication move into one platform.
           </p>
         </div>
+        <ProductSubNav />
       </section>
 
       {/* ═══ BENEFITS GRID (light) ═══ */}
       <section className="px-6 sm:px-10 py-20 bg-white border-b border-[#e5e9f2]">
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-[1400px] mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {benefits.map((b, i) => {
               const t = TINTS[i % TINTS.length];
@@ -125,7 +127,7 @@ export const BenefitsPage: React.FC = () => {
 
       {/* ═══ BEFORE / AFTER (light) ═══ */}
       <section className="px-6 sm:px-10 py-20">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-[1400px] mx-auto">
           <div className="text-center mb-14">
             <p className="text-[#1d4ed8] text-xs font-bold tracking-[0.2em] uppercase mb-2">The difference</p>
             <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Before &amp; after WiSkul</h2>

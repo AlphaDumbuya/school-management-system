@@ -1,0 +1,66 @@
+/*
+ * Company site motion and finishing touches.
+ * Everything here is decoration. Anyone who prefers reduced motion gets a still, fully visible page.
+ */
+.co-reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: var(--co-delay, 0ms);
+}
+.co-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes co-float {
+  0%, 100% { transform: translateY(0) rotate(var(--co-rot, 0deg)); }
+  50% { transform: translateY(-14px) rotate(var(--co-rot, 0deg)); }
+}
+@keyframes co-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, -22px) scale(1.12); }
+}
+@keyframes co-pop {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes co-shine {
+  from { background-position: 0% 50%; }
+  to { background-position: 200% 50%; }
+}
+
+.co-float { animation: co-float 6.5s ease-in-out infinite; }
+.co-float-slow { animation: co-float 9s ease-in-out infinite; animation-delay: -3s; }
+.co-drift { animation: co-drift 16s ease-in-out infinite; }
+.co-pop { animation: co-pop 0.4s ease both; }
+
+/* Headline accent: amber gradient that slowly slides. */
+.co-gradient-text {
+  background: linear-gradient(90deg, #fbbf24, #f59e0b, #fde68a, #fbbf24);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: co-shine 7s linear infinite;
+}
+
+/* Soft grid used behind dark sections. */
+.co-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+}
+
+/* Cards that lift on hover. */
+.co-lift { transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease; }
+.co-lift:hover { transform: translateY(-6px); box-shadow: 0 24px 50px -22px rgba(26, 43, 107, 0.35); }
+
+@media (prefers-reduced-motion: reduce) {
+  .co-reveal { opacity: 1; transform: none; transition: none; }
+  .co-float, .co-float-slow, .co-drift, .co-pop, .co-gradient-text { animation: none; }
+  .co-lift { transition: none; }
+}

@@ -8,8 +8,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Mail, Phone } from 'lucide-react';
-import { PLATFORM_SUPPORT, platformSupportTel } from '@config/platform.config';
+import LiveDemoModal, { openLiveDemo } from './LiveDemoModal';
 
 export interface PublicNavbarProps {
   ctaText?:   string;
@@ -17,13 +16,22 @@ export interface PublicNavbarProps {
   onCtaClick?: () => void;
 }
 
-const NAV_LINKS = [
-  { label: 'Home',     path: '/'         },
-  { label: 'Features', path: '/features' },
-  { label: 'Why Us',   path: '/why'      },
-  { label: 'Benefits', path: '/benefits' },
-  { label: 'Pricing',  path: '/pricing'  },
-  { label: 'Contact',  path: '/contact'  },
+interface NavLinkDef {
+  label: string;
+  path: string;
+  /** Other paths that should also light this link up (the product pages live under "Products"). */
+  also?: string[];
+}
+
+const NAV_LINKS: NavLinkDef[] = [
+  { label: 'Home',           path: '/' },
+  { label: 'Products',       path: '/products', also: ['/wiskul', '/why', '/benefits'] },
+  { label: 'Features',       path: '/features' },
+  { label: 'Pricing',        path: '/pricing' },
+  { label: 'School Edition', path: '/editions' },
+  { label: 'Services',       path: '/services' },
+  { label: 'About',          path: '/about' },
+  { label: 'Contact',        path: '/contact' },
 ];
 
 // Royal-blue brand + amber CTA to match the reference theme.
@@ -65,8 +73,10 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
-  const isActive = (path: string) =>
-    path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
+  const isActive = (link: NavLinkDef) => {
+    if (link.path === '/') return location.pathname === '/';
+    return [link.path, ...(link.also ?? [])].some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`));
+  };
 
   const handleCta = () => {
     setOpen(false);
@@ -99,39 +109,10 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
           transition:     'background 0.3s, border-color 0.3s, box-shadow 0.3s',
         }}
       >
-        {/* ── Utility bar (contact + quick links) — desktop only ──────── */}
-        <div
-          className="pn-utility"
-          style={{
-            background: '#1a2b6b',
-            color: '#e0e7ff',
-            fontSize: '0.78rem',
-          }}
-        >
-          <div style={{
-            maxWidth: '1280px', margin: '0 auto', padding: '0.4rem 1.5rem',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-              <a href={platformSupportTel()} style={{ color: '#e0e7ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <Phone size={13} aria-hidden="true" /> {PLATFORM_SUPPORT.phone}
-              </a>
-              <a href={`mailto:${PLATFORM_SUPPORT.email}`} style={{ color: '#e0e7ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <Mail size={13} aria-hidden="true" /> {PLATFORM_SUPPORT.email}
-              </a>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.1rem' }}>
-              <Link to="/pricing" style={{ color: '#e0e7ff', textDecoration: 'none', fontWeight: 600 }}>Pricing</Link>
-              <Link to="/features" style={{ color: '#e0e7ff', textDecoration: 'none', fontWeight: 600 }}>Features</Link>
-              <Link to="/contact" style={{ color: '#e0e7ff', textDecoration: 'none', fontWeight: 600 }}>Contact Us</Link>
-              <Link to="/register" style={{ color: '#fbbf24', textDecoration: 'none', fontWeight: 700 }}>Start Free Trial</Link>
-            </div>
-          </div>
-        </div>
-
         {/* ── Top bar ──────────────────────────────────────────────── */}
-        <div style={{
-          maxWidth:       '1280px',
+        {/* 1400px of content plus the side padding, so the bar lines up with the page sections (px-6 sm:px-10). */}
+        <div className="pn-bar" style={{
+          maxWidth:       '1480px',
           margin:         '0 auto',
           padding:        '0 1.5rem',
           height:         '64px',
@@ -170,14 +151,14 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
             flex:1, justifyContent:'center',
           }}>
             {NAV_LINKS.map(link => {
-              const active = isActive(link.path);
+              const active = isActive(link);
               return (
                 <Link
                   key={link.path}
                   to={link.path}
                   className={active ? 'pn-link pn-link--active' : 'pn-link'}
                   style={{
-                    position:'relative', padding:'0.4rem 1rem', borderRadius:'7px',
+                    position:'relative', padding:'0.4rem 0.65rem', borderRadius:'7px',
                     fontSize:'0.875rem', fontWeight: 600,
                     color: active ? '#1d4ed8' : 'rgba(15,23,42,0.65)',
                     textDecoration:'none',
@@ -214,6 +195,16 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
                 }}
               >Sign In</button>
             )}
+            <button
+              onClick={openLiveDemo}
+              className="pn-btn-ghost"
+              style={{
+                padding:'0.45rem 1rem', borderRadius:'7px',
+                border:'1px solid rgba(29,78,216,0.35)', background:'rgba(29,78,216,0.05)',
+                color:'#1d4ed8', fontSize:'0.875rem', fontWeight:600,
+                cursor:'pointer', transition:'all 0.2s', whiteSpace:'nowrap',
+              }}
+            >Live demo</button>
             <button
               onClick={handleCta}
               className="pn-btn-cta"
@@ -285,7 +276,7 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
           <div style={{ padding:'0.5rem 1rem 1.25rem' }}>
             {/* Nav links */}
             {NAV_LINKS.map(link => {
-              const active = isActive(link.path);
+              const active = isActive(link);
               return (
                 <Link
                   key={link.path}
@@ -332,6 +323,15 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
                 >Sign In</button>
               )}
               <button
+                onClick={() => { setOpen(false); openLiveDemo(); }}
+                style={{
+                  width:'100%', padding:'0.78rem',
+                  borderRadius:'9px', border:'1px solid rgba(29,78,216,0.35)',
+                  background:'rgba(29,78,216,0.05)', color:'#1d4ed8',
+                  fontSize:'0.9rem', fontWeight:600, cursor:'pointer',
+                }}
+              >Get a live demo</button>
+              <button
                 onClick={handleCta}
                 style={{
                   width:'100%', padding:'0.85rem',
@@ -362,19 +362,25 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
         />
       )}
 
+      {/* One demo popup for every public page; any button can open it with openLiveDemo(). */}
+      <LiveDemoModal />
+
       {/* Spacer so page content starts below the fixed nav */}
       <div style={{ height:'64px' }} aria-hidden="true" className="pn-spacer"/>
 
       <style>{`
-        /* Utility bar: desktop only */
-        .pn-utility { display: none; }
+        @media (min-width: 640px) {
+          .pn-bar          { padding: 0 2.5rem !important; }
+        }
         @media (min-width: 768px) {
-          .pn-utility      { display: block !important; }
+          .pn-spacer       { height: 0 !important; }
+        }
+        /* Eight links plus Sign In, Live demo and the CTA need a wide bar, so the full menu starts at 1240px. */
+        @media (min-width: 1240px) {
           .pn-desk-links   { display: flex !important; }
           .pn-desk-actions { display: flex !important; }
           .pn-burger       { display: none  !important; }
           .pn-dropdown     { display: none  !important; }
-          .pn-spacer       { height: 0 !important; }
         }
 
         /* Link hover (desktop) */

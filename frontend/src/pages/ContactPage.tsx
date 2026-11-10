@@ -5,13 +5,30 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Mail, Phone, MapPin, ArrowRight, Check, X, Loader2, Clock } from 'lucide-react';
+import { Mail, Phone, MapPin, ArrowRight, Check, X, Loader2, Clock, Rocket, PlayCircle } from 'lucide-react';
 import PublicNavbar, { PublicFooter } from '@components/public';
 import { PLATFORM_SUPPORT, platformSupportTel } from '@config/platform.config';
+import AppDownloadButtons from '@components/public/AppDownloadButtons';
+import { openLiveDemo } from '@components/public/LiveDemoModal';
+import { PhotoBackdrop } from '@components/public/company/photos';
+import usePageMeta from '@hooks/usePageMeta';
+
+/** What the visitor wants help with. The label is added to the start of the message, so the team sees it at a glance. */
+const TOPICS: { value: string; label: string }[] = [
+  { value: 'general', label: 'A general question' },
+  { value: 'project', label: 'A website, app or business system for my organisation' },
+  { value: 'platform', label: 'WiSkul school platform: a demo, or help getting started' },
+  { value: 'edition', label: 'School Edition: request a quote' },
+  { value: 'training', label: 'Developer Programme' },
+  { value: 'support', label: 'Technical support' },
+  { value: 'partnership', label: 'Partnership or something else' },
+];
+/** Links such as /contact?topic=edition open the form with that topic already chosen. */
+const TOPIC_FROM_LINK: Record<string, string> = { project: 'project', edition: 'edition', training: 'training', demo: 'platform', platform: 'platform', support: 'support' };
 
 const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
 const DOT_PATTERN: React.CSSProperties = {
@@ -24,6 +41,7 @@ const contactSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
   phone: z.string().optional().or(z.literal('')),
   school: z.string().optional().or(z.literal('')),
+  topic: z.string().min(1),
   role: z.string().min(1, 'Please select your role'),
   message: z.string().min(10, 'Message must be at least 10 characters').max(2000, 'Max 2000 characters'),
 });
@@ -34,6 +52,13 @@ const inputBase =
 
 export const ContactPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialTopic = TOPIC_FROM_LINK[searchParams.get('topic') ?? ''] ?? 'general';
+  usePageMeta(
+    'Contact | WiSkul',
+    'Talk to WiSkul about the school platform, a School Edition quote, a demo or the Developer Programme.',
+    '/contact',
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -42,7 +67,7 @@ export const ContactPage: React.FC = () => {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<ContactFormValues>({
     resolver: zodResolver(contactSchema),
-    defaultValues: { name: '', email: '', phone: '', school: '', role: '', message: '' },
+    defaultValues: { name: '', email: '', phone: '', school: '', topic: initialTopic, role: '', message: '' },
   });
 
   const onSubmit = async (data: ContactFormValues) => {
@@ -50,14 +75,16 @@ export const ContactPage: React.FC = () => {
     setSubmitStatus('idle');
     setErrorMessage('');
     try {
+      const { topic, ...fields } = data;
+      const topicLabel = TOPICS.find((t) => t.value === topic)?.label ?? topic;
       const response = await fetch('/api/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...fields, message: `[${topicLabel}]\n${fields.message}` }),
       });
       if (response.ok) {
         setSubmitStatus('success');
-        reset();
+        reset({ name: '', email: '', phone: '', school: '', topic: initialTopic, role: '', message: '' });
       } else {
         const resData = await response.json().catch(() => ({}));
         throw new Error(resData.message || 'Failed to send message');
@@ -79,6 +106,7 @@ export const ContactPage: React.FC = () => {
 
       {/* ═══ HERO (navy) ═══ */}
       <section className={`relative pt-28 sm:pt-36 pb-16 px-6 sm:px-10 overflow-hidden ${NAVY_BAND}`}>
+        <PhotoBackdrop slot="contact-hero" className="opacity-20 mix-blend-luminosity" />
         <div className="absolute inset-0 opacity-[0.12] pointer-events-none" style={DOT_PATTERN} />
         <div className="relative z-10 max-w-3xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-5 py-2 mb-6">
@@ -89,16 +117,32 @@ export const ContactPage: React.FC = () => {
             Get in touch with <span className="text-amber-400">WiSkul</span>
           </h1>
           <p className="text-blue-100/90 text-base max-w-2xl mx-auto leading-relaxed">
-            Questions about the platform? Want a demo or help getting set up? Our team is ready to assist.
+            Questions about the platform? Want a demo, a School Edition quote, or help getting set up? Tell us a little and we will come back to you.
           </p>
         </div>
       </section>
 
       {/* ═══ FORM + INFO (light, overlapping) ═══ */}
       <section className="px-6 sm:px-10 -mt-8 relative z-20 pb-16">
-        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-5 gap-6">
           {/* Info column */}
           <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white border border-[#e5e9f2] rounded-2xl p-7 shadow-sm">
+              <h3 className="text-lg font-black text-slate-900 mb-1">Want to try it first?</h3>
+              <p className="text-sm text-slate-500 mb-5">You do not need to talk to us to get started.</p>
+              <div className="space-y-3">
+                <button type="button" onClick={() => navigate('/register')}
+                  className="w-full flex items-center gap-3 rounded-xl bg-[#f59e0b] hover:bg-[#d97706] text-white font-bold text-sm px-4 py-3.5 transition-colors shadow-md shadow-amber-500/25">
+                  <Rocket size={18} aria-hidden="true" /> Start a free trial <ArrowRight size={16} className="ml-auto" />
+                </button>
+                <button type="button" onClick={openLiveDemo}
+                  className="w-full flex items-center gap-3 rounded-xl border border-[#1d4ed8]/30 bg-blue-50 hover:bg-blue-100 text-[#1d4ed8] font-bold text-sm px-4 py-3.5 transition-colors">
+                  <PlayCircle size={18} aria-hidden="true" /> Get a live demo <ArrowRight size={16} className="ml-auto" />
+                </button>
+                <AppDownloadButtons variant="dark" className="pt-1" />
+              </div>
+            </div>
+
             <div className="bg-white border border-[#e5e9f2] rounded-2xl p-7 shadow-sm">
               <h3 className="text-lg font-black text-slate-900 mb-6">Contact information</h3>
               <div className="space-y-5">
@@ -151,6 +195,12 @@ export const ContactPage: React.FC = () => {
               )}
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                <div>
+                  <label className="block text-sm font-bold text-slate-600 mb-2">What can we help with? *</label>
+                  <select {...register('topic')} className={`${inputBase} ${err('topic')} cursor-pointer`}>
+                    {TOPICS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
                     <label className="block text-sm font-bold text-slate-600 mb-2">Full Name *</label>
@@ -182,6 +232,10 @@ export const ContactPage: React.FC = () => {
                     <option value="teacher">Teacher</option>
                     <option value="parent">Parent</option>
                     <option value="owner">School Owner</option>
+                    <option value="business">Business owner</option>
+                    <option value="organisation">NGO, church or organisation</option>
+                    <option value="developer">Developer or trainee</option>
+                    <option value="partner">Partner or investor</option>
                     <option value="other">Other</option>
                   </select>
                   {errors.role && <p className="mt-1.5 text-xs text-red-500">{errors.role.message}</p>}
@@ -212,7 +266,10 @@ export const ContactPage: React.FC = () => {
           <div className="space-y-4">
             {[
               { q: 'How quickly will I get a response?', a: 'We aim to respond within 24 hours on business days. For urgent matters, please call us directly.' },
-              { q: 'Can I schedule a demo?', a: "Yes — mention your preferred time in the message and we'll arrange a personalised demo for your school." },
+              { q: 'Do you build things other than school software?', a: 'Yes. Our team builds websites, online stores, mobile apps and custom business systems for organisations of all kinds. Choose the project topic in the form and tell us what you have in mind.' },
+              { q: 'Can I try the school platform before I buy?', a: 'Yes. Start a free trial of the platform, or press "Get a live demo" and we will email you sign-in links to a demo school with sample data.' },
+              { q: 'Can I get the app?', a: 'Yes. The Android app is available from the download buttons on this site. The web app also installs on iPhones and computers.' },
+              { q: 'How do I get a School Edition?', a: 'Choose the School Edition quote from the form (or tell us in your message). We will ask about your school, agree what you need, and send a quote.' },
               { q: 'Do you help with onboarding?', a: 'We provide setup guidance and answer questions as you get started, so your school can adopt WiSkul smoothly.' },
               { q: 'What if I have technical issues?', a: 'Reach our support team by email or phone. We respond quickly and will guide you through any issue.' },
             ].map((faq) => (

@@ -9,6 +9,8 @@ import { ArrowRight, Check, Loader2 } from 'lucide-react';
 import apiClient from '@lib/apiClient';
 import { showToast } from '@utils/toast';
 import { PLATFORM_SUPPORT, platformSupportTel } from '@config/platform.config';
+import AppDownloadButtons from './AppDownloadButtons';
+import { PHOTO_CREDIT, usePhotosShowing } from './company/photos';
 
 const DOT_PATTERN: React.CSSProperties = {
   backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)',
@@ -17,6 +19,7 @@ const DOT_PATTERN: React.CSSProperties = {
 
 export const PublicFooter: React.FC = () => {
   const navigate = useNavigate();
+  const photosShowing = usePhotosShowing();
 
   const [email, setEmail] = useState('');
   const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
@@ -72,7 +75,7 @@ export const PublicFooter: React.FC = () => {
       <div className="h-1 w-full bg-gradient-to-r from-[#1d4ed8] via-[#f59e0b] to-[#1d4ed8]" />
 
       <div className="relative px-6 sm:px-10 py-14">
-        <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-8 gap-y-10">
+        <div className="max-w-[1400px] mx-auto grid grid-cols-2 md:grid-cols-5 gap-8 gap-y-10">
           {/* Brand + newsletter */}
           <div className="col-span-2 md:col-span-2">
             <div className="flex items-center gap-2 mb-4">
@@ -80,9 +83,10 @@ export const PublicFooter: React.FC = () => {
               <span className="font-black text-lg text-white">Wi<span className="text-amber-400">Skul</span></span>
             </div>
             <p className="text-blue-100/70 text-sm leading-relaxed max-w-xs">
-              School management for Sierra Leone: academics, attendance, fees and
-              communication in one platform, with each school's data kept separate.
+              WiSkul is a technology company in Sierra Leone. A professional team of developers, here and abroad,
+              builds websites, apps and business systems, and school software used every day.
             </p>
+            <AppDownloadButtons variant="light" className="mt-5" />
             {state === 'done' ? (
               <div className="mt-5 flex items-center gap-2 max-w-xs text-sm text-emerald-300 font-semibold">
                 <Check size={16} /> {message}
@@ -113,9 +117,9 @@ export const PublicFooter: React.FC = () => {
           </div>
 
           <div>
-            <h5 className="text-white font-bold text-xs mb-4 uppercase tracking-wider">Product</h5>
+            <h5 className="text-white font-bold text-xs mb-4 uppercase tracking-wider">Products</h5>
             <ul className="space-y-2.5">
-              {[['Features', '/features'], ['Pricing', '/pricing'], ['Why WiSkul', '/why'], ['Benefits', '/benefits']].map(([label, to]) => (
+              {[['WiSkul Platform', '/wiskul'], ['School Edition', '/editions'], ['Features', '/features'], ['Pricing', '/pricing']].map(([label, to]) => (
                 <li key={label}><span onClick={() => navigate(to)} className="text-blue-100/70 text-sm hover:text-amber-400 cursor-pointer transition-colors">{label}</span></li>
               ))}
             </ul>
@@ -124,7 +128,7 @@ export const PublicFooter: React.FC = () => {
           <div>
             <h5 className="text-white font-bold text-xs mb-4 uppercase tracking-wider">Company</h5>
             <ul className="space-y-2.5">
-              {[['Contact', '/contact'], ['Register', '/register'], ['Sign In', '/login']].map(([label, to]) => (
+              {[['About', '/about'], ['Services', '/services'], ['Developer Programme', '/services#training'], ['Contact', '/contact'], ['Sign In', '/login']].map(([label, to]) => (
                 <li key={label}><span onClick={() => navigate(to)} className="text-blue-100/70 text-sm hover:text-amber-400 cursor-pointer transition-colors">{label}</span></li>
               ))}
             </ul>
@@ -153,10 +157,14 @@ export const PublicFooter: React.FC = () => {
           </div>
         </div>
 
-        <div className="max-w-6xl mx-auto mt-12 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-blue-100/50 text-xs">© {new Date().getFullYear()} WiSkul. All rights reserved.</p>
+        <div className="max-w-[1400px] mx-auto mt-12 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-blue-100/50 text-xs">© {new Date().getFullYear()} WiSkul. All rights reserved. Made in Sierra Leone.</p>
           <div className="flex items-center gap-5 text-xs text-blue-100/50">
             <Link to="/privacy-policy" className="hover:text-amber-400 transition-colors">Privacy Policy</Link>
+            <Link to="/terms" className="hover:text-amber-400 transition-colors">Terms of Service</Link>
+            {PHOTO_CREDIT.required && photosShowing && (
+              <a href={PHOTO_CREDIT.url} target="_blank" rel="noopener noreferrer" className="hover:text-amber-400 transition-colors">{PHOTO_CREDIT.text}</a>
+            )}
             <Link to="/contact" className="hover:text-amber-400 transition-colors">Contact</Link>
           </div>
         </div>

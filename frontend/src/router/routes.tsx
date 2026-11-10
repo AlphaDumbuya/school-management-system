@@ -10,6 +10,12 @@ import LoginPage from '@pages/LoginPage';
 import ForgotPasswordPage from '@pages/ForgotPasswordPage';
 import ResetPasswordPage from '@pages/ResetPasswordPage';
 import LandingPage from '@pages/LandingPage';
+import CompanyHomePage from '@pages/CompanyHomePage';
+import ProductsPage from '@pages/ProductsPage';
+import SchoolEditionPage from '@pages/SchoolEditionPage';
+import ServicesPage from '@pages/ServicesPage';
+import AboutPage from '@pages/AboutPage';
+import TermsPage from '@pages/TermsPage';
 import FeaturesPage from '@pages/FeaturesPage';
 import PricingPage from '@pages/PricingPage';
 import WhyWiskulPage from '@pages/WhyWiskulPage';
@@ -166,7 +172,14 @@ const APP_MODE = isAppMode();
 const publicMarketingRoutes = APP_MODE
   ? [{ index: true, element: <Navigate to={hasOnboarded() ? '/login' : '/welcome'} replace /> }]
   : [
-      { index: true, element: <LandingPage /> },
+      // Company site. The school platform's own product page is at /wiskul.
+      { index: true, element: <CompanyHomePage /> },
+      { path: 'products', element: <ProductsPage /> },
+      { path: 'editions', element: <SchoolEditionPage /> },
+      { path: 'services', element: <ServicesPage /> },
+      { path: 'about', element: <AboutPage /> },
+      { path: 'terms', element: <TermsPage /> },
+      { path: 'wiskul', element: <LandingPage /> },
       { path: 'features', element: <FeaturesPage /> },
       { path: 'pricing', element: <PricingPage /> },
       { path: 'why', element: <WhyWiskulPage /> },

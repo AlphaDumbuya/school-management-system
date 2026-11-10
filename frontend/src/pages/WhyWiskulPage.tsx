@@ -11,6 +11,7 @@ import {
   KeyRound, WifiOff, GraduationCap,
 } from 'lucide-react';
 import PublicNavbar, { PublicFooter } from '@components/public';
+import ProductSubNav from '@components/public/company/ProductSubNav';
 
 const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
 const DOT_PATTERN: React.CSSProperties = {
@@ -62,11 +63,12 @@ export const WhyWiskulPage: React.FC = () => {
             ))}
           </div>
         </div>
+        <ProductSubNav />
       </section>
 
       {/* ═══ FOUR PILLARS (white) ═══ */}
       <section className="px-6 sm:px-10 py-20 bg-white border-b border-[#e5e9f2]">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-[1400px] mx-auto">
           <div className="text-center mb-14">
             <p className="text-[#1d4ed8] text-xs font-bold tracking-[0.2em] uppercase mb-2">What sets us apart</p>
             <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Four things we focus on</h2>

@@ -66,7 +66,9 @@ ReactDOM.createRoot(rootElement).render(
 // Register the Workbox service worker (PWA — full offline app shell, API/image
 // runtime caching, offline write-queue replay, push notifications).
 // Runs after the app mounts so it never blocks the initial render.
-if ('serviceWorker' in navigator) {
+// Production builds only: the dev server doesn't emit /service-worker.js
+// (VitePWA devOptions are off), so Vite would serve index.html as text/html.
+if ((import.meta as any).env?.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/service-worker.js', { scope: '/' })

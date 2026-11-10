@@ -11,6 +11,8 @@ import {
   ClipboardCheck, ArrowRight, Check,
 } from 'lucide-react';
 import PublicNavbar, { PublicFooter } from '@components/public';
+import ProductSubNav from '@components/public/company/ProductSubNav';
+import { EditionTeaser } from '@components/public/company/ui';
 
 const NAVY_BAND = 'bg-gradient-to-br from-[#16235c] via-[#1a2b6b] to-[#20308a]';
 const DOT_PATTERN: React.CSSProperties = {
@@ -89,11 +91,12 @@ export const FeaturesPage: React.FC = () => {
             </div>
           </div>
         </div>
+        <ProductSubNav />
       </section>
 
       {/* ═══ v1.0 CORE MODULES (white) ═══ */}
       <section className="px-6 sm:px-10 py-20 bg-white border-b border-[#e5e9f2]">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-[1400px] mx-auto">
           <div className="text-center mb-14 space-y-3">
             <span className="inline-flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-full px-4 py-1.5 text-[#1d4ed8] text-xs font-bold uppercase tracking-widest">
               <Check size={13} strokeWidth={3} /> Available now · Free trial for new schools
@@ -230,7 +233,7 @@ export const FeaturesPage: React.FC = () => {
       {/* ═══ ROADMAP (navy band) ═══ */}
       <section className={`relative px-6 sm:px-10 py-20 overflow-hidden ${NAVY_BAND}`}>
         <div className="absolute inset-0 opacity-[0.1] pointer-events-none" style={DOT_PATTERN} />
-        <div className="relative max-w-6xl mx-auto">
+        <div className="relative max-w-[1400px] mx-auto">
           <div className="text-center mb-14 space-y-3">
             <span className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-amber-300 text-xs font-bold uppercase tracking-widest">
               Version Roadmap
@@ -325,6 +328,8 @@ export const FeaturesPage: React.FC = () => {
       </section>
 
       {/* ═══ FOOTER (shared) ═══ */}
+      <EditionTeaser title={"Every feature, in your school's own name"} text={"A School Edition includes all of this, under your school's name, logo, colours and address. You buy it once, with no plan and no limits."} />
+
       <PublicFooter />
     </div>
   );
