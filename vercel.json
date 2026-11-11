@@ -22,6 +22,7 @@
       }
     }
   ],
+  "regions": ["lhr1"],
   "functions": {
     "api/index.ts": {
       "maxDuration": 60,
