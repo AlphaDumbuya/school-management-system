@@ -16,6 +16,7 @@ import { SearchableSelect } from '@components/admin/forms/SearchableSelect';
 import { showToast } from '@utils/toast';
 import { studentsService, StudentRecord, StudentFormData } from '@services/studentsService';
 import { classesService } from '@services/classesService';
+import { houseService, type House } from '@services/houseService';
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ const schema = z.object({
   address: z.string().max(500).optional().or(z.literal('')),
   city: z.string().max(100).optional().or(z.literal('')),
   state: z.string().max(100).optional().or(z.literal('')),
+  postal_code: z.string().max(20).optional().or(z.literal('')),
   country: z.string().max(100).optional().or(z.literal('')),
   enrollment_date: z.string().optional().or(z.literal('')),
   // Additional fields
@@ -48,6 +50,9 @@ const schema = z.object({
   guardian_relationship: z.string().max(50).optional().or(z.literal('')),
   guardian_occupation: z.string().max(100).optional().or(z.literal('')),
   emergency_contact: z.string().max(20).optional().or(z.literal('')),
+  // Sport house (optional). Blank = no house yet.
+  house_id: z.string().optional().or(z.literal('')),
+  house_reason: z.string().max(300).optional().or(z.literal('')),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -76,6 +81,19 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
+  // The school's houses for the sport-house picker. A role without house access gets an error here, and the picker is hidden.
+  const { data: houseList } = useQuery({
+    queryKey: ['student-form-houses'],
+    queryFn: async () => {
+      const r = await houseService.summary();
+      if (r.success === false) throw new Error(r.error || 'Could not load houses');
+      return r.data?.houses ?? [];
+    },
+    enabled: isOpen,
+    staleTime: 60_000,
+    retry: false,
+  });
+
   // Fetch classes for dropdown
   const { data: classesData } = useQuery({
     queryKey: ['student-form-classes'],
@@ -97,9 +115,9 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
     resolver: zodResolver(schema),
     defaultValues: {
       first_name: '', last_name: '', email: '', date_of_birth: '', gender: '',
-      phone: '', address: '', city: '', state: '', country: 'Sierra Leone',
+      phone: '', address: '', city: '', state: '', postal_code: '', country: 'Sierra Leone',
       enrollment_date: new Date().toISOString().split('T')[0],
-      class_id: '', place_of_birth: '',
+      class_id: '', place_of_birth: '', house_id: '', house_reason: '',
       religion: '', nationality: 'Sierra Leonean', blood_group: '', medical_conditions: '',
       previous_school: '', home_language: '', photo_url: '',
       guardian_name: '', guardian_email: '', guardian_phone: '', guardian_relationship: '', guardian_occupation: '',
@@ -110,6 +128,17 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
   // ── Smart parent detection: debounce guardian email/phone and look up ──────
   const watchedGuardianEmail = watch('guardian_email');
   const watchedGuardianPhone = watch('guardian_phone');
+
+  // Houses to offer. A house that the school has since switched off stays in the list when the student still has it.
+  const houseChoices: House[] = useMemo(() => {
+    const all = houseList ?? [];
+    const active = all.filter((h) => h.is_active);
+    const current = editingStudent?.house_id ? all.find((h) => h.id === editingStudent.house_id) : undefined;
+    return current && !current.is_active ? [...active, current] : active;
+  }, [houseList, editingStudent]);
+  const watchedHouseId = watch('house_id');
+  // Changing a house the student already has needs a reason (the server enforces it too).
+  const houseIsChanging = isEditing && !!editingStudent?.house_id && (watchedHouseId || '') !== editingStudent.house_id;
   const [lookupKey, setLookupKey] = React.useState<{ email: string; phone: string }>({ email: '', phone: '' });
 
   useEffect(() => {
@@ -150,9 +179,12 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
         address: editingStudent.address ?? '',
         city: editingStudent.city ?? '',
         state: editingStudent.state ?? '',
+        postal_code: editingStudent.postal_code ?? '',
         country: editingStudent.country ?? 'Sierra Leone',
         enrollment_date: editingStudent.enrollment_date?.split('T')[0] ?? '',
         class_id: (editingStudent as any).class_id ?? '',
+        house_id: editingStudent.house_id ?? '',
+        house_reason: '',
         place_of_birth: (editingStudent as any).place_of_birth ?? '',
         religion: (editingStudent as any).religion ?? '',
         nationality: (editingStudent as any).nationality ?? 'Sierra Leonean',
@@ -171,9 +203,9 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
     } else if (isOpen && !editingStudent) {
       reset({
         first_name: '', last_name: '', email: '', date_of_birth: '', gender: '',
-        phone: '', address: '', city: '', state: '', country: 'Sierra Leone',
+        phone: '', address: '', city: '', state: '', postal_code: '', country: 'Sierra Leone',
         enrollment_date: new Date().toISOString().split('T')[0],
-        class_id: '', place_of_birth: '',
+        class_id: '', place_of_birth: '', house_id: '', house_reason: '',
         religion: '', nationality: 'Sierra Leonean', blood_group: '', medical_conditions: '',
         previous_school: '', home_language: '', photo_url: '',
         guardian_name: '', guardian_email: '', guardian_phone: '', guardian_relationship: '', guardian_occupation: '',
@@ -187,32 +219,46 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
     setServerError(null);
     setIsSubmitting(true);
     try {
+      // Editing sends an emptied field as '' so the save clears it (undefined would leave the old value in place).
+      // Creating leaves empty fields out.
+      const txt = (v?: string) => (isEditing ? (v ?? '') : (v || undefined));
       const payload: StudentFormData = {
         first_name: values.first_name,
         last_name: values.last_name,
-        email: values.email || undefined,
-        date_of_birth: values.date_of_birth || undefined,
-        gender: values.gender || undefined,
-        phone: values.phone || undefined,
-        address: values.address || undefined,
-        city: values.city || undefined,
-        state: values.state || undefined,
-        country: values.country || undefined,
+        email: txt(values.email),
+        date_of_birth: txt(values.date_of_birth),
+        gender: txt(values.gender),
+        phone: txt(values.phone),
+        address: txt(values.address),
+        city: txt(values.city),
+        state: txt(values.state),
+        postal_code: txt(values.postal_code),
+        country: txt(values.country),
         enrollment_date: values.enrollment_date || undefined,
-        photo_url: values.photo_url || undefined,
-        religion: (values as any).religion || undefined,
-        nationality: (values as any).nationality || undefined,
-        place_of_birth: (values as any).place_of_birth || undefined,
-        guardian_name: (values as any).guardian_name || undefined,
-        guardian_email: (values as any).guardian_email || undefined,
-        guardian_phone: (values as any).guardian_phone || undefined,
-        guardian_relationship: (values as any).guardian_relationship || undefined,
-        guardian_occupation: (values as any).guardian_occupation || undefined,
-        emergency_contact: (values as any).emergency_contact || undefined,
-        previous_school: (values as any).previous_school || undefined,
-        medical_conditions: (values as any).medical_conditions || undefined,
+        photo_url: txt(values.photo_url),
+        religion: txt((values as any).religion),
+        nationality: txt((values as any).nationality),
+        place_of_birth: txt((values as any).place_of_birth),
+        guardian_name: txt((values as any).guardian_name),
+        guardian_email: txt((values as any).guardian_email),
+        guardian_phone: txt((values as any).guardian_phone),
+        guardian_relationship: txt((values as any).guardian_relationship),
+        guardian_occupation: txt((values as any).guardian_occupation),
+        emergency_contact: txt((values as any).emergency_contact),
+        previous_school: txt((values as any).previous_school),
+        medical_conditions: txt((values as any).medical_conditions),
         class_id: (values as any).class_id || undefined,
       } as any;
+
+      if (isEditing) {
+        // Only send the house when it was changed on the form. Blank clears it.
+        if ((values.house_id || '') !== (editingStudent?.house_id || '')) {
+          payload.house_id = values.house_id || null;
+          payload.house_reason = values.house_reason?.trim() || undefined;
+        }
+      } else if (values.house_id) {
+        payload.house_id = values.house_id;
+      }
 
       if (isEditing && editingStudent) {
         const res = await studentsService.updateStudent(editingStudent.id, payload);
@@ -333,6 +379,23 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
             />
             <FormField label="Place of Birth" placeholder="e.g. Makeni" error={errors.place_of_birth?.message} {...register('place_of_birth')} />
           </div>
+
+          {/* Sport house: optional. Leave it on "No house" when the student has none yet; it can be set later. */}
+          {houseChoices.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="student-form-house" className="text-sm font-medium text-gray-700 dark:text-gray-300">Sport House</label>
+                <select id="student-form-house" {...register('house_id')} className="w-full px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">No house</option>
+                  {houseChoices.map((h) => <option key={h.id} value={h.id}>{h.is_active ? h.name : `${h.name} (switched off)`}</option>)}
+                </select>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">Optional. A student who already has a house from before can be given it here, or later.</p>
+              </div>
+              {houseIsChanging && (
+                <FormField label="Reason for changing house" placeholder="e.g. Moved after a transfer" error={errors.house_reason?.message} {...register('house_reason')} />
+              )}
+            </div>
+          )}
         </div>
 
         {/* Contact */}
@@ -347,6 +410,10 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             <FormField label="City / Town" placeholder="e.g. Freetown" error={errors.city?.message} {...register('city')} />
+            <FormField label="State / Region" placeholder="e.g. Western Area" error={errors.state?.message} {...register('state')} />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+            <FormField label="Postal Code" placeholder="e.g. 0000" error={errors.postal_code?.message} {...register('postal_code')} />
             <FormField label="Country" placeholder="Sierra Leone" error={errors.country?.message} {...register('country')} />
           </div>
         </div>

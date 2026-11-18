@@ -39,7 +39,7 @@ const studentService = new StudentService(db);
  */
 router.post('/', authenticate, attachUserContext, authorize('principal', 'super_admin', 'admissions_officer'), checkSubscriptionLimit('students'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { first_name, last_name, date_of_birth, gender, email, phone, address, city, state, postal_code, country, enrollment_date, status, photo_url, religion, nationality, place_of_birth, guardian_name, guardian_email, guardian_phone, guardian_relationship, guardian_occupation, emergency_contact, previous_school, medical_conditions, class_id } = req.body;
+    const { first_name, last_name, date_of_birth, gender, email, phone, address, city, state, postal_code, country, enrollment_date, status, photo_url, religion, nationality, place_of_birth, guardian_name, guardian_email, guardian_phone, guardian_relationship, guardian_occupation, emergency_contact, previous_school, medical_conditions, class_id, house_id } = req.body;
     const createdBy = req.auth?.userId ?? null;
     const tenantId = (req as any).user.tenant_id;
 
@@ -67,6 +67,14 @@ router.post('/', authenticate, attachUserContext, authorize('principal', 'super_
         })
         .first();
       if (!cls) throw new AppError('Selected class does not belong to this school', 400, 'INVALID_CLASS');
+    }
+
+    // Sport house is optional. Check it before anything is saved, so a bad house cannot leave a half-created student.
+    const chosenHouse = typeof house_id === 'string' && house_id.trim() ? house_id.trim() : null;
+    if (chosenHouse) {
+      if (!/^[0-9a-f-]{36}$/i.test(chosenHouse)) throw new AppError('Choose a house from the list.', 400, 'VALIDATION_ERROR');
+      const house = await db('houses').where({ id: chosenHouse, tenant_id: tenantId, is_active: true }).first('id');
+      if (!house) throw new AppError('That house is not one of this school\'s active houses.', 400, 'HOUSE_NOT_FOUND');
     }
 
     // Validate date_of_birth format if provided
@@ -175,8 +183,13 @@ router.post('/', authenticate, attachUserContext, authorize('principal', 'super_
         guardian_phone,
       });
     }
-    // Sport house: drawn now only when the school switched on "draw automatically when a student is enrolled".
-    const house = inserted.id ? await houseService.autoAssignOnEnrol(tenantId, createdBy ?? null, inserted.id) : null;
+    // Sport house: a house chosen on the form is used as it is. Otherwise it is drawn now, but only when the school
+    // switched on "draw automatically when a student is enrolled". A student can also be left without a house.
+    const house = inserted.id
+      ? chosenHouse
+        ? (await houseService.assign(tenantId, createdBy as string, inserted.id, chosenHouse)).house
+        : await houseService.autoAssignOnEnrol(tenantId, createdBy ?? null, inserted.id)
+      : null;
     res.status(201).json({
       message: linkedParent
         ? `Student created and linked to existing parent ${linkedParent.name}`
@@ -968,6 +981,16 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
 
     updateData.updated_at = new Date();
 
+    // Sport house: managers only. Blank (or null) clears it. Changing a house the student already has needs a reason;
+    // houseService.assign enforces that and, running inside the save below, rolls the whole update back without it.
+    const { house_id, house_reason } = req.body;
+    let houseChange: { houseId: string | null; reason: string } | null = null;
+    if (house_id !== undefined && isManager) {
+      const wanted = house_id === null || String(house_id).trim() === '' ? null : String(house_id).trim();
+      if (wanted && !/^[0-9a-f-]{36}$/i.test(wanted)) throw new AppError('Choose a house from the list.', 400, 'VALIDATION_ERROR');
+      houseChange = { houseId: wanted, reason: String(house_reason ?? '') };
+    }
+
     // Class change: managers only, and only within the CURRENT academic year.
     // Past-year enrollments are history and are never rewritten here.
     const { class_id } = req.body;
@@ -995,6 +1018,10 @@ router.put('/:studentId', authenticate, async (req: Request, res: Response, next
 
     await db.transaction(async (trx) => {
       await trx('students').where('id', student.id).andWhere('tenant_id', tenantId).update(updateData);
+
+      if (houseChange) {
+        await houseService.assign(tenantId, currentUser.userId, student.id, houseChange.houseId, houseChange.reason, trx);
+      }
 
       if (moveToClass) {
         // The student's live enrollment in the current year, if any.

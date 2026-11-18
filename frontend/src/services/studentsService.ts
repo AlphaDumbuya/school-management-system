@@ -36,6 +36,7 @@ export interface StudentRecord {
   medical_conditions?: string;
   class_name?: string;
   /** The student's house (name and colour), when they have been given one. */
+  house_id?: string | null;
   house_name?: string | null;
   house_color?: string | null;
   class_level?: string;
@@ -63,6 +64,10 @@ export interface StudentFormData {
   guardian_phone?: string;
   guardian_relationship?: string;
   guardian_occupation?: string;
+  /** Sport house id. null clears it on update. Omit to leave the house unchanged. */
+  house_id?: string | null;
+  /** Required by the server when changing a house the student already has. */
+  house_reason?: string;
 }
 
 export interface GuardianLookupResult {
